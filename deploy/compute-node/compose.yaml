@@ -1,0 +1,112 @@
+name: ai-compute
+
+services:
+  text-primary:
+    image: ${VLLM_IMAGE:?Set VLLM_IMAGE to an immutable image digest}
+    container_name: gb10-text-primary
+    restart: on-failure:5
+    init: true
+    user: "${GB10_RUNTIME_UID:?Run setup-compute-node.sh init}:${GB10_RUNTIME_GID:?Run setup-compute-node.sh init}"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    shm_size: "${VLLM_SHM_SIZE:-16gb}"
+    ports:
+      - "${GB10_BIND_ADDRESS:-127.0.0.1}:${VLLM_HOST_PORT:-8000}:8000"
+    environment:
+      HOME: /var/cache/vllm
+      HF_HOME: /var/cache/huggingface
+      VLLM_CACHE_ROOT: /var/cache/vllm
+      VLLM_LOGGING_LEVEL: INFO
+      VLLM_SPECULATIVE_CONFIG: "${VLLM_SPECULATIVE_CONFIG:-}"
+      TOKENIZERS_PARALLELISM: "false"
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        export HF_TOKEN="$$(cat /run/secrets/hf_token)"
+        set --
+        if [ -n "$${VLLM_SPECULATIVE_CONFIG}" ]; then
+          set -- --speculative-config "$${VLLM_SPECULATIVE_CONFIG}"
+        fi
+        exec vllm serve "${MODEL_ID}" \
+          --revision "${MODEL_REVISION}" \
+          --tokenizer-revision "${TOKENIZER_REVISION}" \
+          --code-revision "${CODE_REVISION}" \
+          --served-model-name coding automation research home meeting assistant \
+          --host 0.0.0.0 \
+          --port 8000 \
+          --api-key "$$(cat /run/secrets/vllm_api_key)" \
+          --tensor-parallel-size 1 \
+          --trust-remote-code \
+          --kv-cache-dtype fp8 \
+          --attention-backend "${VLLM_ATTENTION_BACKEND:-flashinfer}" \
+          --moe-backend "${VLLM_MOE_BACKEND:-marlin}" \
+          --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.40}" \
+          --max-model-len "${VLLM_MAX_MODEL_LEN:-32768}" \
+          --max-num-seqs "${VLLM_MAX_NUM_SEQS:-2}" \
+          --max-num-batched-tokens "${VLLM_MAX_BATCHED_TOKENS:-8192}" \
+          --enable-chunked-prefill \
+          --async-scheduling \
+          --enable-prefix-caching \
+          "$$@" \
+          --load-format fastsafetensors \
+          --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" \
+          --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_xml}" \
+          --enable-auto-tool-choice \
+          --disable-uvicorn-access-log
+    secrets:
+      - hf_token
+      - vllm_api_key
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+        target: /var/cache/huggingface
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
+        target: /var/cache/vllm
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/models
+        target: /models
+        read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8g
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 20m
+    stop_grace_period: 2m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
+    networks:
+      - inference
+
+networks:
+  inference:
+    name: gb10-inference
+    driver: bridge
+    attachable: false
+
+secrets:
+  hf_token:
+    file: ${HF_TOKEN_FILE:?Set HF_TOKEN_FILE}
+  vllm_api_key:
+    file: ${VLLM_API_KEY_FILE:?Set VLLM_API_KEY_FILE}

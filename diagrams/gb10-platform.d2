@@ -1,0 +1,175 @@
+direction: right
+
+title: {
+  label: "HomeCompute — compute and services nodes"
+  shape: text
+  near: top-center
+  style: {
+    font-size: 26
+    bold: true
+  }
+}
+
+classes: {
+  host: {
+    style: {
+      fill: "#F8FAFC"
+      stroke: "#64748B"
+      stroke-width: 2
+      border-radius: 10
+    }
+  }
+  client: {
+    style: {
+      fill: "#E0F2FE"
+      stroke: "#0369A1"
+      border-radius: 7
+    }
+  }
+  control: {
+    style: {
+      fill: "#FEF3C7"
+      stroke: "#B45309"
+      border-radius: 7
+    }
+  }
+  inference: {
+    style: {
+      fill: "#DCFCE7"
+      stroke: "#15803D"
+      border-radius: 7
+    }
+  }
+  state: {
+    style: {
+      fill: "#F3E8FF"
+      stroke: "#7E22CE"
+      border-radius: 7
+    }
+  }
+  future: {
+    style: {
+      fill: "#F8FAFC"
+      stroke: "#64748B"
+      stroke-dash: 5
+      border-radius: 7
+    }
+  }
+}
+
+clients: "Trusted clients" {
+  class: host
+  codex: "Codex\nMacBook" { class: client }
+  meeting: "Meeting Assistant\nMac" { class: client }
+  ha: "Home Assistant\nAssist + tool authority" { class: client }
+  n8n: "n8n\nworkflows + retries" { class: client }
+}
+
+control_host: "ai-services-01 / ai-gateway-01\n(target gateway — migrate and harden)" {
+  class: host
+  dns: "ai.home\nlocal DNS + TLS trust" { class: control }
+  caddy: "Caddy :443\nTLS • route allow-list\nrequest ID • streaming" { class: control }
+  litellm: "Existing LiteLLM\nvirtual keys • aliases\npolicy • quotas" { class: control }
+  policy: "Distinct consumer keys\nprivate routes fail closed\nmetadata-only logs" { class: control }
+
+  dns -> caddy
+  caddy -> litellm: "text routes"
+  policy -> litellm
+}
+
+gb10: "ai-compute-01\nASUS GX10 / NVIDIA GB10\n(rebuildable inference appliance only)" {
+  class: host
+  private: "Private encrypted link\nTailscale / restricted LAN" { class: inference }
+  vllm: "Pinned vLLM\nResponses + tools + MTP\nqualified text artifact" { class: inference }
+  stt: "STT\nWhisper / Parakeet benchmark" { class: inference }
+  tts: "TTS\nPiper / Røst benchmark" { class: inference }
+  diar: "Diarization\nPhase H" { class: future }
+  telemetry: "Metrics + bounded\nmetadata logs" { class: inference }
+  cache: "Internal NVMe\nimages • models • cache\nactive + rollback release" { class: inference }
+
+  private -> vllm
+  private -> stt
+  private -> tts
+  private -> diar
+  vllm -> telemetry: "metrics" { style.stroke-dash: 3 }
+  stt -> telemetry: "metrics" { style.stroke-dash: 3 }
+  tts -> telemetry: "metrics" { style.stroke-dash: 3 }
+  cache -> vllm
+  cache -> stt
+  cache -> tts
+}
+
+state_hosts: "Durable service state\n(stays off ai-compute-01)" {
+  class: host
+  ha_state: "HA / Node-RED\nautomation state" { class: state }
+  notion: "Notion\nn8n workflow state" { class: state }
+  meeting_library: "Meeting library\noriginal audio + derived artifacts" { class: state }
+  repos: "Git repositories\nconfig + manifests + tests" { class: state }
+}
+
+agent_host: "ai-services-01 / automation-01\n(later, after gateway acceptance)" {
+  class: host
+  identity: "Discord allow-list\nidentity → profile" { class: future }
+  hermes: "Hermes + OpenShell\nseparate owner / partner / family sandboxes" { class: future }
+  events: "Canonical personal event API\nowner_scope enforcement" { class: future }
+  approval: "Consequential-action\napproval boundary" { class: future }
+
+  identity -> hermes
+  hermes -> events
+  hermes -> approval
+}
+
+cloud: "Approved cloud providers\npublic research fallback\nCodex planning + review" {
+  shape: cloud
+  style: {
+    fill: "#FEE2E2"
+    stroke: "#B91C1C"
+  }
+}
+
+clients.codex -> control_host.dns: "coding / research\nwhole-session PoC"
+clients.meeting -> control_host.dns: "meeting + audio\nlocal only"
+clients.ha -> control_host.dns: "home + speech\nlocal only"
+clients.n8n -> control_host.dns: "automation / research"
+
+control_host.litellm -> gb10.private: "text aliases\nauthenticated private link"
+control_host.caddy -> gb10.private: "fixed audio routes"
+control_host.litellm -> cloud: "explicit approved aliases only" {
+  style.stroke-dash: 4
+  style.stroke: "#B91C1C"
+}
+clients.codex -> cloud: "independent planning + review\nexplicit whole-session fallback" {
+  style.stroke-dash: 4
+  style.stroke: "#B91C1C"
+}
+
+clients.ha -> state_hosts.ha_state
+clients.n8n -> state_hosts.notion
+clients.meeting -> state_hosts.meeting_library
+clients.codex -> state_hosts.repos
+
+agent_host.hermes -> control_host.dns: "assistant alias\n64K qualification required"
+agent_host.events -> state_hosts.notion: "optional adapters" {
+  style.stroke-dash: 4
+}
+
+forbidden: "Never on ai-compute-01\nrepositories • databases • workflow state\nMeeting library • agent memory • secrets of record" {
+  shape: document
+  style: {
+    fill: "#FFF1F2"
+    stroke: "#BE123C"
+    font-color: "#881337"
+  }
+}
+forbidden -> gb10: "deployment boundary" {
+  style.stroke: "#BE123C"
+  style.stroke-dash: 5
+}
+
+legend: "Trust rules\n• production local clients → ai.home\n• direct runtime is qualification-only\n• per-consumer credentials\n• aliases hide model artifacts\n• private payloads never fall back\n• Home Assistant executes actions" {
+  shape: document
+  style: {
+    fill: "#FFFFFF"
+    stroke: "#475569"
+  }
+}

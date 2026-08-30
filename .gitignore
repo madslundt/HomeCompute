@@ -1,0 +1,30 @@
+# macOS and editor metadata
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local configuration and credentials
+.env
+.env.*
+*.env
+*.env.*
+!*.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# Generated logs, caches, and local test output
+*.log
+.cache/
+tmp/
+artifacts/
+**/benchmarks/private/
+
+# Local model and database data
+models/
+*.db
+*.sqlite
+*.sqlite3

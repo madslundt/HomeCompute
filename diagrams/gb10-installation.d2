@@ -1,0 +1,108 @@
+direction: down
+
+title: {
+  label: "HomeCompute ai-compute-01 setup — qualification gates"
+  shape: text
+  near: top-center
+  style: { font-size: 24; bold: true }
+}
+
+source: "Source-controlled inputs" {
+  shape: document
+  style: { fill: "#E0F2FE"; stroke: "#0369A1" }
+}
+
+preflight: "1. Read-only preflight\nARM64 / GB10 • DGX OS\nDocker + NVIDIA runtime\ndisk • clock • required tools" {
+  style: { fill: "#F8FAFC"; stroke: "#475569"; border-radius: 8 }
+}
+
+gate_c0: "Gate C0\nExact image digest\nmodel commit + license\nparser + MTP + memory envelope" {
+  shape: diamond
+  style: { fill: "#FEF3C7"; stroke: "#B45309" }
+}
+
+install: "2. Idempotent compute-node install\nservice directories • secrets\nprivate bind • pinned Compose\nrestart + bounded logs" {
+  style: { fill: "#DCFCE7"; stroke: "#15803D"; border-radius: 8 }
+}
+
+direct: "3. Direct private PoC\nCodex → vLLM\nResponses • streaming • tools\ncancel • compaction • log canary" {
+  style: { fill: "#DCFCE7"; stroke: "#15803D"; border-radius: 8 }
+}
+
+gate_c1: "Gate C1\nProtocol suite passes\nwith pinned tuple" {
+  shape: diamond
+  style: { fill: "#FEF3C7"; stroke: "#B45309" }
+}
+
+ha_poc: "4. Restricted Home Assistant PoC\ndeterministic intents first\nrestricted tools • no direct device access\nnormal + denial fixtures" {
+  style: { fill: "#DCFCE7"; stroke: "#15803D"; border-radius: 8 }
+}
+
+gate_c2: "Gate C2\nTool proposal is correct\nHome Assistant remains authority\ndangerous cases fail closed" {
+  shape: diamond
+  style: { fill: "#FEF3C7"; stroke: "#B45309" }
+}
+
+control: "5. Stage ai-gateway-01\nCaddy TLS + qualified LiteLLM\nvirtual keys • aliases • policy\nprivate compute upstream" {
+  style: { fill: "#F3E8FF"; stroke: "#7E22CE"; border-radius: 8 }
+}
+
+gate_c3: "Gate C3\nDirect/proxied equivalence\nprivacy • auth • latency\nrollback proven" {
+  shape: diamond
+  style: { fill: "#FEF3C7"; stroke: "#B45309" }
+}
+
+rework: "A failed gate stops promotion\nrecord evidence • change one tuple field\nvalidate again • preserve prior release" {
+  shape: document
+  style: { fill: "#FFF1F2"; stroke: "#BE123C" }
+}
+
+benchmark: "6. Benchmark and select\ntext + MTP on/off • STT • TTS • Danish\nmixed load • memory • 10% headroom" {
+  style: { fill: "#E0E7FF"; stroke: "#4338CA"; border-radius: 8 }
+}
+
+stage1: "7. Stage 1 acceptance\natomic alias switch\n24-hour soak • reboot\nrollback • clean rebuild" {
+  style: { fill: "#DCFCE7"; stroke: "#15803D"; border-radius: 8 }
+}
+
+later: "Later gated migrations\nHA + n8n + speech\nMeeting/Plaud\nHermes personal assistant\nhousehold isolation" {
+  style: { fill: "#F8FAFC"; stroke: "#64748B"; stroke-dash: 5; border-radius: 8 }
+}
+
+source -> preflight -> gate_c0
+gate_c0 -> install: "pass"
+install -> direct -> gate_c1
+gate_c1 -> ha_poc: "pass"
+ha_poc -> gate_c2
+gate_c2 -> control: "pass"
+control -> gate_c3
+gate_c3 -> benchmark: "pass"
+benchmark -> stage1 -> later
+
+gate_c0 -> rework: "missing / floating input" {
+  style.stroke: "#BE123C"
+  style.stroke-dash: 5
+}
+gate_c1 -> rework: "protocol failure" {
+  style.stroke: "#BE123C"
+  style.stroke-dash: 5
+}
+gate_c2 -> rework: "tool / safety failure" {
+  style.stroke: "#BE123C"
+  style.stroke-dash: 5
+}
+gate_c3 -> rework: "rollback / revise" {
+  style.stroke: "#BE123C"
+  style.stroke-dash: 5
+}
+
+automation: "setup-compute-node.sh automates\npreflight • validation • directories\nsecret generation • pull • Compose\nhealth/status/smoke/rollback"
+automation.shape: document
+automation.style: { fill: "#FFFFFF"; stroke: "#15803D" }
+automation -> install: "safe apply path" { style.stroke-dash: 4 }
+
+manual: "Deliberate human gates\nlive AI Home inventory\nartifact/license selection\nfirewall/VPN confirmation\nbenchmarks + acceptance records"
+manual.shape: document
+manual.style: { fill: "#FFF1F2"; stroke: "#BE123C" }
+manual -> gate_c0: "required evidence" { style.stroke-dash: 4 }
+manual -> gate_c3: "required evidence" { style.stroke-dash: 4 }

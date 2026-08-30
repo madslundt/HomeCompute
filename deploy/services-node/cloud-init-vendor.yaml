@@ -1,0 +1,67 @@
+#cloud-config
+
+# Common Debian 13 guest baseline. Proxmox supplies the user, SSH public key,
+# hostname, and network configuration separately through cloud-init.
+package_update: true
+package_upgrade: true
+packages:
+  - apparmor
+  - ca-certificates
+  - curl
+  - docker-compose
+  - docker.io
+  - ethtool
+  - git
+  - jq
+  - qemu-guest-agent
+  - rsync
+  - smartmontools
+  - vim-tiny
+
+ssh_pwauth: false
+disable_root: true
+
+write_files:
+  - path: /etc/docker/daemon.json
+    owner: root:root
+    permissions: "0644"
+    content: |
+      {
+        "default-address-pools": [
+          {"base": "172.30.0.0/16", "size": 24}
+        ],
+        "live-restore": true,
+        "log-driver": "local",
+        "log-opts": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      }
+  - path: /etc/ssh/sshd_config.d/20-services-node-hardening.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+      KbdInteractiveAuthentication no
+  - path: /etc/sysctl.d/60-services-node-guest.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      fs.protected_fifos = 2
+      fs.protected_regular = 2
+      kernel.kptr_restrict = 2
+      kernel.unprivileged_bpf_disabled = 1
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv6.conf.all.accept_redirects = 0
+
+runcmd:
+  - [systemctl, enable, --now, qemu-guest-agent]
+  - [systemctl, enable, --now, docker]
+  - [install, -d, -o, root, -g, root, -m, "0750", /srv/compose]
+  - [sysctl, --system]
+  - [systemctl, reload, ssh]
+
+final_message: "AI services node Debian guest baseline completed after $UPTIME seconds"
