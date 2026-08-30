@@ -151,6 +151,12 @@ URS-TTS-002 and URS-PERF-003/004.
   memory, retries, and any long-context, vision, tool, or concurrency regressions.
 - Treat Q4, Q8, FP8, and NVFP4 as different artifact tuples. Bit count alone
   does not establish either quality or speed across quantization schemes.
+- Capture runtime startup output or telemetry proving the selected attention,
+  MoE/GEMM, activation, KV-cache, and speculative-decoding paths. A model-card
+  precision label is not evidence that the expected GB10 kernel executed.
+- For every ambiguous role, publish the tested alternatives, their measured
+  advantages/disadvantages, the winner rationale, and the threshold that
+  would have selected a different candidate.
 - Raw results are retained under a non-sensitive result artifact location; summaries go in `docs/benchmarks/`.
 - Leaderboards/vendor examples can select candidates but cannot satisfy acceptance.
 

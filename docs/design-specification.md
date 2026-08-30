@@ -1,7 +1,7 @@
 # Design specification
 
 **Version:** 0.2  
-**Date:** 2026-08-25  
+**Date:** 2026-08-30
 **Status:** Proposed; implementation is gated by Phase C/D evidence
 
 ## 1. Design inputs
@@ -36,6 +36,13 @@ models:
     revision: immutable-commit
     weight_format: exact-format
     quantization: exact-value
+    weight_precision_layout: exact-value
+    activation_precision: exact-value
+    kv_cache_precision: exact-value
+    attention_backend: exact-value
+    moe_backend: exact-value
+    gemm_backend: exact-value
+    speculative_decoding: exact-value-or-disabled
     tokenizer_revision: immutable-commit
     chat_template_sha256: digest
     reasoning_parser: exact-value
@@ -49,7 +56,9 @@ qualification_record: docs/benchmarks/result-file.md
 
 The real manifest schema may be JSON or YAML. All fields above are required or
 explicitly marked `not-applicable`; human-readable tags do not replace digests
-or model revisions.
+or model revisions. Startup evidence must confirm the selected backend/kernel
+path rather than treating an FP4/FP8 filename as proof that GB10 tensor-core
+acceleration was used.
 
 ## 3. Host baseline
 

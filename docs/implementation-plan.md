@@ -146,8 +146,10 @@ Create versioned fixture manifests and runners for:
 
 ```text
 benchmarks/general
+benchmarks/research
 benchmarks/coding
 benchmarks/home-assistant
+benchmarks/assistant
 benchmarks/stt
 benchmarks/tts
 benchmarks/meeting
@@ -161,17 +163,20 @@ They refuse a run without the release/artifact manifest.
 ### D2 — Select text and audio artifacts
 
 1. Run all shortlisted models against role scorecards.
-2. Run the Spark-qualified Qwen3.6 NVFP4 baseline with MTP on and off, the
-   Gemma 4 31B NVFP4 dense challenger, Qwen3.8-27B, and the role-specific
-   challengers. Compare Q4/Q8 GGUF only as controlled quantization artifacts,
-   not as different model identities. Benchmark vLLM against llama.cpp; add
-   TensorRT-LLM only when it supports the same chosen model/revision.
+2. Run the Qwen3.6 NVFP4 baseline with MTP on and off; Qwen3-Coder-Next FP8;
+   Nemotron 3.5 Lightning target-only, native-MTP, and DSpark modes; Gemma 4
+   31B NVFP4; Qwen3.8-27B FP8; and the bounded role-specific controls. Use
+   Qwen3.6-27B NVFP4 only for an optional precision/runtime A/B. Compare Q4/Q8
+   GGUF only as controlled artifact tuples, not as different model identities.
+   Benchmark vLLM against llama.cpp only where both support the same exact
+   model/revision; add TensorRT-LLM under the same rule.
 3. Select the simplest alias-to-artifact mapping meeting every role threshold.
 4. Run M1–M5 mixed load and V-MEM-001.
 5. Decide shared vs reserved `home`, priority mechanism, resident set, and
    context/concurrency. LiteLLM is already selected as the control-plane
    candidate but still must pass C3.
-6. Publish dated results and update ADRs/design with measured decisions.
+6. Publish dated results, including candidate pros/cons and the measured reason
+   each winner displaced its alternatives, then update ADRs/design.
 
 **Gate D:** every alias has a winning qualified tuple, threshold evidence,
 license record, memory budget, and rollback candidate. No leaderboard-only

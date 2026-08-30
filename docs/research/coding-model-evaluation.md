@@ -1,6 +1,6 @@
 # Coding model evaluation
 
-Verified: 2026-08-25
+Verified: 2026-08-30
 
 Status: benchmark shortlist; no winner selected without GB10 measurements
 
@@ -10,28 +10,38 @@ Benchmark the following in this order for `coding`:
 
 1. `Qwen/Qwen3-Coder-Next-FP8` as the exact first benchmark artifact from the
    Qwen3-Coder-Next family.
-2. `nvidia/Gemma-4-31B-IT-NVFP4` as the dense general/coding challenger.
-3. `Qwen/Qwen3.8-27B-FP8` as the newer dense Qwen challenger.
-4. `mistralai/Devstral-Small-2-24B-Instruct-2512` as the low-memory,
+2. `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` with its `-DSpark`
+   draft as the first GB10-specific agent-performance challenger.
+3. `nvidia/Gemma-4-31B-IT-NVFP4` as the dense general/coding challenger.
+4. `Qwen/Qwen3.8-27B-FP8` as the newer dense Qwen challenger.
+5. `mistralai/Devstral-Small-2-24B-Instruct-2512` as the low-memory,
    low-latency baseline.
-5. `openai/gpt-oss-120b` as the reasoning/tool-use comparison.
-6. `mistralai/Devstral-2-123B-Instruct-2512` only if a supported quantization
+6. `openai/gpt-oss-120b` as the reasoning/tool-use comparison.
+7. `mistralai/Devstral-2-123B-Instruct-2512` only if a supported quantization
    leaves enough KV-cache and concurrency headroom.
 
-No model becomes an alias target based on its publisher benchmark alone.
+Qwen3-Coder-Next is recommended first because it is explicitly trained for
+long-horizon coding agents, has only 3B active parameters per token, and uses a
+standard Qwen tool-call path. That is a quality/compatibility hypothesis, not a
+precision result: the evaluations displayed on its publisher card used BF16,
+so the exact FP8 artifact must earn the alias. Nemotron follows immediately
+because it offers the most concrete one-Spark performance experiment. No model
+becomes an alias target based on its publisher benchmark alone.
 
 ## Evidence and trade-offs
 
-| Candidate | Primary-source facts | GB10 hypothesis |
-| --- | --- | --- |
-| Qwen3-Coder-Next (`Qwen/Qwen3-Coder-Next-FP8` artifact) | 80B total/3B active, 256K native context, Apache-2.0, purpose-built for coding agents and failure recovery; official vLLM launch includes a Qwen tool-call parser | Best first balance of agentic coding quality, active compute, and model size; reduce context to 32K for the first PoC |
-| Gemma 4 31B | Dense 30.7B, 256K context, Apache-2.0, native function calling, coding/agentic focus, and an MTP assistant checkpoint | High-quality dense control; qualify the NVIDIA NVFP4 artifact and compatible MTP path without assuming the quoted user's result transfers |
-| Qwen3.8-27B | Dense 27B, 262K context, Apache-2.0, newer Qwen coding/agent generation with native MTP | Strong dense Qwen comparison; requires its own recent pinned runtime and has no current single-Spark proof |
-| Devstral Small 2 | 24B, 256K context, Apache-2.0, designed for agentic repository work; publisher says it can run on a 32 GB Mac | Residency/latency baseline and possible fallback when voice load is high |
-| gpt-oss-120b | 117B/5.1B active, MXFP4, Apache-2.0, designed to fit one 80 GB GPU, function calling and structured outputs | Strong fit on 128 GB unified memory, but Harmony formatting and Codex Responses behavior require careful validation |
-| Devstral 2 123B | FP8 123B, 256K context and tool-oriented coding; restrictive/other model license | Quality stretch candidate; memory headroom and license review may reject it |
+| Candidate | Advantages | Disadvantages | Why it remains in the ladder |
+| --- | --- | --- | --- |
+| Qwen3-Coder-Next (`Qwen/Qwen3-Coder-Next-FP8`) | 80B total/3B active, 262K native context, Apache-2.0, built for coding agents and failure recovery; official vLLM launch includes a Qwen tool-call parser | Publisher-card benchmark results were produced with BF16, not the exact FP8 artifact; no exact NVIDIA single-Spark recipe is established | Recommended first for the strongest task alignment and likely active-compute efficiency; start at 32K and require repository-level Codex results |
+| Nemotron 3.5 Lightning + DSpark | 30B total/3B active NVFP4 target, native MTP, a dedicated DSpark draft, and a documented one-Spark low-concurrency recipe; NVIDIA publishes agent/coding results | Danish is absent from the documented language list; OpenMDW-1.1 needs review; target-only, MTP, and DSpark add serving complexity | First hardware-specific challenger; select it if end-to-end build/test success is competitive and accepted draft tokens materially improve latency without regressions |
+| Gemma 4 31B | Dense 30.7B, 256K context, Apache-2.0, native function calling, coding/agentic focus, and an MTP assistant checkpoint | Dense execution may reduce latency and mixed-load headroom versus 3B-active MoE candidates | Quality control that tests whether dense-model consistency outweighs the resource cost |
+| Qwen3.8-27B | Dense 27B, 262K context, Apache-2.0, newer Qwen coding/agent generation with native MTP | Requires a recent pinned runtime, is FP8 rather than a first-party NVFP4 artifact, and has no current single-Spark proof | New-generation Qwen control; select it only for a material task-quality gain that survives the operational gates |
+| Devstral Small 2 | 24B, 256K context, Apache-2.0, designed for agentic repository work; publisher says it can run on a 32 GB Mac | Coding specialization does not prove Codex Responses compatibility or superior patch quality; no first-party Spark NVFP4 path | Lower-resource floor and possible fallback when interactive latency or voice-load coexistence dominates |
+| gpt-oss-120b | 117B/5.1B active in publisher-native MXFP4, Apache-2.0, function calling and structured outputs | Approximately 80GB-class weight fit leaves less headroom; Harmony formatting and Codex Responses behavior require validation | Large reasoning control, loaded serially; select only if quality gains justify the swap and memory cost |
+| Devstral 2 123B | FP8 123B, 256K context and tool-oriented coding | Restrictive/other model license and weak unified-memory headroom | Deferred stretch candidate; test only after license and fit checks pass |
 
-Sources: [Qwen3-Coder-Next model card](https://huggingface.co/Qwen/Qwen3-Coder-Next),
+Sources: [Qwen3-Coder-Next FP8 model card](https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8),
+[Nemotron 3.5 Lightning model card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4),
 [Gemma 4 31B model card](https://huggingface.co/google/gemma-4-31B-it),
 [Qwen3.8-27B model card](https://huggingface.co/Qwen/Qwen3.8-27B),
 [Devstral Small 2 model card](https://huggingface.co/mistralai/Devstral-Small-2-24B-Instruct-2512),

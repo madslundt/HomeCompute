@@ -9,6 +9,7 @@ Start with these current synthesis documents:
 | Topic | Entry point |
 | --- | --- |
 | Model installation order | [`llm-installation-recommendation.md`](llm-installation-recommendation.md) |
+| Cross-role model trade-offs and switch rules | [`model-role-tradeoff-matrix.md`](model-role-tradeoff-matrix.md) |
 | GB10 precision and optimized artifacts | [`gb10-optimized-model-audit.md`](gb10-optimized-model-audit.md) |
 | Model/use-case alignment | [`model-use-case-alignment-review.md`](model-use-case-alignment-review.md) |
 | Runtime | [`inference-runtime-evaluation.md`](inference-runtime-evaluation.md) |

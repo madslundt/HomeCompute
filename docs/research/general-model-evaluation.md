@@ -1,12 +1,12 @@
 # General model evaluation
 
-Verified: 2026-08-25
+Verified: 2026-08-30
 
 Status: benchmark shortlist; Danish and structured-output measurements pending
 
 ## Recommendation
 
-Start `automation` and `meeting` evaluation with:
+Start `automation`, `research`, and `meeting` evaluation with:
 
 1. `nvidia/Qwen3.6-35B-A3B-NVFP4` for the Spark-qualified efficient
    multilingual/tool-use baseline, tested with MTP on and off.
@@ -20,6 +20,27 @@ Start `automation` and `meeting` evaluation with:
 The winning shared model may also satisfy `home` initially if its latency and tool
 accuracy are acceptable. This consolidation is preferred over keeping another
 model resident for architectural neatness.
+
+Qwen3.6 is the provisional recommendation because it combines an exact
+NVIDIA-published single-Spark recipe, NVFP4 weights, low active parameter count,
+long context, tools, and a shared runtime path. The recommendation is not a
+claim that it is best at Danish: no shortlisted model has publisher evidence
+that settles Danish factuality or structured-output acceptance. The dense
+Gemma and Qwen3.8 candidates remain mandatory quality controls for that reason.
+
+## Alternatives, advantages, and switch conditions
+
+| Candidate | Advantages | Disadvantages | Select it over Qwen3.6 when |
+| --- | --- | --- | --- |
+| Qwen3.6-35B-A3B NVFP4 | Exact one-Spark recipe; 35B total/3B active; native MTP, tools, reasoning, long context, and one artifact for several aliases | No Danish-specific acceptance evidence; MoE routing and speculative decoding add tuple-specific runtime variables | It remains the default if it clears all role scorecards and gives the best combined quality, latency, and mixed-load headroom |
+| Gemma 4 31B NVFP4 | Dense broadly multilingual quality control; function calling, coding/agentic focus, and compatible MTP assistant path | Dense 30.7B execution may be slower and leave less concurrency headroom than a 3B-active MoE model | Danish factuality, extraction, or schema reliability improves materially and the dense cost still passes latency and memory gates |
+| Qwen3.8-27B FP8 | Newer dense Qwen generation with native MTP and long context | Recent runtime requirement, FP8 instead of a first-party NVFP4 artifact, and no exact single-Spark recipe established | New-generation quality improves the shared scorecard enough to justify its separate runtime and dense resource cost |
+| gpt-oss-120b MXFP4 | Publisher-native low-precision 117B/5.1B-active reasoner with tools and structured outputs | Approximately 80GB-class fit, Harmony protocol, and model swaps reduce mixed-load simplicity | Difficult reasoning or research synthesis improves enough to justify serialized loading; it is not the default resident shared model |
+| Nemotron 3 Super NVFP4 | Exact one-Spark minimum configuration and NVIDIA agent/tool focus | Danish is absent from the documented post-trained language list; 120B/12B-active class reduces headroom; specialized parser/license tuple | Agent throughput or difficult reasoning materially beats the shared model and Danish is not required for that promoted workload |
+
+`nvidia/Qwen3.6-27B-NVFP4` is an optional precision/runtime A/B against
+Qwen3.8-27B FP8, not another mandatory quality tier. It adds no distinct role
+and is not currently listed in NVIDIA's generic Spark support matrix.
 
 ## Evidence
 
