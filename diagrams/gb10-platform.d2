@@ -77,7 +77,7 @@ control_host: "ai-services-01 / ai-gateway-01\n(target gateway — migrate and h
   policy -> litellm
 }
 
-gb10: "ai-compute-01\nASUS GX10 / NVIDIA GB10\n(rebuildable inference appliance only)" {
+gb10: "ai-compute-01\nNVIDIA GB10 or DGX Spark-class appliance\n(rebuildable inference only)" {
   class: host
   private: "Private encrypted link\nTailscale / restricted LAN" { class: inference }
   vllm: "Pinned vLLM\nResponses + tools + MTP\nqualified text artifact" { class: inference }

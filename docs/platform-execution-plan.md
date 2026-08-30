@@ -15,8 +15,8 @@ The names do not depend on a hardware vendor:
 
 | System role | Stable name | Initial hardware | Responsibility |
 | --- | --- | --- | --- |
-| AI compute node | `ai-compute-01` | ASUS GX10 / NVIDIA GB10 | Rebuildable GPU inference: text, STT, TTS, and later diarization |
-| AI services node | `ai-services-01` | GMKtec K15 | Proxmox host for the gateway, automations, agent/tool execution, and durable application state |
+| AI compute node | `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Rebuildable GPU inference: text, STT, TTS, and later diarization |
+| AI services node | `ai-services-01` | Supported x86 host | Proxmox host for the gateway, automations, agent/tool execution, and durable application state |
 | AI gateway VM | `ai-gateway-01` | VM 110 on `ai-services-01` | Caddy, LiteLLM, consumer identity, aliases, routing, and gateway-owned state |
 | Automation VM | `automation-01` | VM 120 on `ai-services-01` | n8n, MCP servers, queues, browser workers, and separately gated agent services |
 | Toolbox VM | `toolbox-01` | VM 130 on `ai-services-01` | CI, builds, x86 frameworks, and experimental tool execution |

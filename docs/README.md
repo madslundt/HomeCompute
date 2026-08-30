@@ -1,39 +1,36 @@
 # HomeCompute documentation guide
 
 This directory describes a local-first AI platform with two stable node roles:
-`ai-compute-01` is the rebuildable ASUS GX10/NVIDIA GB10 inference appliance;
-`ai-services-01` is the GMKtec/Proxmox host for the gateway, automations, tools,
-and durable application state. Existing services remain in place until their
-replacement gates pass.
+`ai-compute-01` is a rebuildable NVIDIA GB10 or DGX Spark-class inference
+appliance.
 
-The stable node roles are `ai-compute-01` and `ai-services-01`; neither is yet
-an observed production deployment. Start with the
-[platform execution plan](platform-execution-plan.md), then use the separate
-[compute-node](ai-compute-node-plan.md) and
-[services-node](ai-services-node-plan.md) runbooks.
+`ai-services-01` is an x86 Proxmox host for the gateway, automations, tools,
+and durable application state.
+
+Existing services remain in place until their replacements pass. Neither node
+is yet an observed production deployment.
+
+Start with the [setup guide](setup-guide.md). It contains the complete ordered
+path for both nodes. Use the detailed plans only when you need rationale,
+edge-case handling, or full acceptance criteria.
 
 ## Current gate and next action
 
-The repository is at **Phase B review / Phase C0 preparation**. An independent
-documentation, diagram, configuration, and script review has been applied; user
-design approval and `ai-compute-01` access are still required. No production model,
-gateway path, speech service, or personal-agent deployment has passed
-acceptance yet.
+The repository is at **Phase B review / Phase C0 preparation**. Design approval
+and access to the physical nodes are still required. No production model,
+gateway path, speech service, or personal-agent deployment has passed yet.
 
-After design approval, the next action is to resolve the immutable
-image/model/template provenance inputs in `config/compute-node.env.example` on the
-actual GX10, then run the read-only preflight and validation from the
-[setup guide](setup-guide.md). Do not begin
-Home Assistant, audio, Meeting Assistant, or Hermes migration before the
-preceding gates pass.
+After approval, use the setup guide to build the empty services baseline and
+the direct compute baseline. Do not migrate Home Assistant, audio, Meeting
+Assistant, automations, or personal agents before their preceding gates pass.
 
 ## Start here
 
 | If you want to… | Read these documents |
 | --- | --- |
+| Set up both nodes in order | [Setup guide](setup-guide.md) |
 | Understand the platform in ten minutes | [Architecture](architecture.md), then [current state](current-state.md) |
-| Prepare the first compute deployment | [Setup guide](setup-guide.md), [implementation plan](implementation-plan.md), then [verification strategy](verification-strategy.md) |
-| Execute the complete two-node build | [Platform execution plan](platform-execution-plan.md), then both node plans |
+| Execute the complete two-node program | [Platform execution plan](platform-execution-plan.md), then both node plans |
 | Prepare `ai-compute-01` | [AI compute node plan](ai-compute-node-plan.md), [setup guide](setup-guide.md), then verification |
 | Prepare `ai-services-01` | [AI services node plan](ai-services-node-plan.md), [ADR-014](adr/014-ai-services-node.md), then the provisioning script |
 | Understand what is decided versus still hypothetical | [ADRs](#architecture-decisions), [current state](current-state.md), and the phase gates in the [implementation plan](implementation-plan.md) |
@@ -85,7 +82,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [Risk analysis](risk-analysis.md) | Ranked risks, mitigations, owners, evidence, and review triggers |
 | [Implementation plan](implementation-plan.md) | Phase A–J execution order and promotion gates |
 | [Verification strategy](verification-strategy.md) | Acceptance suites and requirements traceability |
-| [Setup guide](setup-guide.md) | Safe Phase C deployment and operating commands |
+| [Setup guide](setup-guide.md) | Self-contained, ordered setup path for both physical nodes |
 | [Platform execution plan](platform-execution-plan.md) | Controlling order, names, dependencies, gates, and definition of done |
 | [AI compute node plan](ai-compute-node-plan.md) | `ai-compute-01` installation, deployment, qualification, and operations |
 | [AI services node plan](ai-services-node-plan.md) | `ai-services-01` installation, VMs, networking, backups, and migrations |
@@ -112,15 +109,21 @@ then reconcile the older note rather than silently carrying both conclusions.
 ## Research and model evidence
 
 Start with [the staged LLM installation recommendation](research/llm-installation-recommendation.md).
-The current first text candidate is `nvidia/Qwen3.6-35B-A3B-NVFP4`, to be
-qualified with MTP on and off. `nvidia/Gemma-4-31B-IT-NVFP4`, Qwen3-Coder-Next, and
-Qwen3.8-27B are challengers for different roles, not preselected resident
-models.
+The first text integration candidate is NVIDIA Qwen3.6 35B A3B NVFP4. It
+exercises all aliases, but it is not a production selection.
+
+Qwen3-Coder-Next is the primary coding specialist. Nemotron 3.5 Lightning is
+the efficient agent/coding challenger. Gemma 4, Qwen3.8, Devstral, and gpt-oss
+provide dense, low-resource, or high-capacity comparisons.
+
+Danish Parakeet and Whisper are the STT candidates. Piper Danish and Røst are
+the TTS candidates. Retrieval models remain deferred until a real private
+corpus and access-control test exist.
 
 | Topic | Documents |
 | --- | --- |
-| Platform and runtime | [GX10 validation](research/gx10-platform-validation.md), [runtime evaluation](research/inference-runtime-evaluation.md), [gateway evaluation](research/gateway-evaluation.md) |
-| Current model shortlist | [Installation recommendation](research/llm-installation-recommendation.md), [omission review](research/model-shortlist-omission-review.md), [MTP/claim review](research/mtp-model-claim-review.md) |
+| Platform and runtime | [GB10 appliance validation](research/gx10-platform-validation.md), [runtime evaluation](research/inference-runtime-evaluation.md), [gateway evaluation](research/gateway-evaluation.md) |
+| Current model shortlist | [Installation recommendation](research/llm-installation-recommendation.md), [GB10 precision audit](research/gb10-optimized-model-audit.md), [alignment review](research/model-use-case-alignment-review.md) |
 | Text roles | [General](research/general-model-evaluation.md), [coding](research/coding-model-evaluation.md), [Home Assistant](research/home-assistant-model-evaluation.md) |
 | Speech | [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
 | Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md) |

@@ -1,97 +1,267 @@
-# Compute-node setup guide
+# HomeCompute setup guide
 
-**Version:** 0.1  
-**Date:** 2026-08-25  
-**Scope:** Phase C GB10 text-runtime foundation and target-platform overview
+**Scope:** build the services-node and compute-node baselines, connect them,
+and prepare the gateway and model-qualification work.
 
-## What is included
+This is the main operator path. You can complete the steps below without
+reading the detailed plans. Each stage links to its plan for design rationale,
+edge cases, and full acceptance evidence.
 
-The implementation artifacts deliberately follow the deployment boundaries in
-the architecture and ADRs:
+## What you will build
 
-| Artifact | Purpose |
-| --- | --- |
-| `diagrams/gb10-platform.d2` | Editable target overview: clients, existing AI Home control plane, GB10 inference, durable state, cloud policy, and later Hermes layer |
-| `diagrams/gb10-platform.svg` | Rendered, zoomable platform overview |
-| `diagrams/gb10-installation.d2` | Editable phase/gate overview showing automated and human-qualified work |
-| `diagrams/gb10-installation.svg` | Rendered, zoomable installation overview |
-| `config/compute-node.env.example` | Explicit release inputs; placeholders prevent accidental deployment |
-| `deploy/compute-node/compose.yaml` | Hardened, digest-pinned vLLM deployment for the first text-runtime candidate |
-| `scripts/setup-compute-node.sh` | Idempotent preflight, initialization, validation, deployment, smoke, status, stop, and rollback commands |
+| Name | Type | Responsibility |
+| --- | --- | --- |
+| `ai-services-01` | x86 Proxmox host | Runs the gateway, automation, and toolbox VMs; owns durable state and backups |
+| `ai-gateway-01` | VM 110 | Exposes `https://ai.home`; owns authentication, aliases, routing, and gateway data |
+| `automation-01` | VM 120 | Runs n8n, MCP services, queues, and separately approved agent services |
+| `toolbox-01` | VM 130 | Runs CI, builds, experiments, and restricted tools |
+| `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Runs rebuildable text, STT, TTS, and later diarization inference |
 
-The platform diagram is the best single-page orientation:
+The production request path is:
 
-![GB10 hybrid AI platform](../diagrams/gb10-platform.svg)
-
-The installation diagram explains why deployment is staged:
-
-![GB10 installation gates](../diagrams/gb10-installation.svg)
-
-Regenerate both after editing the D2 sources:
-
-```bash
-d2 --layout elk diagrams/gb10-platform.d2 diagrams/gb10-platform.svg
-d2 --layout elk diagrams/gb10-platform.d2 diagrams/gb10-platform.png
-d2 --layout elk diagrams/gb10-installation.d2 diagrams/gb10-installation.svg
-d2 --layout elk diagrams/gb10-installation.d2 diagrams/gb10-installation.png
+```text
+clients -> https://ai.home -> ai-gateway-01 -> private link -> ai-compute-01
 ```
 
-## Automation boundary
+`automation-01` and `toolbox-01` also use `https://ai.home`. They do not get
+direct access to compute ports.
 
-`setup-compute-node.sh` installs the **Phase C text-runtime candidate on the compute node**. It does
-not claim to complete Stage 1 or install the entire future architecture.
+## What this guide does not automate
 
-It does not yet mutate the existing AI Home Caddy/LiteLLM deployment because
-the live host, versions, keys, database, bind addresses, firewall, backup, and
-rollback path remain unverified in `current-state.md`. It also does not deploy
-STT, TTS, diarization, Meeting Assistant changes, or Hermes: those are later
-gated phases with unresolved artifact and application-host decisions.
+The scripts do not install Proxmox or DGX OS, edit physical network bridges,
+configure a backup target, deploy the gateway applications, or migrate live
+data.
 
-This is intentional. Generating plausible control-plane or personal-agent
-configuration without reconciling the live systems would violate the design's
-reuse, security, and rollback requirements.
+Those operations depend on your network, storage, existing services, and
+credentials. This guide states when to perform them and what must be true
+before you continue.
 
-## Before running it
+## Setup at a glance
 
-Use the actual GX10/GB10 running its supported DGX OS. NVIDIA documents Docker
-and the NVIDIA Container Toolkit as preinstalled on DGX Spark; the script
-verifies them but does not replace the platform stack.
+1. Record the network, backup, credential, and rollback decisions.
+2. Inventory and back up the services that may later move.
+3. Install Proxmox and the two network bridges on `ai-services-01`.
+4. Configure off-host backup and provision the three empty service VMs.
+5. Install and verify supported DGX OS on `ai-compute-01`.
+6. Deploy and smoke-test the first pinned text tuple on loopback.
+7. Connect the private link and restrict compute access to `ai-gateway-01`.
+8. Install the gateway and expose semantic aliases at `https://ai.home`.
+9. Benchmark models by use case and promote only passing tuples.
+10. Migrate automations and other consumers one at a time with rollback.
 
-Resolve and record these Gate C0 inputs:
+The rest of this guide expands these steps and provides the commands and
+checkpoints. The detailed plans are optional unless a check fails or you need
+the design rationale.
 
-1. a Linux ARM64 vLLM image referenced by registry digest, never `latest` or a
-   version tag alone;
-2. full 40-hex commits for model, tokenizer, and trusted remote code;
-3. artifact provenance URL, SPDX-style license ID, weight format,
-   quantization, and the exact chat-template SHA-256;
-4. the exact attention/MoE backends, reasoning/tool parsers, and MTP
-   configuration;
-5. a container UID/GID pinned by `init` to the non-login `gb10-ai` service
-   account and verified against the selected image;
-6. the GB10 private bind address and a firewall/VPN rule allowing only the AI
-   Home control-plane source;
-7. a Hugging Face read token and a generated vLLM service key.
+## Models and use cases
 
-The supplied candidate is `nvidia/Qwen3.6-35B-A3B-NVFP4` with the current
-NVIDIA Spark recipe's `qwen3` reasoning parser and `qwen3_xml` tool parser. It
-starts conservatively at 32K context, two sequences, and MTP disabled. NVIDIA's
-managed single-Spark profile no longer enables MTP by default and warns that
-lower resource limits do not guarantee protection from a host freeze. MTP-on
-with three speculative tokens is therefore a separate experimental tuple, not
-the safe baseline. Qualification compares MTP on and off and records
-accepted draft tokens, output throughput, task duration, memory, long-context
-behavior, tool correctness, host stability, and recovery. MTP-on cannot be
-promoted without the pinned 24-hour mixed-load soak. The documented
-large-tool-surface issue must be included in the Codex tool fixture suite;
-passing a simple chat request is not sufficient evidence.
+Clients use logical aliases, never model names. The gateway can change the
+model behind an alias after the replacement passes the same tests.
 
-This Compose recipe fails closed for any other `MODEL_ID`. Challengers require
-their own reviewed recipe because quantization, load format, attention/MoE
-backend, MTP wiring, chat template, and parsers are model-specific.
+| Alias or route | Use case | Initial candidate or comparison set |
+| --- | --- | --- |
+| `coding` | Codex editing, tools, builds, and tests | Qwen3.6 integration baseline; Qwen3-Coder-Next primary specialist; Nemotron 3.5, Gemma 4, Qwen3.8, and Devstral controls |
+| `automation` | n8n, structured output, and approved tools | Qwen3.6 shared baseline; Nemotron 3.5, Gemma 4, Qwen3.8, Devstral, and gpt-oss comparisons |
+| `research` | Private, source-bounded synthesis | Qwen3.6 shared baseline; later agent/general challengers |
+| `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.6 shared baseline; smaller Qwen controls only if latency requires them |
+| `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.6 shared baseline; dense challengers only if they improve factuality |
+| `assistant` | Isolated personal-agent sessions and tools | Qwen3.6 integration baseline at 64K or more; Nemotron 3.5 agent challenger |
+| STT route | Danish, English, and mixed-language transcription | Danish Parakeet, Whisper large-v3-turbo, and Whisper large-v3 |
+| TTS route | Danish speech for Home Assistant and agents | Piper Danish baseline; Røst naturalness challengers |
+| Retrieval route | Private document search | Deferred Qwen3 Embedding and Reranker candidates |
 
-## First deployment
+No production winner exists yet. The shipped compute configuration starts one
+pinned NVIDIA Qwen3.6 candidate at 32K context for protocol and smoke testing.
+That does not qualify every alias or the 64K personal-agent use case.
 
-Run from this repository on the GX10/GB10:
+## Before you start
+
+Create an operator-owned worksheet outside the repository. Record:
+
+1. LAN addresses for both physical nodes and all three VMs.
+2. LAN gateway, DNS server, search domain, and administrator network.
+3. A private compute subnet with no default gateway.
+4. An off-host backup target, retention, encryption-key owner, and restore site.
+5. Public SSH keys and the owners of all credentials.
+6. Existing gateway, n8n, Home Assistant, database, scheduler, and agent state.
+7. A rollback owner and acceptable outage window for each later migration.
+
+The examples use this private subnet:
+
+| Endpoint | Example address |
+| --- | --- |
+| `ai-gateway-01` private NIC | `10.77.10.2/24` |
+| `ai-compute-01` private NIC | `10.77.10.10/24` |
+
+Choose different values if these overlap a LAN, VPN, or container network.
+
+Also prepare:
+
+- local console access to both physical nodes;
+- a UPS for both nodes;
+- two network ports on each node for the proposed direct-link design;
+- a verified Proxmox installer and Debian 13 cloud-image checksum;
+- supported DGX OS and its recovery procedure for the compute appliance;
+- exact container and model revisions plus the required model-registry token.
+
+## Step 1 — Inventory before changing anything
+
+Record the current AI gateway, n8n, Home Assistant, Node-RED, MCP services,
+databases, schedulers, monitoring, and agents.
+
+For each service, capture its version, image, ports, data locations, credential
+owner, backup method, dependencies, and whether it is still used. Take a
+supported backup before planning its migration.
+
+Do not disable or migrate a live service during the node-baseline steps.
+
+**Checkpoint:** every later migration has an owner, source, backup, restore
+method, and keep-or-retire decision.
+
+Details: [platform execution plan](platform-execution-plan.md#step-2--inventory-what-already-exists).
+
+## Step 2 — Build `ai-services-01`
+
+### 2.1 Prepare the x86 host
+
+1. Record the host, firmware, CPU, RAM, storage, NICs, and MAC addresses.
+2. Update supported firmware and retain the recovery instructions.
+3. Enable CPU virtualization and IOMMU in firmware.
+4. Enable automatic power-on after AC loss.
+5. Connect the UPS and both network ports.
+6. Confirm local console access before changing networking.
+
+### 2.2 Install Proxmox
+
+Install the supported Proxmox VE 9 release interactively on the intended disk.
+Verify the installer checksum before writing it.
+
+During installation:
+
+1. Set the hostname to `ai-services-01.home.arpa`.
+2. Assign a reserved management address, gateway, and DNS.
+3. Set the correct timezone and verify time synchronization.
+4. Keep management on wired Ethernet.
+5. Review the selected disk and storage layout before confirming erasure.
+
+After the first boot:
+
+1. Select the appropriate official Proxmox repository policy.
+2. Apply updates and reboot when the kernel or microcode changes.
+3. Create a named administrator, enable MFA, and keep root for recovery.
+4. Restrict SSH and the Proxmox UI to the administrator network.
+5. Enable the `Snippets` content type on the `local` storage.
+6. Do not install application services or Docker on the Proxmox host.
+
+### 2.3 Create the two bridges
+
+Create the bridges from the local console or Proxmox UI after confirming the
+physical interface names:
+
+```text
+management NIC -> vmbr0 -> LAN, host management, and VM LAN interfaces
+private NIC    -> vmbr1 -> no host address and no gateway
+```
+
+Only `ai-gateway-01` receives a VM interface on `vmbr1`. Do not guess interface
+names or edit remote networking without console recovery.
+
+### 2.4 Configure recovery first
+
+Configure encrypted backup to a different physical system. A second disk or VM
+inside `ai-services-01` is not an off-host backup.
+
+Monitor SMART/NVMe health and storage capacity. Keep the backup encryption key
+and a sanitized Proxmox configuration copy outside this node.
+
+### 2.5 Prepare the services-node configuration
+
+Copy this repository to the Proxmox host. From the repository root, run:
+
+```bash
+sudo ./scripts/setup-services-node.sh init
+sudoedit /etc/ai-platform/services-node.env
+```
+
+Replace every `REPLACE_...` value. Check storage names, bridge names, VM IDs,
+VM addresses, gateway, DNS, public-key path, and resource allocations.
+
+Download the Debian cloud image's published checksum using a trusted channel.
+Put the exact 128-character SHA-512 value in `CLOUD_IMAGE_SHA512`.
+
+Leave `START_VMS=false` for the first provisioning run.
+
+### 2.6 Validate and provision the VMs
+
+Run the read-only checks first:
+
+```bash
+sudo ./scripts/setup-services-node.sh validate
+sudo ./scripts/setup-services-node.sh preflight
+```
+
+Resolve every error before continuing. Then run the mutating stages one at a
+time:
+
+```bash
+sudo ./scripts/setup-services-node.sh host-packages
+sudo ./scripts/setup-services-node.sh create-template
+sudo ./scripts/setup-services-node.sh provision
+sudo ./scripts/setup-services-node.sh status
+```
+
+The script refuses to overwrite an existing template or VM ID. If one already
+exists, inspect it and choose deliberate IDs instead of deleting it blindly.
+
+Inspect every VM before starting it:
+
+```bash
+qm config 110
+qm config 120
+qm config 130
+sudo ./scripts/setup-services-node.sh start
+```
+
+### 2.7 Verify the empty services baseline
+
+Confirm all of the following:
+
+- all three VMs boot and cloud-init completes;
+- the QEMU guest agent reports their addresses;
+- SSH public-key login works and password/root login fails;
+- time synchronization, DNS, package access, Docker, and Compose work;
+- `ai-gateway-01` has LAN and private-compute interfaces;
+- `automation-01` and `toolbox-01` cannot reach the compute subnet directly;
+- the Proxmox host runs no application containers;
+- one empty VM can be backed up and restored in isolation.
+
+**Checkpoint:** the empty services node is stable, isolated, and recoverable.
+No production state has moved.
+
+Details: [services-node plan](ai-services-node-plan.md).
+
+## Step 3 — Build `ai-compute-01`
+
+### 3.1 Prepare the appliance
+
+Use an NVIDIA GB10 or DGX Spark-class appliance with its supported DGX OS.
+The repository does not replace the GPU driver, CUDA, Docker, or NVIDIA
+Container Toolkit.
+
+1. Record hardware, firmware, storage, MAC addresses, and recovery information.
+2. Connect the UPS, management network, and private-compute network.
+3. Set hostname `ai-compute-01.home.arpa` and the correct timezone.
+4. Assign reserved management and private addresses.
+5. Apply vendor-supported firmware and DGX OS updates, then reboot.
+6. Verify `nvidia-smi`, container GPU access, NTP, disk health, DNS, and space.
+7. Enable SSH keys and restrict management to the administrator network.
+
+Keep runtime ports on loopback at first. Do not expose them to the LAN or the
+internet.
+
+### 3.2 Initialize external configuration and secrets
+
+Copy this repository to the appliance. From the repository root, run:
 
 ```bash
 sudo ./scripts/setup-compute-node.sh init --env /etc/gb10-ai/gb10.env
@@ -99,41 +269,31 @@ sudoedit /etc/gb10-ai/gb10.env
 sudoedit /etc/gb10-ai/secrets/hf_token
 ```
 
-`init` is safe to rerun. It preserves operator settings while refreshing the
-pinned runtime UID/GID, creates an explicit `gb10-ai` user/group and
-`/srv/gb10-ai` storage tree, normalizes secret access to root:`gb10-ai` mode
-0440, and generates the vLLM API key only when missing.
+`init` creates the service account, storage tree, configuration, and secret
+files. It is safe to rerun and preserves operator settings.
 
-Run the read-only and offline checks before pulling anything:
+In `/etc/gb10-ai/gb10.env`, resolve and verify:
+
+1. the exact Linux ARM64 runtime image digest;
+2. full model, tokenizer, and remote-code commits;
+3. provenance URL, license, format, quantization, and template hash;
+4. parser, backend, context, concurrency, and memory settings;
+5. loopback bind `127.0.0.1` for the first deployment;
+6. at least 100 GB of storage headroom.
+
+Keep secrets outside the repository. Never use `latest`, branch names, floating
+model revisions, wildcard binds, or unverified templates.
+
+### 3.3 Validate and install the first text tuple
+
+Run the read-only and offline checks:
 
 ```bash
 sudo ./scripts/setup-compute-node.sh preflight --env /etc/gb10-ai/gb10.env
 sudo ./scripts/setup-compute-node.sh validate --env /etc/gb10-ai/gb10.env
 ```
 
-`validate` refuses:
-
-- a floating container reference or placeholder;
-- branch/tag model revisions instead of full commits;
-- wildcard network binds;
-- a non-loopback bind without recorded firewall confirmation and control-plane
-  source;
-- missing, empty, symlinked, or incorrectly owned/mode secret files (the
-  non-root container requires root:`gb10-ai` mode 0440 and a mode-0750 parent);
-- an unsafe installation root, invalid memory/concurrency values, malformed
-  parser/backend names, or an unrecognized baseline MTP configuration. An empty
-  value is accepted only as the explicitly recorded MTP-off comparison;
-- any Phase C storage/secret path other than `/srv/gb10-ai`,
-  `/etc/gb10-ai/secrets/hf_token`, and
-  `/etc/gb10-ai/secrets/vllm_api_key`;
-- an invalid rendered Compose configuration.
-
-`preflight` also checks `jq` and `sha256sum` before the image is pulled. For a
-non-loopback bind, the validator checks the recorded IPv4/CIDR syntax, but
-`FIREWALL_CONFIRMED=true` remains a human attestation: the script does not
-inspect or modify the host firewall/VPN policy.
-
-Deploy only after both commands pass:
+Resolve every warning or error that affects acceptance. Then install:
 
 ```bash
 sudo ./scripts/setup-compute-node.sh install \
@@ -141,22 +301,25 @@ sudo ./scripts/setup-compute-node.sh install \
   --wait 1200
 ```
 
-The install command pulls the exact digest, runs `nvidia-smi` inside that image,
-starts vLLM, waits for container health, verifies all six logical aliases, runs
-a minimal Responses request, and writes a secret-free release record under
-`/srv/gb10-ai/manifests`.
+The installer pulls the exact image, verifies GPU access, starts the service,
+waits for health, checks the six aliases, sends a minimal Responses request,
+and writes a secret-free release manifest.
 
-## Operations and rollback
+### 3.4 Check health and rollback
+
+Run:
 
 ```bash
 sudo ./scripts/setup-compute-node.sh status --env /etc/gb10-ai/gb10.env
 sudo ./scripts/setup-compute-node.sh smoke --env /etc/gb10-ai/gb10.env
 sudo ./scripts/setup-compute-node.sh logs --env /etc/gb10-ai/gb10.env
-sudo ./scripts/setup-compute-node.sh down --env /etc/gb10-ai/gb10.env
 ```
 
-Keep every accepted environment file with its release evidence. To restore an
-earlier exact tuple:
+A smoke test proves startup and a minimal API call only. It does not qualify
+coding tools, Danish quality, long context, concurrency, stability, or recovery.
+
+Retain the last known-good environment and manifest. Prove that a prior pinned
+tuple can be restored:
 
 ```bash
 sudo ./scripts/setup-compute-node.sh rollback \
@@ -164,21 +327,116 @@ sudo ./scripts/setup-compute-node.sh rollback \
   --wait 1200
 ```
 
-Rollback deploys the prior pinned image/model tuple and repeats health and smoke
-checks. It never deletes model caches, secrets, manifests, or the previous
-image. Alias switching at the Caddy/LiteLLM control plane remains a Gate C3/E
-operation after that live deployment has been inventoried and qualified.
+Use the actual retained environment path; `previous.env` is illustrative.
 
-## Required qualification after the smoke test
+**Checkpoint:** direct loopback inference is healthy and a tested rollback path
+exists. No ordinary client can reach it.
 
-The smoke test proves only that the service starts and exposes the expected
-surface. Gate C1 still requires V-CODEX-001: Responses SSE completion, serial,
-parallel and namespaced tools, malformed calls, MCP round trips,
-cancel/disconnect behavior, reasoning, compaction, privacy canaries, and the
-large-tool-count regression. Danish/English quality, Home Assistant safety,
-memory, mixed load, recovery, and 10% production headroom are later gates.
+Details: [compute-node plan](ai-compute-node-plan.md).
 
-Do not expose port 8000 to the client LAN or internet. The eventual consumer
-path is `client -> https://ai.home -> Caddy -> existing LiteLLM -> private
-GB10`, with Caddy routing fixed audio paths directly to separately qualified
-audio services.
+## Step 4 — Connect the private compute link
+
+1. Cable the two private interfaces.
+2. Confirm that the private subnet has no gateway or internet route.
+3. Test reachability between `ai-gateway-01` and `ai-compute-01`.
+4. Add a compute-node firewall rule allowing only the gateway private address
+   to the qualified inference port.
+5. Prove that the LAN, `automation-01`, and `toolbox-01` cannot reach the port.
+
+On the compute node, edit the release environment:
+
+```text
+GB10_BIND_ADDRESS=10.77.10.10
+GATEWAY_CIDR=10.77.10.2/32
+FIREWALL_CONFIRMED=true
+```
+
+Use your worksheet values if they differ. Re-run `validate` and `install`, then
+test health and Responses calls from `ai-gateway-01`.
+
+Pull the private cable and verify a clear unavailable response. Private aliases
+must not silently switch to a cloud provider.
+
+**Checkpoint:** only `ai-gateway-01` can reach the compute service.
+
+## Step 5 — Install the AI gateway
+
+The repository does not yet include a turnkey gateway stack. Build the reviewed
+gateway configuration on `ai-gateway-01` with:
+
+- Caddy for TLS and the public `https://ai.home` boundary;
+- LiteLLM for authentication, aliases, routing, and explicit fallback policy;
+- dedicated PostgreSQL and Redis instances for gateway-owned state;
+- separate, revocable keys for each client;
+- pinned images and metadata-only logs;
+- monitoring that excludes prompts, outputs, audio, and credentials.
+
+Add the private compute endpoint as a backend. Expose only the semantic aliases
+and fixed audio routes; never expose the concrete model or compute address to
+clients.
+
+Verify TLS, authentication, streaming, tool calls, cancellation, rate limits,
+logging privacy, backend failure, and rollback. Keep the old gateway available
+until the replacement passes equivalence tests.
+
+**Checkpoint:** approved clients can use `https://ai.home`, and the old gateway
+can still be restored within the agreed window.
+
+Details: [platform plan, Step 6](platform-execution-plan.md#step-6--install-and-qualify-the-ai-gateway).
+
+## Step 6 — Qualify models before promotion
+
+Test one immutable model/runtime tuple at a time. Record the image, model,
+tokenizer, template, parser, quantization, context, flags, and result together.
+
+Run use-case fixtures for:
+
+- Codex Responses streaming, tools, edits, builds, tests, and recovery;
+- Danish/English automation and strict structured output;
+- Home Assistant entity selection, confirmations, and denied actions;
+- private research with source bounds and injection tests;
+- meeting factuality, decisions, actions, STT, and diarization;
+- personal-agent isolation, tools, and at least 64K context;
+- cold/warm latency, concurrency, memory, thermals, restart, and mixed load;
+- STT word error rate and TTS pronunciation, naturalness, and first audio.
+
+Require at least 10% production memory headroom. Promote only the exact tuple
+that passes its alias or route. Publisher benchmarks are candidate evidence,
+not local acceptance.
+
+Details: [model recommendation](research/llm-installation-recommendation.md) and
+[verification strategy](verification-strategy.md).
+
+## Step 7 — Migrate services one at a time
+
+Use this order:
+
+1. AI gateway, with the old gateway retained.
+2. A sanitized n8n workflow, then one low-risk real workflow.
+3. Remaining automations from low to high risk.
+4. Restricted toolbox workloads.
+5. Separately approved personal-agent sandboxes.
+6. Home Assistant voice and tools after deterministic safety and Danish tests.
+7. Meeting Assistant after its import, storage, privacy, and restore path works.
+8. Optional Home Assistant VM relocation only after a separate migration plan.
+
+For every migration, back up first, test restore, prevent duplicate schedules,
+observe a soak period, and retain rollback until the exit gate passes.
+
+## Completion checklist
+
+The platform is ready for production only when:
+
+- both nodes are reproducible, patched, monitored, and on UPS power;
+- the services node has tested encrypted off-host restore;
+- the compute node has no canonical application state;
+- only the gateway reaches private compute ports;
+- clients use TLS, individual credentials, and semantic aliases;
+- every promoted model/runtime tuple has use-case and mixed-load evidence;
+- private aliases fail closed and logs contain no private payloads;
+- power, network, process, gateway, database, update, and restore failures have
+  been exercised;
+- old services remain recoverable until their rollback windows expire.
+
+For the complete phase gates and rationale, see the
+[platform execution plan](platform-execution-plan.md).

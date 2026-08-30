@@ -4,7 +4,7 @@ The repository has one privileged entry point per node role:
 
 | Script | Target | Mutating commands |
 | --- | --- | --- |
-| `setup-compute-node.sh` | Supported GX10/GB10 compute host | `init`, `install`, `rollback`, `down` |
+| `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `install`, `rollback`, `down` |
 | `setup-services-node.sh` | Proxmox VE 9 services host | `init`, `host-packages`, `create-template`, `provision`, `start` |
 
 Both scripts default to safe, staged operation. Run `help`, `validate`, and

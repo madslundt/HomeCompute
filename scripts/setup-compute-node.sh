@@ -46,8 +46,8 @@ Safe first run:
   sudo ./scripts/setup-compute-node.sh install --env /etc/gb10-ai/gb10.env
 
 The installer intentionally does not install or replace DGX OS, GPU drivers,
-Docker, or the NVIDIA Container Toolkit. Supported DGX Spark/GX10 systems ship
-that stack; changing it is a separately qualified platform operation.
+Docker, or the NVIDIA Container Toolkit. Supported DGX Spark-class appliances
+ship that stack; changing it is a separately qualified platform operation.
 USAGE
 }
 

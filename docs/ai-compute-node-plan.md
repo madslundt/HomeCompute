@@ -2,7 +2,7 @@
 
 **Version:** 0.1  
 **Date:** 2026-08-30  
-**Hardware:** ASUS GX10 / NVIDIA GB10  
+**Hardware:** NVIDIA GB10 or DGX Spark-class appliance
 **Status:** Deployment scaffold ready; physical execution and qualification pending
 
 ## Role
