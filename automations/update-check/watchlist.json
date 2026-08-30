@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "project": "HomeCompute",
+  "policy": {
+    "mode": "review-only",
+    "automatic_upgrade": false,
+    "reason": "A model, runtime, parser, quantization, image, and configuration form one qualified tuple. Upstream changes are review signals, not safe upgrades."
+  },
+  "sources": [
+    {
+      "id": "primary-text-model",
+      "kind": "huggingface_model",
+      "label": "NVIDIA Qwen3.6 35B A3B NVFP4",
+      "role": "Current shared text integration baseline",
+      "request_url": "https://huggingface.co/api/models/nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "project_url": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4"
+    },
+    {
+      "id": "coding-candidate",
+      "kind": "huggingface_model",
+      "label": "Qwen3-Coder-Next FP8",
+      "role": "Specialized coding candidate",
+      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3-Coder-Next-FP8",
+      "project_url": "https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8"
+    },
+    {
+      "id": "agent-candidate",
+      "kind": "huggingface_model",
+      "label": "NVIDIA Nemotron 3.5 Lightning NVFP4",
+      "role": "Coding and agent-performance challenger",
+      "request_url": "https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+      "project_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+    },
+    {
+      "id": "dense-gemma-candidate",
+      "kind": "huggingface_model",
+      "label": "NVIDIA Gemma 4 31B NVFP4",
+      "role": "Dense general and coding quality challenger",
+      "request_url": "https://huggingface.co/api/models/nvidia/Gemma-4-31B-IT-NVFP4",
+      "project_url": "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4"
+    },
+    {
+      "id": "dense-qwen-candidate",
+      "kind": "huggingface_model",
+      "label": "Qwen3.8 27B FP8",
+      "role": "Dense general and coding quality challenger",
+      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8",
+      "project_url": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8"
+    },
+    {
+      "id": "large-reasoner-candidate",
+      "kind": "huggingface_model",
+      "label": "gpt-oss-120b",
+      "role": "Serialized high-capacity comparison",
+      "request_url": "https://huggingface.co/api/models/openai/gpt-oss-120b",
+      "project_url": "https://huggingface.co/openai/gpt-oss-120b"
+    },
+    {
+      "id": "small-control-candidate",
+      "kind": "huggingface_model",
+      "label": "Qwen3.5 4B",
+      "role": "Small control-model candidate",
+      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3.5-4B",
+      "project_url": "https://huggingface.co/Qwen/Qwen3.5-4B"
+    },
+    {
+      "id": "danish-stt-candidate",
+      "kind": "huggingface_model",
+      "label": "NVIDIA Danish Parakeet",
+      "role": "Danish speech-to-text candidate",
+      "request_url": "https://huggingface.co/api/models/nvidia/parakeet-rnnt-110m-da-dk",
+      "project_url": "https://huggingface.co/nvidia/parakeet-rnnt-110m-da-dk"
+    },
+    {
+      "id": "danish-tts-candidate",
+      "kind": "huggingface_model",
+      "label": "Røst v3 Chatterbox 350M",
+      "role": "Danish text-to-speech candidate",
+      "request_url": "https://huggingface.co/api/models/CoRal-project/roest-v3-chatterbox-350m",
+      "project_url": "https://huggingface.co/CoRal-project/roest-v3-chatterbox-350m"
+    },
+    {
+      "id": "nvidia-nvfp4-discovery",
+      "kind": "huggingface_search",
+      "label": "New or updated NVIDIA NVFP4 models",
+      "role": "Discovery signal for potentially better GB10 candidates",
+      "request_url": "https://huggingface.co/api/models?author=nvidia&search=NVFP4&sort=lastModified&direction=-1&limit=100&full=false",
+      "project_url": "https://huggingface.co/models?search=nvidia%20NVFP4"
+    },
+    {
+      "id": "dgx-spark-vllm-playbook",
+      "kind": "github_file",
+      "label": "NVIDIA DGX Spark vLLM playbook",
+      "role": "Spark model-support matrix and model-specific recipes",
+      "request_url": "https://api.github.com/repos/NVIDIA/dgx-spark-playbooks/commits?path=nvidia%2Fvllm%2FREADME.md&per_page=1",
+      "project_url": "https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md"
+    },
+    {
+      "id": "vllm-runtime",
+      "kind": "github_release",
+      "label": "vLLM release",
+      "role": "Upstream runtime signal; NVIDIA image support must still be verified",
+      "request_url": "https://api.github.com/repos/vllm-project/vllm/releases/latest",
+      "project_url": "https://github.com/vllm-project/vllm/releases"
+    },
+    {
+      "id": "n8n-runtime",
+      "kind": "github_release",
+      "label": "n8n release",
+      "role": "Automation runtime and security-maintenance signal",
+      "request_url": "https://api.github.com/repos/n8n-io/n8n/releases/latest",
+      "project_url": "https://github.com/n8n-io/n8n/releases"
+    }
+  ]
+}

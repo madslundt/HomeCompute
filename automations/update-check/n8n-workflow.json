@@ -1,0 +1,257 @@
+{
+  "name": "HomeCompute - weekly setup update check",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "d832f2b7-8b1d-4d97-9f51-00156aeb5eef",
+      "name": "Run manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-920, 180]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1],
+              "triggerAtHour": 9,
+              "triggerAtMinute": 7
+            }
+          ]
+        }
+      },
+      "id": "ee587bc8-688f-4a04-ad6e-b2d2738677bb",
+      "name": "Every Monday at 09:07",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-920, -20]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f775d117-08be-4029-b0a7-80673a345154",
+              "name": "watchlist_url",
+              "value": "https://raw.githubusercontent.com/madslundt/HomeCompute/main/automations/update-check/watchlist.json",
+              "type": "string"
+            },
+            {
+              "id": "9d02fd76-2a11-46ee-9dc1-30ab094dbbd0",
+              "name": "pinned_overrides_json",
+              "value": "{}",
+              "type": "string"
+            },
+            {
+              "id": "3a70993a-8070-4a1d-bfc2-eec615fd0635",
+              "name": "report_check_errors",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "a05c44f4-19e2-44c5-a668-b5e7ea65b5fd",
+              "name": "notification_webhook_url",
+              "value": "https://example.invalid/configure-me",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8a71de7b-7af0-41de-9ff4-33da7168abbe",
+      "name": "Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-700, 80],
+      "notes": "Set watchlist_url if this repository is private or forked. Set pinned_overrides_json to source-id -> installed revision/tag mappings. Configure the webhook URL only if using the disabled generic notifier."
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.watchlist_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "5cb8c6db-fb88-4507-8e4a-eb867d91519e",
+      "name": "Load repository watchlist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-470, 80],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const watchlist = $json;\nif (watchlist.schema_version !== 1 || !Array.isArray(watchlist.sources)) {\n  throw new Error('Unsupported or invalid HomeCompute update-check watchlist');\n}\n\nconst config = $('Configuration').first().json;\nlet overrides;\ntry {\n  overrides = JSON.parse(config.pinned_overrides_json || '{}');\n} catch (error) {\n  throw new Error(`pinned_overrides_json must be valid JSON: ${error.message}`);\n}\nif (!overrides || Array.isArray(overrides) || typeof overrides !== 'object') {\n  throw new Error('pinned_overrides_json must be a JSON object');\n}\n\nreturn watchlist.sources.map((source) => ({\n  json: {\n    ...source,\n    pinned_marker: overrides[source.id] || '',\n    checked_at: new Date().toISOString()\n  }\n}));"
+      },
+      "id": "ac8eb4e9-28a9-475e-b341-3625aad36801",
+      "name": "Prepare checks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-230, 80]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.request_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            },
+            {
+              "name": "User-Agent",
+              "value": "HomeCompute-weekly-update-check/1.0"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "1c942793-6cbc-4750-839e-5b17da2769bb",
+      "name": "Fetch upstream state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [10, 80],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const sources = $('Prepare checks').all().map((item) => item.json);\nconst responses = $input.all();\n\nreturn sources.map((source, index) => {\n  const response = responses[index]?.json;\n  const fail = (message) => ({\n    json: { ...source, ok: false, error: String(message || 'Unknown upstream response error') }\n  });\n\n  if (!response || response.error) {\n    return fail(response?.error?.message || response?.message || 'No response');\n  }\n\n  let marker;\n  let observedVersion;\n  let inventory;\n  let detail;\n\n  if (source.kind === 'huggingface_model') {\n    marker = response.sha;\n    observedVersion = response.sha ? response.sha.slice(0, 12) : '';\n    detail = response.lastModified || response.createdAt || '';\n  } else if (source.kind === 'huggingface_search') {\n    if (!Array.isArray(response)) return fail('Expected a Hugging Face model array');\n    inventory = response\n      .filter((model) => model && model.id)\n      .map((model) => ({ id: model.id, sha: model.sha || '', lastModified: model.lastModified || '' }))\n      .sort((a, b) => a.id.localeCompare(b.id));\n    marker = JSON.stringify(inventory.map((model) => [model.id, model.sha]));\n    observedVersion = `${inventory.length} matching models`;\n    detail = inventory\n      .slice()\n      .sort((a, b) => b.lastModified.localeCompare(a.lastModified))\n      .slice(0, 5)\n      .map((model) => model.id)\n      .join(', ');\n  } else if (source.kind === 'github_file') {\n    if (!Array.isArray(response) || !response[0]?.sha) return fail('Expected a GitHub commit array');\n    marker = response[0].sha;\n    observedVersion = response[0].sha.slice(0, 12);\n    detail = response[0].commit?.author?.date || '';\n  } else if (source.kind === 'github_release') {\n    marker = response.tag_name;\n    observedVersion = response.tag_name || '';\n    detail = response.published_at || response.created_at || '';\n  } else {\n    return fail(`Unsupported source kind: ${source.kind}`);\n  }\n\n  if (!marker) return fail('The upstream response did not contain a revision marker');\n  return {\n    json: { ...source, ok: true, marker, observed_version: observedVersion, detail, inventory }\n  };\n});"
+      },
+      "id": "c28e6c39-c68b-489e-9e94-79307eef5890",
+      "name": "Normalize upstream state",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const observations = $input.all().map((item) => item.json);\nconst config = $('Configuration').first().json;\nconst persistent = $getWorkflowStaticData('global');\npersistent.sources ||= {};\n\nconst baseline = [];\nconst changes = [];\nconst pinMismatches = [];\nconst errors = [];\nconst activeIds = new Set(observations.map((observation) => observation.id));\n\nfor (const observation of observations) {\n  if (!observation.ok) {\n    errors.push({\n      id: observation.id,\n      label: observation.label,\n      error: observation.error,\n      url: observation.project_url\n    });\n    continue;\n  }\n\n  const previous = persistent.sources[observation.id];\n  if (!previous) {\n    baseline.push({\n      id: observation.id,\n      label: observation.label,\n      observed: observation.observed_version\n    });\n  } else if (previous.marker !== observation.marker) {\n    const change = {\n      id: observation.id,\n      label: observation.label,\n      role: observation.role,\n      previous: previous.observed_version || String(previous.marker).slice(0, 12),\n      current: observation.observed_version,\n      detail: observation.detail,\n      url: observation.project_url\n    };\n\n    if (observation.kind === 'huggingface_search') {\n      const oldInventory = new Map((previous.inventory || []).map((model) => [model.id, model.sha]));\n      const newInventory = new Map((observation.inventory || []).map((model) => [model.id, model.sha]));\n      change.added = [...newInventory.keys()].filter((id) => !oldInventory.has(id));\n      change.removed = [...oldInventory.keys()].filter((id) => !newInventory.has(id));\n      change.updated = [...newInventory.keys()].filter((id) => oldInventory.has(id) && oldInventory.get(id) !== newInventory.get(id));\n    }\n    changes.push(change);\n  }\n\n  if (observation.pinned_marker && observation.marker !== observation.pinned_marker) {\n    pinMismatches.push({\n      id: observation.id,\n      label: observation.label,\n      configured_pin: observation.pinned_marker,\n      upstream: observation.observed_version,\n      url: observation.project_url\n    });\n  }\n\n  persistent.sources[observation.id] = {\n    marker: observation.marker,\n    observed_version: observation.observed_version,\n    inventory: observation.inventory,\n    last_seen_at: observation.checked_at\n  };\n}\n\nfor (const id of Object.keys(persistent.sources)) {\n  if (!activeIds.has(id)) delete persistent.sources[id];\n}\npersistent.last_run_at = new Date().toISOString();\n\nconst reportedErrors = config.report_check_errors ? errors : [];\nconst hasReport = changes.length > 0 || pinMismatches.length > 0 || reportedErrors.length > 0;\nconst lines = [\n  `HomeCompute weekly update check: ${changes.length} upstream change(s), ${pinMismatches.length} pin mismatch(es), ${reportedErrors.length} check error(s).`,\n  ...changes.map((change) => `CHANGED: ${change.label}: ${change.previous} -> ${change.current} (${change.url})`),\n  ...pinMismatches.map((mismatch) => `PIN BEHIND: ${mismatch.label}: configured ${mismatch.configured_pin} / upstream ${mismatch.upstream} (${mismatch.url})`),\n  ...reportedErrors.map((error) => `CHECK ERROR: ${error.label}: ${error.error} (${error.url})`),\n  '',\n  'Review only: verify provenance/license, exact GB10 recipe, image/runtime/parser tuple, per-alias benchmarks, capacity, and rollback before changing the setup.'\n];\n\nreturn [{\n  json: {\n    has_report: hasReport,\n    checked_at: persistent.last_run_at,\n    first_run_baselines: baseline,\n    changes,\n    pin_mismatches: pinMismatches,\n    check_errors: errors,\n    notification: {\n      title: 'HomeCompute setup update review',\n      text: lines.join('\\n'),\n      severity: reportedErrors.length > 0 ? 'warning' : 'info',\n      review_only: true\n    }\n  }\n}];"
+      },
+      "id": "e708d9a4-7599-4c4f-bc7f-d01d8e549298",
+      "name": "Compare with previous run and pins",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [490, 80],
+      "notes": "Uses n8n workflow static data. The first published trigger execution records a baseline. Editor/test executions do not persist static data in n8n."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3e9f4711-ee77-4e4f-902e-f5e6d198ceac",
+              "leftValue": "={{ $json.has_report }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fca17aac-3ff4-48da-97ea-fcd0e4965ec5",
+      "name": "Anything to report?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [730, 80]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Configuration').first().json.notification_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notification) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "9b8dfe37-4fa5-4b59-8d8c-df7095e52077",
+      "name": "NOTIFICATION PLACEHOLDER - configure and enable",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [980, -20],
+      "disabled": true,
+      "notes": "Disabled deliberately. Replace this node with Email, Slack, Discord, Gotify, ntfy, or another notifier, or set the webhook URL in Configuration and enable this node. Do not commit a configured secret webhook URL."
+    },
+    {
+      "parameters": {},
+      "id": "c4655ac8-3896-4900-ad42-c2d44bc999ad",
+      "name": "No changes - finish",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [980, 180]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run manually": {
+      "main": [[{"node": "Configuration", "type": "main", "index": 0}]]
+    },
+    "Every Monday at 09:07": {
+      "main": [[{"node": "Configuration", "type": "main", "index": 0}]]
+    },
+    "Configuration": {
+      "main": [[{"node": "Load repository watchlist", "type": "main", "index": 0}]]
+    },
+    "Load repository watchlist": {
+      "main": [[{"node": "Prepare checks", "type": "main", "index": 0}]]
+    },
+    "Prepare checks": {
+      "main": [[{"node": "Fetch upstream state", "type": "main", "index": 0}]]
+    },
+    "Fetch upstream state": {
+      "main": [[{"node": "Normalize upstream state", "type": "main", "index": 0}]]
+    },
+    "Normalize upstream state": {
+      "main": [[{"node": "Compare with previous run and pins", "type": "main", "index": 0}]]
+    },
+    "Compare with previous run and pins": {
+      "main": [[{"node": "Anything to report?", "type": "main", "index": 0}]]
+    },
+    "Anything to report?": {
+      "main": [
+        [{"node": "NOTIFICATION PLACEHOLDER - configure and enable", "type": "main", "index": 0}],
+        [{"node": "No changes - finish", "type": "main", "index": 0}]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen"
+  },
+  "versionId": "0cfec5de-9420-4d10-bfd8-63f6cd5b0f25",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
