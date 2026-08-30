@@ -10,8 +10,8 @@ contexts, and workloads still require measurement on the target GB10.
 
 The current first-install choice is still the right smoke-test artifact:
 `nvidia/Qwen3.6-35B-A3B-NVFP4` is a pre-quantized NVIDIA Model Optimizer
-checkpoint, appears in NVIDIA's DGX Spark vLLM support matrix, and has an exact
-single-Spark launch recipe. Its card reports 35B total/3B active parameters,
+checkpoint with an exact NVIDIA single-DGX-Spark vLLM launch recipe. Its card
+reports 35B total/3B active parameters,
 262K context, vLLM support, approximately 3.06x lower disk/GPU-memory demand
 than BF16, and close BF16-versus-NVFP4 results on NVIDIA's listed evaluations.
 [NVIDIA model card](https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4),
