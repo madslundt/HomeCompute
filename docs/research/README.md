@@ -9,6 +9,7 @@ Start with these current synthesis documents:
 | Topic | Entry point |
 | --- | --- |
 | Model installation order | [`llm-installation-recommendation.md`](llm-installation-recommendation.md) |
+| GB10 precision and optimized artifacts | [`gb10-optimized-model-audit.md`](gb10-optimized-model-audit.md) |
 | Runtime | [`inference-runtime-evaluation.md`](inference-runtime-evaluation.md) |
 | Gateway | [`gateway-evaluation.md`](gateway-evaluation.md) |
 | Codex | [`codex-compatibility.md`](codex-compatibility.md) |
