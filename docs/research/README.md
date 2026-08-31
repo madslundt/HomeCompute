@@ -15,6 +15,7 @@ Start with these current synthesis documents:
 | Runtime | [`inference-runtime-evaluation.md`](inference-runtime-evaluation.md) |
 | Gateway | [`gateway-evaluation.md`](gateway-evaluation.md) |
 | Codex | [`codex-compatibility.md`](codex-compatibility.md) |
+| Personal agents / Hermes | [`nemoclaw-machine-placement.md`](nemoclaw-machine-placement.md) and [`hermes-personal-assistant-verification.md`](hermes-personal-assistant-verification.md) |
 | Home Assistant | [`home-assistant-model-evaluation.md`](home-assistant-model-evaluation.md) |
 | Speech | [`stt-model-evaluation.md`](stt-model-evaluation.md) and [`danish-tts-recommendation.md`](danish-tts-recommendation.md) |
 | Capacity and workload routing | [`n8n-model-routing-and-scheduling.md`](n8n-model-routing-and-scheduling.md) |

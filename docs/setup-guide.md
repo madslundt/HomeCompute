@@ -1,7 +1,8 @@
 # HomeCompute setup guide
 
 **Scope:** build the services-node and compute-node baselines, connect them,
-and prepare the gateway and model-qualification work.
+prepare the gateway and model-qualification work, and optionally pilot Hermes
+on the services node.
 
 This is the main operator path. You can complete the steps below without
 reading the detailed plans. Each stage links to its plan for design rationale,
@@ -16,6 +17,7 @@ edge cases, and full acceptance evidence.
 | `automation-01` | VM 120 | Runs n8n, MCP services, queues, and separately approved agent services |
 | `toolbox-01` | VM 130 | Runs CI, builds, experiments, and restricted tools |
 | `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Runs rebuildable text, STT, TTS, and later diarization inference |
+| Hermes `owner` pilot | OpenShell sandbox on `automation-01` | Runs the optional personal agent; sends inference through `ai.home` to `ai-compute-01` |
 
 The production request path is:
 
@@ -29,8 +31,8 @@ direct access to compute ports.
 ## What this guide does not automate
 
 The scripts do not install Proxmox or DGX OS, edit physical network bridges,
-configure a backup target, deploy the gateway applications, or migrate live
-data.
+configure a backup target, deploy the gateway applications, install
+NemoClaw/Hermes, or migrate live data.
 
 Those operations depend on your network, storage, existing services, and
 credentials. This guide states when to perform them and what must be true
@@ -48,6 +50,7 @@ before you continue.
 8. Install the gateway and expose semantic aliases at `https://ai.home`.
 9. Benchmark models by use case and promote only passing tuples.
 10. Migrate automations and other consumers one at a time with rollback.
+11. Optionally pilot one isolated Hermes sandbox on `automation-01`.
 
 The rest of this guide expands these steps and provides the commands and
 checkpoints. The detailed plans are optional unless a check fails or you need
@@ -415,13 +418,45 @@ Use this order:
 2. A sanitized n8n workflow, then one low-risk real workflow.
 3. Remaining automations from low to high risk.
 4. Restricted toolbox workloads.
-5. Separately approved personal-agent sandboxes.
-6. Home Assistant voice and tools after deterministic safety and Danish tests.
-7. Meeting Assistant after its import, storage, privacy, and restore path works.
-8. Optional Home Assistant VM relocation only after a separate migration plan.
+5. Home Assistant voice and tools after deterministic safety and Danish tests.
+6. Meeting Assistant after its import, storage, privacy, and restore path works.
+7. Optional Home Assistant VM relocation only after a separate migration plan.
 
 For every migration, back up first, test restore, prevent duplicate schedules,
 observe a soak period, and retain rollback until the exit gate passes.
+
+## Step 8 — Optionally pilot Hermes
+
+Hermes is an application workload on the K15 services node, not a service on
+the GX10/GB10 compute appliance. Start only after `automation-01`, `ai.home`,
+and the `assistant` inference alias are working.
+
+1. Allocate 16 GB of available RAM to the `automation-01` pilot and verify that
+   concurrent n8n, queue, browser, and database work still has safe headroom.
+2. Install a pinned NemoClaw/OpenShell release on `automation-01` and onboard
+   Hermes using the release-matched NVIDIA instructions.
+3. Give Hermes a dedicated gateway credential and point its inference provider
+   at `https://ai.home`; do not expose a direct GB10 endpoint to the sandbox.
+4. Create one synthetic-data `owner` sandbox with Restricted policy,
+   deny-by-default egress, no host bind mounts, and no credentials capable of
+   email, calendar, Home Assistant, deletion, or financial actions.
+5. Back up and restore the sandbox state, then test reboot recovery, policy
+   denials, streaming, tools, 64K context, gateway/GB10 outages, and mixed-load
+   behavior.
+6. Create separate `partner` and `family` sandboxes only after cross-sandbox
+   isolation tests pass. Never use profiles inside one shared process as the
+   privacy boundary.
+
+The repository intentionally does not freeze install commands before a release
+tuple is selected. Use the exact commands for that pinned release and record
+them in the operator runbook. See the
+[NemoClaw placement and Hermes setup note](research/nemoclaw-machine-placement.md),
+[Hermes verification plan](research/hermes-personal-assistant-verification.md),
+and [ADR-013](adr/013-hermes-personal-agent-layer.md).
+
+**Checkpoint:** one recoverable synthetic Hermes sandbox runs on
+`automation-01`, reaches inference only through `ai.home`, and cannot cross its
+declared network, credential, filesystem, or data boundaries.
 
 ## Completion checklist
 

@@ -133,6 +133,7 @@ migrating production state.
 | See the complete build order | [Platform execution plan](docs/platform-execution-plan.md) |
 | Inspect services-node details | [Services-node plan](docs/ai-services-node-plan.md) |
 | Inspect compute-node details | [Compute-node plan](docs/ai-compute-node-plan.md) |
+| Pilot Hermes on the services node | [NemoClaw placement and Hermes setup](docs/research/nemoclaw-machine-placement.md) |
 | Run acceptance tests | [Verification strategy](docs/verification-strategy.md) |
 | Understand model choices | [Model recommendation](docs/research/llm-installation-recommendation.md) |
 
