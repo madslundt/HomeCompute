@@ -65,9 +65,9 @@ clients: "Trusted clients" {
   n8n: "n8n\nworkflows + retries" { class: client }
 }
 
-control_host: "ai-services-01 / ai-gateway-01\n(target gateway — migrate and harden)" {
+control_host: "ai-services-01\nNixOS trusted control plane" {
   class: host
-  dns: "ai.home\nlocal DNS + TLS trust" { class: control }
+  dns: "ai.home.arpa\nlocal DNS + TLS trust" { class: control }
   caddy: "Caddy :443\nTLS • route allow-list\nrequest ID • streaming" { class: control }
   litellm: "Existing LiteLLM\nvirtual keys • aliases\npolicy • quotas" { class: control }
   policy: "Distinct consumer keys\nprivate routes fail closed\nmetadata-only logs" { class: control }
@@ -107,11 +107,11 @@ state_hosts: "Durable service state\n(stays off ai-compute-01)" {
   repos: "Git repositories\nconfig + manifests + tests" { class: state }
 }
 
-agent_host: "ai-services-01 / automation-01\n(later, after gateway acceptance)" {
+agent_host: "Separate application host\n(restricted personal-agent trust domain)" {
   class: host
   identity: "Discord allow-list\nidentity → profile" { class: future }
   hermes: "Hermes + OpenShell\nseparate owner / partner / family sandboxes" { class: future }
-  events: "Canonical personal event API\nowner_scope enforcement" { class: future }
+  events: "Canonical personal event API\nprincipal + data-domain enforcement" { class: future }
   approval: "Consequential-action\napproval boundary" { class: future }
 
   identity -> hermes
@@ -166,7 +166,7 @@ forbidden -> gb10: "deployment boundary" {
   style.stroke-dash: 5
 }
 
-legend: "Trust rules\n• production local clients → ai.home\n• direct runtime is qualification-only\n• per-consumer credentials\n• aliases hide model artifacts\n• private payloads never fall back\n• Home Assistant executes actions" {
+legend: "Trust rules\n• approved LAN / tailnet → ai.home.arpa:443\n• direct runtime is qualification-only\n• per-consumer credentials\n• aliases hide model artifacts\n• private payloads never fall back\n• Home Assistant executes actions" {
   shape: document
   style: {
     fill: "#FFFFFF"

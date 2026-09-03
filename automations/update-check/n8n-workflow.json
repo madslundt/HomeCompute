@@ -33,12 +33,6 @@
         "assignments": {
           "assignments": [
             {
-              "id": "f775d117-08be-4029-b0a7-80673a345154",
-              "name": "watchlist_url",
-              "value": "https://raw.githubusercontent.com/madslundt/HomeCompute/main/automations/update-check/watchlist.json",
-              "type": "string"
-            },
-            {
               "id": "9d02fd76-2a11-46ee-9dc1-30ab094dbbd0",
               "name": "pinned_overrides_json",
               "value": "{}",
@@ -65,11 +59,11 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [-700, 80],
-      "notes": "Set watchlist_url if this repository is private or forked. Set pinned_overrides_json to source-id -> installed revision/tag mappings. Configure the webhook URL only if using the disabled generic notifier."
+      "notes": "Set pinned_overrides_json to source-id -> installed revision/tag mappings. Configure the webhook URL only if using the disabled generic notifier. The watchlist URL is fixed in the HTTP node so untrusted workflow input cannot redirect the request."
     },
     {
       "parameters": {
-        "url": "={{ $json.watchlist_url }}",
+        "url": "https://raw.githubusercontent.com/madslundt/HomeCompute/master/automations/update-check/watchlist.json",
         "options": {
           "response": {
             "response": {
@@ -89,7 +83,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const watchlist = $json;\nif (watchlist.schema_version !== 1 || !Array.isArray(watchlist.sources)) {\n  throw new Error('Unsupported or invalid HomeCompute update-check watchlist');\n}\n\nconst config = $('Configuration').first().json;\nlet overrides;\ntry {\n  overrides = JSON.parse(config.pinned_overrides_json || '{}');\n} catch (error) {\n  throw new Error(`pinned_overrides_json must be valid JSON: ${error.message}`);\n}\nif (!overrides || Array.isArray(overrides) || typeof overrides !== 'object') {\n  throw new Error('pinned_overrides_json must be a JSON object');\n}\n\nreturn watchlist.sources.map((source) => ({\n  json: {\n    ...source,\n    pinned_marker: overrides[source.id] || '',\n    checked_at: new Date().toISOString()\n  }\n}));"
+        "jsCode": "const watchlist = $json;\nif (watchlist.schema_version !== 1 || !Array.isArray(watchlist.sources)) {\n  throw new Error('Unsupported or invalid HomeCompute update-check watchlist');\n}\nif (watchlist.sources.length === 0 || watchlist.sources.length > 100) {\n  throw new Error('Watchlist must contain between 1 and 100 sources');\n}\n\nconst allowedKinds = new Set(['huggingface_model', 'huggingface_search', 'github_file', 'github_release']);\nconst allowedHosts = new Set(['huggingface.co', 'api.github.com']);\nfor (const source of watchlist.sources) {\n  if (!source || typeof source.id !== 'string' || typeof source.label !== 'string') {\n    throw new Error('Every watchlist source requires string id and label fields');\n  }\n  if (!allowedKinds.has(source.kind)) {\n    throw new Error(`Unsupported source kind for ${source.id}: ${source.kind}`);\n  }\n  let requestUrl;\n  try {\n    requestUrl = new URL(source.request_url);\n  } catch {\n    throw new Error(`Invalid request URL for ${source.id}`);\n  }\n  if (requestUrl.protocol !== 'https:' || !allowedHosts.has(requestUrl.hostname)) {\n    throw new Error(`Request URL is outside the HTTPS host allow-list for ${source.id}`);\n  }\n}\n\nconst config = $('Configuration').first().json;\nlet overrides;\ntry {\n  overrides = JSON.parse(config.pinned_overrides_json || '{}');\n} catch (error) {\n  throw new Error(`pinned_overrides_json must be valid JSON: ${error.message}`);\n}\nif (!overrides || Array.isArray(overrides) || typeof overrides !== 'object') {\n  throw new Error('pinned_overrides_json must be a JSON object');\n}\n\nreturn watchlist.sources.map((source) => ({\n  json: {\n    ...source,\n    pinned_marker: overrides[source.id] || '',\n    checked_at: new Date().toISOString()\n  }\n}));"
       },
       "id": "ac8eb4e9-28a9-475e-b341-3625aad36801",
       "name": "Prepare checks",

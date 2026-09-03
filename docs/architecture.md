@@ -1,5 +1,10 @@
 # HomeCompute architecture
 
+> **Deployment update:** ADR-016 makes the pinned NixOS flake authoritative for
+> `ai-services-01`. The restricted application workload remains Docker Compose;
+> the logical request and compute boundaries are unchanged. See
+> `nixos-control-plane-node-plan.md`.
+
 **Version:** 0.2  
 **Date:** 2026-08-25  
 **Status:** Proposed for Phase C hardware validation
@@ -14,13 +19,14 @@ pilot, but it is not promoted without an ADR because its persistent sandbox
 state would change the appliance's failure and backup boundaries. The initial
 runtime PoC uses a pinned NVIDIA NGC vLLM image and one qualified text model.
 The production candidate reuses LiteLLM on the existing always-on host behind a
-Caddy TLS edge at `https://ai.home`; TensorRT-LLM is the controlled performance
+Caddy TLS edge at `https://ai.home.arpa`; TensorRT-LLM is the controlled performance
 challenger. Direct Codex-to-vLLM remains the protocol and latency baseline.
 
 The stable node roles are `ai-compute-01` for the GB10 appliance and
-`ai-services-01` for the future x86/Proxmox layer. Its `ai-gateway-01`,
-`automation-01`, and `toolbox-01` VMs preserve the logical boundaries below.
-This is a migration target, not a claim that existing services have moved.
+`ai-services-01` for the trusted x86 NixOS control plane. Automation, personal
+agents, and experimental tools remain on existing or separately qualified
+application hosts. This is a migration target, not a claim that existing
+services have moved.
 
 The first text model may back `coding`, `automation`, `research`, `meeting`,
 `home`, and `assistant` if it passes each role's tests. These aliases describe work, not
@@ -47,7 +53,7 @@ client pin. Until it passes, cloud and GB10 are explicit whole-session modes.
 9. Every deployed artifact is pinned, qualified as a tuple, and reversible.
 10. A feature not proven by the current released client/runtime is a gate, not a promise.
 11. Hermes is an agent runtime, not an authorization layer or canonical personal database.
-12. Profile identity and `owner_scope` are enforced before/below the model; prompt instructions never grant access.
+12. Profile identity, `principal_scope`, `data_domain`, and `visibility` are enforced before/below the model; prompt instructions never grant access.
 13. Existing deterministic home control remains independent of GB10 and the assistant.
 
 ## 1. System context
@@ -56,7 +62,7 @@ client pin. Until it passes, cloud and GB10 are explicit whole-session modes.
 flowchart LR
     Dev[Developer] --> Codex[Codex on MacBook]
     Codex -->|planning and review| Cloud[Cloud frontier provider]
-    Codex -->|local whole-session PoC; target implementation| Control[ai.home control plane]
+    Codex -->|local whole-session PoC; target implementation| Control[ai.home.arpa control plane]
 
     Meeting[Existing Meeting Assistant on Mac] --> Control
 
@@ -135,31 +141,39 @@ No repository, build tool, n8n instance, Home Assistant instance, MCP server,
 Notion replica, meeting library, generic queue/database, vector database,
 Hermes/OpenShell runtime, or agent memory is deployed to GB10 in production.
 
-### 2.1 Planned role-based node realization
+### 2.1 Planned role-based realization
 
 ```mermaid
 flowchart LR
     Clients[Trusted consumers] -->|TLS| Control
 
-    subgraph Services[ai-services-01 - single Proxmox services node]
-        Control[VM 110 ai-gateway-01<br/>Caddy + LiteLLM + gateway state]
-        Automation[VM 120 automation-01<br/>n8n + MCP + durable agent services]
-        Toolbox[VM 130 toolbox-01<br/>CI + builds + experimental tools]
+    subgraph Services[ai-services-01 - NixOS trusted control plane]
+        Control[Caddy + LiteLLM + PostgreSQL<br/>Compose workload]
+        State[/srv/state/control-plane]
+        Control --> State
+    end
+
+    subgraph ApplicationHosts[Existing or separately qualified hosts]
+        Automation[n8n + MCP + workflow state]
+        Agents[isolated personal agents + scoped memory]
+        Toolbox[CI + builds + experimental tools]
         Automation -->|authenticated API| Control
+        Agents -->|authenticated API| Control
         Toolbox -->|authenticated API| Control
     end
 
     Control -->|private 2.5GbE link| Compute[ai-compute-01 inference appliance]
     Toolbox -. denied .-> Compute
     Automation -. denied .-> Compute
+    Agents -. denied .-> Compute
     Backup[Off-host encrypted backup] -.-> Control
     Backup -.-> Automation
+    Backup -.-> Agents
 ```
 
-The Proxmox host runs no application containers. Only `ai-gateway-01` attaches to
-the private GB10 bridge. Home Assistant remains on its current host unless a
-later, separately restored and tested HAOS VM migration is approved. See the
-[AI services node plan](ai-services-node-plan.md).
+Only `ai-services-01` attaches to the private GB10 link. Home Assistant remains
+on its current host unless a later, separately restored and tested migration is
+approved. See the [NixOS control-plane plan](nixos-control-plane-node-plan.md).
 
 ## 3. Shared API and GB10 services
 
@@ -210,7 +224,7 @@ flowchart LR
     end
 
     subgraph PublicBoundary[AI Home client-facing boundary]
-        DNS[ai.home]
+        DNS[ai.home.arpa]
         Edge[Caddy :443]
         DNS --> Edge
     end
@@ -242,10 +256,11 @@ flowchart LR
 
 Management access is a separately authenticated administrative path and is not
 part of the inference API. Exact firewall technology is a host-design decision;
-the required result is testable reachability, not a particular vendor. Because
-the control plane and GB10 are separate hosts, their link must use Tailscale or
-an equivalently restricted encrypted LAN/VPN path with firewall allow-listing;
-it is not assumed to be one cross-host Docker network.
+the required result is testable reachability, not a particular vendor. The
+accepted baseline is a dedicated, non-routed physical link, an authenticated
+runtime API, and source firewall
+allow-listing. Any replacement that crosses a shared or routed network must add
+an encrypted tunnel such as Tailscale; it is never a cross-host Docker network.
 
 ## 5. Existing n8n request flow
 
@@ -255,7 +270,7 @@ sequenceDiagram
     participant N as n8n
     participant A as Existing Aula MCP
     participant State as Existing Notion state
-    participant API as ai.home
+    participant API as ai.home.arpa
     participant G as automation
 
     Trigger->>N: Start existing workflow
@@ -376,6 +391,14 @@ routes have no hidden model fallback; they fail closed or remain pending.
 
 ## 10. Storage layout
 
+`ai-services-01` keeps application state below `/srv/state`; the first Compose
+project uses `/srv/state/control-plane` for Caddy and PostgreSQL data. NixOS
+owns directory creation and off-host backup scheduling. Each stateful workload
+must create an application-consistent dump or snapshot before Restic reads it.
+sops-nix materializes runtime credentials outside both Git and `/srv/state`.
+
+The compute appliance has a separate rebuildable storage policy:
+
 ```mermaid
 flowchart TB
     SSD[1 TB internal NVMe]
@@ -453,13 +476,13 @@ n8n, Home Assistant, Meeting Assistant, or the personal data store:
 flowchart LR
     Discord[Discord text; later voice] --> Identity[Allow-list + profile mapping]
     Scheduler[n8n or assigned scheduler] --> Identity
-    subgraph AppHost[Always-on application host]
+    subgraph AppHost[Separate personal-agent host and trust domain]
         Identity --> M[OpenShell + Hermes: owner]
         Identity --> K[OpenShell + Hermes: partner]
         Identity --> F[OpenShell + Hermes: family]
     end
 
-    M --> Edge[ai.home]
+    M --> Edge[ai.home.arpa]
     K --> Edge
     F --> Edge
     Edge --> LLM[GB10 text/STT/TTS]
@@ -477,11 +500,15 @@ flowchart LR
 ```
 
 Each profile has a separate OpenShell sandbox, writable state root, channel
-credential, model virtual key, data-store role, and tool credential set. The
+credential, model virtual key, data-store role, and tool credential set. Every
+memory and event record also carries a `principal_scope`, `data_domain`, and
+`visibility` value as defined in the personal-data contract. The
 Discord adapter resolves an allow-listed user/channel to a profile before
 dispatch; the model cannot choose or widen that profile.
 
-Hermes memory stores preferences, goals, and learned working context. A
+Hermes memory stores reviewed preferences, goals, and learned working context;
+users can inspect, correct, export, and delete it. Personal, household-shared,
+and employer domains never share retrieval indexes or credentials by default. A
 separate service owns normalized personal events and enforces row/collection
 authorization. Ingestion, schedules, retries, deduplication, and outbound
 notification policy remain deterministic workflow concerns. NemoClaw supplies
@@ -505,7 +532,7 @@ load tests at that context rather than relying on smaller runtime baselines.
 | Codex | Developer UX, tool execution, target orchestration and fallback evidence | Runtime implementation |
 | Hermes profile runtime | Conversation/tool loop, profile-local working memory and skills, bounded task execution | Identity proof, canonical history, broad LAN/host access, consequential-action authorization |
 | Discord adapter | Allow-listed identity/channel mapping, session routing, rate limits and notifications | Inferring identity from message text or voice |
-| Personal event service | Canonical event/provenance records, `owner_scope` enforcement, idempotent retrieval and retention | Agent personality or autonomous external actions |
+| Personal event service | Canonical event/provenance records, principal/domain/visibility enforcement, idempotent retrieval and retention | Agent personality or autonomous external actions |
 | Assigned scheduler/n8n | Ingestion, retry, schedule, normalization, deduplication and delivery ownership | User authorization policy or unrestricted agent execution |
 
 ## Architecture gates
@@ -518,7 +545,7 @@ load tests at that context rather than relying on smaller runtime baselines.
 6. Meeting Assistant passes gateway-account, local-only, artifact-provenance, Plaud import, and diarization gates before Plaud automation is enabled.
 7. Stage 2 automatic routing waits for the pinned 0.145.0 cross-provider canary; every later client version must requalify before upgrade.
 8. Hermes passes a single-profile application-host, 64K local-model, persistence, tool, upgrade, and rollback pilot; a separate direct DGX Spark/ARM64 demo may validate vendor support but does not change production placement.
-9. Three-profile identity, credential, filesystem, network, and `owner_scope` negative tests pass before Family or private Discord access is enabled.
+9. Three-profile identity, credential, filesystem, network, principal/domain/visibility negative tests pass before Family or private Discord access is enabled.
 10. Discord text and low-risk proactive tasks pass before voice, email, or financial ingestion; financial data is last.
 
 The supporting decisions are recorded under `docs/adr/`; operational details

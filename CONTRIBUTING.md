@@ -32,19 +32,21 @@ source and its SVG/PNG renderings in the same pull request.
 
 ## Validation
 
-Run the checks relevant to your change. The baseline static checks are:
+Run the checks relevant to your change. The baseline static check is:
 
 ```bash
-bash -n scripts/setup-compute-node.sh scripts/setup-services-node.sh
-shellcheck scripts/setup-compute-node.sh scripts/setup-services-node.sh
-d2 diagrams/gb10-platform.d2 /tmp/gb10-platform.svg
-d2 diagrams/gb10-installation.d2 /tmp/gb10-installation.svg
-docker compose -f deploy/compute-node/compose.yaml config
+./scripts/validate-repository.sh
 ```
 
-Compose rendering requires safe test values for all required variables. Host
-preflight, deployment, smoke, recovery, and performance tests must run only on
-the intended systems with separately supplied configuration.
+The script supplies non-secret test values for Compose rendering and renders
+D2 when it is installed. Host preflight, deployment, smoke, recovery, and
+performance tests must run only on the intended systems with separately
+supplied configuration.
+
+For NixOS changes, follow the ownership and extension rules in the
+[NixOS operations guide](docs/nixos-operations.md). New imported files must be
+staged before evaluating a Git-backed flake. Review `git diff --cached` and
+commit `flake.lock` whenever an input revision changes.
 
 ## Licensing
 

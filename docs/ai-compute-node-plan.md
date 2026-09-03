@@ -8,12 +8,12 @@
 ## Role
 
 `ai-compute-01` is a rebuildable inference appliance. It provides GPU-backed
-text, STT, TTS, and later diarization services to `ai-gateway-01` over a private
+text, STT, TTS, and later diarization services to `ai-services-01` over a private
 network. It does not host Caddy/LiteLLM, n8n, Home Assistant, MCP servers,
 repositories, generic databases/queues, agent memory, meeting libraries, or
 canonical workflow state.
 
-Consumers use `https://ai.home` and logical aliases. Direct access to
+Consumers use `https://ai.home.arpa` and logical aliases. Direct access to
 `ai-compute-01` exists only for qualification and recovery diagnostics.
 
 ## Target naming and network
@@ -24,12 +24,12 @@ Consumers use `https://ai.home` and logical aliases. Direct access to
 | DNS | `ai-compute-01.home.arpa` |
 | Trusted-management address | Reserved during the network worksheet |
 | Private compute address | `10.77.10.10/24` proposed |
-| Private peer | `ai-gateway-01` at `10.77.10.2/24` |
-| Production client endpoint | `https://ai.home` |
+| Private peer | `ai-services-01` at `10.77.10.2/24` |
+| Production client endpoint | `https://ai.home.arpa` |
 
 The private link has no default gateway. Bind inference ports only to loopback
 during direct qualification, then to the private address with a firewall rule
-allowing only `ai-gateway-01`.
+allowing only `ai-services-01`.
 
 ## Execution checklist
 
@@ -175,22 +175,22 @@ A smoke test alone does not pass this gate.
 **Pass:** No unauthorized or unconfirmed physical action occurs; this does not
 move Home Assistant to either node.
 
-### C3 — Connect through `ai-gateway-01`
+### C3 — Connect through `ai-services-01`
 
 1. Change the runtime bind from loopback to `10.77.10.10` only after the
    private bridge/link and firewall are ready.
-2. Set `GATEWAY_CIDR` to the `ai-gateway-01` private address/CIDR and
+2. Set `GATEWAY_CIDR` to the `ai-services-01` private address/CIDR and
    document the exact host firewall rule.
 3. Set `FIREWALL_CONFIRMED=true`, revalidate, and redeploy the same tuple.
-4. From `ai-gateway-01`, test health, authentication, Responses/tool streaming,
+4. From `ai-services-01`, test health, authentication, Responses/tool streaming,
    latency, cancellation, and large/long requests.
-5. From ordinary LAN, `automation-01`, and `toolbox-01`, prove the runtime port
+5. From ordinary LAN and application hosts, prove the runtime port
    is unreachable.
 6. Pull the private cable and verify the gateway exposes the intended failure:
    private aliases fail closed; only approved public aliases may use explicit
    cloud routing.
 
-**Pass:** Only `ai-gateway-01` can reach compute services and proxied behavior
+**Pass:** Only `ai-services-01` can reach compute services and proxied behavior
 matches the direct qualified baseline.
 
 ### D — Select production runtime/model tuples

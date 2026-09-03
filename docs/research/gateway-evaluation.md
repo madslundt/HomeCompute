@@ -17,7 +17,7 @@ The stable client-facing endpoint remains independent of the runtime and model. 
 Codex / existing n8n / Home Assistant
                  |
                  v
-        Caddy: https://ai.home (existing AI Home host)
+        Caddy: https://ai.home.arpa (existing AI Home host)
                  |
                  v
      LiteLLM (existing control plane, qualification required)

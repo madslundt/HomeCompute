@@ -1,0 +1,48 @@
+model_list:
+  - model_name: coding
+    litellm_params: &local_model
+      model: openai/coding
+      api_base: os.environ/COMPUTE_OPENAI_BASE_URL
+      api_key: os.environ/COMPUTE_API_KEY
+  - model_name: automation
+    litellm_params:
+      <<: *local_model
+      model: openai/automation
+  - model_name: research
+    litellm_params:
+      <<: *local_model
+      model: openai/research
+  - model_name: home
+    litellm_params:
+      <<: *local_model
+      model: openai/home
+  - model_name: meeting
+    litellm_params:
+      <<: *local_model
+      model: openai/meeting
+  - model_name: assistant
+    litellm_params:
+      <<: *local_model
+      model: openai/assistant
+
+litellm_settings:
+  request_timeout: 600
+  num_retries: 0
+  drop_params: false
+  set_verbose: false
+  json_logs: true
+  turn_off_message_logging: true
+  redact_user_api_key_info: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: false
+  store_prompts_in_spend_logs: false
+  disable_spend_logs: true
+  disable_error_logs: true
+
+router_settings:
+  routing_strategy: simple-shuffle
+  allowed_fails: 1
+  cooldown_time: 5

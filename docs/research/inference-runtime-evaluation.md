@@ -18,7 +18,7 @@ The initial topology should be:
 
 ```text
 Codex on Mac ───────────┐
-Home Assistant ────────┼── https://ai.home ── edge proxy ── vLLM text server
+Home Assistant ────────┼── https://ai.home.arpa ── edge proxy ── vLLM text server
 n8n ───────────────────┘                         │
                                                  ├── STT server by fixed path
                                                  └── TTS server by fixed path
@@ -54,7 +54,7 @@ TensorRT-LLM is the performance challenger. Promote it for a particular model on
 
 **Verified.** Current vLLM documents a first-class Codex integration using `wire_api = "responses"`, a `/v1` base URL, and a `model` matching `--served-model-name`. Its online server implements `/v1/responses`, streaming, response IDs/cancellation, Chat Completions, embeddings, and ASR endpoints. Tool and reasoning parsers remain model-specific. ([vLLM Codex integration](https://docs.vllm.ai/en/stable/serving/integrations/codex/), [vLLM online serving](https://docs.vllm.ai/en/latest/serving/online_serving/))
 
-**Verified.** Codex CLI 0.149.1, released 2026-08-24, uses the Responses wire API; its shipped provider enum rejects the former Chat wire API. A custom provider is configured with a base such as `https://ai.home/v1`, and Codex appends `responses`. Codex sends tools, `tool_choice`, `parallel_tool_calls`, instructions, input items, optional reasoning controls, and `stream=true`. Its SSE client requires a terminal `response.completed`; an endpoint that merely resembles Chat Completions is insufficient. ([Codex 0.149.1 release](https://github.com/openai/codex/releases/tag/rust-v0.149.1), [provider implementation at 0.149.1](https://github.com/openai/codex/blob/rust-v0.149.1/codex-rs/model-provider-info/src/lib.rs), [Responses request construction](https://github.com/openai/codex/blob/rust-v0.149.1/codex-rs/codex-api/src/common.rs), [Responses SSE parser](https://github.com/openai/codex/blob/rust-v0.149.1/codex-rs/codex-api/src/sse/responses.rs))
+**Verified.** Codex CLI 0.149.1, released 2026-08-24, uses the Responses wire API; its shipped provider enum rejects the former Chat wire API. A custom provider is configured with a base such as `https://ai.home.arpa/v1`, and Codex appends `responses`. Codex sends tools, `tool_choice`, `parallel_tool_calls`, instructions, input items, optional reasoning controls, and `stream=true`. Its SSE client requires a terminal `response.completed`; an endpoint that merely resembles Chat Completions is insufficient. ([Codex 0.149.1 release](https://github.com/openai/codex/releases/tag/rust-v0.149.1), [provider implementation at 0.149.1](https://github.com/openai/codex/blob/rust-v0.149.1/codex-rs/model-provider-info/src/lib.rs), [Responses request construction](https://github.com/openai/codex/blob/rust-v0.149.1/codex-rs/codex-api/src/common.rs), [Responses SSE parser](https://github.com/openai/codex/blob/rust-v0.149.1/codex-rs/codex-api/src/sse/responses.rs))
 
 **Verified.** Codex itself connects to MCP servers and executes their calls. The GB10 runtime does not need to implement MCP; it must faithfully emit Responses `function_call` items and consume later `function_call_output` items. ([OpenAI MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli), [Codex protocol types](https://github.com/openai/codex/blob/rust-v0.149.1/codex-rs/protocol/src/models.rs))
 
@@ -158,7 +158,7 @@ Sources: [Caddy reverse proxy](https://caddyserver.com/docs/caddyfile/directives
 
 ### Recommended northbound contract
 
-- `https://ai.home/v1/responses` for Codex and text agents.
+- `https://ai.home.arpa/v1/responses` for Codex and text agents.
 - Preserve `/v1/chat/completions` only for existing n8n/Home Assistant clients that require it; new agent integrations should prefer Responses.
 - Stable task strings: `automation`, `research`, `coding`, `home`, and `meeting`
   for text; STT and TTS are resolved by their separate audio services.
@@ -196,7 +196,7 @@ model_provider = "gb10"
 
 [model_providers.gb10]
 name = "GB10 Local"
-base_url = "https://ai.home/v1"
+base_url = "https://ai.home.arpa/v1"
 env_key = "GB10_API_KEY"
 wire_api = "responses"
 ```
@@ -213,7 +213,7 @@ The exact TLS trust and environment-key delivery must be validated without placi
 
 ### API and Codex gate
 
-Run these against the public `https://ai.home/v1` endpoint, not only the runtime port:
+Run these against the public `https://ai.home.arpa/v1` endpoint, not only the runtime port:
 
 1. Text-only `POST /responses` with SSE; assert exactly one terminal `response.completed`.
 2. A shell function call, `function_call_output`, and final answer over multiple turns.

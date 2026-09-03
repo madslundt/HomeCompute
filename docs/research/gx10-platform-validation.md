@@ -40,7 +40,7 @@ Keep the current staged design:
 Codex / n8n / Home Assistant
              |
              v
-      Caddy: https://ai.home
+      Caddy: https://ai.home.arpa
              |
              v
  NVIDIA-qualified vLLM + one qualified text model
@@ -115,7 +115,7 @@ The pasted handoff does not require a human chat UI, and the repository explicit
 
 If a household/admin chat UI later becomes a real requirement:
 
-- Run standard Open WebUI without bundled Ollama and connect it to `https://ai.home/v1`; Open WebUI officially supports OpenAI-compatible, Open Responses, vLLM, and llama.cpp providers. [Open WebUI provider connections](https://docs.openwebui.com/getting-started/quick-start/connect-a-provider/)
+- Run standard Open WebUI without bundled Ollama and connect it to `https://ai.home.arpa/v1`; Open WebUI officially supports OpenAI-compatible, Open Responses, vLLM, and llama.cpp providers. [Open WebUI provider connections](https://docs.openwebui.com/getting-started/quick-start/connect-a-provider/)
 - Expose only qualified aliases through `/v1/models`; do not let the UI bypass Caddy to runtime ports.
 - Place its persistent volume and backup responsibility on an application host, not the inference appliance. Open WebUI stores users, chats, uploads, vector data, and configuration under `/app/backend/data`. [Open WebUI quick start](https://docs.openwebui.com/getting-started/quick-start/), [Open WebUI update/backup guide](https://docs.openwebui.com/getting-started/updating/)
 - Pin a release/digest. Open WebUI documents `main`/`latest` as rolling tags, which conflicts with the production pinning requirement.
@@ -142,7 +142,7 @@ Migrate one low-risk workflow first. Verify structured output/tool behavior agai
 
 ### Home Assistant
 
-Use native deterministic Assist intents before LLM fallback. Home Assistant remains the only component allowed to expose and execute a restricted set of entities/tools. For text reasoning, Node-RED can call `ai.home` directly with a schema-constrained request; a direct official Ollama integration exists, but adopting it would couple HA to the exploratory runtime. For speech, use Wyoming-facing adapters for local STT/TTS. [Home Assistant local voice guide](https://www.home-assistant.io/voice_control/voice_remote_local_assistant/), [Wyoming integration](https://www.home-assistant.io/integrations/wyoming)
+Use native deterministic Assist intents before LLM fallback. Home Assistant remains the only component allowed to expose and execute a restricted set of entities/tools. For text reasoning, Node-RED can call `ai.home.arpa` directly with a schema-constrained request; a direct official Ollama integration exists, but adopting it would couple HA to the exploratory runtime. For speech, use Wyoming-facing adapters for local STT/TTS. [Home Assistant local voice guide](https://www.home-assistant.io/voice_control/voice_remote_local_assistant/), [Wyoming integration](https://www.home-assistant.io/integrations/wyoming)
 
 ### Meeting diarization
 
@@ -184,7 +184,7 @@ another model.
    on/off. Stage Gemma 4 31B NVFP4 and Qwen3.8-27B only as challengers; promote
    none until it passes.
 3. Qualify direct `/v1/responses`, SSE termination, structured output, multi-turn tools, cancellation, Danish/English/code-switching, and one real n8n workflow. Exercise roughly 1, 10, and 40+ tools, including namespaced MCP tools; NVIDIA's Qwen3.6 recipe has a current model-specific report of malformed calls with a large tool surface. [NVIDIA Spark playbook issue](https://github.com/NVIDIA/dgx-spark-playbooks/issues/89)
-4. Add Caddy and repeat the same contract, privacy, and latency tests through `https://ai.home`.
+4. Add Caddy and repeat the same contract, privacy, and latency tests through `https://ai.home.arpa`.
 5. Run llama.cpp as the required quantized baseline. Benchmark TensorRT-LLM only if it supports the winning model/revision; add SGLang only if Chat/structured-output throughput under the real workload is a decision factor.
 6. Add Wyoming-backed STT/TTS one service at a time and prove Home Assistant voice remains responsive during a background transcription.
 7. After the direct/Caddy baseline, qualify the existing LiteLLM because the

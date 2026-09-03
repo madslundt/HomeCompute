@@ -8,8 +8,8 @@
 flowchart TD
     A[Phase A repository research: complete] --> B[Phase B revised design: user review pending]
     Inventory[Live AI Home and HA/n8n inventory] --> C3
-    S0[S0 ai-services-01 Proxmox host] --> S1[S1 empty guest + restore baseline]
-    S1 --> S2[S2 ai-gateway-01 migration]
+    S0[S0 ai-services-01 NixOS generation] --> S1[S1 host services + restore baseline]
+    S1 --> S2[S2 control-plane workload migration]
     Inventory --> S2
     S2 --> C3
     B --> C0[C0 artifact and environment capture]
@@ -26,8 +26,8 @@ flowchart TD
     MeetingBaseline[Reconcile Meeting Assistant worktree] --> H
     PlaudContract[Accepted Plaud export/import contract] --> H
     E --> I[Hermes single-sandbox pilot]
-    S1 --> AppHost[Qualified always-on application host]
-    AppHost --> I
+    AppHost[Separately qualified application host] --> AgentHost[Isolated personal-agent boundary]
+    AgentHost --> I
     HermesTuple[Pinned Hermes + NemoClaw + OpenShell tuple] --> I
     I --> J[Household isolation and personal data]
     PersonalStore[Canonical event-store and authorization decision] --> J
@@ -82,7 +82,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Codex -->|Responses + GB10 credential| Edge[ai.home]
+    Codex -->|Responses + GB10 credential| Edge[ai.home.arpa]
     N8N[n8n existing workflows] -->|automation/research + scoped credentials| Edge
     HA[Home Assistant] -->|home/audio APIs + HA credential| Edge
     Meeting[Meeting Assistant] -->|meeting/STT/diarization + local-only credential| Edge

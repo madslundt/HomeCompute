@@ -1,28 +1,19 @@
 # NemoClaw machine-placement recommendation
 
 **Research date:** 2026-08-30  
-**Status:** Recommendation against NVIDIA's current primary sources and the
-repository's accepted machine roles  
+**Status:** Technical research retained; production placement superseded by
+[ADR-016](../adr/016-nixos-control-plane-host.md)
 **Scope:** What NemoClaw is, its requirements and security boundaries, and how
 Hermes should be placed across the planned K15 services node and GX10/GB10
 compute node. No machine or configuration was changed.
 
 ## Outcome
 
-Do **not** deploy NemoClaw broadly or make it production-critical yet. If the
-personal-agent work proceeds, run **one synthetic-data pilot** on the future
-`automation-01` application VM and route its inference through the existing
-`ai.home` path to GB10. To stay on NVIDIA's validated generic-Linux path,
-provision that pilot on Ubuntu 24.04 rather than the repository's currently
-planned Debian 13 baseline, or explicitly treat Debian 13 as an unqualified
-platform and prove it locally before promotion.
-
-The planned `automation-01` allocation (6 vCPU, 16 GB maximum RAM, 300 GB disk)
-meets NVIDIA's recommended host sizing of 4+ vCPU, 16 GB RAM, and 40 GB free.
-However, its 10 GB balloon floor leaves little margin for simultaneous n8n,
-browser, queue, database, and agent work; pin or raise the pilot's available
-memory and measure contention before adding another sandbox. See the local
-[AI services node plan](../ai-services-node-plan.md).
+Do **not** deploy NemoClaw broadly or make it production-critical yet. ADR-016
+removes the planned VM substrate from `ai-services-01`, so the personal-agent
+pilot is blocked until a separate application host and trust domain are chosen.
+That host should follow NVIDIA's validated operating-system path and route its
+inference through `ai.home.arpa` to GB10.
 
 A direct NemoClaw install on the ASUS GX10/GB10 is technically the most
 strongly validated demo path: NVIDIA marks DGX OS on a single DGX Spark as
@@ -66,7 +57,7 @@ Source: [NVIDIA platform matrix](https://docs.nvidia.com/nemoclaw/latest/user-gu
 NemoClaw can use hosted providers, a custom OpenAI-compatible endpoint, local
 Ollama, an already-running local vLLM server, or supported managed-local
 options. A custom compatible endpoint is only **Tested with limitations**
-because proxy and server behavior varies. Therefore `ai.home` is a candidate
+because proxy and server behavior varies. Therefore `ai.home.arpa` is a candidate
 route, not assumed compatible: qualify its Chat Completions/Responses mode,
 streaming, tool calls, authentication, privacy, and 64K Hermes behavior as one
 pinned path. Managed vLLM is offered normally on DGX Spark; starting managed
@@ -118,7 +109,7 @@ the sandbox sees placeholders instead of raw secrets. [OpenShell sandbox archite
 It is still **risk reduction, not permission to trust the agent**:
 
 - Docker access is effectively root-level host authority. Do not install it on
-  the Proxmox hypervisor or another critical control-plane host merely to run
+  `ai-services-01` or another critical control-plane host merely to run
   NemoClaw. [NVIDIA headless-server guide](https://docs.nvidia.com/nemoclaw/latest/user-guide/openclaw/deployment/deploy-to-headless-server)
 - The default Balanced onboarding tier allows package-registry presets. For an
   always-on private assistant, start with Restricted, no web search, and add
@@ -146,15 +137,15 @@ It is still **risk reduction, not permission to trust the agent**:
 
 | Machine or role | Recommendation | Reason |
 | --- | --- | --- |
-| `automation-01` VM on the GMKtec K15 | **Yes, one gated pilot; preferred long-term placement.** | It has the intended agent/application role and meets recommended sizing at its 16 GB maximum. Use Ubuntu 24.04 for the validated path, or record Debian 13 as a local qualification. Route inference to `ai.home`; pin memory during the pilot; back up and restore sandbox state. |
+| Separately qualified application host | **Required before the pilot.** | Keep autonomous agent state outside `ai-services-01`; meet NVIDIA's sizing and platform requirements, route inference to `ai.home.arpa`, and prove backup/restore. |
+| Automation hosts | **No personal-agent state.** | Keep deterministic workflows, MCP services, queues, and their credentials separate from autonomous agent sandboxes. |
 | `ai-compute-01` ASUS GX10 / GB10 | **Demo only, not production.** | It is the strongest NVIDIA-supported Express/local-vLLM target, but persistent agent state and lifecycle services violate the accepted inference-only boundary and add contention. |
-| `ai-services-01` Proxmox host | **No.** | Keep the hypervisor minimal. Docker/NemoClaw authority and agent state do not belong on the virtualization control plane. |
-| `ai-gateway-01` | **No.** | Do not mix an early-preview autonomous agent with the authentication/routing control plane. Its 8 GB maximum is also below NVIDIA's recommended 16 GB. |
-| `toolbox-01` | **Only a disposable coding-agent experiment.** | The role is appropriate for untrusted experiments, but its 12 GB maximum is below the recommended 16 GB and it must not receive production household credentials or databases. |
+| `ai-services-01` NixOS host | **No.** | Do not mix an early-preview autonomous agent with the authentication, secrets, and routing control plane. |
+| Toolbox hosts | **Only a disposable coding-agent experiment.** | The role is appropriate for untrusted experiments but must not receive production household credentials or databases. |
 
 These are the only planned roles needed for the pilot. Home Assistant remains
 an external consumer and action authority; it is not a NemoClaw host. The local
-role evidence is in the [AI services node plan](../ai-services-node-plan.md) and
+role evidence is in the [NixOS control-plane plan](../nixos-control-plane-node-plan.md) and
 [platform execution plan](../platform-execution-plan.md).
 
 ## Hermes pilot setup path
@@ -162,16 +153,15 @@ role evidence is in the [AI services node plan](../ai-services-node-plan.md) and
 This repository does not yet automate Hermes or NemoClaw installation. The
 operator path is:
 
-1. Finish the K15 `ai-services-01` baseline, the `automation-01` application
-   VM, the GX10/GB10 `ai-compute-01` baseline, and the `ai.home` gateway.
-2. Give `automation-01` 16 GB of actually available RAM for the pilot. Use
-   Ubuntu 24.04 for NVIDIA's validated generic-Linux path; if the VM remains on
-   Debian 13, record and test it as an unqualified local platform.
-3. Install one pinned NemoClaw/OpenShell tuple on `automation-01` and onboard
-   Hermes using NVIDIA's documented Hermes integration. Do not install the
-   agent runtime on the Proxmox host or on `ai-compute-01`.
+1. Finish the K15 `ai-services-01` NixOS baseline, the GX10/GB10
+   `ai-compute-01` baseline, and the `ai.home.arpa` gateway.
+2. Select a separate application host with at least NVIDIA's recommended
+   resources and a supported or explicitly qualified operating-system path.
+3. Install one pinned NemoClaw/OpenShell tuple there and onboard Hermes using
+   NVIDIA's documented integration. Do not install the agent runtime on
+   `ai-services-01` or `ai-compute-01`.
 4. Configure the Hermes inference provider to use a dedicated, revocable
-   `assistant` credential at `https://ai.home`. The gateway routes that alias to
+   `assistant` credential at `https://ai.home.arpa`. The gateway routes that alias to
    the qualified GB10 model; Hermes never receives a direct compute-node URL.
 5. Create one synthetic-data `owner` sandbox with Restricted policy,
    deny-by-default egress, no host bind mounts, and no consequential-action
@@ -199,7 +189,7 @@ requires all of the following:
    cloud fallback, no host bind mounts, and no consequential-action credentials.
 3. Prove allowed and denied filesystem, process, LAN, internet, inference, and
    credential paths against the **effective live policy**.
-4. Verify inference through direct GB10 vLLM, then through `ai.home`, including
+4. Verify inference through direct GB10 vLLM, then through `ai.home.arpa`, including
    streaming, tools, failures, private-data logging, and Hermes' 64K context.
 5. Test reboot recovery, upgrade/rollback, snapshot/restore, forced destroy,
    Docker/gateway/GB10 outages, and a 24-hour mixed-load soak.
@@ -215,9 +205,8 @@ responsibilities, not reasons to move the state onto GB10.
 
 ## Final answer
 
-Run NemoClaw on **one machine only if you are ready to conduct the personal-agent
-pilot**: `automation-01`, preferably as an Ubuntu 24.04 Docker VM with 16 GB
-actually available, using the GB10 only for inference. Use the GB10 itself only
-for NVIDIA's short-lived compatibility demo. Do not install NemoClaw on the
-Proxmox host or gateway VM, and do not call the pilot production-ready until
+Run NemoClaw only after selecting a separately qualified application host for
+the personal-agent pilot, using the GB10 only for inference. Use the GB10 itself
+only for NVIDIA's short-lived compatibility demo. Do not install NemoClaw on
+`ai-services-01`, and do not call the pilot production-ready until
 the isolation, recovery, 64K, and mixed-load gates pass.

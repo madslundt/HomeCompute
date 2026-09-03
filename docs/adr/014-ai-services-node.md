@@ -1,5 +1,8 @@
 # ADR-014: `ai-services-01` as the Proxmox services node
 
+> **Superseded by [ADR-016](016-nixos-control-plane-host.md).** This file is a
+> historical decision record, not an installation path.
+
 ## Context
 
 `ai-compute-01` is ARM64/GB10, optimized for local AI inference, and intentionally
@@ -16,13 +19,14 @@ or an out-of-band management controller.
 ## Decision
 
 Use `ai-services-01` as a single-node Proxmox VE 9 host. Keep the hypervisor minimal and
-run application workloads in three Debian 13 VMs:
+run application workloads in three Debian 13 VMs and one Ubuntu 24.04 VM:
 
 1. `ai-gateway-01` owns the Caddy/LiteLLM edge and is the only guest attached to a
    private, non-routed `ai-compute-01` bridge.
-2. `automation-01` owns n8n, MCP, browser workers, queues, and later separately
-   qualified agent runtimes and durable state.
-3. `toolbox-01` owns rebuildable x86 development, CI, framework, and experimental
+2. `automation-01` owns n8n, MCP, browser workers, queues, and workflow state.
+3. `agents-01` owns separately sandboxed personal-agent runtimes and
+   principal/domain-partitioned agent state on a dedicated restricted VLAN.
+4. `toolbox-01` owns rebuildable x86 development, CI, framework, and experimental
    tool workloads on the most restricted network.
 
 Use the first physical NIC for the trusted LAN and Proxmox management. Use the
@@ -56,7 +60,8 @@ MFA, and management-network restriction as promotion gates.
 The x86/ARM64 split improves tool compatibility and lets `ai-compute-01` dedicate its
 memory and CPU/GPU budget to inference. VM separation limits credentials and
 blast radius, but consumes several GB of RAM and adds guest patching and backup
-operations.
+operations. The agent VM uses a fixed 16 GB allocation; the toolbox is stopped
+by default so the 48 GB host retains safe hypervisor and cache headroom.
 
 One `ai-services-01` node is not high availability. Its failure stops the gateway and
 automations even though `ai-compute-01` may still run. Consumer hardware and a single
@@ -65,15 +70,12 @@ rollback mandatory before moving critical workflows.
 
 ## Status
 
-Accepted as the provisioning baseline; hardware installation, live topology
-inventory, and production migration gates remain pending.
+Superseded by ADR-016 after the owner selected a direct Git-first NixOS
+control-plane installation.
 
 ## Evidence
 
-- `docs/ai-services-node-plan.md`
-- `config/services-node.env.example`
-- `scripts/setup-services-node.sh`
-- `deploy/services-node/cloud-init-vendor.yaml`
+- `docs/adr/015-personal-data-domains-and-memory.md`
 - `docs/adr/001-gb10-inference-only.md`
 - `docs/adr/011-reuse-ai-home-control-plane.md`
 - `docs/adr/013-hermes-personal-agent-layer.md`

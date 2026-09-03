@@ -7,6 +7,18 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/deploy/compute-node/compose.yaml"
 ENV_TEMPLATE="$REPO_ROOT/config/compute-node.env.example"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/config.sh"
+
+COMPUTE_CONFIG_KEYS=(
+  COMPUTE_NODE_NAME VLLM_IMAGE MODEL_ID MODEL_REVISION TOKENIZER_REVISION CODE_REVISION
+  MODEL_PROVENANCE_URL MODEL_LICENSE_ID MODEL_WEIGHT_FORMAT MODEL_QUANTIZATION CHAT_TEMPLATE_SHA256
+  GB10_ROOT GB10_RUNTIME_UID GB10_RUNTIME_GID GB10_BIND_ADDRESS VLLM_HOST_PORT GATEWAY_CIDR
+  FIREWALL_CONFIRMED HF_TOKEN_FILE VLLM_API_KEY_FILE VLLM_MAX_MODEL_LEN VLLM_MAX_NUM_SEQS
+  VLLM_MAX_BATCHED_TOKENS VLLM_GPU_MEMORY_UTILIZATION VLLM_SHM_SIZE VLLM_ATTENTION_BACKEND
+  VLLM_MOE_BACKEND VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER VLLM_SPECULATIVE_CONFIG
+  ALLOW_UNSUPPORTED_HOST
+)
 
 COMMAND="${1:-help}"
 if (($# > 0)); then
@@ -100,12 +112,8 @@ parse_options() {
 
 load_env() {
   [[ -f "$ENV_FILE" ]] || die "Environment file not found: $ENV_FILE (run init first)"
-  # This is an operator-owned shell environment file. It must never come from an
-  # untrusted source because sourcing it executes shell syntax.
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+  load_trusted_env_file "$ENV_FILE" 0 "Compute-node configuration" "${COMPUTE_CONFIG_KEYS[@]}" ||
+    die "Refusing untrusted or malformed configuration: $ENV_FILE"
 }
 
 compose() {
@@ -213,6 +221,7 @@ validate_init_paths() {
 }
 
 validate_config() {
+  local require_registry_secret="${1:-true}"
   local value
   local env_mode
 
@@ -327,7 +336,9 @@ validate_config() {
     die "This Phase C recipe supports only nvidia/Qwen3.6-35B-A3B-NVFP4; add a separately validated recipe for another model"
   fi
 
-  check_secret_file HF_TOKEN_FILE
+  if [[ "$require_registry_secret" == "true" ]]; then
+    check_secret_file HF_TOKEN_FILE
+  fi
   check_secret_file VLLM_API_KEY_FILE
 
   require_command docker
@@ -597,20 +608,25 @@ write_release_record() {
 smoke_test() {
   local base_url
   local api_key
+  local auth_header
   local models_json
   local responses_json
   local alias
 
-  load_env
+  validate_config false
   require_command curl
   require_command jq
   check_secret_file VLLM_API_KEY_FILE
   base_url="http://${GB10_BIND_ADDRESS}:${VLLM_HOST_PORT}"
   api_key="$(<"$VLLM_API_KEY_FILE")"
+  auth_header="$(mktemp /tmp/gb10-vllm-auth.XXXXXX)"
+  chmod 0600 "$auth_header"
+  printf 'Authorization: Bearer %s\n' "$api_key" >"$auth_header"
+  trap 'rm -f -- "$auth_header"' EXIT
 
   curl --fail --silent --show-error "$base_url/health" >/dev/null
   models_json="$(curl --fail --silent --show-error \
-    -H "Authorization: Bearer $api_key" \
+    --header "@$auth_header" \
     "$base_url/v1/models")"
   for alias in coding automation research home meeting assistant; do
     jq -e --arg alias "$alias" '.data | any(.id == $alias)' <<<"$models_json" >/dev/null ||
@@ -618,13 +634,21 @@ smoke_test() {
   done
 
   responses_json="$(curl --fail --silent --show-error \
-    -H "Authorization: Bearer $api_key" \
+    --header "@$auth_header" \
     -H 'Content-Type: application/json' \
     --data '{"model":"automation","input":"Reply with exactly READY.","max_output_tokens":16}' \
     "$base_url/v1/responses")"
   jq -e '(.id | type == "string") and (.status == "completed")' <<<"$responses_json" >/dev/null ||
     die "Responses smoke test did not complete"
+  rm -f -- "$auth_header"
+  trap - EXIT
   log "Smoke test passed: health, six logical aliases, and /v1/responses"
+}
+
+prepare_model_artifacts() {
+  log "Downloading the pinned model tuple in the isolated acquisition profile"
+  compose --profile prepare run --rm model-fetch
+  log "Model artifacts cached; inference will run offline without the registry token"
 }
 
 deploy_release() {
@@ -636,6 +660,7 @@ deploy_release() {
 
   log "Pulling immutable image: $VLLM_IMAGE"
   docker pull "$VLLM_IMAGE"
+  prepare_model_artifacts
   log "Verifying NVIDIA GPU access inside the pinned runtime image"
   docker run --rm --gpus all --user "${GB10_RUNTIME_UID}:${GB10_RUNTIME_GID}" --entrypoint nvidia-smi "$VLLM_IMAGE" >/dev/null
 
@@ -648,13 +673,13 @@ deploy_release() {
 
 start_release() {
   require_root
-  validate_config
+  validate_config false
   compose up -d --remove-orphans
   wait_ready
 }
 
 show_status() {
-  load_env
+  validate_config false
   compose ps
   local base_url="http://${GB10_BIND_ADDRESS}:${VLLM_HOST_PORT}"
   if curl --fail --silent --max-time 3 "$base_url/health" >/dev/null 2>&1; then

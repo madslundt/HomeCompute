@@ -90,8 +90,8 @@ listener. It shall:
 - derive a trusted consumer identity and replace untrusted `X-AI-Consumer` input;
 - stream without response buffering;
 - use explicit connect, response-header, idle, and total-duration behavior by route;
-- forward to GB10 service names over an authenticated, encrypted private host
-  link (Tailscale or an equivalently restricted LAN/VPN design);
+- forward to GB10 service names over the authenticated, dedicated non-routed
+  compute link; any shared/routed replacement must add encrypted transport;
 - emit metadata-only structured access records;
 - keep admin and metrics endpoints on the management listener.
 
@@ -180,7 +180,8 @@ Each sandbox receives only:
 
 - its own persistent state, memory/skills directory, and Discord credential;
 - a per-profile LiteLLM virtual key and logical aliases;
-- a per-profile personal-event API credential enforcing `owner_scope`;
+- a per-profile personal-event API credential enforcing principal,
+  data-domain, and visibility scope;
 - explicitly enumerated managed MCP/API providers and network destinations;
 - a bounded temporary workspace with retention and size limits.
 
@@ -197,7 +198,7 @@ and durable-state boundaries.
 
 ### 5.1 DNS and TLS
 
-The production base is `https://ai.home`. The chosen local DNS and certificate
+The production base is `https://ai.home.arpa`. The chosen local DNS and certificate
 authority are external infrastructure dependencies and documented installation
 inputs. Consumers never use an IP or container port.
 
@@ -403,8 +404,9 @@ and so on; identity resolution is separately consented future scope.
 - Dependency/model license and provenance are recorded in the release manifest.
 - Profile routing is derived from an authenticated Discord identity/channel or
   an internal scheduler credential before Hermes sees the request.
-- Retrieval uses separate database/API roles and mandatory `owner_scope`
-  predicates; a model-supplied scope is never authoritative.
+- Retrieval uses separate database/API roles and mandatory principal,
+  data-domain, and visibility predicates; a model-supplied scope is never
+  authoritative.
 - Consequential write tools create a pending proposal and cannot execute until
   a separate authenticated approval path binds the owner, exact action and
   arguments, expiry, and one-time approval. Hermes shell approvals and

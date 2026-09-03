@@ -14,7 +14,10 @@
 *.pem
 *.key
 *.p12
-secrets/
+# Only age-encrypted SOPS documents may be tracked here. Plaintext secret files
+# and decrypted editor output remain ignored.
+secrets/*
+!secrets/*.sops.yaml
 
 # Generated logs, caches, and local test output
 *.log

@@ -70,6 +70,15 @@ baseline.
 | URS-TTS-001 | The TTS capability shall provide a qualified Danish voice and integrate with Home Assistant through a supported local protocol. | Must | TTS integration test |
 | URS-TTS-002 | The Danish pronunciation set shall achieve at least 95% reviewer pass rate and a mean naturalness score of at least 3.5/5. | Must | Blinded listening test |
 
+## Human chat and research requirements
+
+| ID | Requirement | Priority | Verification |
+| --- | --- | --- | --- |
+| URS-CHAT-001 | A household chat client shall authenticate each person before model access and keep accounts, histories, uploads, exports, deletion, credentials, and private/shared contexts separate below the model. | Must | Account-isolation and lifecycle test |
+| URS-CHAT-002 | The client shall show the effective local/cloud route and shall not silently submit private conversations, uploads, or retained history to a cloud provider. | Must | Route and forced-failure egress test |
+| URS-RSCH-001 | Deep research shall use an explicit search/retrieval stage with source identifiers, bounded fetches, SSRF/private-address denial, hostile-content isolation, and citations that resolve to retrieved evidence. | Must | Retrieval security and citation test |
+| URS-RSCH-002 | The `research` acceptance corpus shall measure source coverage, citation correctness, unsupported-claim rate, Danish/English synthesis quality, stale/failed-source disclosure, and long-document behavior. | Must | Research benchmark |
+
 ## Personal assistant requirements
 
 | ID | Requirement | Priority | Verification |
@@ -78,9 +87,9 @@ baseline.
 | URS-PA-002 | Hermes shall be treated as a version-pinned candidate agent runtime and shall not enter production until its supported application-host install path, 64K-context local OpenAI-compatible model path on GB10, tool loop, persistence, upgrade, and rollback behavior pass the pilot suite. A direct DGX Spark/ARM64 deployment may be evaluated but is not the production default. | Must | Compatibility pilot |
 | URS-PA-003 | Production profiles shall use separate OpenShell sandboxes created through the qualified NemoClaw/Hermes path. The exact released tuple and effective filesystem, process, network, inference, and credential policies shall pass live denial tests; prompt instructions and blueprint defaults alone are not a security boundary. | Must | Security inspection and negative test |
 | URS-PA-004 | `owner`, `partner`, and `family` shall run in separate sandboxes/security principals. Discord identity/channel routing shall select the principal before any content reaches the model. | Must | Cross-profile routing test |
-| URS-PA-005 | Every canonical personal-data record and retrieval path shall enforce `owner_scope` below the model: Owner may read `owner` and `shared`, Partner may read `partner` and `shared`, and Family may read only `shared`. The same rule applies to credentials and tools. | Must | Authorization test |
+| URS-PA-005 | Every canonical personal-data record and retrieval path shall enforce `principal_scope`, `data_domain`, and `visibility` below the model. Owner and Partner may read their own private records plus explicitly shared household projections; Family reads household-shared records only. The same rule applies to credentials and tools. | Must | Authorization test |
 | URS-PA-006 | Hermes working memory, sessions, and learned skills shall be isolated per profile and shall not be the canonical record of email, transactions, meetings, calendar events, tasks, home observations, or documents. | Must | Storage and isolation inspection |
-| URS-PA-007 | Canonical personal history shall use a versioned event contract with stable source identity, timestamp, `owner_scope`, provenance, processing state, structured metadata, and optional embeddings/relationships. Ingestion shall be idempotent and raw-source retention shall be explicit. | Must | Schema and replay test |
+| URS-PA-007 | Canonical personal history shall use a versioned event contract with stable source identity, timestamp, `principal_scope`, `data_domain`, `visibility`, provenance, processing state, structured metadata, and optional embeddings/relationships. Ingestion shall be idempotent and raw-source retention shall be explicit. | Must | Schema and replay test |
 | URS-PA-008 | Each profile and integration shall use distinct revocable credentials. The LiteLLM administrative key, another person's channel token, database role, or tool credential shall never be mounted into a profile. | Must | Credential matrix and revocation test |
 | URS-PA-009 | The initial human interface shall be allow-listed Discord text with private Owner/Partner contexts, a shared Family context, and a separate notification destination. Proactive messages shall be attributable, rate-limited, deduplicated, and suppressible. | Should | Discord integration test |
 | URS-PA-010 | Discord voice is a later stage behind independent STT/TTS APIs. Session context may persist during a call, but speaker recognition alone shall never grant private-profile access or consequential permissions. | Should | Voice and identity test |
@@ -88,6 +97,11 @@ baseline.
 | URS-PA-012 | n8n or another explicitly assigned workflow owner shall handle deterministic ingestion, retries, schedules, normalization, and delivery. Only one scheduler shall own each job; Hermes shall receive a bounded task rather than broad Docker or host control. | Must | Ownership inventory and duplicate-run test |
 | URS-PA-013 | Data-source rollout shall start with synthetic/manual and low-risk sources, then calendar/Plaud/email/home analytics; financial data shall wait for passing profile isolation, audit, retention, backup/restore, and approval controls. | Must | Phase-gate inspection |
 | URS-PA-014 | Private profile data shall have no implicit cloud fallback. Any cloud use shall be selected by a deterministic policy before submission, visibly disclosed, and limited to explicitly public or redacted content. | Must | Forced-local-failure egress test |
+| URS-PA-015 | Every personal record, retrieval path, session, tool credential, and derived artifact shall enforce both an authenticated principal and `data_domain` (`personal`, `household`, or `work:<organization>`) below the model. | Must | Cross-domain authorization test |
+| URS-PA-016 | Work data shall use separate security principals, stores, indexes, histories, credentials, retention, and backups and shall never enter personal/family memory without a separately approved export. Employer authorization is an admission gate. | Must | Work-domain policy and denial test |
+| URS-PA-017 | Retained memory shall follow the versioned memory contract and support authenticated review, provenance, correction, confirmation, expiry, export, deletion, and explicit sharing. Sensitive inferred traits shall not be retained without confirmation. | Must | Memory lifecycle test |
+| URS-PA-018 | Partner onboarding shall disclose and record whether the infrastructure administrator is trusted with host/backup access or user-held application encryption is required. Sandbox separation shall not be represented as protection from the host administrator. | Must | Threat-model record and restore inspection |
+| URS-PA-019 | A separately qualified application host and network trust domain shall host personal-agent sandboxes. `ai-services-01`, n8n, browser workers, MCP tools, and untrusted toolbox workloads shall not share its OS security domain. | Must | Placement and network inspection |
 
 ## Meeting and Plaud requirements
 
@@ -130,6 +144,9 @@ must record the achieved values and any approved threshold revision.
 | URS-SEC-006 | Prompt, response, audio, transcript, tool argument/result, authorization, Aula, and meeting content logging shall be disabled by default at every infrastructure layer. | Must | Canary/log inspection |
 | URS-SEC-007 | Metadata logs shall have documented access controls and retention. Debug content logging shall require an explicit time-bounded maintenance procedure using nonsensitive fixtures. | Must | Procedure and configuration test |
 | URS-SEC-008 | Dependency images, model revisions, templates, parsers, and launch configuration shall be pinned and traceable; floating `latest` shall not be production input. | Must | Bill-of-materials inspection |
+| URS-SEC-009 | Hosts and durable data stores shall have an explicit at-rest protection, swap/coredump, physical-access, backup-key custody, and deletion-expiry policy before private household or work data is admitted. | Must | Host/storage security inspection |
+| URS-SEC-010 | Interactive access shall be limited to approved local networks or the household tailnet. No application or management listener shall be published through router forwarding, public ingress, or Tailscale Funnel. | Must | External scan, route and Funnel inspection |
+| URS-SEC-011 | Tailscale access shall use deny-by-default grants and shall not replace per-consumer application authentication. Household clients may reach only the gateway on TCP 443 unless an explicit administrative or integration rule exists. | Must | Tailnet-policy inspection, positive/negative tests |
 
 ## Reliability and operations requirements
 
@@ -142,7 +159,7 @@ must record the achieved values and any approved threshold revision.
 | URS-OPS-005 | Disk, memory, model-load, queue, error, request latency, TTFT, throughput, restart, and OOM signals shall be observable. | Must | Metrics inspection |
 | URS-OPS-006 | Telemetry shall use bounded-cardinality labels and shall not use prompts, user data, request IDs, or entity state as metric labels. | Must | Metrics inspection |
 | URS-OPS-007 | The 1 TB internal SSD shall have documented allocation, model cache limits, log retention, low-space alerts, and a rebuild/restore procedure. | Must | Storage test |
-| URS-OPS-008 | Deployment shall be reproducible from a clean supported host using source-controlled, idempotent scripts and configuration plus separately supplied secrets/models. | Must | Destructive rebuild rehearsal |
+| URS-OPS-008 | `ai-services-01` shall be reproducible from the pinned NixOS flake, with Home Manager activated only through `nixos-rebuild`; the compute appliance shall remain reproducible through its guarded script and pinned artifacts. Secrets and models are supplied separately. | Must | Destructive rebuild rehearsal |
 | URS-OPS-009 | Upgrade and rollback shall operate on the qualified tuple of OS/driver, container digest, runtime, model revision, quantization, tokenizer/template, parser, and flags. | Must | Upgrade/rollback rehearsal |
 | URS-OPS-010 | The platform shall run a 24-hour mixed-workload soak without unhandled failure, sensitive logging, unrecovered OOM, or loss of required service readiness. | Must | Soak test |
 
@@ -168,6 +185,7 @@ must record the achieved values and any approved threshold revision.
 | URS-MNT-003 | Every major component shall have a documented requirement and removal/reconsideration trigger. | Must | Design review |
 | URS-MNT-004 | Model replacement shall use qualification and rollback procedures, not ad-hoc cache edits. | Must | Change rehearsal |
 | URS-MNT-005 | Configuration validation and smoke tests shall run before deployment changes are activated. | Must | CI/deployment test |
+| URS-MNT-006 | Home Manager shall own only the interactive user environment. Users, login shells, networking, firewall, Docker, SSH, Tailscale, storage, backups, sops-nix, system services, and `/srv/state` shall remain NixOS responsibilities. | Must | Nix module inspection |
 
 ## Traceability and acceptance rule
 

@@ -47,25 +47,25 @@ design approval before target execution**
 | B3 Design | `docs/design-specification.md` | API, services, identity, logging, storage, scheduling, deployment and rollback specified |
 | B4 Risk analysis | `docs/risk-analysis.md` | Initial/residual risks, controls and triggers recorded |
 | B5 Verification | `docs/verification-strategy.md` | Tests and requirement traceability defined |
-| B6 ADRs | `docs/adr/001` through `014` | Major decisions/status/evidence recorded |
+| B6 ADRs | `docs/adr/001` through `016` | Major decisions/status/evidence recorded |
 | B7 Plan/dependencies | This file and `dependency-graph.md` | Ordered packages, gates and blockers visible |
 
 ## Phase B-S — AI services-node foundation
 
-**Status: Provisioning design ready; hardware execution pending**
+**Status: NixOS configuration ready; hardware execution pending**
 
 The future always-on x86 target is `ai-services-01`, documented in
-`ai-services-node-plan.md` and ADR-014. Its script may create the empty Debian VM
-substrate after hardware arrival, but it must not migrate unverified live
-services as part of provisioning.
+`nixos-control-plane-node-plan.md`, ADR-016, and the root flake. Installation
+must not migrate unverified live services as part of provisioning.
 
 | Gate | Outcome | Blocks |
 | --- | --- | --- |
-| S0 Hypervisor | Firmware, Proxmox, bridges, UPS, MFA, SMART, firewall, and soak pass | All services-node guests |
-| S1 Empty guests | Cloud-init, SSH, QEMU agent, Docker, isolation, backup, and restore pass | S2-S5 |
-| S2 AI gateway | Existing AI Home inventory, equivalence, recovery, and rollback pass on `ai-gateway-01` | C3/E production edge |
-| S3 Automations | n8n/MCP inventory and low-risk staged migration pass on `automation-01` | G and agent event integration |
-| S4 Toolbox | Restricted x86 tools/CI runner passes credential and network checks | Optional developer workloads |
+| S0 NixOS host | Firmware, labelled filesystems, pinned flake, UPS, SMART, firewall, and reboot pass | Control-plane workload |
+| S1 Host services | SSH, Tailscale, Docker, Home Manager, sops-nix, `/srv/state`, backup, and restore pass | S2-S5 |
+| S2 AI gateway | Existing AI Home inventory, equivalence, recovery, and rollback pass on `ai-services-01` | C3/E production edge |
+| S3 Automations | n8n/MCP inventory and low-risk staged migration pass on a separately qualified host | G workflow integration |
+| S3A Agents host | Separate application host, backup, and denial tests pass | I/J personal-agent pilot |
+| S4 Toolbox | Separate restricted tools/CI runner passes credential and network checks | Optional developer workloads |
 | S5 Optional HAOS | Separate HAOS/radio migration and restore evidence pass | Any Home Assistant relocation |
 
 S0/S1 can proceed independently of compute-node model qualification. S2 needs the
@@ -129,7 +129,7 @@ not broader permissions.
    the LiteLLM master key, and replace or justify Ofelia's Docker-socket access.
 2. Stage pinned Caddy and LiteLLM versions with local TLS, private upstream,
    request ID, virtual keys, per-key alias allow-lists, and metadata-only logs.
-3. Repeat the complete Codex protocol suite through `https://ai.home` and the
+3. Repeat the complete Codex protocol suite through `https://ai.home.arpa` and the
    combined Caddy/LiteLLM path.
 4. Run authentication, revocation, cross-alias denial, local-only egress,
    log-canary, cancellation, recovery, and direct/proxied latency tests.
@@ -257,7 +257,7 @@ of model artifacts.
 
 1. Reconcile and review the current Meeting Assistant worktree; define the
    separately owned implementation baseline.
-2. Configure one `ai.home` Meeting Assistant account and bind rolling/final
+2. Configure one `ai.home.arpa` Meeting Assistant account and bind rolling/final
    summary jobs to `meeting`; prove no silent cloud fallback.
 3. Add explicit Plaud file import and durable original-audio retention to
    Meeting Assistant; do not use an undocumented private API.
@@ -285,7 +285,7 @@ and restore.
 2. Pin the supported Hermes, NemoClaw, OpenShell, sandbox image, and host tuple.
    Create one synthetic-data `owner` sandbox on the always-on application host.
 3. Qualify Hermes first against direct GB10 vLLM and then through the existing
-   `ai.home` LiteLLM path at the required 64K context. Test streaming, tools,
+   `ai.home.arpa` LiteLLM path at the required 64K context. Test streaming, tools,
    memory headroom, restart persistence, snapshot/restore, upgrade, rollback,
    denied egress, and credential non-disclosure.
 4. Optionally reproduce NVIDIA's direct DGX Spark NemoHermes playbook as a
@@ -310,7 +310,8 @@ or broad LAN credentials.
    states, Discord credentials, virtual keys, data roles, managed tool
    credentials, egress policies, quotas, and offline snapshot backups.
 2. Implement the versioned personal-event API/store with mandatory
-   `owner_scope`, provenance, idempotency, retention, and filtered semantic
+   `principal_scope`, `data_domain`, `visibility`, provenance, idempotency,
+   retention, and filtered semantic
    retrieval. Keep Hermes memory and `state.db` non-canonical.
 3. Prove all cross-sandbox negative cases, including Discord routing, API keys,
    memory/session search, embeddings/vector retrieval, caches, snapshots, logs,

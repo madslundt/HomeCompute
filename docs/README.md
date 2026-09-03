@@ -4,8 +4,9 @@ This directory describes a local-first AI platform with two stable node roles:
 `ai-compute-01` is a rebuildable NVIDIA GB10 or DGX Spark-class inference
 appliance.
 
-`ai-services-01` is an x86 Proxmox host for the gateway, automations, tools,
-and durable application state.
+`ai-services-01` is an x86 NixOS control-plane host for the trusted
+Caddy/LiteLLM gateway and its durable state. Untrusted tools and personal-agent
+sandboxes stay outside this host trust domain.
 
 Existing services remain in place until their replacements pass. Neither node
 is yet an observed production deployment.
@@ -32,9 +33,10 @@ Assistant, automations, or personal agents before their preceding gates pass.
 | Understand the platform in ten minutes | [Architecture](architecture.md), then [current state](current-state.md) |
 | Execute the complete two-node program | [Platform execution plan](platform-execution-plan.md), then both node plans |
 | Prepare `ai-compute-01` | [AI compute node plan](ai-compute-node-plan.md), [setup guide](setup-guide.md), then verification |
-| Prepare `ai-services-01` | [AI services node plan](ai-services-node-plan.md), [ADR-014](adr/014-ai-services-node.md), then the provisioning script |
+| Prepare `ai-services-01` | [NixOS control-plane plan](nixos-control-plane-node-plan.md), [ADR-016](adr/016-nixos-control-plane-host.md), then the root flake |
+| Apply or extend the NixOS configuration | [NixOS operations guide](nixos-operations.md) |
 | Understand what is decided versus still hypothetical | [ADRs](#architecture-decisions), [current state](current-state.md), and the phase gates in the [implementation plan](implementation-plan.md) |
-| Review security, privacy, and failure handling | [Requirements](requirements.md), [risk analysis](risk-analysis.md), and [design specification](design-specification.md) |
+| Review security, privacy, and failure handling | [Access policy](access-policy.md), [personal data and memory](personal-data-and-memory.md), [requirements](requirements.md), and [risk analysis](risk-analysis.md) |
 | Choose and benchmark models | [Installation recommendation](research/llm-installation-recommendation.md), then the role-specific evaluations under [research](#research-and-model-evidence) |
 | Integrate Codex | [Codex compatibility](research/codex-compatibility.md), [ADR-006](adr/006-codex-remains-primary-harness.md), and verification tests V-CODEX-001/V-CODEX-E2E-001 |
 | Integrate Home Assistant voice and tools | [Home Assistant model evaluation](research/home-assistant-model-evaluation.md), [ADR-008](adr/008-home-assistant-model-role.md), and verification tests V-HA-001/V-HA-002 |
@@ -85,7 +87,10 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [Setup guide](setup-guide.md) | Self-contained, ordered setup path for both physical nodes |
 | [Platform execution plan](platform-execution-plan.md) | Controlling order, names, dependencies, gates, and definition of done |
 | [AI compute node plan](ai-compute-node-plan.md) | `ai-compute-01` installation, deployment, qualification, and operations |
-| [AI services node plan](ai-services-node-plan.md) | `ai-services-01` installation, VMs, networking, backups, and migrations |
+| [NixOS control-plane plan](nixos-control-plane-node-plan.md) | Active `ai-services-01` installation, Home Manager, Compose deployment, and acceptance path |
+| [NixOS operations guide](nixos-operations.md) | Commit checks, build/test/switch, rollback, input updates, and extension boundaries |
+| [Local and Tailscale access](access-policy.md) | Private DNS/TLS, grants, network flows, administrative access, and acceptance checks |
+| [Personal data and memory](personal-data-and-memory.md) | Principal/work domains, memory lifecycle, sharing, deletion, and administrator model |
 
 ## Architecture decisions
 
@@ -104,7 +109,9 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-011](adr/011-reuse-ai-home-control-plane.md) | Reuse and qualify the existing AI Home Caddy/LiteLLM control plane |
 | [ADR-012](adr/012-reuse-meeting-assistant.md) | Extend the existing Meeting Assistant for Plaud processing |
 | [ADR-013](adr/013-hermes-personal-agent-layer.md) | Hermes runs outside `ai-compute-01` as a separately gated application layer |
-| [ADR-014](adr/014-ai-services-node.md) | `ai-services-01` runs a minimal Proxmox host with three role-separated Debian VMs |
+| [ADR-014](adr/014-ai-services-node.md) | Historical, superseded services-node virtualization design |
+| [ADR-015](adr/015-personal-data-domains-and-memory.md) | Personal memory and employer data use explicit principals, domains, and lifecycle controls |
+| [ADR-016](adr/016-nixos-control-plane-host.md) | NixOS, integrated Home Manager, sops-nix, and Compose define the control-plane host |
 
 ## Research and model evidence
 
@@ -122,7 +129,7 @@ corpus and access-control test exist.
 
 | Topic | Documents |
 | --- | --- |
-| Platform and runtime | [GB10 appliance validation](research/gx10-platform-validation.md), [runtime evaluation](research/inference-runtime-evaluation.md), [gateway evaluation](research/gateway-evaluation.md) |
+| Platform and runtime | [GB10 appliance validation](research/gx10-platform-validation.md), [runtime evaluation](research/inference-runtime-evaluation.md), [gateway evaluation](research/gateway-evaluation.md), [control-plane runtime split review](research/control-plane-runtime-split-review.md) |
 | Current model shortlist | [Installation recommendation](research/llm-installation-recommendation.md), [GB10 precision audit](research/gb10-optimized-model-audit.md), [alignment review](research/model-use-case-alignment-review.md) |
 | Text roles | [General](research/general-model-evaluation.md), [coding](research/coding-model-evaluation.md), [Home Assistant](research/home-assistant-model-evaluation.md) |
 | Speech | [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
@@ -134,12 +141,14 @@ The documentation is paired with a deliberately small implementation scaffold:
 
 | Path | Purpose |
 | --- | --- |
+| `../flake.nix` and `../flake.lock` | Pinned NixOS, Home Manager, and sops-nix activation graph |
+| `../hosts/ai-services-01/` | Control-plane host entry point and hardware contract |
+| `../modules/nixos/` | Machine-level configuration modules |
+| `../home/mads/` | User-level Home Manager modules |
 | `../config/compute-node.env.example` | Explicit, pinned release inputs for the first candidate |
 | `../deploy/compute-node/compose.yaml` | Hardened Phase C vLLM service definition |
 | `../scripts/setup-compute-node.sh` | Preflight, initialization, validation, deployment, smoke, status, stop, and rollback commands |
-| `../config/services-node.env.example` | Services-node Proxmox template, network, storage, and VM inputs |
-| `../deploy/services-node/cloud-init-vendor.yaml` | Common hardened Debian guest baseline |
-| `../scripts/setup-services-node.sh` | Services-node validation, host baseline, cloud template, and VM provisioning |
+| `../deploy/control-plane/compose.yaml` | Caddy, LiteLLM, and PostgreSQL application workload |
 | `../diagrams/*.d2` | Editable D2 sources |
 | `../diagrams/*.svg` and `*.png` | Rendered diagrams for docs and quick viewing |
 

@@ -19,10 +19,11 @@ expansion in Phase J, after the text-runtime and shared-gateway gates. Run
 `owner`, `partner`, and `family` in three separately
 qualified OpenShell sandboxes on an always-on application host. Use the
 NemoClaw Hermes integration and route inference through the existing
-`ai.home`/LiteLLM path to GB10 vLLM.
+`ai.home.arpa`/LiteLLM path to GB10 vLLM.
 
 Hermes memory remains per-sandbox working context. A separate canonical event
-service enforces `owner_scope`; n8n/application services retain ingestion,
+service enforces principal, data-domain, and visibility scope as refined by
+ADR-015; n8n/application services retain ingestion,
 scheduling, retries, and request-bound approval for consequential actions.
 Discord text is the first interface. Voice, private email, Home Assistant
 writes, and banking are later gates.

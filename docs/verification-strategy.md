@@ -77,7 +77,7 @@ prompt/tool body in logs fails the gate.
 ### V-GW-001 — Edge equivalence
 
 Repeat V-CODEX-001 through the combined Caddy and existing LiteLLM path at
-`https://ai.home`, then compare event ordering, status/errors, cancellation,
+`https://ai.home.arpa`, then compare event ordering, status/errors, cancellation,
 actual model, TTFT and total latency with direct runtime. Gateway overhead must
 meet URS-PERF-006. Authentication, virtual-key revocation, per-key alias
 allow-lists, unknown consumer/model/path denial, request-ID propagation, and
@@ -230,6 +230,7 @@ recovery rather than a crash loop.
 | V-SEC-009 Private-route egress | Force local failure for `home`, `meeting`, and private `automation`. Packet/provider audit shows no cloud request and the client receives an explicit local-unavailable result. |
 | V-SEC-007 Artifact provenance | Verify image digest, model/tokenizer revision, template/parser hash, license record, secret scan, least-privilege container and mount/capability policy. |
 | V-SEC-008 Telemetry cardinality | Send adversarial request IDs/header/entity values; none become metric label names/values outside the allow-list. |
+| V-SEC-010 Local/Tailscale boundary | From approved LAN, approved tailnet, unapproved tailnet, and restricted VM segments, verify split DNS/TLS, gateway-only TCP 443 access, application-token revocation, management isolation, direct-compute denial, and absence of public ingress or Funnel. |
 
 ## 9. Reliability, recovery, and operations verification
 
@@ -241,7 +242,7 @@ recovery rather than a crash loop.
 | V-OPS-004 Stream fault | Disconnect client/upstream before and after first event | No replay after streaming; backend work cancels/bounds; request remains diagnosable |
 | V-OPS-005 Disk pressure | Fill a dedicated test volume through 80/90% thresholds | Alert/change freeze/cleanup procedure works; no broad destructive cleanup |
 | V-OPS-006 Upgrade/rollback | Deploy a candidate, fail post-switch test, restore prior manifest | Alias/DNS unchanged; prior qualified release restored without client edits |
-| V-OPS-007 Clean rebuild | Rebuild supported host from source-controlled inputs and separately supplied secrets/artifacts | Equivalent manifest/configuration and acceptance smoke pass |
+| V-OPS-007 Clean rebuild | Install `ai-services-01` from the pinned flake and rebuild the compute host from its source-controlled inputs plus separately supplied secrets/artifacts | Equivalent NixOS generation, Home Manager profile, manifest/configuration, `/srv/state` restore, and acceptance smoke pass |
 | V-OPS-008 Soak | 24-hour representative mixed workload plus scheduled faults | No unhandled failure, sensitive log canary, unrecovered OOM, or lost readiness |
 | V-OPS-009 Control-plane outage | Stop Caddy and LiteLLM separately | Explicit failure and bounded recovery; no direct runtime bypass; Codex cloud planning/review remains available through its separately configured provider |
 
@@ -296,8 +297,9 @@ virtual key, event-API/database role, managed providers, notification target,
 and backup. For each principal, attempt direct and prompt-mediated access to
 the other principal's memory, sessions, APIs, records, embeddings/vector
 search, cache, snapshots, logs, MCP credentials, tools, and notification
-destinations. `owner` sees only `owner/shared`, `partner` only `partner/shared`, and `family`
-only `shared`; every other attempt is denied below the model and audited
+destinations. `owner` and `partner` see only their own private records and
+explicit household-shared projections; `family` sees only household-shared
+records. Every other attempt is denied below the model and audited
 without content leakage.
 
 ### V-PA-003 — Discord identity and delivery
@@ -330,12 +332,35 @@ changes the authorized profile.
 ### V-PA-006 — Canonical events and proactive behavior
 
 Replay duplicate/out-of-order source events and verify stable source identity,
-provenance, `owner_scope`, processing state, retention and idempotency. Delete
+provenance, `principal_scope`, `data_domain`, `visibility`, processing state,
+retention and idempotency. Delete
 or restore Hermes memory and prove canonical history is unchanged. Inventory
 one scheduler owner per job, then test meaningful-change suppression,
 deduplication, rate limits, quiet hours, failure/retry and notification audit.
 Private email/Home analytics start read-only; banking remains Not Run until all
 preceding privacy, isolation, approval and restore gates pass.
+
+### V-PA-007 — Personal, household, and work-domain separation
+
+Create synthetic `owner/personal`, `partner/personal`, `family/household`, and
+`owner-work/work:test-employer` records, sessions, uploads, memories, indexes,
+credentials, backups, caches, notifications, and tool results. Attempt direct,
+retrieval-mediated, prompt-injected, export/import, restored-backup, and
+administrator-misconfiguration crossover. Every unauthorized combination is
+denied below the model. Work output never appears in personal/family memory,
+search, proactive summaries, logs, or cloud fallback. Record the employer-policy
+admission decision before replacing synthetic work data.
+
+### V-PA-008 — Memory governance and administrator model
+
+For both household principals, create explicit and inferred ordinary/sensitive
+memory fixtures. Verify the review queue, sensitive-inference non-retention,
+source/provenance display, correction/supersession, expiry, export, explicit
+sharing, and deletion tombstones. Confirm deletion removes online text,
+embeddings, caches, and derived summaries; restore a backup and prove tombstones
+prevent resurrection. Record whether the household accepts a trusted
+infrastructure administrator or requires a separately designed user-held
+encryption model.
 
 ## 12. Requirements traceability
 
@@ -348,6 +373,8 @@ preceding privacy, isolation, approval and restore gates pass.
 | URS-AI-011 | Current-state inspection, V-GW-001, V-OPS-009 |
 | URS-AI-012, URS-AI-013 | V-GW-001, V-PERF-001, V-SEC-003, V-SEC-009 |
 | URS-GEN-001, URS-GEN-002, URS-GEN-003, URS-GEN-004, URS-GEN-005 | V-GEN-001, workflow/architecture/state inspection, V-SEC-006 |
+| URS-CHAT-001, URS-CHAT-002 | Account-isolation lifecycle test, V-SEC-003/009 |
+| URS-RSCH-001, URS-RSCH-002 | V-GEN-001, citation corpus, SSRF and hostile-content tests |
 | URS-CODE-001, URS-CODE-002, URS-CODE-003 | V-CODE-001, selection-record inspection |
 | URS-HA-001, URS-HA-002, URS-HA-003, URS-HA-004, URS-HA-005 | V-HA-001, V-HA-002, V-SEC-005 |
 | URS-STT-001, URS-STT-002, URS-STT-003 | V-STT-001 and Home Assistant/Meeting Assistant integration |
@@ -359,6 +386,8 @@ preceding privacy, isolation, approval and restore gates pass.
 | URS-PA-010 | V-PA-005 |
 | URS-PA-011 | V-PA-004 |
 | URS-PA-014 | V-PA-001, V-SEC-009 |
+| URS-PA-015, URS-PA-016, URS-PA-019 | V-PA-007, V-SEC-001/003 |
+| URS-PA-017, URS-PA-018 | V-PA-008, V-OPS-005 |
 | URS-MTG-001, URS-MTG-002, URS-MTG-003, URS-MTG-004, URS-MTG-005, URS-MTG-006, URS-MTG-007, URS-MTG-008 | V-MTG-001, V-MTG-002, V-MTG-003, architecture/source inspection |
 | URS-PERF-001, URS-PERF-002, URS-PERF-005 | V-HA-002, V-PERF-001 M4 |
 | URS-PERF-003, URS-PERF-004 | V-STT-001, V-TTS-001 |
@@ -370,6 +399,8 @@ preceding privacy, isolation, approval and restore gates pass.
 | URS-SEC-005 | V-SEC-005, V-HA-001, V-HA-002 |
 | URS-SEC-006, URS-SEC-007 | V-SEC-006 and retention/access inspection |
 | URS-SEC-008 | V-SEC-007, V-OPS-006, V-OPS-007 |
+| URS-SEC-009 | V-SEC-007, V-OPS-005/007 and host/storage inspection |
+| URS-SEC-010, URS-SEC-011 | V-SEC-010 |
 | URS-OPS-001, URS-OPS-002, URS-OPS-003, URS-OPS-004 | V-OPS-001, V-OPS-002, V-OPS-003 |
 | URS-OPS-005, URS-OPS-006 | Metrics/config inspection, V-SEC-008, V-OPS-008 |
 | URS-OPS-007 | V-OPS-005, V-OPS-007 and storage inspection |
@@ -382,6 +413,7 @@ preceding privacy, isolation, approval and restore gates pass.
 | URS-MNT-001, URS-MNT-002, URS-MNT-003 | Documentation and artifact audit |
 | URS-MNT-004 | V-OPS-006 |
 | URS-MNT-005 | CI/config validation and deployment test |
+| URS-MNT-006 | NixOS/Home Manager boundary inspection and repository validation |
 
 ## 13. Acceptance records
 

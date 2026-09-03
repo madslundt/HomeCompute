@@ -11,7 +11,7 @@ the meeting domain and its source of truth.
 ## Decision
 
 Keep Meeting Assistant as the meeting-domain owner. First connect its existing
-LLM account and optional transcription backend to the shared `ai.home` API.
+LLM account and optional transcription backend to the shared `ai.home.arpa` API.
 Add Plaud import, original-audio retention, raw/speaker-attributed/cleaned
 transcript layers, diarization, and the extended structured summary to Meeting
 Assistant in a later separately reviewed workstream.

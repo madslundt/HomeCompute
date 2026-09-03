@@ -284,7 +284,7 @@ small pair has the same published 32K and multilingual feature set as the larger
 family. Corpus recall and isolation, not model size, are the decision.
 
 **Exact switch rule.** Do not install any pair until there is a versioned corpus
-with `owner_scope`, relevance judgments, Danish/English/code queries, and
+with principal/data-domain/visibility scope, relevance judgments, Danish/English/code queries, and
 cross-profile denial cases. The selected pair must have zero cross-scope result
 leakage and meet pre-registered recall@k, nDCG@k, p95 latency, and memory limits.
 Start at 0.6B. Select 4B only if 0.6B misses a quality minimum and 4B meets all

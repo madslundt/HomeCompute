@@ -1,5 +1,9 @@
 # HomeCompute execution plan
 
+> **Deployment update:** ADR-016 makes the root NixOS flake authoritative for
+> `ai-services-01`. Keep untrusted tools and personal-agent sandboxes outside
+> the gateway host.
+
 **Version:** 0.1  
 **Date:** 2026-08-30  
 **Status:** Ready for owner review; physical execution not started
@@ -16,27 +20,32 @@ The names do not depend on a hardware vendor:
 | System role | Stable name | Initial hardware | Responsibility |
 | --- | --- | --- | --- |
 | AI compute node | `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Rebuildable GPU inference: text, STT, TTS, and later diarization |
-| AI services node | `ai-services-01` | Supported x86 host | Proxmox host for the gateway, automations, agent/tool execution, and durable application state |
-| AI gateway VM | `ai-gateway-01` | VM 110 on `ai-services-01` | Caddy, LiteLLM, consumer identity, aliases, routing, and gateway-owned state |
-| Automation VM | `automation-01` | VM 120 on `ai-services-01` | n8n, MCP servers, queues, browser workers, and separately gated agent services |
-| Toolbox VM | `toolbox-01` | VM 130 on `ai-services-01` | CI, builds, x86 frameworks, and experimental tool execution |
+| AI services node | `ai-services-01` | Supported x86 NixOS host | Trusted Caddy/LiteLLM/PostgreSQL Compose stack and `/srv/state` |
+| Application hosts | Existing or separately qualified hosts | Outside `ai-services-01` | n8n, MCP, browser workers, personal agents, CI, and experimental tools |
 
-Suggested DNS is `ai-compute-01.home.arpa`, `ai-services-01.home.arpa`, and
-the three matching guest names under `home.arpa`. Consumers continue to use the
-stable service alias `https://ai.home`; they do not depend on node hostnames.
+Suggested DNS is `ai-compute-01.home.arpa` and `ai-services-01.home.arpa`.
+Consumers continue to use the
+stable service alias `https://ai.home.arpa`; they do not depend on node hostnames.
 
 ## Final system boundary
 
 ```mermaid
 flowchart LR
     Clients[Codex, Home Assistant, n8n,<br/>Meeting Assistant, approved agents]
-    Alias[ai.home]
+    Alias[ai.home.arpa]
 
     subgraph Services[ai-services-01 - services node]
-        Gateway[ai-gateway-01<br/>Caddy + LiteLLM]
-        Automation[automation-01<br/>n8n + MCP + durable services]
-        Toolbox[toolbox-01<br/>CI + tools + frameworks]
+        Gateway[Caddy + LiteLLM + PostgreSQL]
+        State[/srv/state/control-plane]
+        Gateway --> State
+    end
+
+    subgraph Apps[Existing or separately qualified application hosts]
+        Automation[n8n + MCP + durable services]
+        Agents[isolated personal agents]
+        Toolbox[CI + tools + frameworks]
         Automation -->|authenticated API| Gateway
+        Agents -->|authenticated API| Gateway
         Toolbox -->|authenticated API| Gateway
     end
 
@@ -57,12 +66,12 @@ flowchart LR
 Record these decisions in an operator-owned installation worksheet; never put
 credentials in this repository:
 
-1. Reserved LAN IPs for `ai-services-01`, `ai-gateway-01`, `automation-01`,
-   `toolbox-01`, and the current Home Assistant/AI Home hosts.
+1. Reserved LAN IPs for `ai-services-01`, `ai-compute-01`, and the current
+   Home Assistant, automation, personal-agent, and AI Home hosts.
 2. LAN gateway, DNS server, `home.arpa` records, administrator subnet, and any
    toolbox VLAN ID/gateway/DNS.
 3. Private compute-link subnet. The proposed values are
-   `10.77.10.2/24` for `ai-gateway-01` and `10.77.10.10/24` for
+   `10.77.10.2/24` for `ai-services-01` and `10.77.10.10/24` for
    `ai-compute-01`, with no gateway.
 4. Off-host backup target, retention, encryption-key custody, and restore-test
    location.
@@ -79,7 +88,7 @@ credentials in this repository:
 - Reserve the role-based DNS names and IP addresses.
 - Confirm that the GB10 is compute-only and the services node owns durable
   application state.
-- Confirm that `ai.home` is the sole production client entry point.
+- Confirm that `ai.home.arpa` is the sole production client entry point.
 
 **Exit:** Names, addresses, data ownership, and rollback owners are recorded.
 
@@ -97,15 +106,14 @@ and keep/retire decision.
 
 ### Step 3 — Build the empty AI services node
 
-Follow the [AI services node plan](ai-services-node-plan.md) through Gates S0
-and S1:
+Follow the [NixOS control-plane plan](nixos-control-plane-node-plan.md):
 
-- prepare firmware, storage, networking, and UPS;
-- install and update Proxmox on `ai-services-01`;
-- create the LAN and private-compute bridges;
-- configure MFA, management restrictions, SMART, NTP, and off-host backup;
-- provision `ai-gateway-01`, `automation-01`, and `toolbox-01`;
-- verify isolation and restore one empty VM.
+- prepare firmware, labelled filesystems, networking, and UPS;
+- compare detected hardware modules with the committed host configuration;
+- install the pinned NixOS flake on `ai-services-01`;
+- configure the reviewed SSH key, Tailscale, sops age identity, and off-host backup;
+- verify the NixOS generation, Home Manager activation, `/srv/state`, isolation,
+  and an empty restore.
 
 **Exit:** The empty services node is stable and recoverable. No production
 service has moved.
@@ -129,8 +137,8 @@ the compute node directly.
 
 - Cable the dedicated 2.5GbE ports directly or through an appropriate switch.
 - Confirm the private subnet has no default gateway or internet route.
-- Allow only `ai-gateway-01` to reach the compute service ports.
-- Deny `automation-01`, `toolbox-01`, ordinary LAN clients, and the internet.
+- Allow only `ai-services-01` to reach the compute service ports.
+- Deny application hosts, ordinary LAN clients, and the internet.
 - Test MTU, packet loss, sustained transfer, inference latency, and behavior
   during cable and compute-node failures.
 
@@ -139,7 +147,7 @@ the compute node directly.
 ### Step 6 — Install and qualify the AI gateway
 
 - Rebuild the desired existing Caddy/LiteLLM configuration on
-  `ai-gateway-01` using pinned images and separate PostgreSQL/Redis ownership.
+  `ai-services-01` using pinned images and dedicated PostgreSQL ownership.
 - Create distinct consumer credentials and task-semantic aliases.
 - Add the local `ai-compute-01` backend and only explicitly approved cloud
   routes.
@@ -148,7 +156,7 @@ the compute node directly.
   privacy, rate limits, retry policy, backend outage behavior, and rollback.
 - Keep the previous AI Home gateway available until equivalence passes.
 
-**Exit:** `https://ai.home` passes Gate C3 and can be switched back to the old
+**Exit:** `https://ai.home.arpa` passes Gate C3 and can be switched back to the old
 gateway within the agreed recovery time.
 
 ### Step 7 — Select the production inference tuples
@@ -166,7 +174,7 @@ gateway within the agreed recovery time.
 ### Step 8 — Migrate automations in risk order
 
 - Install the approved n8n, MCP, database, queue, and browser-worker stacks on
-  `automation-01` with pinned images and separate service identities.
+  a separately qualified application host with pinned images and identities.
 - Import one sanitized test workflow, then one low-risk real workflow.
 - Test idempotency, retries, scheduling, credential isolation, database restore,
   and compute/gateway outage handling.
@@ -178,11 +186,11 @@ gateway within the agreed recovery time.
 
 ### Step 9 — Add restricted tools and agents
 
-- Install development frameworks on `toolbox-01` only for measured workloads,
-  preferably as pinned containers/devcontainers.
+- Install development frameworks on a separately qualified toolbox host only
+  for measured workloads, preferably as pinned containers/devcontainers.
 - Give the toolbox no production database or household credentials and no
   direct compute route.
-- Pilot one Hermes/OpenShell sandbox on `automation-01`; test default-deny
+- Pilot one Hermes/OpenShell sandbox on a separately isolated application host; test default-deny
   egress, managed credentials, approvals, snapshot/restore, 64K context, and
   session isolation before adding people/profiles.
 - Keep Home Assistant as the sole authority for physical home actions.
@@ -205,7 +213,7 @@ evidence, and rollback path.
 ### Step 11 — Production acceptance and handover
 
 - Run a 72-hour mixed-load soak followed by the agreed longer production soak.
-- Test power loss, UPS shutdown, automatic boot, guest start order, compute
+- Test power loss, UPS shutdown, automatic boot, service start order, compute
   outage, gateway outage, failed upgrade, database restore, and full host
   restore.
 - Verify patch, monitoring, alerting, capacity, log retention, backup retention,
@@ -232,7 +240,7 @@ Off-host backup + restore test ───> any durable-state migration
 
 Work on the two physical nodes may proceed in parallel through their empty-host
 baselines. Gateway integration requires both. No durable migration starts
-before the services-node restore gate.
+before the NixOS services-node restore gate.
 
 ## Definition of done
 

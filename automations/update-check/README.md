@@ -19,10 +19,11 @@ GB10 hardware.
 ## Install in n8n
 
 1. Import `n8n-workflow.json` using **Import from File**.
-2. Open **Configuration**. Change `watchlist_url` if this repository is private,
-   moved, or forked. For a private repository, use an authenticated HTTP Request
-   node instead of putting a token in the URL. The default raw GitHub URL starts
-   working after these automation files have been committed and pushed.
+2. The **Load repository watchlist** node uses the repository's `master` branch
+   and a fixed HTTPS URL. If the repository is private, moved, or forked, edit
+   that node and use an authenticated HTTP credential rather than putting a
+   token in the URL. The workflow rejects source requests outside
+   `huggingface.co` and `api.github.com`; update that allow-list only in review.
 3. Set `pinned_overrides_json` to the installed revisions or release tags that
    should be compared with upstream. The keys are IDs from `watchlist.json`:
 
@@ -77,6 +78,8 @@ watchlist only after a human review.
 - The workflow uses public Hugging Face and GitHub APIs. Thirteen weekly checks
   are well below ordinary anonymous GitHub rate limits, but self-hosted networks
   must allow outbound HTTPS and DNS.
+- Enable n8n's SSRF protection and deny private/link-local destinations at the
+  VM firewall even though this workflow also validates its request hostnames.
 - A failed source check is reportable by default and does not overwrite that
   source's last successful marker.
 - The comparison state is n8n workflow static data, which n8n currently labels

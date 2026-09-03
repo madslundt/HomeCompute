@@ -35,11 +35,18 @@ disclosure with the maintainers.
 The following are security requirements, not optional deployment advice:
 
 - production secrets and environment files stay outside the repository;
+- privileged configuration is parsed as allow-listed data and is never sourced
+  as executable shell;
 - non-loopback inference binds require a verified firewall or VPN allow-list;
+- interactive access is limited to approved LANs or the household tailnet;
+  public port forwarding and Tailscale Funnel are prohibited;
 - clients receive distinct, revocable credentials;
 - logs exclude prompts, responses, tool data, audio, and authorization values;
 - Home Assistant remains authoritative for validating and executing actions;
 - private workloads do not receive implicit cloud fallback.
+- personal, household-shared, and employer data use separate principals and
+  domains below the model; agent sandboxes do not protect data from the
+  hypervisor administrator.
 
 Operational incidents in a private deployment should first be contained by its
 operator: revoke affected credentials, isolate exposed services, preserve

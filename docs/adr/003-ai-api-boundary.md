@@ -8,7 +8,7 @@ route allow-listing, and backend isolation.
 
 ## Decision
 
-Expose `https://ai.home` through Caddy as the only client-LAN boundary. Reuse
+Expose `https://ai.home.arpa` through Caddy as the only client-LAN boundary. Reuse
 the existing AI Home LiteLLM instance behind Caddy for virtual keys, semantic
 aliases, and qualified local/cloud routing. Use OpenAI Responses for Codex,
 compatibility Chat Completions only when existing clients require it, and

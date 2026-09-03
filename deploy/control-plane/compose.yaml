@@ -1,0 +1,176 @@
+name: homecompute-control-plane
+
+services:
+  caddy:
+    image: ${CADDY_IMAGE:?Set CADDY_IMAGE to an immutable image digest}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AI_FQDN: ${AI_FQDN:?Set AI_FQDN}
+      CADDY_HTTPS_PORT: "8443"
+    ports:
+      - ${CONTROL_PLANE_BIND_ADDRESS:?Set an explicit IPv4 bind address}:${CONTROL_PLANE_HTTPS_PORT:-443}:8443/tcp
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/caddy-data:/data
+      - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/caddy-config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m
+    depends_on:
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, caddy, validate, --config, /etc/caddy/Caddyfile]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    cpus: 0.50
+    mem_limit: 256m
+    pids_limit: 128
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      edge:
+        ipv4_address: ${CADDY_EDGE_IP:?Set CADDY_EDGE_IP}
+
+  litellm:
+    image: ${LITELLM_IMAGE:?Set LITELLM_IMAGE to an immutable image digest}
+    restart: unless-stopped
+    init: true
+    user: "101:101"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: [/bin/sh, /opt/homecompute/litellm-entrypoint.sh]
+    environment:
+      COMPUTE_OPENAI_BASE_URL: ${COMPUTE_OPENAI_BASE_URL:?Set COMPUTE_OPENAI_BASE_URL}
+      LITELLM_CONFIG: /etc/litellm/config.yaml
+      LITELLM_MIGRATION_DIR: /app/migrations
+      PRISMA_BINARY_CACHE_DIR: /app/cache/prisma-python/binaries
+      XDG_CACHE_HOME: /app/cache
+      LITELLM_NON_ROOT: "true"
+      ENFORCE_PRISMA_MIGRATION_CHECK: "true"
+      DO_NOT_TRACK: "1"
+    expose:
+      - "4000"
+    secrets:
+      - compute_api_key
+      - litellm_master_key
+      - litellm_salt_key
+      - postgres_app_password
+    volumes:
+      - ./litellm-config.yaml:/etc/litellm/config.yaml:ro
+      - ./litellm-entrypoint.sh:/opt/homecompute/litellm-entrypoint.sh:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=101,gid=101,mode=1770
+      - /app/cache:rw,noexec,nosuid,nodev,size=256m,uid=101,gid=101,mode=0770
+      - /app/migrations:rw,noexec,nosuid,nodev,size=128m,uid=101,gid=101,mode=0770
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/liveliness', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    cpus: 4.0
+    mem_limit: 4g
+    pids_limit: 512
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      edge:
+        gw_priority: 1
+        ipv4_address: ${LITELLM_EDGE_IP:?Set LITELLM_EDGE_IP}
+      state: {}
+
+  postgres:
+    image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE to an immutable image digest}
+    restart: unless-stopped
+    init: true
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    command: [postgres, -c, max_connections=50]
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_admin_password
+      TZ: ${TIMEZONE:-Etc/UTC}
+    secrets:
+      - postgres_admin_password
+      - postgres_app_password
+    volumes:
+      - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-litellm-role.sh:ro
+    shm_size: 256mb
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d postgres]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      state: {}
+
+networks:
+  edge:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: 127.0.0.1
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_EDGE_SUBNET:?Set CONTROL_PLANE_EDGE_SUBNET}
+  state:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+
+secrets:
+  compute_api_key:
+    file: ${COMPUTE_API_KEY_FILE:?Set COMPUTE_API_KEY_FILE}
+  litellm_master_key:
+    file: ${LITELLM_MASTER_KEY_FILE:?Set LITELLM_MASTER_KEY_FILE}
+  litellm_salt_key:
+    file: ${LITELLM_SALT_KEY_FILE:?Set LITELLM_SALT_KEY_FILE}
+  postgres_admin_password:
+    file: ${POSTGRES_ADMIN_PASSWORD_FILE:?Set POSTGRES_ADMIN_PASSWORD_FILE}
+  postgres_app_password:
+    file: ${POSTGRES_APP_PASSWORD_FILE:?Set POSTGRES_APP_PASSWORD_FILE}

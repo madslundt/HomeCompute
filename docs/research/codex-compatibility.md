@@ -69,7 +69,7 @@ Machine-local, installed with user confirmation:
 ```toml
 [model_providers.gb10]
 name = "GB10"
-base_url = "https://ai.home/v1"
+base_url = "https://ai.home.arpa/v1"
 env_key = "GB10_AI_API_KEY"
 wire_api = "responses"
 requires_openai_auth = false

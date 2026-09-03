@@ -41,17 +41,19 @@ recovery measurements.
 ## Planned AI services node
 
 The project owner has assigned `ai-services-01` to a GMKtec K15 with 48 GB RAM
-and 1 TB NVMe and selected Proxmox as its provisioning baseline.
-The repository now contains an installation/migration plan, guarded environment
-template, Debian cloud-init baseline, and Proxmox provisioning script. This is
-design evidence only: the K15, its firmware, NIC names, storage, Proxmox
-release, guest VMs, backup target, and live service migrations have not been
+and 1 TB NVMe and selected NixOS 26.05 as its Git-first provisioning baseline.
+This supersedes both the earlier Proxmox/VM design and the later uncommitted
+Ubuntu bootstrap. The repository now contains a pinned NixOS flake, focused
+host modules, integrated Home Manager and sops-nix, an immutable-input template,
+and a restricted Caddy/LiteLLM/PostgreSQL Compose stack whose durable data lives
+below `/srv/state`. This is design evidence only: the K15, firmware, NICs,
+storage, installation, backup target, and live migrations have not been
 observed or qualified.
 
 The target does not invalidate the existing-host inventory. AI Home and other
-live services remain on their current hosts until `ai-services-01` passes hypervisor,
-guest, backup/restore, service-equivalence, and rollback gates documented in
-`ai-services-node-plan.md`.
+live services remain on their current hosts until `ai-services-01` passes host,
+container, backup/restore, service-equivalence, and rollback gates documented
+in `nixos-control-plane-node-plan.md`.
 
 ## Existing AI Home Hub
 
@@ -137,7 +139,7 @@ audio-transcription endpoint. It does **not** currently provide:
 - speaker diarization or speaker-attributed transcript segments;
 - an immutable raw-STT artifact distinct from a cleaned transcript;
 - the complete structured meeting schema proposed in the handoff;
-- a verified `ai.home` gateway account and task aliases.
+- a verified `ai.home.arpa` gateway account and task aliases.
 
 The app has extensive uncommitted work. It is therefore an integration target,
 not a repository to modify from this design project without a separately

@@ -1,8 +1,12 @@
 # HomeCompute setup guide
 
+> **Control-plane update:** ADR-016 selects the Git-first NixOS configuration
+> in this repository for `ai-services-01`. The compute node keeps its supported
+> DGX OS baseline.
+
 **Scope:** build the services-node and compute-node baselines, connect them,
 prepare the gateway and model-qualification work, and optionally pilot Hermes
-on the services node.
+on a separate application host.
 
 This is the main operator path. You can complete the steps below without
 reading the detailed plans. Each stage links to its plan for design rationale,
@@ -12,26 +16,24 @@ edge cases, and full acceptance evidence.
 
 | Name | Type | Responsibility |
 | --- | --- | --- |
-| `ai-services-01` | x86 Proxmox host | Runs the gateway, automation, and toolbox VMs; owns durable state and backups |
-| `ai-gateway-01` | VM 110 | Exposes `https://ai.home`; owns authentication, aliases, routing, and gateway data |
-| `automation-01` | VM 120 | Runs n8n, MCP services, queues, and separately approved agent services |
-| `toolbox-01` | VM 130 | Runs CI, builds, experiments, and restricted tools |
+| `ai-services-01` | x86 NixOS host | Runs the trusted gateway Compose stack; owns gateway state and backups |
+| Gateway Compose project | Containers on `ai-services-01` | Caddy, one LiteLLM worker, and dedicated PostgreSQL |
 | `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Runs rebuildable text, STT, TTS, and later diarization inference |
-| Hermes `owner` pilot | OpenShell sandbox on `automation-01` | Runs the optional personal agent; sends inference through `ai.home` to `ai-compute-01` |
+| Hermes `owner` pilot | OpenShell sandbox on a separate application host | Runs the optional personal agent; sends inference through `ai.home.arpa` to `ai-compute-01` |
 
 The production request path is:
 
 ```text
-clients -> https://ai.home -> ai-gateway-01 -> private link -> ai-compute-01
+clients -> https://ai.home.arpa -> ai-services-01 -> private link -> ai-compute-01
 ```
 
-`automation-01` and `toolbox-01` also use `https://ai.home`. They do not get
+Other approved application hosts use `https://ai.home.arpa`; they do not get
 direct access to compute ports.
 
 ## What this guide does not automate
 
-The scripts do not install Proxmox or DGX OS, edit physical network bridges,
-configure a backup target, deploy the gateway applications, install
+The flake does not partition disks, invent site-specific network addresses or
+SSH keys, create an off-host backup repository, install DGX OS, install
 NemoClaw/Hermes, or migrate live data.
 
 Those operations depend on your network, storage, existing services, and
@@ -42,15 +44,15 @@ before you continue.
 
 1. Record the network, backup, credential, and rollback decisions.
 2. Inventory and back up the services that may later move.
-3. Install Proxmox and the two network bridges on `ai-services-01`.
-4. Configure off-host backup and provision the three empty service VMs.
+3. Install the pinned NixOS configuration on `ai-services-01`.
+4. Deploy the trusted gateway stack, then configure and restore-test off-host backup.
 5. Install and verify supported DGX OS on `ai-compute-01`.
 6. Deploy and smoke-test the first pinned text tuple on loopback.
-7. Connect the private link and restrict compute access to `ai-gateway-01`.
-8. Install the gateway and expose semantic aliases at `https://ai.home`.
+7. Connect the private link and restrict compute access to `ai-services-01`.
+8. Install the gateway and expose semantic aliases at `https://ai.home.arpa`.
 9. Benchmark models by use case and promote only passing tuples.
 10. Migrate automations and other consumers one at a time with rollback.
-11. Optionally pilot one isolated Hermes sandbox on `automation-01`.
+11. Optionally pilot one isolated Hermes sandbox on a separately qualified host.
 
 The rest of this guide expands these steps and provides the commands and
 checkpoints. The detailed plans are optional unless a check fails or you need
@@ -81,7 +83,7 @@ That does not qualify every alias or the 64K personal-agent use case.
 
 Create an operator-owned worksheet outside the repository. Record:
 
-1. LAN addresses for both physical nodes and all three VMs.
+1. LAN/VLAN and private-link addresses for both physical nodes.
 2. LAN gateway, DNS server, search domain, and administrator network.
 3. A private compute subnet with no default gateway.
 4. An off-host backup target, retention, encryption-key owner, and restore site.
@@ -93,7 +95,7 @@ The examples use this private subnet:
 
 | Endpoint | Example address |
 | --- | --- |
-| `ai-gateway-01` private NIC | `10.77.10.2/24` |
+| `ai-services-01` private NIC | `10.77.10.2/24` |
 | `ai-compute-01` private NIC | `10.77.10.10/24` |
 
 Choose different values if these overlap a LAN, VPN, or container network.
@@ -103,7 +105,7 @@ Also prepare:
 - local console access to both physical nodes;
 - a UPS for both nodes;
 - two network ports on each node for the proposed direct-link design;
-- a verified Proxmox installer and Debian 13 cloud-image checksum;
+- a verified NixOS 26.05 installer image and checksum;
 - supported DGX OS and its recovery procedure for the compute appliance;
 - exact container and model revisions plus the required model-registry token.
 
@@ -134,114 +136,54 @@ Details: [platform execution plan](platform-execution-plan.md#step-2--inventory-
 5. Connect the UPS and both network ports.
 6. Confirm local console access before changing networking.
 
-### 2.2 Install Proxmox
+### 2.2 Prepare host-specific inputs
 
-Install the supported Proxmox VE 9 release interactively on the intended disk.
-Verify the installer checksum before writing it.
+Boot the verified NixOS installer and create an EFI filesystem labelled `ESP`
+plus an ext4 root filesystem labelled `nixos`. Mount them below `/mnt`, clone
+this repository, and compare `nixos-generate-config --root /mnt` with the
+committed `hosts/ai-services-01/hardware-configuration.nix`.
 
-During installation:
+Before remote activation:
 
-1. Set the hostname to `ai-services-01.home.arpa`.
-2. Assign a reserved management address, gateway, and DNS.
-3. Set the correct timezone and verify time synchronization.
-4. Keep management on wired Ethernet.
-5. Review the selected disk and storage layout before confirming erasure.
+1. add `mads`' reviewed public SSH key to the host configuration;
+2. replace DHCP with explicit networking only after recording NIC names;
+3. create and back up the host's age identity;
+4. add its public recipient and commit only encrypted sops data;
+5. configure a real off-host Restic repository and test credentials.
 
-After the first boot:
+### 2.3 Validate and install NixOS
 
-1. Select the appropriate official Proxmox repository policy.
-2. Apply updates and reboot when the kernel or microcode changes.
-3. Create a named administrator, enable MFA, and keep root for recovery.
-4. Restrict SSH and the Proxmox UI to the administrator network.
-5. Enable the `Snippets` content type on the `local` storage.
-6. Do not install application services or Docker on the Proxmox host.
-
-### 2.3 Create the two bridges
-
-Create the bridges from the local console or Proxmox UI after confirming the
-physical interface names:
-
-```text
-management NIC -> vmbr0 -> LAN, host management, and VM LAN interfaces
-private NIC    -> vmbr1 -> no host address and no gateway
-```
-
-Only `ai-gateway-01` receives a VM interface on `vmbr1`. Do not guess interface
-names or edit remote networking without console recovery.
-
-### 2.4 Configure recovery first
-
-Configure encrypted backup to a different physical system. A second disk or VM
-inside `ai-services-01` is not an off-host backup.
-
-Monitor SMART/NVMe health and storage capacity. Keep the backup encryption key
-and a sanitized Proxmox configuration copy outside this node.
-
-### 2.5 Prepare the services-node configuration
-
-Copy this repository to the Proxmox host. From the repository root, run:
+Run from the repository checkout:
 
 ```bash
-sudo ./scripts/setup-services-node.sh init
-sudoedit /etc/ai-platform/services-node.env
+nix flake check
+sudo nixos-rebuild build --flake .#ai-services-01
+sudo nixos-install --flake .#ai-services-01
 ```
 
-Replace every `REPLACE_...` value. Check storage names, bridge names, VM IDs,
-VM addresses, gateway, DNS, public-key path, and resource allocations.
-
-Download the Debian cloud image's published checksum using a trusted channel.
-Put the exact 128-character SHA-512 value in `CLOUD_IMAGE_SHA512`.
-
-Leave `START_VMS=false` for the first provisioning run.
-
-### 2.6 Validate and provision the VMs
-
-Run the read-only checks first:
+After reboot, subsequent system and user changes use the same activation:
 
 ```bash
-sudo ./scripts/setup-services-node.sh validate
-sudo ./scripts/setup-services-node.sh preflight
+sudo nixos-rebuild switch --flake .#ai-services-01
+systemctl status home-manager-mads.service
 ```
 
-Resolve every error before continuing. Then run the mutating stages one at a
-time:
+### 2.4 Configure recovery and verify the baseline
 
-```bash
-sudo ./scripts/setup-services-node.sh host-packages
-sudo ./scripts/setup-services-node.sh create-template
-sudo ./scripts/setup-services-node.sh provision
-sudo ./scripts/setup-services-node.sh status
-```
+Enable the guarded sops-nix and Restic modules only after supplying their real
+encrypted and off-host inputs. Confirm:
 
-The script refuses to overwrite an existing template or VM ID. If one already
-exists, inspect it and choose deliberate IDs instead of deleting it blindly.
+- the expected NixOS generation boots and can roll back from the boot menu;
+- SSH accepts only the reviewed key through the declared Tailscale policy;
+- time synchronization, DNS, Docker, Compose, SMART monitoring, and trimming work;
+- `/srv/state/control-plane` exists with the declared ownership and mode;
+- Home Manager applies Bash, Git, tmux, aliases, and CLI tools for `mads`;
+- a backup of `/srv/state` restores on an isolated target.
 
-Inspect every VM before starting it:
+**Checkpoint:** the NixOS services node is stable and recoverable. No production
+state has moved.
 
-```bash
-qm config 110
-qm config 120
-qm config 130
-sudo ./scripts/setup-services-node.sh start
-```
-
-### 2.7 Verify the empty services baseline
-
-Confirm all of the following:
-
-- all three VMs boot and cloud-init completes;
-- the QEMU guest agent reports their addresses;
-- SSH public-key login works and password/root login fails;
-- time synchronization, DNS, package access, Docker, and Compose work;
-- `ai-gateway-01` has LAN and private-compute interfaces;
-- `automation-01` and `toolbox-01` cannot reach the compute subnet directly;
-- the Proxmox host runs no application containers;
-- one empty VM can be backed up and restored in isolation.
-
-**Checkpoint:** the empty services node is stable, isolated, and recoverable.
-No production state has moved.
-
-Details: [services-node plan](ai-services-node-plan.md).
+Details: [NixOS control-plane plan](nixos-control-plane-node-plan.md).
 
 ## Step 3 — Build `ai-compute-01`
 
@@ -341,10 +283,10 @@ Details: [compute-node plan](ai-compute-node-plan.md).
 
 1. Cable the two private interfaces.
 2. Confirm that the private subnet has no gateway or internet route.
-3. Test reachability between `ai-gateway-01` and `ai-compute-01`.
+3. Test reachability between `ai-services-01` and `ai-compute-01`.
 4. Add a compute-node firewall rule allowing only the gateway private address
    to the qualified inference port.
-5. Prove that the LAN, `automation-01`, and `toolbox-01` cannot reach the port.
+5. Prove that ordinary LAN clients cannot reach the compute port directly.
 
 On the compute node, edit the release environment:
 
@@ -355,34 +297,35 @@ FIREWALL_CONFIRMED=true
 ```
 
 Use your worksheet values if they differ. Re-run `validate` and `install`, then
-test health and Responses calls from `ai-gateway-01`.
+test health and Responses calls from `ai-services-01`.
 
 Pull the private cable and verify a clear unavailable response. Private aliases
 must not silently switch to a cloud provider.
 
-**Checkpoint:** only `ai-gateway-01` can reach the compute service.
+**Checkpoint:** only the private interface on `ai-services-01` can reach the compute service.
 
 ## Step 5 — Install the AI gateway
 
-The repository does not yet include a turnkey gateway stack. Build the reviewed
-gateway configuration on `ai-gateway-01` with:
+Use the guarded `deploy/control-plane` stack on `ai-services-01`. It contains
+Caddy, one LiteLLM worker, and a dedicated PostgreSQL database. Redis is absent
+until scaling or an approved cache design requires it. n8n, browsers, agent
+sandboxes, and Home Assistant stay outside this deployment.
 
-- Caddy for TLS and the public `https://ai.home` boundary;
-- LiteLLM for authentication, aliases, routing, and explicit fallback policy;
-- dedicated PostgreSQL and Redis instances for gateway-owned state;
-- separate, revocable keys for each client;
-- pinned images and metadata-only logs;
-- monitoring that excludes prompts, outputs, audio, and credentials.
+Resolve fixed-version image digests in the tracked environment template,
+materialize credentials with sops-nix, and deploy on loopback first. For a LAN
+or Tailscale address, declare and rebuild the exact NixOS firewall policy and
+verify both allowed and denied clients after Compose starts.
 
-Add the private compute endpoint as a backend. Expose only the semantic aliases
-and fixed audio routes; never expose the concrete model or compute address to
-clients.
+Add the private compute endpoint as a TLS backend. Plain HTTP is an explicit
+exception limited to the dedicated non-routed link. Expose only semantic
+aliases; never expose the concrete model, compute address, LiteLLM management
+API, PostgreSQL, or Docker API to clients.
 
 Verify TLS, authentication, streaming, tool calls, cancellation, rate limits,
 logging privacy, backend failure, and rollback. Keep the old gateway available
 until the replacement passes equivalence tests.
 
-**Checkpoint:** approved clients can use `https://ai.home`, and the old gateway
+**Checkpoint:** approved clients can use `https://ai.home.arpa`, and the old gateway
 can still be restored within the agreed window.
 
 Details: [platform plan, Step 6](platform-execution-plan.md#step-6--install-and-qualify-the-ai-gateway).
@@ -427,16 +370,17 @@ observe a soak period, and retain rollback until the exit gate passes.
 
 ## Step 8 — Optionally pilot Hermes
 
-Hermes is an application workload on the K15 services node, not a service on
-the GX10/GB10 compute appliance. Start only after `automation-01`, `ai.home`,
-and the `assistant` inference alias are working.
+Hermes is an application workload on a separately isolated application host,
+not a service on `ai-services-01` or the GX10/GB10 compute appliance. Select
+and qualify that host before the pilot, and start only after `ai.home.arpa` and
+the `assistant` inference alias work.
 
-1. Allocate 16 GB of available RAM to the `automation-01` pilot and verify that
-   concurrent n8n, queue, browser, and database work still has safe headroom.
-2. Install a pinned NemoClaw/OpenShell release on `automation-01` and onboard
+1. Allocate explicit resources and verify that concurrent gateway, n8n, and
+   database work still has safe platform headroom.
+2. Install a pinned NemoClaw/OpenShell release on the application host and onboard
    Hermes using the release-matched NVIDIA instructions.
 3. Give Hermes a dedicated gateway credential and point its inference provider
-   at `https://ai.home`; do not expose a direct GB10 endpoint to the sandbox.
+   at `https://ai.home.arpa`; do not expose a direct GB10 endpoint to the sandbox.
 4. Create one synthetic-data `owner` sandbox with Restricted policy,
    deny-by-default egress, no host bind mounts, and no credentials capable of
    email, calendar, Home Assistant, deletion, or financial actions.
@@ -454,9 +398,9 @@ them in the operator runbook. See the
 [Hermes verification plan](research/hermes-personal-assistant-verification.md),
 and [ADR-013](adr/013-hermes-personal-agent-layer.md).
 
-**Checkpoint:** one recoverable synthetic Hermes sandbox runs on
-`automation-01`, reaches inference only through `ai.home`, and cannot cross its
-declared network, credential, filesystem, or data boundaries.
+**Checkpoint:** one recoverable synthetic Hermes sandbox runs on its
+application host, reaches inference only through `ai.home.arpa`, and cannot
+cross its declared network, credential, filesystem, or data boundaries.
 
 ## Completion checklist
 
