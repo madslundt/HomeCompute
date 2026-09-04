@@ -1,0 +1,570 @@
+--- a/packages/mcp-server/src/tools.ts
++++ b/packages/mcp-server/src/tools.ts
+@@ -24,8 +24,8 @@
+ 
+ /**
+  * Download a CloudFront presigned attachment to a local file and return a
+- * result payload. Shared by aula.messages.get_attachment and
+- * aula.posts.get_attachment — the two differ only in how they arrive at a
++ * result payload. Shared by aula_messages_get_attachment and
++ * aula_posts_get_attachment — the two differ only in how they arrive at a
+  * URL, not in what they do with it.
+  *
+  * Deliberately plain `fetch`, not AulaHttpClient: the signature in the URL
+@@ -171,7 +171,7 @@
+     .filter((a) => a.url);
+ 
+   return {
+-    id: post.id, // needed for aula.posts.get_attachment's postId
++    id: post.id, // needed for aula_posts_get_attachment's postId
+     title: post.title,
+     date: post.publishAt ?? post.timestamp,
+     author: post.ownerProfile?.fullName,
+@@ -198,7 +198,7 @@
+ ] as const;
+ 
+ /**
+- * Subset of aula.presence.set_template's args that has cross-field rules.
++ * Subset of aula_presence_set_template's args that has cross-field rules.
+  * Optional fields spell out `| undefined` so the tool's Zod-inferred args
+  * (which carry explicit `undefined` under `exactOptionalPropertyTypes`)
+  * assign cleanly.
+@@ -213,7 +213,7 @@
+ }
+ 
+ /**
+- * Cross-field checks for aula.presence.set_template — the rules a flat Zod
++ * Cross-field checks for aula_presence_set_template — the rules a flat Zod
+  * schema can't express (a field required only for certain activityTypes).
+  * Returns human-readable problems; an empty array means the args cohere.
+  */
+@@ -243,10 +243,10 @@
+ }
+ 
+ export function registerTools(server: McpServer, context: AulaContext): void {
+-  // --- aula.discover -------------------------------------------------------
++  // --- aula_discover -------------------------------------------------------
+ 
+   server.registerTool(
+-    'aula.discover',
++    'aula_discover',
+     {
+       title: 'Discover Aula context',
+       description:
+@@ -262,10 +262,10 @@
+     },
+   );
+ 
+-  // --- aula.profiles.list --------------------------------------------------
++  // --- aula_profiles_list --------------------------------------------------
+ 
+   server.registerTool(
+-    'aula.profiles.list',
++    'aula_profiles_list',
+     {
+       title: 'List Aula profiles',
+       description: 'Raw profiles.getProfilesByLogin response — every child + institution.',
+@@ -277,10 +277,10 @@
+     },
+   );
+ 
+-  // --- aula.presence.today -------------------------------------------------
++  // --- aula_presence_today -------------------------------------------------
+ 
+   server.registerTool(
+-    'aula.presence.today',
++    'aula_presence_today',
+     {
+       title: 'Daily presence overview',
+       description:
+@@ -290,9 +290,9 @@
+         '6=FRITIDSAKTIVITET, 7=FYSISK_PLACERING, 8=GAAET (picked up/left).',
+       inputSchema: {
+         childIds: z
+-          .array(z.number().int().positive())
++          .array(z.number().int().min(1))
+           .min(1)
+-          .describe('Aula child IDs (from aula.discover.children[].id)'),
++          .describe('Aula child IDs (from aula_discover.children[].id)'),
+       },
+     },
+     async (args) => {
+@@ -301,23 +301,23 @@
+     },
+   );
+ 
+-  // --- aula.presence.templates ---------------------------------------------
++  // --- aula_presence_templates ---------------------------------------------
+ 
+   server.registerTool(
+-    'aula.presence.templates',
++    'aula_presence_templates',
+     {
+       title: 'Komme/gå templates (drop-off & pickup schedule)',
+       description:
+         'Recurring komme/gå (presence) templates for the given children — the drop-off ' +
+         'and pickup times a guardian has registered per day. Pass the same child IDs as ' +
+-        '`aula.presence.today`. `from`/`to` bound the window (YYYY-MM-DD); they default ' +
++        '`aula_presence_today`. `from`/`to` bound the window (YYYY-MM-DD); they default ' +
+         'to the current week. Each returned template carries the `institutionProfile.id` ' +
+-        'that `aula.presence.set_template` needs. Read this before changing a schedule.',
++        'that `aula_presence_set_template` needs. Read this before changing a schedule.',
+       inputSchema: {
+         childIds: z
+-          .array(z.number().int().positive())
++          .array(z.number().int().min(1))
+           .min(1)
+-          .describe('Aula child IDs (from aula.discover.children[].id)'),
++          .describe('Aula child IDs (from aula_discover.children[].id)'),
+         from: ISO_DATE.optional().describe('Window start YYYY-MM-DD. Defaults to this Monday.'),
+         to: ISO_DATE.optional().describe('Window end YYYY-MM-DD. Defaults to this Sunday.'),
+       },
+@@ -335,7 +335,7 @@
+     },
+   );
+ 
+-  // --- aula.presence.set_template (gated, write) ---------------------------
++  // --- aula_presence_set_template (gated, write) ---------------------------
+   //
+   // The first and only tool that *writes* to Aula. Gated behind
+   // AULA_MCP_WRITE=1 so a server stays read-only by default — rescheduling a
+@@ -343,13 +343,13 @@
+ 
+   if (process.env.AULA_MCP_WRITE === '1') {
+     server.registerTool(
+-      'aula.presence.set_template',
++      'aula_presence_set_template',
+       {
+         title: 'Set a komme/gå template (drop-off & pickup time)',
+         description:
+           "Register or overwrite a child's komme/gå template for one day. WRITES to " +
+           'Aula — enabled when AULA_MCP_WRITE=1. Covers one child and one date per call; ' +
+-          'call once per day to fill a week. Read `aula.presence.templates` first to see ' +
++          'call once per day to fill a week. Read `aula_presence_templates` first to see ' +
+           'the current schedule and confirm the child id. `activityType` picks how the ' +
+           'child leaves: picked_up_by ("Hentes af", a named person collects), ' +
+           'self_decider ("Selvbestemmer", may leave alone between two times), ' +
+@@ -360,10 +360,10 @@
+           institutionProfileId: z
+             .number()
+             .int()
+-            .positive()
++            .min(1)
+             .describe(
+-              'Child institution-profile id — the same id passed to aula.presence.today ' +
+-                'as childIds, and the institutionProfile.id from aula.presence.templates.',
++              'Child institution-profile id — the same id passed to aula_presence_today ' +
++                'as childIds, and the institutionProfile.id from aula_presence_templates.',
+             ),
+           date: ISO_DATE.describe(
+             'Day the template applies to (YYYY-MM-DD). With repeat set, this is the ' +
+@@ -429,7 +429,7 @@
+       },
+     );
+ 
+-    // --- aula.presence.report_sick (gated, write) --------------------------
++    // --- aula_presence_report_sick (gated, write) --------------------------
+     //
+     // Same gate, and for the same reason: telling a daycare a child is ill is
+     // not something an agent should be able to do unasked.
+@@ -439,22 +439,22 @@
+     // status.
+ 
+     server.registerTool(
+-      'aula.presence.report_sick',
++      'aula_presence_report_sick',
+       {
+         title: 'Report a child sick (or well again)',
+         description:
+           'Mark a child as sick for today, or take the report back. WRITES to Aula — ' +
+           'enabled when AULA_MCP_WRITE=1. The institution is notified. Applies to today; ' +
+-          'Aula has no future-dated sick report — use aula.presence.set_template or a ' +
++          'Aula has no future-dated sick report — use aula_presence_set_template or a ' +
+           'vacation registration for a planned absence. An institution can withhold this ' +
+           'from guardians, in which case Aula rejects the call.',
+         inputSchema: {
+           institutionProfileIds: z
+-            .array(z.number().int().positive())
++            .array(z.number().int().min(1))
+             .min(1)
+             .describe(
+-              'Child institution-profile ids — the same ids passed to aula.presence.today ' +
+-                'as childIds, i.e. aula.discover children[].id. Must belong to the ' +
++              'Child institution-profile ids — the same ids passed to aula_presence_today ' +
++                'as childIds, i.e. aula_discover children[].id. Must belong to the ' +
+                 'logged-in guardian; anything else is rejected. Confirm the child with ' +
+                 'the user before calling.',
+             ),
+@@ -491,7 +491,7 @@
+             error: 'unknown_child',
+             message:
+               'Refusing to write: these institution-profile ids are not children of the ' +
+-              'logged-in guardian. Call aula.discover and use children[].id.',
++              'logged-in guardian. Call aula_discover and use children[].id.',
+             unknownIds,
+             knownChildren: [...ownChildren].map(([id, name]) => ({ id, name })),
+           });
+@@ -520,7 +520,7 @@
+               message:
+                 'Refusing to write: taking a sick report back sets the child to ' +
+                 '"ikke kommet" (0), so it is only safe for a child Aula currently reports ' +
+-                'as sick. These are not. Use aula.presence.today to see the current status.',
++                'as sick. These are not. Use aula_presence_today to see the current status.',
+               children: notSick.map((id) => ({
+                 id,
+                 name: ownChildren.get(id),
+@@ -538,20 +538,20 @@
+       },
+     );
+ 
+-    // --- aula.messages.mark_read (gated, write) ----------------------------
++    // --- aula_messages_mark_read (gated, write) ----------------------------
+     //
+     // Lives here rather than next to the other aula.messages.* tools so every
+     // write stays behind the one AULA_MCP_WRITE gate. Aula has no "mark as
+     // read" verb; see AulaClient.setLastReadMessage for what actually happens.
+ 
+     server.registerTool(
+-      'aula.messages.mark_read',
++      'aula_messages_mark_read',
+       {
+         title: 'Mark a message thread as read',
+         description:
+           'Move the read marker in a thread to its newest message, clearing the unread ' +
+           'badge. WRITES to Aula — enabled when AULA_MCP_WRITE=1. Pass `messageId` from ' +
+-          '`aula.messages.list_threads` (thread.latestMessage.id); omit it to mark the ' +
++          '`aula_messages_list_threads` (thread.latestMessage.id); omit it to mark the ' +
+           'thread read up to whatever its newest message is right now. Marking read is ' +
+           'not reversible through this API — Aula offers no way to set a thread back to ' +
+           'unread, so only call this for threads the user has actually seen.',
+@@ -559,8 +559,8 @@
+           threadId: z
+             .number()
+             .int()
+-            .positive()
+-            .describe('Thread id from aula.messages.list_threads.'),
++            .min(1)
++            .describe('Thread id from aula_messages_list_threads.'),
+           messageId: z
+             .string()
+             .min(1)
+@@ -574,7 +574,7 @@
+       async (args) => {
+         const client = await context.getClient();
+         // Messaging endpoints 403 until the guardian profile is activated
+-        // server-side — same priming as aula.messages.get_thread.
++        // server-side — same priming as aula_messages_get_thread.
+         await context.getGuardianUserId();
+ 
+         let messageId = args.messageId;
+@@ -602,7 +602,7 @@
+               message:
+                 `Thread ${args.threadId} was not found in the first ${pagesRead} pages ` +
+                 `(~${pagesRead * 20} threads), or carries no latestMessage.id. Pass ` +
+-                'messageId explicitly — aula.messages.list_threads returns it as ' +
++                'messageId explicitly — aula_messages_list_threads returns it as ' +
+                 'thread.latestMessage.id.',
+             });
+           }
+@@ -615,30 +615,30 @@
+     );
+   }
+ 
+-  // --- aula.calendar.events ------------------------------------------------
++  // --- aula_calendar_events ------------------------------------------------
+ 
+   server.registerTool(
+-    'aula.calendar.events',
++    'aula_calendar_events',
+     {
+       title: 'Calendar events (school schedule)',
+       description:
+         'Lessons + events for the given child institution-profile IDs. ' +
+-        'Call aula.discover first and pass children[].id as profileIds. ' +
++        'Call aula_discover first and pass children[].id as profileIds. ' +
+         'Pass `range` for a preset window (today/tomorrow/this_week/next_week) ' +
+         'OR `start`+`end` for a specific window. Timestamps are formatted as Aula ' +
+         'expects: "YYYY-MM-DD HH:MM:SS.0000+ZZZZ". Aula uses Europe/Copenhagen.',
+       inputSchema: {
+         profileIds: z
+-          .array(z.number().int().positive())
++          .array(z.number().int().min(1))
+           .min(1)
+           .describe(
+-            'Child institution-profile IDs from aula.discover children[].id. ' +
++            'Child institution-profile IDs from aula_discover children[].id. ' +
+               'Do not use children[].userId.',
+           ),
+         range: z.enum(['today', 'tomorrow', 'this_week', 'next_week']).optional(),
+         start: z.string().min(1).optional(),
+         end: z.string().min(1).optional(),
+-        resourceIds: z.array(z.number().int().positive()).optional(),
++        resourceIds: z.array(z.number().int().min(1)).optional(),
+       },
+     },
+     async (args) => {
+@@ -663,10 +663,10 @@
+     },
+   );
+ 
+-  // --- aula.notifications.list ---------------------------------------------
++  // --- aula_notifications_list ---------------------------------------------
+ 
+   server.registerTool(
+-    'aula.notifications.list',
++    'aula_notifications_list',
+     {
+       title: 'Aula notifications',
+       description: 'Unread items + activity for the active guardian profile.',
+@@ -674,17 +674,17 @@
+     },
+     async () => {
+       const client = await context.getClient();
+-      // See aula.messages.get_thread below — guardian profile must be
++      // See aula_messages_get_thread below — guardian profile must be
+       // primed or Aula's `*ForActiveProfile` endpoints 403.
+       await context.getGuardianUserId();
+       return jsonContent(await client.getNotifications());
+     },
+   );
+ 
+-  // --- aula.posts.list -----------------------------------------------------
++  // --- aula_posts_list -----------------------------------------------------
+ 
+   server.registerTool(
+-    'aula.posts.list',
++    'aula_posts_list',
+     {
+       title: 'Aula posts (class news feed)',
+       description:
+@@ -733,11 +733,11 @@
+     },
+   );
+ 
+-  // --- aula.raw_request (gated) --------------------------------------------
++  // --- aula_raw_request (gated) --------------------------------------------
+ 
+   if (process.env.AULA_MCP_RAW === '1') {
+     server.registerTool(
+-      'aula.raw_request',
++      'aula_raw_request',
+       {
+         title: 'Raw Aula API call (escape hatch)',
+         description:
+@@ -757,10 +757,10 @@
+     );
+   }
+ 
+-  // --- aula.messages.list_threads ------------------------------------------
++  // --- aula_messages_list_threads ------------------------------------------
+ 
+   server.registerTool(
+-    'aula.messages.list_threads',
++    'aula_messages_list_threads',
+     {
+       title: 'List Aula message threads',
+       description:
+@@ -783,7 +783,7 @@
+     },
+     async (args) => {
+       const client = await context.getClient();
+-      // See aula.messages.get_thread below — messaging endpoints 403
++      // See aula_messages_get_thread below — messaging endpoints 403
+       // until the guardian profile is activated server-side.
+       await context.getGuardianUserId();
+       const page = await client.getThreadsPage({
+@@ -801,7 +801,7 @@
+   // school uses; long term, plumb this into discover).
+ 
+   const integrationContextShape = {
+-    childIds: z.array(z.number().int().positive()).min(1),
++    childIds: z.array(z.number().int().min(1)).min(1),
+     institutionCodes: z.array(z.string().min(1)).min(1),
+     isoWeek: z
+       .string()
+@@ -851,7 +851,7 @@
+   }
+ 
+   server.registerTool(
+-    'aula.ugeplan.easyiq',
++    'aula_ugeplan_easyiq',
+     {
+       title: 'EasyIQ weekly plan',
+       description:
+@@ -865,7 +865,7 @@
+   );
+ 
+   server.registerTool(
+-    'aula.ugeplan.meebook',
++    'aula_ugeplan_meebook',
+     {
+       title: 'Meebook weekly plan',
+       description:
+@@ -879,12 +879,12 @@
+   );
+ 
+   server.registerTool(
+-    'aula.ugeplan.easyiq_skoleportal',
++    'aula_ugeplan_easyiq_skoleportal',
+     {
+       title: 'EasyIQ SkolePortal weekly plan',
+       description:
+         'Weekly plan from EasyIQ SkolePortal (widget 0128) — a different EasyIQ product than ' +
+-        '`aula.ugeplan.easyiq` (widget 0001). Use when discover.detectedWidgets contains "0128".',
++        '`aula_ugeplan_easyiq` (widget 0001). Use when discover.detectedWidgets contains "0128".',
+       inputSchema: integrationContextShape,
+     },
+     async (args) => {
+@@ -894,12 +894,12 @@
+   );
+ 
+   server.registerTool(
+-    'aula.lektier.easyiq',
++    'aula_lektier_easyiq',
+     {
+       title: 'EasyIQ Lektier (homework)',
+       description:
+         'Homework items from EasyIQ Lektier (widget 0142) — same vendor as ' +
+-        '`aula.ugeplan.easyiq_skoleportal` but a separate "Lektier" product. ' +
++        '`aula_ugeplan_easyiq_skoleportal` but a separate "Lektier" product. ' +
+         'Use when discover.detectedWidgets contains "0142".',
+       inputSchema: integrationContextShape,
+     },
+@@ -910,7 +910,7 @@
+   );
+ 
+   server.registerTool(
+-    'aula.opgaver.minuddannelse',
++    'aula_opgaver_minuddannelse',
+     {
+       title: 'Min Uddannelse opgaveliste',
+       description: 'Homework / task list from Min Uddannelse for the given children.',
+@@ -923,7 +923,7 @@
+   );
+ 
+   server.registerTool(
+-    'aula.ugebrev.minuddannelse',
++    'aula_ugebrev_minuddannelse',
+     {
+       title: 'Min Uddannelse ugebrev',
+       description: 'Weekly newsletter (ugebrev) from Min Uddannelse.',
+@@ -936,7 +936,7 @@
+   );
+ 
+   server.registerTool(
+-    'aula.huskelisten.systematic',
++    'aula_huskelisten_systematic',
+     {
+       title: 'Systematic Huskelisten reminders',
+       description:
+@@ -966,10 +966,10 @@
+     },
+   );
+ 
+-  // --- aula.messages.get_thread --------------------------------------------
++  // --- aula_messages_get_thread --------------------------------------------
+ 
+   server.registerTool(
+-    'aula.messages.get_thread',
++    'aula_messages_get_thread',
+     {
+       title: 'Read a single thread',
+       description:
+@@ -977,7 +977,7 @@
+         'this tool returns an error code that means the user must MitID step-up to read it ' +
+         '(currently a fresh `aula login` from the CLI).',
+       inputSchema: {
+-        threadId: z.number().int().positive(),
++        threadId: z.number().int().min(1),
+         page: z.number().int().min(0).default(0).optional(),
+       },
+     },
+@@ -986,7 +986,7 @@
+       // Prime the guardian profile before fetching. Aula's
+       // messaging.getMessagesForThread returns HTTP 403 if the
+       // guardian profile hasn't been activated on the server side
+-      // this session, even with a fully step-up'd bearer. aula.discover
++      // this session, even with a fully step-up'd bearer. aula_discover
+       // implicitly primes via getGuardianUserId() — but if the agent
+       // calls get_thread directly (cached threadId from a prior turn,
+       // skipping discover), no priming has happened. getGuardianUserId
+@@ -1011,7 +1011,7 @@
+     },
+   );
+ 
+-  // --- aula.messages.get_attachment ----------------------------------------
++  // --- aula_messages_get_attachment ----------------------------------------
+   //
+   // Download a message attachment server-side and return a local file path.
+   // Necessary because Aula attachment URLs are CloudFront presigned links
+@@ -1022,7 +1022,7 @@
+   // URL out of the model's emit path entirely.
+ 
+   server.registerTool(
+-    'aula.messages.get_attachment',
++    'aula_messages_get_attachment',
+     {
+       title: 'Download a thread attachment to local disk',
+       description:
+@@ -1033,9 +1033,9 @@
+         'echoing into tool calls (MalformedSignature / AccessDenied 403). ' +
+         '`attachmentIndex` is zero-based across all attachments in the ' +
+         'thread, flattened message-by-message in the order returned by ' +
+-        '`aula.messages.get_thread`.',
++        '`aula_messages_get_thread`.',
+       inputSchema: {
+-        threadId: z.number().int().positive(),
++        threadId: z.number().int().min(1),
+         attachmentIndex: z.number().int().min(0),
+       },
+     },
+@@ -1065,20 +1065,20 @@
+     },
+   );
+ 
+-  // --- aula.posts.get_attachment -------------------------------------------
++  // --- aula_posts_get_attachment -------------------------------------------
+   //
+-  // Same rationale as aula.messages.get_attachment above: keep the presigned
++  // Same rationale as aula_messages_get_attachment above: keep the presigned
+   // URL out of the model's emit path. Posts differ only in that the caller
+-  // already holds the URL, from the attachments array in aula.posts.list.
++  // already holds the URL, from the attachments array in aula_posts_list.
+ 
+   server.registerTool(
+-    'aula.posts.get_attachment',
++    'aula_posts_get_attachment',
+     {
+       title: 'Download a post attachment to local disk',
+       description:
+         'Download an attachment from a news feed post and write it to a local ' +
+         'temporary file, returning the path. Pass `url` and `name` exactly as ' +
+-        'they appear in the attachments array from `aula.posts.list` — the ' +
++        'they appear in the attachments array from `aula_posts_list` — the ' +
+         'CloudFront signature is part of the URL, so altering a single ' +
+         'character produces a MalformedSignature 403.',
+       inputSchema: {
+@@ -1098,7 +1098,7 @@
+     },
+   );
+ 
+-  // --- aula.utils.extract_pdf_text ------------------------------------------
++  // --- aula_utils_extract_pdf_text ------------------------------------------
+   //
+   // Aula sends a lot of what parents actually need as PDF attachments —
+   // menus, packing lists, trip letters — so downloading one is only half the
+@@ -1106,12 +1106,12 @@
+   // user never opens a PDF should not pay for that at boot.
+ 
+   server.registerTool(
+-    'aula.utils.extract_pdf_text',
++    'aula_utils_extract_pdf_text',
+     {
+       title: 'Extract text from a local PDF file',
+       description:
+         'Read a PDF from a local absolute path — typically one returned by ' +
+-        'aula.posts.get_attachment or aula.messages.get_attachment — and ' +
++        'aula_posts_get_attachment or aula_messages_get_attachment — and ' +
+         'return its text so it can be read or summarised.',
+       inputSchema: {
+         path: z.string().describe('Absolute local path to the PDF.'),

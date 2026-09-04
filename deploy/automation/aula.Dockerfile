@@ -7,6 +7,9 @@ WORKDIR /app
 RUN git init . && git remote add origin https://github.com/Casperjuel/aula-mcp.git \
     && git fetch --depth 1 origin af49805ae9c6d7c9026f6e559f2e01ca209c9e46 \
     && git checkout --detach FETCH_HEAD && rm -rf .git
+COPY aula-n8n.patch /tmp/aula-n8n.patch
+RUN git apply --check /tmp/aula-n8n.patch \
+    && git apply /tmp/aula-n8n.patch
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate \
     && pnpm install --frozen-lockfile
 

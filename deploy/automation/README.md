@@ -91,6 +91,12 @@ at commit `af49805ae9c6d7c9026f6e559f2e01ca209c9e46`. The local Dockerfile
 builds frozen upstream dependencies using Node and runs the server with Bun;
 both base images are pinned by digest. `scripts/deploy-home-core.sh` builds
 this image during deployment. Aula is absent from the isolated restore stack.
+The local `aula-n8n.patch` changes MCP tool-name dots to underscores because
+OpenAI accepts only letters, digits, underscores, and hyphens in function
+names. It also expresses positive integer IDs as `minimum: 1` instead of
+`exclusiveMinimum: 0`, which is equivalent for integer IDs and compatible with
+Gemini's function-schema subset. Reapply and review this patch whenever the
+upstream commit changes; the image build fails if it no longer applies cleanly.
 
 Deployed on home-core on 2026-09-04 from the modified checkout at
 `/home/mads/HomeCompute`, with NixOS build/test/switch completed. The container
