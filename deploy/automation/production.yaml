@@ -12,6 +12,51 @@ services:
       - "192.168.30.122:15678:5678"
       - "100.110.248.102:15678:5678"
 
+  aula-mcp:
+    image: homecompute/aula-mcp:af49805ae9c6d7c9026f6e559f2e01ca209c9e46
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: aula.Dockerfile
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      TZ: Europe/Copenhagen
+      AULA_MCP_DIR: /data
+      # Non-loopback inside the container only; the host publication is local.
+      AULA_MCP_HOST: 0.0.0.0
+      AULA_MCP_ALLOW_REMOTE: "1"
+      AULA_MCP_PORT: "7878"
+      AULA_MCP_WRITE: "0"
+      AULA_MCP_RAW: "0"
+      AULA_MCP_LOG: "0"
+    volumes:
+      - ${AULA_MCP_STATE_ROOT:?Set AULA_MCP_STATE_ROOT}:/data
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=1770
+    ports:
+      - "127.0.0.1:17878:7878"
+    networks:
+      migration:
+        ipv4_address: 172.28.201.3
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, bun, -e, "fetch('http://127.0.0.1:7878/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
 networks:
   migration:
     internal: false

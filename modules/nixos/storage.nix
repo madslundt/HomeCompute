@@ -12,5 +12,6 @@
     "d /srv/state/control-plane/backups 0700 root root - -"
     "d /srv/state/automation 0750 root homecompute-state - -"
     "d /srv/state/automation/n8n 0700 1000 1000 - -"
+    "d /srv/state/automation/aula-mcp 0700 1000 1000 - -"
   ];
 }

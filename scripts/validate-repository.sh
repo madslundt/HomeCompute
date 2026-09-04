@@ -175,6 +175,7 @@ jq -e '
   (.services.n8n.cap_drop | index("ALL") != null) and
   (.services.n8n.security_opt | index("no-new-privileges:true") != null) and
   (.services.n8n.ports == null) and
+  (.services["aula-mcp"] == null) and
   (.services.n8n.mem_limit != null) and
   (.services.n8n.cpus != null) and
   (.networks.migration.internal == true)
@@ -188,6 +189,21 @@ jq -e '
   (.networks.migration.internal != true) and
   (.networks.migration.enable_ipv6 == false) and
   (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n")
+' "$automation_json" >/dev/null
+jq -e '
+  .services["aula-mcp"] |
+  (.ports | length == 1) and
+  (.ports[0].host_ip == "127.0.0.1" and .ports[0].target == 7878) and
+  (.networks.migration.ipv4_address == "172.28.201.3") and
+  (.networks | keys == ["migration"]) and
+  (.user == "1000:1000" and .read_only == true) and
+  (.cap_drop | index("ALL") != null) and
+  (.security_opt | index("no-new-privileges:true") != null) and
+  (.environment.AULA_MCP_WRITE == "0" and .environment.AULA_MCP_RAW == "0") and
+  (.environment.AULA_MCP_INGRESS_PORT == null) and
+  (.volumes | length == 1) and
+  (.volumes[0].source == "/srv/state/automation/aula-mcp" and .volumes[0].target == "/data") and
+  (.mem_limit > 0 and .cpus > 0 and .pids_limit > 0)
 ' "$automation_json" >/dev/null
 # Books remains staged until source data and cutover are reviewed. Validate its
 # own private bindings, resource limits, and image pins before accepting it.

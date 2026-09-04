@@ -38,7 +38,8 @@ automation=(docker compose --env-file /etc/homecompute/automation.env -f "$relea
 "${gateway[@]}" config --quiet
 "${automation[@]}" config --quiet
 "${gateway[@]}" pull
-"${automation[@]}" pull
+"${automation[@]}" pull n8n
+"${automation[@]}" build aula-mcp
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
 if [[ -L /srv/homecompute/current ]]; then
