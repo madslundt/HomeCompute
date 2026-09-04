@@ -1,6 +1,6 @@
 # LLM installation recommendation
 
-Verified: 2026-09-04
+Verified: 2026-09-05
 
 Status: staged recommendation from current publisher evidence and reproducible
 DGX Spark owner tests. No production winner exists before measurement on the
@@ -22,14 +22,15 @@ specific unresolved question:
 
 | Conditional candidate | Test only when | Disposition |
 | --- | --- | --- |
-| `ornith-ai/Ornith-1.5-35B-A3B` | Qwen3.8 leaves a measured coding/agent gap | Targeted coding A/B. Publisher benchmarks are promising, but owner reports are mixed and there is no publisher/NVIDIA one-Spark quantized recipe. |
+| `ornith-ai/Ornith-1.5-35B-A3B-GGUF` at Q8_0 or Q6_K | Qwen3.8 leaves a measured coding/agent gap | Targeted coding A/B. The publisher now supplies Q8_0 (37.8 GB), Q6_K (29.2 GB), and smaller GGUF artifacts. There is still no exact one-Spark recipe or quant-specific quality result, so qualify the chosen artifact and runtime rather than assuming the BF16 results transfer. |
 | `nvidia/Muse-Glimmer-30B-NVFP4` | A dense, multimodal, or alternative agent control is still needed | Publisher-supported Spark control; retain only if it adds a role not covered by Qwen3.8 or Nemotron. |
 | `nvidia/Gemma-4-31B-IT-NVFP4` | The mandatory wave misses Danish/multilingual fixtures | Multilingual knowledge and dense-behavior control only. |
 | `Qwen/Qwen3-Coder-Next-FP8` | A coding-specialized control remains valuable after Qwen3.8 and Ornith | Optional; its 80 GB-class artifact and four-GPU publisher serving example make it less attractive for initial Spark work. |
 | `openai/gpt-oss-120b` | A one-time Harmony/MXFP4 protocol comparison is explicitly desired | Optional one-time control; do not retain in the normal install queue. |
 
 The evidence and direct links are in the
-[current shortlist refresh](text-model-shortlist-refresh-2026-09-04.md) and the
+[current GB10 recommendation](gb10-best-models-2026-09-05.md), the
+[shortlist refresh](text-model-shortlist-refresh-2026-09-04.md), and the
 [GPT-OSS replacement assessment](gpt-oss-replacement-assessment.md).
 
 ## Remove or defer
@@ -83,6 +84,27 @@ runtime and containers, model weights, KV cache, CUDA workspaces, STT/TTS,
 telemetry, page-cache effects, and at least 10% production memory headroom under
 mixed load. Prefer one shared qualified text model and add a resident smaller
 `home` process only if measurement requires it.
+
+### Installed does not mean resident
+
+All qualified artifacts may be stored on the SSD, subject to the repository's
+disk quotas. Do not configure all of them as simultaneously loaded production
+services on one GB10.
+
+| Resident set | Default disposition | Reason |
+| --- | --- | --- |
+| Qwen3.8-27B FP8 plus small STT/TTS/diarization services | **Target production shape; benchmark required** | One shared 30.9 GB text model leaves a plausible budget for caches, audio services, the OS, and the required headroom. GPU contention can still break the voice latency gates. |
+| Qwen3.8 plus a small dedicated `home` model | **Conditional** | Consider only if the shared model misses home latency and the second process passes the complete mixed-load and memory test. |
+| Qwen3.8 plus Qwen3 Embedding/Reranker | **Prefer scheduled or on-demand loading first** | The quality-first 8B embedding plus 4B reranker pair adds roughly 24 GB of BF16 parameter storage before runtime and batching. Ingestion is naturally schedulable. |
+| Qwen3.8 plus Nemotron plus Ornith | **Do not use as the default resident set** | Their selected weights alone are roughly 82--90 GB before the Nemotron draft, KV caches, runtime workspaces, audio, OS/display, and recovery headroom. Separate servers would also contend for the same GPU and 273 GB/s memory bandwidth. |
+| Qwen3-Coder-Next FP8 or another 80 GB-class model plus the shared stack | **Serialized experiment only** | Weight fit leaves too little predictable production capacity for the repository's long-context, audio, and failure-recovery requirements. |
+
+The gateway aliases may still expose several roles at once: `coding`,
+`automation`, `research`, `meeting`, and `assistant` can all route to one loaded
+Qwen3.8 instance. A route is not a separately resident model. Swap Nemotron,
+Ornith, Gemma, and other challengers into controlled benchmark or scheduled
+windows. Model unload/reload time is operational downtime for that route, so
+record it and let the gateway queue or reject work explicitly during a swap.
 
 Disk planning allows 500 GB for qualified active models and voices, 120 GB for
 staging/download cache, and 100 GB of emergency free space. Download candidates

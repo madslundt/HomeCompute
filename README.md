@@ -56,7 +56,7 @@ shared text candidate, then compares specialists and controls one at a time.
 | Ornith 1.5 35B A3B | Conditional coding/agent challenger, tested only if Qwen3.8 leaves a measured gap |
 | NVIDIA Muse Glimmer 30B NVFP4 | Conditional dense, agent, and multimodal control |
 | Gemma 4 31B NVFP4 | Conditional Danish/multilingual control |
-| Danish Parakeet and Whisper large-v3 variants | Speech-to-text candidates for home and meeting audio |
+| Røst/Hviske Danish ASR, Danish Parakeet, and Whisper variants | Speech-to-text quality, latency, and integration candidates for home and meeting audio |
 | Piper Danish and Røst | Danish text-to-speech reliability and naturalness candidates |
 | Qwen3 Embedding and Reranker | Deferred private retrieval candidates, added only with a real corpus |
 

@@ -1,6 +1,6 @@
 # Danish text-to-speech recommendation
 
-Verified: 2026-08-25
+Verified: 2026-09-05
 
 Status: install shortlist and promotion gate
 
@@ -65,7 +65,7 @@ the user's actual Home Assistant text correctly.
 - CoRal's inference fork adds Danish-aware number normalization, sentence
   splitting, cached speaker conditioning, sentence-level streaming, and a CUDA
   graph fast path claimed to make the T3 decode stage about twice as fast.
-  However, the fork was archived on 2026-07-03. It explicitly targets a single
+  However, the fork was archived on 2026-09-03. It explicitly targets a single
   caller/single worker, pins PyTorch and torchaudio 2.7.1 for CUDA 12.8, and
   supplies no Home Assistant/Wyoming service.
 - Røst streaming is sentence-level, so first audio arrives only after the first

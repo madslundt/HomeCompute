@@ -1,6 +1,6 @@
 # Model-role trade-off matrix
 
-Verified: 2026-09-04
+Verified: 2026-09-05
 
 Status: scorecard and switch-rule reference. Candidate dispositions in the
 dated role detail are superseded by the
@@ -32,11 +32,11 @@ The provisional selections are:
 | Codex `coding` | Qwen3.8-27B quality candidate after Qwen3.6 integration | Open against Nemotron performance; Ornith is conditional on a measured gap |
 | Hermes `assistant` | Qwen3.8 after Qwen3.6 integration, in a 64K-or-greater profile | Acceptance at 64K and mixed load is unresolved |
 | Serialized high-capacity reasoning | No mandatory separate model | GPT-OSS-120B is only an explicit one-time Harmony/MXFP4 control |
-| Home STT | Whisper large-v3-turbo operationally; Danish Parakeet as the likely promotion candidate after an adapter exists | Open on real far-field, code-switched speech, and end-to-end integration |
-| Meeting STT | Whisper large-v3-turbo first, large-v3 as the accuracy ceiling | Genuinely open; the home and meeting winners may differ |
+| Home STT | Whisper large-v3-turbo operationally; Hviske v5 tiny and Danish Parakeet as adapter-dependent latency challengers | Open on real far-field, entity, code-switched speech, licensing, and end-to-end integration |
+| Meeting STT | Røst v3 Whisper 1.5B first for Danish accuracy; Hviske v5.3 for personal conversational use; Whisper Turbo as the integration/multilingual control | The common Danish benchmark favors Røst/Hviske, but the home and meeting winners may differ and Hviske is noncommercial |
 | Danish TTS | Piper operational baseline; Røst 350M promotion candidate | Genuinely open on pronunciation, naturalness, integration, and latency |
 | Diarization | `pyannote/speaker-diarization-community-1` for recorded meetings | NVIDIA Streaming Sortformer is a distinct conditional live/low-latency challenger; numerical acceptance thresholds are still missing |
-| Embeddings/reranking | Qwen3 0.6B pair, deferred until a real corpus exists | Open against 4B only if the small pair misses a pre-registered retrieval gate |
+| Embeddings/reranking | Deferred until a real corpus; Qwen3 0.6B pair as efficiency baseline and 8B embedding plus 4B reranker as quality-first candidate | Danish/private retrieval quality and resident-memory cost remain open |
 
 ## Two rules that apply to every text candidate
 
@@ -128,7 +128,7 @@ pass for lower latency.
 | --- | --- | --- | --- |
 | **Must-run quality candidate** | `Qwen/Qwen3.8-27B-FP8` | Current dense Qwen with strong coding/agent publisher evidence and positive owner structured-output tests. | Requires a recent pinned runtime and exact local Responses/tool qualification. [Qwen FP8 card](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) |
 | **Must-run agent/performance challenger** | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` target-only, native MTP, and target+DSpark | Exact GB10 command and 967M DSpark draft; 30B/3B active; NVIDIA reports agent/coding evaluations; DSpark directly tests lower interactive latency. | Three tuples increase test cost. The target uses W4A16/Marlin on GB10; OpenMDW-1.1 needs approval; its supported natural-language list omits Danish. DSpark is speculative decoding, not another model or FP4 format. [target](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4), [draft](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark) |
-| **Conditional coding challenger** | `ornith-ai/Ornith-1.5-35B-A3B` | Strong publisher coding/agent results. | No official Spark quantization and conflicting real-codebase reports. Run only if Qwen3.8 leaves a gap. |
+| **Conditional coding challenger** | `ornith-ai/Ornith-1.5-35B-A3B-GGUF` at Q8_0 or Q6_K | Strong publisher coding/agent results; publisher-hosted Q8_0 is 37.8 GB and Q6_K is 29.2 GB. | No exact Spark recipe or quant-specific quality result, plus conflicting real-codebase reports. Run only if Qwen3.8 leaves a gap. [publisher GGUF](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF) |
 | **Optional specialist control** | `Qwen/Qwen3-Coder-Next-FP8` | Purpose-built for coding agents and long-horizon tool use. | Roughly 80 GB, no exact Spark recipe, and displayed publisher results used BF16. |
 
 **Why Qwen3.8 goes first for quality.** It is substantially smaller than
@@ -184,18 +184,18 @@ accurate meeting engine.
 
 | Tier | Candidate | Pros | Cons and risks |
 | --- | --- | --- | --- |
-| **Must-run; Danish promotion candidate** | `nvidia/parakeet-rnnt-110m-da-dk` | Danish-specific 110M FastConformer/RNN-T; NVIDIA reports 8.8–10.7% WER on three Danish evaluation sets; Blackwell compatibility; small enough for a strong latency hypothesis. | Danish only, so mixed Danish/English and meeting punctuation may lose; no stable `/v1/audio/transcriptions` or Wyoming contract is supplied by the model card; the card says it is not yet supported by Riva. Home Assistant's maintained Whisper app supports a different Parakeet identity (`nvidia/parakeet-tdt-0.6b-v3`), not this Danish RNNT, so this model needs a maintained adapter. [NVIDIA card](https://huggingface.co/nvidia/parakeet-rnnt-110m-da-dk), [Home Assistant Whisper app](https://github.com/home-assistant/addons/tree/master/whisper) |
-| **Must-run; provisional operational and meeting recommendation** | `openai/whisper-large-v3-turbo` | Multilingual transcription and timestamps; four decoder layers make it much faster than large-v3; Danish is in the declared language set; the maintained Home Assistant app exposes Turbo through Wyoming. | Publisher describes a minor quality loss from pruning large-v3's decoder from 32 to 4 layers; aggregate multilingual support does not prove Danish household or Plaud WER. [OpenAI card](https://huggingface.co/openai/whisper-large-v3-turbo), [Home Assistant Whisper app](https://github.com/home-assistant/addons/tree/master/whisper) |
-| **Must-run accuracy ceiling** | `openai/whisper-large-v3` | Full 32-decoder-layer reference for multilingual meeting accuracy and long-form comparison. | Slower and more resource-intensive; may fail p95 RTF/mixed-load gates even if WER is best. [OpenAI card](https://huggingface.co/openai/whisper-large-v3) |
+| **Must-run; Danish meeting-quality candidate** | `CoRal-project/roest-v3-whisper-1.5b` | Danish-specific Whisper fine-tune; 13.92% mean WER and 21.08% CoRal conversation WER in the common Danish benchmark, materially ahead of stock Whisper. | Custom OpenRAIL-derived terms; no maintained Wyoming service; Plaud, timestamp, code-switch, ARM64, and GB10 tests remain. [model card](https://huggingface.co/CoRal-project/roest-v3-whisper-1.5b), [common benchmark](https://huggingface.co/datasets/RyeAI/danish-asr-leaderboard) |
+| **Conditional Danish conversation challenger** | `syvai/hviske-v5.3` | Lowest CoRal conversation WER (19.68%) among the selected local candidates; documented Transformers and OpenAI-compatible vLLM paths. | CC-BY-NC-4.0 blocks an assumed work-meeting deployment; custom code and no maintained Home Assistant adapter. [model card](https://huggingface.co/syvai/hviske-v5.3) |
+| **Must-run; operational integration control** | `openai/whisper-large-v3-turbo` | Multilingual transcription and timestamps; maintained Home Assistant/Wyoming path. | Common Danish benchmark reports 28.59% mean WER and 63.83% conversation WER; it is not the Danish accuracy ceiling. [OpenAI card](https://huggingface.co/openai/whisper-large-v3-turbo), [Home Assistant Whisper app](https://github.com/home-assistant/addons/tree/master/whisper) |
+| **Conditional home-latency candidates** | `syvai/hviske-v5-tiny` and `nvidia/parakeet-rnnt-110m-da-dk` | Both are small, Danish-specific candidates; Hviske supplies several local runtime formats and Parakeet declares Blackwell compatibility. | Both need an owned adapter. Hviske is gated/noncommercial with no timestamps or streaming; Danish Parakeet is not yet supported by Riva and is weak on the common conversational benchmark. [Hviske](https://huggingface.co/syvai/hviske-v5-tiny), [Parakeet](https://huggingface.co/nvidia/parakeet-rnnt-110m-da-dk) |
+| **Multilingual controls** | `openai/whisper-large-v3` and `nvidia/parakeet-tdt-0.6b-v3` | Established Whisper tooling; Parakeet adds Danish/English, punctuation, timestamps, and long-audio modes. | Neither leads the common Danish benchmark. Keep them to measure integration, mixed-language behavior, timestamps, and throughput. |
 | **Not a current Danish candidate** | Home Assistant Speech-to-Phrase | Closed, predictable supported-command path and efficient local routing before an open-ended model. | The official current language list does not include Danish, and the engine only recognizes known Home Assistant phrases rather than general speech. Reconsider it only if Danish is officially added. [Speech-to-Phrase](https://github.com/OHF-Voice/speech-to-phrase) |
 
-**Why the recommendation is split.** Whisper Turbo is the strongest day-one
-operational path because the maintained Home Assistant app and Wyoming route
-already exist. Parakeet has the strongest first-party Danish-specific evidence
-and size for a later interactive-control promotion, but needs an adapter first.
-Whisper Turbo also has the stronger multilingual/open-ended shape for meetings
-and code-switching. Large-v3 tests whether Turbo's speed trade-off loses too
-much meeting accuracy.
+**Why the recommendation is split.** Whisper Turbo remains the strongest
+day-one operational path because the maintained Home Assistant app and Wyoming
+route already exist. The common Danish benchmark makes Røst the first meeting
+accuracy candidate and justifies small-model latency tests for home commands.
+Multilingual controls remain necessary for code-switching and timestamps.
 
 **Exact switch rule.** Every general STT winner must integrate through the
 required Home Assistant and Meeting Assistant boundaries, preserve Danish/
