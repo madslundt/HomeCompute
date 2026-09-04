@@ -171,7 +171,7 @@ meeting content are forbidden.
 ### 4.6 Personal agent runtime
 
 Hermes is introduced only after the inference/control-plane gate and runs in
-its own Compose project on `ai-services-01`, not on the production GB10
+its own Compose project on `home-core`, not on the production GB10
 appliance. Its isolation from the co-located gateway is by network, runtime
 user, state subtree, secret group, and resource limit; see ADR-017. Start with
 one synthetic-data `owner` sandbox. If qualified, create independent `owner`,

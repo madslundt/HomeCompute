@@ -1,0 +1,92 @@
+name: homecompute-books_importer
+
+services:
+  cwa:
+    image: ${CWA_IMAGE:?Set CWA_IMAGE}
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    environment:
+      PUID: "0"
+      PGID: "0"
+      TZ: Europe/Copenhagen
+      DOCKER_MODS: linuxserver/mods:universal-calibre@sha256:ceae75f021e73a049fcea41777dc8b1f2adeb5da10d2749caca12ca290293cce
+    volumes:
+      - /srv/state/books_importer/cwa_config:/config
+      - /srv/state/books_importer/library:/calibre-library
+      - /srv/state/books_importer/import:/cwa-book-ingest
+    ports:
+      - "127.0.0.1:8083:8083"
+
+  shelfmark:
+    image: ${SHELFMARK_IMAGE:?Set SHELFMARK_IMAGE}
+    restart: unless-stopped
+    cpus: 2.0
+    mem_limit: 1g
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    environment:
+      PUID: "0"
+      PGID: "0"
+      TZ: Europe/Copenhagen
+      INGEST_DIR: /downloads
+    volumes:
+      - /srv/state/books_importer/shelfmark_config:/config
+      - /srv/state/books_importer/import:/downloads
+    ports:
+      - "127.0.0.1:8084:8084"
+
+  shelfmark-automated:
+    image: ${SHELFMARK_AUTOMATED_IMAGE:?Set SHELFMARK_AUTOMATED_IMAGE}
+    restart: unless-stopped
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    # Startup ordering only; these dependencies do not guarantee readiness.
+    depends_on:
+      - cwa
+      - shelfmark
+    environment:
+      PUID: "0"
+      PGID: "0"
+      TZ: Europe/Copenhagen
+      SYNC_ON_START: "true"
+      HARDCOVER_API_KEY: ${HARDCOVER_API_KEY:?Set HARDCOVER_API_KEY in the runtime secrets file}
+      GOODREADS_RSS_URL: ${GOODREADS_RSS_URL:?Set GOODREADS_RSS_URL in the runtime secrets file}
+      CWA_URL: http://cwa:8083
+      CWA_USERNAME: ${CWA_USERNAME:?Set CWA_USERNAME in the runtime secrets file}
+      CWA_PASSWORD: ${CWA_PASSWORD:?Set CWA_PASSWORD in the runtime secrets file}
+      SHELFMARK_URL: http://shelfmark:8084
+      SHELFMARK_USERNAME: ${SHELFMARK_USERNAME:?Set SHELFMARK_USERNAME in the runtime secrets file}
+      SHELFMARK_PASSWORD: ${SHELFMARK_PASSWORD:?Set SHELFMARK_PASSWORD in the runtime secrets file}
+      STATE_FILE: /data/state.db
+      LOG_LEVEL: INFO
+    volumes:
+      - /srv/state/books_importer/sa_data:/data
+
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: 127.0.0.1

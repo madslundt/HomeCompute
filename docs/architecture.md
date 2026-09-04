@@ -1,7 +1,7 @@
 # HomeCompute architecture
 
 > **Deployment update:** ADR-016 makes the pinned NixOS flake authoritative for
-> `ai-services-01`. The restricted application workload remains Docker Compose;
+> `home-core`. The restricted application workload remains Docker Compose;
 > the logical request and compute boundaries are unchanged. See
 > `nixos-control-plane-node-plan.md`.
 
@@ -13,7 +13,7 @@
 
 The GB10 is a replaceable inference appliance behind the existing AI Home
 control plane. Hermes/OpenShell runs as a separate personal-agent application
-layer in its own Compose project on `ai-services-01` and consumes GB10
+layer in its own Compose project on `home-core` and consumes GB10
 inference through the qualified edge. A direct-on-GB10 NemoHermes deployment is useful as an ARM64
 pilot, but it is not promoted without an ADR because its persistent sandbox
 state would change the appliance's failure and backup boundaries. The initial
@@ -22,9 +22,9 @@ The production candidate reuses LiteLLM on the existing always-on host behind a
 Caddy TLS edge at `https://ai.home.arpa`; TensorRT-LLM is the controlled performance
 challenger. Direct Codex-to-vLLM remains the protocol and latency baseline.
 
-The stable node roles are `ai-compute-01` for the GB10 appliance and
-`ai-services-01` for the x86 NixOS host. Automation, personal agents, and
-experimental tools land on `ai-services-01` as isolated Compose projects
+The stable node roles are `home-spark` for the GB10 appliance and
+`home-core` for the x86 NixOS host. Automation, personal agents, and
+experimental tools land on `home-core` as isolated Compose projects
 alongside the trusted control plane, because the platform has three machines
 and not four. This is a migration target, not a claim that existing services
 have moved.
@@ -148,7 +148,7 @@ Hermes/OpenShell runtime, or agent memory is deployed to GB10 in production.
 flowchart LR
     Clients[Trusted consumers] -->|TLS| Control
 
-    subgraph Services[ai-services-01 - NixOS host, one kernel]
+    subgraph Services[home-core - NixOS host, one kernel]
         subgraph Trusted[Trusted gateway project]
             Control[Caddy + LiteLLM + PostgreSQL<br/>Compose workload]
             State[/srv/state/control-plane]
@@ -162,7 +162,7 @@ flowchart LR
         Toolbox -->|authenticated API| Control
     end
 
-    Control -->|private 2.5GbE link| Compute[ai-compute-01 inference appliance]
+    Control -->|private 2.5GbE link| Compute[home-spark inference appliance]
     Toolbox -. denied .-> Compute
     Automation -. denied .-> Compute
     Agents -. denied .-> Compute
@@ -171,11 +171,11 @@ flowchart LR
     Backup -.-> Agents
 ```
 
-Only `ai-services-01` attaches to the private GB10 link, and within it only
+Only `home-core` attaches to the private GB10 link, and within it only
 LiteLLM. Home Assistant remains on its current host unless a later, separately
 restored and tested migration is approved.
 
-The three application projects share `ai-services-01`'s kernel because no
+The three application projects share `home-core`'s kernel because no
 fourth machine exists. Their separation is by Compose project, Docker network,
 runtime user, `/srv/state` subtree, sops secret group, and resource limit — not
 by host. [ADR-017](adr/017-consolidated-application-host.md) records that
@@ -398,7 +398,7 @@ routes have no hidden model fallback; they fail closed or remain pending.
 
 ## 10. Storage layout
 
-`ai-services-01` keeps application state below `/srv/state`; the first Compose
+`home-core` keeps application state below `/srv/state`; the first Compose
 project uses `/srv/state/control-plane` for Caddy and PostgreSQL data. NixOS
 owns directory creation and off-host backup scheduling. Each stateful workload
 must create an application-consistent dump or snapshot before Restic reads it.

@@ -1,0 +1,50 @@
+name: homecompute-automation
+
+services:
+  n8n:
+    image: ${N8N_IMAGE:?Set a reviewed immutable n8n image digest}
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      TZ: Europe/Copenhagen
+      GENERIC_TIMEZONE: Europe/Copenhagen
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
+      N8N_TEMPLATES_ENABLED: "false"
+      N8N_HOST: localhost
+      N8N_PROTOCOL: http
+      N8N_EDITOR_BASE_URL: http://localhost:15678
+      N8N_SECURE_COOKIE: "false"
+      N8N_LOG_LEVEL: warn
+    volumes:
+      - ${N8N_STATE_ROOT:?Set N8N_STATE_ROOT}:/home/node/.n8n
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,uid=1000,gid=1000,mode=1770
+      - /home/node/.cache:rw,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=0700
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:5678/healthz/readiness').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks: [migration]
+
+networks:
+  migration:
+    # Restored schedules must not contact external systems before cutover.
+    internal: true
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: 127.0.0.1

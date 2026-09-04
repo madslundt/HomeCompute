@@ -1,6 +1,6 @@
 # NixOS control-plane node plan
 
-**Target:** `ai-services-01`, x86-64, NixOS 26.05
+**Target:** `home-core`, x86-64, NixOS 26.05
 
 **Decision:** ADR-016
 
@@ -16,7 +16,7 @@ One flake rebuild owns the host and the `mads` home environment:
 
 ```text
 flake.nix + flake.lock
-  -> hosts/ai-services-01
+  -> hosts/home-core
      -> modules/nixos: system, network, firewall, Docker, SSH, Tailscale,
         storage, backups, sops-nix
      -> home/mads: Bash, Git, tmux, aliases, CLI tools, environment, dotfiles
@@ -40,7 +40,7 @@ install or configure the host.
 4. Run `nixos-generate-config --root /mnt` and compare the detected initrd and
    kernel modules with the committed hardware module. Do not blindly replace
    the repository's host and storage policy.
-5. `mads`' reviewed public SSH key is committed in `hosts/ai-services-01`
+5. `mads`' reviewed public SSH key is committed in `hosts/home-core`
    (`SHA256:CSd6fvVEwnu25uHqRK4G1JSWi01nH7z2KpuoHXPQtOo`). Confirm that
    fingerprint against the private key you hold before installing, and keep
    that key passphrase-protected: it is an administrative credential because
@@ -48,7 +48,7 @@ install or configure the host.
    hash generated from a reusable password.
 6. Create a persistent age identity, back it up offline, add its public
    recipient to `.sops.yaml`, and commit only an encrypted file such as
-   `secrets/ai-services-01.sops.yaml`.
+   `secrets/home-core.sops.yaml`.
 7. Configure the actual off-host Restic repository and password secret plus an
    application-consistent PostgreSQL dump/snapshot preparation command, then
    enable `homecompute.backups`.
@@ -59,8 +59,8 @@ From the checked-out, reviewed repository:
 
 ```bash
 nix flake check
-sudo nixos-rebuild build --flake .#ai-services-01
-sudo nixos-install --flake .#ai-services-01
+sudo nixos-rebuild build --flake .#home-core
+sudo nixos-install --flake .#home-core
 ```
 
 `mads` has no password and `users.mutableUsers` is true, so console login as
@@ -72,13 +72,13 @@ passwd mads        # as root, using the password nixos-install prompted for
 tailscale up       # SSH and HTTPS are reachable on tailscale0 only
 ```
 
-Then verify `ssh ai-services-01` from the workstation while console access is
+Then verify `ssh home-core` from the workstation while console access is
 still available. Do not treat the host as reachable until that succeeds.
 
 After reboot, check the exact generation and activate subsequent changes with:
 
 ```bash
-sudo nixos-rebuild switch --flake .#ai-services-01
+sudo nixos-rebuild switch --flake .#home-core
 systemctl status home-manager-mads.service
 ```
 
@@ -127,7 +127,7 @@ containers write durable data only below `/srv/state/control-plane`.
 ## Acceptance gates
 
 These are the criteria. The order in which they are reached, and what blocks
-each, is the [`ai-services-01` rollout plan](ai-services-01-rollout-plan.md).
+each, is the [`home-core` rollout plan](home-core-rollout-plan.md).
 
 - `nix flake check` and `nixos-rebuild build` pass from a clean Git checkout.
 - Reboot selects the expected generation and `home-manager-mads.service`

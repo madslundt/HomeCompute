@@ -1,14 +1,14 @@
 # HomeCompute execution plan
 
-> **Current priority (2026-09-04):** prepare and install GMKtec, then migrate
+> **Current priority (2026-09-04):** prepare and install home-core, then migrate
 > inventoried HAOS supporting services one at a time. GB10 is not available.
-> Follow the [GMKtec-first rollout](ai-services-01-rollout-plan.md#start-now-without-gb10);
+> Follow the [home-core-first rollout](home-core-rollout-plan.md#start-now-without-gb10);
 > non-AI migrations require host, backup/restore, networking, and application
 > gates, but do not require GB10 or a new AI gateway. Home Assistant stays on
 > HAOS and Hermes remains deferred.
 
 > **Deployment update:** ADR-016 makes the root NixOS flake authoritative for
-> `ai-services-01`. Keep untrusted tools and personal-agent sandboxes outside
+> `home-core`. Keep untrusted tools and personal-agent sandboxes outside
 > the gateway host.
 
 **Version:** 0.1  
@@ -26,11 +26,11 @@ The names do not depend on a hardware vendor:
 
 | System role | Stable name | Initial hardware | Responsibility |
 | --- | --- | --- | --- |
-| AI compute node | `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Rebuildable GPU inference: text, STT, TTS, and later diarization |
-| AI services node | `ai-services-01` | Supported x86 NixOS host | Trusted Caddy/LiteLLM/PostgreSQL Compose stack and `/srv/state` |
-| Application projects | Isolated Compose projects on `ai-services-01` | Same host, separate networks/users/state/secrets | n8n, MCP, browser workers, personal agents, CI, and experimental tools |
+| AI compute node | `home-spark` | NVIDIA GB10 or DGX Spark-class appliance | Rebuildable GPU inference: text, STT, TTS, and later diarization |
+| AI services node | `home-core` | Supported x86 NixOS host | Trusted Caddy/LiteLLM/PostgreSQL Compose stack and `/srv/state` |
+| Application projects | Isolated Compose projects on `home-core` | Same host, separate networks/users/state/secrets | n8n, MCP, browser workers, personal agents, CI, and experimental tools |
 
-Suggested DNS is `ai-compute-01.home.arpa` and `ai-services-01.home.arpa`.
+Suggested DNS is `home-spark.home.arpa` and `home-core.home.arpa`.
 Consumers continue to use the
 stable service alias `https://ai.home.arpa`; they do not depend on node hostnames.
 
@@ -41,13 +41,13 @@ flowchart LR
     Clients[Codex, Home Assistant, n8n,<br/>Meeting Assistant, approved agents]
     Alias[ai.home.arpa]
 
-    subgraph Services[ai-services-01 - services node]
+    subgraph Services[home-core - services node]
         Gateway[Caddy + LiteLLM + PostgreSQL]
         State[/srv/state/control-plane]
         Gateway --> State
     end
 
-    subgraph Apps[Isolated Compose projects on ai-services-01]
+    subgraph Apps[Isolated Compose projects on home-core]
         Automation[n8n + MCP + durable services]
         Agents[isolated personal agents]
         Toolbox[CI + tools + frameworks]
@@ -56,7 +56,7 @@ flowchart LR
         Toolbox -->|authenticated API| Gateway
     end
 
-    subgraph Compute[ai-compute-01 - compute node]
+    subgraph Compute[home-spark - compute node]
         Inference[vLLM + qualified text model]
         Audio[STT + TTS + later diarization]
     end
@@ -73,13 +73,13 @@ flowchart LR
 Record these decisions in an operator-owned installation worksheet; never put
 credentials in this repository:
 
-1. Reserved LAN IPs for `ai-services-01`, `ai-compute-01`, and the current
+1. Reserved LAN IPs for `home-core`, `home-spark`, and the current
    Home Assistant, automation, personal-agent, and AI Home hosts.
 2. LAN gateway, DNS server, `home.arpa` records, administrator subnet, and any
    toolbox VLAN ID/gateway/DNS.
 3. Private compute-link subnet. The proposed values are
-   `10.77.10.2/24` for `ai-services-01` and `10.77.10.10/24` for
-   `ai-compute-01`, with no gateway.
+   `10.77.10.2/24` for `home-core` and `10.77.10.10/24` for
+   `home-spark`, with no gateway.
 4. Off-host backup target, retention, encryption-key custody, and restore-test
    location.
 5. UPS model and shutdown/restart method for both physical nodes.
@@ -117,7 +117,7 @@ Follow the [NixOS control-plane plan](nixos-control-plane-node-plan.md):
 
 - prepare firmware, labelled filesystems, networking, and UPS;
 - compare detected hardware modules with the committed host configuration;
-- install the pinned NixOS flake on `ai-services-01`;
+- install the pinned NixOS flake on `home-core`;
 - configure the reviewed SSH key, Tailscale, sops age identity, and off-host backup;
 - verify the NixOS generation, Home Manager activation, `/srv/state`, isolation,
   and an empty restore.
@@ -131,7 +131,7 @@ Follow the [AI compute node plan](ai-compute-node-plan.md) through Gates C0 and
 C1:
 
 - inventory hardware, DGX OS, firmware, driver, CUDA, storage, and networking;
-- configure `ai-compute-01` and its private Ethernet address;
+- configure `home-spark` and its private Ethernet address;
 - resolve all immutable runtime/model inputs;
 - deploy the first vLLM tuple privately;
 - pass health, Responses API, Codex tools/streaming, memory, latency, load,
@@ -144,7 +144,7 @@ the compute node directly.
 
 - Cable the dedicated 2.5GbE ports directly or through an appropriate switch.
 - Confirm the private subnet has no default gateway or internet route.
-- Allow only `ai-services-01` to reach the compute service ports.
+- Allow only `home-core` to reach the compute service ports.
 - Deny application hosts, ordinary LAN clients, and the internet.
 - Test MTU, packet loss, sustained transfer, inference latency, and behavior
   during cable and compute-node failures.
@@ -154,9 +154,9 @@ the compute node directly.
 ### Step 6 — Install and qualify the AI gateway
 
 - Rebuild the desired existing Caddy/LiteLLM configuration on
-  `ai-services-01` using pinned images and dedicated PostgreSQL ownership.
+  `home-core` using pinned images and dedicated PostgreSQL ownership.
 - Create distinct consumer credentials and task-semantic aliases.
-- Add the local `ai-compute-01` backend and only explicitly approved cloud
+- Add the local `home-spark` backend and only explicitly approved cloud
   routes.
 - Keep private home, meeting, and personal-agent aliases fail-closed.
 - Verify TLS, authentication, Responses API behavior, tool streaming, logging
@@ -181,7 +181,7 @@ gateway within the agreed recovery time.
 ### Step 8 — Migrate automations in risk order
 
 - Install the approved n8n, MCP, database, queue, and browser-worker stacks as
-  their own Compose project on `ai-services-01`, with pinned images, their own
+  their own Compose project on `home-core`, with pinned images, their own
   Docker network, runtime user, `/srv/state` subtree, and sops secret group.
 - Import one sanitized test workflow, then one low-risk real workflow.
 - Test idempotency, retries, scheduling, credential isolation, database restore,

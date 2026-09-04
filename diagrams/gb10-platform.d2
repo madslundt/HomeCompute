@@ -65,7 +65,7 @@ clients: "Trusted clients" {
   n8n: "n8n\nworkflows + retries" { class: client }
 }
 
-control_host: "ai-services-01\nNixOS trusted control plane" {
+control_host: "home-core\nNixOS trusted control plane" {
   class: host
   dns: "ai.home.arpa\nlocal DNS + TLS trust" { class: control }
   caddy: "Caddy :443\nTLS • route allow-list\nrequest ID • streaming" { class: control }
@@ -77,7 +77,7 @@ control_host: "ai-services-01\nNixOS trusted control plane" {
   policy -> litellm
 }
 
-gb10: "ai-compute-01\nNVIDIA GB10 or DGX Spark-class appliance\n(rebuildable inference only)" {
+gb10: "home-spark\nNVIDIA GB10 or DGX Spark-class appliance\n(rebuildable inference only)" {
   class: host
   private: "Private encrypted link\nTailscale / restricted LAN" { class: inference }
   vllm: "Pinned vLLM\nResponses + tools + MTP\nqualified text artifact" { class: inference }
@@ -99,7 +99,7 @@ gb10: "ai-compute-01\nNVIDIA GB10 or DGX Spark-class appliance\n(rebuildable inf
   cache -> tts
 }
 
-state_hosts: "Durable service state\n(stays off ai-compute-01)" {
+state_hosts: "Durable service state\n(stays off home-spark)" {
   class: host
   ha_state: "HA / Node-RED\nautomation state" { class: state }
   notion: "Notion\nn8n workflow state" { class: state }
@@ -153,7 +153,7 @@ agent_host.events -> state_hosts.notion: "optional adapters" {
   style.stroke-dash: 4
 }
 
-forbidden: "Never on ai-compute-01\nrepositories • databases • workflow state\nMeeting library • agent memory • secrets of record" {
+forbidden: "Never on home-spark\nrepositories • databases • workflow state\nMeeting library • agent memory • secrets of record" {
   shape: document
   style: {
     fill: "#FFF1F2"

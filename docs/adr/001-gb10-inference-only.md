@@ -1,4 +1,4 @@
-# ADR-001: `ai-compute-01` is an inference-only appliance
+# ADR-001: `home-spark` is an inference-only appliance
 
 ## Context
 

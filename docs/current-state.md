@@ -40,18 +40,18 @@ recovery measurements.
 
 ## Planned AI services node
 
-The project owner has assigned `ai-services-01` to a GMKtec K15 with 48 GB RAM
-and 1 TB NVMe and selected NixOS 26.05 as its Git-first provisioning baseline.
+The application host `home-core` has 48 GB RAM
+and 1 TB NVMe, with NixOS 26.05 selected as its Git-first provisioning baseline.
 This supersedes both the earlier Proxmox/VM design and the later uncommitted
 Ubuntu bootstrap. The repository now contains a pinned NixOS flake, focused
 host modules, integrated Home Manager and sops-nix, an immutable-input template,
 and a restricted Caddy/LiteLLM/PostgreSQL Compose stack whose durable data lives
-below `/srv/state`. This is design evidence only: the K15, firmware, NICs,
+below `/srv/state`. This is design evidence only: host hardware, firmware, NICs,
 storage, installation, backup target, and live migrations have not been
 observed or qualified.
 
 The target does not invalidate the existing-host inventory. AI Home and other
-live services remain on their current hosts until `ai-services-01` passes host,
+live services remain on their current hosts until `home-core` passes host,
 container, backup/restore, service-equivalence, and rollback gates documented
 in `nixos-control-plane-node-plan.md`.
 
@@ -64,7 +64,7 @@ always-on Mac Mini. Source contains:
 | --- | --- | --- | --- |
 | LiteLLM Proxy | `config/litellm/config.yaml` and Compose service | Unverified | Reuse as the single shared model control plane after qualification |
 | Cloud providers | Anthropic, OpenAI, and Gemini entries | Unverified | Preserve only providers and models still used and valid |
-| Household agents | Two intended Hermes services using floating images and hand-written profile files | Unverified | Do not deploy as-is; replace with a pinned NemoClaw/OpenShell pilot in its own Compose project on `ai-services-01` |
+| Household agents | Two intended Hermes services using floating images and hand-written profile files | Unverified | Do not deploy as-is; replace with a pinned NemoClaw/OpenShell pilot in its own Compose project on `home-core` |
 | Scheduler | Ofelia jobs for briefings/news/reminders | Unverified | Do not duplicate on GB10; compare with n8n/HA schedules before enabling |
 | Web UI | LibreChat | Unverified | Out of GB10 scope |
 | Development orchestrator | OpenClaw plus tmux/Codeman design | Unverified | Do not couple GB10 deployment to it; Codex remains the accepted harness |
@@ -191,7 +191,7 @@ Mac Mini / existing control plane
   Caddy TLS edge -> existing LiteLLM -> cloud providers or GB10 vLLM
   existing Uptime Kuma / PostgreSQL / Redis only where qualified
 
-ai-services-01, separate Compose projects on the same kernel (ADR-017)
+home-core, separate Compose projects on the same kernel (ADR-017)
   automation project -> n8n + workflow state, migrated off the HAOS add-on
   agent project -> three OpenShell sandboxes -> Hermes owner / partner / family
   profile-specific Discord/API/model/data/tool credentials
@@ -225,7 +225,7 @@ streaming, tool, privacy, and latency corpus.
    private API or scraper.
 6. Reconcile Meeting Assistant's current uncommitted work before planning its
    gateway/Plaud changes.
-7. Verify `ai-services-01` meets the OpenShell/NemoClaw prerequisites, and
+7. Verify `home-core` meets the OpenShell/NemoClaw prerequisites, and
    measure gateway, database, and n8n usage before setting the per-project
    resource limits ADR-017 requires. The host is decided; its headroom is not.
 8. Inventory the live Hermes/Telegram/Discord deployment, if any, before

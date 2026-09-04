@@ -7,18 +7,18 @@
 {
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
-  # Installation contract: label the root and EFI filesystems as shown below.
-  # Replace only the detected module lists if nixos-generate-config reports
-  # hardware-specific requirements on the target host.
+  # Observed on the installed home-core on 2026-09-04. Preserve its labels.
   boot.initrd.availableKernelModules = [
     "xhci_pci"
-    "ahci"
+    "thunderbolt"
     "nvme"
+    "usbhid"
     "usb_storage"
     "sd_mod"
+    "sr_mod"
   ];
   boot.initrd.kernelModules = [ ];
-  boot.kernelModules = [ ];
+  boot.kernelModules = [ "kvm-intel" ];
   boot.extraModulePackages = [ ];
 
   fileSystems."/" = {
@@ -27,7 +27,7 @@
   };
 
   fileSystems."/boot" = {
-    device = "/dev/disk/by-label/ESP";
+    device = "/dev/disk/by-label/boot";
     fsType = "vfat";
     options = [
       "fmask=0077"
@@ -35,12 +35,11 @@
     ];
   };
 
+  # 48 GB installed RAM; retain the existing no-swap configuration.
   swapDevices = [ ];
 
-  # The K15 is a 13th-generation Intel part, so late microcode revisions are a
-  # stability fix rather than an optimization. `not-detected.nix` only enables
-  # redistributable firmware; microcode loading is a separate switch that
-  # nixos-generate-config would have emitted here.
+  # Observed CPU: Intel Core Ultra 5 125U. Preserve detected NPU support.
+  hardware.cpu.intel.npu.enable = true;
   hardware.cpu.intel.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";

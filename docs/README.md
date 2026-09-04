@@ -1,17 +1,17 @@
 # HomeCompute documentation guide
 
-> **Current priority (2026-09-04):** prepare and install GMKtec, then migrate
+> **Current priority (2026-09-04):** prepare and install home-core, then migrate
 > inventoried HAOS supporting services one at a time. GB10 is not available.
-> Follow the [GMKtec-first rollout](ai-services-01-rollout-plan.md#start-now-without-gb10);
+> Follow the [home-core-first rollout](home-core-rollout-plan.md#start-now-without-gb10);
 > non-AI migrations require host, backup/restore, networking, and application
 > gates, but do not require GB10 or a new AI gateway. Home Assistant stays on
 > HAOS and Hermes remains deferred.
 
 This directory describes a local-first AI platform with two stable node roles:
-`ai-compute-01` is a rebuildable NVIDIA GB10 or DGX Spark-class inference
+`home-spark` is a rebuildable NVIDIA GB10 or DGX Spark-class inference
 appliance.
 
-`ai-services-01` is an x86 NixOS host for the trusted Caddy/LiteLLM gateway and
+`home-core` is an x86 NixOS host for the trusted Caddy/LiteLLM gateway and
 its durable state. Because the platform has three machines rather than four, it
 also carries automations and personal-agent sandboxes as separately isolated
 Compose projects ([ADR-017](adr/017-consolidated-application-host.md)).
@@ -40,10 +40,10 @@ Assistant, automations, or personal agents before their preceding gates pass.
 | Set up both nodes in order | [Setup guide](setup-guide.md) |
 | Understand the platform in ten minutes | [Architecture](architecture.md), then [current state](current-state.md) |
 | Execute the complete two-node program | [Platform execution plan](platform-execution-plan.md), then both node plans |
-| Prepare `ai-compute-01` | [AI compute node plan](ai-compute-node-plan.md), [setup guide](setup-guide.md), then verification |
-| Prepare `ai-services-01` | [NixOS control-plane plan](nixos-control-plane-node-plan.md), [ADR-016](adr/016-nixos-control-plane-host.md), then the root flake |
-| Install `ai-services-01` from bare metal | [NixOS installation runbook](nixos-install-runbook.md) |
-| Get from a fresh install to running workloads | [`ai-services-01` rollout plan](ai-services-01-rollout-plan.md) |
+| Prepare `home-spark` | [AI compute node plan](ai-compute-node-plan.md), [setup guide](setup-guide.md), then verification |
+| Prepare `home-core` | [NixOS control-plane plan](nixos-control-plane-node-plan.md), [ADR-016](adr/016-nixos-control-plane-host.md), then the root flake |
+| Install `home-core` from bare metal | [NixOS installation runbook](nixos-install-runbook.md) |
+| Get from a fresh install to running workloads | [`home-core` rollout plan](home-core-rollout-plan.md) |
 | Apply or extend the NixOS configuration | [NixOS operations guide](nixos-operations.md) |
 | Understand what is decided versus still hypothetical | [ADRs](#architecture-decisions), [current state](current-state.md), and the phase gates in the [implementation plan](implementation-plan.md) |
 | Review security, privacy, and failure handling | [Access policy](access-policy.md), [personal data and memory](personal-data-and-memory.md), [requirements](requirements.md), and [risk analysis](risk-analysis.md) |
@@ -96,10 +96,10 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [Verification strategy](verification-strategy.md) | Acceptance suites and requirements traceability |
 | [Setup guide](setup-guide.md) | Self-contained, ordered setup path for both physical nodes |
 | [Platform execution plan](platform-execution-plan.md) | Controlling order, names, dependencies, gates, and definition of done |
-| [AI compute node plan](ai-compute-node-plan.md) | `ai-compute-01` installation, deployment, qualification, and operations |
-| [NixOS control-plane plan](nixos-control-plane-node-plan.md) | Active `ai-services-01` installation, Home Manager, Compose deployment, and acceptance path |
+| [AI compute node plan](ai-compute-node-plan.md) | `home-spark` installation, deployment, qualification, and operations |
+| [NixOS control-plane plan](nixos-control-plane-node-plan.md) | Active `home-core` installation, Home Manager, Compose deployment, and acceptance path |
 | [NixOS installation runbook](nixos-install-runbook.md) | Firmware, partitioning, hardware reconciliation, install, and first-console commands |
-| [`ai-services-01` rollout plan](ai-services-01-rollout-plan.md) | Ordered post-install stages, blockers, and exit gates from secrets to the n8n migration |
+| [`home-core` rollout plan](home-core-rollout-plan.md) | Ordered post-install stages, blockers, and exit gates from secrets to the n8n migration |
 | [NixOS operations guide](nixos-operations.md) | Commit checks, build/test/switch, rollback, input updates, and extension boundaries |
 | [Local and Tailscale access](access-policy.md) | Private DNS/TLS, grants, network flows, administrative access, and acceptance checks |
 | [Personal data and memory](personal-data-and-memory.md) | Principal/work domains, memory lifecycle, sharing, deletion, and administrator model |
@@ -108,7 +108,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 
 | ADR | Decision |
 | --- | --- |
-| [ADR-001](adr/001-gb10-inference-only.md) | `ai-compute-01` is an inference-only appliance |
+| [ADR-001](adr/001-gb10-inference-only.md) | `home-spark` is an inference-only appliance |
 | [ADR-002](adr/002-inference-runtime.md) | Pinned NVIDIA-compatible vLLM is the first text runtime; llama.cpp is required as a quantized baseline |
 | [ADR-003](adr/003-ai-api-boundary.md) | Consumers use a stable authenticated AI API boundary |
 | [ADR-004](adr/004-model-aliases.md) | Consumers use logical aliases, never concrete artifact names |
@@ -120,11 +120,11 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-010](adr/010-cloud-fallback.md) | Cloud fallback is explicit and owned by orchestration/policy |
 | [ADR-011](adr/011-reuse-ai-home-control-plane.md) | Reuse and qualify the existing AI Home Caddy/LiteLLM control plane |
 | [ADR-012](adr/012-reuse-meeting-assistant.md) | Extend the existing Meeting Assistant for Plaud processing |
-| [ADR-013](adr/013-hermes-personal-agent-layer.md) | Hermes runs outside `ai-compute-01` as a separately gated application layer |
+| [ADR-013](adr/013-hermes-personal-agent-layer.md) | Hermes runs outside `home-spark` as a separately gated application layer |
 | [ADR-014](adr/014-ai-services-node.md) | Historical, superseded services-node virtualization design |
 | [ADR-015](adr/015-personal-data-domains-and-memory.md) | Personal memory and employer data use explicit principals, domains, and lifecycle controls |
 | [ADR-016](adr/016-nixos-control-plane-host.md) | NixOS, integrated Home Manager, sops-nix, and Compose define the control-plane host |
-| [ADR-017](adr/017-consolidated-application-host.md) | `ai-services-01` also hosts automations and personal agents; container isolation replaces the separate application host |
+| [ADR-017](adr/017-consolidated-application-host.md) | `home-core` also hosts automations and personal agents; container isolation replaces the separate application host |
 
 ## Research and model evidence
 
@@ -155,7 +155,7 @@ The documentation is paired with a deliberately small implementation scaffold:
 | Path | Purpose |
 | --- | --- |
 | `../flake.nix` and `../flake.lock` | Pinned NixOS, Home Manager, and sops-nix activation graph |
-| `../hosts/ai-services-01/` | Control-plane host entry point and hardware contract |
+| `../hosts/home-core/` | Control-plane host entry point and hardware contract |
 | `../modules/nixos/` | Machine-level configuration modules |
 | `../home/mads/` | User-level Home Manager modules |
 | `../config/compute-node.env.example` | Explicit, pinned release inputs for the first candidate |

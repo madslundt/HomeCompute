@@ -1,4 +1,4 @@
-# AI compute node (`ai-compute-01`) plan
+# AI compute node (`home-spark`) plan
 
 **Version:** 0.1  
 **Date:** 2026-08-30  
@@ -7,29 +7,29 @@
 
 ## Role
 
-`ai-compute-01` is a rebuildable inference appliance. It provides GPU-backed
-text, STT, TTS, and later diarization services to `ai-services-01` over a private
+`home-spark` is a rebuildable inference appliance. It provides GPU-backed
+text, STT, TTS, and later diarization services to `home-core` over a private
 network. It does not host Caddy/LiteLLM, n8n, Home Assistant, MCP servers,
 repositories, generic databases/queues, agent memory, meeting libraries, or
 canonical workflow state.
 
 Consumers use `https://ai.home.arpa` and logical aliases. Direct access to
-`ai-compute-01` exists only for qualification and recovery diagnostics.
+`home-spark` exists only for qualification and recovery diagnostics.
 
 ## Target naming and network
 
 | Setting | Target |
 | --- | --- |
-| Hostname | `ai-compute-01` |
-| DNS | `ai-compute-01.home.arpa` |
+| Hostname | `home-spark` |
+| DNS | `home-spark.home.arpa` |
 | Trusted-management address | Reserved during the network worksheet |
 | Private compute address | `10.77.10.10/24` proposed |
-| Private peer | `ai-services-01` at `10.77.10.2/24` |
+| Private peer | `home-core` at `10.77.10.2/24` |
 | Production client endpoint | `https://ai.home.arpa` |
 
 The private link has no default gateway. Bind inference ports only to loopback
 during direct qualification, then to the private address with a firewall rule
-allowing only `ai-services-01`.
+allowing only `home-core`.
 
 ## Execution checklist
 
@@ -49,7 +49,7 @@ recorded.
 ### C0.2 — Establish the supported platform baseline
 
 1. Boot the vendor-supported DGX OS image supplied for the device.
-2. Set hostname `ai-compute-01`, timezone `Europe/Copenhagen`, NTP, reserved
+2. Set hostname `home-spark`, timezone `Europe/Copenhagen`, NTP, reserved
    management IP, DNS, and private address `10.77.10.10/24`.
 3. Apply vendor-supported firmware and OS updates in the documented order.
 4. Reboot and record DGX OS, kernel, firmware, driver, CUDA, Docker, NVIDIA
@@ -70,7 +70,7 @@ pass without changing the installed GPU stack.
 
 ### C0.3 — Prepare immutable deployment inputs
 
-1. Copy this repository to `ai-compute-01` and review the current commit/files.
+1. Copy this repository to `home-spark` and review the current commit/files.
 2. Initialize the external operator configuration:
 
    ```bash
@@ -175,14 +175,14 @@ A smoke test alone does not pass this gate.
 **Pass:** No unauthorized or unconfirmed physical action occurs; this does not
 move Home Assistant to either node.
 
-### C3 — Connect through `ai-services-01`
+### C3 — Connect through `home-core`
 
 1. Change the runtime bind from loopback to `10.77.10.10` only after the
    private bridge/link and firewall are ready.
-2. Set `GATEWAY_CIDR` to the `ai-services-01` private address/CIDR and
+2. Set `GATEWAY_CIDR` to the `home-core` private address/CIDR and
    document the exact host firewall rule.
 3. Set `FIREWALL_CONFIRMED=true`, revalidate, and redeploy the same tuple.
-4. From `ai-services-01`, test health, authentication, Responses/tool streaming,
+4. From `home-core`, test health, authentication, Responses/tool streaming,
    latency, cancellation, and large/long requests.
 5. From ordinary LAN and application hosts, prove the runtime port
    is unreachable.
@@ -190,7 +190,7 @@ move Home Assistant to either node.
    private aliases fail closed; only approved public aliases may use explicit
    cloud routing.
 
-**Pass:** Only `ai-services-01` can reach compute services and proxied behavior
+**Pass:** Only `home-core` can reach compute services and proxied behavior
 matches the direct qualified baseline.
 
 ### D — Select production runtime/model tuples
@@ -224,7 +224,7 @@ and private gateway route.
 
 ### F — Operational acceptance
 
-1. Configure metadata-only health/metrics collection from `ai-services-01`.
+1. Configure metadata-only health/metrics collection from `home-core`.
 2. Alert on service health, error rate, latency, temperature, memory/storage
    headroom, and disk health without recording prompts or outputs.
 3. Define OS/runtime/model update windows and require requalification after
@@ -236,7 +236,7 @@ and private gateway route.
    instructions off-node. Treat model caches as rebuildable rather than backed
    up canonical data.
 
-**Pass:** `ai-compute-01` is reproducible, observable, isolated, recoverable,
+**Pass:** `home-spark` is reproducible, observable, isolated, recoverable,
 and has no canonical application state.
 
 ## Normal operations

@@ -1,4 +1,4 @@
-# ADR-017: `ai-services-01` is the consolidated application host
+# ADR-017: `home-core` is the consolidated application host
 
 ## Context
 
@@ -7,11 +7,11 @@ documentation assumes:
 
 1. a Home Assistant appliance running HAOS, which also hosts the existing n8n
    add-on;
-2. `ai-compute-01`, the GB10 inference appliance;
-3. `ai-services-01`, the GMKtec K15.
+2. `home-spark`, the GB10 inference appliance;
+3. `home-core`, the NixOS application host.
 
 ADR-014 originally placed automations, personal agents, and toolbox workloads
-on this same K15 as role-separated Proxmox VMs. ADR-016 superseded ADR-014 for
+on this same host as role-separated Proxmox VMs. ADR-016 superseded ADR-014 for
 provisioning, replacing Proxmox and VMs with NixOS and Docker Compose, but its
 decision covers only the trusted gateway. It did not restate where the
 automation, agent, and toolbox workloads live.
@@ -36,7 +36,7 @@ A fourth machine is not going to be purchased for this platform.
 
 ## Decision
 
-`ai-services-01` is the single application host. It runs the trusted gateway
+`home-core` is the single application host. It runs the trusted gateway
 Compose project, the migrated n8n automation workload, and later the Hermes
 personal agent sandboxes, as separate Compose projects on one NixOS host.
 
@@ -148,7 +148,7 @@ nothing; the risk register is scored for that staged state and carries an
 explicit re-score trigger.
 
 Capacity is less pressing than first assumed. Model weights stay on
-`ai-compute-01`, so the co-located services hold runtime rather than inference
+`home-spark`, so the co-located services hold runtime rather than inference
 memory: Caddy is negligible, LiteLLM and PostgreSQL are together a few
 gigabytes, n8n and its database a couple more, and the sandboxes are agent
 runtimes. Against 48 GB that leaves substantial headroom, and ADR-014's fixed
@@ -165,7 +165,7 @@ therefore cover more state and matter more than they did under ADR-016.
 
 Accepted. Amends ADR-016 by defining workload placement it left unstated, and
 amends ADR-013's placement of Hermes on a separate application host. Does not
-change ADR-001; `ai-compute-01` remains inference-only.
+change ADR-001; `home-spark` remains inference-only.
 
 Hermes is deferred by owner decision on 2026-09-04, so only stage 1 is built.
 

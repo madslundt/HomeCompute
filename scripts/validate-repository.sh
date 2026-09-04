@@ -45,6 +45,7 @@ fi
 shell_files=(
   "$REPO_ROOT/scripts/lib/config.sh"
   "$REPO_ROOT/scripts/setup-compute-node.sh"
+  "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
   "$REPO_ROOT/tests/config-loader-test.sh"
 )
@@ -156,11 +157,57 @@ jq -e '
   (.services.caddy.ports[0].protocol == "tcp") and
   (.services.litellm.ports == null) and
   (.services.postgres.ports == null) and
+  (.services.postgres.user == "70:70") and
+  (.services.postgres.cap_add == null) and
+  (.services.postgres.cap_drop | index("ALL") != null) and
+  (.services.caddy.cap_add == ["NET_BIND_SERVICE"]) and
   (.networks.state.internal == true) and
   (.services.caddy.networks.state == null) and
   (.services.postgres.networks.edge == null)
 ' "$control_plane_json" >/dev/null
 printf '[validate] Application project isolation (ADR-017)\n'
+automation_json="$temporary_root/automation-compose.json"
+docker compose --env-file "$REPO_ROOT/config/automation.env.example" \
+  -f "$REPO_ROOT/deploy/automation/compose.yaml" config --format json >"$automation_json"
+jq -e '
+  (.services.n8n.user == "1000:1000") and
+  (.services.n8n.read_only == true) and
+  (.services.n8n.cap_drop | index("ALL") != null) and
+  (.services.n8n.security_opt | index("no-new-privileges:true") != null) and
+  (.services.n8n.ports == null) and
+  (.services.n8n.mem_limit != null) and
+  (.services.n8n.cpus != null) and
+  (.networks.migration.internal == true)
+' "$automation_json" >/dev/null
+docker compose --env-file "$REPO_ROOT/config/automation.env.example" \
+  -f "$REPO_ROOT/deploy/automation/compose.yaml" \
+  -f "$REPO_ROOT/deploy/automation/production.yaml" config --format json >"$automation_json"
+jq -e '
+  (.services.n8n.ports | length == 2) and
+  ([.services.n8n.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1"]) and
+  (.networks.migration.internal != true) and
+  (.networks.migration.enable_ipv6 == false) and
+  (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n")
+' "$automation_json" >/dev/null
+# Books remains staged until source data and cutover are reviewed. Validate its
+# own private bindings, resource limits, and image pins before accepting it.
+books_json="$temporary_root/books.json"
+docker compose --env-file "$REPO_ROOT/config/books_importer.env.example" \
+  --env-file "$REPO_ROOT/config/books_importer-secrets.env.example" \
+  -f "$REPO_ROOT/deploy/books_importer/compose.yaml" config --format json >"$books_json"
+jq -e '
+  ((.services | keys) == ["cwa", "shelfmark", "shelfmark-automated"]) and
+  all(.services[];
+    (.image | test("@sha256:[0-9a-f]{64}$")) and
+    (.mem_limit > 0) and (.cpus > 0) and (.pids_limit > 0) and
+    (.security_opt | index("no-new-privileges:true") != null) and
+    (.logging.driver == "local") and
+    all(.volumes[]; .type == "bind" and (.source | startswith("/srv/state/books_importer/")))) and
+  ([.services[].ports[]?.host_ip] == ["127.0.0.1", "127.0.0.1"]) and
+  (.services["shelfmark-automated"].ports == null) and
+  (.networks.default.driver_opts["com.docker.network.bridge.host_binding_ipv4"] == "127.0.0.1")
+' "$books_json" >/dev/null
+
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
 # per-project container controls are the only boundary left between them. Each
 # pattern below removes that boundary outright rather than weakening it, so the
@@ -177,7 +224,7 @@ fi
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
-expected_deployment_projects="$(printf '%s\n' compute-node control-plane | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

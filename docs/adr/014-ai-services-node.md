@@ -1,28 +1,28 @@
-# ADR-014: `ai-services-01` as the Proxmox services node
+# ADR-014: `home-core` as the Proxmox services node
 
 > **Superseded by [ADR-016](016-nixos-control-plane-host.md).** This file is a
 > historical decision record, not an installation path.
 
 ## Context
 
-`ai-compute-01` is ARM64/GB10, optimized for local AI inference, and intentionally
+`home-spark` is ARM64/GB10, optimized for local AI inference, and intentionally
 rebuildable. The platform also needs an always-on x86 host for the shared AI
 control plane, automations, browser/tool execution, databases, and later
 personal-agent sandboxes. Some of those tools have better x86 container and
 package support, and their durable state must not share the compute-node failure and
 rebuild boundary.
 
-The initial `ai-services-01` hardware, a GMKtec K15, has 48 GB RAM, one 1 TB NVMe, three M.2 slots, dual
+The initial `home-core` hardware has 48 GB RAM, one 1 TB NVMe, three M.2 slots, dual
 2.5GbE, USB4, and OCuLink. It is consumer hardware without ECC, redundant power,
 or an out-of-band management controller.
 
 ## Decision
 
-Use `ai-services-01` as a single-node Proxmox VE 9 host. Keep the hypervisor minimal and
+Use `home-core` as a single-node Proxmox VE 9 host. Keep the hypervisor minimal and
 run application workloads in three Debian 13 VMs and one Ubuntu 24.04 VM:
 
 1. `ai-gateway-01` owns the Caddy/LiteLLM edge and is the only guest attached to a
-   private, non-routed `ai-compute-01` bridge.
+   private, non-routed `home-spark` bridge.
 2. `automation-01` owns n8n, MCP, browser workers, queues, and workflow state.
 3. `agents-01` owns separately sandboxed personal-agent runtimes and
    principal/domain-partitioned agent state on a dedicated restricted VLAN.
@@ -30,7 +30,7 @@ run application workloads in three Debian 13 VMs and one Ubuntu 24.04 VM:
    tool workloads on the most restricted network.
 
 Use the first physical NIC for the trusted LAN and Proxmox management. Use the
-second as a dedicated 2.5GbE `ai-compute-01` link. Do not use OCuLink or USB4 as the
+second as a dedicated 2.5GbE `home-spark` link. Do not use OCuLink or USB4 as the
 machine-to-machine data path.
 
 Use full VMs rather than installing Docker on Proxmox or nesting Docker in LXC.
@@ -57,14 +57,14 @@ MFA, and management-network restriction as promotion gates.
 
 ## Consequences
 
-The x86/ARM64 split improves tool compatibility and lets `ai-compute-01` dedicate its
+The x86/ARM64 split improves tool compatibility and lets `home-spark` dedicate its
 memory and CPU/GPU budget to inference. VM separation limits credentials and
 blast radius, but consumes several GB of RAM and adds guest patching and backup
 operations. The agent VM uses a fixed 16 GB allocation; the toolbox is stopped
 by default so the 48 GB host retains safe hypervisor and cache headroom.
 
-One `ai-services-01` node is not high availability. Its failure stops the gateway and
-automations even though `ai-compute-01` may still run. Consumer hardware and a single
+One `home-core` node is not high availability. Its failure stops the gateway and
+automations even though `home-spark` may still run. Consumer hardware and a single
 SSD make UPS, monitoring, off-host backup, restore drills, and retained old-host
 rollback mandatory before moving critical workflows.
 

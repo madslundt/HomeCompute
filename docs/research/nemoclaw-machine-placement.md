@@ -7,18 +7,18 @@
 
 > **Amendment (2026-09-04):** this note's blocking condition — "choose a
 > separate application host" — no longer holds. ADR-017 records that no fourth
-> machine will be acquired and places Hermes on `ai-services-01` in its own
+> machine will be acquired and places Hermes on `home-core` in its own
 > Compose project, with container-level isolation from the gateway. Read the
 > NVIDIA platform, sizing, and sandbox findings below as still current; read
 > every recommendation to acquire or qualify a *separate host* as superseded.
 **Scope:** What NemoClaw is, its requirements and security boundaries, and how
-Hermes should be placed across the planned K15 services node and GX10/GB10
+Hermes should be placed across the planned home-core services node and GX10/GB10
 compute node. No machine or configuration was changed.
 
 ## Outcome
 
 Do **not** deploy NemoClaw broadly or make it production-critical yet. ADR-016
-removes the planned VM substrate from `ai-services-01`, so the personal-agent
+removes the planned VM substrate from `home-core`, so the personal-agent
 pilot is blocked until a separate application host and trust domain are chosen.
 That host should follow NVIDIA's validated operating-system path and route its
 inference through `ai.home.arpa` to GB10.
@@ -117,7 +117,7 @@ the sandbox sees placeholders instead of raw secrets. [OpenShell sandbox archite
 It is still **risk reduction, not permission to trust the agent**:
 
 - Docker access is effectively root-level host authority. Do not install it on
-  `ai-services-01` or another critical control-plane host merely to run
+  `home-core` or another critical control-plane host merely to run
   NemoClaw. [NVIDIA headless-server guide](https://docs.nvidia.com/nemoclaw/latest/user-guide/openclaw/deployment/deploy-to-headless-server)
 - The default Balanced onboarding tier allows package-registry presets. For an
   always-on private assistant, start with Restricted, no web search, and add
@@ -145,10 +145,10 @@ It is still **risk reduction, not permission to trust the agent**:
 
 | Machine or role | Recommendation | Reason |
 | --- | --- | --- |
-| Separately qualified application host | **Required before the pilot.** | Keep autonomous agent state outside `ai-services-01`; meet NVIDIA's sizing and platform requirements, route inference to `ai.home.arpa`, and prove backup/restore. |
+| Separately qualified application host | **Required before the pilot.** | Keep autonomous agent state outside `home-core`; meet NVIDIA's sizing and platform requirements, route inference to `ai.home.arpa`, and prove backup/restore. |
 | Automation hosts | **No personal-agent state.** | Keep deterministic workflows, MCP services, queues, and their credentials separate from autonomous agent sandboxes. |
-| `ai-compute-01` ASUS GX10 / GB10 | **Demo only, not production.** | It is the strongest NVIDIA-supported Express/local-vLLM target, but persistent agent state and lifecycle services violate the accepted inference-only boundary and add contention. |
-| `ai-services-01` NixOS host | **No.** | Do not mix an early-preview autonomous agent with the authentication, secrets, and routing control plane. |
+| `home-spark` ASUS GX10 / GB10 | **Demo only, not production.** | It is the strongest NVIDIA-supported Express/local-vLLM target, but persistent agent state and lifecycle services violate the accepted inference-only boundary and add contention. |
+| `home-core` NixOS host | **No.** | Do not mix an early-preview autonomous agent with the authentication, secrets, and routing control plane. |
 | Toolbox hosts | **Only a disposable coding-agent experiment.** | The role is appropriate for untrusted experiments but must not receive production household credentials or databases. |
 
 These are the only planned roles needed for the pilot. Home Assistant remains
@@ -161,13 +161,13 @@ role evidence is in the [NixOS control-plane plan](../nixos-control-plane-node-p
 This repository does not yet automate Hermes or NemoClaw installation. The
 operator path is:
 
-1. Finish the K15 `ai-services-01` NixOS baseline, the GX10/GB10
-   `ai-compute-01` baseline, and the `ai.home.arpa` gateway.
+1. Finish the `home-core` NixOS baseline, the GX10/GB10
+   `home-spark` baseline, and the `ai.home.arpa` gateway.
 2. Select a separate application host with at least NVIDIA's recommended
    resources and a supported or explicitly qualified operating-system path.
 3. Install one pinned NemoClaw/OpenShell tuple there and onboard Hermes using
    NVIDIA's documented integration. Do not install the agent runtime on
-   `ai-services-01` or `ai-compute-01`.
+   `home-core` or `home-spark`.
 4. Configure the Hermes inference provider to use a dedicated, revocable
    `assistant` credential at `https://ai.home.arpa`. The gateway routes that alias to
    the qualified GB10 model; Hermes never receives a direct compute-node URL.
@@ -216,5 +216,5 @@ responsibilities, not reasons to move the state onto GB10.
 Run NemoClaw only after selecting a separately qualified application host for
 the personal-agent pilot, using the GB10 only for inference. Use the GB10 itself
 only for NVIDIA's short-lived compatibility demo. Do not install NemoClaw on
-`ai-services-01`, and do not call the pilot production-ready until
+`home-core`, and do not call the pilot production-ready until
 the isolation, recovery, 64K, and mixed-load gates pass.

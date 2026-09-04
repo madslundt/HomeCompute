@@ -1,5 +1,7 @@
 { ... }:
 {
+  imports = [ ./automation-network.nix ];
+
   virtualisation.docker = {
     enable = true;
     enableOnBoot = true;

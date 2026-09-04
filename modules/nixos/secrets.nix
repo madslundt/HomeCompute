@@ -8,7 +8,7 @@ let
 in
 {
   options.homecompute.secrets = {
-    enable = lib.mkEnableOption "sops-nix secrets for ai-services-01";
+    enable = lib.mkEnableOption "sops-nix secrets for home-core";
 
     defaultSopsFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
@@ -44,6 +44,11 @@ in
           };
 
           secrets = {
+            # Complete dotenv document: decrypted only at activation, never
+            # interpolated into the Nix store. Compose reads it with --env-file.
+            "books_importer/environment" = {
+              mode = "0400";
+            };
             "control-plane/compute-api-key" = {
               group = "homecompute-secrets";
               mode = "0440";
@@ -64,6 +69,7 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
+          } // lib.optionalAttrs config.homecompute.backups.enable {
             "restic/password" = {
               mode = "0400";
             };

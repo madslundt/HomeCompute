@@ -1,6 +1,21 @@
-# `ai-services-01` rollout plan
+# Gateway deployment — 2026-09-04
 
-**Target:** GMKtec K15, NixOS 26.05
+Caddy, LiteLLM, and PostgreSQL are now deployed on the K15. See
+[the live deployment record](control-plane-deployment.md) for access, validation,
+and remaining model/backend work. This supersedes older gateway scaffold status
+below. Off-host backups remain explicitly deferred.
+
+# `home-core` rollout plan
+
+**Target:** home-core, NixOS 26.05
+
+**Update 2026-09-04:** n8n has been restored, verified, and cut over to
+home-core. Its two original published schedules are active on the target;
+source workflows are unpublished and the HAOS add-on is stopped. The owner
+explicitly deferred off-host backups, overriding that gate for this migration.
+See [n8n migration inventory](n8n-migration-inventory.md) for evidence and
+[automation operations](../deploy/automation/README.md) for access and rollback.
+LiteLLM and other applications remain separate, undeployed workstreams.
 **Decisions:** [ADR-016](adr/016-nixos-control-plane-host.md), [ADR-017](adr/017-consolidated-application-host.md)
 
 This is the execution sequence between "NixOS is installed" and "workloads are
@@ -17,7 +32,26 @@ This document orders the stages for this one host and names what blocks each.
 Where it disagrees with an older document, the older document is wrong and
 should be reconciled.
 
-**Position as of 2026-09-04:** owner requests GMKtec setup and HAOS service
+**Observed host setup on 2026-09-04:** SSH using the dedicated key succeeds at
+`mads@home-core` (`192.168.30.122`). `home-core` already has NixOS 26.05,
+an Intel Core Ultra 5 125U, 48 GB RAM, and a 1 TB NVMe with a 1 GiB EFI
+filesystem labeled `boot` and ext4 root labeled `nixos`. No repartitioning is
+needed. The host configuration preserves NetworkManager DHCP and LAN SSH on
+`enp44s0` while Tailscale enrollment is pending; `enp45s0` remains unused.
+The flake output and machine hostname are both `home-core`. Five boot generations fit the existing ESP; no swap is configured.
+The adapted system closure built successfully on the target and was activated
+as generation 3, then set as the boot default and verified after a reboot.
+Key-based LAN SSH reconnected successfully. Docker, Home Manager, SSH,
+NetworkManager, and tailscaled are active with no failed units. Tailscale is authenticated and online at `100.110.248.102`. At the owner’s request, generation 4 enables
+IPv4/IPv6 forwarding and persistently advertises the host as a Tailscale exit
+node. Generation 5 additionally advertises only `192.168.30.0/24`, as
+confirmed by the owner. Advertisement and forwarding are verified; subnet
+route approval and an off-LAN client test remain pending in Tailscale.
+Secrets, backups, and application workloads
+remain disabled. The source checkout is at `/home/mads/HomeCompute` on the
+target. Repository validation and the target flake check passed.
+
+**Position as of 2026-09-04:** owner requests home-core setup and HAOS service
 migration preparation now; GB10 has not arrived. Stage 0 remains unverified. Hermes deferred by owner
 decision. Only stage 1 of ADR-017's kernel plan — containers on the host
 kernel — is in scope.
@@ -26,7 +60,7 @@ kernel — is in scope.
 
 | # | Outcome | Blocked by | Exit gate |
 | --- | --- | --- | --- |
-| 0 | Reachable, hardened host | SSH key passphrase; hardware config from the real machine | `ssh ai-services-01` succeeds while the console is still attached |
+| 0 | Reachable, hardened host | SSH key passphrase; hardware config from the real machine | `ssh home-core` succeeds while the console is still attached |
 | 1 | Secrets materialize | Age identity created and backed up offline | Secrets for enabled workloads and backup available outside the Nix store |
 | 2 | Gateway runs | Three reviewed image digests; live AI Home inventory | Only Caddy publishes, on `127.0.0.1`; no secret in rendered Compose |
 | 3 | Off-host backup | Stage 1; an initialized Restic repository | Isolated restore of `/srv/state` passes |
@@ -36,7 +70,7 @@ kernel — is in scope.
 
 ## Start now, without GB10
 
-The first path is **inventory → install GMKtec → workload secrets → backup and
+The first path is **inventory → install home-core → workload secrets → backup and
 restore → application networking → one non-AI workflow**. Stage numbers below
 identify workstreams; stage 2 and the compute portion of stage 4 are not
 prerequisites for a workflow that does not use inference.
@@ -59,8 +93,8 @@ prerequisites for a workflow that does not use inference.
 | --- | --- | --- |
 | Host configuration | Flake, public admin key, DHCP, Docker, Tailscale, state paths present | Build on x86-64 NixOS and reconcile real hardware |
 | Physical installation | Not observed; factory OS/disk contents unknown | Confirm current OS and disk to erase before partitioning |
-| Remote access | `ai-services-01` and `haos` failed DNS resolution from this Mac | Obtain actual addresses; authenticate via existing access |
-| Workstation SSH | `ssh -G ai-services-01` defaults to `madslundt` and standard keys | Use `mads` and the dedicated admin key explicitly |
+| Remote access | `home-core` and `haos` failed DNS resolution from this Mac | Obtain actual addresses; authenticate via existing access |
+| Workstation SSH | `ssh -G home-core` defaults to `madslundt` and standard keys | Use `mads` and the dedicated admin key explicitly |
 | Secrets and backup | Disabled in host configuration; backup destination unknown | Select off-host storage, retain age recovery key, prove restore |
 | HAOS applications | No live inventory or exports available | Complete the inventory below before generating the automation deployment |
 | GB10 | Not yet available, per owner | Defer compute installation and AI acceptance only |
@@ -120,13 +154,13 @@ Two inventories gate stages 2 and 5, cost nothing, and can be done now:
    and its owner. Stage 5 cannot prove "no duplicate runs" against an unknown
    baseline.
 
-Neither requires the K15. Do them while waiting.
+Neither requires `home-core`. Do them while waiting.
 
 ## Stage 0 — Install
 
 Follow the [installation runbook](nixos-install-runbook.md). Your prerequisites:
 
-- Add a passphrase to the admin key: `ssh-keygen -p -f ~/.ssh/id_ed25519_ai-services-01`.
+- Add a passphrase to the admin key: `ssh-keygen -p -f ~/.ssh/id_ed25519_home-core`.
   `mads` holds passwordless sudo, so this key is root-equivalent.
 - Regenerate the hardware configuration on the machine and merge **only**
   `boot.initrd.availableKernelModules` and `boot.initrd.kernelModules`. The
@@ -135,7 +169,7 @@ Follow the [installation runbook](nixos-install-runbook.md). Your prerequisites:
 - Decide swap. `swapDevices = [ ]` is defensible at 48 GB; zram is the cheap
   alternative. Record the choice rather than leaving it implicit.
 
-**Exit gate:** `ssh ai-services-01` succeeds from the workstation *before* the
+**Exit gate:** `ssh home-core` succeeds from the workstation *before* the
 keyboard and monitor are disconnected. Password and root login are disabled, so
 a failure here must be repaired using the attached console before proceeding.
 
@@ -153,7 +187,7 @@ below applies when enabling the gateway bundle.
    unreadable; `generateKey = false`, so nothing will silently recreate it.
 2. Add the public recipient to `.sops.yaml` (neither that file nor `secrets/`
    exists yet — both are created here).
-3. Encrypt `secrets/ai-services-01.sops.yaml` containing all six values:
+3. Encrypt `secrets/home-core.sops.yaml` containing all six values:
    `control-plane/compute-api-key`, `control-plane/litellm-master-key`,
    `control-plane/litellm-salt-key`, `control-plane/postgres-admin-password`,
    `control-plane/postgres-app-password`, and `restic/password`.
@@ -205,7 +239,7 @@ names. Replace it once the machine is racked and the interfaces are known.
 
 1. Explicit `systemd-networkd` configuration using observed names and addresses.
 2. When GB10 arrives, assign the second 2.5GbE port as the private, non-routed
-   `ai-compute-01` link. Only LiteLLM may use it. Until then leave it unused.
+   `home-spark` link. Only LiteLLM may use it. Until then leave it unused.
 3. Add only the required ingress to the firewall.
 
 **Exit gate:** allowed paths work *and* denied paths fail, verified after the

@@ -242,7 +242,7 @@ recovery rather than a crash loop.
 | V-OPS-004 Stream fault | Disconnect client/upstream before and after first event | No replay after streaming; backend work cancels/bounds; request remains diagnosable |
 | V-OPS-005 Disk pressure | Fill a dedicated test volume through 80/90% thresholds | Alert/change freeze/cleanup procedure works; no broad destructive cleanup |
 | V-OPS-006 Upgrade/rollback | Deploy a candidate, fail post-switch test, restore prior manifest | Alias/DNS unchanged; prior qualified release restored without client edits |
-| V-OPS-007 Clean rebuild | Install `ai-services-01` from the pinned flake and rebuild the compute host from its source-controlled inputs plus separately supplied secrets/artifacts | Equivalent NixOS generation, Home Manager profile, manifest/configuration, `/srv/state` restore, and acceptance smoke pass |
+| V-OPS-007 Clean rebuild | Install `home-core` from the pinned flake and rebuild the compute host from its source-controlled inputs plus separately supplied secrets/artifacts | Equivalent NixOS generation, Home Manager profile, manifest/configuration, `/srv/state` restore, and acceptance smoke pass |
 | V-OPS-008 Soak | 24-hour representative mixed workload plus scheduled faults | No unhandled failure, sensitive log canary, unrecovered OOM, or lost readiness |
 | V-OPS-009 Control-plane outage | Stop Caddy and LiteLLM separately | Explicit failure and bounded recovery; no direct runtime bypass; Codex cloud planning/review remains available through its separately configured provider |
 

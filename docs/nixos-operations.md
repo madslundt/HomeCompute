@@ -1,6 +1,6 @@
 # NixOS operations and extension guide
 
-This is the day-to-day guide for `ai-services-01`. The initial disk and host
+This is the day-to-day guide for `home-core`. The initial disk and host
 installation remains in the [NixOS control-plane plan](nixos-control-plane-node-plan.md).
 
 ## Ownership rules
@@ -39,18 +39,18 @@ changed intentionally.
 
 ## Apply a NixOS change
 
-Run these commands from the repository checkout on `ai-services-01`. Build
+Run these commands from the repository checkout on `home-core`. Build
 before activation so evaluation or build failures cannot affect the running
 generation:
 
 ```bash
 git pull --ff-only
 nix flake check
-sudo nixos-rebuild build --flake .#ai-services-01
-sudo nixos-rebuild test --flake .#ai-services-01
+sudo nixos-rebuild build --flake .#home-core
+sudo nixos-rebuild test --flake .#home-core
 systemctl --failed
 systemctl status home-manager-mads.service
-sudo nixos-rebuild switch --flake .#ai-services-01
+sudo nixos-rebuild switch --flake .#home-core
 ```
 
 `test` activates the candidate without making it the boot default. Use the
@@ -59,7 +59,7 @@ networking. For a risky change that should activate only at the next attended
 reboot, use:
 
 ```bash
-sudo nixos-rebuild boot --flake .#ai-services-01
+sudo nixos-rebuild boot --flake .#home-core
 sudo reboot
 ```
 
@@ -130,7 +130,7 @@ restore-test application state before an image or schema migration.
 For a new system responsibility:
 
 1. Add a focused file under `modules/nixos/`, named for the responsibility.
-2. Import it from `hosts/ai-services-01/default.nix`.
+2. Import it from `hosts/home-core/default.nix`.
 3. Keep host-specific values in the host module and reusable policy in the
    focused module.
 4. Add an assertion when activation without a site-specific value would be
@@ -179,7 +179,7 @@ public recipient in `.sops.yaml`. Commit only encrypted files matching
 ```nix
 homecompute.secrets = {
   enable = true;
-  defaultSopsFile = ../../secrets/ai-services-01.sops.yaml;
+  defaultSopsFile = ../../secrets/home-core.sops.yaml;
 };
 ```
 
@@ -199,7 +199,7 @@ nix flake update home-manager
 nix flake update sops-nix
 git diff -- flake.lock
 ./scripts/validate-repository.sh
-sudo nixos-rebuild build --flake .#ai-services-01
+sudo nixos-rebuild build --flake .#home-core
 ```
 
 Keep Nixpkgs and Home Manager on matching release branches. Read their release

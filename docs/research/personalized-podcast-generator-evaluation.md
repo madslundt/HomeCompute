@@ -36,9 +36,9 @@ If those products fail, the custom proof of concept should:
 6. assemble, loudness-normalize, and export an MP3, transcript, source notes,
    and a reproducibility manifest.
 
-The application and durable episode artifacts belong on `ai-services-01` (or
-the current GMKtec application host). LLM and TTS inference remain replaceable
-APIs on `ai-compute-01`/DGX Spark. This preserves the repository's existing
+The application and durable episode artifacts belong on `home-core` (or
+the current home-core application host). LLM and TTS inference remain replaceable
+APIs on `home-spark`/DGX Spark. This preserves the repository's existing
 inference-appliance boundary.
 
 The recommendation is deliberately conditional on listening tests. Project
@@ -268,8 +268,8 @@ flowchart LR
   and intermediate artifact idea;
 - Esperanto or the existing gateway only where it provides a qualified local or
   optional cloud LLM route;
-- the repository's existing `ai-services-01` application and
-  `ai-compute-01` inference boundaries;
+- the repository's existing `home-core` application and
+  `home-spark` inference boundaries;
 - FFmpeg for decoding, resampling, silence/crossfade policy, EBU R128-style
   loudness normalization, chapter metadata, and MP3 output;
 - an existing private feed/server later, rather than implementing podcast

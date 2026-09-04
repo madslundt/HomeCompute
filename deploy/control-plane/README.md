@@ -1,6 +1,6 @@
 # NixOS control-plane workload
 
-This is the deliberately small first stack for `ai-services-01`: Caddy, one
+This is the deliberately small first stack for `home-core`: Caddy, one
 LiteLLM process, and a PostgreSQL instance dedicated to LiteLLM.
 
 ## Why this split
@@ -26,11 +26,13 @@ workers/replicas or after explicitly approving response caching and retention.
 
 Caddy remains in this project while it fronts only this gateway. The official
 image starts as root, but it listens on unprivileged container port 8443, has
-all Linux capabilities removed, has a read-only root filesystem, and can write
+only its binary-required `NET_BIND_SERVICE` capability, has a read-only root filesystem, and can write
 only its named data/config volumes. A Docker socket, host network, privileged
 mode, devices, and broad host bind mounts are absent. LiteLLM uses the signed
-upstream non-root image family. PostgreSQL retains only the narrowly reviewed
-capabilities its official entrypoint needs to initialize and drop privileges.
+upstream non-root image family. PostgreSQL starts directly as Alpine UID/GID 70 with all capabilities removed.
+Its state directory must be owned by 70:70; NixOS tmpfiles provisions this.
+Starting directly preserves supplementary group 989 for reading SOPS secrets;
+the official root entrypoint would discard that group when switching users.
 
 ## Network and transport policy
 
@@ -63,11 +65,20 @@ an explicit documented exception on a dedicated, non-routed point-to-point
 link or VLAN. Prefer a compute certificate trusted by the LiteLLM image or a
 mutually authenticated tunnel.
 
+## Live deployment
+
+The K15 deployment is recorded in [control-plane-deployment.md](../../docs/control-plane-deployment.md).
+Its gateway uses `home-core.tail479ad.ts.net` on the Tailscale address, and
+`/etc/homecompute/control-plane.env` holds the resolved production settings.
+Backups remain deferred by the operator. Model aliases are configured for the
+GB10, which is not connected yet; gateway health does not establish inference
+availability.
+
 ## Installation
 
 ```bash
-sudo nixos-rebuild build --flake .#ai-services-01
-sudo nixos-rebuild switch --flake .#ai-services-01
+sudo nixos-rebuild build --flake .#home-core
+sudo nixos-rebuild switch --flake .#home-core
 sudo docker compose --env-file config/control-plane.env.example \
   -f deploy/control-plane/compose.yaml config --quiet
 sudo docker compose --env-file config/control-plane.env.example \

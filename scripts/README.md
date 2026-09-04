@@ -1,7 +1,7 @@
 # Setup scripts
 
 The repository retains a privileged setup helper only for the vendor-managed
-compute appliance. `ai-services-01` is configured with `nixos-rebuild`.
+compute appliance. `home-core` is configured with `nixos-rebuild`.
 
 | Script | Target | Mutating commands |
 | --- | --- | --- |
@@ -15,7 +15,7 @@ caches, secrets, or previous release records.
 ```bash
 ./scripts/setup-compute-node.sh help
 nix flake check
-nixos-rebuild build --flake .#ai-services-01
+nixos-rebuild build --flake .#home-core
 ```
 
 The script must run from an intact repository checkout because it resolves
@@ -32,3 +32,10 @@ This checks Bash syntax and ShellCheck, the non-executing configuration loader,
 automation JSON, YAML when Ruby is installed, Compose rendering (including the
 artifact-fetch profile), control-plane isolation policy, and D2 rendering when
 D2 is installed.
+
+## Published home-core deployments
+
+`deploy-home-core.sh FULL_COMMIT_SHA` runs on home-core with sudo. It deploys a
+clean GitHub commit, rebuilds NixOS, and applies the existing gateway and n8n
+projects. See [Git deployment](../docs/git-deployment.md) for prerequisites and
+rollback limits. The books importer remains staged.

@@ -18,7 +18,7 @@ Add Hermes as an optional Phase I personal-agent layer, with household scope
 expansion in Phase J, after the text-runtime and shared-gateway gates. Run
 `owner`, `partner`, and `family` in three separately
 qualified OpenShell sandboxes on an always-on application host — since amended
-by ADR-017, which makes that host `ai-services-01` and replaces host separation
+by ADR-017, which makes that host `home-core` and replaces host separation
 from the gateway with per-project container isolation. Use the
 NemoClaw Hermes integration and route inference through the existing
 `ai.home.arpa`/LiteLLM path to GB10 vLLM.
@@ -62,7 +62,7 @@ deterministic home control remains independent of both.
 
 Accepted as the design baseline; implementation awaits Phase I gates. Amended
 by [ADR-017](017-consolidated-application-host.md): the application host is
-`ai-services-01`, shared with the gateway, so the sandboxes' isolation is by
+`home-core`, shared with the gateway, so the sandboxes' isolation is by
 Compose project, network, runtime user, state subtree, secret group, and
 resource limit rather than by machine.
 

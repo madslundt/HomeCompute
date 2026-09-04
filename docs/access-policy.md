@@ -23,9 +23,9 @@ local CA trust on LAN and tailnet clients.
 
 | Source | Destination | Allowed | Denied by default |
 | --- | --- | --- | --- |
-| Approved household LAN/tailnet clients | `ai-services-01` | TCP 443 only; per-consumer application credential still required | Direct compute, database, container, and management access |
-| Approved administrator devices/users | `ai-services-01` management | SSH through the declared Tailscale policy with device posture and reauthentication where available | All non-admin identities and shared household devices |
-| `ai-services-01` | `ai-compute-01` private link | Only qualified inference and audio ports | General internet forwarding and compute management |
+| Approved household LAN/tailnet clients | `home-core` | TCP 443 only; per-consumer application credential still required | Direct compute, database, container, and management access |
+| Approved administrator devices/users | `home-core` management | SSH through the declared Tailscale policy with device posture and reauthentication where available | All non-admin identities and shared household devices |
+| `home-core` | `home-spark` private link | Only qualified inference and audio ports | General internet forwarding and compute management |
 | Automation hosts | Gateway and approved integrations | TCP 443 plus explicitly documented service endpoints | Direct compute, agent state, admin LAN, and broad RFC1918 access |
 | Personal-agent hosts | Gateway and approved provider/tool endpoints | TCP 443 and required DNS/NTP only; separate credentials per principal | Direct compute, automation databases, other trust domains, and undeclared LAN services |
 | Toolbox hosts | Gateway and approved artifact sources | Deliberately enabled outbound flows while in use | Household credentials, durable production state, direct compute, inbound services |

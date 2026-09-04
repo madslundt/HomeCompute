@@ -23,10 +23,10 @@
       ...
     }:
     {
-      nixosConfigurations.ai-services-01 = nixpkgs.lib.nixosSystem {
+      nixosConfigurations.home-core = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
-          ./hosts/ai-services-01
+          ./hosts/home-core
           sops-nix.nixosModules.sops
           home-manager.nixosModules.home-manager
           {

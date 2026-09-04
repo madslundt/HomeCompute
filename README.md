@@ -1,8 +1,8 @@
 # HomeCompute
 
-> **Current priority (2026-09-04):** prepare and install GMKtec, then migrate
+> **Current priority (2026-09-04):** prepare and install home-core, then migrate
 > inventoried HAOS supporting services one at a time. GB10 is not available.
-> Follow the [GMKtec-first rollout](docs/ai-services-01-rollout-plan.md#start-now-without-gb10);
+> Follow the [home-core-first rollout](docs/home-core-rollout-plan.md#start-now-without-gb10);
 > non-AI migrations require host, backup/restore, networking, and application
 > gates, but do not require GB10 or a new AI gateway. Home Assistant stays on
 > HAOS and Hermes remains deferred.
@@ -12,10 +12,10 @@ voice, meetings, coding, research, and personal agents.
 
 The platform has two physical node roles:
 
-- `ai-services-01` is an always-on x86 NixOS control-plane host. It
+- `home-core` is an always-on x86 NixOS control-plane host. It
   owns the trusted gateway, its dedicated database, backups, and other approved
   durable state; untrusted workloads remain elsewhere.
-- `ai-compute-01` is an NVIDIA GB10 or DGX Spark-class appliance. It runs
+- `home-spark` is an NVIDIA GB10 or DGX Spark-class appliance. It runs
   rebuildable text, speech, and diarization inference services.
 
 Clients use `https://ai.home.arpa`. They do not call the compute node or concrete
@@ -76,15 +76,15 @@ clients.
 
 1. Record hostnames, IP addresses, DNS, the private compute subnet, backup
    target, and rollback owners.
-2. Install the pinned NixOS 26.05 flake on `ai-services-01`, then configure its
+2. Install the pinned NixOS 26.05 flake on `home-core`, then configure its
    observed LAN and private-compute interfaces declaratively.
 3. Deploy and verify the digest-pinned Caddy/LiteLLM/PostgreSQL stack on
    loopback, then configure and restore-test off-host backup.
-4. Prepare the supported DGX OS baseline on `ai-compute-01` and configure its
+4. Prepare the supported DGX OS baseline on `home-spark` and configure its
    management and private-compute addresses.
 5. Initialize, validate, and install the first pinned text-inference tuple with
    `setup-compute-node.sh`.
-6. Connect the private link and allow only `ai-services-01` to reach inference
+6. Connect the private link and allow only `home-core` to reach inference
    ports.
 7. Point the already-loopback-tested gateway at the qualified compute endpoint,
    apply its exact ingress/egress policy, then expose `https://ai.home.arpa` to
@@ -111,14 +111,14 @@ provide a turnkey gateway or application-service deployment.
 
 ## Prerequisites
 
-For `ai-services-01`:
+For `home-core`:
 
 - an x86 host with enough CPU, memory, storage, and two network ports;
 - a public SSH key, reserved LAN/private-compute
   values, a persistent age identity, and an off-host backup target;
 - reviewed immutable image digests and the matching compute API credential.
 
-For `ai-compute-01`:
+For `home-spark`:
 
 - an NVIDIA GB10 or DGX Spark-class appliance with supported DGX OS;
 - working NVIDIA drivers, Docker, Compose, and NVIDIA Container Toolkit;
@@ -150,7 +150,7 @@ migrating production state.
 | Install the control-plane host | [NixOS control-plane plan](docs/nixos-control-plane-node-plan.md) |
 | Apply, roll back, update, or extend NixOS | [NixOS operations guide](docs/nixos-operations.md) |
 | Inspect compute-node details | [Compute-node plan](docs/ai-compute-node-plan.md) |
-| Pilot Hermes on `ai-services-01` | [ADR-017](docs/adr/017-consolidated-application-host.md), then [NemoClaw placement and Hermes setup](docs/research/nemoclaw-machine-placement.md) |
+| Pilot Hermes on `home-core` | [ADR-017](docs/adr/017-consolidated-application-host.md), then [NemoClaw placement and Hermes setup](docs/research/nemoclaw-machine-placement.md) |
 | Run acceptance tests | [Verification strategy](docs/verification-strategy.md) |
 | Understand model choices | [Model recommendation](docs/research/llm-installation-recommendation.md) |
 
@@ -160,7 +160,7 @@ migrating production state.
 | --- | --- |
 | [`automations/`](automations/README.md) | Importable monitoring and operations workflow templates |
 | [`config/`](config/README.md) | Operator configuration templates |
-| [`hosts/`](hosts/ai-services-01/default.nix) | Per-host NixOS entry points and hardware contracts |
+| [`hosts/`](hosts/home-core/default.nix) | Per-host NixOS entry points and hardware contracts |
 | [`modules/nixos/`](modules/nixos/system.nix) | System configuration, networking, firewall, Docker, SSH, Tailscale, storage, backups, and secrets |
 | [`home/`](home/mads/default.nix) | Home Manager user environments |
 | [`deploy/`](deploy/README.md) | Docker Compose application workloads |
@@ -188,3 +188,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and report security issues using
 
 HomeCompute uses the [Apache License 2.0](LICENSE). Models, images, and other
 third-party software keep their own licenses and are not redistributed here.
+
+## Deploy the current K15 configuration
+
+See [the Git deployment workflow](docs/git-deployment.md): publish from the
+MacBook, then deploy an exact commit on home-core using read-only GitHub access.

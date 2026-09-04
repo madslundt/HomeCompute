@@ -1,12 +1,12 @@
 # HomeCompute setup guide
 
 > **Control-plane update:** ADR-016 selects the Git-first NixOS configuration
-> in this repository for `ai-services-01`. The compute node keeps its supported
+> in this repository for `home-core`. The compute node keeps its supported
 > DGX OS baseline.
 
 **Scope:** build the services-node and compute-node baselines, connect them,
 prepare the gateway and model-qualification work, and optionally pilot Hermes
-as an isolated Compose project on `ai-services-01` (ADR-017).
+as an isolated Compose project on `home-core` (ADR-017).
 
 This is the main operator path. You can complete the steps below without
 reading the detailed plans. Each stage links to its plan for design rationale,
@@ -16,16 +16,16 @@ edge cases, and full acceptance evidence.
 
 | Name | Type | Responsibility |
 | --- | --- | --- |
-| `ai-services-01` | x86 NixOS host | Runs the trusted gateway Compose stack; owns gateway state and backups |
-| Gateway Compose project | Containers on `ai-services-01` | Caddy, one LiteLLM worker, and dedicated PostgreSQL |
-| `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Runs rebuildable text, STT, TTS, and later diarization inference |
-| Automation project | Separate Compose project on `ai-services-01` | Runs n8n and its workflow state after migration off the Home Assistant add-on |
-| Hermes `owner` pilot | OpenShell sandbox in its own Compose project on `ai-services-01` | Runs the optional personal agent; sends inference through `ai.home.arpa` to `ai-compute-01` |
+| `home-core` | x86 NixOS host | Runs the trusted gateway Compose stack; owns gateway state and backups |
+| Gateway Compose project | Containers on `home-core` | Caddy, one LiteLLM worker, and dedicated PostgreSQL |
+| `home-spark` | NVIDIA GB10 or DGX Spark-class appliance | Runs rebuildable text, STT, TTS, and later diarization inference |
+| Automation project | Separate Compose project on `home-core` | Runs n8n and its workflow state after migration off the Home Assistant add-on |
+| Hermes `owner` pilot | OpenShell sandbox in its own Compose project on `home-core` | Runs the optional personal agent; sends inference through `ai.home.arpa` to `home-spark` |
 
 The production request path is:
 
 ```text
-clients -> https://ai.home.arpa -> ai-services-01 -> private link -> ai-compute-01
+clients -> https://ai.home.arpa -> home-core -> private link -> home-spark
 ```
 
 Automations, agents, and Home Assistant all use `https://ai.home.arpa`; none of
@@ -46,16 +46,16 @@ before you continue.
 
 1. Record the network, backup, credential, and rollback decisions.
 2. Inventory and back up the services that may later move.
-3. Install the pinned NixOS configuration on `ai-services-01`.
+3. Install the pinned NixOS configuration on `home-core`.
 4. Deploy the trusted gateway stack, then configure and restore-test off-host backup.
-5. Install and verify supported DGX OS on `ai-compute-01`.
+5. Install and verify supported DGX OS on `home-spark`.
 6. Deploy and smoke-test the first pinned text tuple on loopback.
-7. Connect the private link and restrict compute access to `ai-services-01`.
+7. Connect the private link and restrict compute access to `home-core`.
 8. Install the gateway and expose semantic aliases at `https://ai.home.arpa`.
 9. Benchmark models by use case and promote only passing tuples.
 10. Migrate automations and other consumers one at a time with rollback.
 11. Optionally pilot one isolated Hermes sandbox as its own Compose project on
-    `ai-services-01`.
+    `home-core`.
 
 The rest of this guide expands these steps and provides the commands and
 checkpoints. The detailed plans are optional unless a check fails or you need
@@ -98,8 +98,8 @@ The examples use this private subnet:
 
 | Endpoint | Example address |
 | --- | --- |
-| `ai-services-01` private NIC | `10.77.10.2/24` |
-| `ai-compute-01` private NIC | `10.77.10.10/24` |
+| `home-core` private NIC | `10.77.10.2/24` |
+| `home-spark` private NIC | `10.77.10.10/24` |
 
 Choose different values if these overlap a LAN, VPN, or container network.
 
@@ -128,7 +128,7 @@ method, and keep-or-retire decision.
 
 Details: [platform execution plan](platform-execution-plan.md#step-2--inventory-what-already-exists).
 
-## Step 2 — Build `ai-services-01`
+## Step 2 — Build `home-core`
 
 ### 2.1 Prepare the x86 host
 
@@ -144,7 +144,7 @@ Details: [platform execution plan](platform-execution-plan.md#step-2--inventory-
 Boot the verified NixOS installer and create an EFI filesystem labelled `ESP`
 plus an ext4 root filesystem labelled `nixos`. Mount them below `/mnt`, clone
 this repository, and compare `nixos-generate-config --root /mnt` with the
-committed `hosts/ai-services-01/hardware-configuration.nix`.
+committed `hosts/home-core/hardware-configuration.nix`.
 
 Before remote activation:
 
@@ -160,14 +160,14 @@ Run from the repository checkout:
 
 ```bash
 nix flake check
-sudo nixos-rebuild build --flake .#ai-services-01
-sudo nixos-install --flake .#ai-services-01
+sudo nixos-rebuild build --flake .#home-core
+sudo nixos-install --flake .#home-core
 ```
 
 After reboot, subsequent system and user changes use the same activation:
 
 ```bash
-sudo nixos-rebuild switch --flake .#ai-services-01
+sudo nixos-rebuild switch --flake .#home-core
 systemctl status home-manager-mads.service
 ```
 
@@ -188,7 +188,7 @@ state has moved.
 
 Details: [NixOS control-plane plan](nixos-control-plane-node-plan.md).
 
-## Step 3 — Build `ai-compute-01`
+## Step 3 — Build `home-spark`
 
 ### 3.1 Prepare the appliance
 
@@ -198,7 +198,7 @@ Container Toolkit.
 
 1. Record hardware, firmware, storage, MAC addresses, and recovery information.
 2. Connect the UPS, management network, and private-compute network.
-3. Set hostname `ai-compute-01.home.arpa` and the correct timezone.
+3. Set hostname `home-spark.home.arpa` and the correct timezone.
 4. Assign reserved management and private addresses.
 5. Apply vendor-supported firmware and DGX OS updates, then reboot.
 6. Verify `nvidia-smi`, container GPU access, NTP, disk health, DNS, and space.
@@ -286,7 +286,7 @@ Details: [compute-node plan](ai-compute-node-plan.md).
 
 1. Cable the two private interfaces.
 2. Confirm that the private subnet has no gateway or internet route.
-3. Test reachability between `ai-services-01` and `ai-compute-01`.
+3. Test reachability between `home-core` and `home-spark`.
 4. Add a compute-node firewall rule allowing only the gateway private address
    to the qualified inference port.
 5. Prove that ordinary LAN clients cannot reach the compute port directly.
@@ -300,16 +300,16 @@ FIREWALL_CONFIRMED=true
 ```
 
 Use your worksheet values if they differ. Re-run `validate` and `install`, then
-test health and Responses calls from `ai-services-01`.
+test health and Responses calls from `home-core`.
 
 Pull the private cable and verify a clear unavailable response. Private aliases
 must not silently switch to a cloud provider.
 
-**Checkpoint:** only the private interface on `ai-services-01` can reach the compute service.
+**Checkpoint:** only the private interface on `home-core` can reach the compute service.
 
 ## Step 5 — Install the AI gateway
 
-Use the guarded `deploy/control-plane` stack on `ai-services-01`. It contains
+Use the guarded `deploy/control-plane` stack on `home-core`. It contains
 Caddy, one LiteLLM worker, and a dedicated PostgreSQL database. Redis is absent
 until scaling or an approved cache design requires it. n8n, browsers, agent
 sandboxes, and Home Assistant stay outside this deployment.
@@ -378,7 +378,7 @@ observe a soak period, and retain rollback until the exit gate passes.
 > host, because it removes the prompt-injectable component that holds tool
 > credentials. This step is retained as the plan for when that changes.
 
-Hermes runs on `ai-services-01` in its own Compose project, never on the
+Hermes runs on `home-core` in its own Compose project, never on the
 GX10/GB10 compute appliance. ADR-017 accepts container isolation here in place
 of the separate host the requirements originally specified, so the isolation
 steps below are the boundary rather than a second layer behind one.
@@ -418,7 +418,7 @@ them in the operator runbook. See the
 and [ADR-013](adr/013-hermes-personal-agent-layer.md).
 
 **Checkpoint:** one recoverable synthetic Hermes sandbox runs in its own
-Compose project on `ai-services-01`, reaches inference only through
+Compose project on `home-core`, reaches inference only through
 `ai.home.arpa`, and cannot cross its declared network, credential, filesystem,
 or data boundaries — verified from inside the sandbox, not from the host.
 

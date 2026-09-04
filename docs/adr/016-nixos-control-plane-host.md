@@ -2,7 +2,7 @@
 
 ## Context
 
-ADR-014 proposed Proxmox and role-separated VMs for `ai-services-01`. A later
+ADR-014 proposed Proxmox and role-separated VMs for `home-core`. A later
 working-tree design replaced that with an Ubuntu bootstrap. The project owner
 has now selected a Git-first NixOS installation and requested that the Ubuntu
 work be removed.
@@ -14,7 +14,7 @@ letting a user-level tool own machine policy.
 
 ## Decision
 
-Install NixOS 26.05 directly on `ai-services-01`. The root `flake.nix` and
+Install NixOS 26.05 directly on `home-core`. The root `flake.nix` and
 `flake.lock` are the only system activation entry point. NixOS modules own boot,
 users, networking, firewall, Docker, SSH, Tailscale, storage, backups, and
 sops-nix secret materialization.
@@ -29,7 +29,7 @@ Application workloads remain Docker Compose projects. Durable application data
 lives below `/srv/state`; encrypted secrets are committed only as sops files
 and materialized at runtime outside the Nix store.
 
-`ai-compute-01` remains on its vendor-supported DGX OS baseline. This decision
+`home-spark` remains on its vendor-supported DGX OS baseline. This decision
 does not imply NixOS support for the GB10 appliance.
 
 ## Consequences
@@ -55,18 +55,18 @@ does not imply NixOS support for the GB10 appliance.
   package-evaluation path.
 - Separate NixOS repository: rejected while one owner changes host policy,
   Compose workloads, storage, and operations together.
-- NixOS on `ai-compute-01`: rejected until NVIDIA supports and qualifies that
+- NixOS on `home-spark`: rejected until NVIDIA supports and qualifies that
   platform for the appliance.
 
 ## Status
 
-Accepted. Supersedes ADR-014 for new `ai-services-01` installation work and
+Accepted. Supersedes ADR-014 for new `home-core` installation work and
 replaces the uncommitted Ubuntu host design.
 
 ## Evidence
 
 - `flake.nix`
-- `hosts/ai-services-01/`
+- `hosts/home-core/`
 - `modules/nixos/`
 - `home/mads/`
 - `docs/research/home-manager-nixos-26.05-integration.md`

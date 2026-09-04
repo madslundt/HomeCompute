@@ -1,7 +1,7 @@
 # Compute-node deployment
 
 `compose.yaml` defines the Phase C text-inference baseline for
-`ai-compute-01`. It starts one pinned vLLM container, exposes logical aliases,
+`home-spark`. It starts one pinned vLLM container, exposes logical aliases,
 uses external secret files, runs with a read-only root filesystem and dropped
 capabilities, bounds logs, and publishes to loopback by default.
 
@@ -14,7 +14,7 @@ chat-template hash before the runtime is started.
 
 The vLLM API key protects the OpenAI-compatible paths, not every endpoint on
 the process. The host firewall must therefore allow the published port only
-from `ai-services-01`, and the gateway must expose only its route allow-list.
+from `home-core`, and the gateway must expose only its route allow-list.
 See the [vLLM security guidance](https://docs.vllm.ai/en/stable/usage/security/).
 
 Do not run the Compose file directly for a production installation. Use

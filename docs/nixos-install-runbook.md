@@ -1,6 +1,6 @@
 # NixOS installation runbook
 
-**Target:** `ai-services-01`, GMKtec K15, x86-64, NixOS 26.05
+**Target:** `home-core`, x86-64, NixOS 26.05
 
 This is the bare-metal procedure for a fresh install. It implements the
 contract in the [control-plane plan](nixos-control-plane-node-plan.md); read
@@ -30,24 +30,24 @@ disk rather than assuming a device name:
 lsblk -o NAME,SIZE,MODEL
 ```
 
-`hardware-configuration.nix` mounts by label, so `ESP` and `nixos` must match
-exactly. FAT labels are uppercase.
+`hardware-configuration.nix` mounts by label, so `boot` and `nixos` must match
+exactly. The installed host uses `boot` for its EFI filesystem.
 
 ```bash
 parted /dev/nvme0n1 -- mklabel gpt
 parted /dev/nvme0n1 -- mkpart ESP fat32 1MiB 2GiB
 parted /dev/nvme0n1 -- set 1 esp on
 parted /dev/nvme0n1 -- mkpart root ext4 2GiB 100%
-mkfs.fat -F32 -n ESP /dev/nvme0n1p1
+mkfs.fat -F32 -n boot /dev/nvme0n1p1
 mkfs.ext4 -L nixos /dev/nvme0n1p2
 mount /dev/disk/by-label/nixos /mnt
 mkdir -p /mnt/boot
-mount -o umask=077 /dev/disk/by-label/ESP /mnt/boot
+mount -o umask=077 /dev/disk/by-label/boot /mnt/boot
 ```
 
 The ESP is 2 GiB because `systemd-boot` keeps a kernel and initrd per
 generation, at roughly 100 MB each. `boot.loader.systemd-boot.configurationLimit`
-bounds that at ten entries; 2 GiB leaves headroom above the resulting ~1 GB. A
+bounds that at five entries on the installed host's 1 GiB ESP; use 2 GiB for a fresh install. A
 512 MiB ESP fills up and then blocks the rebuild that would have fixed it.
 
 ## 3. Reconcile the detected hardware configuration
@@ -78,7 +78,7 @@ git clone https://github.com/madslundt/HomeCompute /tmp/HomeCompute
 cd /tmp/HomeCompute
 git status --short
 nix --extra-experimental-features 'nix-command flakes' flake check
-nixos-rebuild build --flake .#ai-services-01
+nixos-rebuild build --flake .#home-core
 ```
 
 Flakes ignore untracked imported files: add new Nix files to the Git index.
@@ -86,7 +86,7 @@ Review tracked modifications as well; they are included even when unstaged. Buil
 before the disk is written.
 
 ```bash
-nixos-install --flake /tmp/HomeCompute#ai-services-01
+nixos-install --flake /tmp/HomeCompute#home-core
 ```
 
 `nixos-install` prompts for a **root** password. Set one you can retrieve; the
@@ -108,8 +108,9 @@ available**:
 
 ```bash
 # Set this to the verified Tailscale name or address from the console.
-read -r -p "GMKtec Tailscale host: " GMKTEC_TAILSCALE_HOST
-ssh -i ~/.ssh/id_ed25519_ai-services-01 "mads@${GMKTEC_TAILSCALE_HOST:?host required}"
+read -r -p "home-core Tailscale host: " HOME_CORE_TAILSCALE_HOST
+read -r -p "Path to the existing home-core SSH private key: " HOME_CORE_SSH_KEY
+ssh -i "${HOME_CORE_SSH_KEY:?key path required}" "mads@${HOME_CORE_TAILSCALE_HOST:?host required}"
 ```
 
 Password authentication and root login are disabled, so a reviewed key over
@@ -134,6 +135,6 @@ The host is installed and reachable at this point, but no workload runs yet.
 Secrets, the gateway, backups, networking, and the n8n migration each have
 their own blockers and exit gates, in a required order.
 
-That sequence is the [`ai-services-01` rollout plan](ai-services-01-rollout-plan.md),
+That sequence is the [`home-core` rollout plan](home-core-rollout-plan.md),
 which is the single authority for it. This runbook ends at "the host is
 reachable over SSH"; the rollout plan starts there.
