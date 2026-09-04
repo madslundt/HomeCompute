@@ -2,8 +2,9 @@
 
 Verified: 2026-08-25
 
-Status: correction to the installation shortlist; production selection still
-requires the repository's GB10, Danish, integration, and mixed-load gates
+Status: historical 2026-08-25 omission review. Candidate dispositions are
+superseded by the
+[2026-09-04 shortlist refresh](text-model-shortlist-refresh-2026-09-04.md).
 
 ## Bottom line
 
@@ -26,7 +27,7 @@ and [official Qwen model identifiers](https://github.com/QwenLM/Qwen3.8#models).
 
 | User label | Exact official identity | Already documented? | Disposition |
 | --- | --- | --- | --- |
-| Qwen3 Coder 80B A3B | `Qwen/Qwen3-Coder-Next` | Yes, in the [coding shortlist](coding-model-evaluation.md) and [installation recommendation](llm-installation-recommendation.md) | Keep as the primary specialized coding candidate. “80B/3B active” describes this same artifact, not another omitted model. |
+| Qwen3 Coder 80B A3B | `Qwen/Qwen3-Coder-Next` | Yes, in the [coding shortlist](coding-model-evaluation.md) and [installation recommendation](llm-installation-recommendation.md) | Current disposition: optional coding control after Qwen3.8 and a conditional Ornith test. “80B/3B active” describes this same artifact, not another omitted model. |
 | Qwen3.8 35B A3B | No official artifact under that name; likely `Qwen/Qwen3.6-35B-A3B` | No | Add NVIDIA's `nvidia/Qwen3.6-35B-A3B-NVFP4` as the first efficient shared-text GB10 candidate and retire Qwen3.5 as the default first install. |
 | Qwen3.8 27B | `Qwen/Qwen3.8-27B` and publisher FP8 variant `Qwen/Qwen3.8-27B-FP8` | No | Add as a high-priority dense quality challenger for `automation` and `coding`; do not assume it wins the Home Assistant latency role. |
 | Whisper large-v3-turbo | `openai/whisper-large-v3-turbo` | Yes, in the [STT shortlist](stt-model-evaluation.md) | Install for the STT benchmark. Its absence from the earlier answer was a scope/wording error, not a model rejection. |

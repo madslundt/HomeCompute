@@ -68,12 +68,12 @@ model behind an alias after the replacement passes the same tests.
 
 | Alias or route | Use case | Initial candidate or comparison set |
 | --- | --- | --- |
-| `coding` | Codex editing, tools, builds, and tests | Qwen3.6 integration baseline; Qwen3-Coder-Next primary specialist; Nemotron 3.5, Gemma 4, Qwen3.8, and Devstral controls |
-| `automation` | n8n, structured output, and approved tools | Qwen3.6 shared baseline; Nemotron 3.5, Gemma 4, Qwen3.8, Devstral, and gpt-oss comparisons |
-| `research` | Private, source-bounded synthesis | Qwen3.6 shared baseline; later agent/general challengers |
+| `coding` | Codex editing, tools, builds, and tests | Qwen3.6 integration baseline; Qwen3.8 first quality candidate; Nemotron 3.5 performance candidate; Ornith conditional challenger |
+| `automation` | n8n, structured output, and approved tools | Qwen3.6 integration baseline; Qwen3.8 first quality candidate; Nemotron 3.5 performance comparison |
+| `research` | Private, source-bounded synthesis | Qwen3.6 integration baseline; Qwen3.8 first quality candidate |
 | `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.6 shared baseline; smaller Qwen controls only if latency requires them |
-| `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.6 shared baseline; dense challengers only if they improve factuality |
-| `assistant` | Isolated personal-agent sessions and tools | Qwen3.6 integration baseline at 64K or more; Nemotron 3.5 agent challenger |
+| `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.6 integration baseline; Qwen3.8 quality candidate; Gemma only for a measured multilingual/factuality gap |
+| `assistant` | Isolated personal-agent sessions and tools | Qwen3.6 integration baseline at 64K or more; Qwen3.8 quality candidate; Nemotron 3.5 performance candidate |
 | STT route | Danish, English, and mixed-language transcription | Danish Parakeet, Whisper large-v3-turbo, and Whisper large-v3 |
 | TTS route | Danish speech for Home Assistant and agents | Piper Danish baseline; Røst naturalness challengers |
 | Retrieval route | Private document search | Deferred Qwen3 Embedding and Reranker candidates |

@@ -75,7 +75,7 @@ watchlist only after a human review.
 
 ## Operational notes
 
-- The workflow uses public Hugging Face and GitHub APIs. Thirteen weekly checks
+- The workflow uses public Hugging Face and GitHub APIs. Sixteen weekly checks
   are well below ordinary anonymous GitHub rate limits, but self-hosted networks
   must allow outbound HTTPS and DNS.
 - Enable n8n's SSRF protection and deny private/link-local destinations at the

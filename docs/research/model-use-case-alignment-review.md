@@ -2,9 +2,10 @@
 
 Verified: 2026-08-30
 
-Status: documentation reconciliation review. This note recommends benchmark
-and canonical-document changes; it does not select a production model or
-authorize a deployment change.
+Status: historical 2026-08-30 reconciliation review. Its requested updates
+have been superseded by the
+[2026-09-04 shortlist refresh](text-model-shortlist-refresh-2026-09-04.md) and
+must not be used as the current candidate order.
 
 ## Executive decision
 

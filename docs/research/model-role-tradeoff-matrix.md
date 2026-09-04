@@ -1,10 +1,13 @@
 # Model-role trade-off matrix
 
-Verified: 2026-08-30
+Verified: 2026-09-04
 
-Status: decision aid from repository requirements and first-party model/runtime
-documentation. It does not select a production artifact or authorize a
-deployment change.
+Status: scorecard and switch-rule reference. Candidate dispositions in the
+dated role detail are superseded by the
+[current shortlist](llm-installation-recommendation.md): the mandatory text
+wave is Qwen3.6, Qwen3.8-27B, and Nemotron 3.5; Ornith, Muse, and Gemma are
+conditional, and GPT-OSS, Devstral Small 2, and GLM-4.7-Flash are outside the
+normal queue.
 
 ## Decision in brief
 
@@ -24,11 +27,11 @@ The provisional selections are:
 
 | Role | Provisional recommendation | How uncertain is it? |
 | --- | --- | --- |
-| Shared Danish `automation`, `research`, and `meeting` text work | `nvidia/Qwen3.6-35B-A3B-NVFP4` | Baseline is clear; dense quality challengers still need local Danish and workflow tests |
+| Shared Danish `automation`, `research`, and `meeting` text work | Qwen3.6 integration, then `Qwen/Qwen3.8-27B-FP8` quality qualification | Qwen3.8 is the first quality hypothesis; Danish and workflow tests remain decisive |
 | Home Assistant `home` | Shared Qwen3.6 first | Genuinely open if mixed-load voice latency fails; then a reserved small model may win |
-| Codex `coding` | `Qwen/Qwen3-Coder-Next-FP8` | Genuinely open against Nemotron 3.5 Lightning/DSpark and dense controls |
-| Hermes `assistant` | Qwen3.6 in a separate 64K-or-greater qualification profile | Baseline path is clear; acceptance at 64K and mixed load is not |
-| Serialized high-capacity reasoning | `openai/gpt-oss-120b` in publisher-native MXFP4 first | Open against Nemotron 3 Super; neither has Danish acceptance evidence |
+| Codex `coding` | Qwen3.8-27B quality candidate after Qwen3.6 integration | Open against Nemotron performance; Ornith is conditional on a measured gap |
+| Hermes `assistant` | Qwen3.8 after Qwen3.6 integration, in a 64K-or-greater profile | Acceptance at 64K and mixed load is unresolved |
+| Serialized high-capacity reasoning | No mandatory separate model | GPT-OSS-120B is only an explicit one-time Harmony/MXFP4 control |
 | Home STT | Whisper large-v3-turbo operationally; Danish Parakeet as the likely promotion candidate after an adapter exists | Open on real far-field, code-switched speech, and end-to-end integration |
 | Meeting STT | Whisper large-v3-turbo first, large-v3 as the accuracy ceiling | Genuinely open; the home and meeting winners may differ |
 | Danish TTS | Piper operational baseline; Røst 350M promotion candidate | Genuinely open on pronunciation, naturalness, integration, and latency |
@@ -67,10 +70,10 @@ STT or diarization.
 | Tier | Candidate | Pros | Cons and risks |
 | --- | --- | --- | --- |
 | **Must-run; recommended baseline** | `nvidia/Qwen3.6-35B-A3B-NVFP4` | One exact NVIDIA single-Spark vLLM recipe; 35B total/3B active; 262K context; tools, reasoning parser, FP8 KV, and optional MTP; one shared process exercises all aliases. NVIDIA reports close BF16/NVFP4 results on its chosen aggregate benchmarks. | No publisher result establishes the repository's Danish, source-bounded research, Aula, or meeting-schema gates. The Spark recipe uses Marlin, so NVFP4 storage is not enough to claim native W4A4. [NVIDIA card](https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4) |
-| **Must-run dense challenger** | `nvidia/Gemma-4-31B-IT-NVFP4` | Dense quality control; 256K context, multimodal input, function calling, Apache-2.0; NVIDIA-published ModelOpt artifact listed in the Spark vLLM matrix. | Dense 31B may cost more active compute and mixed-load headroom than a 3B-active MoE. The generic card does not prove the exact GB10 kernel path or Danish acceptance. [NVIDIA card](https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4), [Spark matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) |
-| **Must-run dense challenger** | `Qwen/Qwen3.8-27B-FP8` | Newer dense Qwen quality hypothesis; official publisher FP8 checkpoint; 262K context and reasoning/tool features. | No Qwen/NVIDIA-published NVFP4 checkpoint or exact one-Spark recipe was found. Dense FP8 residency and the required recent runtime may cost more operationally; Danish task results remain local work. [Qwen card](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) |
-| **Conditional English-agent challenger** | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` | Exact one-Spark target plus DSpark recipe; 30B/3B active; configurable reasoning and strong first-party agent/coding focus. | Supported post-training list omits Danish; OpenMDW-1.1 needs acceptance; on GB10 it is explicitly W4A16/Marlin rather than native FP4. Do not promote it for Danish Aula, household, or private-note work from English agent benchmarks. [NVIDIA card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4) |
-| **Conditional difficult-job control** | `openai/gpt-oss-120b` | 117B total/5.1B active; tools, structured outputs, adjustable reasoning; OpenAI says native MXFP4 fits one 80 GB accelerator and that its released evaluations used that format. | Harmony formatting and exact gateway/tool behavior need qualification; large weight residency/load time reduces mixed-workload flexibility; no cited publisher Danish result. Benchmark native MXFP4 before any local NVFP4 cast. [OpenAI card](https://huggingface.co/openai/gpt-oss-120b) |
+| **Must-run quality candidate** | `Qwen/Qwen3.8-27B-FP8` | Newer dense Qwen quality hypothesis; official publisher FP8 checkpoint; 262K context and reasoning/tool features. | No Qwen/NVIDIA-published NVFP4 checkpoint or exact one-Spark recipe was found. Dense FP8 residency and the required recent runtime may cost more operationally; Danish task results remain local work. [Qwen card](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) |
+| **Must-run performance candidate** | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` | Exact one-Spark target plus DSpark recipe; 30B/3B active; configurable reasoning and strong first-party agent/coding focus. | Supported post-training list omits Danish; OpenMDW-1.1 needs acceptance; strict-format owner results are imperfect. Do not promote it for Danish work from English agent benchmarks. [NVIDIA card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4) |
+| **Conditional multilingual control** | `nvidia/Gemma-4-31B-IT-NVFP4` | Dense quality control; 256K context, multimodal input, function calling, Apache-2.0; NVIDIA-published ModelOpt artifact listed in the Spark vLLM matrix. | Dense 31B may cost more active compute and mixed-load headroom. Run only if the mandatory wave exposes a Danish/multilingual gap. [NVIDIA card](https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4) |
+| **Optional one-time protocol control** | `openai/gpt-oss-120b` | Native MXFP4 and Harmony provide a distinct integration comparison. | Large residency and Harmony-specific surface add no default role. Run only when that comparison is explicitly desired. [OpenAI card](https://huggingface.co/openai/gpt-oss-120b) |
 | **Optional precision control** | `nvidia/Qwen3.6-27B-NVFP4` | NVIDIA-published dense NVFP4 artifact can isolate an NVFP4-versus-FP8/runtime question near Qwen3.8's size. | It is Qwen3.6 rather than the newer Qwen3.8 model, so it is not a clean model-quality comparison; no current first-party one-Spark recipe was found; declared W4A16 does not prove native W4A4. [NVIDIA card](https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4) |
 
 **Why Qwen3.6 is provisional first choice.** It gives the broadest integration
@@ -101,8 +104,6 @@ produce an auditable winner.
 | **Must-run; recommended baseline** | Shared `nvidia/Qwen3.6-35B-A3B-NVFP4` | Avoids a second resident model; multilingual/tool-oriented; exact Spark recipe; tests the simplest architecture first. | May miss 750 ms p95 TTFT during Codex/background load. Publisher evidence does not establish exact Danish HA tools/entities. |
 | **Conditional small quality candidate** | `Qwen/Qwen3.5-4B` | Current dense 4B model; publisher claims 201-language/dialect coverage and agent/tool capability; likely much smaller residency. | No first-party NVIDIA NVFP4 or Spark recipe is established here; multilingual aggregate evidence is not Danish HA accuracy; smaller capacity may lose on 100+ entities and negation. [Qwen card](https://huggingface.co/Qwen/Qwen3.5-4B) |
 | **Conditional optimized controls** | `nvidia/Qwen3-8B-NVFP4`, then `nvidia/Qwen3-14B-NVFP4` | NVIDIA-published pre-quantized checkpoints listed in the Spark vLLM matrix; credible reserved-process GB10 candidates. The 8B/14B pair exposes the quality-versus-residency trade-off. | Older model generation; no local Danish tool evidence; an extra resident process consumes headroom even when idle. NVFP4 does not alone prove the best GB10 kernel. [8B card](https://huggingface.co/nvidia/Qwen3-8B-NVFP4), [14B card](https://huggingface.co/nvidia/Qwen3-14B-NVFP4), [Spark matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) |
-| **Optional protocol/tool control** | `openai/gpt-oss-20b` | Native MXFP4; OpenAI says it runs within 16 GB; tools and structured outputs provide a compact non-Qwen comparison. | Harmony integration is extra complexity; total/active size does not guarantee 750 ms TTFT; no Danish HA evidence. [OpenAI card](https://huggingface.co/openai/gpt-oss-20b) |
-| **Optional controls already in the repository shortlist** | `zai-org/GLM-4.7-Flash`; `mistralai/Devstral-Small-2-24B-Instruct-2512` | GLM is a compact MoE tool-use hypothesis; Devstral is a useful low-memory/latency operational control with publisher-supported agentic repository work. | Neither has a first-party exact Spark runtime path in the current repository evidence; Devstral is coding-specialized; both add benchmark cost without stronger Danish evidence. [GLM card](https://huggingface.co/zai-org/GLM-4.7-Flash), [Devstral card](https://huggingface.co/mistralai/Devstral-Small-2-24B-Instruct-2512) |
 
 **Why the shared model is provisional first choice.** A reserved model should
 solve a measured latency/capacity failure, not exist merely because Home
@@ -125,26 +126,24 @@ pass for lower latency.
 
 | Tier | Candidate | Pros | Cons and risks |
 | --- | --- | --- | --- |
-| **Must-run; provisional recommendation** | `Qwen/Qwen3-Coder-Next-FP8` | Purpose-built for coding agents, long-horizon tool use, and recovery; 80B total/3B active; 262K context; Apache-2.0; official publisher FP8 artifact. | Qwen says the card's displayed evaluations used BF16 before FP8 quantization. No first-party Coder-Next NVFP4 or exact Spark recipe was found, so local FP8 quality, memory, and Responses behavior are decisive. [Qwen FP8 card](https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8#model-overview) |
+| **Must-run quality candidate** | `Qwen/Qwen3.8-27B-FP8` | Current dense Qwen with strong coding/agent publisher evidence and positive owner structured-output tests. | Requires a recent pinned runtime and exact local Responses/tool qualification. [Qwen FP8 card](https://huggingface.co/Qwen/Qwen3.8-27B-FP8) |
 | **Must-run agent/performance challenger** | `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` target-only, native MTP, and target+DSpark | Exact GB10 command and 967M DSpark draft; 30B/3B active; NVIDIA reports agent/coding evaluations; DSpark directly tests lower interactive latency. | Three tuples increase test cost. The target uses W4A16/Marlin on GB10; OpenMDW-1.1 needs approval; its supported natural-language list omits Danish. DSpark is speculative decoding, not another model or FP4 format. [target](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4), [draft](https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark) |
-| **Must-run dense controls** | `nvidia/Gemma-4-31B-IT-NVFP4`; `Qwen/Qwen3.8-27B-FP8` | Test whether a dense model's quality/reliability beats efficient MoE agent models; both are current publisher artifacts with long context and tool/coding claims. | Higher active compute may hurt interactive latency and mixed load; each needs its own pinned runtime/parser tuple; neither is Codex-qualified by a generic model card. |
-| **Must-run resource control** | `mistralai/Devstral-Small-2-24B-Instruct-2512` | 24B, 256K, Apache-2.0, designed for agentic repository work; useful lower-memory/latency and voice-coexistence control. | No first-party GB10 NVFP4 path in current evidence; publisher says it can run on a 32 GB Mac, which does not predict Codex quality or GB10 speed. [Mistral card](https://huggingface.co/mistralai/Devstral-Small-2-24B-Instruct-2512) |
-| **Conditional high-capacity control** | `openai/gpt-oss-120b` | Reasoning, tools, and structured output; native MXFP4 nominally fits. | Harmony/Responses compatibility and load/memory headroom may dominate; not coding-specialized. |
+| **Conditional coding challenger** | `ornith-ai/Ornith-1.5-35B-A3B` | Strong publisher coding/agent results. | No official Spark quantization and conflicting real-codebase reports. Run only if Qwen3.8 leaves a gap. |
+| **Optional specialist control** | `Qwen/Qwen3-Coder-Next-FP8` | Purpose-built for coding agents and long-horizon tool use. | Roughly 80 GB, no exact Spark recipe, and displayed publisher results used BF16. |
 
-**Why Coder-Next remains first.** It is the only first-party artifact in this
-set explicitly designed around long-running coding agents and failure recovery.
-Nemotron has the strongest exact GB10 performance path, so it is a real
-challenger rather than a footnote, but appliance optimization cannot substitute
-for implementation correctness and cloud-review acceptance.
+**Why Qwen3.8 goes first for quality.** It is substantially smaller than
+Coder-Next and has stronger current general/coding evidence. Nemotron has the
+strongest exact GB10 performance path. Ornith and Coder-Next are useful only if
+the mandatory wave leaves a specific unresolved coding gap.
 
 **Exact switch rule.** Reject any tuple that fails the Codex Responses/tool loop,
 license review, or 10% mixed-load memory headroom. A candidate is promotable only
 if at least 70% of the pinned .NET, Python, Vue, and React/TypeScript tasks pass
 build/tests and frontier review without cloud reimplementation. Among passing
 tuples, use the repository's predeclared weighted coding scorecard; select
-Nemotron/DSpark only if its complete-task score exceeds Coder-Next's, or if
-Coder-Next fails a hard gate. Select Devstral only if it passes the same 70% gate
-and the higher-quality candidates cannot coexist with required P0 voice/memory.
+Nemotron/DSpark only if its complete-task score remains competitive with
+Qwen3.8 while materially improving latency. Add Ornith only if Qwen3.8 fails a
+predeclared coding class and Ornith passes it.
 Speculative decoding wins only on end-to-end accepted task time, not tokens/s.
 
 ## 4. Hermes personal assistant
@@ -168,26 +167,14 @@ or the English agent scorecard. Promote Nemotron only if it passes all the same
 gates and every language actually assigned to `assistant`; its publisher's
 English-agent results cannot qualify Danish sessions.
 
-## 5. Serialized high-capacity reasoning
+## 5. Optional serialized protocol control
 
 | Tier | Candidate | Pros | Cons and risks |
 | --- | --- | --- | --- |
-| **Must-run; provisional recommendation** | `openai/gpt-oss-120b` in native MXFP4 | 117B/5.1B active; adjustable reasoning, tools, structured output; Apache-2.0; OpenAI states the MXFP4 artifact fits one 80 GB accelerator and that all released evaluations used MXFP4. | Harmony formatting; 120B weight footprint/load time; nominal fit does not prove GB10 mixed-load headroom; no cited Danish workload evidence. An NVFP4 cast is a new artifact. [OpenAI card](https://huggingface.co/openai/gpt-oss-120b) |
-| **Must-run NVIDIA control** | `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | NVIDIA-published NVFP4, dedicated one-Spark playbook, tool/reasoning focus. | 12B active versus gpt-oss's 5.1B may cost throughput; custom reasoning/parser/runtime tuple; post-training language list omits Danish; license review and large memory residency. [NVIDIA card](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4), [Spark playbook](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/nemotron/README.md) |
-| **Optional compact control** | `openai/gpt-oss-20b` | Same publisher-native MXFP4/Harmony family; OpenAI says it runs within 16 GB. | It answers a compact latency/residency question, not the high-capacity ceiling; use it for `home` or bounded agent controls rather than pretending it replaces a 120B comparison. |
+| **Optional one-time control** | `openai/gpt-oss-120b` in native MXFP4 | Distinct Harmony/MXFP4 protocol path and adjustable reasoning. | Large residency and a model-specific integration surface; no normal production role remains. |
 
-**Why gpt-oss-120b goes first.** Its publisher evaluates the released MXFP4
-format itself, it has the less restrictive license in this pair, and its lower
-active parameter count is a plausible efficiency advantage. Nemotron Super is
-the necessary NVIDIA-native control, not an automatic winner because it says
-NVFP4.
-
-**Exact switch rule.** Run both only on a pre-labelled difficult corpus after a
-shared model winner exists. A 120B candidate must pass its exact parser/tool
-contract, privacy and license checks, 10% measured memory headroom in its
-approved serialized operating mode, and the relevant Danish suite. Choose
-Nemotron only if it passes every hard gate and beats gpt-oss on the predeclared
-difficult-task quality score; otherwise retain gpt-oss. Do not make either
+There is no mandatory large-reasoner round. Run GPT-OSS-120B once only when a
+Harmony/MXFP4 comparison has been explicitly predeclared, and never make it
 resident merely because its weights nominally fit.
 
 ## 6. Speech to text

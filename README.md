@@ -50,19 +50,21 @@ shared text candidate, then compares specialists and controls one at a time.
 
 | Candidate | What it is evaluated for |
 | --- | --- |
-| NVIDIA Qwen3.6 35B A3B NVFP4 | First text integration baseline across all six aliases; especially automation, research, home, meetings, and assistant tools |
-| Qwen3-Coder-Next FP8 | Primary specialized coding candidate |
-| NVIDIA Nemotron 3.5 Lightning NVFP4 | Efficient coding and agent-performance challenger |
-| Gemma 4 31B NVFP4 and Qwen3.8 27B FP8 | Dense general, automation, and coding quality challengers |
-| Devstral Small 2 | Lower-memory and latency control |
-| gpt-oss-120b | Serialized high-capacity coding and automation comparison |
+| NVIDIA Qwen3.6 35B A3B NVFP4 | First text integration baseline across all six aliases; not the presumed quality winner |
+| Qwen3.8 27B FP8 | First general, Danish, coding, and agent quality candidate |
+| NVIDIA Nemotron 3.5 Lightning NVFP4 plus DSpark | Single-Spark latency and speculative-decoding candidate |
+| Ornith 1.5 35B A3B | Conditional coding/agent challenger, tested only if Qwen3.8 leaves a measured gap |
+| NVIDIA Muse Glimmer 30B NVFP4 | Conditional dense, agent, and multimodal control |
+| Gemma 4 31B NVFP4 | Conditional Danish/multilingual control |
 | Danish Parakeet and Whisper large-v3 variants | Speech-to-text candidates for home and meeting audio |
 | Piper Danish and Røst | Danish text-to-speech reliability and naturalness candidates |
 | Qwen3 Embedding and Reranker | Deferred private retrieval candidates, added only with a real corpus |
 
 The first deployed text model is a smoke-test candidate, not a production
-winner. See the [model recommendation](docs/research/llm-installation-recommendation.md)
-for exact artifact names, order, and qualification caveats.
+winner. Qwen3-Coder-Next is optional, while GPT-OSS, Devstral Small 2, and
+GLM-4.7-Flash are outside the normal queue. See the
+[model recommendation](docs/research/llm-installation-recommendation.md) for
+exact artifact names, order, and qualification caveats.
 
 ## Setup in order
 

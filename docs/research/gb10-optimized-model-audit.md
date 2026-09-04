@@ -2,9 +2,11 @@
 
 Verified: 2026-08-30
 
-Status: primary-source audit of the repository's planned model set. This note
-does not select a production model; exact revisions, containers, kernels,
-contexts, and workloads still require measurement on the target GB10.
+Status: 2026-08-30 precision evidence snapshot. Its format/kernel findings
+remain useful, but its candidate dispositions are superseded by the
+[2026-09-04 shortlist refresh](text-model-shortlist-refresh-2026-09-04.md).
+Exact revisions, containers, kernels, contexts, and workloads still require
+measurement on the target GB10.
 
 ## Bottom line
 
@@ -69,13 +71,13 @@ role-specific evaluations, and their conditional candidates.
 | Planned candidate | Artifact actually planned | Precision/provenance finding | GB10 disposition |
 | --- | --- | --- | --- |
 | Qwen3.6 35B-A3B | `nvidia/Qwen3.6-35B-A3B-NVFP4` | NVIDIA pre-quantized ModelOpt NVFP4 artifact; exact single-Spark vLLM recipe; 35B/3B active. The Spark quantization playbook identifies the matching low-concurrency layout as NVFP4 weight-only W4A16 for MoE MLPs/`lm_head`, FP8 attention, and FP8 KV. [card](https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4), [layout/recipe](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/nvfp4-quantization/README.md#step-4-choose-a-quantization-recipe) | Keep priority 1. It is the best-supported appliance smoke test, but record the Marlin/kernel path and do not call it proof of end-to-end W4A4 Tensor Core execution. |
-| Qwen3-Coder-Next | `Qwen/Qwen3-Coder-Next-FP8` | Official Qwen pre-quantized fine-grained FP8 checkpoint, 80B/3B active, 256K context, vLLM 0.15+. The current NVIDIA ModelOpt matrix includes the Qwen `Next` family under NVFP4, but the current NVIDIA Spark vLLM/TRT matrices do not list Coder-Next and this audit found no NVIDIA- or Qwen-published Coder-Next NVFP4 card. [Qwen card](https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8), [ModelOpt matrix](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#hugging-face-supported-models), [Spark vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) | Keep the publisher FP8 artifact as the trusted coding baseline. An in-house ModelOpt NVFP4 export is a separate experimental artifact, not a drop-in identity-preserving optimization. Do not promote community NVFP4 checkpoints. |
-| Gemma 4 31B IT | `nvidia/Gemma-4-31B-IT-NVFP4` | NVIDIA pre-quantized ModelOpt artifact for vLLM/Blackwell; current Spark vLLM matrix lists it. The card identifies dense 30.7B, 256K context and close BF16/NVFP4 publisher evaluation results. [card](https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4), [Spark matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) | Keep as the first dense NVFP4 quality challenger. Verify exact Spark flags because the generic card's usage example is multi-GPU, while the Spark matrix supplies platform support but no model-specific one-Spark command. |
+| Qwen3-Coder-Next | `Qwen/Qwen3-Coder-Next-FP8` | Official Qwen pre-quantized fine-grained FP8 checkpoint, 80B/3B active, 256K context, vLLM 0.15+. The current NVIDIA ModelOpt matrix includes the Qwen `Next` family under NVFP4, but the current NVIDIA Spark vLLM/TRT matrices do not list Coder-Next and this audit found no NVIDIA- or Qwen-published Coder-Next NVFP4 card. [Qwen card](https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8), [ModelOpt matrix](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#hugging-face-supported-models), [Spark vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) | Optional coding control only after Qwen3.8 and a conditional Ornith test; do not build a local derivative by default. |
+| Gemma 4 31B IT | `nvidia/Gemma-4-31B-IT-NVFP4` | NVIDIA pre-quantized ModelOpt artifact for vLLM/Blackwell; current Spark vLLM matrix lists it. The card identifies dense 30.7B, 256K context and close BF16/NVFP4 publisher evaluation results. [card](https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4), [Spark matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) | Conditional Danish/multilingual control only. Verify exact Spark flags if the mandatory wave exposes that gap. |
 | Qwen3.8 27B | `Qwen/Qwen3.8-27B-FP8` | Official Qwen fine-grained FP8 checkpoint for vLLM/SGLang; no Qwen- or NVIDIA-published NVFP4 checkpoint was found. The current vLLM recipe's NVFP4 commands use third-party `Inferact/...` and `unsloth/...` artifacts, not Qwen/NVIDIA artifacts; it separately uses Qwen's official FP8 checkpoint. [Qwen card](https://huggingface.co/Qwen/Qwen3.8-27B-FP8), [vLLM recipe](https://recipes.vllm.ai/Qwen/Qwen3.8-27B) | Keep FP8 as the provenance-safe artifact. Do not replace it with a third-party NVFP4 merely because the vLLM recipe demonstrates a kernel. Prefer NVIDIA's Qwen3.6-27B NVFP4 as the first dense FP4 control. |
-| Devstral Small 2 / Devstral 2 | Publisher checkpoints | Neither current NVIDIA Spark matrix lists these exact artifacts, and the current ModelOpt excerpt does not list the Mistral/Devstral architecture. [vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix), [TRT-LLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/trt-llm/README.md#model-support-matrix), [ModelOpt matrix](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#hugging-face-supported-models) | Retain Devstral Small as the low-memory quality/latency baseline in its publisher-supported format or as a controlled GGUF baseline. Do not assume an NVFP4 path. Keep 123B deferred. |
-| gpt-oss-120b / 20b | `openai/gpt-oss-120b`, optionally `openai/gpt-oss-20b` | OpenAI ships native MXFP4 MoE weights and says all released evaluations used that quantization; NVIDIA's current Spark vLLM and TRT-LLM matrices list both MXFP4 models. ModelOpt documents an offline MXFP4-to-NVFP4 export path. [OpenAI card](https://huggingface.co/openai/gpt-oss-120b), [vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix), [TRT matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/trt-llm/README.md#model-support-matrix), [cast](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#mxfp4--nvfp4-cast-for-gpt-oss) | Keep 120B as the high-capacity comparison and 20B as a compact `home` control. Benchmark the native MXFP4 artifact first; treat an NVFP4 cast as a second exact artifact tuple. |
+| Devstral Small 2 / Devstral 2 | Publisher checkpoints | Neither current NVIDIA Spark matrix lists these exact artifacts, and the current ModelOpt excerpt does not list the Mistral/Devstral architecture. [vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix), [TRT-LLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/trt-llm/README.md#model-support-matrix), [ModelOpt matrix](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#hugging-face-supported-models) | Remove from the normal queue. Watch Mistral Small 4 as the successor instead. |
+| gpt-oss-120b / 20b | `openai/gpt-oss-120b`, optionally `openai/gpt-oss-20b` | OpenAI ships native MXFP4 MoE weights and says all released evaluations used that quantization; NVIDIA's current Spark vLLM and TRT-LLM matrices list both MXFP4 models. ModelOpt documents an offline MXFP4-to-NVFP4 export path. [OpenAI card](https://huggingface.co/openai/gpt-oss-120b), [vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix), [TRT matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/trt-llm/README.md#model-support-matrix), [cast](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#mxfp4--nvfp4-cast-for-gpt-oss) | Remove 20B. Keep 120B only as an explicit one-time Harmony/MXFP4 control, outside the normal queue. |
 | Nemotron 3 Super | `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | NVIDIA pre-quantized NVFP4 artifact appears in both Spark matrices and has a dedicated one-Spark playbook. The current recipe requires model-specific parsers/backends and, for vLLM MTP+NVFP4, a CUDA 13 nightly rather than assuming a generic stable image. [Spark matrices](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix), [dedicated playbook](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/nemotron/README.md) | Keep conditional/late. Its support is real, but a 120B checkpoint has much less mixed-load headroom than the 20–22GB efficient candidates. |
-| GLM-4.7-Flash | `zai-org/GLM-4.7-Flash` | The current ModelOpt matrix explicitly lists GLM-4.7 for NVFP4 and says its MTP layers are loaded but excluded from quantization; it is absent from the current Spark runtime matrices. [ModelOpt matrix and note](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#hugging-face-supported-models), [Spark vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) | Keep as a conditional model-quality candidate. If tested in NVFP4, produce and qualify a local ModelOpt derivative with complete calibration provenance. |
+| GLM-4.7-Flash | `zai-org/GLM-4.7-Flash` | The current ModelOpt matrix explicitly lists GLM-4.7 for NVFP4 and says its MTP layers are loaded but excluded from quantization; it is absent from the current Spark runtime matrices. [ModelOpt matrix and note](https://github.com/NVIDIA/Model-Optimizer/blob/main/examples/hf_ptq/README.md#hugging-face-supported-models), [Spark vLLM matrix](https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md#model-support-matrix) | Remove from the normal queue; it adds no distinct role ahead of Qwen3.8 and Nemotron. |
 
 ### Speech, embeddings, and rerankers
 
@@ -120,22 +122,13 @@ belongs in the repository's role shortlist.
 
 1. Keep `nvidia/Qwen3.6-35B-A3B-NVFP4` first, MTP off then on. Capture the
    actual MoE/GEMM kernels, not just the checkpoint metadata.
-2. Add `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` plus its official
-   DSpark draft as the first low-concurrency agent/coding performance
-   challenger. Run target-only, native MTP, and DSpark as separate tuples.
-3. Add `nvidia/Qwen3.6-27B-NVFP4` beside `Qwen/Qwen3.8-27B-FP8` for the dense
-   comparison. This cleanly compares a publisher NVIDIA NVFP4 artifact with
-   Qwen's official newer FP8 artifact without accepting community provenance.
-4. Keep `nvidia/Gemma-4-31B-IT-NVFP4` as the first dense Spark-matrix-qualified
-   quality challenger; stage Gemma 4 26B-A4B NVFP4 only after a safe Spark
-   runtime tuple is pinned.
-5. Keep `Qwen/Qwen3-Coder-Next-FP8` as the primary specialized coding model.
-   Only build a local NVFP4 derivative after FP8 measurement shows memory or
-   bandwidth is the limiting factor.
-6. Benchmark `openai/gpt-oss-120b` in its publisher-native MXFP4 form before an
-   optional ModelOpt NVFP4 cast. Keep Nemotron 3 Super late because nominal fit
-   is not mixed-load headroom.
-7. If `home` misses its TTFT target under concurrent coding load, try the
+2. Run `Qwen/Qwen3.8-27B-FP8` as the first general/coding quality candidate.
+3. Run `nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4` plus its official
+   DSpark draft as the performance candidate. Test target-only, native MTP, and
+   DSpark as separate tuples.
+4. Stop unless a measured gap calls for Ornith 1.5, Muse Glimmer, or Gemma 4.
+   Keep Qwen3-Coder-Next and GPT-OSS-120B as optional explicit controls only.
+5. If `home` misses its TTFT target under concurrent coding load, try the
    current shared model first, then a Spark-matrix-listed Qwen3-8B/14B NVFP4
    reserved process. Do not add it merely because it is small.
 

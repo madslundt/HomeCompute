@@ -163,10 +163,13 @@ They refuse a run without the release/artifact manifest.
 ### D2 — Select text and audio artifacts
 
 1. Run all shortlisted models against role scorecards.
-2. Run the Qwen3.6 NVFP4 baseline with MTP on and off; Qwen3-Coder-Next FP8;
-   Nemotron 3.5 Lightning target-only, native-MTP, and DSpark modes; Gemma 4
-   31B NVFP4; Qwen3.8-27B FP8; and the bounded role-specific controls. Use
-   Qwen3.6-27B NVFP4 only for an optional precision/runtime A/B. Compare Q4/Q8
+2. Run the three-model mandatory wave: Qwen3.6 NVFP4 with MTP on and off;
+   Qwen3.8-27B FP8; and Nemotron 3.5 Lightning in target-only, native-MTP, and
+   DSpark modes. Stop there unless a measured gap requires Ornith 1.5 for
+   coding, Muse Glimmer for dense/multimodal behavior, or Gemma 4 for
+   Danish/multilingual quality. Qwen3-Coder-Next is an optional coding control;
+   GPT-OSS, Devstral Small 2, and GLM-4.7-Flash are not in the normal queue.
+   Compare Q4/Q8
    GGUF only as controlled artifact tuples, not as different model identities.
    Benchmark vLLM against llama.cpp only where both support the same exact
    model/revision; add TensorRT-LLM under the same rule.

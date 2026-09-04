@@ -132,9 +132,11 @@ Start with [the staged LLM installation recommendation](research/llm-installatio
 The first text integration candidate is NVIDIA Qwen3.6 35B A3B NVFP4. It
 exercises all aliases, but it is not a production selection.
 
-Qwen3-Coder-Next is the primary coding specialist. Nemotron 3.5 Lightning is
-the efficient agent/coding challenger. Gemma 4, Qwen3.8, Devstral, and gpt-oss
-provide dense, low-resource, or high-capacity comparisons.
+Qwen3.8-27B FP8 is the first general/coding quality candidate. Nemotron 3.5
+Lightning is the single-Spark performance candidate. Ornith 1.5, Muse Glimmer,
+and Gemma 4 are conditional controls for coding, dense/multimodal behavior, and
+Danish/multilingual quality. GPT-OSS, Devstral Small 2, and GLM-4.7-Flash are
+outside the normal queue.
 
 Danish Parakeet and Whisper are the STT candidates. Piper Danish and Røst are
 the TTS candidates. Retrieval models remain deferred until a real private
@@ -143,7 +145,7 @@ corpus and access-control test exist.
 | Topic | Documents |
 | --- | --- |
 | Platform and runtime | [GB10 appliance validation](research/gx10-platform-validation.md), [runtime evaluation](research/inference-runtime-evaluation.md), [gateway evaluation](research/gateway-evaluation.md), [control-plane runtime split review](research/control-plane-runtime-split-review.md) |
-| Current model shortlist | [Installation recommendation](research/llm-installation-recommendation.md), [GB10 precision audit](research/gb10-optimized-model-audit.md), [alignment review](research/model-use-case-alignment-review.md) |
+| Current model shortlist | [Installation recommendation](research/llm-installation-recommendation.md), [September 2026 refresh](research/text-model-shortlist-refresh-2026-09-04.md), [GB10 precision audit](research/gb10-optimized-model-audit.md) |
 | Text roles | [General](research/general-model-evaluation.md), [coding](research/coding-model-evaluation.md), [Home Assistant](research/home-assistant-model-evaluation.md) |
 | Speech | [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
 | Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md) |

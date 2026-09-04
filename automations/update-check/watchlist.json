@@ -16,44 +16,68 @@
       "project_url": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4"
     },
     {
-      "id": "coding-candidate",
-      "kind": "huggingface_model",
-      "label": "Qwen3-Coder-Next FP8",
-      "role": "Specialized coding candidate",
-      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3-Coder-Next-FP8",
-      "project_url": "https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8"
-    },
-    {
-      "id": "agent-candidate",
-      "kind": "huggingface_model",
-      "label": "NVIDIA Nemotron 3.5 Lightning NVFP4",
-      "role": "Coding and agent-performance challenger",
-      "request_url": "https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
-    },
-    {
-      "id": "dense-gemma-candidate",
-      "kind": "huggingface_model",
-      "label": "NVIDIA Gemma 4 31B NVFP4",
-      "role": "Dense general and coding quality challenger",
-      "request_url": "https://huggingface.co/api/models/nvidia/Gemma-4-31B-IT-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4"
-    },
-    {
-      "id": "dense-qwen-candidate",
+      "id": "quality-candidate",
       "kind": "huggingface_model",
       "label": "Qwen3.8 27B FP8",
-      "role": "Dense general and coding quality challenger",
+      "role": "First general, Danish, coding, and agent quality candidate",
       "request_url": "https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8",
       "project_url": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8"
     },
     {
-      "id": "large-reasoner-candidate",
+      "id": "performance-candidate",
       "kind": "huggingface_model",
-      "label": "gpt-oss-120b",
-      "role": "Serialized high-capacity comparison",
-      "request_url": "https://huggingface.co/api/models/openai/gpt-oss-120b",
-      "project_url": "https://huggingface.co/openai/gpt-oss-120b"
+      "label": "NVIDIA Nemotron 3.5 Lightning NVFP4",
+      "role": "Single-Spark latency and speculative-decoding candidate",
+      "request_url": "https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+      "project_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+    },
+    {
+      "id": "conditional-coding-candidate",
+      "kind": "huggingface_model",
+      "label": "Ornith 1.5 35B A3B",
+      "role": "Conditional coding and agent challenger",
+      "request_url": "https://huggingface.co/api/models/ornith-ai/Ornith-1.5-35B-A3B",
+      "project_url": "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B"
+    },
+    {
+      "id": "conditional-dense-control",
+      "kind": "huggingface_model",
+      "label": "NVIDIA Muse Glimmer 30B NVFP4",
+      "role": "Conditional dense, agent, and multimodal control",
+      "request_url": "https://huggingface.co/api/models/nvidia/Muse-Glimmer-30B-NVFP4",
+      "project_url": "https://huggingface.co/nvidia/Muse-Glimmer-30B-NVFP4"
+    },
+    {
+      "id": "multilingual-control",
+      "kind": "huggingface_model",
+      "label": "NVIDIA Gemma 4 31B NVFP4",
+      "role": "Conditional Danish and multilingual control",
+      "request_url": "https://huggingface.co/api/models/nvidia/Gemma-4-31B-IT-NVFP4",
+      "project_url": "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4"
+    },
+    {
+      "id": "watch-mistral-small-4",
+      "kind": "huggingface_model",
+      "label": "Mistral Small 4 119B NVFP4",
+      "role": "Watchlist successor to Devstral",
+      "request_url": "https://huggingface.co/api/models/mistralai/Mistral-Small-4-119B-2603-NVFP4",
+      "project_url": "https://huggingface.co/mistralai/Mistral-Small-4-119B-2603-NVFP4"
+    },
+    {
+      "id": "watch-k2-horizon",
+      "kind": "huggingface_model",
+      "label": "K2 Horizon MoVA 36B A4B",
+      "role": "Watchlist coding and agent candidate",
+      "request_url": "https://huggingface.co/api/models/IFM/K2-Horizon-MoVA-36B-A4B",
+      "project_url": "https://huggingface.co/IFM/K2-Horizon-MoVA-36B-A4B"
+    },
+    {
+      "id": "watch-granite-4-2",
+      "kind": "huggingface_model",
+      "label": "Granite 4.2 30B NVFP4",
+      "role": "Watchlist compact official NVFP4 candidate",
+      "request_url": "https://huggingface.co/api/models/ibm-granite/granite-4.2-30b-nvfp4",
+      "project_url": "https://huggingface.co/ibm-granite/granite-4.2-30b-nvfp4"
     },
     {
       "id": "small-control-candidate",

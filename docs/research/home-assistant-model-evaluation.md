@@ -1,6 +1,6 @@
 # Home Assistant model evaluation
 
-Verified: 2026-08-30
+Verified: 2026-09-04
 
 Status: benchmark plan; no production control authorization
 
@@ -20,22 +20,21 @@ Sources: [Home Assistant LLM API](https://developers.home-assistant.io/docs/core
 
 ## Candidate decision
 
-Start with the shared `nvidia/Qwen3.6-35B-A3B-NVFP4` service. A separate small
-Home Assistant model is not recommended unless the shared service fails the
-voice latency or concurrency gate: another resident model consumes memory and
-adds a second parser, prompt, upgrade, and recovery path. If a fallback is
-needed, test only two candidates in the first round: `Qwen/Qwen3.5-4B` as the
-newer-small quality hypothesis and one NVIDIA Qwen3 8B/14B NVFP4 artifact as
-the first-party Spark-optimized hypothesis.
+Start with the shared `nvidia/Qwen3.6-35B-A3B-NVFP4` service for integration,
+then qualify `Qwen/Qwen3.8-27B-FP8` as the first shared quality candidate. A
+separate small Home Assistant model is not recommended unless the winning
+shared service fails the voice latency or concurrency gate: another resident
+model consumes memory and adds a second parser, prompt, upgrade, and recovery
+path. If a fallback is needed, test only two candidates in the first round:
+`Qwen/Qwen3.5-4B` as the newer-small quality hypothesis and one NVIDIA Qwen3
+8B/14B NVFP4 artifact as the first-party Spark-optimized hypothesis.
 
 | Candidate | Advantages | Disadvantages | Disposition and selection condition |
 | --- | --- | --- | --- |
 | NVIDIA Qwen3.6-35B-A3B NVFP4 | Exact NVIDIA one-Spark vLLM recipe; 35B total/3B active; shared multilingual/tool-use service avoids another resident model; native MTP can be tested on/off | No publisher result establishes Danish entity selection or safe home control; may miss P0 voice latency while coding is active | Provisional recommendation. Keep it if it passes normal tool accuracy, all safety cases, zero hallucinated executions, p95 voice latency, and mixed-load headroom |
+| Qwen3.8-27B FP8 | Current general/tool/coding quality candidate with positive structured-output owner evidence | No exact NVIDIA one-Spark recipe; dense FP8 and runtime choice may affect voice latency | First shared quality candidate after integration bring-up; promote only if it passes every Home Assistant safety, Danish, and latency gate |
 | Qwen3.5-4B | Newer compact Qwen quality/latency hypothesis with low residency cost | No documented exact NVIDIA Spark NVFP4 artifact in the current plan; small size may reduce Danish disambiguation and tool reliability | First fallback quality candidate if the shared service misses latency; it must still meet the same safety and tool gates |
 | NVIDIA Qwen3-8B/14B NVFP4 | First-party NVIDIA NVFP4 artifacts listed for Spark, giving a clean hardware-optimized small-model control | Older Qwen generation; 14B costs more memory and neither size proves Danish Home Assistant quality | Test one size, not both initially. Prefer 8B for the latency extreme or 14B when the shared model's failure is modest and more quality capacity is justified |
-| gpt-oss-20b | Publisher-native MXFP4 and explicit function-calling/structured-output support | Harmony integration is distinct; less compact than 4B/8B fallbacks and not the clearest latency extreme | Secondary tool-use control if the first fallback pair fails or Harmony is already operationally useful |
-| GLM-4.7-Flash | 30B/3B-active tool-oriented low-active-compute comparison | No exact publisher/NVIDIA Spark NVFP4 artifact is established for the distinct Flash checkpoint | Secondary quality control, not the first GB10 fallback |
-| Devstral Small 2 24B | Apache-2.0 lower-resource control with agent/tool orientation | Coding specialization is a weak match for Danish smart-home dialogue; no first-party Spark NVFP4 path | Retain only as an operational control; do not select without superior measured Home Assistant results |
 
 Publisher facts only establish that these models support tool-oriented serving;
 none establishes safe Danish smart-home behavior. The repository benchmark is
@@ -45,9 +44,8 @@ Sources: [NVIDIA Qwen3.6 model card](https://huggingface.co/nvidia/Qwen3.6-35B-A
 [Qwen3.5-4B model card](https://huggingface.co/Qwen/Qwen3.5-4B),
 [NVIDIA Qwen3-8B NVFP4 model card](https://huggingface.co/nvidia/Qwen3-8B-NVFP4),
 [NVIDIA Qwen3-14B NVFP4 model card](https://huggingface.co/nvidia/Qwen3-14B-NVFP4),
-[GLM-4.7-Flash model card](https://huggingface.co/zai-org/GLM-4.7-Flash),
-[gpt-oss-20b model card](https://huggingface.co/openai/gpt-oss-20b),
-[Devstral Small 2 model card](https://huggingface.co/mistralai/Devstral-Small-2-24B-Instruct-2512).
+[Qwen3.8-27B FP8 model card](https://huggingface.co/Qwen/Qwen3.8-27B-FP8),
+and the [current shortlist refresh](text-model-shortlist-refresh-2026-09-04.md).
 
 ## Evaluation matrix
 
