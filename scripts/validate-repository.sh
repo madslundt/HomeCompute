@@ -200,6 +200,8 @@ jq -e '
   (.cap_drop | index("ALL") != null) and
   (.security_opt | index("no-new-privileges:true") != null) and
   (.environment.AULA_MCP_WRITE == "0" and .environment.AULA_MCP_RAW == "0") and
+  (.environment.AULA_MCP_HTTP_MAX_SESSIONS == "32") and
+  (.environment.AULA_MCP_HTTP_IDLE_MS == "60000") and
   (.environment.AULA_MCP_INGRESS_PORT == null) and
   (.volumes | length == 1) and
   (.volumes[0].source == "/srv/state/automation/aula-mcp" and .volumes[0].target == "/data") and

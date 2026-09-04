@@ -109,6 +109,15 @@ published. The NixOS Docker policy permits the automation bridge to reach
 `172.28.201.3:7878` and rejects new routed connections from other interfaces.
 There is no LAN, Tailscale, reverse-proxy, or setup-UI publication.
 Write tools, raw requests, and verbose logging are disabled.
+The HTTP transport permits 32 concurrent MCP sessions and evicts sessions after
+60 seconds without a request. This accommodates n8n tests and interrupted runs
+without allowing abandoned sessions to accumulate indefinitely. If n8n reports
+`Too many active MCP sessions`, restart only Aula to clear the in-memory session
+map, then inspect the workflow for excessive retries or concurrency:
+
+```sh
+sudo docker restart homecompute-automation-aula-mcp-1
+```
 
 ### Log in again from your Mac
 

@@ -33,6 +33,9 @@ services:
       AULA_MCP_WRITE: "0"
       AULA_MCP_RAW: "0"
       AULA_MCP_LOG: "0"
+      # n8n may leave a session behind after testing or interrupted executions.
+      AULA_MCP_HTTP_MAX_SESSIONS: "32"
+      AULA_MCP_HTTP_IDLE_MS: "60000"
     volumes:
       - ${AULA_MCP_STATE_ROOT:?Set AULA_MCP_STATE_ROOT}:/data
     tmpfs:
