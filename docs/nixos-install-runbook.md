@@ -65,8 +65,9 @@ output identifies filesystems by UUID; this repository uses labels
 deliberately, so do not copy its `fileSystems` block or replace the file
 wholesale.
 
-Any difference must reach Git before the build, because a Git-backed flake
-cannot see uncommitted work. Prefer editing on the workstation and pushing, so
+New imported files must be added to the Git index before the build. A
+Git-backed flake includes unstaged edits to tracked files, but omits untracked
+files. Prefer editing on the workstation and pushing, so
 the permanent checkout and the installed generation agree.
 
 ## 4. Build, then install
@@ -80,9 +81,8 @@ nix --extra-experimental-features 'nix-command flakes' flake check
 nixos-rebuild build --flake .#ai-services-01
 ```
 
-Flakes ignore untracked imported files. If `git status` lists a modified or
-new Nix file, stage it; otherwise the build silently uses the committed
-version. Build before installing so an evaluation or build failure surfaces
+Flakes ignore untracked imported files: add new Nix files to the Git index.
+Review tracked modifications as well; they are included even when unstaged. Build before installing so an evaluation or build failure surfaces
 before the disk is written.
 
 ```bash
@@ -107,7 +107,9 @@ Then verify remote access from the workstation **while console access is still
 available**:
 
 ```bash
-ssh ai-services-01
+# Set this to the verified Tailscale name or address from the console.
+read -r -p "GMKtec Tailscale host: " GMKTEC_TAILSCALE_HOST
+ssh -i ~/.ssh/id_ed25519_ai-services-01 "mads@${GMKTEC_TAILSCALE_HOST:?host required}"
 ```
 
 Password authentication and root login are disabled, so a reviewed key over

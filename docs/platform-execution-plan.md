@@ -1,5 +1,12 @@
 # HomeCompute execution plan
 
+> **Current priority (2026-09-04):** prepare and install GMKtec, then migrate
+> inventoried HAOS supporting services one at a time. GB10 is not available.
+> Follow the [GMKtec-first rollout](ai-services-01-rollout-plan.md#start-now-without-gb10);
+> non-AI migrations require host, backup/restore, networking, and application
+> gates, but do not require GB10 or a new AI gateway. Home Assistant stays on
+> HAOS and Hermes remains deferred.
+
 > **Deployment update:** ADR-016 makes the root NixOS flake authoritative for
 > `ai-services-01`. Keep untrusted tools and personal-agent sandboxes outside
 > the gateway host.
