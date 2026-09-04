@@ -1,8 +1,8 @@
 { pkgs, ... }:
 {
   # Docker publications bypass the host INPUT firewall. Restrict n8n egress in
-  # DOCKER-USER; editor publications in production.yaml bind only loopback and
-  # this host's Tailscale address. The bridge has no IPv6 configuration.
+  # DOCKER-USER; editor publications in production.yaml bind only loopback,
+  # this host's LAN address, and its Tailscale address. The bridge has no IPv6 configuration.
   systemd.services.homecompute-automation-network = {
     description = "n8n container egress policy";
     wantedBy = [ "multi-user.target" ];

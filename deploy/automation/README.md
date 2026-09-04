@@ -10,10 +10,11 @@ sudo docker compose --env-file /etc/homecompute/automation.env \
   -f deploy/automation/compose.yaml -f deploy/automation/production.yaml ps
 ```
 
-The editor is `http://home-core.tail479ad.ts.net:15678` over Tailscale. The
-loopback publication at port 15678 also supports an SSH tunnel. There is no
-LAN wildcard or public publication. HTTP is carried inside Tailscale or SSH;
-the n8n account still provides application authentication.
+On the home LAN, open `http://192.168.30.122:15678`. Tailscale access remains
+available at `http://home-core.tail479ad.ts.net:15678`, and the loopback
+publication supports an SSH tunnel. Ports bind to those specific addresses;
+there is no wildcard publication or router port forwarding. LAN access uses
+HTTP and the existing n8n account login.
 
 `modules/nixos/automation-network.nix` installs egress controls before Docker
 starts: internet TCP 443 and HAOS TCP 7878 are allowed; other private-network

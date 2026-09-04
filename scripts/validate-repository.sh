@@ -183,8 +183,8 @@ docker compose --env-file "$REPO_ROOT/config/automation.env.example" \
   -f "$REPO_ROOT/deploy/automation/compose.yaml" \
   -f "$REPO_ROOT/deploy/automation/production.yaml" config --format json >"$automation_json"
 jq -e '
-  (.services.n8n.ports | length == 2) and
-  ([.services.n8n.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1"]) and
+  (.services.n8n.ports | length == 3) and
+  ([.services.n8n.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"]) and
   (.networks.migration.internal != true) and
   (.networks.migration.enable_ipv6 == false) and
   (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n")
