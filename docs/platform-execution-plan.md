@@ -21,7 +21,7 @@ The names do not depend on a hardware vendor:
 | --- | --- | --- | --- |
 | AI compute node | `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Rebuildable GPU inference: text, STT, TTS, and later diarization |
 | AI services node | `ai-services-01` | Supported x86 NixOS host | Trusted Caddy/LiteLLM/PostgreSQL Compose stack and `/srv/state` |
-| Application hosts | Existing or separately qualified hosts | Outside `ai-services-01` | n8n, MCP, browser workers, personal agents, CI, and experimental tools |
+| Application projects | Isolated Compose projects on `ai-services-01` | Same host, separate networks/users/state/secrets | n8n, MCP, browser workers, personal agents, CI, and experimental tools |
 
 Suggested DNS is `ai-compute-01.home.arpa` and `ai-services-01.home.arpa`.
 Consumers continue to use the
@@ -40,7 +40,7 @@ flowchart LR
         Gateway --> State
     end
 
-    subgraph Apps[Existing or separately qualified application hosts]
+    subgraph Apps[Isolated Compose projects on ai-services-01]
         Automation[n8n + MCP + durable services]
         Agents[isolated personal agents]
         Toolbox[CI + tools + frameworks]
@@ -173,8 +173,9 @@ gateway within the agreed recovery time.
 
 ### Step 8 — Migrate automations in risk order
 
-- Install the approved n8n, MCP, database, queue, and browser-worker stacks on
-  a separately qualified application host with pinned images and identities.
+- Install the approved n8n, MCP, database, queue, and browser-worker stacks as
+  their own Compose project on `ai-services-01`, with pinned images, their own
+  Docker network, runtime user, `/srv/state` subtree, and sops secret group.
 - Import one sanitized test workflow, then one low-risk real workflow.
 - Test idempotency, retries, scheduling, credential isolation, database restore,
   and compute/gateway outage handling.
@@ -186,13 +187,15 @@ gateway within the agreed recovery time.
 
 ### Step 9 — Add restricted tools and agents
 
-- Install development frameworks on a separately qualified toolbox host only
-  for measured workloads, preferably as pinned containers/devcontainers.
-- Give the toolbox no production database or household credentials and no
-  direct compute route.
-- Pilot one Hermes/OpenShell sandbox on a separately isolated application host; test default-deny
-  egress, managed credentials, approvals, snapshot/restore, 64K context, and
-  session isolation before adding people/profiles.
+- Install development frameworks in a separate toolbox Compose project only for
+  measured workloads, as pinned containers/devcontainers.
+- Give the toolbox no production database or household credentials, no Docker
+  socket, and no direct compute route.
+- Pilot one Hermes/OpenShell sandbox in its own Compose project; test
+  default-deny egress, managed credentials, approvals, snapshot/restore, 64K
+  context, and session isolation before adding people/profiles. Verify from
+  inside the sandbox that neither the gateway's `internal` network nor its
+  state and secrets are reachable.
 - Keep Home Assistant as the sole authority for physical home actions.
 
 **Exit:** Tools and agents operate within explicit network, credential, data,

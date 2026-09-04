@@ -386,7 +386,8 @@ encryption model.
 | URS-PA-010 | V-PA-005 |
 | URS-PA-011 | V-PA-004 |
 | URS-PA-014 | V-PA-001, V-SEC-009 |
-| URS-PA-015, URS-PA-016, URS-PA-019 | V-PA-007, V-SEC-001/003 |
+| URS-PA-015, URS-PA-016, URS-PA-019 | V-PA-007, V-SEC-001/003, per-workload isolation inspection |
+| URS-PA-020, URS-PA-021 | Kernel-boundary placement check at the Phase I and browser-worker gates; `validate-repository.sh` run against a non-conforming Compose fixture |
 | URS-PA-017, URS-PA-018 | V-PA-008, V-OPS-005 |
 | URS-MTG-001, URS-MTG-002, URS-MTG-003, URS-MTG-004, URS-MTG-005, URS-MTG-006, URS-MTG-007, URS-MTG-008 | V-MTG-001, V-MTG-002, V-MTG-003, architecture/source inspection |
 | URS-PERF-001, URS-PERF-002, URS-PERF-005 | V-HA-002, V-PERF-001 M4 |

@@ -2,7 +2,15 @@
 
 **Research date:** 2026-08-30  
 **Status:** Technical research retained; production placement superseded by
-[ADR-016](../adr/016-nixos-control-plane-host.md)
+[ADR-016](../adr/016-nixos-control-plane-host.md) and
+[ADR-017](../adr/017-consolidated-application-host.md)
+
+> **Amendment (2026-09-04):** this note's blocking condition — "choose a
+> separate application host" — no longer holds. ADR-017 records that no fourth
+> machine will be acquired and places Hermes on `ai-services-01` in its own
+> Compose project, with container-level isolation from the gateway. Read the
+> NVIDIA platform, sizing, and sandbox findings below as still current; read
+> every recommendation to acquire or qualify a *separate host* as superseded.
 **Scope:** What NemoClaw is, its requirements and security boundaries, and how
 Hermes should be placed across the planned K15 services node and GX10/GB10
 compute node. No machine or configuration was changed.

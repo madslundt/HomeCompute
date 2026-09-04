@@ -26,7 +26,7 @@ flowchart TD
     MeetingBaseline[Reconcile Meeting Assistant worktree] --> H
     PlaudContract[Accepted Plaud export/import contract] --> H
     E --> I[Hermes single-sandbox pilot]
-    AppHost[Separately qualified application host] --> AgentHost[Isolated personal-agent boundary]
+    E --> AgentHost[Isolated personal-agent Compose project on ai-services-01]
     AgentHost --> I
     HermesTuple[Pinned Hermes + NemoClaw + OpenShell tuple] --> I
     I --> J[Household isolation and personal data]
@@ -70,7 +70,7 @@ flowchart LR
     Metrics --> STT
     Metrics --> TTS
     Metrics --> Diar
-    AppHost[Application host] --> OpenShell[Three OpenShell sandboxes]
+    AppHost[ai-services-01 agent Compose project] --> OpenShell[Three OpenShell sandboxes]
     OpenShell --> Hermes[Hermes owner / partner / family]
     Hermes --> Edge
     Hermes --> PersonalAPI[Scoped personal event API]
@@ -111,7 +111,8 @@ existing n8n workflow, which may call the existing Aula MCP and then use
 | Supported Plaud export/import contract and storage location | H | Meeting owner | Plaud automation remains blocked |
 | Representative repository fixtures | D1/D2/F2 | Developer | Coding KPI cannot be established |
 | Pinned Codex 0.145.0 binary and role config | F0 | MacBook/project owner | Automatic Stage 2 remains blocked if provider/task delivery fails |
-| Always-on application host with supported OpenShell prerequisites | I/J | Platform owner | Hermes remains a synthetic/direct-GB10 demo only |
+| Measured `ai-services-01` headroom and per-project resource limits | I/J | Platform owner | Agent sandboxes can starve the gateway sharing their host |
+| Verified per-project network, user, state, and secret isolation on `ai-services-01` | I/J | Security owner | Hermes remains a synthetic/direct-GB10 demo only |
 | Pinned Hermes/NemoClaw/OpenShell/sandbox tuple | I/J | Agent-platform owner | Personal assistant cannot be qualified or restored |
 | 64K context and concurrent-session memory evidence | I/J | Inference owner | Hermes workload cannot share the GB10 production model safely |
 | Discord bot/application identities and private test channels | I/J | Household owner | Text/voice routing cannot be accepted |

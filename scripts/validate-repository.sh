@@ -160,9 +160,32 @@ jq -e '
   (.services.caddy.networks.state == null) and
   (.services.postgres.networks.edge == null)
 ' "$control_plane_json" >/dev/null
-if rg -n 'docker\.sock|privileged:[[:space:]]*true|network_mode:[[:space:]]*host' \
-  "$REPO_ROOT/deploy/control-plane"; then
-  printf '[validate] forbidden control-plane capability or socket reference\n' >&2
+printf '[validate] Application project isolation (ADR-017)\n'
+# ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
+# per-project container controls are the only boundary left between them. Each
+# pattern below removes that boundary outright rather than weakening it, so the
+# scan covers every deployment directory instead of only the gateway. It is
+# restricted to Compose files so prose describing these risks does not trip it.
+if rg -n -g '*.yaml' \
+  'docker\.sock|privileged:[[:space:]]*true|network_mode:[[:space:]]*host|pid:[[:space:]]*host|ipc:[[:space:]]*host' \
+  "$REPO_ROOT/deploy"; then
+  printf '[validate] forbidden capability, namespace, or socket reference under deploy/\n' >&2
+  exit 1
+fi
+
+# Adding a project here is the point at which its isolation gets reviewed.
+# Without this check a new deploy/<name>/compose.yaml would inherit none of the
+# service-level assertions above, and ADR-017's controls would quietly become
+# documentation of an arrangement that no longer exists.
+expected_deployment_projects="$(printf '%s\n' compute-node control-plane | LC_ALL=C sort)"
+actual_deployment_projects="$(
+  cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
+    sed 's|^\./||' | LC_ALL=C sort
+)"
+if [[ "$expected_deployment_projects" != "$actual_deployment_projects" ]]; then
+  printf '[validate] deploy/ project list changed; review isolation controls and update this check\n' >&2
+  printf '[validate] expected: %s\n' "$(printf '%s' "$expected_deployment_projects" | tr '\n' ' ')" >&2
+  printf '[validate] found:    %s\n' "$(printf '%s' "$actual_deployment_projects" | tr '\n' ' ')" >&2
   exit 1
 fi
 

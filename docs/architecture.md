@@ -13,8 +13,8 @@
 
 The GB10 is a replaceable inference appliance behind the existing AI Home
 control plane. Hermes/OpenShell runs as a separate personal-agent application
-layer on an always-on application host and consumes GB10 inference through the
-qualified edge. A direct-on-GB10 NemoHermes deployment is useful as an ARM64
+layer in its own Compose project on `ai-services-01` and consumes GB10
+inference through the qualified edge. A direct-on-GB10 NemoHermes deployment is useful as an ARM64
 pilot, but it is not promoted without an ADR because its persistent sandbox
 state would change the appliance's failure and backup boundaries. The initial
 runtime PoC uses a pinned NVIDIA NGC vLLM image and one qualified text model.
@@ -23,10 +23,11 @@ Caddy TLS edge at `https://ai.home.arpa`; TensorRT-LLM is the controlled perform
 challenger. Direct Codex-to-vLLM remains the protocol and latency baseline.
 
 The stable node roles are `ai-compute-01` for the GB10 appliance and
-`ai-services-01` for the trusted x86 NixOS control plane. Automation, personal
-agents, and experimental tools remain on existing or separately qualified
-application hosts. This is a migration target, not a claim that existing
-services have moved.
+`ai-services-01` for the x86 NixOS host. Automation, personal agents, and
+experimental tools land on `ai-services-01` as isolated Compose projects
+alongside the trusted control plane, because the platform has three machines
+and not four. This is a migration target, not a claim that existing services
+have moved.
 
 The first text model may back `coding`, `automation`, `research`, `meeting`,
 `home`, and `assistant` if it passes each role's tests. These aliases describe work, not
@@ -147,16 +148,15 @@ Hermes/OpenShell runtime, or agent memory is deployed to GB10 in production.
 flowchart LR
     Clients[Trusted consumers] -->|TLS| Control
 
-    subgraph Services[ai-services-01 - NixOS trusted control plane]
-        Control[Caddy + LiteLLM + PostgreSQL<br/>Compose workload]
-        State[/srv/state/control-plane]
-        Control --> State
-    end
-
-    subgraph ApplicationHosts[Existing or separately qualified hosts]
-        Automation[n8n + MCP + workflow state]
-        Agents[isolated personal agents + scoped memory]
-        Toolbox[CI + builds + experimental tools]
+    subgraph Services[ai-services-01 - NixOS host, one kernel]
+        subgraph Trusted[Trusted gateway project]
+            Control[Caddy + LiteLLM + PostgreSQL<br/>Compose workload]
+            State[/srv/state/control-plane]
+            Control --> State
+        end
+        Automation[n8n + MCP + workflow state<br/>separate Compose project]
+        Agents[isolated personal agents + scoped memory<br/>separate Compose project]
+        Toolbox[CI + builds + experimental tools<br/>separate Compose project]
         Automation -->|authenticated API| Control
         Agents -->|authenticated API| Control
         Toolbox -->|authenticated API| Control
@@ -171,9 +171,16 @@ flowchart LR
     Backup -.-> Agents
 ```
 
-Only `ai-services-01` attaches to the private GB10 link. Home Assistant remains
-on its current host unless a later, separately restored and tested migration is
-approved. See the [NixOS control-plane plan](nixos-control-plane-node-plan.md).
+Only `ai-services-01` attaches to the private GB10 link, and within it only
+LiteLLM. Home Assistant remains on its current host unless a later, separately
+restored and tested migration is approved.
+
+The three application projects share `ai-services-01`'s kernel because no
+fourth machine exists. Their separation is by Compose project, Docker network,
+runtime user, `/srv/state` subtree, sops secret group, and resource limit — not
+by host. [ADR-017](adr/017-consolidated-application-host.md) records that
+trade-off and its residual risk; URS-PA-019 lists the mandatory controls. See
+also the [NixOS control-plane plan](nixos-control-plane-node-plan.md).
 
 ## 3. Shared API and GB10 services
 

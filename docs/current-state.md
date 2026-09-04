@@ -64,7 +64,7 @@ always-on Mac Mini. Source contains:
 | --- | --- | --- | --- |
 | LiteLLM Proxy | `config/litellm/config.yaml` and Compose service | Unverified | Reuse as the single shared model control plane after qualification |
 | Cloud providers | Anthropic, OpenAI, and Gemini entries | Unverified | Preserve only providers and models still used and valid |
-| Household agents | Two intended Hermes services using floating images and hand-written profile files | Unverified | Do not deploy as-is; replace with a pinned NemoClaw/OpenShell pilot on an application host |
+| Household agents | Two intended Hermes services using floating images and hand-written profile files | Unverified | Do not deploy as-is; replace with a pinned NemoClaw/OpenShell pilot in its own Compose project on `ai-services-01` |
 | Scheduler | Ofelia jobs for briefings/news/reminders | Unverified | Do not duplicate on GB10; compare with n8n/HA schedules before enabling |
 | Web UI | LibreChat | Unverified | Out of GB10 scope |
 | Development orchestrator | OpenClaw plus tmux/Codeman design | Unverified | Do not couple GB10 deployment to it; Codex remains the accepted harness |
@@ -191,8 +191,9 @@ Mac Mini / existing control plane
   Caddy TLS edge -> existing LiteLLM -> cloud providers or GB10 vLLM
   existing Uptime Kuma / PostgreSQL / Redis only where qualified
 
-Always-on application host
-  three OpenShell sandboxes -> Hermes owner / partner / family
+ai-services-01, separate Compose projects on the same kernel (ADR-017)
+  automation project -> n8n + workflow state, migrated off the HAOS add-on
+  agent project -> three OpenShell sandboxes -> Hermes owner / partner / family
   profile-specific Discord/API/model/data/tool credentials
   encrypted sandbox snapshots and canonical personal event API/store
 
@@ -224,8 +225,9 @@ streaming, tool, privacy, and latency corpus.
    private API or scraper.
 6. Reconcile Meeting Assistant's current uncommitted work before planning its
    gateway/Plaud changes.
-7. Identify the always-on application host and verify its OpenShell/NemoClaw
-   prerequisites, storage encryption, firewall, and offline backup target.
+7. Verify `ai-services-01` meets the OpenShell/NemoClaw prerequisites, and
+   measure gateway, database, and n8n usage before setting the per-project
+   resource limits ADR-017 requires. The host is decided; its headroom is not.
 8. Inventory the live Hermes/Telegram/Discord deployment, if any, before
    replacing or importing state from the `ai_home` prototype.
 9. Decide the canonical personal event-store host and API authorization model;

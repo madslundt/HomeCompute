@@ -63,9 +63,9 @@ must not migrate unverified live services as part of provisioning.
 | S0 NixOS host | Firmware, labelled filesystems, pinned flake, UPS, SMART, firewall, and reboot pass | Control-plane workload |
 | S1 Host services | SSH, Tailscale, Docker, Home Manager, sops-nix, `/srv/state`, backup, and restore pass | S2-S5 |
 | S2 AI gateway | Existing AI Home inventory, equivalence, recovery, and rollback pass on `ai-services-01` | C3/E production edge |
-| S3 Automations | n8n/MCP inventory and low-risk staged migration pass on a separately qualified host | G workflow integration |
-| S3A Agents host | Separate application host, backup, and denial tests pass | I/J personal-agent pilot |
-| S4 Toolbox | Separate restricted tools/CI runner passes credential and network checks | Optional developer workloads |
+| S3 Automations | n8n/MCP inventory and low-risk staged migration pass as an isolated Compose project on `ai-services-01` | G workflow integration |
+| S3A Agent project | Per-project network, user, state, secret, and resource isolation plus backup and denial tests pass | I/J personal-agent pilot |
+| S4 Toolbox | Restricted tools/CI runner project passes credential and network checks | Optional developer workloads |
 | S5 Optional HAOS | Separate HAOS/radio migration and restore evidence pass | Any Home Assistant relocation |
 
 S0/S1 can proceed independently of compute-node model qualification. S2 needs the
@@ -277,13 +277,16 @@ and restore.
 
 ## Phase I — Hermes personal assistant pilot
 
-**Status: Pending Gate E, live AI Home inventory, and an application host**
+**Status: Deferred by owner decision (2026-09-04). Also pending Gate E, live AI
+Home inventory, measured `ai-services-01` headroom, and the `agents` microVM
+required by URS-PA-020 before any real or unauthored data reaches a sandbox.**
 
 1. Decide whether the existing unverified AI Home Hermes Compose/profile files
    are discarded, migrated, or retained only as intent; do not deploy their
    floating image, shared master key, or assumed profile schema as-is.
 2. Pin the supported Hermes, NemoClaw, OpenShell, sandbox image, and host tuple.
-   Create one synthetic-data `owner` sandbox on the always-on application host.
+   Create one synthetic-data `owner` sandbox as its own Compose project on
+   `ai-services-01`, with the URS-PA-019 isolation controls in place first.
 3. Qualify Hermes first against direct GB10 vLLM and then through the existing
    `ai.home.arpa` LiteLLM path at the required 64K context. Test streaming, tools,
    memory headroom, restart persistence, snapshot/restore, upgrade, rollback,

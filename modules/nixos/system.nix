@@ -1,6 +1,19 @@
 { pkgs, ... }:
 {
-  boot.loader.systemd-boot.enable = true;
+  boot.loader.systemd-boot = {
+    enable = true;
+
+    # Each generation keeps a kernel and initrd on the ESP. Without a bound
+    # they accumulate until the weekly collector prunes them at 30 days, which
+    # can exhaust the ESP and fail the rebuild that would have fixed it.
+    configurationLimit = 10;
+
+    # The boot-entry editor lets anyone at the console append init=/bin/sh and
+    # obtain an unauthenticated root shell, which would bypass the reviewed
+    # SSH key that is otherwise the only administrative credential. Recovery
+    # uses the generation menu and installer media instead.
+    editor = false;
+  };
   boot.loader.efi.canTouchEfiVariables = true;
 
   time.timeZone = "Europe/Copenhagen";

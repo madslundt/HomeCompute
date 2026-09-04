@@ -9,12 +9,13 @@
 This specification defines Stage 1 (the shared control plane and GB10 inference
 services), Stage 2 (Codex integration), and the later speech, meeting, and
 personal-assistant stages. The GB10 is primarily a dedicated AI compute
-appliance. Hermes/OpenShell is a separate application layer on an always-on
-application host; a direct GB10 deployment is allowed only as a non-production
-pilot unless a later ADR deliberately changes the inference-only boundary.
-Source code, IDEs, builds, tests, Codex, Home Assistant, existing n8n/MCP
-services, Meeting Assistant, and canonical durable workflow/personal/meeting
-state remain on their current or separately backed-up application hosts.
+appliance. Hermes/OpenShell is a separate application layer in its own Compose
+project on `ai-services-01`; a direct GB10 deployment is allowed only as a
+non-production pilot unless a later ADR deliberately changes the inference-only
+boundary. Source code, IDEs, builds, tests, Codex, Home Assistant, existing
+n8n/MCP services, Meeting Assistant, and canonical durable workflow, personal,
+and meeting state remain on their current hosts until each is separately
+migrated and restore-tested.
 
 Aula is part of an existing n8n workflow through the existing Aula MCP. The
 live host placement remains to be verified. It is not a consumer, service,
@@ -101,7 +102,9 @@ baseline.
 | URS-PA-016 | Work data shall use separate security principals, stores, indexes, histories, credentials, retention, and backups and shall never enter personal/family memory without a separately approved export. Employer authorization is an admission gate. | Must | Work-domain policy and denial test |
 | URS-PA-017 | Retained memory shall follow the versioned memory contract and support authenticated review, provenance, correction, confirmation, expiry, export, deletion, and explicit sharing. Sensitive inferred traits shall not be retained without confirmation. | Must | Memory lifecycle test |
 | URS-PA-018 | Partner onboarding shall disclose and record whether the infrastructure administrator is trusted with host/backup access or user-held application encryption is required. Sandbox separation shall not be represented as protection from the host administrator. | Must | Threat-model record and restore inspection |
-| URS-PA-019 | A separately qualified application host and network trust domain shall host personal-agent sandboxes. `ai-services-01`, n8n, browser workers, MCP tools, and untrusted toolbox workloads shall not share its OS security domain. | Must | Placement and network inspection |
+| URS-PA-019 | Personal-agent sandboxes, automations, and toolbox workloads share the `ai-services-01` OS security domain (ADR-017). Each shall therefore have its own Compose project and Docker network with no route to the gateway's `internal` network, a non-root runtime user with dropped capabilities and no Docker socket mount, its own unreadable-by-others `/srv/state/<workload>` subtree, its own sops secret group, and explicit memory and CPU limits. | Must | Placement, isolation, and network inspection |
+| URS-PA-020 | Because URS-PA-019 relies on container rather than host isolation, the accepted residual risk is a container escape reaching the gateway, its database, and materialized control-plane secrets. Personal-agent sandboxes shall move to a `microvm.nix` KVM guest on `ai-services-01` — a separate kernel, not a separate machine — before Hermes processes any real personal data or any input the household did not author. Browser workers shall move to their own guest before rendering untrusted web content. | Must | Placement inspection at the Phase I and browser-worker gates |
+| URS-PA-021 | Isolation controls that exist only as documentation shall be treated as absent. `scripts/validate-repository.sh` shall reject any Compose file under `deploy/` that mounts the Docker socket or requests a privileged, host-network, host-PID, or host-IPC namespace, and shall fail when a deployment project is added without its isolation controls being reviewed. | Must | Validation run against a deliberately non-conforming fixture |
 
 ## Meeting and Plaud requirements
 

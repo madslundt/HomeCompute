@@ -5,9 +5,17 @@ LiteLLM process, and a PostgreSQL instance dedicated to LiteLLM.
 
 ## Why this split
 
-| NixOS host | This Compose project | Deferred/separate trust domain |
-| --- | --- | --- |
-| SSH, time sync, updates, disk health, networking, firewall, backup transport, Docker Engine, sops-nix secrets, `/srv/state` | Caddy, one LiteLLM worker, dedicated PostgreSQL | Redis, n8n, browser workers, agent/code sandboxes, Home Assistant |
+| NixOS host | This Compose project | Separate Compose projects, same host | Separate host |
+| --- | --- | --- | --- |
+| SSH, time sync, updates, disk health, networking, firewall, backup transport, Docker Engine, sops-nix secrets, `/srv/state` | Caddy, one LiteLLM worker, dedicated PostgreSQL | n8n, browser workers, agent/code sandboxes, toolbox builds | Home Assistant, GB10 inference |
+
+Redis is deferred entirely, not relocated; see below.
+
+The third column shares this host's kernel. [ADR-017](../../docs/adr/017-consolidated-application-host.md)
+accepts that because no fourth machine exists. Those projects must not join the
+`internal` network defined here, must not mount the Docker socket, and must
+read their secrets from a different sops group — otherwise the split in this
+table is a naming convention rather than a boundary.
 
 PostgreSQL is present because independently revocable LiteLLM virtual keys are
 a day-one requirement. LiteLLM's bootstrap database account is separate from

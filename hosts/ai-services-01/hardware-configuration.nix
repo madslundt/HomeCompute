@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   modulesPath,
   ...
@@ -35,5 +36,12 @@
   };
 
   swapDevices = [ ];
+
+  # The K15 is a 13th-generation Intel part, so late microcode revisions are a
+  # stability fix rather than an optimization. `not-detected.nix` only enables
+  # redistributable firmware; microcode loading is a separate switch that
+  # nixos-generate-config would have emitted here.
+  hardware.cpu.intel.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
+
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 }

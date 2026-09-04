@@ -6,7 +6,7 @@
 
 **Scope:** build the services-node and compute-node baselines, connect them,
 prepare the gateway and model-qualification work, and optionally pilot Hermes
-on a separate application host.
+as an isolated Compose project on `ai-services-01` (ADR-017).
 
 This is the main operator path. You can complete the steps below without
 reading the detailed plans. Each stage links to its plan for design rationale,
@@ -19,7 +19,8 @@ edge cases, and full acceptance evidence.
 | `ai-services-01` | x86 NixOS host | Runs the trusted gateway Compose stack; owns gateway state and backups |
 | Gateway Compose project | Containers on `ai-services-01` | Caddy, one LiteLLM worker, and dedicated PostgreSQL |
 | `ai-compute-01` | NVIDIA GB10 or DGX Spark-class appliance | Runs rebuildable text, STT, TTS, and later diarization inference |
-| Hermes `owner` pilot | OpenShell sandbox on a separate application host | Runs the optional personal agent; sends inference through `ai.home.arpa` to `ai-compute-01` |
+| Automation project | Separate Compose project on `ai-services-01` | Runs n8n and its workflow state after migration off the Home Assistant add-on |
+| Hermes `owner` pilot | OpenShell sandbox in its own Compose project on `ai-services-01` | Runs the optional personal agent; sends inference through `ai.home.arpa` to `ai-compute-01` |
 
 The production request path is:
 
@@ -27,8 +28,9 @@ The production request path is:
 clients -> https://ai.home.arpa -> ai-services-01 -> private link -> ai-compute-01
 ```
 
-Other approved application hosts use `https://ai.home.arpa`; they do not get
-direct access to compute ports.
+Automations, agents, and Home Assistant all use `https://ai.home.arpa`; none of
+them get direct access to compute ports. The private link stays restricted to
+LiteLLM even for workloads that share the host with it.
 
 ## What this guide does not automate
 
@@ -52,7 +54,8 @@ before you continue.
 8. Install the gateway and expose semantic aliases at `https://ai.home.arpa`.
 9. Benchmark models by use case and promote only passing tuples.
 10. Migrate automations and other consumers one at a time with rollback.
-11. Optionally pilot one isolated Hermes sandbox on a separately qualified host.
+11. Optionally pilot one isolated Hermes sandbox as its own Compose project on
+    `ai-services-01`.
 
 The rest of this guide expands these steps and provides the commands and
 checkpoints. The detailed plans are optional unless a check fails or you need
@@ -370,20 +373,36 @@ observe a soak period, and retain rollback until the exit gate passes.
 
 ## Step 8 — Optionally pilot Hermes
 
-Hermes is an application workload on a separately isolated application host,
-not a service on `ai-services-01` or the GX10/GB10 compute appliance. Select
-and qualify that host before the pilot, and start only after `ai.home.arpa` and
-the `assistant` inference alias work.
+> **Deferred (2026-09-04).** Hermes is not being built yet. Keeping the agent
+> layer absent is the single largest risk reduction available on a consolidated
+> host, because it removes the prompt-injectable component that holds tool
+> credentials. This step is retained as the plan for when that changes.
 
-1. Allocate explicit resources and verify that concurrent gateway, n8n, and
-   database work still has safe platform headroom.
-2. Install a pinned NemoClaw/OpenShell release on the application host and onboard
-   Hermes using the release-matched NVIDIA instructions.
+Hermes runs on `ai-services-01` in its own Compose project, never on the
+GX10/GB10 compute appliance. ADR-017 accepts container isolation here in place
+of the separate host the requirements originally specified, so the isolation
+steps below are the boundary rather than a second layer behind one.
+
+Before a sandbox handles any real personal data, or any input the household did
+not author, URS-PA-020 requires moving it into the `agents` microVM — a
+separate kernel on the same machine. Synthetic-data piloting on the host kernel
+is acceptable; production is not. Start only after `ai.home.arpa` and the
+`assistant` inference alias work.
+
+1. Set explicit memory and CPU limits from measured gateway, n8n, and database
+   usage, so a sandbox cannot starve the gateway sharing its kernel.
+2. Install a pinned NemoClaw/OpenShell release and onboard Hermes using the
+   release-matched NVIDIA instructions. Run every container as a non-root user
+   with dropped capabilities and no Docker socket mount.
 3. Give Hermes a dedicated gateway credential and point its inference provider
    at `https://ai.home.arpa`; do not expose a direct GB10 endpoint to the sandbox.
 4. Create one synthetic-data `owner` sandbox with Restricted policy,
    deny-by-default egress, no host bind mounts, and no credentials capable of
-   email, calendar, Home Assistant, deletion, or financial actions.
+   email, calendar, Home Assistant, deletion, or financial actions. Put it on
+   its own Docker network with no route to the gateway's `internal` network,
+   give it a `/srv/state/hermes` subtree the gateway's runtime user cannot
+   read, and materialize its secrets from a sops group separate from the
+   gateway, database, and compute credentials.
 5. Back up and restore the sandbox state, then test reboot recovery, policy
    denials, streaming, tools, 64K context, gateway/GB10 outages, and mixed-load
    behavior.
@@ -398,9 +417,10 @@ them in the operator runbook. See the
 [Hermes verification plan](research/hermes-personal-assistant-verification.md),
 and [ADR-013](adr/013-hermes-personal-agent-layer.md).
 
-**Checkpoint:** one recoverable synthetic Hermes sandbox runs on its
-application host, reaches inference only through `ai.home.arpa`, and cannot
-cross its declared network, credential, filesystem, or data boundaries.
+**Checkpoint:** one recoverable synthetic Hermes sandbox runs in its own
+Compose project on `ai-services-01`, reaches inference only through
+`ai.home.arpa`, and cannot cross its declared network, credential, filesystem,
+or data boundaries — verified from inside the sandbox, not from the host.
 
 ## Completion checklist
 

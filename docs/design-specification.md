@@ -170,8 +170,10 @@ meeting content are forbidden.
 
 ### 4.6 Personal agent runtime
 
-Hermes is introduced only after the inference/control-plane gate and runs on
-an always-on application host, not on the production GB10 appliance. Start with
+Hermes is introduced only after the inference/control-plane gate and runs in
+its own Compose project on `ai-services-01`, not on the production GB10
+appliance. Its isolation from the co-located gateway is by network, runtime
+user, state subtree, secret group, and resource limit; see ADR-017. Start with
 one synthetic-data `owner` sandbox. If qualified, create independent `owner`,
 `partner`, and `family` OpenShell sandboxes; never multiplex trust domains through
 one writable home, state database, process, or credential bundle.
@@ -382,7 +384,7 @@ The initial ingestion contract is explicit file import or a watched folder fed
 by a documented Plaud export. Meeting Assistant owns retries and visible state.
 No generic queue is added initially. If long-job recovery measurements prove
 the application process is insufficient, introduce the smallest durable queue
-on the application host using a separate Redis database/user or another
+in the owning Compose project using a separate Redis database/user or another
 qualified broker; the GB10 never owns the authoritative job record.
 
 The durable library location, encryption, backup, retention, consent, and

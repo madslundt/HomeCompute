@@ -143,7 +143,7 @@ migrating production state.
 | Install the control-plane host | [NixOS control-plane plan](docs/nixos-control-plane-node-plan.md) |
 | Apply, roll back, update, or extend NixOS | [NixOS operations guide](docs/nixos-operations.md) |
 | Inspect compute-node details | [Compute-node plan](docs/ai-compute-node-plan.md) |
-| Pilot Hermes on a separate application host | [NemoClaw placement and Hermes setup](docs/research/nemoclaw-machine-placement.md) |
+| Pilot Hermes on `ai-services-01` | [ADR-017](docs/adr/017-consolidated-application-host.md), then [NemoClaw placement and Hermes setup](docs/research/nemoclaw-machine-placement.md) |
 | Run acceptance tests | [Verification strategy](docs/verification-strategy.md) |
 | Understand model choices | [Model recommendation](docs/research/llm-installation-recommendation.md) |
 

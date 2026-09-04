@@ -4,7 +4,9 @@
 
 **Decision:** ADR-016
 
-Use this plan for first installation. After installation, follow the
+This plan defines the configuration boundary, prerequisites, and acceptance
+gates. The [installation runbook](nixos-install-runbook.md) carries the ordered
+firmware, partitioning, and install commands. After installation, follow the
 [NixOS operations guide](nixos-operations.md) for routine apply, rollback,
 updates, and extensions.
 
@@ -38,8 +40,12 @@ install or configure the host.
 4. Run `nixos-generate-config --root /mnt` and compare the detected initrd and
    kernel modules with the committed hardware module. Do not blindly replace
    the repository's host and storage policy.
-5. Add `mads`' reviewed public SSH key to the host configuration. Never commit
-   its private key or a password hash generated from a reusable password.
+5. `mads`' reviewed public SSH key is committed in `hosts/ai-services-01`
+   (`SHA256:CSd6fvVEwnu25uHqRK4G1JSWi01nH7z2KpuoHXPQtOo`). Confirm that
+   fingerprint against the private key you hold before installing, and keep
+   that key passphrase-protected: it is an administrative credential because
+   `mads` holds passwordless sudo. Never commit a private key or a password
+   hash generated from a reusable password.
 6. Create a persistent age identity, back it up offline, add its public
    recipient to `.sops.yaml`, and commit only an encrypted file such as
    `secrets/ai-services-01.sops.yaml`.
@@ -56,6 +62,18 @@ nix flake check
 sudo nixos-rebuild build --flake .#ai-services-01
 sudo nixos-install --flake .#ai-services-01
 ```
+
+`mads` has no password and `users.mutableUsers` is true, so console login as
+that account does not work until root sets one. Complete this at the console,
+in order, before disconnecting the keyboard and monitor:
+
+```bash
+passwd mads        # as root, using the password nixos-install prompted for
+tailscale up       # SSH and HTTPS are reachable on tailscale0 only
+```
+
+Then verify `ssh ai-services-01` from the workstation while console access is
+still available. Do not treat the host as reachable until that succeeds.
 
 After reboot, check the exact generation and activate subsequent changes with:
 
@@ -107,6 +125,9 @@ The environment file contains non-secret settings and secret file paths. The
 containers write durable data only below `/srv/state/control-plane`.
 
 ## Acceptance gates
+
+These are the criteria. The order in which they are reached, and what blocks
+each, is the [`ai-services-01` rollout plan](ai-services-01-rollout-plan.md).
 
 - `nix flake check` and `nixos-rebuild build` pass from a clean Git checkout.
 - Reboot selects the expected generation and `home-manager-mads.service`
