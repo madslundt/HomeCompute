@@ -72,6 +72,10 @@ if command -v ruby >/dev/null 2>&1; then
   ruby -e 'require "yaml"; ARGV.each { |path| YAML.safe_load(File.read(path), permitted_classes: [], permitted_symbols: [], aliases: true) }' \
     "$REPO_ROOT/deploy/control-plane/compose.yaml" \
     "$REPO_ROOT/deploy/control-plane/litellm-config.yaml" \
+    "$REPO_ROOT/deploy/homepage/compose.yaml" \
+    "$REPO_ROOT/deploy/homepage/config/services.yaml" \
+    "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
+    "$REPO_ROOT/deploy/homepage/config/widgets.yaml" \
     "$REPO_ROOT/.github/workflows/validate.yml"
 else
   printf '[validate] Ruby not installed; YAML syntax check skipped\n'
@@ -180,6 +184,22 @@ jq -e '
   (.services.n8n.cpus != null) and
   (.networks.migration.internal == true)
 ' "$automation_json" >/dev/null
+homepage_json="$temporary_root/homepage.json"
+docker compose --env-file "$REPO_ROOT/config/homepage.env.example" \
+  -f "$REPO_ROOT/deploy/homepage/compose.yaml" config --format json >"$homepage_json"
+jq -e '
+  ((.services | keys) == ["homepage"]) and
+  (.services.homepage.image | test("@sha256:[0-9a-f]{64}$")) and
+  (.services.homepage.user == "1000:1000") and
+  (.services.homepage.read_only == true) and
+  (.services.homepage.cap_drop | index("ALL") != null) and
+  (.services.homepage.security_opt | index("no-new-privileges:true") != null) and
+  (.services.homepage.ports | length == 3) and
+  ([.services.homepage.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"]) and
+  all(.services.homepage.ports[]; .published == "80" and .target == 3000 and .protocol == "tcp") and
+  all(.services.homepage.volumes[]; .type == "bind" and .read_only == true) and
+  (.services.homepage.mem_limit > 0 and .services.homepage.cpus > 0 and .services.homepage.pids_limit > 0)
+' "$homepage_json" >/dev/null
 docker compose --env-file "$REPO_ROOT/config/automation.env.example" \
   -f "$REPO_ROOT/deploy/automation/compose.yaml" \
   -f "$REPO_ROOT/deploy/automation/production.yaml" config --format json >"$automation_json"
@@ -242,7 +262,7 @@ fi
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

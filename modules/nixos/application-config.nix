@@ -13,6 +13,10 @@
     mode = "0600";
     source = ../../config/automation.env.example;
   };
+  environment.etc."homecompute/homepage.env" = {
+    mode = "0600";
+    source = ../../config/homepage.env.example;
+  };
   environment.etc."homecompute/books_importer/runtime.env" = {
     mode = "0600";
     source = ../../config/books_importer.env.example;

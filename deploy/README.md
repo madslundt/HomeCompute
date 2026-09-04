@@ -6,6 +6,8 @@ Deployment files are split by stable node role:
   service definition.
 - [`control-plane/`](control-plane/README.md) contains the NixOS-hosted
   control-plane Compose workload.
+- [`homepage/`](homepage/README.md) contains the source-controlled service
+  dashboard for `home-core`.
 
 These artifacts are invoked by scripts in [`../scripts/`](../scripts/README.md)
 and depend on validated external configuration. They are scaffolding for the

@@ -35,13 +35,17 @@ git -C "$release" checkout --detach "$revision"
 nixos-rebuild switch --flake "$release#home-core"
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
+homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 "${gateway[@]}" config --quiet
 "${automation[@]}" config --quiet
+"${homepage[@]}" config --quiet
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
+"${homepage[@]}" pull
 "${automation[@]}" build aula-mcp
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
+"${homepage[@]}" up -d --wait --wait-timeout 180
 if [[ -L /srv/homecompute/current ]]; then
   previous=$(readlink /srv/homecompute/current)
   if [[ "$previous" != "$release" ]]; then ln -sfn "$previous" /srv/homecompute/previous; fi

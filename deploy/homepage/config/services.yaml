@@ -1,0 +1,25 @@
+- Home services:
+    - n8n:
+        id: homecore-n8n
+        icon: n8n.png
+        href: /__homecore_service__/http/15678/
+        description: Automations and workflows
+
+    - AI gateway:
+        id: homecore-ai-gateway
+        icon: mdi-creation-outline
+        href: /__homecore_service__/https/443/healthz
+        description: LiteLLM API gateway health
+
+- Local operator access:
+    - Calibre Web Automated:
+        id: homecore-calibre-web
+        icon: calibre-web.png
+        href: /__homecore_service__/http/8083/
+        description: Requires the documented SSH tunnel
+
+    - Shelfmark:
+        id: homecore-shelfmark
+        icon: mdi-bookshelf
+        href: /__homecore_service__/http/8084/
+        description: Requires the documented SSH tunnel

@@ -1,0 +1,2 @@
+# Docker discovery is deliberately disabled; the container engine API is absent.
+{}
