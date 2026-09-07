@@ -9,6 +9,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
+| `model_router_policy.py` | Offline model-router validation and decision tests | `validate`, `decide` |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
 The compute scripts default to safe, staged operation. Run `help`, `validate`,
@@ -71,6 +72,20 @@ Repository validation:
 ```bash
 ./scripts/validate-repository.sh
 ```
+
+The initial router policy is deliberately offline and shadow-only. Validate it
+without contacting LiteLLM or `home-spark`:
+
+```bash
+python3 scripts/model_router_policy.py validate \
+  --policy config/model-router-policy.json
+```
+
+The checked-in contract keeps model activation and load-on-demand disabled. It
+resolves the six task aliases without invoking a classifier, limits exact model
+selection to the operator policy, and records `auto` proposals while serving
+the active default. It is not yet wired into the live gateway; that integration
+waits for Responses/stream lifecycle and lease tests.
 
 This checks Bash syntax and ShellCheck, the non-executing configuration loader,
 automation JSON, YAML when Ruby is installed, Compose rendering (including the

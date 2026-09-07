@@ -76,6 +76,9 @@ python3 -m unittest "$REPO_ROOT/tests/benchmark-harness-test.py"
 python3 -m unittest "$REPO_ROOT/tests/benchmark-security-test.py"
 python3 -m unittest "$REPO_ROOT/tests/benchmark_correctness_test.py"
 python3 "$REPO_ROOT/tests/model-update-check-test.py"
+python3 "$REPO_ROOT/tests/model-router-policy-test.py"
+python3 "$REPO_ROOT/scripts/model_router_policy.py" validate \
+  --policy "$REPO_ROOT/config/model-router-policy.json"
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/smoke.json" \
   --release "$REPO_ROOT/benchmarks/manifests/release.example.json"

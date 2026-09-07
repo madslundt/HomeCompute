@@ -7,6 +7,7 @@ they do not use them as production configuration in place.
 | File | Used by | Purpose |
 | --- | --- | --- |
 | `compute-node.env.example` | `setup-compute-node.sh`, `setup-compute-modalities.sh` | Immutable text and staged modality artifact tuples, exact private ports, bind policy, and compute limits |
+| `model-router-policy.json` | `model_router_policy.py` and the future LiteLLM routing integration | Versioned shadow-mode aliases, model eligibility, client permissions, and disabled activation gate |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, `/srv/state`, and sops-nix runtime secret paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
 | `books_importer.env.example` | `deploy/books_importer/compose.yaml` | Pinned book service images; compare with source deployment digests before migration |

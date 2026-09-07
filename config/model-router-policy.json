@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "policy_version": "2026-09-07-initial-shadow",
+  "mode": "shadow",
+  "load_on_demand": false,
+  "default_model": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
+  "auto": {
+    "confidence_threshold": 0.75,
+    "low_confidence_policy": "strongest_available",
+    "classifier_failure_policy": "active_default"
+  },
+  "activation": {
+    "enabled": false
+  },
+  "aliases": {
+    "assistant": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
+    "automation": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
+    "coding": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
+    "home": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
+    "meeting": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
+    "research": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"
+  },
+  "client_policies": {
+    "ordinary": {
+      "allowed_aliases": ["assistant", "auto", "automation", "coding", "home", "meeting", "research"],
+      "allowed_exact_models": [],
+      "auto_model_allowlist": ["qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"]
+    },
+    "operator": {
+      "allowed_aliases": ["assistant", "auto", "automation", "coding", "home", "meeting", "research"],
+      "allowed_exact_models": ["qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"],
+      "auto_model_allowlist": ["qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"]
+    }
+  },
+  "models": {
+    "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5": {
+      "upstream_model": "assistant",
+      "quality_rank": 100,
+      "auto_eligible": true,
+      "capabilities": ["chat", "reasoning", "tools"],
+      "protocols": ["chat_completions", "responses"],
+      "max_context_tokens": 32768
+    }
+  }
+}
