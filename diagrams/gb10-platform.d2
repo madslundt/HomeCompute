@@ -73,7 +73,7 @@ control_host: "home-core\nNixOS trusted control plane" {
   policy: "Distinct consumer keys\nprivate routes fail closed\nmetadata-only logs" { class: control }
 
   dns -> caddy
-  caddy -> litellm: "text routes"
+  caddy -> litellm: "allow-listed AI routes"
   policy -> litellm
 }
 
@@ -81,6 +81,8 @@ gb10: "home-spark\nNVIDIA GB10 or DGX Spark-class appliance\n(rebuildable infere
   class: host
   private: "Private encrypted link\nTailscale / restricted LAN" { class: inference }
   vllm: "Pinned vLLM\nResponses + tools + MTP\nqualified text artifact" { class: inference }
+  embedding: "Pinned vLLM pooling\nQwen3-VL embedding candidate" { class: inference }
+  vision: "Pinned vLLM multimodal\nrendered-page vision candidate" { class: inference }
   stt: "STT\nWhisper / Parakeet benchmark" { class: inference }
   tts: "TTS\nPiper / Røst benchmark" { class: inference }
   diar: "Diarization\nPhase H" { class: future }
@@ -88,13 +90,19 @@ gb10: "home-spark\nNVIDIA GB10 or DGX Spark-class appliance\n(rebuildable infere
   cache: "Internal NVMe\nimages • models • cache\nactive + rollback release" { class: inference }
 
   private -> vllm
+  private -> embedding
+  private -> vision
   private -> stt
   private -> tts
   private -> diar
   vllm -> telemetry: "metrics" { style.stroke-dash: 3 }
+  embedding -> telemetry: "health" { style.stroke-dash: 3 }
+  vision -> telemetry: "health" { style.stroke-dash: 3 }
   stt -> telemetry: "metrics" { style.stroke-dash: 3 }
   tts -> telemetry: "metrics" { style.stroke-dash: 3 }
   cache -> vllm
+  cache -> embedding
+  cache -> vision
   cache -> stt
   cache -> tts
 }
@@ -132,8 +140,10 @@ clients.meeting -> control_host.dns: "meeting + audio\nlocal only"
 clients.ha -> control_host.dns: "home + speech\nlocal only"
 clients.n8n -> control_host.dns: "automation / research"
 
-control_host.litellm -> gb10.private: "text aliases\nauthenticated private link"
-control_host.caddy -> gb10.private: "fixed audio routes"
+control_host.litellm -> gb10.private: "qualified text only\nauthenticated private link"
+control_host -> gb10.private: "direct staged modality qualification\nnot public gateway routes" {
+  style.stroke-dash: 3
+}
 control_host.litellm -> cloud: "explicit approved aliases only" {
   style.stroke-dash: 4
   style.stroke: "#B91C1C"

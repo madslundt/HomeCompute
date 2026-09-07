@@ -47,8 +47,8 @@ Assistant, automations, or personal agents before their preceding gates pass.
 | Apply or extend the NixOS configuration | [NixOS operations guide](nixos-operations.md) |
 | Understand what is decided versus still hypothetical | [ADRs](#architecture-decisions), [current state](current-state.md), and the phase gates in the [implementation plan](implementation-plan.md) |
 | Review security, privacy, and failure handling | [Access policy](access-policy.md), [personal data and memory](personal-data-and-memory.md), [requirements](requirements.md), and [risk analysis](risk-analysis.md) |
-| Choose and benchmark models | [Installation recommendation](research/llm-installation-recommendation.md), then the role-specific evaluations under [research](#research-and-model-evidence) |
-| Integrate Codex | [Codex compatibility](research/codex-compatibility.md), [ADR-006](adr/006-codex-remains-primary-harness.md), and verification tests V-CODEX-001/V-CODEX-E2E-001 |
+| Choose and benchmark models | [Benchmark harness](../benchmarks/README.md), [installation recommendation](research/llm-installation-recommendation.md), then the role-specific evaluations under [research](#research-and-model-evidence) |
+| Integrate developer harnesses | [Codex compatibility](research/codex-compatibility.md), [ADR-018](adr/018-multiple-developer-harnesses.md), and verification tests V-CODEX-001/V-CODEX-E2E-001 |
 | Integrate Home Assistant voice and tools | [Home Assistant model evaluation](research/home-assistant-model-evaluation.md), [ADR-008](adr/008-home-assistant-model-role.md), and verification tests V-HA-001/V-HA-002 |
 | Extend Meeting Assistant or process Plaud recordings | [ADR-012](adr/012-reuse-meeting-assistant.md), the meeting sections in [architecture](architecture.md) and [verification](verification-strategy.md) |
 | Add the Hermes personal assistant layer | [NemoClaw placement and Hermes setup](research/nemoclaw-machine-placement.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [ADR-013](adr/013-hermes-personal-agent-layer.md), and Phases I/J in the [implementation plan](implementation-plan.md) |
@@ -100,6 +100,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [NixOS control-plane plan](nixos-control-plane-node-plan.md) | Active `home-core` installation, Home Manager, Compose deployment, and acceptance path |
 | [NixOS installation runbook](nixos-install-runbook.md) | Firmware, partitioning, hardware reconciliation, install, and first-console commands |
 | [`home-core` rollout plan](home-core-rollout-plan.md) | Ordered post-install stages, blockers, and exit gates from secrets to the n8n migration |
+| [Agent harness operations](agent-harness-operations.md) | Remote Pi/OMP access, tmux lifecycle, privilege boundary, and acceptance checks |
 | [NixOS operations guide](nixos-operations.md) | Commit checks, build/test/switch, rollback, input updates, and extension boundaries |
 | [Local and Tailscale access](access-policy.md) | Private DNS/TLS, grants, network flows, administrative access, and acceptance checks |
 | [Personal data and memory](personal-data-and-memory.md) | Principal/work domains, memory lifecycle, sharing, deletion, and administrator model |
@@ -113,7 +114,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-003](adr/003-ai-api-boundary.md) | Consumers use a stable authenticated AI API boundary |
 | [ADR-004](adr/004-model-aliases.md) | Consumers use logical aliases, never concrete artifact names |
 | [ADR-005](adr/005-storage-strategy.md) | Internal storage is rebuildable and retains only active/rollback artifacts |
-| [ADR-006](adr/006-codex-remains-primary-harness.md) | Codex remains the developer harness |
+| [ADR-006](adr/006-codex-remains-primary-harness.md) | Historical Codex-only harness decision, superseded by ADR-018 |
 | [ADR-007](adr/007-local-first-implementation.md) | Implementation is local-first with explicit cloud review/fallback |
 | [ADR-008](adr/008-home-assistant-model-role.md) | Home Assistant has a distinct logical role and remains tool authority |
 | [ADR-009](adr/009-logging-policy.md) | Production logs are metadata-only by default |
@@ -125,6 +126,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-015](adr/015-personal-data-domains-and-memory.md) | Personal memory and employer data use explicit principals, domains, and lifecycle controls |
 | [ADR-016](adr/016-nixos-control-plane-host.md) | NixOS, integrated Home Manager, sops-nix, and Compose define the control-plane host |
 | [ADR-017](adr/017-consolidated-application-host.md) | `home-core` also hosts automations and personal agents; container isolation replaces the separate application host |
+| [ADR-018](adr/018-multiple-developer-harnesses.md) | Codex, Pi, and OMP are supported behind the same restricted developer account boundary |
 
 ## Research and model evidence
 

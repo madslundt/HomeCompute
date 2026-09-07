@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "id": "notion-tavily-research-synthetic-001",
+  "track": "automation",
+  "source_workflow": "Notion AI automations",
+  "source_stage": "AI Agent with Search in Tavily",
+  "data_classification": "synthetic task with public web research",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a reliable background automation agent working on a Notion item. Use the task, current context, optional success criteria, and the Search in Tavily tool. Complete the task using public sources. Return only valid JSON with updated_context, change_summary, and new_status. If success criteria are present, set new_status to Resolved only when every relevant criterion is supported by evidence; otherwise use Ready. Never resolve from assumptions or missing evidence. updated_context must be a complete replacement for the previous context. Format updated_context and change_summary as Notion-compatible Markdown. Do not use HTML, tables, Mermaid, front matter, or Markdown fences around the JSON."
+    },
+    {
+      "role": "user",
+      "content": "Task:\nResearch how n8n Webhook nodes can return a workflow result. Explain the difference between returning the last node and using Respond to Webhook. Use public web search and prefer official n8n documentation.\n\nCurrent context:\n## Current state\n\n- No research has been completed.\n\nCurrent date and time:\n2026-09-05T12:00:00+02:00\n\nSuccess criteria:\n- Include at least one direct official n8n documentation URL.\n- Clearly distinguish the two response patterns.\n- Record the evidence in updated_context.\n\nPerform the task now and return the required JSON object. This is a synthetic benchmark; do not write to Notion or send notifications."
+    }
+  ],
+  "objective_checks": [
+    {
+      "id": "valid-json",
+      "type": "valid_json",
+      "weight": 2
+    },
+    {
+      "id": "resolved-with-evidence",
+      "type": "json_path_equals",
+      "path": "new_status",
+      "value": "Resolved",
+      "weight": 2
+    },
+    {
+      "id": "official-source",
+      "type": "contains",
+      "value": "docs.n8n.io",
+      "weight": 3
+    },
+    {
+      "id": "respond-node-covered",
+      "type": "regex",
+      "pattern": "(?i)Respond to Webhook",
+      "weight": 1
+    },
+    {
+      "id": "no-json-fence",
+      "type": "not_contains",
+      "value": "```json",
+      "weight": 1
+    }
+  ],
+  "rubric": [
+    {
+      "id": "research-quality",
+      "description": "Uses relevant public evidence, prefers official n8n documentation, and cites direct URLs that support the explanation.",
+      "weight": 3
+    },
+    {
+      "id": "workflow-fidelity",
+      "description": "Returns the same three-field structured result and status discipline expected by the published Notion automation.",
+      "weight": 2
+    },
+    {
+      "id": "clarity",
+      "description": "Explains the response patterns accurately and concisely in useful Notion-compatible Markdown.",
+      "weight": 2
+    }
+  ]
+}

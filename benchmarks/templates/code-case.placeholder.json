@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "REPLACE-code-case-id",
+  "track": "code-implementation",
+  "workspace": {
+    "source": "REPLACE-relative-path-to-synthetic-or-sanitized-repository",
+    "hidden_overlay": "REPLACE-relative-path-to-tests-copied-only-after-the-agent-finishes"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "REPLACE-with-bounded-implementation-specification"
+    }
+  ],
+  "objective_checks": [
+    {
+      "id": "tests",
+      "type": "command",
+      "argv": ["REPLACE-test-command", "REPLACE-argument"],
+      "expected_exit": 0,
+      "timeout_seconds": 300,
+      "weight": 4
+    }
+  ],
+  "rubric": [
+    {
+      "id": "correctness",
+      "description": "REPLACE-with-maintainer-authored-subjective-criterion",
+      "weight": 1
+    }
+  ]
+}

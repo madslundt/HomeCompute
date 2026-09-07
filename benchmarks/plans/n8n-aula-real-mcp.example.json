@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "n8n-aula-real-mcp-model-evaluation",
+  "version": "0.1.0",
+  "trials": 3,
+  "random_seed": 20260905,
+  "cases": [
+    "../fixtures/automation/aula-real-mcp-daily.json"
+  ],
+  "candidates": [
+    {
+      "id": "qwen3.6-35b-a3b-aula-real-mcp",
+      "adapter": "n8n_webhook",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "artifact_ref": "qwen3.6-35b-a3b-openrouter",
+      "webhook_url_env": "N8N_AULA_REAL_MCP_BENCHMARK_WEBHOOK_URL",
+      "safety_acknowledgement": "real-read-only-data-no-side-effects",
+      "webhook_body": {
+        "data_authorization": "real-aula-data-approved-for-configured-model-provider"
+      }
+    },
+    {
+      "id": "qwen3.8-27b-aula-real-mcp",
+      "adapter": "n8n_webhook",
+      "model": "qwen/qwen3.8-27b",
+      "artifact_ref": "qwen3.8-27b-openrouter",
+      "webhook_url_env": "N8N_AULA_REAL_MCP_BENCHMARK_WEBHOOK_URL",
+      "safety_acknowledgement": "real-read-only-data-no-side-effects",
+      "webhook_body": {
+        "data_authorization": "real-aula-data-approved-for-configured-model-provider"
+      }
+    },
+    {
+      "id": "nemotron-3.5-lightning-aula-real-mcp",
+      "adapter": "n8n_webhook",
+      "model": "nvidia/nemotron-3.5-lightning",
+      "artifact_ref": "nemotron-3.5-lightning-openrouter",
+      "webhook_url_env": "N8N_AULA_REAL_MCP_BENCHMARK_WEBHOOK_URL",
+      "safety_acknowledgement": "real-read-only-data-no-side-effects",
+      "webhook_body": {
+        "data_authorization": "real-aula-data-approved-for-configured-model-provider"
+      }
+    }
+  ]
+}

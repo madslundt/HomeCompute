@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "code-understanding-openrouter-smoke",
+  "version": "0.1.0",
+  "trials": 3,
+  "random_seed": 20260905,
+  "cases": [
+    "../fixtures/smoke/code-understanding.json"
+  ],
+  "candidates": [
+    {
+      "id": "qwen3.6-35b-a3b-direct",
+      "adapter": "openrouter",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "artifact_ref": "qwen3.6-darkbloom-fp4",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "request": {
+        "temperature": 0,
+        "max_tokens": 4096,
+        "provider": {
+          "only": ["darkbloom"],
+          "allow_fallbacks": false,
+          "require_parameters": true,
+          "quantizations": ["fp4"]
+        }
+      }
+    },
+    {
+      "id": "qwen3.8-27b-direct",
+      "adapter": "openrouter",
+      "model": "qwen/qwen3.8-27b",
+      "artifact_ref": "qwen3.8-parasail-fp8",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "request": {
+        "temperature": 0,
+        "max_tokens": 4096,
+        "provider": {
+          "only": ["parasail"],
+          "allow_fallbacks": false,
+          "require_parameters": true,
+          "quantizations": ["fp8"]
+        }
+      }
+    },
+    {
+      "id": "nemotron-3.5-lightning-direct",
+      "adapter": "openrouter",
+      "model": "nvidia/nemotron-3.5-lightning",
+      "artifact_ref": "nemotron-3.5-deepinfra-bf16",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "request": {
+        "temperature": 0,
+        "max_tokens": 4096,
+        "provider": {
+          "only": ["deepinfra"],
+          "allow_fallbacks": false,
+          "require_parameters": true,
+          "quantizations": ["bf16"]
+        }
+      }
+    }
+  ]
+}

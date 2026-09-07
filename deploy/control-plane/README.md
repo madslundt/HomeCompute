@@ -53,17 +53,22 @@ The installer requires Docker Engine 28+ and Compose 2.33.1+. It also sets the
 daemon-wide default bind for future user-defined bridge publications to
 `127.0.0.1` as a fail-safe.
 
-Start on `127.0.0.1`. Before using a LAN or Tailscale address, declare the exact
-ingress policy in `modules/nixos/firewall.nix`, rebuild NixOS, and verify the
-result from both allowed and denied clients. Docker-published traffic requires
-an explicit verification because it does not have the same filtering behavior
-as an ordinary host process.
+Start on `127.0.0.1`. The production Tailscale publication is paired with the
+repository-owned `HC-CADDY-INGRESS` policy in
+`modules/nixos/automation-network.nix`: Docker's original destination
+`100.110.248.102:443` is accepted only from `tailscale0` and rejected from every
+other forwarded ingress path. Rebuild NixOS and verify both allowed and denied
+clients whenever the address or interface changes.
 
-LiteLLM-to-compute traffic is HTTPS by default. Plain HTTP exposes bearer
-credentials and prompts, so it is accepted only with
-an explicit documented exception on a dedicated, non-routed point-to-point
-link or VLAN. Prefer a compute certificate trusted by the LiteLLM image or a
-mutually authenticated tunnel.
+LiteLLM-to-compute traffic is plain HTTP only on the dedicated, non-routed
+point-to-point link. The versioned `HC-COMPUTE` policy permits the fixed
+LiteLLM container address to the fixed compute address and six declared ports;
+every other forwarded flow is rejected. Host and container-forwarded traffic
+to the compute subnet is rejected unless it leaves the dedicated interface,
+preventing bearer credentials from falling back through the LAN default route
+while the cable is down. A routed
+replacement must use a compute certificate trusted by LiteLLM or a mutually
+authenticated tunnel.
 
 ## Live deployment
 
@@ -108,6 +113,10 @@ Caddy exposes only `/v1/*` and `/healthz`. It intentionally returns 404 for the
 LiteLLM admin UI and key-management API. Provision and revoke virtual keys from
 an administrator shell inside LiteLLM's container namespace; do not distribute
 the master key to clients or publish the management route for convenience.
+Embedding, vision, STT, and TTS candidates are also absent from the production
+LiteLLM model list and Caddy route allow-list while staged. Qualify one modality
+at a time against its direct private listener; add a gateway alias only through
+an explicit promotion change with route, quota, monitoring, and rollback tests.
 
 Back up and restore-test `/srv/state/control-plane` together with the persistent
 sops age identity before production use. Never change the LiteLLM salt after

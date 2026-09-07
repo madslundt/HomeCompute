@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "release_id": "synthetic-smoke-2026-09-05",
+  "benchmark_commit": "WORKING_TREE",
+  "environment": {
+    "kind": "development",
+    "hardware": "not applicable: mock adapter",
+    "operating_system": "record before a real run"
+  },
+  "artifacts": [
+    {
+      "id": "mock-control",
+      "source": "repository synthetic fixture",
+      "revision": "1",
+      "runtime": "benchmark mock adapter",
+      "quantization": "not applicable"
+    }
+  ]
+}

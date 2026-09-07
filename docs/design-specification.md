@@ -209,8 +209,9 @@ inputs. Consumers never use an IP or container port.
 | Method and path | Consumer | Logical role | Notes |
 | --- | --- | --- | --- |
 | `POST /v1/responses` | Codex; new agent clients | request `model` | Required Codex path |
-| `POST /v1/chat/completions` | Hermes and existing clients when necessary | request `model` | Compatibility path, separately tested at 64K for Hermes |
+| `POST /v1/chat/completions` | Hermes, rendered-page vision/document clients, and existing clients when necessary | request `model` | Compatibility path; `vision` accepts images, not native PDFs; text path separately tested at 64K for Hermes |
 | `GET /v1/models` | Authenticated clients | qualified aliases | No internal artifact metadata required |
+| `POST /v1/embeddings` | Approved local retrieval and document clients | `embedding` | Private data remains local; no cloud fallback |
 | `POST /v1/audio/transcriptions` | Meeting Assistant; approved adapters | STT by route/config | Size and duration bounded; no cloud fallback |
 | Wyoming STT/TTS | Home Assistant | qualified speech services | Supported Home Assistant boundary |
 | `POST /v1/audio/speech` | Approved clients | TTS by route/config | Qualified Danish voice allow-list |

@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "id": "code-python-average-001",
+  "track": "code-implementation",
+  "workspace": {
+    "source": "python-average",
+    "hidden_overlay": "python-average-hidden"
+  },
+  "messages": [
+    {
+      "role": "user",
+      "content": "Update average.py so average([]) raises ValueError with a message containing 'at least one'. Preserve behavior for non-empty lists. Run the tests and keep the change minimal."
+    }
+  ],
+  "objective_checks": [
+    {
+      "id": "tests",
+      "type": "command",
+      "argv": ["python3", "-m", "unittest", "-v"],
+      "expected_exit": 0,
+      "timeout_seconds": 60,
+      "weight": 4
+    },
+    {
+      "id": "explicit-error",
+      "type": "file_contains",
+      "path": "average.py",
+      "value": "ValueError",
+      "weight": 1
+    }
+  ],
+  "rubric": [
+    {
+      "id": "correctness",
+      "description": "The implementation satisfies the specification and tests without regression.",
+      "weight": 3
+    },
+    {
+      "id": "minimality",
+      "description": "The patch is focused and avoids unnecessary files or abstraction.",
+      "weight": 1
+    }
+  ]
+}

@@ -4,7 +4,10 @@
     enable = true;
     openFirewall = false;
     settings = {
-      AllowUsers = [ "mads" ];
+      AllowUsers = [
+        "mads"
+        "agent"
+      ];
       KbdInteractiveAuthentication = false;
       PasswordAuthentication = false;
       PermitRootLogin = "no";

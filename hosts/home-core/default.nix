@@ -6,6 +6,10 @@
     ../../modules/nixos/system.nix
     ../../modules/nixos/networking.nix
     ../../modules/nixos/firewall.nix
+    ../../modules/nixos/compute-link.nix
+    ../../modules/nixos/platform-monitoring.nix
+    ../../modules/nixos/model-update-monitor.nix
+    ../../modules/nixos/agent-harness.nix
     ../../modules/nixos/docker.nix
     ../../modules/nixos/ssh.nix
     ../../modules/nixos/tailscale.nix

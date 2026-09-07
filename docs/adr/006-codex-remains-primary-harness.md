@@ -26,10 +26,9 @@ project configuration cannot define/override provider selection.
 
 ## Status
 
-Accepted for whole-session local PoC.
+Superseded by [ADR-018](018-multiple-developer-harnesses.md).
 
 ## Evidence
 
 - `docs/research/codex-compatibility.md`
 - `docs/requirements.md` URS-CODEX-001/002/004
-

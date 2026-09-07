@@ -7,6 +7,18 @@
 	}
 }
 
+(litellm_proxy) {
+	reverse_proxy litellm:4000 {
+		health_uri /health/liveliness
+		health_interval 30s
+		lb_try_duration 5s
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+}
+
 {$AI_FQDN} {
 	tls internal
 	encode zstd gzip
@@ -16,26 +28,35 @@
 		respond "ok" 200
 	}
 
-	@api path /v1/*
-	handle @api {
+	@models {
+		method GET
+		path /v1/models
+	}
+	handle @models {
 		request_body {
 			max_size 32MB
 		}
-		reverse_proxy litellm:4000 {
-			health_uri /health/liveliness
-			health_interval 30s
-			lb_try_duration 5s
-			transport http {
-				dial_timeout 3s
-				response_header_timeout 10m
-			}
+		import litellm_proxy
+	}
+
+	@standard {
+		method POST
+		path /v1/responses /v1/chat/completions
+	}
+	handle @standard {
+		request_body {
+			max_size 32MB
 		}
+		import litellm_proxy
 	}
 
 	respond 404
 
 	log {
 		output stdout
-		format json
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
 	}
 }

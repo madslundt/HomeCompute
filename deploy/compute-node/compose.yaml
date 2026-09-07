@@ -1,16 +1,92 @@
 name: ai-compute
 
+x-runtime: &runtime
+  restart: unless-stopped
+  init: true
+  user: "${GB10_RUNTIME_UID:?Run setup-compute-node.sh init}:${GB10_RUNTIME_GID:?Run setup-compute-node.sh init}"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  stop_grace_period: 2m
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "5"}
+
+x-vllm-environment: &vllm-environment
+  HOME: /var/cache/vllm
+  HF_HOME: /var/cache/huggingface
+  HF_HUB_OFFLINE: "1"
+  HF_HUB_DISABLE_TELEMETRY: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  VLLM_NO_USAGE_STATS: "1"
+  DO_NOT_TRACK: "1"
+  TOKENIZERS_PARALLELISM: "false"
+
+x-gpu: &gpu
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1
+          capabilities: [gpu]
+
+x-text-volumes: &text-volumes
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+    target: /var/cache/huggingface
+    read_only: true
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
+    target: /var/cache/vllm
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/models
+    target: /models
+    read_only: true
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+    target: /opt/homecompute/model-cache-integrity.py
+    read_only: true
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-model-cache.json
+    target: /run/accepted-model-cache.json
+    read_only: true
+
+x-modality-volumes: &modality-volumes
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+    target: /var/cache/huggingface
+    read_only: true
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
+    target: /var/cache/vllm
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+    target: /opt/homecompute/model-cache-integrity.py
+    read_only: true
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-embedding-cache.json
+    target: /run/accepted-embedding-cache.json
+    read_only: true
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-vision-cache.json
+    target: /run/accepted-vision-cache.json
+    read_only: true
+  - type: bind
+    source: ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-stt-cache.json
+    target: /run/accepted-stt-cache.json
+    read_only: true
+
 services:
   model-fetch:
-    profiles:
-      - prepare
+    profiles: [prepare]
     image: ${VLLM_IMAGE:?Set VLLM_IMAGE to an immutable image digest}
     user: "${GB10_RUNTIME_UID:?Run setup-compute-node.sh init}:${GB10_RUNTIME_GID:?Run setup-compute-node.sh init}"
     read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 4
+    mem_limit: 8g
+    pids_limit: 256
     environment:
       HOME: /var/cache/vllm
       HF_HOME: /var/cache/huggingface
@@ -20,46 +96,35 @@ services:
       CODE_REVISION: ${CODE_REVISION:?Set CODE_REVISION}
       CHAT_TEMPLATE_SHA256: ${CHAT_TEMPLATE_SHA256:?Set CHAT_TEMPLATE_SHA256}
       HF_HUB_DISABLE_TELEMETRY: "1"
-    entrypoint:
-      - /bin/sh
-      - -ec
+      HF_CACHE_MAX_BYTES: ${HF_CACHE_MAX_BYTES:?Set HF_CACHE_MAX_BYTES}
+      HF_CACHE_MAX_FILES: ${HF_CACHE_MAX_FILES:?Set HF_CACHE_MAX_FILES}
+      MIN_FREE_DISK_GIB: ${MIN_FREE_DISK_GIB:?Set MIN_FREE_DISK_GIB}
+      TEXT_ARTIFACT_MAX_BYTES: ${TEXT_ARTIFACT_MAX_BYTES:?Set TEXT_ARTIFACT_MAX_BYTES}
+      TEXT_ARTIFACT_MAX_FILES: ${TEXT_ARTIFACT_MAX_FILES:?Set TEXT_ARTIFACT_MAX_FILES}
+    entrypoint: [/bin/sh, -ec]
     command:
       - |
         export HF_TOKEN="$$(cat /run/secrets/hf_token)"
+        python3 /opt/homecompute/model-cache-integrity.py fetch --cache-root /var/cache/huggingface \
+          --repo-id "$${MODEL_ID}" --revision "$${MODEL_REVISION}" --revision "$${TOKENIZER_REVISION}" --revision "$${CODE_REVISION}" \
+          --max-artifact-bytes "$${TEXT_ARTIFACT_MAX_BYTES}" --max-artifact-files "$${TEXT_ARTIFACT_MAX_FILES}" \
+          --max-cache-bytes "$${HF_CACHE_MAX_BYTES}" --max-cache-files "$${HF_CACHE_MAX_FILES}" \
+          --min-free-bytes "$$((MIN_FREE_DISK_GIB * 1073741824))"
         python3 - <<'PY'
-        import hashlib
-        import json
-        import os
+        import hashlib, json, os
         from pathlib import Path
-        from huggingface_hub import snapshot_download
-
-        revisions = dict.fromkeys((
-            os.environ["MODEL_REVISION"],
-            os.environ["TOKENIZER_REVISION"],
-            os.environ["CODE_REVISION"],
-        ))
-        paths = {}
-        for revision in revisions:
-            paths[revision] = snapshot_download(
-                repo_id=os.environ["MODEL_ID"],
-                revision=revision,
-                token=os.environ["HF_TOKEN"],
-            )
-        tokenizer_config = Path(paths[os.environ["TOKENIZER_REVISION"]]) / "tokenizer_config.json"
-        document = json.loads(tokenizer_config.read_text(encoding="utf-8"))
+        repo_root = Path(os.environ["HF_HOME"]) / "hub" / f"models--{os.environ['MODEL_ID'].replace('/', '--')}" / "snapshots"
+        paths = {revision: repo_root / revision for revision in (os.environ["MODEL_REVISION"], os.environ["TOKENIZER_REVISION"], os.environ["CODE_REVISION"])}
+        document = json.loads((Path(paths[os.environ["TOKENIZER_REVISION"]]) / "tokenizer_config.json").read_text(encoding="utf-8"))
         template = document.get("chat_template")
         if template is None:
             raise RuntimeError("tokenizer_config.json has no chat_template")
-        canonical = template if isinstance(template, str) else json.dumps(
-            template, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        )
-        actual = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-        expected = os.environ["CHAT_TEMPLATE_SHA256"].lower()
-        if actual != expected:
-            raise RuntimeError(f"chat template SHA-256 mismatch: expected {expected}, found {actual}")
+        canonical = template if isinstance(template, str) else json.dumps(template, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        actual = hashlib.sha256(canonical.encode()).hexdigest()
+        if actual != os.environ["CHAT_TEMPLATE_SHA256"].lower():
+            raise RuntimeError(f"chat template SHA-256 mismatch: expected {os.environ['CHAT_TEMPLATE_SHA256']}, found {actual}")
         PY
-    secrets:
-      - hf_token
+    secrets: [hf_token]
     volumes:
       - type: bind
         source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
@@ -67,113 +132,331 @@ services:
       - type: bind
         source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
         target: /var/cache/vllm
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=1g
-    networks:
-      - artifact-fetch
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+        target: /opt/homecompute/model-cache-integrity.py
+        read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=1g]
+    networks: [artifact-fetch]
 
-  text-primary:
+  modality-fetch:
+    profiles: [prepare-modalities]
     image: ${VLLM_IMAGE:?Set VLLM_IMAGE to an immutable image digest}
-    container_name: gb10-text-primary
-    restart: on-failure:5
-    init: true
     user: "${GB10_RUNTIME_UID:?Run setup-compute-node.sh init}:${GB10_RUNTIME_GID:?Run setup-compute-node.sh init}"
     read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    shm_size: "${VLLM_SHM_SIZE:-16gb}"
-    ports:
-      - "${GB10_BIND_ADDRESS:-127.0.0.1}:${VLLM_HOST_PORT:-8000}:8000"
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 4
+    mem_limit: 8g
+    pids_limit: 256
     environment:
-      HOME: /var/cache/vllm
       HF_HOME: /var/cache/huggingface
-      HF_HUB_OFFLINE: "1"
       HF_HUB_DISABLE_TELEMETRY: "1"
-      TRANSFORMERS_OFFLINE: "1"
-      VLLM_NO_USAGE_STATS: "1"
-      DO_NOT_TRACK: "1"
+      EMBEDDING_MODEL_ID: ${EMBEDDING_MODEL_ID:?Set EMBEDDING_MODEL_ID}
+      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:?Set EMBEDDING_MODEL_REVISION}
+      VISION_MODEL_ID: ${VISION_MODEL_ID:?Set VISION_MODEL_ID}
+      VISION_MODEL_REVISION: ${VISION_MODEL_REVISION:?Set VISION_MODEL_REVISION}
+      STT_MODEL_ID: ${STT_MODEL_ID:?Set STT_MODEL_ID}
+      STT_MODEL_REVISION: ${STT_MODEL_REVISION:?Set STT_MODEL_REVISION}
+      PIPER_VOICE_ID: ${PIPER_VOICE_ID:?Set PIPER_VOICE_ID}
+      PIPER_VOICE_REVISION: ${PIPER_VOICE_REVISION:?Set PIPER_VOICE_REVISION}
+      PIPER_MODEL_SHA256: ${PIPER_MODEL_SHA256:?Set PIPER_MODEL_SHA256}
+      PIPER_CONFIG_SHA256: ${PIPER_CONFIG_SHA256:?Set PIPER_CONFIG_SHA256}
+      PIPER_MODEL_CARD_SHA256: ${PIPER_MODEL_CARD_SHA256:?Set PIPER_MODEL_CARD_SHA256}
+      HF_CACHE_MAX_BYTES: ${HF_CACHE_MAX_BYTES:?Set HF_CACHE_MAX_BYTES}
+      HF_CACHE_MAX_FILES: ${HF_CACHE_MAX_FILES:?Set HF_CACHE_MAX_FILES}
+      MIN_FREE_DISK_GIB: ${MIN_FREE_DISK_GIB:?Set MIN_FREE_DISK_GIB}
+      EMBEDDING_ARTIFACT_MAX_BYTES: ${EMBEDDING_ARTIFACT_MAX_BYTES:?Set EMBEDDING_ARTIFACT_MAX_BYTES}
+      EMBEDDING_ARTIFACT_MAX_FILES: ${EMBEDDING_ARTIFACT_MAX_FILES:?Set EMBEDDING_ARTIFACT_MAX_FILES}
+      VISION_ARTIFACT_MAX_BYTES: ${VISION_ARTIFACT_MAX_BYTES:?Set VISION_ARTIFACT_MAX_BYTES}
+      VISION_ARTIFACT_MAX_FILES: ${VISION_ARTIFACT_MAX_FILES:?Set VISION_ARTIFACT_MAX_FILES}
+      STT_ARTIFACT_MAX_BYTES: ${STT_ARTIFACT_MAX_BYTES:?Set STT_ARTIFACT_MAX_BYTES}
+      STT_ARTIFACT_MAX_FILES: ${STT_ARTIFACT_MAX_FILES:?Set STT_ARTIFACT_MAX_FILES}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py fetch --cache-root /var/cache/huggingface \
+          --repo-id "$${EMBEDDING_MODEL_ID}" --revision "$${EMBEDDING_MODEL_REVISION}" \
+          --max-artifact-bytes "$${EMBEDDING_ARTIFACT_MAX_BYTES}" --max-artifact-files "$${EMBEDDING_ARTIFACT_MAX_FILES}" \
+          --max-cache-bytes "$${HF_CACHE_MAX_BYTES}" --max-cache-files "$${HF_CACHE_MAX_FILES}" --min-free-bytes "$$((MIN_FREE_DISK_GIB * 1073741824))"
+        python3 /opt/homecompute/model-cache-integrity.py fetch --cache-root /var/cache/huggingface \
+          --repo-id "$${VISION_MODEL_ID}" --revision "$${VISION_MODEL_REVISION}" \
+          --max-artifact-bytes "$${VISION_ARTIFACT_MAX_BYTES}" --max-artifact-files "$${VISION_ARTIFACT_MAX_FILES}" \
+          --max-cache-bytes "$${HF_CACHE_MAX_BYTES}" --max-cache-files "$${HF_CACHE_MAX_FILES}" --min-free-bytes "$$((MIN_FREE_DISK_GIB * 1073741824))"
+        python3 /opt/homecompute/model-cache-integrity.py fetch --cache-root /var/cache/huggingface \
+          --repo-id "$${STT_MODEL_ID}" --revision "$${STT_MODEL_REVISION}" \
+          --max-artifact-bytes "$${STT_ARTIFACT_MAX_BYTES}" --max-artifact-files "$${STT_ARTIFACT_MAX_FILES}" \
+          --max-cache-bytes "$${HF_CACHE_MAX_BYTES}" --max-cache-files "$${HF_CACHE_MAX_FILES}" --min-free-bytes "$$((MIN_FREE_DISK_GIB * 1073741824))"
+        python3 - <<'PY'
+        import hashlib, os, urllib.request
+        from pathlib import Path
+        # Hugging Face snapshots were fetched above under independent byte,
+        # file-count, total-cache, and free-space bounds.
+        voice = os.environ["PIPER_VOICE_ID"]
+        revision = os.environ["PIPER_VOICE_REVISION"]
+        destination = Path("/models/piper")
+        destination.mkdir(parents=True, exist_ok=True)
+        files = {
+            f"{voice}.onnx": (os.environ["PIPER_MODEL_SHA256"], 63_201_294),
+            f"{voice}.onnx.json": (os.environ["PIPER_CONFIG_SHA256"], 4_878),
+            "MODEL_CARD": (os.environ["PIPER_MODEL_CARD_SHA256"], 308),
+        }
+        temporary_names = {f".{name}.part" for name in files}
+        for child in destination.iterdir():
+            if child.name in files and not child.is_symlink() and child.is_file():
+                continue
+            if child.name in temporary_names and not child.is_symlink() and child.is_file() and child.lstat().st_uid == os.geteuid():
+                child.unlink()
+                continue
+            raise RuntimeError(f"unexpected Piper artifact: {child}")
+        base = f"https://huggingface.co/rhasspy/piper-voices/resolve/{revision}/da/da_DK/talesyntese/medium"
+        for name, (expected_hash, expected_size) in files.items():
+            target = destination / name
+            if target.exists():
+                with target.open("rb") as existing:
+                    actual_hash = hashlib.file_digest(existing, "sha256").hexdigest()
+                if target.stat().st_size != expected_size or actual_hash != expected_hash.lower():
+                    raise RuntimeError(f"immutable {name} size or SHA-256 mismatch")
+                continue
+            temporary = destination / f".{name}.part"
+            digest = hashlib.sha256()
+            request = urllib.request.Request(f"{base}/{name}", headers={"User-Agent": "homecompute-pinned-fetch/1"})
+            with urllib.request.urlopen(request, timeout=120) as response, temporary.open("xb") as output:
+                content_length = response.headers.get("Content-Length")
+                if content_length is None or int(content_length) != expected_size:
+                    raise RuntimeError(f"{name} Content-Length does not match pinned size")
+                written = 0
+                while chunk := response.read(min(1024 * 1024, expected_size + 1 - written)):
+                    written += len(chunk)
+                    if written > expected_size:
+                        raise RuntimeError(f"{name} exceeded pinned size")
+                    digest.update(chunk); output.write(chunk)
+                output.flush(); os.fsync(output.fileno())
+            if written != expected_size or digest.hexdigest() != expected_hash.lower():
+                temporary.unlink(missing_ok=True)
+                raise RuntimeError(f"{name} size or SHA-256 mismatch")
+            temporary.chmod(0o440)
+            os.link(temporary, target)
+            temporary.unlink()
+        PY
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+        target: /var/cache/huggingface
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/models/piper
+        target: /models/piper
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+        target: /opt/homecompute/model-cache-integrity.py
+        read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=2g]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+    networks: [artifact-fetch]
+
+  text-primary:
+    <<: *runtime
+    image: ${VLLM_IMAGE:?Set VLLM_IMAGE to an immutable image digest}
+    container_name: gb10-text-primary
+    shm_size: "${VLLM_SHM_SIZE:-16gb}"
+    ports: ["${GB10_BIND_ADDRESS:-127.0.0.1}:${VLLM_HOST_PORT:-8000}:8000"]
+    environment:
+      <<: *vllm-environment
       VLLM_CACHE_ROOT: /var/cache/vllm
       VLLM_LOGGING_LEVEL: INFO
       VLLM_SPECULATIVE_CONFIG: "${VLLM_SPECULATIVE_CONFIG:-}"
-      TOKENIZERS_PARALLELISM: "false"
-    entrypoint:
-      - /bin/sh
-      - -ec
+    entrypoint: [/bin/sh, -ec]
     command:
       - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface --repo-id "${MODEL_ID}" --revision "${MODEL_REVISION}" --revision "${TOKENIZER_REVISION}" --revision "${CODE_REVISION}" --manifest /run/accepted-model-cache.json
         export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
         set --
-        if [ -n "$${VLLM_SPECULATIVE_CONFIG}" ]; then
-          set -- --speculative-config "$${VLLM_SPECULATIVE_CONFIG}"
-        fi
-        exec vllm serve "${MODEL_ID}" \
-          --revision "${MODEL_REVISION}" \
-          --tokenizer-revision "${TOKENIZER_REVISION}" \
-          --code-revision "${CODE_REVISION}" \
-          --served-model-name coding automation research home meeting assistant \
-          --host 0.0.0.0 \
-          --port 8000 \
-          --tensor-parallel-size 1 \
-          --trust-remote-code \
-          --kv-cache-dtype fp8 \
-          --attention-backend "${VLLM_ATTENTION_BACKEND:-flashinfer}" \
-          --moe-backend "${VLLM_MOE_BACKEND:-marlin}" \
-          --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.40}" \
-          --generation-config vllm \
-          --max-model-len "${VLLM_MAX_MODEL_LEN:-32768}" \
-          --max-num-seqs "${VLLM_MAX_NUM_SEQS:-2}" \
-          --max-num-batched-tokens "${VLLM_MAX_BATCHED_TOKENS:-8192}" \
-          --enable-chunked-prefill \
-          --async-scheduling \
-          --enable-prefix-caching \
-          "$$@" \
-          --load-format fastsafetensors \
-          --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" \
-          --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_xml}" \
-          --enable-auto-tool-choice \
-          --disable-uvicorn-access-log
-    secrets:
-      - vllm_api_key
-    volumes:
-      - type: bind
-        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
-        target: /var/cache/huggingface
-        read_only: true
-      - type: bind
-        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
-        target: /var/cache/vllm
-      - type: bind
-        source: ${GB10_ROOT:?Set GB10_ROOT}/models
-        target: /models
-        read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=8g
+        if [ -n "$${VLLM_SPECULATIVE_CONFIG}" ]; then set -- --speculative-config "$${VLLM_SPECULATIVE_CONFIG}"; fi
+        exec vllm serve "${MODEL_ID}" --revision "${MODEL_REVISION}" --tokenizer-revision "${TOKENIZER_REVISION}" --code-revision "${CODE_REVISION}" \
+          --served-model-name coding automation research home meeting assistant --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
+          --kv-cache-dtype fp8 --attention-backend "${VLLM_ATTENTION_BACKEND:-flashinfer}" --moe-backend "${VLLM_MOE_BACKEND:-marlin}" \
+          --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.40}" --generation-config vllm --max-model-len "${VLLM_MAX_MODEL_LEN:-32768}" \
+          --max-num-seqs "${VLLM_MAX_NUM_SEQS:-2}" --max-num-batched-tokens "${VLLM_MAX_BATCHED_TOKENS:-8192}" --enable-chunked-prefill \
+          --async-scheduling --enable-prefix-caching "$$@" --load-format fastsafetensors --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" \
+          --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_xml}" --enable-auto-tool-choice --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes: *text-volumes
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=8g]
     healthcheck:
-      test:
-        - CMD-SHELL
-        - curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null
+      test: [CMD-SHELL, "curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 10
       start_period: 20m
-    stop_grace_period: 2m
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities:
-                - gpu
-    networks:
-      - inference
+    deploy: *gpu
+    networks: [inference]
+
+  embedding-primary:
+    <<: *runtime
+    profiles: [embedding, modalities]
+    image: ${VLLM_IMAGE:?Set VLLM_IMAGE to an immutable image digest}
+    container_name: gb10-embedding-primary
+    shm_size: "${VLLM_SHM_SIZE:-16gb}"
+    cpus: 4
+    mem_limit: 16g
+    pids_limit: 512
+    ports: ["${GB10_BIND_ADDRESS:?Set GB10_BIND_ADDRESS}:${EMBEDDING_HOST_PORT:?Set EMBEDDING_HOST_PORT}:8001"]
+    environment:
+      <<: *vllm-environment
+      VLLM_CACHE_ROOT: /var/cache/vllm/embedding
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface --repo-id "${EMBEDDING_MODEL_ID}" --revision "${EMBEDDING_MODEL_REVISION}" --manifest /run/accepted-embedding-cache.json
+        export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
+        exec vllm serve "${EMBEDDING_MODEL_ID}" --revision "${EMBEDDING_MODEL_REVISION}" --served-model-name embedding --runner pooling \
+          --host 0.0.0.0 --port 8001 --gpu-memory-utilization "${EMBEDDING_GPU_MEMORY_UTILIZATION:-0.10}" --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes: *modality-volumes
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=4g]
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail --silent --show-error http://127.0.0.1:8001/health >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 10m
+    deploy: *gpu
+    networks: [inference]
+
+  vision-primary:
+    <<: *runtime
+    profiles: [vision, modalities]
+    image: ${VLLM_IMAGE:?Set VLLM_IMAGE to an immutable image digest}
+    container_name: gb10-vision-primary
+    shm_size: "${VLLM_SHM_SIZE:-16gb}"
+    cpus: 6
+    mem_limit: 32g
+    pids_limit: 512
+    ports: ["${GB10_BIND_ADDRESS:?Set GB10_BIND_ADDRESS}:${VISION_HOST_PORT:?Set VISION_HOST_PORT}:8002"]
+    environment:
+      <<: *vllm-environment
+      VLLM_CACHE_ROOT: /var/cache/vllm/vision
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface --repo-id "${VISION_MODEL_ID}" --revision "${VISION_MODEL_REVISION}" --manifest /run/accepted-vision-cache.json
+        export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
+        snapshot="/var/cache/huggingface/hub/models--microsoft--Phi-4-multimodal-instruct/snapshots/${VISION_MODEL_REVISION}"
+        exec vllm serve "${VISION_MODEL_ID}" --revision "${VISION_MODEL_REVISION}" --trust-remote-code --enable-lora --max-lora-rank 320 \
+          --max-loras 2 --lora-modules "vision=$${snapshot}/vision-lora" \
+          --host 0.0.0.0 --port 8002 --max-model-len 4096 --gpu-memory-utilization "${VISION_GPU_MEMORY_UTILIZATION:-0.18}" \
+          --allowed-media-domains invalid.homecompute.invalid --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes: *modality-volumes
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=4g]
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail --silent --show-error http://127.0.0.1:8002/health >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 15m
+    deploy: *gpu
+    networks: [inference]
+
+  stt-primary:
+    <<: *runtime
+    profiles: [stt, modalities]
+    image: ${VLLM_IMAGE:?Set VLLM_IMAGE to an immutable image digest}
+    container_name: gb10-stt-primary
+    shm_size: "${VLLM_SHM_SIZE:-16gb}"
+    cpus: 4
+    mem_limit: 12g
+    pids_limit: 512
+    ports: ["${GB10_BIND_ADDRESS:?Set GB10_BIND_ADDRESS}:${STT_HOST_PORT:?Set STT_HOST_PORT}:8003"]
+    environment:
+      <<: *vllm-environment
+      VLLM_CACHE_ROOT: /var/cache/vllm/stt
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface --repo-id "${STT_MODEL_ID}" --revision "${STT_MODEL_REVISION}" --manifest /run/accepted-stt-cache.json
+        export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
+        exec vllm serve "${STT_MODEL_ID}" --revision "${STT_MODEL_REVISION}" --served-model-name stt \
+          --host 0.0.0.0 --port 8003 --gpu-memory-utilization "${STT_GPU_MEMORY_UTILIZATION:-0.06}" --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes: *modality-volumes
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=4g]
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail --silent --show-error http://127.0.0.1:8003/health >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 10m
+    deploy: *gpu
+    networks: [inference]
+
+  tts-primary:
+    <<: *runtime
+    profiles: [tts, modalities]
+    image: ${PIPER_IMAGE:?Set PIPER_IMAGE to an immutable image digest}
+    container_name: gb10-tts-primary
+    cpus: 4
+    mem_limit: 8g
+    pids_limit: 256
+    ports: ["${GB10_BIND_ADDRESS:?Set GB10_BIND_ADDRESS}:${WYOMING_TTS_HOST_PORT:?Set WYOMING_TTS_HOST_PORT}:10200"]
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        printf '%s  %s\n' "${PIPER_MODEL_SHA256}" "/data/${PIPER_VOICE_ID}.onnx" | sha256sum -c -
+        printf '%s  %s\n' "${PIPER_CONFIG_SHA256}" "/data/${PIPER_VOICE_ID}.onnx.json" | sha256sum -c -
+        printf '%s  %s\n' "${PIPER_MODEL_CARD_SHA256}" /data/MODEL_CARD | sha256sum -c -
+        exec /usr/src/.venv/bin/python3 -m wyoming_piper --uri tcp://0.0.0.0:10200 --data-dir /data --download-dir /tmp/piper --voice "${PIPER_VOICE_ID}"
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/models/piper
+        target: /data
+        read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=1g]
+    healthcheck:
+      test: [CMD, /usr/src/.venv/bin/python3, -m, wyoming_piper.health_check]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 5m
+    networks: [inference]
+
+  tts-openai-adapter:
+    <<: *runtime
+    profiles: [tts, modalities]
+    image: ${PIPER_IMAGE:?Set PIPER_IMAGE to an immutable image digest}
+    container_name: gb10-tts-openai-adapter
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 128
+    ports: ["${GB10_BIND_ADDRESS:?Set GB10_BIND_ADDRESS}:${TTS_HOST_PORT:?Set TTS_HOST_PORT}:8004"]
+    environment:
+      GB10_BIND_ADDRESS: 0.0.0.0
+      TTS_HOST_PORT: 8004
+      WYOMING_URI: tcp://tts-primary:10200
+      TTS_API_KEY_FILE: /run/secrets/vllm_api_key
+      PIPER_VOICE_ID: ${PIPER_VOICE_ID:?Set PIPER_VOICE_ID}
+      TTS_MODEL_ALIAS: ${TTS_MODEL_ALIAS:-tts}
+      TTS_VOICE_ALIAS: ${TTS_VOICE_ALIAS:-danish-default}
+      TTS_MAX_INPUT_CHARS: ${TTS_MAX_INPUT_CHARS:-2000}
+    entrypoint: [/usr/src/.venv/bin/python3, /app/openai-wyoming-tts.py]
+    secrets: [vllm_api_key]
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/openai-wyoming-tts.py
+        target: /app/openai-wyoming-tts.py
+        read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=64m]
+    healthcheck:
+      test: [CMD, /usr/src/.venv/bin/python3, /app/openai-wyoming-tts.py, --probe-ready]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 2m
+    depends_on:
+      tts-primary: {condition: service_healthy}
+    networks: [inference]
 
 networks:
   inference:

@@ -86,7 +86,7 @@ pass without changing the installed GPU stack.
    state.
 6. Generate the vLLM API key and keep all secrets outside the repository.
 7. Start loopback-only with MTP disabled and conservative memory/context values.
-8. Retain at least 100 GB storage headroom and define artifact cleanup rules.
+8. Retain at least 200 GiB storage headroom and define artifact cleanup rules.
 
 Validate before any image pull or service start:
 
@@ -157,9 +157,11 @@ A smoke test alone does not pass this gate.
      --wait 1200
    ```
 
-4. Confirm the previous API tuple, health, model aliases, authentication, and
+4. Confirm rollback reinstalls the trusted prior firewall tuple under the
+   fail-closed guard before full validation.
+5. Confirm the previous API tuple, health, model aliases, authentication, and
    performance return within the agreed recovery time.
-5. Verify rollback does not delete models, caches, manifests, secrets, or
+6. Verify rollback does not delete models, caches, manifests, secrets, or
    unrelated artifacts.
 
 **Pass:** A failed release can return to the exact prior tuple predictably.
@@ -178,15 +180,22 @@ move Home Assistant to either node.
 ### C3 — Connect through `home-core`
 
 1. Change the runtime bind from loopback to `10.77.10.10` only after the
-   private bridge/link and firewall are ready.
-2. Set `GATEWAY_CIDR` to the `home-core` private address/CIDR and
-   document the exact host firewall rule.
-3. Set `FIREWALL_CONFIRMED=true`, revalidate, and redeploy the same tuple.
-4. From `home-core`, test health, authentication, Responses/tool streaming,
+   private bridge/link is ready.
+2. Set `GATEWAY_CIDR` to the `home-core` private address/CIDR.
+3. Install and verify the repository-owned persistent ingress policy:
+
+   ```bash
+   sudo ./scripts/setup-compute-node.sh firewall \
+     --env /etc/gb10-ai/gb10.env
+   ```
+
+4. Revalidate and redeploy the same tuple. Deployment reapplies and checks the
+   exact ordered `DOCKER-USER` inference and link-isolation policy after Compose.
+5. From `home-core`, test health, authentication, Responses/tool streaming,
    latency, cancellation, and large/long requests.
-5. From ordinary LAN and application hosts, prove the runtime port
+6. From ordinary LAN and application hosts, prove the runtime port
    is unreachable.
-6. Pull the private cable and verify the gateway exposes the intended failure:
+7. Pull the private cable and verify the gateway exposes the intended failure:
    private aliases fail closed; only approved public aliases may use explicit
    cloud routing.
 

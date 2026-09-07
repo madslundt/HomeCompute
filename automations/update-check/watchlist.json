@@ -13,7 +13,15 @@
       "label": "NVIDIA Qwen3.6 35B A3B NVFP4",
       "role": "Current shared text integration baseline",
       "request_url": "https://huggingface.co/api/models/nvidia/Qwen3.6-35B-A3B-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4"
+      "project_url": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "benchmark_artifact_source": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "benchmark_candidate_ids": [
+        "qwen3.6-35b-a3b-codex",
+        "qwen3.6-35b-a3b-direct",
+        "qwen3.6-35b-a3b-via-n8n",
+        "qwen3.6-35b-a3b-tavily",
+        "qwen3.6-35b-a3b-aula-real-mcp"
+      ]
     },
     {
       "id": "quality-candidate",
@@ -21,7 +29,15 @@
       "label": "Qwen3.8 27B FP8",
       "role": "First general, Danish, coding, and agent quality candidate",
       "request_url": "https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8",
-      "project_url": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8"
+      "project_url": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8",
+      "benchmark_artifact_source": "https://huggingface.co/Qwen/Qwen3.8-27B-FP8",
+      "benchmark_candidate_ids": [
+        "qwen3.8-27b-codex",
+        "qwen3.8-27b-direct",
+        "qwen3.8-27b-via-n8n",
+        "qwen3.8-27b-tavily",
+        "qwen3.8-27b-aula-real-mcp"
+      ]
     },
     {
       "id": "performance-candidate",
@@ -29,7 +45,15 @@
       "label": "NVIDIA Nemotron 3.5 Lightning NVFP4",
       "role": "Single-Spark latency and speculative-decoding candidate",
       "request_url": "https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"
+      "project_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+      "benchmark_artifact_source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+      "benchmark_candidate_ids": [
+        "nemotron-3.5-lightning-codex",
+        "nemotron-3.5-lightning-direct",
+        "nemotron-3.5-lightning-via-n8n",
+        "nemotron-3.5-lightning-tavily",
+        "nemotron-3.5-lightning-aula-real-mcp"
+      ]
     },
     {
       "id": "conditional-coding-candidate",
@@ -134,6 +158,62 @@
       "role": "Automation runtime and security-maintenance signal",
       "request_url": "https://api.github.com/repos/n8n-io/n8n/releases/latest",
       "project_url": "https://github.com/n8n-io/n8n/releases"
+    },
+    {
+      "id": "litellm-runtime",
+      "kind": "github_release",
+      "label": "LiteLLM release",
+      "role": "Shared model gateway runtime signal",
+      "request_url": "https://api.github.com/repos/BerriAI/litellm/releases/latest",
+      "project_url": "https://github.com/BerriAI/litellm/releases"
+    },
+    {
+      "id": "llama-cpp-runtime",
+      "kind": "github_release",
+      "label": "llama.cpp release",
+      "role": "Required quantized text-runtime baseline",
+      "request_url": "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
+      "project_url": "https://github.com/ggml-org/llama.cpp/releases"
+    },
+    {
+      "id": "nixos-release",
+      "kind": "github_file",
+      "label": "NixOS 26.05 release branch",
+      "role": "home-core operating-system update signal",
+      "request_url": "https://api.github.com/repos/NixOS/nixpkgs/commits?sha=nixos-26.05&per_page=1",
+      "project_url": "https://github.com/NixOS/nixpkgs/tree/nixos-26.05"
+    },
+    {
+      "id": "whisper-runtime",
+      "kind": "github_release",
+      "label": "OpenAI Whisper release",
+      "role": "Meeting speech-to-text runtime and model signal",
+      "request_url": "https://api.github.com/repos/openai/whisper/releases/latest",
+      "project_url": "https://github.com/openai/whisper/releases"
+    },
+    {
+      "id": "piper-runtime",
+      "kind": "github_release",
+      "label": "OHF Piper release",
+      "role": "Danish text-to-speech runtime signal",
+      "request_url": "https://api.github.com/repos/OHF-Voice/piper1-gpl/releases/latest",
+      "project_url": "https://github.com/OHF-Voice/piper1-gpl/releases"
+    },
+    {
+      "id": "embedding-candidate",
+      "kind": "huggingface_model",
+      "label": "Qwen3 Embedding 4B",
+      "role": "Deferred private-retrieval embedding candidate",
+      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3-Embedding-4B",
+      "project_url": "https://huggingface.co/Qwen/Qwen3-Embedding-4B"
+    },
+    {
+      "id": "reranker-candidate",
+      "kind": "huggingface_model",
+      "label": "Qwen3 Reranker 4B",
+      "role": "Deferred private-retrieval reranker candidate",
+      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3-Reranker-4B",
+      "project_url": "https://huggingface.co/Qwen/Qwen3-Reranker-4B"
     }
   ]
 }

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "code-openrouter-smoke",
+  "version": "0.1.0",
+  "trials": 1,
+  "random_seed": 20260905,
+  "cases": [
+    "../fixtures/code/python-average-task.json"
+  ],
+  "candidates": [
+    {
+      "id": "qwen3.6-35b-a3b-codex",
+      "adapter": "codex_exec",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "artifact_ref": "qwen3.6-35b-a3b-openrouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "wire_api": "responses",
+      "timeout_seconds": 1800
+    },
+    {
+      "id": "qwen3.8-27b-codex",
+      "adapter": "codex_exec",
+      "model": "qwen/qwen3.8-27b",
+      "artifact_ref": "qwen3.8-27b-openrouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "wire_api": "responses",
+      "timeout_seconds": 1800
+    },
+    {
+      "id": "nemotron-3.5-lightning-codex",
+      "adapter": "codex_exec",
+      "model": "nvidia/nemotron-3.5-lightning",
+      "artifact_ref": "nemotron-3.5-lightning-openrouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "wire_api": "responses",
+      "timeout_seconds": 1800
+    }
+  ]
+}

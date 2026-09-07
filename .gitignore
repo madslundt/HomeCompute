@@ -21,9 +21,17 @@ secrets/*
 
 # Generated logs, caches, and local test output
 *.log
+__pycache__/
+*.py[cod]
 .cache/
 tmp/
 artifacts/
+
+# Local agent-harness runtime state (policies intended for deployment belong in
+# reviewed configuration files, not tool-generated state directories).
+.claude-flow/
+.claude/
+.swarm/
 **/benchmarks/private/
 
 # Local model and database data

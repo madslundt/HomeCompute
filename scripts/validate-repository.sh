@@ -14,7 +14,7 @@ require_command() {
   }
 }
 
-for command_name in bash shellcheck jq docker rg; do
+for command_name in bash shellcheck jq docker python3 rg; do
   require_command "$command_name"
 done
 docker compose version >/dev/null
@@ -44,7 +44,9 @@ fi
 
 shell_files=(
   "$REPO_ROOT/scripts/lib/config.sh"
+  "$REPO_ROOT/scripts/configure-compute-firewall.sh"
   "$REPO_ROOT/scripts/setup-compute-node.sh"
+  "$REPO_ROOT/scripts/setup-compute-modalities.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
   "$REPO_ROOT/tests/config-loader-test.sh"
@@ -61,17 +63,49 @@ shellcheck "${shell_files[@]}"
 
 printf '[validate] configuration-loader tests\n'
 bash "$REPO_ROOT/tests/config-loader-test.sh"
+printf '[validate] compute configuration migration tests\n'
+python3 "$REPO_ROOT/tests/migrate-compute-config-test.py"
+printf '[validate] bounded model-cache acquisition tests\n'
+python3 "$REPO_ROOT/tests/model-cache-integrity-test.py"
+printf '[validate] TTS adapter tests\n'
+python3 "$REPO_ROOT/tests/openai-wyoming-tts-test.py"
+
+
+printf '[validate] benchmark harness tests\n'
+python3 -m unittest "$REPO_ROOT/tests/benchmark-harness-test.py"
+python3 -m unittest "$REPO_ROOT/tests/benchmark-security-test.py"
+python3 -m unittest "$REPO_ROOT/tests/benchmark_correctness_test.py"
+python3 "$REPO_ROOT/tests/model-update-check-test.py"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/smoke.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/release.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/n8n-smoke.example.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/n8n-openrouter.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/n8n-aula-real-mcp.example.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/n8n-openrouter.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/n8n-tavily.example.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/n8n-openrouter.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/code-openrouter.example.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/code-openrouter.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/code-understanding-openrouter.example.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/openrouter-direct.example.json"
 
 printf '[validate] JSON syntax\n'
 while IFS= read -r -d '' json_file; do
   jq empty "$json_file"
-done < <(find "$REPO_ROOT/automations" -type f -name '*.json' -print0)
+done < <(find "$REPO_ROOT/automations" "$REPO_ROOT/benchmarks" -type f -name '*.json' -print0)
 
 if command -v ruby >/dev/null 2>&1; then
   printf '[validate] YAML syntax\n'
   ruby -e 'require "yaml"; ARGV.each { |path| YAML.safe_load(File.read(path), permitted_classes: [], permitted_symbols: [], aliases: true) }' \
     "$REPO_ROOT/deploy/control-plane/compose.yaml" \
     "$REPO_ROOT/deploy/control-plane/litellm-config.yaml" \
+    "$REPO_ROOT/deploy/compute-node/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/config/services.yaml" \
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
@@ -88,6 +122,7 @@ chmod 0600 "$secret_file"
 compose_env="$temporary_root/compute.env"
 cat >"$compose_env" <<EOF
 VLLM_IMAGE=example.invalid/vllm@sha256:0000000000000000000000000000000000000000000000000000000000000000
+PIPER_IMAGE=example.invalid/piper@sha256:0000000000000000000000000000000000000000000000000000000000000000
 MODEL_ID=nvidia/Qwen3.6-35B-A3B-NVFP4
 MODEL_REVISION=1111111111111111111111111111111111111111
 TOKENIZER_REVISION=1111111111111111111111111111111111111111
@@ -97,9 +132,36 @@ GB10_ROOT=$temporary_root/runtime
 GB10_RUNTIME_UID=1000
 GB10_RUNTIME_GID=1000
 GB10_BIND_ADDRESS=127.0.0.1
+COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,10200
 VLLM_HOST_PORT=8000
+EMBEDDING_HOST_PORT=8001
+VISION_HOST_PORT=8002
+STT_HOST_PORT=8003
+TTS_HOST_PORT=8004
+WYOMING_TTS_HOST_PORT=10200
 HF_TOKEN_FILE=$secret_file
 VLLM_API_KEY_FILE=$secret_file
+EMBEDDING_MODEL_ID=Qwen/Qwen3-VL-Embedding-2B
+EMBEDDING_MODEL_REVISION=3333333333333333333333333333333333333333
+EMBEDDING_MODEL_LICENSE_ID=Apache-2.0
+EMBEDDING_GPU_MEMORY_UTILIZATION=0.10
+VISION_MODEL_ID=microsoft/Phi-4-multimodal-instruct
+VISION_MODEL_REVISION=4444444444444444444444444444444444444444
+VISION_MODEL_LICENSE_ID=MIT
+VISION_GPU_MEMORY_UTILIZATION=0.18
+STT_MODEL_ID=openai/whisper-large-v3-turbo
+STT_MODEL_REVISION=5555555555555555555555555555555555555555
+STT_MODEL_LICENSE_ID=MIT
+STT_GPU_MEMORY_UTILIZATION=0.06
+PIPER_VOICE_ID=da_DK-talesyntese-medium
+PIPER_VOICE_REVISION=6666666666666666666666666666666666666666
+PIPER_VOICE_LICENSE_ID=CC0-1.0
+PIPER_MODEL_SHA256=7777777777777777777777777777777777777777777777777777777777777777
+PIPER_CONFIG_SHA256=8888888888888888888888888888888888888888888888888888888888888888
+PIPER_MODEL_CARD_SHA256=9999999999999999999999999999999999999999999999999999999999999999
+TTS_MODEL_ALIAS=tts
+TTS_VOICE_ALIAS=danish-default
+TTS_MAX_INPUT_CHARS=2000
 VLLM_MAX_MODEL_LEN=32768
 VLLM_MAX_NUM_SEQS=2
 VLLM_MAX_BATCHED_TOKENS=8192
@@ -109,6 +171,17 @@ VLLM_ATTENTION_BACKEND=flashinfer
 VLLM_MOE_BACKEND=marlin
 VLLM_REASONING_PARSER=qwen3
 VLLM_TOOL_CALL_PARSER=qwen3_xml
+TEXT_ARTIFACT_MAX_BYTES=25000000000
+TEXT_ARTIFACT_MAX_FILES=32
+EMBEDDING_ARTIFACT_MAX_BYTES=5000000000
+EMBEDDING_ARTIFACT_MAX_FILES=32
+VISION_ARTIFACT_MAX_BYTES=25000000000
+VISION_ARTIFACT_MAX_FILES=64
+STT_ARTIFACT_MAX_BYTES=7000000000
+STT_ARTIFACT_MAX_FILES=32
+HF_CACHE_MAX_BYTES=536870912000
+HF_CACHE_MAX_FILES=50000
+MIN_FREE_DISK_GIB=200
 VLLM_SPECULATIVE_CONFIG=
 EOF
 
@@ -118,6 +191,49 @@ docker compose --env-file "$compose_env" \
 docker compose --env-file "$compose_env" --profile prepare \
   -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
 
+docker compose --env-file "$compose_env" --profile prepare-modalities \
+  -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
+docker compose --env-file "$compose_env" --profile modalities \
+  -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
+compute_default_json="$temporary_root/compute-default.json"
+compute_modalities_json="$temporary_root/compute-modalities.json"
+docker compose --env-file "$compose_env" \
+  -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --format json >"$compute_default_json"
+docker compose --env-file "$compose_env" --profile prepare --profile prepare-modalities --profile modalities \
+  -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --format json >"$compute_modalities_json"
+jq -e '
+  ((.services | keys) == ["text-primary"]) and
+  (.services["text-primary"].read_only == true) and
+  (.services["text-primary"].cap_drop | index("ALL") != null) and
+  (.networks.inference.internal == true)
+' "$compute_default_json" >/dev/null
+jq -e --arg runtime_root "$temporary_root/runtime/runtime" '
+  ((.services | keys) == ["embedding-primary", "modality-fetch", "model-fetch", "stt-primary", "text-primary", "tts-openai-adapter", "tts-primary", "vision-primary"]) and
+  all(.services[]; (.privileged // false) == false and (.network_mode // "") != "host") and
+  all(.services[]; ((.devices // []) | length) == 0) and
+  all(.services[]; .read_only == true and (.cap_drop | index("ALL") != null) and (.security_opt | index("no-new-privileges:true") != null)) and
+  (.services["modality-fetch"].secrets == null) and
+  (.services["modality-fetch"].environment.HF_TOKEN == null) and
+  ([.services[].ports[]?.host_ip] | unique == ["127.0.0.1"]) and
+  ([.services["model-fetch"], .services["modality-fetch"]] | all(.[]; .cpus == 4 and .mem_limit == "8589934592" and .pids_limit == 256)) and
+  ([.services[].ports[]?.published] | sort == ["10200", "8000", "8001", "8002", "8003", "8004"]) and
+  (any(.services["text-primary"].volumes[]; .source == ($runtime_root + "/model-cache-integrity.py") and .target == "/opt/homecompute/model-cache-integrity.py")) and
+  (any(.services["embedding-primary"].volumes[]; .source == ($runtime_root + "/model-cache-integrity.py") and .target == "/opt/homecompute/model-cache-integrity.py")) and
+  (any(.services["tts-openai-adapter"].volumes[]; .source == ($runtime_root + "/openai-wyoming-tts.py") and .target == "/app/openai-wyoming-tts.py")) and
+  (any(.services["model-fetch"].volumes[]; .source == ($runtime_root + "/model-cache-integrity.py") and .target == "/opt/homecompute/model-cache-integrity.py")) and
+  (any(.services["modality-fetch"].volumes[]; .source == ($runtime_root + "/model-cache-integrity.py") and .target == "/opt/homecompute/model-cache-integrity.py")) and
+  (.services["model-fetch"].command | join(" ") | contains("model-cache-integrity.py fetch") and contains("--max-cache-bytes")) and
+  (.services["modality-fetch"].command | join(" ") | contains("model-cache-integrity.py fetch") and contains("--max-cache-bytes")) and
+  (.services["text-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
+  (.services["embedding-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
+  (.services["stt-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
+  (.services["vision-primary"].command | join(" ") | contains("--no-enable-log-requests") and contains("--gpu-memory-utilization \"0.18\"") and (contains("--lora-extra-vocab-size") | not)) and
+  (.services["vision-primary"].command | join(" ") | contains("--allowed-media-domains invalid.homecompute.invalid")) and
+  ((.services["stt-primary"].command | join(" ") | contains("--runner transcription")) | not) and
+  (.services["modality-fetch"].command | join(" ") | contains("63_201_294") and contains("os.link(temporary, target)")) and
+  (.networks.inference.internal == true) and
+  (.networks["artifact-fetch"].internal != true)
+' "$compute_modalities_json" >/dev/null
 control_plane_env="$temporary_root/control-plane.env"
 control_plane_state="$temporary_root/state/control-plane"
 mkdir -p \
@@ -138,6 +254,10 @@ CADDY_IMAGE=example.invalid/caddy@sha256:000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
 COMPUTE_OPENAI_BASE_URL=https://10.77.10.10:8000/v1
+COMPUTE_EMBEDDING_BASE_URL=http://10.77.10.10:8001/v1
+COMPUTE_VISION_BASE_URL=http://10.77.10.10:8002/v1
+COMPUTE_STT_BASE_URL=http://10.77.10.10:8003/v1
+COMPUTE_TTS_BASE_URL=http://10.77.10.10:8004/v1
 COMPUTE_API_KEY_FILE=$secret_file
 LITELLM_MASTER_KEY_FILE=$secret_file
 LITELLM_SALT_KEY_FILE=$secret_file

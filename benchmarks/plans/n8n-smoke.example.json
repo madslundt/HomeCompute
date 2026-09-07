@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "n8n-model-smoke",
+  "version": "0.1.0",
+  "trials": 1,
+  "random_seed": 20260905,
+  "cases": [
+    "../fixtures/smoke/structured-extraction.json"
+  ],
+  "candidates": [
+    {
+      "id": "qwen3.6-35b-a3b-via-n8n",
+      "adapter": "n8n_webhook",
+      "model": "qwen/qwen3.6-35b-a3b",
+      "artifact_ref": "qwen3.6-35b-a3b-openrouter",
+      "webhook_url_env": "N8N_BENCHMARK_WEBHOOK_URL",
+      "safety_acknowledgement": "synthetic-inputs-no-side-effects"
+    },
+    {
+      "id": "qwen3.8-27b-via-n8n",
+      "adapter": "n8n_webhook",
+      "model": "qwen/qwen3.8-27b",
+      "artifact_ref": "qwen3.8-27b-openrouter",
+      "webhook_url_env": "N8N_BENCHMARK_WEBHOOK_URL",
+      "safety_acknowledgement": "synthetic-inputs-no-side-effects"
+    },
+    {
+      "id": "nemotron-3.5-lightning-via-n8n",
+      "adapter": "n8n_webhook",
+      "model": "nvidia/nemotron-3.5-lightning",
+      "artifact_ref": "nemotron-3.5-lightning-openrouter",
+      "webhook_url_env": "N8N_BENCHMARK_WEBHOOK_URL",
+      "safety_acknowledgement": "synthetic-inputs-no-side-effects"
+    }
+  ]
+}

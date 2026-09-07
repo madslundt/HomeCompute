@@ -29,6 +29,9 @@
       allowed-users = [
         "root"
         "@wheel"
+        # Required for the agent's Home Manager profile and for unprivileged
+        # Nix builds. This does not add the account to trusted-users.
+        "agent"
       ];
     };
     gc = {

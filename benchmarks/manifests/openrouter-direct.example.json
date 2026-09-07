@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "release_id": "openrouter-direct-screening-2026-09-05",
+  "benchmark_commit": "WORKING_TREE",
+  "environment": {
+    "kind": "direct OpenRouter capability screening",
+    "hardware": "OpenRouter-hosted inference",
+    "operating_system": "macOS benchmark client"
+  },
+  "artifacts": [
+    {
+      "id": "qwen3.6-darkbloom-fp4",
+      "source": "OpenRouter qwen/qwen3.6-35b-a3b via Darkbloom",
+      "revision": "qwen/qwen3.6-35b-a3b-20260415",
+      "runtime": "OpenRouter Chat Completions with provider pin and no fallback",
+      "quantization": "FP4; not equivalent to NVIDIA ModelOpt NVFP4"
+    },
+    {
+      "id": "qwen3.8-parasail-fp8",
+      "source": "OpenRouter qwen/qwen3.8-27b via Parasail",
+      "revision": "qwen/qwen3.8-27b-20260814",
+      "runtime": "OpenRouter Chat Completions with provider pin and no fallback",
+      "quantization": "FP8"
+    },
+    {
+      "id": "nemotron-3.5-deepinfra-bf16",
+      "source": "OpenRouter nvidia/nemotron-3.5-lightning via DeepInfra",
+      "revision": "nvidia/nemotron-3.5-lightning-20260807",
+      "runtime": "OpenRouter Chat Completions with provider pin and no fallback",
+      "quantization": "BF16; not equivalent to NVIDIA ModelOpt NVFP4"
+    }
+  ]
+}

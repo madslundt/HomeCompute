@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "smoke-structured-extraction-001",
+  "track": "automation",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Return JSON only. Never invent missing fields."
+    },
+    {
+      "role": "user",
+      "content": "Extract the task. Text: Replace the hallway bulb on 2026-09-08. Priority is high."
+    }
+  ],
+  "objective_checks": [
+    {"id": "json", "type": "valid_json", "weight": 2},
+    {"id": "title", "type": "json_path_equals", "path": "title", "value": "Replace the hallway bulb", "weight": 2},
+    {"id": "due", "type": "json_path_equals", "path": "due_date", "value": "2026-09-08", "weight": 2},
+    {"id": "priority", "type": "json_path_equals", "path": "priority", "value": "high", "weight": 1}
+  ],
+  "rubric": [
+    {"id": "instruction_following", "description": "Follows the JSON-only instruction without commentary.", "weight": 1},
+    {"id": "minimality", "description": "Contains only useful extracted fields and no invented claims.", "weight": 1}
+  ]
+}

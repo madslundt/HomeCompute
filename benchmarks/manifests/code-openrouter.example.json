@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "release_id": "codex-openrouter-screening-2026-09-05",
+  "benchmark_commit": "WORKING_TREE",
+  "environment": {
+    "kind": "disposable Codex implementation screening",
+    "hardware": "OpenRouter-hosted inference; macOS agent harness",
+    "operating_system": "macOS with codex-cli 0.145.0"
+  },
+  "artifacts": [
+    {
+      "id": "qwen3.6-35b-a3b-openrouter",
+      "source": "OpenRouter qwen/qwen3.6-35b-a3b",
+      "revision": "qwen/qwen3.6-35b-a3b-20260415",
+      "runtime": "codex-cli 0.145.0 custom OpenRouter Responses provider",
+      "quantization": "provider-dependent; not equivalent to target NVIDIA NVFP4"
+    },
+    {
+      "id": "qwen3.8-27b-openrouter",
+      "source": "OpenRouter qwen/qwen3.8-27b",
+      "revision": "qwen/qwen3.8-27b-20260814",
+      "runtime": "codex-cli 0.145.0 custom OpenRouter Responses provider",
+      "quantization": "provider-dependent; local target is FP8"
+    },
+    {
+      "id": "nemotron-3.5-lightning-openrouter",
+      "source": "OpenRouter nvidia/nemotron-3.5-lightning",
+      "revision": "nvidia/nemotron-3.5-lightning-20260807",
+      "runtime": "codex-cli 0.145.0 custom OpenRouter Responses provider",
+      "quantization": "currently BF16 endpoints; not equivalent to target NVIDIA NVFP4"
+    }
+  ]
+}

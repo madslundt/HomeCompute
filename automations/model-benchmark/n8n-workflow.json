@@ -1,0 +1,90 @@
+{
+  "id": "HCModelBench20260905",
+  "name": "HomeCompute TEST ONLY - model benchmark webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "homecompute-model-benchmark",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "f071d4b2-d9b8-4654-b153-2cc6424b4c30",
+      "name": "Synthetic benchmark webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-640, 0],
+      "webhookId": "5845e54b-0d89-4517-9ce2-28ac0e9ce9f7"
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $json.body ?? $json;\nif (request.safety_mode !== 'synthetic-inputs-no-side-effects') {\n  throw new Error('Refusing request without benchmark safety marker');\n}\nif (typeof request.model !== 'string' || !Array.isArray(request.messages)) {\n  throw new Error('Expected model and messages');\n}\nconst system = request.messages.filter((message) => message.role === 'system').map((message) => String(message.content)).join('\\n\\n');\nconst prompt = request.messages.filter((message) => message.role !== 'system').map((message) => `${String(message.role).toUpperCase()}: ${String(message.content)}`).join('\\n\\n');\nreturn [{ json: { case_id: request.case_id, track: request.track, model: request.model, system, prompt } }];"
+      },
+      "id": "ef52dbec-d358-4fe7-a5d4-0eec377703a4",
+      "name": "Validate synthetic request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.prompt }}",
+        "options": {
+          "systemMessage": "={{ $json.system }}"
+        }
+      },
+      "id": "69657b6a-a10b-49dc-8d7d-ab7af60d7308",
+      "name": "Benchmark model call",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [-120, 0]
+    },
+    {
+      "parameters": {
+        "model": "={{ $('Validate synthetic request').first().json.model }}",
+        "options": {}
+      },
+      "id": "3c6d0af0-93f3-4a61-b3ff-bd65da60a024",
+      "name": "Benchmark OpenRouter Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [-120, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nreturn [{ json: { text: String(result.output ?? result.text ?? ''), model: $('Validate synthetic request').first().json.model, provider: 'n8n/OpenRouter', usage: result.usage ?? {} } }];"
+      },
+      "id": "38f5888b-21b8-4e16-86d6-4297aaa95e33",
+      "name": "Return benchmark result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [160, 0]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Synthetic benchmark webhook": {
+      "main": [[{"node": "Validate synthetic request", "type": "main", "index": 0}]]
+    },
+    "Validate synthetic request": {
+      "main": [[{"node": "Benchmark model call", "type": "main", "index": 0}]]
+    },
+    "Benchmark OpenRouter Model": {
+      "ai_languageModel": [[{"node": "Benchmark model call", "type": "ai_languageModel", "index": 0}]]
+    },
+    "Benchmark model call": {
+      "main": [[{"node": "Return benchmark result", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen"
+  },
+  "versionId": "bc881526-6ad0-49e0-8924-9bcde90c56e0",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

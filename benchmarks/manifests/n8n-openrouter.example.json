@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "release_id": "n8n-openrouter-screening-2026-09-05",
+  "benchmark_commit": "WORKING_TREE",
+  "environment": {
+    "kind": "n8n isolated test workflow",
+    "hardware": "OpenRouter-hosted inference; home-core orchestration",
+    "operating_system": "NixOS home-core with n8n 2.38.3"
+  },
+  "artifacts": [
+    {
+      "id": "qwen3.6-35b-a3b-openrouter",
+      "source": "OpenRouter qwen/qwen3.6-35b-a3b",
+      "revision": "qwen/qwen3.6-35b-a3b-20260415",
+      "runtime": "n8n OpenRouter Chat Model node; provider selected by OpenRouter",
+      "quantization": "provider-dependent; not equivalent to the target NVIDIA NVFP4 artifact"
+    },
+    {
+      "id": "qwen3.8-27b-openrouter",
+      "source": "OpenRouter qwen/qwen3.8-27b",
+      "revision": "qwen/qwen3.8-27b-20260814",
+      "runtime": "n8n OpenRouter Chat Model node; provider selected by OpenRouter",
+      "quantization": "provider-dependent; FP8 endpoints are available but not pinned by this n8n node"
+    },
+    {
+      "id": "nemotron-3.5-lightning-openrouter",
+      "source": "OpenRouter nvidia/nemotron-3.5-lightning",
+      "revision": "nvidia/nemotron-3.5-lightning-20260807",
+      "runtime": "n8n OpenRouter Chat Model node; provider selected by OpenRouter",
+      "quantization": "BF16 on currently listed endpoints; not equivalent to the target NVIDIA NVFP4 artifact"
+    }
+  ]
+}

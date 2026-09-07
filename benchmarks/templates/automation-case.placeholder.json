@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "id": "REPLACE-automation-case-id",
+  "track": "automation",
+  "messages": [
+    {
+      "role": "system",
+      "content": "REPLACE-with-sanitized-system-instruction-from-the-model-stage"
+    },
+    {
+      "role": "user",
+      "content": "REPLACE-with-synthetic-or-sanitized-workflow-input"
+    }
+  ],
+  "objective_checks": [
+    {
+      "id": "schema",
+      "type": "valid_json",
+      "weight": 2
+    },
+    {
+      "id": "business-rule",
+      "type": "json_path_equals",
+      "path": "REPLACE.path",
+      "value": "REPLACE-expected-value",
+      "weight": 2
+    },
+    {
+      "id": "no-notification-command",
+      "type": "not_contains",
+      "value": "REPLACE-forbidden-action-marker",
+      "weight": 2
+    }
+  ],
+  "rubric": [
+    {
+      "id": "usefulness",
+      "description": "REPLACE-with-workflow-specific-quality-criterion",
+      "weight": 1
+    }
+  ]
+}

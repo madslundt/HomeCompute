@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "id": "aula-real-mcp-daily-001",
+  "track": "automation",
+  "source_workflow": "Aula workflow",
+  "source_stage": "Published daily context and AI Agent1 with live read-only Aula MCP",
+  "data_classification": "real private Aula data explicitly approved for the configured provider",
+  "messages": [
+    {
+      "role": "system",
+      "content": "The workflow generates the current production Aula system prompt at execution time and provides the live read-only Aula MCP tools. It captures the result instead of sending Telegram."
+    },
+    {
+      "role": "user",
+      "content": "Run the published weekday Aula briefing behavior for the current Europe/Copenhagen date. This benchmark invocation is authorized to read real Aula data and send the retrieved context to the configured model provider. It must not send notifications or perform writes."
+    }
+  ],
+  "objective_checks": [
+    {
+      "id": "non-empty-result",
+      "type": "regex",
+      "pattern": "(?s).{20,}",
+      "weight": 2
+    },
+    {
+      "id": "production-output-shape",
+      "type": "regex",
+      "pattern": "(?i)(<b>|NO_NEW_AULA_CHANGES)",
+      "weight": 2
+    },
+    {
+      "id": "no-markdown-fence",
+      "type": "not_contains",
+      "value": "```",
+      "weight": 1
+    }
+  ],
+  "rubric": [
+    {
+      "id": "evidence-fidelity",
+      "description": "Every material claim in the briefing is supported by the supplied workflow trace, with conflicts resolved according to the production prompt.",
+      "weight": 4
+    },
+    {
+      "id": "tool-coverage",
+      "description": "Uses the read-only Aula tools efficiently, checks the required relevant sources, and opens all attachments for relevant messages or posts.",
+      "weight": 3
+    },
+    {
+      "id": "production-format",
+      "description": "Follows the production Danish Telegram HTML format, child separation, prioritization, and length constraints, or returns the exact no-change sentinel when applicable.",
+      "weight": 2
+    }
+  ]
+}

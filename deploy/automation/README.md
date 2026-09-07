@@ -16,6 +16,10 @@ publication supports an SSH tunnel. Ports bind to those specific addresses;
 there is no wildcard publication or router port forwarding. LAN access uses
 HTTP and the existing n8n account login.
 
+`N8N_EDITOR_BASE_URL`, `N8N_MCP_BASE_URL`, and `WEBHOOK_URL` use
+`http://home-core:15678`; generated workflow and webhook links therefore use
+the LAN hostname instead of the Tailscale-specific hostname.
+
 `modules/nixos/automation-network.nix` installs egress controls before Docker
 starts: internet TCP 443 and HAOS TCP 7878 are allowed; other private-network
 destinations are rejected. Home Assistant's name is mapped explicitly in

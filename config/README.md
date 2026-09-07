@@ -6,7 +6,7 @@ they do not use them as production configuration in place.
 
 | File | Used by | Purpose |
 | --- | --- | --- |
-| `compute-node.env.example` | `setup-compute-node.sh` | Immutable model/runtime tuple, bind policy, and compute limits |
+| `compute-node.env.example` | `setup-compute-node.sh`, `setup-compute-modalities.sh` | Immutable text and staged modality artifact tuples, exact private ports, bind policy, and compute limits |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, `/srv/state`, and sops-nix runtime secret paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
 | `books_importer.env.example` | `deploy/books_importer/compose.yaml` | Pinned book service images; compare with source deployment digests before migration |
@@ -22,6 +22,29 @@ site-specific secrets here. Compute-node secrets belong under
 `/etc/gb10-ai/secrets`; control-plane secrets are materialized under
 `/run/secrets/control-plane` by sops-nix and never belong in an environment
 file.
+
+The compute template also pins the public embedding, vision, STT, and Danish
+Piper artifacts used by `setup-compute-modalities.sh`, plus the independently
+reviewed per-tuple and absolute cache acquisition ceilings. Changing any
+artifact requires requalifying its ceilings. Keep the exact sorted
+`COMPUTE_HOST_PORTS` set aligned with the per-service private ports. The
+modality fetch does not require a Hugging Face account or token; the existing
+token file remains limited to the text acquisition profile. All modality HTTP
+services share `VLLM_API_KEY_FILE`. Native Wyoming TTS has no application
+credential and therefore must remain on the fixed private bind behind the exact
+source-restricted firewall.
+
+Configuration records artifact identity only. Never place API keys, audio,
+images, rendered document pages, transcripts, or responses in the environment
+file. Vision accepts rendered image pages, not native PDF input. Modality
+release records are secret-free but remain staged evidence until live
+`home-spark` qualification succeeds.
+
+The text lifecycle atomically migrates the exact legacy single-service schema
+when `init`, `install`, or `up` first encounters it. Existing values are
+retained, the removed firewall-confirmation flag is dropped, and every unknown
+key is rejected rather than guessed. `rollback` inputs remain immutable and
+must already use the current schema.
 
 The books_importer stack uses Compose's environment-file parser directly, rather than
 the setup scripts' allow-list loader. Copy `books_importer.env.example` to

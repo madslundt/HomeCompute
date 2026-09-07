@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "smoke-code-understanding-001",
+  "track": "code-understanding",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Given this Python function, explain the defect in one sentence and name the failing input: def average(xs): return sum(xs) / len(xs)"
+    }
+  ],
+  "objective_checks": [
+    {"id": "exception", "type": "regex", "pattern": "(?i)(zero.?division|division by zero)", "weight": 2},
+    {"id": "empty", "type": "regex", "pattern": "(?i)(empty|\\[\\])", "weight": 1},
+    {"id": "no-fabrication", "type": "not_contains", "value": "IndexError", "weight": 1}
+  ],
+  "rubric": [
+    {"id": "correctness", "description": "Correctly explains that an empty input causes division by zero.", "weight": 3},
+    {"id": "concision", "description": "Answers in one clear sentence as requested.", "weight": 1}
+  ]
+}

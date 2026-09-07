@@ -1,10 +1,10 @@
 { pkgs, ... }:
 {
-  # Docker publications bypass the host INPUT firewall. Restrict n8n egress in
-  # DOCKER-USER; editor publications in production.yaml bind only loopback,
-  # this host's LAN address, and its Tailscale address. The bridge has no IPv6 configuration.
+  # Docker publications bypass the host INPUT firewall. Restrict Caddy ingress
+  # and n8n egress in DOCKER-USER; editor publications bind only explicit host
+  # addresses. The application bridge has no IPv6 configuration.
   systemd.services.homecompute-automation-network = {
-    description = "n8n container egress policy";
+    description = "Docker application network policy";
     wantedBy = [ "multi-user.target" ];
     requiredBy = [ "docker.service" ];
     before = [ "docker.service" ];
@@ -17,10 +17,36 @@
     script = ''
       # Install before Docker restores containers, avoiding an egress gap at boot.
       iptables -w -N DOCKER-USER 2>/dev/null || true
-      # Block routed access to Aula from outside this host's automation bridge,
-      # including direct container-IP access. Host loopback uses OUTPUT instead.
-      iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null || \
-        iptables -w -I DOCKER-USER 1 ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+
+      # Docker DNAT bypasses INPUT. Keep the Caddy publication fail-closed
+      # while replacing its ingress policy, then permit only Tailscale traffic.
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS
+      done
+      iptables -w -N HC-CADDY-INGRESS 2>/dev/null || true
+      iptables -w -F HC-CADDY-INGRESS
+      iptables -w -A HC-CADDY-INGRESS -i tailscale0 -j RETURN
+      iptables -w -A HC-CADDY-INGRESS -j REJECT
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS
+      iptables -w -C HC-CADDY-INGRESS -i tailscale0 -j RETURN
+      iptables -w -C HC-CADDY-INGRESS -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT
+      done
+
+      # Keep bridge egress and Aula ingress fail-closed while replacing the
+      # live policy. Always add fresh guards: failures leave both protections.
+      iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
+      iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT
+
+      while iptables -w -C DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION
+      done
+      while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      done
+
       iptables -w -N HC-AUTOMATION 2>/dev/null || true
       iptables -w -F HC-AUTOMATION
       iptables -w -A HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
@@ -31,8 +57,59 @@
       done
       iptables -w -A HC-AUTOMATION -p tcp --dport 443 -j RETURN
       iptables -w -A HC-AUTOMATION -j REJECT
-      iptables -w -C DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION 2>/dev/null || \
-        iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j HC-AUTOMATION
+
+      # The temporary guard stays ahead of both live rules until the complete
+      # replacement policy and its jump have been installed and verified.
+      iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      iptables -w -I DOCKER-USER 2 -i br-hc-n8n -j HC-AUTOMATION
+
+      iptables -w -C HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
+      iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
+      for subnet in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4; do
+        iptables -w -C HC-AUTOMATION -d "$subnet" -j REJECT
+      done
+      iptables -w -C HC-AUTOMATION -p tcp --dport 443 -j RETURN
+      iptables -w -C HC-AUTOMATION -j REJECT
+      iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      iptables -w -C DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION
+
+      while iptables -w -C DOCKER-USER -i br-hc-n8n -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-n8n -j REJECT
+      done
+      while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT
+      done
+    '';
+
+    preStop = ''
+      iptables -w -N DOCKER-USER 2>/dev/null || true
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS
+      done
+      if iptables -w -L HC-CADDY-INGRESS -n >/dev/null 2>&1; then
+        iptables -w -F HC-CADDY-INGRESS
+        iptables -w -X HC-CADDY-INGRESS
+      fi
+      iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
+      iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT
+
+      while iptables -w -C DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION
+      done
+      while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      done
+
+      if iptables -w -L HC-AUTOMATION -n >/dev/null 2>&1; then
+        iptables -w -F HC-AUTOMATION
+        iptables -w -X HC-AUTOMATION
+      fi
+
+      # Keep both guards installed if this unit stops while Docker is still
+      # running. A successful restart removes duplicate guards only after the
+      # complete live policy is active and verified.
     '';
   };
 }

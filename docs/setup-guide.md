@@ -227,7 +227,7 @@ In `/etc/gb10-ai/gb10.env`, resolve and verify:
 3. provenance URL, license, format, quantization, and template hash;
 4. parser, backend, context, concurrency, and memory settings;
 5. loopback bind `127.0.0.1` for the first deployment;
-6. at least 100 GB of storage headroom.
+6. at least 200 GiB of storage headroom for production.
 
 Keep secrets outside the repository. Never use `latest`, branch names, floating
 model revisions, wildcard binds, or unverified templates.
@@ -276,6 +276,8 @@ sudo ./scripts/setup-compute-node.sh rollback \
 ```
 
 Use the actual retained environment path; `previous.env` is illustrative.
+Rollback installs the trusted prior listener/source/port policy under the
+fail-closed guard before validating and starting that release.
 
 **Checkpoint:** direct loopback inference is healthy and a tested rollback path
 exists. No ordinary client can reach it.
@@ -287,20 +289,25 @@ Details: [compute-node plan](ai-compute-node-plan.md).
 1. Cable the two private interfaces.
 2. Confirm that the private subnet has no gateway or internet route.
 3. Test reachability between `home-core` and `home-spark`.
-4. Add a compute-node firewall rule allowing only the gateway private address
-   to the qualified inference port.
-5. Prove that ordinary LAN clients cannot reach the compute port directly.
+4. Set the compute listener and sole permitted orchestrator source:
 
-On the compute node, edit the release environment:
+   ```text
+   GB10_BIND_ADDRESS=10.77.10.10
+   GATEWAY_CIDR=10.77.10.2/32
+   ```
 
-```text
-GB10_BIND_ADDRESS=10.77.10.10
-GATEWAY_CIDR=10.77.10.2/32
-FIREWALL_CONFIRMED=true
-```
+5. Install the repository-owned policy, which persists across reboot, verifies
+   the exact ordered `DOCKER-USER` rules, and rejects any non-inference
+   forwarding whose original source or destination is the `home-core` address:
 
-Use your worksheet values if they differ. Re-run `validate` and `install`, then
-test health and Responses calls from `home-core`.
+   ```bash
+   sudo ./scripts/setup-compute-node.sh firewall \
+     --env /etc/gb10-ai/gb10.env
+   ```
+
+6. Re-run `validate` and `install`, then test health and Responses calls from
+   `home-core`.
+7. Prove that ordinary LAN clients cannot reach the compute port directly.
 
 Pull the private cable and verify a clear unavailable response. Private aliases
 must not silently switch to a cloud provider.
