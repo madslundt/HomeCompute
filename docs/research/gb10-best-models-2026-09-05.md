@@ -1,17 +1,25 @@
 # Best model choices for HomeCompute on one GB10
 
-Verified against live primary sources: 2026-09-05.
+Verified against live primary sources: 2026-09-05. Updated 2026-09-07 with
+measured single-GB10 Flash-Next deployment evidence.
 
 Scope: the repository's 128 GB NVIDIA GB10 / DGX Spark-class Home Spark.
 “HB10” is interpreted as GB10. The repository says the appliance is not yet
 available, so these are evidence-ranked recommendations, not local test winners.
+
+The selection was superseded on 2026-09-07 by the bounded
+[owner-report recommendation](gb10-model-installation-recommendation-2026-09-07.md)
+and [machine-readable roster](../../config/gb10-model-roster.json). Preserve the
+tables below as the broader candidate audit; do not interpret every listed
+candidate as an installation target.
 
 ## Text, coding, reasoning, and agents
 
 | Use case | First choice | Why and remaining qualification |
 | --- | --- | --- |
 | Best overall local assistant, research, reasoning, summaries | **Qwen3.8-27B FP8** | Strongest combined quality evidence among the comfortably fitting candidates audited. Start with publisher FP8 and 32K context; qualify GB10 kernels, latency, and longer context. |
-| Complex coding, repository work, Codex/Responses | **Qwen3.8-27B FP8**, with **Ornith-1.5-35B-A3B Q8_0 or Q6_K** as the focused challenger | Qwen has the stronger broad current evidence. Ornith is a credible specialist whose sparse architecture could improve completion time. Their different benchmark harnesses do not establish a definitive ranking. |
+| Scientific corpus construction, deep cross-referencing, and long-agent work | **Qwen3.8 Flash-Next NVFP4** through the pinned `blazux/qwen3.8-Flash-DGX` recipe | New single-GB10 evidence avoids resident PLE-table cost through NVMe-backed lookup and reports deterministic 262K operation. Local source-grounded quality and mixed-load tests remain decisive. |
+| Complex coding, repository work, Codex/Responses | **Qwen3.8-27B FP8** for routine work and **Flash-Next** for difficult or long-horizon work | Benchmark successful task completion and reviewer effort on the same repositories. Ornith becomes conditional only if both Qwen candidates leave a measured gap. |
 | Fast tool agents and background work | **NVIDIA Nemotron 3.5 Lightning 30B-A3B NVFP4 + DSpark** | Most explicit current publisher-supported single-GB10 performance route. Measure target-only before enabling the draft and choose on successful task completion time. |
 | Danish Home Assistant conversation | **Qwen3.8-27B with thinking disabled**, initially sharing the general service | Avoid adding a resident model without evidence that it improves home interaction. No audited publisher source proves a Danish home-control winner. |
 | Danish/multilingual fallback | **Gemma 4 31B IT NVFP4** | Broad multilingual model with official Spark support; evaluate it if Qwen fails Danish names, ambiguity, instructions, or short-turn latency. Gemma 4 26B-A4B is an additional sparse alternative if latency is the specific gap. |
@@ -45,6 +53,26 @@ documents Qwen parsers and MTP. Its measured examples include GB300 and RTX
 NVFP4 conversions. Prefer official FP8 as the quality reference before trading
 precision for speed.
 [vLLM recipe](https://recipes.vllm.ai/Qwen/Qwen3.8-27B).
+
+### Flash-Next: single-GB10 deep-work candidate
+
+The `RadixArk/Qwen3.8-Flash-Next-NVFP4` checkpoint is about 126 GiB and its
+model card documents GB300/B300 rather than a single GB10. The
+[`blazux/qwen3.8-Flash-DGX`](https://github.com/blazux/qwen3.8-Flash-DGX)
+recipe changes the feasibility result without changing that support boundary:
+it memory-maps the 48 GiB PLE lookup table from NVMe, keeps about 76 GiB of
+weights resident, and pins GB10-specific fixes for prefix-cache correctness and
+deterministic sparse-attention top-k. On one ASUS GX10 it reports about 26 tok/s
+with the published NVFP4 layout and 31 tok/s with derived FP8 side layers, 262K
+native context, and an independently reproduced run. Loading takes 8--13
+minutes and the default memory pool is 0.80; at 0.85 the author observed drift
+into swap. Treat the repository commit, Docker image, patches, model revision,
+mode, cache settings, and NVMe behavior as one auditable candidate tuple.
+
+This makes Flash-Next a must-run candidate for scientific-corpus synthesis,
+cross-referencing, difficult coding, and long-agent work. It does not make the
+model self-verifying: retrieval, citations, contradiction checks, and reviewer
+scoring remain part of the acceptance corpus.
 
 ### Nemotron: best-supported performance candidate
 
@@ -106,7 +134,8 @@ fitting by weight size does not guarantee a working runtime or usable latency.
 | Ornith 1.5 35B Q4_K_M GGUF | 21.713 | Same GGUF revision; optional vision projector adds 0.903 GB |
 | Gemma 4 31B IT NVFP4 | 32.633 | `4135a98a9b728a548947683219633b25682223ac`; supported in Spark matrix |
 | Qwen3-Coder-Next FP8 | 80.381 | `da6e2ed27304dd39abadd9c82ef50e8de67bdd4c`; plausible reduced-context fit, much less headroom and no verified advantage over first choices |
-| NVIDIA Qwen3.8-Flash-Next NVFP4 | 132.680 | `fab0aecb760cec45227f6656abcaafa11abca87a`; reject for shared production residency: insufficient memory headroom even before runtime |
+| RadixArk Qwen3.8-Flash-Next NVFP4 | about 135 | Pin the exact revision selected during acquisition; include through the `blazux` NVMe-backed single-GB10 recipe, which reports about 76 GiB resident weights |
+| NVIDIA Qwen3.8-Flash-Next NVFP4 | 132.680 | `fab0aecb760cec45227f6656abcaafa11abca87a`; vendor-published comparison artifact, but not the checkpoint used by the `blazux` recipe and not interchangeable without qualification |
 
 Sources: [Qwen FP8 API](https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8?blobs=true),
 [Nemotron API](https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4?blobs=true),
@@ -117,10 +146,13 @@ Sources: [Qwen FP8 API](https://huggingface.co/api/models/Qwen/Qwen3.8-27B-FP8?b
 
 Do not sum every alternative file in a GGUF repository: select one quantization.
 Likewise, active MoE parameter count describes per-token computation, not total
-weight residency. The NVIDIA Flash-Next artifact is about 123.6 GiB; even if
-the physical 128 GB label means 128 GiB, its remainder is inadequate for this
-appliance's shared-service headroom policy. A community conversion running at
-lower precision would establish a different, experimental candidate.
+weight residency. The Flash-Next NVFP4 artifacts are roughly 126 GiB and cannot
+be loaded conventionally beside a useful KV cache. The pinned single-GB10
+recipe uses the RadixArk checkpoint and instead leaves its 48 GiB PLE table on
+NVMe, gathering only the rows required by each token. That establishes one
+feasible but patched deployment tuple; it does not establish compatibility with
+NVIDIA's separate checkpoint, stock-runtime support, or safe concurrency with
+speech services.
 
 ## Speech and retrieval recommendations
 

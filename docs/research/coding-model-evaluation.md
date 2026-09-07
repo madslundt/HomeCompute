@@ -2,7 +2,10 @@
 
 Verified: 2026-09-04
 
-Status: benchmark shortlist; no winner selected without GB10 measurements
+Status: historical benchmark analysis. Candidate selection is superseded by
+[ADR-019](../adr/019-single-gb10-model-roster.md) and the
+[current roster](../../config/gb10-model-roster.json); do not execute the older
+Qwen3.6/Qwen3.8-FP8 ladder below.
 
 ## Recommendation
 

@@ -76,7 +76,10 @@ python3 -m unittest "$REPO_ROOT/tests/benchmark-harness-test.py"
 python3 -m unittest "$REPO_ROOT/tests/benchmark-security-test.py"
 python3 -m unittest "$REPO_ROOT/tests/benchmark_correctness_test.py"
 python3 "$REPO_ROOT/tests/model-update-check-test.py"
+python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/model-router-policy-test.py"
+python3 "$REPO_ROOT/scripts/gb10_model_roster.py" \
+  --roster "$REPO_ROOT/config/gb10-model-roster.json"
 python3 "$REPO_ROOT/scripts/model_router_policy.py" validate \
   --policy "$REPO_ROOT/config/model-router-policy.json"
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
@@ -101,7 +104,7 @@ python3 "$REPO_ROOT/benchmarks/harness.py" validate \
 printf '[validate] JSON syntax\n'
 while IFS= read -r -d '' json_file; do
   jq empty "$json_file"
-done < <(find "$REPO_ROOT/automations" "$REPO_ROOT/benchmarks" -type f -name '*.json' -print0)
+done < <(find "$REPO_ROOT/automations" "$REPO_ROOT/benchmarks" "$REPO_ROOT/config" -type f -name '*.json' -print0)
 
 if command -v ruby >/dev/null 2>&1; then
   printf '[validate] YAML syntax\n'

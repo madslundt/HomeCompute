@@ -2,7 +2,10 @@
 
 Verified: 2026-09-05
 
-Status: install shortlist and promotion gate
+Status: historical three-model benchmark plan. Candidate selection is
+superseded by [ADR-019](../adr/019-single-gb10-model-roster.md) and the
+[current roster](../../config/gb10-model-roster.json); do not install all three
+artifacts under the current bounded policy.
 
 ## Decision
 

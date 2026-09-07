@@ -127,22 +127,21 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-016](adr/016-nixos-control-plane-host.md) | NixOS, integrated Home Manager, sops-nix, and Compose define the control-plane host |
 | [ADR-017](adr/017-consolidated-application-host.md) | `home-core` also hosts automations and personal agents; container isolation replaces the separate application host |
 | [ADR-018](adr/018-multiple-developer-harnesses.md) | Codex, Pi, and OMP are supported behind the same restricted developer account boundary |
+| [ADR-019](adr/019-single-gb10-model-roster.md) | One GB10 retains Flash-Next plus one everyday winner and runs only one text model at a time |
 
 ## Research and model evidence
 
-Start with [the staged LLM installation recommendation](research/llm-installation-recommendation.md).
-The first text integration candidate is NVIDIA Qwen3.6 35B A3B NVFP4. It
-exercises all aliases, but it is not a production selection.
+Start with [the current LLM installation recommendation](research/llm-installation-recommendation.md)
+and [ADR-019](adr/019-single-gb10-model-roster.md). Flash-Next is the scheduled
+quality lane. Nemotron 3.5 Lightning and Qwen3.8-27B compete for one everyday
+slot; routing remains disabled and aliases unbound until that benchmark has a
+qualified winner. Qwen3.6 is only a legacy integration tuple.
 
-Qwen3.8-27B FP8 is the first general/coding quality candidate. Nemotron 3.5
-Lightning is the single-Spark performance candidate. Ornith 1.5, Muse Glimmer,
-and Gemma 4 are conditional controls for coding, dense/multimodal behavior, and
-Danish/multilingual quality. GPT-OSS, Devstral Small 2, and GLM-4.7-Flash are
-outside the normal queue.
-
-Danish Parakeet and Whisper are the STT candidates. Piper Danish and Røst are
-the TTS candidates. Retrieval models remain deferred until a real private
-corpus and access-control test exist.
+Røst Whisper is the recorded-Danish STT candidate, while Nemotron streaming ASR
+is conditional on a live-voice requirement. Røst Chatterbox is the natural TTS
+candidate and Piper remains the CPU fallback. Nemotron Embed is enabled only
+with a real access-controlled corpus; reranking and diarization remain
+conditional on measured need.
 
 | Topic | Documents |
 | --- | --- |

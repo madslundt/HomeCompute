@@ -1,9 +1,14 @@
 {
   "schema_version": 1,
-  "policy_version": "2026-09-07-initial-shadow",
-  "mode": "shadow",
+  "policy_version": "2026-09-08-gb10-qualification-gated",
+  "mode": "disabled",
   "load_on_demand": false,
-  "default_model": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
+  "qualification": {
+    "status": "pending",
+    "everyday_winner": null,
+    "resident_text_model_limit": 1
+  },
+  "default_model": null,
   "auto": {
     "confidence_threshold": 0.75,
     "low_confidence_policy": "strongest_available",
@@ -13,33 +18,52 @@
     "enabled": false
   },
   "aliases": {
-    "assistant": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
-    "automation": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
-    "coding": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
-    "home": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
-    "meeting": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5",
-    "research": "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"
+    "assistant": null,
+    "automation": null,
+    "coding": null,
+    "home": null,
+    "meeting": null,
+    "research": null
   },
   "client_policies": {
     "ordinary": {
       "allowed_aliases": ["assistant", "auto", "automation", "coding", "home", "meeting", "research"],
       "allowed_exact_models": [],
-      "auto_model_allowlist": ["qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"]
+      "auto_model_allowlist": []
     },
     "operator": {
       "allowed_aliases": ["assistant", "auto", "automation", "coding", "home", "meeting", "research"],
-      "allowed_exact_models": ["qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"],
-      "auto_model_allowlist": ["qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5"]
+      "allowed_exact_models": [],
+      "auto_model_allowlist": []
     }
   },
   "models": {
-    "qwen3.6-35b-a3b-nvfp4@1355db6a052410cfd62085d94b58866fd0f2c3c5": {
+    "nemotron-3.5-lightning-30b-a3b-nvfp4@cc84af2fe71647d87f4486c064f320e1e7535243": {
       "upstream_model": "assistant",
+      "selection_lane": "everyday_candidate",
       "quality_rank": 100,
-      "auto_eligible": true,
+      "auto_eligible": false,
       "capabilities": ["chat", "reasoning", "tools"],
       "protocols": ["chat_completions", "responses"],
-      "max_context_tokens": 32768
+      "max_context_tokens": 1000000
+    },
+    "qwen3.8-27b-nvfp4@554ebba9b5f1b79dc11246341960360e6ef05ef4": {
+      "upstream_model": "assistant",
+      "selection_lane": "everyday_candidate",
+      "quality_rank": 200,
+      "auto_eligible": false,
+      "capabilities": ["chat", "reasoning", "tools", "vision"],
+      "protocols": ["chat_completions", "responses"],
+      "max_context_tokens": 262144
+    },
+    "qwen3.8-flash-next-nvfp4@7b719225242aacd3dbd3f9407468c2ee9a9d2594": {
+      "upstream_model": "assistant",
+      "selection_lane": "quality",
+      "quality_rank": 300,
+      "auto_eligible": false,
+      "capabilities": ["chat", "reasoning", "tools", "vision"],
+      "protocols": ["chat_completions", "responses"],
+      "max_context_tokens": 262144
     }
   }
 }

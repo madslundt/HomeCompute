@@ -2,7 +2,10 @@
 
 Verified: 2026-09-04
 
-Status: benchmark plan; no production control authorization
+Status: historical benchmark analysis with current safety requirements.
+Candidate selection is superseded by [ADR-019](../adr/019-single-gb10-model-roster.md)
+and the [current roster](../../config/gb10-model-roster.json); do not use the
+older Qwen3.6/Qwen3.8-FP8 ordering below as deployment policy.
 
 ## Architecture finding
 

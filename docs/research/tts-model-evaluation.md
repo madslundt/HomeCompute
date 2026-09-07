@@ -2,7 +2,10 @@
 
 Verified: 2026-08-25
 
-Status: Danish benchmark shortlist
+Status: historical evidence and benchmark analysis. The bounded TTS selection
+is superseded by [ADR-019](../adr/019-single-gb10-model-roster.md) and the
+[current roster](../../config/gb10-model-roster.json): Røst v3 Chatterbox 350M
+as the natural-voice candidate, with CPU Piper as the operational fallback.
 
 ## Recommendation
 
@@ -42,4 +45,3 @@ The selected service must expose Home Assistant's required streaming path and
 the stable `/v1/audio/speech` boundary. A small CPU-friendly Piper service may be
 operationally preferable to consuming GB10 GPU capacity if listening tests meet
 the agreed quality threshold; that decision requires measurement.
-

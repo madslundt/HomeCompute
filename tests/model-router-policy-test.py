@@ -15,11 +15,13 @@ assert SPEC and SPEC.loader
 ROUTER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ROUTER)
 POLICY = json.loads((ROOT / "config" / "model-router-policy.json").read_text(encoding="utf-8"))
-MODEL = POLICY["default_model"]
+MODELS = list(POLICY["models"])
+MODEL = MODELS[0]
+FLASH_MODEL = next(model for model in MODELS if model.startswith("qwen3.8-flash-next"))
 
 
-def runtime(state: str = "active", healthy: bool = True) -> dict:
-    return {"models": {MODEL: {"state": state, "healthy": healthy}}}
+def runtime(state: str = "active", healthy: bool = True, *, model: str = MODEL) -> dict:
+    return {"models": {model: {"state": state, "healthy": healthy}}}
 
 
 def request(model: str, client: str = "ordinary", **overrides: object) -> dict:
@@ -35,9 +37,12 @@ def request(model: str, client: str = "ordinary", **overrides: object) -> dict:
 class PolicyValidationTests(unittest.TestCase):
     def test_checked_in_policy_is_valid_and_activation_is_off(self) -> None:
         ROUTER.validate_policy(POLICY)
-        self.assertEqual("shadow", POLICY["mode"])
+        self.assertEqual("disabled", POLICY["mode"])
         self.assertFalse(POLICY["load_on_demand"])
         self.assertFalse(POLICY["activation"]["enabled"])
+        self.assertEqual("pending", POLICY["qualification"]["status"])
+        self.assertIsNone(POLICY["default_model"])
+        self.assertTrue(all(model is None for model in POLICY["aliases"].values()))
 
     def test_activation_cannot_be_enabled_before_it_is_implemented(self) -> None:
         policy = copy.deepcopy(POLICY)
@@ -54,72 +59,78 @@ class PolicyValidationTests(unittest.TestCase):
 
 
 class RoutingDecisionTests(unittest.TestCase):
-    def test_manual_alias_bypasses_classifier(self) -> None:
-        decision = ROUTER.decide(POLICY, request("coding"), runtime())
-        self.assertEqual("manual_alias", decision["selection_mode"])
-        self.assertFalse(decision["classifier_invoked"])
-        self.assertEqual(MODEL, decision["selected_model"])
-        self.assertEqual("coding", decision["upstream_model"])
+    def test_all_requests_fail_closed_until_benchmark_winner_is_recorded(self) -> None:
+        for requested_model in ("assistant", "coding", "auto", MODEL):
+            with self.subTest(requested_model=requested_model):
+                with self.assertRaisesRegex(ROUTER.PolicyError, "routing_not_qualified"):
+                    ROUTER.decide(POLICY, request(requested_model, client="operator"), runtime())
 
-    def test_exact_model_is_operator_only_and_bypasses_classifier(self) -> None:
-        with self.assertRaisesRegex(ROUTER.PolicyError, "exact model is not authorized"):
-            ROUTER.decide(POLICY, request(MODEL), runtime())
-        decision = ROUTER.decide(POLICY, request(MODEL, client="operator"), runtime())
-        self.assertEqual("manual_exact", decision["selection_mode"])
-        self.assertFalse(decision["classifier_invoked"])
-
-    def test_inactive_manual_model_fails_without_activation(self) -> None:
-        with self.assertRaisesRegex(ROUTER.PolicyError, "model_not_active"):
-            ROUTER.decide(POLICY, request("assistant"), runtime("inactive", False))
-
-    def test_manual_override_cannot_bypass_hard_compatibility(self) -> None:
-        oversized = request("coding")
-        oversized["requirements"]["context_tokens"] = 32769
-        with self.assertRaisesRegex(ROUTER.PolicyError, "model_not_compatible"):
-            ROUTER.decide(POLICY, oversized, runtime())
-
-    def test_shadow_auto_serves_default_and_records_proposal(self) -> None:
-        decision = ROUTER.decide(
-            POLICY,
-            request("auto", classifier={"status": "ok", "model": MODEL, "confidence": 0.91, "reason_code": "tool_task"}),
-            runtime(),
-        )
-        self.assertEqual("shadow", decision["selection_mode"])
-        self.assertEqual(MODEL, decision["selected_model"])
-        self.assertEqual(MODEL, decision["shadow_model"])
-        self.assertTrue(decision["classifier_invoked"])
-        self.assertFalse(decision["selector_fallback"])
-
-    def test_classifier_failure_falls_back_without_activation(self) -> None:
-        decision = ROUTER.decide(
-            POLICY,
-            request("auto", classifier={"status": "timeout"}),
-            runtime(),
-        )
-        self.assertEqual(MODEL, decision["selected_model"])
-        self.assertTrue(decision["selector_fallback"])
-        self.assertFalse(decision["activation_requested"])
-
-    def test_disabled_auto_does_not_inspect_classifier_output(self) -> None:
+    def test_pending_policy_cannot_bind_aliases_or_authorize_models(self) -> None:
         policy = copy.deepcopy(POLICY)
-        policy["mode"] = "disabled"
-        decision = ROUTER.decide(
-            policy,
-            request("auto", classifier={"status": "not-a-valid-status"}),
-            runtime(),
-        )
-        self.assertEqual("disabled", decision["selection_mode"])
-        self.assertFalse(decision["classifier_invoked"])
+        policy["aliases"]["assistant"] = MODEL
+        with self.assertRaisesRegex(ROUTER.PolicyError, "unbound aliases"):
+            ROUTER.validate_policy(policy)
 
-    def test_auto_fails_closed_when_default_is_not_eligible(self) -> None:
-        with self.assertRaisesRegex(ROUTER.PolicyError, "no authorized compatible active default"):
-            ROUTER.decide(POLICY, request("auto"), runtime("inactive", False))
+        policy = copy.deepcopy(POLICY)
+        policy["client_policies"]["operator"]["allowed_exact_models"] = [MODEL]
+        with self.assertRaisesRegex(ROUTER.PolicyError, "cannot authorize"):
+            ROUTER.validate_policy(policy)
 
-    def test_context_requirement_is_a_hard_eligibility_rule(self) -> None:
-        oversized = request("auto")
-        oversized["requirements"]["context_tokens"] = 32769
-        with self.assertRaisesRegex(ROUTER.PolicyError, "no authorized compatible active default"):
-            ROUTER.decide(POLICY, oversized, runtime())
+    def test_pending_policy_cannot_name_a_winner(self) -> None:
+        policy = copy.deepcopy(POLICY)
+        policy["qualification"]["everyday_winner"] = MODEL
+        with self.assertRaisesRegex(ROUTER.PolicyError, "cannot select"):
+            ROUTER.validate_policy(policy)
+
+    def test_one_resident_limit_is_enforced_after_qualification(self) -> None:
+        policy = copy.deepcopy(POLICY)
+        policy["qualification"]["status"] = "qualified"
+        policy["qualification"]["everyday_winner"] = MODEL
+        policy["default_model"] = MODEL
+        policy["aliases"] = {
+            "assistant": MODEL,
+            "automation": MODEL,
+            "coding": FLASH_MODEL,
+            "home": MODEL,
+            "meeting": MODEL,
+            "research": FLASH_MODEL,
+        }
+        policy["models"][MODEL]["auto_eligible"] = True
+        policy["client_policies"]["operator"]["allowed_exact_models"] = [MODEL, FLASH_MODEL]
+        policy["client_policies"]["operator"]["auto_model_allowlist"] = [MODEL]
+        multiple = {
+            "models": {
+                MODEL: {"state": "active", "healthy": True},
+                FLASH_MODEL: {"state": "loading", "healthy": False},
+            }
+        }
+        with self.assertRaisesRegex(ROUTER.PolicyError, "resident_text_model_limit_exceeded"):
+            ROUTER.decide(policy, request(MODEL, client="operator"), multiple)
+
+    def test_quality_model_cannot_be_recorded_as_everyday_winner(self) -> None:
+        policy = copy.deepcopy(POLICY)
+        policy["qualification"]["status"] = "qualified"
+        policy["qualification"]["everyday_winner"] = FLASH_MODEL
+        policy["default_model"] = FLASH_MODEL
+        policy["aliases"] = {alias: FLASH_MODEL for alias in policy["aliases"]}
+        with self.assertRaisesRegex(ROUTER.PolicyError, "everyday candidate"):
+            ROUTER.validate_policy(policy)
+
+    def test_everyday_aliases_must_follow_the_recorded_winner(self) -> None:
+        policy = copy.deepcopy(POLICY)
+        policy["qualification"]["status"] = "qualified"
+        policy["qualification"]["everyday_winner"] = MODEL
+        policy["default_model"] = MODEL
+        policy["aliases"] = {
+            "assistant": FLASH_MODEL,
+            "automation": MODEL,
+            "coding": FLASH_MODEL,
+            "home": MODEL,
+            "meeting": MODEL,
+            "research": FLASH_MODEL,
+        }
+        with self.assertRaisesRegex(ROUTER.PolicyError, "assistant.*everyday winner"):
+            ROUTER.validate_policy(policy)
 
 
 if __name__ == "__main__":

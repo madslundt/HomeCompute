@@ -9,6 +9,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
+| `gb10_model_roster.py` | Offline configuration validation | Enforces the two-text-model limit, exact Flash-Next artifact, everyday A/B, and bounded speech/RAG roles |
 | `model_router_policy.py` | Offline model-router validation and decision tests | `validate`, `decide` |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
@@ -73,7 +74,15 @@ Repository validation:
 ./scripts/validate-repository.sh
 ```
 
-The initial router policy is deliberately offline and shadow-only. Validate it
+Validate the selected model roster independently:
+
+```bash
+python3 scripts/gb10_model_roster.py \
+  --roster config/gb10-model-roster.json
+```
+
+The router policy is deliberately disabled and unbound until the GB10 benchmark
+records an everyday winner and the exact runtime tuples pass qualification. Validate it
 without contacting LiteLLM or `home-spark`:
 
 ```bash

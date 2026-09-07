@@ -2,7 +2,10 @@
 
 Verified: 2026-09-05
 
-Status: Danish benchmark shortlist
+Status: historical evidence and benchmark analysis. The bounded STT selection
+is superseded by [ADR-019](../adr/019-single-gb10-model-roster.md) and the
+[current roster](../../config/gb10-model-roster.json): Røst v3 Whisper for
+recordings, with Nemotron 3.5 streaming ASR conditional on live voice.
 
 ## Recommendation
 

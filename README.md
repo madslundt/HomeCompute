@@ -43,28 +43,29 @@ model names directly.
 Logical aliases are stable contracts. A model may back several aliases only
 after it passes each use case's quality, safety, latency, and recovery tests.
 
-## Model candidates
+## GB10 model roster
 
-No production model has been selected. The repository starts with one efficient
-shared text candidate, then compares specialists and controls one at a time.
+The selected steady state is two text models at most, with only one resident:
+Flash-Next for scheduled deep work plus one everyday winner. Nemotron Lightning
+and Qwen3.8-27B compete for that everyday slot on the real Danish, tool-use,
+latency, and recovery fixtures.
 
-| Candidate | What it is evaluated for |
+| Role | Selection |
 | --- | --- |
-| NVIDIA Qwen3.6 35B A3B NVFP4 | First text integration baseline across all six aliases; not the presumed quality winner |
-| Qwen3.8 27B FP8 | First general, Danish, coding, and agent quality candidate |
-| NVIDIA Nemotron 3.5 Lightning NVFP4 plus DSpark | Single-Spark latency and speculative-decoding candidate |
-| Ornith 1.5 35B A3B | Conditional coding/agent challenger, tested only if Qwen3.8 leaves a measured gap |
-| NVIDIA Muse Glimmer 30B NVFP4 | Conditional dense, agent, and multimodal control |
-| Gemma 4 31B NVFP4 | Conditional Danish/multilingual control |
-| Røst/Hviske Danish ASR, Danish Parakeet, and Whisper variants | Speech-to-text quality, latency, and integration candidates for home and meeting audio |
-| Piper Danish and Røst | Danish text-to-speech reliability and naturalness candidates |
-| Qwen3 Embedding and Reranker | Deferred private retrieval candidates, added only with a real corpus |
+| Deep coding and research | RadixArk Qwen3.8 Flash-Next NVFP4 through the pinned `blazux` single-GB10 recipe |
+| Everyday assistant and automations | Benchmark NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark against RadixArk Qwen3.8-27B NVFP4 + DFlash2; retain one |
+| Retrieval | NVIDIA Nemotron 3 Embed 1B NVFP4 when private RAG is enabled; reranking only after a measured retrieval failure |
+| Recorded Danish STT | Røst v3 Whisper 1.5B |
+| Live Danish STT | Nemotron 3.5 ASR Streaming 0.6B only if streaming voice is enabled and it wins the latency/quality trade-off |
+| Danish TTS | Røst v3 Chatterbox 350M; CPU Piper remains the independent fallback |
+| Speaker attribution | pyannote Community-1 only for multi-speaker meetings |
 
-The first deployed text model is a smoke-test candidate, not a production
-winner. Qwen3-Coder-Next is optional, while GPT-OSS, Devstral Small 2, and
-GLM-4.7-Flash are outside the normal queue. See the
-[model recommendation](docs/research/llm-installation-recommendation.md) for
-exact artifact names, order, and qualification caveats.
+DeepSeek V4 Flash, NVIDIA's distinct Flash-Next checkpoint, Qwen3.6, Ornith,
+Muse, Gemma, GPT-OSS, Devstral, and GLM are outside the retained GB10 roster.
+The immutable machine-readable policy is
+[`config/gb10-model-roster.json`](config/gb10-model-roster.json); see the
+[owner-report recommendation](docs/research/gb10-model-installation-recommendation-2026-09-07.md)
+for evidence and qualification caveats.
 
 ## Setup in order
 

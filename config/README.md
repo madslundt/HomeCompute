@@ -7,7 +7,8 @@ they do not use them as production configuration in place.
 | File | Used by | Purpose |
 | --- | --- | --- |
 | `compute-node.env.example` | `setup-compute-node.sh`, `setup-compute-modalities.sh` | Immutable text and staged modality artifact tuples, exact private ports, bind policy, and compute limits |
-| `model-router-policy.json` | `model_router_policy.py` and the future LiteLLM routing integration | Versioned shadow-mode aliases, model eligibility, client permissions, and disabled activation gate |
+| `gb10-model-roster.json` | `gb10_model_roster.py`, operators, and future deployment profiles | Bounded two-lane text roster, speech/RAG selections, immutable revisions, mutual-exclusion policy, and benchmark/removal gates |
+| `model-router-policy.json` | `model_router_policy.py` and the future LiteLLM routing integration | Qualification-gated aliases, model inventory, client permissions, and the one-resident text-model limit |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, `/srv/state`, and sops-nix runtime secret paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
 | `books_importer.env.example` | `deploy/books_importer/compose.yaml` | Pinned book service images; compare with source deployment digests before migration |
@@ -34,6 +35,13 @@ token file remains limited to the text acquisition profile. All modality HTTP
 services share `VLLM_API_KEY_FILE`. Native Wyoming TTS has no application
 credential and therefore must remain on the fixed private bind behind the exact
 source-restricted firewall.
+
+`gb10-model-roster.json` is the current selection authority. The compute
+environment remains the last known integration tuple until a roster candidate
+passes the live GB10 qualification gates and receives its own audited runtime
+profile. The roster permits one resident text model and two retained text
+models after evaluation: Flash-Next plus the winner of Nemotron Lightning
+versus Qwen3.8-27B. It must not be translated into simultaneous containers.
 
 Configuration records artifact identity only. Never place API keys, audio,
 images, rendered document pages, transcripts, or responses in the environment

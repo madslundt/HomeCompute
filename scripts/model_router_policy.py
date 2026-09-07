@@ -41,6 +41,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
         "policy_version",
         "mode",
         "load_on_demand",
+        "qualification",
         "default_model",
         "auto",
         "activation",
@@ -65,16 +66,34 @@ def validate_policy(policy: dict[str, Any]) -> None:
     if policy["load_on_demand"] or activation["enabled"]:
         raise PolicyError("model activation is not implemented; load_on_demand and activation.enabled must be false")
 
+    qualification = _object(policy.get("qualification"), "qualification")
+    if set(qualification) != {"status", "everyday_winner", "resident_text_model_limit"}:
+        raise PolicyError("qualification has unsupported or missing keys")
+    if qualification["status"] not in {"pending", "qualified"}:
+        raise PolicyError("qualification.status must be pending or qualified")
+    if qualification["resident_text_model_limit"] != 1:
+        raise PolicyError("qualification.resident_text_model_limit must be 1")
+
     models = _object(policy.get("models"), "models")
     if not models:
         raise PolicyError("models must not be empty")
     for model_name, raw_model in models.items():
         _string(model_name, "model name")
         model = _object(raw_model, f"models.{model_name}")
-        required = {"upstream_model", "quality_rank", "auto_eligible", "capabilities", "protocols", "max_context_tokens"}
+        required = {
+            "upstream_model",
+            "selection_lane",
+            "quality_rank",
+            "auto_eligible",
+            "capabilities",
+            "protocols",
+            "max_context_tokens",
+        }
         if set(model) != required:
             raise PolicyError(f"models.{model_name} must contain exactly {', '.join(sorted(required))}")
         _string(model["upstream_model"], f"models.{model_name}.upstream_model")
+        if model["selection_lane"] not in {"quality", "everyday_candidate"}:
+            raise PolicyError(f"models.{model_name}.selection_lane is invalid")
         if not isinstance(model["quality_rank"], int):
             raise PolicyError(f"models.{model_name}.quality_rank must be an integer")
         if not isinstance(model["auto_eligible"], bool):
@@ -84,17 +103,40 @@ def validate_policy(policy: dict[str, Any]) -> None:
         if not isinstance(model["max_context_tokens"], int) or model["max_context_tokens"] <= 0:
             raise PolicyError(f"models.{model_name}.max_context_tokens must be a positive integer")
 
-    default_model = _string(policy.get("default_model"), "default_model")
-    if default_model not in models:
-        raise PolicyError("default_model must reference models")
-
     aliases = _object(policy.get("aliases"), "aliases")
     required_aliases = {"assistant", "automation", "coding", "home", "meeting", "research"}
     if set(aliases) != required_aliases:
         raise PolicyError("aliases must contain exactly the six task-semantic aliases")
-    for alias, model_name in aliases.items():
-        if model_name not in models:
-            raise PolicyError(f"aliases.{alias} references an unknown model")
+    if qualification["status"] == "pending":
+        if policy["mode"] != "disabled":
+            raise PolicyError("pending qualification requires disabled routing mode")
+        if policy.get("default_model") is not None or qualification["everyday_winner"] is not None:
+            raise PolicyError("pending qualification cannot select a default or everyday winner")
+        if any(model_name is not None for model_name in aliases.values()):
+            raise PolicyError("pending qualification requires unbound aliases")
+        if any(model["auto_eligible"] for model in models.values()):
+            raise PolicyError("pending qualification cannot mark models auto-eligible")
+    else:
+        default_model = _string(policy.get("default_model"), "default_model")
+        if default_model not in models:
+            raise PolicyError("default_model must reference models")
+        everyday_winner = _string(qualification["everyday_winner"], "qualification.everyday_winner")
+        if everyday_winner not in models:
+            raise PolicyError("qualification.everyday_winner must reference models")
+        if models[everyday_winner]["selection_lane"] != "everyday_candidate":
+            raise PolicyError("qualification.everyday_winner must reference an everyday candidate")
+        for alias, model_name in aliases.items():
+            if model_name not in models:
+                raise PolicyError(f"aliases.{alias} references an unknown model")
+        for alias in {"assistant", "automation", "home", "meeting"}:
+            if aliases[alias] != everyday_winner:
+                raise PolicyError(f"aliases.{alias} must reference the everyday winner")
+        quality_models = [name for name, model in models.items() if model["selection_lane"] == "quality"]
+        if len(quality_models) != 1:
+            raise PolicyError("qualified policy must contain exactly one quality-lane model")
+        for alias in {"coding", "research"}:
+            if aliases[alias] != quality_models[0]:
+                raise PolicyError(f"aliases.{alias} must reference the quality-lane model")
 
     auto = _object(policy.get("auto"), "auto")
     if set(auto) != {"confidence_threshold", "low_confidence_policy", "classifier_failure_policy"}:
@@ -123,6 +165,10 @@ def validate_policy(policy: dict[str, Any]) -> None:
             values = _string_list(client[field], f"client_policies.{client_name}.{field}")
             if set(values) - set(models):
                 raise PolicyError(f"client_policies.{client_name}.{field} contains unknown models")
+        if qualification["status"] == "pending" and (
+            client["allowed_exact_models"] or client["auto_model_allowlist"]
+        ):
+            raise PolicyError("pending qualification cannot authorize exact or automatic model selection")
 
 
 def load_document(path: Path) -> dict[str, Any]:
@@ -216,6 +262,8 @@ def _result(
 
 def decide(policy: dict[str, Any], request: dict[str, Any], runtime: dict[str, Any]) -> dict[str, Any]:
     validate_policy(policy)
+    if policy["qualification"]["status"] != "qualified":
+        raise PolicyError("routing_not_qualified")
     requested_model = _string(request.get("requested_model"), "request.requested_model")
     client_policy_name = _string(request.get("client_policy"), "request.client_policy")
     try:
@@ -223,6 +271,11 @@ def decide(policy: dict[str, Any], request: dict[str, Any], runtime: dict[str, A
     except KeyError as exc:
         raise PolicyError("request.client_policy is unknown") from exc
     runtime_models = _runtime_models(runtime)
+    potentially_resident_models = [
+        name for name, state in runtime_models.items() if state["state"] != "inactive"
+    ]
+    if len(potentially_resident_models) > policy["qualification"]["resident_text_model_limit"]:
+        raise PolicyError("resident_text_model_limit_exceeded")
     constraints = _request_constraints(request)
 
     if requested_model in policy["aliases"]:

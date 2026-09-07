@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "roster_version": "2026-09-07-owner-report-selection",
+  "hardware": {
+    "accelerator": "NVIDIA GB10",
+    "unified_memory_gib": 128,
+    "resident_text_model_limit": 1,
+    "retained_text_model_limit": 2
+  },
+  "text_models": {
+    "quality_lane": {
+      "model_id": "RadixArk/Qwen3.8-Flash-Next-NVFP4",
+      "revision": "7b719225242aacd3dbd3f9407468c2ee9a9d2594",
+      "disposition": "retain",
+      "activation": "scheduled-exclusive",
+      "roles": ["coding", "research"],
+      "recipe": {
+        "url": "https://github.com/blazux/qwen3.8-Flash-DGX",
+        "revision": "656cdb075b57671c9bd6807b57f630fb3c1641fe"
+      }
+    },
+    "everyday_competition": {
+      "retention_limit": 1,
+      "winner_required": true,
+      "candidates": [
+        {
+          "model_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+          "revision": "cc84af2fe71647d87f4486c064f320e1e7535243",
+          "disposition": "benchmark",
+          "roles": ["assistant", "automation", "home", "meeting"],
+          "draft_model_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark",
+          "draft_revision": "8a0177116d138011e63103110f136ec0ca09ebbf"
+        },
+        {
+          "model_id": "RadixArk/Qwen3.8-27B-NVFP4",
+          "revision": "554ebba9b5f1b79dc11246341960360e6ef05ef4",
+          "disposition": "benchmark",
+          "roles": ["assistant", "automation", "coding", "home", "meeting"],
+          "draft_model_id": "z-lab/Qwen3.8-27B-DFlash2",
+          "draft_revision": "50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+          "recipe": {
+            "url": "https://github.com/CharmiUwU/Qwen3.8-27B-DFlash2-DGX-Spark",
+            "revision": "47529aede2ccf01069909f492c5e0ea8f93a954e"
+          }
+        }
+      ]
+    }
+  },
+  "services": {
+    "embedding": {
+      "model_id": "nvidia/Nemotron-3-Embed-1B-NVFP4",
+      "revision": "f630128278eb245579d3ea022b4f659fbd614318",
+      "disposition": "enable-with-rag"
+    },
+    "stt_recorded": {
+      "model_id": "CoRal-project/roest-v3-whisper-1.5b",
+      "revision": "7182cced29631ef7d7776eb8c01f24624b9b9b04",
+      "disposition": "retain"
+    },
+    "stt_streaming": {
+      "model_id": "nvidia/nemotron-3.5-asr-streaming-0.6b",
+      "revision": "1c8deaecc64b91f034d73e08dd8b64625eb3395d",
+      "disposition": "benchmark-if-live-voice-enabled"
+    },
+    "tts": {
+      "model_id": "CoRal-project/roest-v3-chatterbox-350m",
+      "revision": "2a12d9c0be51fbebd6ae100ab5578caef8b6bd4f",
+      "disposition": "retain"
+    },
+    "diarization": {
+      "model_id": "pyannote/speaker-diarization-community-1",
+      "revision": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee",
+      "disposition": "enable-with-multi-speaker-meetings"
+    },
+    "reranker": {
+      "model_id": "nvidia/llama-nemotron-rerank-vl-1b-v2",
+      "revision": "0c733be3b6451289f4288c0b170376d1fbeda55a",
+      "disposition": "enable-after-retrieval-failure"
+    }
+  },
+  "excluded_text_models": [
+    "nvidia/DeepSeek-V4-Flash-NVFP4",
+    "nvidia/Qwen3.8-Flash-Next-NVFP4",
+    "nvidia/Qwen3.6-35B-A3B-NVFP4"
+  ],
+  "operating_profiles": {
+    "everyday": {
+      "text_lane": "everyday_competition.winner",
+      "may_run_speech": true,
+      "may_run_embedding": true
+    },
+    "deep_work": {
+      "text_lane": "quality_lane",
+      "drain_everyday_text_first": true,
+      "speech_requires_mixed_load_qualification": true
+    },
+    "meeting_ingestion": {
+      "text_lane": "everyday_competition.winner",
+      "required_services": ["stt_recorded"],
+      "optional_services": ["diarization", "embedding"]
+    }
+  }
+}
