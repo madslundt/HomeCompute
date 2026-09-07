@@ -24,7 +24,9 @@ is_ipv4_address() {
 }
 
 validate_policy() {
-  is_ipv4_address "$ADDRESS" && [[ "$ADDRESS" != 0.0.0.0 ]] || die "Listener must be a non-wildcard IPv4 address"
+  if ! is_ipv4_address "$ADDRESS" || [[ "$ADDRESS" == 0.0.0.0 ]]; then
+    die "Listener must be a non-wildcard IPv4 address"
+  fi
   local source="${SOURCE_CIDR%/*}" prefix="${SOURCE_CIDR##*/}" port port_number previous=-1
   [[ "$SOURCE_CIDR" == */* ]] || prefix=32
   if ! is_ipv4_address "$source" || [[ ! "$prefix" =~ ^[0-9]{1,2}$ ]] || ((10#$prefix != 32)); then die "Source must be one dedicated IPv4 /32"; fi
@@ -127,8 +129,9 @@ verify_policy() {
       die "$CHAIN rules do not exactly match the ordered repository policy"
   done
   mapfile -t docker_user_rules < <(iptables -w -S DOCKER-USER)
-  ((${#docker_user_rules[@]} >= 2)) && [[ "${docker_user_rules[1]}" == "-A DOCKER-USER -j $CHAIN" ]] ||
+  if ((${#docker_user_rules[@]} < 2)) || [[ "${docker_user_rules[1]}" != "-A DOCKER-USER -j $CHAIN" ]]; then
     die "$CHAIN jump is not first in DOCKER-USER"
+  fi
   for rule in "${docker_user_rules[@]}"; do
     [[ "$rule" != "-A DOCKER-USER -j $CHAIN" ]] || jump_count=$((jump_count+1))
   done

@@ -458,7 +458,9 @@ prepare_model_artifacts() {
 }
 configure_firewall() {
   require_root; load_env
-  is_ipv4_address "$GB10_BIND_ADDRESS" && [[ "$GB10_BIND_ADDRESS" != 0.0.0.0 ]] || die "Bind address must be a non-wildcard IPv4 address"
+  if ! is_ipv4_address "$GB10_BIND_ADDRESS" || [[ "$GB10_BIND_ADDRESS" == 0.0.0.0 ]]; then
+    die "Bind address must be a non-wildcard IPv4 address"
+  fi
   [[ "$GB10_BIND_ADDRESS" != 127.0.0.1 ]] || die "Loopback listeners do not require a host ingress policy"
   is_ipv4_cidr "$GATEWAY_CIDR" || die "GATEWAY_CIDR must be IPv4/CIDR"
   validate_compute_ports
