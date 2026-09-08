@@ -77,6 +77,14 @@
       "project_url": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
     },
     {
+      "id": "nvfp4-model-discovery",
+      "kind": "huggingface_search",
+      "label": "Recently updated NVFP4 models",
+      "role": "Discovery signal for new GB10-sized candidates; never evidence that a model is better",
+      "request_url": "https://huggingface.co/api/models?search=NVFP4&sort=lastModified&direction=-1&limit=50",
+      "project_url": "https://huggingface.co/models?search=NVFP4"
+    },
+    {
       "id": "vllm-runtime",
       "kind": "github_release",
       "label": "vLLM release",

@@ -112,13 +112,17 @@ sudo cat /var/lib/homecompute/model-update-check/report.json
 ## Install in n8n
 
 1. Import `n8n-workflow.json` using **Import from File**.
-2. The **Load repository watchlist** node uses the repository's `master` branch
-   and a fixed HTTPS URL. If the repository is private, moved, or forked, edit
-   that node and use an authenticated HTTP credential rather than putting a
-   token in the URL. The workflow rejects source requests outside
+2. The **Load repository model roster** and **Load repository watchlist** nodes
+   use the repository's `master` branch and fixed HTTPS URLs. The roster supplies
+   the installed model and recipe revisions automatically, so routine model pin
+   changes in `config/gb10-model-roster.json` do not have to be copied into n8n.
+   If the repository is private, moved, or forked, edit both nodes and use an
+   authenticated HTTP credential rather than putting a token in the URL. The
+   workflow rejects source requests outside
    `huggingface.co` and `api.github.com`; update that allow-list only in review.
-3. Set `pinned_overrides_json` to the installed revisions or release tags that
-   should be compared with upstream. The keys are IDs from `watchlist.json`:
+3. Use `pinned_overrides_json` only for installed revisions or release tags that
+   are not represented by the repository roster, or to override a roster value
+   temporarily. The keys are IDs from `watchlist.json`:
 
    ```json
    {
@@ -128,7 +132,8 @@ sudo cat /var/lib/homecompute/model-update-check/report.json
    }
    ```
 
-   Leave it as `{}` if change detection from the first scheduled run is enough.
+   Leave it as `{}` to use the repository's model and recipe pins plus change
+   detection from the first scheduled run.
    The workflow does not read `/etc/gb10-ai/gb10.env`; this avoids exposing host
    configuration or secrets to n8n.
 4. Replace **NOTIFICATION PLACEHOLDER - configure and enable** with the user's
