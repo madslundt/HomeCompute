@@ -68,19 +68,21 @@ model behind an alias after the replacement passes the same tests.
 
 | Alias or route | Use case | Initial candidate or comparison set |
 | --- | --- | --- |
-| `coding` | Codex editing, tools, builds, and tests | Qwen3.6 integration baseline; Qwen3.8 first quality candidate; Nemotron 3.5 performance candidate; Ornith conditional challenger |
-| `automation` | n8n, structured output, and approved tools | Qwen3.6 integration baseline; Qwen3.8 first quality candidate; Nemotron 3.5 performance comparison |
-| `research` | Private, source-bounded synthesis | Qwen3.6 integration baseline; Qwen3.8 first quality candidate |
-| `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.6 shared baseline; smaller Qwen controls only if latency requires them |
-| `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.6 integration baseline; Qwen3.8 quality candidate; Gemma only for a measured multilingual/factuality gap |
-| `assistant` | Isolated personal-agent sessions and tools | Qwen3.6 integration baseline at 64K or more; Qwen3.8 quality candidate; Nemotron 3.5 performance candidate |
-| STT route | Danish, English, and mixed-language transcription | Danish Parakeet, Whisper large-v3-turbo, and Whisper large-v3 |
-| TTS route | Danish speech for Home Assistant and agents | Piper Danish baseline; Røst naturalness challengers |
+| `coding` | Codex editing, tools, builds, and tests | Qwen3.8-27B; operator cold-swap to Flash-Next after repeated struggle |
+| `automation` | n8n, structured output, and approved tools | Qwen3.8-27B in non-thinking mode by default |
+| `research` | Private, source-bounded synthesis | Qwen3.8-27B; Flash-Next only for sustained heavy sessions |
+| `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.8-27B |
+| `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.8-27B |
+| `assistant` | Isolated personal-agent sessions and tools | Qwen3.8-27B at 64K or more |
+| STT route | Danish and English transcription | Hviske v5.3 for Danish; Parakeet TDT 0.6B v2 for English |
+| TTS route | Danish and English speech | Plapre Nano v2 for Danish; Qwen3-TTS 1.7B CustomVoice for English |
 | Retrieval route | Private document search | Deferred Qwen3 Embedding and Reranker candidates |
 
-No production winner exists yet. The shipped compute configuration starts one
-pinned NVIDIA Qwen3.6 candidate at 32K context for protocol and smoke testing.
-That does not qualify every alias or the 64K personal-agent use case.
+The model selection is final. The shipped compute configuration prepares the
+first qualification stage: pinned Qwen3.8-27B with native MTP on vLLM at 64K.
+Routing remains disabled until that exact tuple passes the live appliance
+gates. SGLang/DFlash is then compared on real workloads before one runtime is
+kept as normal production.
 
 ## Before you start
 

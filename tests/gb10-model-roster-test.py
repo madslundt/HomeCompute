@@ -23,59 +23,65 @@ class RosterTests(unittest.TestCase):
         ROSTER_MODULE.validate_roster(ROSTER)
         self.assertEqual(1, ROSTER["hardware"]["resident_text_model_limit"])
         self.assertEqual(2, ROSTER["hardware"]["retained_text_model_limit"])
-        self.assertEqual(1, ROSTER["text_models"]["everyday_competition"]["retention_limit"])
+        self.assertEqual({"primary", "heavy"}, set(ROSTER["text_models"]))
 
-    def test_cannot_keep_both_everyday_candidates(self) -> None:
+    def test_primary_and_draft_checkpoints_are_fixed(self) -> None:
         roster = copy.deepcopy(ROSTER)
-        roster["text_models"]["everyday_competition"]["retention_limit"] = 2
-        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "exactly one winner"):
+        roster["text_models"]["primary"]["model_id"] = "RadixArk/Qwen3.8-27B-NVFP4"
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "production workhorse"):
             ROSTER_MODULE.validate_roster(roster)
 
-    def test_required_text_exclusions_cannot_be_removed(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        roster["text_models"]["primary"]["runtime_profiles"]["performance"]["draft_model_id"] = (
+            "syvai/Qwen3.8-27B-DFlash2-W4A16"
+        )
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "incoai draft"):
+            ROSTER_MODULE.validate_roster(roster)
+
+    def test_runtime_order_is_baseline_then_performance(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        roster["deployment_order"][0:2] = ["benchmark.baseline", "primary.runtime_profiles.baseline"]
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "deployment_order"):
+            ROSTER_MODULE.validate_roster(roster)
+
+    def test_flash_next_is_exclusive_and_uses_blazux(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        roster["text_models"]["heavy"]["activation"] = "load-on-demand"
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "operator-exclusive cold swap"):
+            ROSTER_MODULE.validate_roster(roster)
+
+        roster = copy.deepcopy(ROSTER)
+        roster["text_models"]["heavy"]["recipe"]["url"] = "https://example.invalid/recipe"
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "Blazux"):
+            ROSTER_MODULE.validate_roster(roster)
+
+    def test_required_exclusions_cannot_be_removed(self) -> None:
         for model_id in ROSTER_MODULE.REQUIRED_EXCLUSIONS:
             with self.subTest(model_id=model_id):
                 roster = copy.deepcopy(ROSTER)
-                roster["excluded_text_models"].remove(model_id)
+                roster["excluded_models"].remove(model_id)
                 with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "exclusions are missing"):
                     ROSTER_MODULE.validate_roster(roster)
 
-    def test_nvidia_flash_checkpoint_cannot_replace_recipe_artifact(self) -> None:
-        roster = copy.deepcopy(ROSTER)
-        roster["text_models"]["quality_lane"]["model_id"] = "nvidia/Qwen3.8-Flash-Next-NVFP4"
-        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "RadixArk Flash-Next"):
-            ROSTER_MODULE.validate_roster(roster)
-
-    def test_service_models_and_dispositions_are_part_of_the_contract(self) -> None:
-        for role, (model_id, disposition) in ROSTER_MODULE.EXPECTED_SERVICES.items():
-            with self.subTest(role=role, field="model_id"):
+    def test_service_models_licenses_and_languages_are_contractual(self) -> None:
+        for role in ROSTER_MODULE.EXPECTED_SERVICES:
+            with self.subTest(role=role):
                 roster = copy.deepcopy(ROSTER)
                 roster["services"][role]["model_id"] = "example/incorrect-model"
-                with self.assertRaisesRegex(ROSTER_MODULE.RosterError, f"services.{role} must use"):
-                    ROSTER_MODULE.validate_roster(roster)
-            with self.subTest(role=role, field="disposition"):
-                roster = copy.deepcopy(ROSTER)
-                roster["services"][role]["disposition"] = "retain"
-                if disposition == "retain":
-                    roster["services"][role]["disposition"] = "benchmark"
-                with self.assertRaisesRegex(ROSTER_MODULE.RosterError, f"services.{role} disposition"):
+                with self.assertRaisesRegex(ROSTER_MODULE.RosterError, f"services.{role}"):
                     ROSTER_MODULE.validate_roster(roster)
 
-    def test_shadow_router_uses_the_roster_revisions(self) -> None:
-        quality = ROSTER["text_models"]["quality_lane"]
-        candidates = {
-            candidate["model_id"]: candidate
-            for candidate in ROSTER["text_models"]["everyday_competition"]["candidates"]
-        }
+    def test_router_contains_only_the_two_selected_text_models(self) -> None:
+        primary = ROSTER["text_models"]["primary"]
+        heavy = ROSTER["text_models"]["heavy"]
         expected = {
-            f"qwen3.8-flash-next-nvfp4@{quality['revision']}",
-            "nemotron-3.5-lightning-30b-a3b-nvfp4@"
-            + candidates["nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4"]["revision"],
-            "qwen3.8-27b-nvfp4@" + candidates["RadixArk/Qwen3.8-27B-NVFP4"]["revision"],
+            f"qwen3.8-27b-nvfp4@{primary['revision']}",
+            f"qwen3.8-flash-next-nvfp4@{heavy['revision']}",
         }
         self.assertEqual(expected, set(ROUTER_POLICY["models"]))
         self.assertEqual(1, ROUTER_POLICY["qualification"]["resident_text_model_limit"])
         self.assertEqual("pending", ROUTER_POLICY["qualification"]["status"])
-        self.assertIsNone(ROUTER_POLICY["qualification"]["everyday_winner"])
+        self.assertEqual(next(name for name in expected if name.startswith("qwen3.8-27b")), ROUTER_POLICY["qualification"]["selected_primary"])
 
 
 if __name__ == "__main__":

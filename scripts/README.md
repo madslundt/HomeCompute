@@ -9,7 +9,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
-| `gb10_model_roster.py` | Offline configuration validation | Enforces the two-text-model limit, exact Flash-Next artifact, everyday A/B, and bounded speech/RAG roles |
+| `gb10_model_roster.py` | Offline configuration validation | Enforces the Qwen3.8 workhorse, two runtime profiles, exclusive Flash-Next cold swap, and exact four-model speech roster |
 | `model_router_policy.py` | Offline model-router validation and decision tests | `validate`, `decide` |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
@@ -29,7 +29,13 @@ The script must run from an intact repository checkout because it resolves
 templates relative to their own location. Production configuration lives under
 `/etc`, and runtime/model data lives outside the repository.
 
-## Staged modality lifecycle
+## Legacy modality scaffold
+
+`setup-compute-modalities.sh` still represents the older Whisper/Piper and
+optional embedding/vision qualification scaffold. Those checkpoints are not in
+the final roster and these commands must not be used to install the new speech
+stack. They remain only until the four selected speech runtimes have immutable
+images and equivalent lifecycle checks.
 
 After `setup-compute-node.sh init` has established the service identity,
 directories, and API-key file, validate and stage the pinned, public artifacts:
@@ -81,8 +87,8 @@ python3 scripts/gb10_model_roster.py \
   --roster config/gb10-model-roster.json
 ```
 
-The router policy is deliberately disabled and unbound until the GB10 benchmark
-records an everyday winner and the exact runtime tuples pass qualification. Validate it
+The router policy records Qwen3.8-27B as the selected primary but remains
+disabled and unbound until its exact runtime tuple passes live qualification. Validate it
 without contacting LiteLLM or `home-spark`:
 
 ```bash

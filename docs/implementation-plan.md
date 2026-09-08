@@ -160,26 +160,27 @@ benchmarks/mixed-load
 Runners emit machine-readable raw results plus a sanitized summary template.
 They refuse a run without the release/artifact manifest.
 
-### D2 — Select text and audio artifacts
+### D2 — Qualify the selected text and audio artifacts
 
-1. Run all shortlisted models against role scorecards.
-2. Run the three-model mandatory wave: Qwen3.6 NVFP4 with MTP on and off;
-   Qwen3.8-27B FP8; and Nemotron 3.5 Lightning in target-only, native-MTP, and
-   DSpark modes. Stop there unless a measured gap requires Ornith 1.5 for
-   coding, Muse Glimmer for dense/multimodal behavior, or Gemma 4 for
-   Danish/multilingual quality. Qwen3-Coder-Next is an optional coding control;
-   GPT-OSS, Devstral Small 2, and GLM-4.7-Flash are not in the normal queue.
-   Compare Q4/Q8
-   GGUF only as controlled artifact tuples, not as different model identities.
-   Benchmark vLLM against llama.cpp only where both support the same exact
-   model/revision; add TensorRT-LLM under the same rule.
-3. Select the simplest alias-to-artifact mapping meeting every role threshold.
-4. Run M1–M5 mixed load and V-MEM-001.
-5. Decide shared vs reserved `home`, priority mechanism, resident set, and
+1. Establish the Qwen3.8-27B vLLM/native-MTP baseline against every role
+   scorecard.
+2. Run the same checkpoint and fixtures with the SGLang/DFlash2 profile. Keep
+   it only if real coding wall time, throughput, TTFT, long context, tool/JSON
+   correctness, concurrency, memory, and soak stability materially improve.
+   Do not reopen the checkpoint shortlist without a measured gap.
+3. Qualify Hviske v5.3 and Parakeet TDT 0.6B v2 for Danish and English STT,
+   and Plapre Nano v2 and Qwen3-TTS 1.7B CustomVoice for Danish and English
+   TTS. Record Hviske's non-commercial license constraint.
+4. Verify Flash-Next last using the pinned Blazux recipe and the serialized
+   stop-primary/start-heavy/stop-heavy/restart-primary lifecycle.
+5. Select the simpler of the two passing 27B runtime profiles when performance
+   is not materially different.
+6. Run M1–M5 mixed load and V-MEM-001.
+7. Decide shared vs reserved `home`, priority mechanism, resident set, and
    context/concurrency. LiteLLM is already selected as the control-plane
    candidate but still must pass C3.
-6. Publish dated results, including candidate pros/cons and the measured reason
-   each winner displaced its alternatives, then update ADRs/design.
+8. Publish dated results and the measured reason one 27B runtime profile was
+   retained, then update ADRs/design.
 
 **Gate D:** every alias has a winning qualified tuple, threshold evidence,
 license record, memory budget, and rollback candidate. No leaderboard-only

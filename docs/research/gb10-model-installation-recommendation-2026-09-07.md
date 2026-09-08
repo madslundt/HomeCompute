@@ -1,5 +1,9 @@
 # GB10 model recommendation from owner reports
 
+> Superseded on 2026-09-08 by the owner-selected final stack in ADR-019 and
+> `config/gb10-model-roster.json`. This document remains historical research
+> evidence; its Nemotron/Qwen competition is no longer an open choice.
+
 **Verified:** 2026-09-07
 **Scope:** one NVIDIA GB10/DGX Spark with 128 GB unified memory; models on the
 Mac are excluded.

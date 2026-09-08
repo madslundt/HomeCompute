@@ -127,21 +127,22 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-016](adr/016-nixos-control-plane-host.md) | NixOS, integrated Home Manager, sops-nix, and Compose define the control-plane host |
 | [ADR-017](adr/017-consolidated-application-host.md) | `home-core` also hosts automations and personal agents; container isolation replaces the separate application host |
 | [ADR-018](adr/018-multiple-developer-harnesses.md) | Codex, Pi, and OMP are supported behind the same restricted developer account boundary |
-| [ADR-019](adr/019-single-gb10-model-roster.md) | One GB10 retains Flash-Next plus one everyday winner and runs only one text model at a time |
+| [ADR-019](adr/019-single-gb10-model-roster.md) | Final GX10 roster: Qwen3.8-27B workhorse, exclusive Flash-Next cold swap, and four speech models |
 
 ## Research and model evidence
 
-Start with [the current LLM installation recommendation](research/llm-installation-recommendation.md)
-and [ADR-019](adr/019-single-gb10-model-roster.md). Flash-Next is the scheduled
-quality lane. Nemotron 3.5 Lightning and Qwen3.8-27B compete for one everyday
-slot; routing remains disabled and aliases unbound until that benchmark has a
-qualified winner. Qwen3.6 is only a legacy integration tuple.
+Start with [ADR-019](adr/019-single-gb10-model-roster.md) and the
+[machine-readable roster](../config/gb10-model-roster.json). Earlier model
+recommendations remain historical evaluation evidence. Qwen3.8-27B is the
+selected workhorse and Flash-Next is the exclusive cold-swap heavy lane.
+Routing remains disabled and aliases unbound until the pinned vLLM/native-MTP
+tuple passes live qualification; SGLang/DFlash is a runtime comparison, not a
+second general-purpose model.
 
-Røst Whisper is the recorded-Danish STT candidate, while Nemotron streaming ASR
-is conditional on a live-voice requirement. Røst Chatterbox is the natural TTS
-candidate and Piper remains the CPU fallback. Nemotron Embed is enabled only
-with a real access-controlled corpus; reranking and diarization remain
-conditional on measured need.
+The selected speech stack is Hviske v5.3 and Parakeet TDT 0.6B v2 for Danish
+and English STT, plus Plapre Nano v2 and Qwen3-TTS 1.7B CustomVoice for Danish
+and English TTS. The older Whisper/Piper scaffold is not the final speech
+deployment.
 
 | Topic | Documents |
 | --- | --- |

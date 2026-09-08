@@ -5,23 +5,27 @@
 The existing `prepare` profile still contains only the token-authenticated
 `model-fetch` job for text.
 
-The text service is still the legacy Qwen3.6 integration tuple and must not be
-mistaken for the selected model roster. The current roster is
-[`config/gb10-model-roster.json`](../../config/gb10-model-roster.json). Its
-Flash-Next, Nemotron Lightning, and Qwen3.8-27B candidates need separate pinned
-runtime profiles because their recipes, images, drafts, memory behavior, and
-startup contracts are not interchangeable. Until those profiles pass live
-GB10 qualification, do not edit only `MODEL_ID` in the existing environment.
+The text service is the first final-roster deployment stage: pinned
+`unsloth/Qwen3.8-27B-NVFP4` on vLLM with native `qwen3_5_mtp`. The current
+selection authority is
+[`config/gb10-model-roster.json`](../../config/gb10-model-roster.json).
+SGLang/DFlash and Flash-Next need separate pinned runtime profiles because
+their images, drafts, memory behavior, and startup contracts are not
+interchangeable with this launcher.
 
-The account-free `prepare-modalities` profile runs the one-shot
-`modality-fetch` service. It acquires these public artifacts at full publisher
-commit revisions:
+The account-free `prepare-modalities` profile is a legacy, pre-decision
+scaffold. It acquires these public artifacts at full publisher revisions:
 
 - Qwen3-VL-Embedding-2B (Apache-2.0);
 - Phi-4-multimodal-instruct and its `vision-lora` directory (MIT);
 - Whisper large-v3-turbo (MIT), staged for Danish/English qualification; and
 - the `da_DK-talesyntese-medium` Piper voice, config, and model card from the
   pinned voice repository revision (CC0-1.0 dataset).
+
+These modality checkpoints are not in the final roster. Do not use this
+profile for the new speech deployment. It remains as historical scaffolding
+until dedicated Hviske, Parakeet, Plapre, and Qwen3-TTS services have pinned
+runtime images and equivalent acquisition, authentication, and smoke tests.
 
 The fetch job receives no registry token. Before each Hugging Face download,
 the bounded fetch helper resolves the exact commit metadata and rejects tuples
@@ -36,9 +40,9 @@ configured SHA-256 digests pass. The modality setup script then atomically
 accepts separate `accepted-embedding-cache.json`,
 `accepted-vision-cache.json`, and `accepted-stt-cache.json` manifests.
 
-Individual `embedding`, `vision`, `stt`, and `tts` profiles render the hardened
+Individual `embedding`, `vision`, `stt`, and `tts` profiles render the legacy
 runtime services below. The explicit `modalities` profile starts all five only
-for a mixed-load qualification run:
+for reproducing the earlier qualification work:
 
 | Service | Private port | Interface |
 | --- | ---: | --- |

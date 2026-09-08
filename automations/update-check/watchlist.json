@@ -4,200 +4,93 @@
   "policy": {
     "mode": "review-only",
     "automatic_upgrade": false,
-    "reason": "A model, runtime, parser, quantization, image, and configuration form one qualified tuple. Upstream changes are review signals, not safe upgrades."
+    "reason": "A checkpoint, runtime, parser, quantization, image, and configuration form one qualified tuple. Upstream changes are review signals, not safe upgrades."
   },
   "sources": [
     {
-      "id": "legacy-text-integration-baseline",
+      "id": "primary-text-model",
       "kind": "huggingface_model",
-      "label": "NVIDIA Qwen3.6 35B A3B NVFP4",
-      "role": "Legacy smoke-test tuple; excluded from the retained roster",
-      "request_url": "https://huggingface.co/api/models/nvidia/Qwen3.6-35B-A3B-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4",
-      "benchmark_artifact_source": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "label": "Unsloth Qwen3.8 27B NVFP4",
+      "role": "Selected normal-production text checkpoint",
+      "request_url": "https://huggingface.co/api/models/unsloth/Qwen3.8-27B-NVFP4",
+      "project_url": "https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4",
+      "benchmark_artifact_source": "https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4",
       "benchmark_candidate_ids": [
-        "qwen3.6-35b-a3b-codex",
-        "qwen3.6-35b-a3b-direct",
-        "qwen3.6-35b-a3b-via-n8n",
-        "qwen3.6-35b-a3b-tavily",
-        "qwen3.6-35b-a3b-aula-real-mcp"
+        "qwen3.8-27b-vllm-mtp",
+        "qwen3.8-27b-sglang-dflash2"
       ]
     },
     {
-      "id": "quality-candidate",
+      "id": "dflash2-draft",
       "kind": "huggingface_model",
-      "label": "RadixArk Qwen3.8 27B NVFP4",
-      "role": "Everyday-slot challenger to Nemotron Lightning on one GB10",
-      "request_url": "https://huggingface.co/api/models/RadixArk/Qwen3.8-27B-NVFP4",
-      "project_url": "https://huggingface.co/RadixArk/Qwen3.8-27B-NVFP4",
-      "benchmark_artifact_source": "https://huggingface.co/RadixArk/Qwen3.8-27B-NVFP4",
-      "benchmark_candidate_ids": [
-        "qwen3.8-27b-codex",
-        "qwen3.8-27b-direct",
-        "qwen3.8-27b-via-n8n",
-        "qwen3.8-27b-tavily",
-        "qwen3.8-27b-aula-real-mcp"
-      ]
+      "label": "Inco Qwen3.8 27B DFlash2",
+      "role": "SGLang performance-profile speculative drafter; not a standalone LLM",
+      "request_url": "https://huggingface.co/api/models/incoai/Qwen3.8-27B-DFlash2",
+      "project_url": "https://huggingface.co/incoai/Qwen3.8-27B-DFlash2"
     },
     {
-      "id": "qwen38-27b-single-spark-recipe",
-      "kind": "github_file",
-      "label": "Qwen3.8 27B DFlash2 single-GB10 recipe",
-      "role": "Pinned everyday-candidate runtime and draft-model tuple",
-      "request_url": "https://api.github.com/repos/CharmiUwU/Qwen3.8-27B-DFlash2-DGX-Spark/commits?path=README.md&per_page=1",
-      "project_url": "https://github.com/CharmiUwU/Qwen3.8-27B-DFlash2-DGX-Spark"
-    },
-    {
-      "id": "deep-work-quality-candidate",
+      "id": "heavy-text-model",
       "kind": "huggingface_model",
       "label": "RadixArk Qwen3.8 Flash-Next NVFP4",
-      "role": "Single-GB10 deep research, corpus cross-referencing, and long-agent candidate",
+      "role": "Operator-exclusive heavy-mode text checkpoint",
       "request_url": "https://huggingface.co/api/models/RadixArk/Qwen3.8-Flash-Next-NVFP4",
       "project_url": "https://huggingface.co/RadixArk/Qwen3.8-Flash-Next-NVFP4"
     },
     {
-      "id": "flash-next-single-spark-recipe",
+      "id": "flash-next-single-gb10-recipe",
       "kind": "github_file",
       "label": "Qwen3.8 Flash-Next single-GB10 recipe",
-      "role": "Pinned NVMe-backed vLLM feasibility and correctness fixes",
+      "role": "Pinned NVMe-backed vLLM heavy-mode recipe",
       "request_url": "https://api.github.com/repos/blazux/qwen3.8-Flash-DGX/commits?path=README.md&per_page=1",
       "project_url": "https://github.com/blazux/qwen3.8-Flash-DGX"
     },
     {
-      "id": "performance-candidate",
+      "id": "danish-stt",
       "kind": "huggingface_model",
-      "label": "NVIDIA Nemotron 3.5 Lightning NVFP4",
-      "role": "Everyday-slot candidate competing with Qwen3.8-27B",
-      "request_url": "https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-      "benchmark_artifact_source": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-      "benchmark_candidate_ids": [
-        "nemotron-3.5-lightning-codex",
-        "nemotron-3.5-lightning-direct",
-        "nemotron-3.5-lightning-via-n8n",
-        "nemotron-3.5-lightning-tavily",
-        "nemotron-3.5-lightning-aula-real-mcp"
-      ]
+      "label": "Hviske v5.3",
+      "role": "Selected Danish speech-to-text checkpoint",
+      "request_url": "https://huggingface.co/api/models/syvai/hviske-v5.3",
+      "project_url": "https://huggingface.co/syvai/hviske-v5.3"
     },
     {
-      "id": "conditional-coding-candidate",
+      "id": "english-stt",
       "kind": "huggingface_model",
-      "label": "Ornith 1.5 35B A3B",
-      "role": "Conditional coding and agent challenger",
-      "request_url": "https://huggingface.co/api/models/ornith-ai/Ornith-1.5-35B-A3B",
-      "project_url": "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B"
+      "label": "Parakeet TDT 0.6B v2",
+      "role": "Selected English speech-to-text checkpoint",
+      "request_url": "https://huggingface.co/api/models/nvidia/parakeet-tdt-0.6b-v2",
+      "project_url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2"
     },
     {
-      "id": "conditional-dense-control",
+      "id": "danish-tts",
       "kind": "huggingface_model",
-      "label": "NVIDIA Muse Glimmer 30B NVFP4",
-      "role": "Conditional dense, agent, and multimodal control",
-      "request_url": "https://huggingface.co/api/models/nvidia/Muse-Glimmer-30B-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/Muse-Glimmer-30B-NVFP4"
+      "label": "Plapre Nano v2",
+      "role": "Selected Danish text-to-speech checkpoint",
+      "request_url": "https://huggingface.co/api/models/syvai/plapre-nano-v2",
+      "project_url": "https://huggingface.co/syvai/plapre-nano-v2"
     },
     {
-      "id": "multilingual-control",
+      "id": "english-tts",
       "kind": "huggingface_model",
-      "label": "NVIDIA Gemma 4 31B NVFP4",
-      "role": "Conditional Danish and multilingual control",
-      "request_url": "https://huggingface.co/api/models/nvidia/Gemma-4-31B-IT-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/Gemma-4-31B-IT-NVFP4"
-    },
-    {
-      "id": "watch-mistral-small-4",
-      "kind": "huggingface_model",
-      "label": "Mistral Small 4 119B NVFP4",
-      "role": "Watchlist successor to Devstral",
-      "request_url": "https://huggingface.co/api/models/mistralai/Mistral-Small-4-119B-2603-NVFP4",
-      "project_url": "https://huggingface.co/mistralai/Mistral-Small-4-119B-2603-NVFP4"
-    },
-    {
-      "id": "watch-k2-horizon",
-      "kind": "huggingface_model",
-      "label": "K2 Horizon MoVA 36B A4B",
-      "role": "Watchlist coding and agent candidate",
-      "request_url": "https://huggingface.co/api/models/IFM/K2-Horizon-MoVA-36B-A4B",
-      "project_url": "https://huggingface.co/IFM/K2-Horizon-MoVA-36B-A4B"
-    },
-    {
-      "id": "watch-granite-4-2",
-      "kind": "huggingface_model",
-      "label": "Granite 4.2 30B NVFP4",
-      "role": "Watchlist compact official NVFP4 candidate",
-      "request_url": "https://huggingface.co/api/models/ibm-granite/granite-4.2-30b-nvfp4",
-      "project_url": "https://huggingface.co/ibm-granite/granite-4.2-30b-nvfp4"
-    },
-    {
-      "id": "small-control-candidate",
-      "kind": "huggingface_model",
-      "label": "Qwen3.5 4B",
-      "role": "Small control-model candidate",
-      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3.5-4B",
-      "project_url": "https://huggingface.co/Qwen/Qwen3.5-4B"
-    },
-    {
-      "id": "danish-stt-candidate",
-      "kind": "huggingface_model",
-      "label": "Røst v3 Whisper 1.5B",
-      "role": "Preferred recorded Danish speech-to-text candidate",
-      "request_url": "https://huggingface.co/api/models/CoRal-project/roest-v3-whisper-1.5b",
-      "project_url": "https://huggingface.co/CoRal-project/roest-v3-whisper-1.5b"
-    },
-    {
-      "id": "danish-streaming-stt-candidate",
-      "kind": "huggingface_model",
-      "label": "Nemotron 3.5 ASR Streaming 0.6B",
-      "role": "Conditional live Danish voice latency candidate",
-      "request_url": "https://huggingface.co/api/models/nvidia/nemotron-3.5-asr-streaming-0.6b",
-      "project_url": "https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b"
-    },
-    {
-      "id": "danish-tts-candidate",
-      "kind": "huggingface_model",
-      "label": "Røst v3 Chatterbox 350M",
-      "role": "Danish text-to-speech candidate",
-      "request_url": "https://huggingface.co/api/models/CoRal-project/roest-v3-chatterbox-350m",
-      "project_url": "https://huggingface.co/CoRal-project/roest-v3-chatterbox-350m"
-    },
-    {
-      "id": "meeting-diarization-candidate",
-      "kind": "huggingface_model",
-      "label": "pyannote Speaker Diarization Community-1",
-      "role": "Conditional multi-speaker meeting attribution",
-      "request_url": "https://huggingface.co/api/models/pyannote/speaker-diarization-community-1",
-      "project_url": "https://huggingface.co/pyannote/speaker-diarization-community-1"
-    },
-    {
-      "id": "nvidia-nvfp4-discovery",
-      "kind": "huggingface_search",
-      "label": "New or updated NVIDIA NVFP4 models",
-      "role": "Discovery signal for potentially better GB10 candidates",
-      "request_url": "https://huggingface.co/api/models?author=nvidia&search=NVFP4&sort=lastModified&direction=-1&limit=100&full=false",
-      "project_url": "https://huggingface.co/models?search=nvidia%20NVFP4"
-    },
-    {
-      "id": "dgx-spark-vllm-playbook",
-      "kind": "github_file",
-      "label": "NVIDIA DGX Spark vLLM playbook",
-      "role": "Spark model-support matrix and model-specific recipes",
-      "request_url": "https://api.github.com/repos/NVIDIA/dgx-spark-playbooks/commits?path=nvidia%2Fvllm%2FREADME.md&per_page=1",
-      "project_url": "https://github.com/NVIDIA/dgx-spark-playbooks/blob/main/nvidia/vllm/README.md"
+      "label": "Qwen3-TTS 1.7B CustomVoice",
+      "role": "Selected English text-to-speech checkpoint",
+      "request_url": "https://huggingface.co/api/models/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "project_url": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
     },
     {
       "id": "vllm-runtime",
       "kind": "github_release",
       "label": "vLLM release",
-      "role": "Upstream runtime signal; NVIDIA image support must still be verified",
+      "role": "Native-MTP baseline and Flash-Next runtime signal",
       "request_url": "https://api.github.com/repos/vllm-project/vllm/releases/latest",
       "project_url": "https://github.com/vllm-project/vllm/releases"
     },
     {
-      "id": "n8n-runtime",
+      "id": "sglang-runtime",
       "kind": "github_release",
-      "label": "n8n release",
-      "role": "Automation runtime and security-maintenance signal",
-      "request_url": "https://api.github.com/repos/n8n-io/n8n/releases/latest",
-      "project_url": "https://github.com/n8n-io/n8n/releases"
+      "label": "SGLang release",
+      "role": "DFlash2 performance-profile runtime signal",
+      "request_url": "https://api.github.com/repos/sgl-project/sglang/releases/latest",
+      "project_url": "https://github.com/sgl-project/sglang/releases"
     },
     {
       "id": "litellm-runtime",
@@ -208,12 +101,12 @@
       "project_url": "https://github.com/BerriAI/litellm/releases"
     },
     {
-      "id": "llama-cpp-runtime",
+      "id": "n8n-runtime",
       "kind": "github_release",
-      "label": "llama.cpp release",
-      "role": "Required quantized text-runtime baseline",
-      "request_url": "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
-      "project_url": "https://github.com/ggml-org/llama.cpp/releases"
+      "label": "n8n release",
+      "role": "Automation runtime and security-maintenance signal",
+      "request_url": "https://api.github.com/repos/n8n-io/n8n/releases/latest",
+      "project_url": "https://github.com/n8n-io/n8n/releases"
     },
     {
       "id": "nixos-release",
@@ -222,38 +115,6 @@
       "role": "home-core operating-system update signal",
       "request_url": "https://api.github.com/repos/NixOS/nixpkgs/commits?sha=nixos-26.05&per_page=1",
       "project_url": "https://github.com/NixOS/nixpkgs/tree/nixos-26.05"
-    },
-    {
-      "id": "whisper-runtime",
-      "kind": "github_release",
-      "label": "OpenAI Whisper release",
-      "role": "Meeting speech-to-text runtime and model signal",
-      "request_url": "https://api.github.com/repos/openai/whisper/releases/latest",
-      "project_url": "https://github.com/openai/whisper/releases"
-    },
-    {
-      "id": "piper-runtime",
-      "kind": "github_release",
-      "label": "OHF Piper release",
-      "role": "Danish text-to-speech runtime signal",
-      "request_url": "https://api.github.com/repos/OHF-Voice/piper1-gpl/releases/latest",
-      "project_url": "https://github.com/OHF-Voice/piper1-gpl/releases"
-    },
-    {
-      "id": "embedding-candidate",
-      "kind": "huggingface_model",
-      "label": "Nemotron 3 Embed 1B NVFP4",
-      "role": "Private-retrieval embedding model enabled with RAG",
-      "request_url": "https://huggingface.co/api/models/nvidia/Nemotron-3-Embed-1B-NVFP4",
-      "project_url": "https://huggingface.co/nvidia/Nemotron-3-Embed-1B-NVFP4"
-    },
-    {
-      "id": "reranker-candidate",
-      "kind": "huggingface_model",
-      "label": "Llama Nemotron Rerank VL 1B v2",
-      "role": "Conditional reranker after measured retrieval failure",
-      "request_url": "https://huggingface.co/api/models/nvidia/llama-nemotron-rerank-vl-1b-v2",
-      "project_url": "https://huggingface.co/nvidia/llama-nemotron-rerank-vl-1b-v2"
     }
   ]
 }

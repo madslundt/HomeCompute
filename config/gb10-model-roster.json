@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "roster_version": "2026-09-07-owner-report-selection",
+  "schema_version": 2,
+  "roster_version": "2026-09-08-final-qwen38-stack",
   "hardware": {
     "accelerator": "NVIDIA GB10",
     "unified_memory_gib": 128,
@@ -8,96 +8,104 @@
     "retained_text_model_limit": 2
   },
   "text_models": {
-    "quality_lane": {
+    "primary": {
+      "model_id": "unsloth/Qwen3.8-27B-NVFP4",
+      "revision": "57926baca9a82b4d6906b43f2750d55315f5b10f",
+      "license_id": "apache-2.0",
+      "disposition": "production-workhorse",
+      "roles": ["assistant", "automation", "coding", "home", "meeting", "research"],
+      "default_thinking_mode": "disabled",
+      "runtime_profiles": {
+        "baseline": {
+          "runtime": "vllm",
+          "speculative_method": "qwen3_5_mtp",
+          "draft_model_id": null,
+          "status": "implement-first"
+        },
+        "performance": {
+          "runtime": "sglang",
+          "speculative_method": "dflash",
+          "draft_model_id": "incoai/Qwen3.8-27B-DFlash2",
+          "draft_revision": "dedf8df68adfb1afeaf7b7480c0a0243108177b4",
+          "status": "benchmark-after-baseline"
+        }
+      }
+    },
+    "heavy": {
       "model_id": "RadixArk/Qwen3.8-Flash-Next-NVFP4",
       "revision": "7b719225242aacd3dbd3f9407468c2ee9a9d2594",
-      "disposition": "retain",
-      "activation": "scheduled-exclusive",
+      "license_id": "other",
+      "disposition": "cold-swap-heavy",
+      "activation": "operator-exclusive",
       "roles": ["coding", "research"],
       "recipe": {
         "url": "https://github.com/blazux/qwen3.8-Flash-DGX",
-        "revision": "656cdb075b57671c9bd6807b57f630fb3c1641fe"
+        "revision": "2d9b5b744b8b8e25e0c40120f4a13bcec3554aa9"
       }
-    },
-    "everyday_competition": {
-      "retention_limit": 1,
-      "winner_required": true,
-      "candidates": [
-        {
-          "model_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-          "revision": "cc84af2fe71647d87f4486c064f320e1e7535243",
-          "disposition": "benchmark",
-          "roles": ["assistant", "automation", "home", "meeting"],
-          "draft_model_id": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4-DSpark",
-          "draft_revision": "8a0177116d138011e63103110f136ec0ca09ebbf"
-        },
-        {
-          "model_id": "RadixArk/Qwen3.8-27B-NVFP4",
-          "revision": "554ebba9b5f1b79dc11246341960360e6ef05ef4",
-          "disposition": "benchmark",
-          "roles": ["assistant", "automation", "coding", "home", "meeting"],
-          "draft_model_id": "z-lab/Qwen3.8-27B-DFlash2",
-          "draft_revision": "50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
-          "recipe": {
-            "url": "https://github.com/CharmiUwU/Qwen3.8-27B-DFlash2-DGX-Spark",
-            "revision": "47529aede2ccf01069909f492c5e0ea8f93a954e"
-          }
-        }
-      ]
     }
   },
   "services": {
-    "embedding": {
-      "model_id": "nvidia/Nemotron-3-Embed-1B-NVFP4",
-      "revision": "f630128278eb245579d3ea022b4f659fbd614318",
-      "disposition": "enable-with-rag"
+    "stt_danish": {
+      "model_id": "syvai/hviske-v5.3",
+      "revision": "5d1a09822018702dc51d763e3a867b62d26b3501",
+      "license_id": "cc-by-nc-4.0",
+      "disposition": "install",
+      "language": "da"
     },
-    "stt_recorded": {
-      "model_id": "CoRal-project/roest-v3-whisper-1.5b",
-      "revision": "7182cced29631ef7d7776eb8c01f24624b9b9b04",
-      "disposition": "retain"
+    "stt_english": {
+      "model_id": "nvidia/parakeet-tdt-0.6b-v2",
+      "revision": "ae9ad07059c7c739ffaf932226a8fe64ae2620b0",
+      "license_id": "cc-by-4.0",
+      "disposition": "install",
+      "language": "en"
     },
-    "stt_streaming": {
-      "model_id": "nvidia/nemotron-3.5-asr-streaming-0.6b",
-      "revision": "1c8deaecc64b91f034d73e08dd8b64625eb3395d",
-      "disposition": "benchmark-if-live-voice-enabled"
+    "tts_danish": {
+      "model_id": "syvai/plapre-nano-v2",
+      "revision": "007e0b471e377dd5061786f7df6ad659d15c4d5f",
+      "license_id": "cc-by-4.0",
+      "disposition": "install",
+      "language": "da"
     },
-    "tts": {
-      "model_id": "CoRal-project/roest-v3-chatterbox-350m",
-      "revision": "2a12d9c0be51fbebd6ae100ab5578caef8b6bd4f",
-      "disposition": "retain"
-    },
-    "diarization": {
-      "model_id": "pyannote/speaker-diarization-community-1",
-      "revision": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee",
-      "disposition": "enable-with-multi-speaker-meetings"
-    },
-    "reranker": {
-      "model_id": "nvidia/llama-nemotron-rerank-vl-1b-v2",
-      "revision": "0c733be3b6451289f4288c0b170376d1fbeda55a",
-      "disposition": "enable-after-retrieval-failure"
+    "tts_english": {
+      "model_id": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "revision": "0c0e3051f131929182e2c023b9537f8b1c68adfe",
+      "license_id": "apache-2.0",
+      "disposition": "install",
+      "language": "en"
     }
   },
-  "excluded_text_models": [
+  "excluded_models": [
     "nvidia/DeepSeek-V4-Flash-NVFP4",
-    "nvidia/Qwen3.8-Flash-Next-NVFP4",
-    "nvidia/Qwen3.6-35B-A3B-NVFP4"
+    "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+    "nvidia/Qwen3.6-35B-A3B-NVFP4",
+    "openai/whisper-large-v3",
+    "openai/whisper-large-v3-turbo",
+    "syvai/hviske-v5-tiny",
+    "syvai/Qwen3.8-27B-DFlash2-W4A16",
+    "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
   ],
   "operating_profiles": {
-    "everyday": {
-      "text_lane": "everyday_competition.winner",
-      "may_run_speech": true,
-      "may_run_embedding": true
+    "normal": {
+      "text_model": "primary",
+      "allowed_text_runtime_profiles": ["baseline", "performance"],
+      "speech_services": ["stt_danish", "stt_english", "tts_danish", "tts_english"]
     },
-    "deep_work": {
-      "text_lane": "quality_lane",
-      "drain_everyday_text_first": true,
-      "speech_requires_mixed_load_qualification": true
-    },
-    "meeting_ingestion": {
-      "text_lane": "everyday_competition.winner",
-      "required_services": ["stt_recorded"],
-      "optional_services": ["diarization", "embedding"]
+    "heavy": {
+      "text_model": "heavy",
+      "stop_text_model_first": "primary",
+      "restart_text_model_after": "primary",
+      "dynamic_router_activation": false
     }
-  }
+  },
+  "deployment_order": [
+    "primary.runtime_profiles.baseline",
+    "benchmark.baseline",
+    "primary.runtime_profiles.performance",
+    "benchmark.runtime-comparison",
+    "services.stt_danish",
+    "services.stt_english",
+    "services.tts_danish",
+    "services.tts_english",
+    "heavy"
+  ]
 }

@@ -115,11 +115,16 @@ services:
         from pathlib import Path
         repo_root = Path(os.environ["HF_HOME"]) / "hub" / f"models--{os.environ['MODEL_ID'].replace('/', '--')}" / "snapshots"
         paths = {revision: repo_root / revision for revision in (os.environ["MODEL_REVISION"], os.environ["TOKENIZER_REVISION"], os.environ["CODE_REVISION"])}
-        document = json.loads((Path(paths[os.environ["TOKENIZER_REVISION"]]) / "tokenizer_config.json").read_text(encoding="utf-8"))
-        template = document.get("chat_template")
-        if template is None:
-            raise RuntimeError("tokenizer_config.json has no chat_template")
-        canonical = template if isinstance(template, str) else json.dumps(template, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        tokenizer_root = Path(paths[os.environ["TOKENIZER_REVISION"]])
+        standalone = tokenizer_root / "chat_template.jinja"
+        if standalone.is_file():
+            canonical = standalone.read_text(encoding="utf-8")
+        else:
+            document = json.loads((tokenizer_root / "tokenizer_config.json").read_text(encoding="utf-8"))
+            template = document.get("chat_template")
+            if template is None:
+                raise RuntimeError("no standalone or tokenizer_config.json chat template")
+            canonical = template if isinstance(template, str) else json.dumps(template, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         actual = hashlib.sha256(canonical.encode()).hexdigest()
         if actual != os.environ["CHAT_TEMPLATE_SHA256"].lower():
             raise RuntimeError(f"chat template SHA-256 mismatch: expected {os.environ['CHAT_TEMPLATE_SHA256']}, found {actual}")

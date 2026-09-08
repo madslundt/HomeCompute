@@ -17,20 +17,21 @@ Mac Mini and HAOS runtime state is **unverified**, not absent.
 
 ## GB10 project
 
-`gb10setup` contains requirements, architecture, design, risks, verification,
-ADRs, research, and an implementation plan. It now also contains editable D2
-platform/installation diagrams and a guarded Phase C scaffold: an idempotent
-setup script, immutable-input template, and private vLLM Compose definition.
-The scaffold contains placeholders rather than a qualified image digest/model
-commit, and it deliberately refuses to deploy until they and the security
-inputs are resolved. The repository still contains no secrets, model artifacts,
-accepted release manifest, or observed running GB10 service. See
-`setup-guide.md`.
+`HomeCompute` contains requirements, architecture, design, risks, verification,
+ADRs, research, and an implementation plan. The final checkpoint roster now
+selects Qwen3.8-27B as the workhorse, Flash-Next as an exclusive cold swap, and
+two STT plus two TTS models. The guarded text scaffold pins the first
+deployment stage—Qwen3.8-27B with native MTP on vLLM—while routing remains
+disabled until live qualification. SGLang/DFlash, the four speech runtimes, and
+Flash-Next still need independently pinned runtime images. The repository
+contains no secrets, model artifacts, accepted release manifest, or observed
+running GB10 service. See `setup-guide.md`.
 
 The current documents already make several sound decisions:
 
 - GB10 is a rebuildable inference appliance, not the home for application state.
-- vLLM is the first text-runtime PoC, using an NVIDIA-qualified GB10 artifact.
+- vLLM/native MTP is the first text-runtime baseline; SGLang/DFlash is the
+  performance comparison.
 - models and runtimes are hidden behind stable capability names;
 - Home Assistant remains the authority for tools and physical actions;
 - Codex keeps explicit, observable local/cloud selection and fallback;

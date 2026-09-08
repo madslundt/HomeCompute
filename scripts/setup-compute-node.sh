@@ -205,9 +205,11 @@ validate_config() {
   if [[ ! "$VLLM_GPU_MEMORY_UTILIZATION" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v n="$VLLM_GPU_MEMORY_UTILIZATION" 'BEGIN {exit !(n>=.20 && n<=.90)}'; then die "GPU memory utilization must be 0.20 through 0.90"; fi
   [[ "$VLLM_SHM_SIZE" =~ ^[0-9]+[mMgG][bB]?$ ]] || die "Invalid VLLM_SHM_SIZE"
   for value in "$VLLM_ATTENTION_BACKEND" "$VLLM_MOE_BACKEND" "$VLLM_REASONING_PARSER" "$VLLM_TOOL_CALL_PARSER"; do [[ "$value" =~ ^[a-zA-Z0-9_.-]+$ ]] || die "Malformed backend/parser"; done
-  [[ "$MODEL_ID" == nvidia/Qwen3.6-35B-A3B-NVFP4 && "$MODEL_PROVENANCE_URL" == https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4 && "${MODEL_LICENSE_ID,,}" == apache-2.0 && "${MODEL_WEIGHT_FORMAT,,}" == modelopt-safetensors && "${MODEL_QUANTIZATION,,}" == nvfp4 ]] || die "Only the pinned Qwen3.6 NVFP4 baseline recipe is supported"
-  [[ "$VLLM_ATTENTION_BACKEND:$VLLM_MOE_BACKEND:$VLLM_REASONING_PARSER:$VLLM_TOOL_CALL_PARSER" == flashinfer:marlin:qwen3:qwen3_xml ]] || die "Qwen3.6 backend/parser recipe changed"
-  case "${VLLM_SPECULATIVE_CONFIG:-}" in '') ;; '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"triton"}') warn "Experimental MTP override cannot produce acceptance evidence" ;; *) die "Unsupported speculative configuration" ;; esac
+  [[ "$MODEL_ID" == unsloth/Qwen3.8-27B-NVFP4 && "$MODEL_REVISION" == 57926baca9a82b4d6906b43f2750d55315f5b10f && "$TOKENIZER_REVISION" == "$MODEL_REVISION" && "$CODE_REVISION" == "$MODEL_REVISION" ]] || die "Only the pinned Qwen3.8-27B NVFP4 artifact is supported"
+  [[ "$MODEL_PROVENANCE_URL" == https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4 && "${MODEL_LICENSE_ID,,}" == apache-2.0 && "${MODEL_WEIGHT_FORMAT,,}" == compressed-tensors-safetensors && "${MODEL_QUANTIZATION,,}" == nvfp4 ]] || die "Qwen3.8 provenance metadata changed"
+  [[ "$CHAT_TEMPLATE_SHA256" == 12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce ]] || die "Qwen3.8 chat template digest changed"
+  [[ "$VLLM_ATTENTION_BACKEND:$VLLM_MOE_BACKEND:$VLLM_REASONING_PARSER:$VLLM_TOOL_CALL_PARSER" == flashinfer:marlin:qwen3:qwen3_xml ]] || die "Qwen3.8 backend/parser recipe changed"
+  [[ "${VLLM_SPECULATIVE_CONFIG:-}" == '{"method":"qwen3_5_mtp","num_speculative_tokens":3}' ]] || die "Qwen3.8 baseline requires native qwen3_5_mtp"
   [[ "$registry_secret" != true ]] || check_secret_file HF_TOKEN_FILE; check_secret_file VLLM_API_KEY_FILE
   require_command docker; docker compose version >/dev/null; compose config --quiet
   log "Configuration is complete, immutable, firewall-bound, and Compose-valid"

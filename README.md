@@ -38,34 +38,33 @@ model names directly.
 | Meetings | `meeting` | Transcription, diarization, summaries, decisions, and action extraction |
 | Personal agents | `assistant` | Isolated assistant sessions with explicit tool and data permissions |
 | Speech to text | fixed STT route | Danish, English, and mixed-language transcription |
-| Text to speech | fixed TTS route | A qualified Danish voice for short and long responses |
+| Text to speech | language-specific TTS routes | Danish and English agent speech |
 
 Logical aliases are stable contracts. A model may back several aliases only
 after it passes each use case's quality, safety, latency, and recovery tests.
 
 ## GB10 model roster
 
-The selected steady state is two text models at most, with only one resident:
-Flash-Next for scheduled deep work plus one everyday winner. Nemotron Lightning
-and Qwen3.8-27B compete for that everyday slot on the real Danish, tool-use,
-latency, and recovery fixtures.
+The final steady state is two text models at most, with only one resident:
+Qwen3.8-27B is the normal production workhorse and Flash-Next is an exclusive
+operator-controlled heavy mode. Native MTP on vLLM is established first, then
+SGLang/DFlash is kept only if it is materially better on real workloads.
 
 | Role | Selection |
 | --- | --- |
-| Deep coding and research | RadixArk Qwen3.8 Flash-Next NVFP4 through the pinned `blazux` single-GB10 recipe |
-| Everyday assistant and automations | Benchmark NVIDIA Nemotron 3.5 Lightning NVFP4 + DSpark against RadixArk Qwen3.8-27B NVFP4 + DFlash2; retain one |
-| Retrieval | NVIDIA Nemotron 3 Embed 1B NVFP4 when private RAG is enabled; reranking only after a measured retrieval failure |
-| Recorded Danish STT | Røst v3 Whisper 1.5B |
-| Live Danish STT | Nemotron 3.5 ASR Streaming 0.6B only if streaming voice is enabled and it wins the latency/quality trade-off |
-| Danish TTS | Røst v3 Chatterbox 350M; CPU Piper remains the independent fallback |
-| Speaker attribution | pyannote Community-1 only for multi-speaker meetings |
+| Normal text inference | `unsloth/Qwen3.8-27B-NVFP4`; vLLM/native MTP baseline, then SGLang with the `incoai` DFlash2 drafter |
+| Heavy coding and research | `RadixArk/Qwen3.8-Flash-Next-NVFP4` through the pinned `blazux` single-GB10 recipe |
+| Danish STT | `syvai/hviske-v5.3` |
+| English STT | `nvidia/parakeet-tdt-0.6b-v2` |
+| Danish TTS | `syvai/plapre-nano-v2` |
+| English TTS | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` |
 
-DeepSeek V4 Flash, NVIDIA's distinct Flash-Next checkpoint, Qwen3.6, Ornith,
-Muse, Gemma, GPT-OSS, Devstral, and GLM are outside the retained GB10 roster.
+DeepSeek V4 Flash, Nemotron, Qwen3.6, duplicate Qwen3.8 variants, Whisper,
+Hviske Tiny, Piper, MOSS-TTS, and Qwen3-TTS 0.6B are not installed initially.
 The immutable machine-readable policy is
 [`config/gb10-model-roster.json`](config/gb10-model-roster.json); see the
-[owner-report recommendation](docs/research/gb10-model-installation-recommendation-2026-09-07.md)
-for evidence and qualification caveats.
+[final roster ADR](docs/adr/019-single-gb10-model-roster.md) for lifecycle and
+qualification caveats.
 
 ## Setup in order
 
@@ -92,8 +91,8 @@ clients.
 7. Point the already-loopback-tested gateway at the qualified compute endpoint,
    apply its exact ingress/egress policy, then expose `https://ai.home.arpa` to
    approved clients.
-8. Benchmark model candidates and migrate automations or consumers one at a
-   time, retaining rollback until each acceptance gate passes.
+8. Benchmark the two Qwen3.8-27B runtime profiles, then migrate automations or
+   consumers one at a time, retaining rollback until each gate passes.
 
 The node baselines may be built in parallel. Gateway integration needs both
 nodes, and no durable service should move before an off-host restore test.
@@ -103,7 +102,7 @@ nodes, and no durable service should move before an off-host restore test.
 - a guarded setup script for the vendor-managed compute node;
 - a pinned NixOS host configuration with integrated Home Manager and sops-nix;
 - a hardened control-plane Compose stack with state below `/srv/state`;
-- a hardened Compose definition for the first compute-node text candidate;
+- a hardened Compose definition for the selected Qwen3.8 vLLM/MTP baseline;
 - configuration templates that reject unresolved placeholders;
 - architecture, detailed plans, verification criteria, risks, and research;
 - editable D2 diagrams with rendered SVG and PNG versions.

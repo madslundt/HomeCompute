@@ -67,7 +67,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
         raise PolicyError("model activation is not implemented; load_on_demand and activation.enabled must be false")
 
     qualification = _object(policy.get("qualification"), "qualification")
-    if set(qualification) != {"status", "everyday_winner", "resident_text_model_limit"}:
+    if set(qualification) != {"status", "selected_primary", "resident_text_model_limit"}:
         raise PolicyError("qualification has unsupported or missing keys")
     if qualification["status"] not in {"pending", "qualified"}:
         raise PolicyError("qualification.status must be pending or qualified")
@@ -92,7 +92,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
         if set(model) != required:
             raise PolicyError(f"models.{model_name} must contain exactly {', '.join(sorted(required))}")
         _string(model["upstream_model"], f"models.{model_name}.upstream_model")
-        if model["selection_lane"] not in {"quality", "everyday_candidate"}:
+        if model["selection_lane"] not in {"primary", "heavy"}:
             raise PolicyError(f"models.{model_name}.selection_lane is invalid")
         if not isinstance(model["quality_rank"], int):
             raise PolicyError(f"models.{model_name}.quality_rank must be an integer")
@@ -110,8 +110,11 @@ def validate_policy(policy: dict[str, Any]) -> None:
     if qualification["status"] == "pending":
         if policy["mode"] != "disabled":
             raise PolicyError("pending qualification requires disabled routing mode")
-        if policy.get("default_model") is not None or qualification["everyday_winner"] is not None:
-            raise PolicyError("pending qualification cannot select a default or everyday winner")
+        selected_primary = _string(qualification["selected_primary"], "qualification.selected_primary")
+        if selected_primary not in models or models[selected_primary]["selection_lane"] != "primary":
+            raise PolicyError("qualification.selected_primary must reference the selected primary model")
+        if policy.get("default_model") is not None:
+            raise PolicyError("pending qualification cannot activate a default")
         if any(model_name is not None for model_name in aliases.values()):
             raise PolicyError("pending qualification requires unbound aliases")
         if any(model["auto_eligible"] for model in models.values()):
@@ -120,23 +123,17 @@ def validate_policy(policy: dict[str, Any]) -> None:
         default_model = _string(policy.get("default_model"), "default_model")
         if default_model not in models:
             raise PolicyError("default_model must reference models")
-        everyday_winner = _string(qualification["everyday_winner"], "qualification.everyday_winner")
-        if everyday_winner not in models:
-            raise PolicyError("qualification.everyday_winner must reference models")
-        if models[everyday_winner]["selection_lane"] != "everyday_candidate":
-            raise PolicyError("qualification.everyday_winner must reference an everyday candidate")
+        selected_primary = _string(qualification["selected_primary"], "qualification.selected_primary")
+        if selected_primary not in models or models[selected_primary]["selection_lane"] != "primary":
+            raise PolicyError("qualification.selected_primary must reference the primary lane")
+        if default_model != selected_primary:
+            raise PolicyError("default_model must be the selected primary")
         for alias, model_name in aliases.items():
             if model_name not in models:
                 raise PolicyError(f"aliases.{alias} references an unknown model")
-        for alias in {"assistant", "automation", "home", "meeting"}:
-            if aliases[alias] != everyday_winner:
-                raise PolicyError(f"aliases.{alias} must reference the everyday winner")
-        quality_models = [name for name, model in models.items() if model["selection_lane"] == "quality"]
-        if len(quality_models) != 1:
-            raise PolicyError("qualified policy must contain exactly one quality-lane model")
-        for alias in {"coding", "research"}:
-            if aliases[alias] != quality_models[0]:
-                raise PolicyError(f"aliases.{alias} must reference the quality-lane model")
+        for alias, model_name in aliases.items():
+            if model_name != selected_primary:
+                raise PolicyError(f"aliases.{alias} must reference the selected primary; heavy mode is operator-swapped")
 
     auto = _object(policy.get("auto"), "auto")
     if set(auto) != {"confidence_threshold", "low_confidence_policy", "classifier_failure_policy"}:

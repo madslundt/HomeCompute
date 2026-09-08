@@ -1,5 +1,8 @@
 # LLM installation recommendation
 
+> Superseded on 2026-09-08 by ADR-019. Keep this document as historical
+> evaluation context, not as the current install list.
+
 Verified: 2026-09-07
 
 Status: selected GB10 roster with production promotion still gated by live

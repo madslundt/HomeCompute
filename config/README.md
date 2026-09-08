@@ -7,7 +7,7 @@ they do not use them as production configuration in place.
 | File | Used by | Purpose |
 | --- | --- | --- |
 | `compute-node.env.example` | `setup-compute-node.sh`, `setup-compute-modalities.sh` | Immutable text and staged modality artifact tuples, exact private ports, bind policy, and compute limits |
-| `gb10-model-roster.json` | `gb10_model_roster.py`, operators, and future deployment profiles | Bounded two-lane text roster, speech/RAG selections, immutable revisions, mutual-exclusion policy, and benchmark/removal gates |
+| `gb10-model-roster.json` | `gb10_model_roster.py`, operators, and deployment profiles | Final two-model text roster, four speech selections, immutable revisions, cold-swap policy, and deployment order |
 | `model-router-policy.json` | `model_router_policy.py` and the future LiteLLM routing integration | Qualification-gated aliases, model inventory, client permissions, and the one-resident text-model limit |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, `/srv/state`, and sops-nix runtime secret paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
@@ -25,23 +25,18 @@ site-specific secrets here. Compute-node secrets belong under
 `/run/secrets/control-plane` by sops-nix and never belong in an environment
 file.
 
-The compute template also pins the public embedding, vision, STT, and Danish
-Piper artifacts used by `setup-compute-modalities.sh`, plus the independently
-reviewed per-tuple and absolute cache acquisition ceilings. Changing any
-artifact requires requalifying its ceilings. Keep the exact sorted
-`COMPUTE_HOST_PORTS` set aligned with the per-service private ports. The
-modality fetch does not require a Hugging Face account or token; the existing
-token file remains limited to the text acquisition profile. All modality HTTP
-services share `VLLM_API_KEY_FILE`. Native Wyoming TTS has no application
-credential and therefore must remain on the fixed private bind behind the exact
-source-restricted firewall.
+The compute template now pins the selected Qwen3.8-27B vLLM/native-MTP
+baseline. Its older embedding, vision, Whisper, and Piper fields support only
+the pre-decision modality scaffold. They are not members of the final roster
+and must not be installed as the new speech stack. Replace that scaffold with
+separately pinned Hviske, Parakeet, Plapre, and Qwen3-TTS runtime profiles
+before enabling speech in production.
 
-`gb10-model-roster.json` is the current selection authority. The compute
-environment remains the last known integration tuple until a roster candidate
-passes the live GB10 qualification gates and receives its own audited runtime
-profile. The roster permits one resident text model and two retained text
-models after evaluation: Flash-Next plus the winner of Nemotron Lightning
-versus Qwen3.8-27B. It must not be translated into simultaneous containers.
+`gb10-model-roster.json` is the selection authority. It permits one resident
+text model and two retained text models: Qwen3.8-27B plus Flash-Next. The
+checked-in compute environment implements the first vLLM/native-MTP stage;
+SGLang/DFlash, speech, and Flash-Next still require audited runtime images. The
+two text models must never be translated into simultaneous containers.
 
 Configuration records artifact identity only. Never place API keys, audio,
 images, rendered document pages, transcripts, or responses in the environment

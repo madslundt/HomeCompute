@@ -1,5 +1,8 @@
 # Model-role trade-off matrix
 
+> Historical evaluation matrix. ADR-019 and the machine-readable roster contain
+> the owner-selected final stack as of 2026-09-08.
+
 Verified: 2026-09-08
 
 Status: current single-GB10 scorecard. The machine-readable selection authority
