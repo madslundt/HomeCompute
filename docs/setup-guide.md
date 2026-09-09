@@ -74,8 +74,8 @@ model behind an alias after the replacement passes the same tests.
 | `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.8-27B |
 | `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.8-27B |
 | `assistant` | Isolated personal-agent sessions and tools | Qwen3.8-27B at 64K or more |
-| STT route | Danish and English transcription | Hviske v5.3 for Danish; Parakeet TDT 0.6B v2 for English |
-| TTS route | Danish and English speech | Plapre Nano v2 for Danish; Qwen3-TTS 1.7B CustomVoice for English |
+| STT route | Danish and English transcription | Hviske v5.3 for known Danish; Whisper large-v3-turbo for English, mixed, or unknown |
+| TTS route | Danish and non-Danish speech | Plapre Nano v2 for Danish; Qwen3-TTS 0.6B CustomVoice for supported non-Danish; Piper Danish CPU fallback |
 | Retrieval route | Private document search | Deferred Qwen3 Embedding and Reranker candidates |
 
 The model selection is final. The shipped compute configuration prepares the

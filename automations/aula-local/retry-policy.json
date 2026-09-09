@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "workflow": "aula",
+  "inference_policy": "local-only",
+  "model_alias": "automation",
+  "request": {
+    "max_retries": 2,
+    "timeout_ms": 360000
+  },
+  "scheduled_run": {
+    "retry_delays_minutes": [15, 30, 60],
+    "failure_alert_after_minutes": 120,
+    "preserve_input_until_success_or_terminal_failure": true,
+    "deduplication_key": "aula:<run-type>:<Europe/Copenhagen local date>",
+    "cloud_fallback": false
+  }
+}

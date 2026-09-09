@@ -79,6 +79,11 @@ Backups remain deferred by the operator. Model aliases are configured for the
 GB10, which is not connected yet; gateway health does not establish inference
 availability.
 
+The gateway has local backends only. `auto` is initially another served name
+for the single resident workhorse, not a prompt classifier. The gateway never
+holds a cloud-provider credential or performs cloud fallback; an approved
+caller must select any separate cloud path before assembling private context.
+
 ## Installation
 
 ```bash

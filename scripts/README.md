@@ -11,6 +11,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
 | `gb10_model_roster.py` | Offline configuration validation | Enforces the Qwen3.8 workhorse, two runtime profiles, exclusive Flash-Next cold swap, and exact four-model speech roster |
 | `model_router_policy.py` | Offline model-router validation and decision tests | `validate`, `decide` |
+| `codex_session.py` | Policy-aware Codex session entry point | Cloud default for committed `cloud_allowed` repositories; explicit whole-session GB10 Local mode |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
 The compute scripts default to safe, staged operation. Run `help`, `validate`,
@@ -86,6 +87,15 @@ Validate the selected model roster independently:
 python3 scripts/gb10_model_roster.py \
   --roster config/gb10-model-roster.json
 ```
+
+The offline [Danish TTS qualification](../docs/tts-qualification.md) qualifies
+Plapre Nano v2 on the GB10 against the independent Piper fallback. Its harness
+creates blinded listening packets and enforces warm p95 first audio at 750 ms
+and warm p95 RTF at 0.5. The plan also requires ASR verification, at most one
+resynthesis, and Piper recovery behavior. It does not install models.
+
+`speech_routing_policy.py` validates and exercises the inactive language route
+contract in `config/speech-routing-policy.json`; it never contacts a model.
 
 The router policy records Qwen3.8-27B as the selected primary but remains
 disabled and unbound until its exact runtime tuple passes live qualification. Validate it

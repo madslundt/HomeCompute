@@ -46,7 +46,9 @@ return [{ json: { case_id: String(request.case_id ?? ''), model: request.model }
   },
 });
 
-const productionContext = node({
+// Shared with the local-only Aula qualification workflow so the shadow path
+// exercises the exact published prompt-generation logic instead of a copy.
+export const productionContext = node({
   type: 'n8n-nodes-base.code',
   version: 2,
   config: {

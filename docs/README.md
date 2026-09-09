@@ -48,7 +48,8 @@ Assistant, automations, or personal agents before their preceding gates pass.
 | Understand what is decided versus still hypothetical | [ADRs](#architecture-decisions), [current state](current-state.md), and the phase gates in the [implementation plan](implementation-plan.md) |
 | Review security, privacy, and failure handling | [Access policy](access-policy.md), [personal data and memory](personal-data-and-memory.md), [requirements](requirements.md), and [risk analysis](risk-analysis.md) |
 | Choose and benchmark models | [Benchmark harness](../benchmarks/README.md), [installation recommendation](research/llm-installation-recommendation.md), then the role-specific evaluations under [research](#research-and-model-evidence) |
-| Integrate developer harnesses | [Codex compatibility](research/codex-compatibility.md), [ADR-018](adr/018-multiple-developer-harnesses.md), and verification tests V-CODEX-001/V-CODEX-E2E-001 |
+| Run the explicit Codex local trial | [Codex GB10 Local trial](codex-local-trial.md), [Codex compatibility](research/codex-compatibility.md), and verification tests V-CODEX-TRIAL-001/V-CODEX-E2E-001 |
+| Integrate other developer harnesses | [Agent harness operations](agent-harness-operations.md), [ADR-018](adr/018-multiple-developer-harnesses.md), and their verification tests |
 | Integrate Home Assistant voice and tools | [Home Assistant model evaluation](research/home-assistant-model-evaluation.md), [ADR-008](adr/008-home-assistant-model-role.md), and verification tests V-HA-001/V-HA-002 |
 | Extend Meeting Assistant or process Plaud recordings | [ADR-012](adr/012-reuse-meeting-assistant.md), the meeting sections in [architecture](architecture.md) and [verification](verification-strategy.md) |
 | Add the Hermes personal assistant layer | [NemoClaw placement and Hermes setup](research/nemoclaw-machine-placement.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [ADR-013](adr/013-hermes-personal-agent-layer.md), and Phases I/J in the [implementation plan](implementation-plan.md) |
@@ -101,6 +102,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [NixOS installation runbook](nixos-install-runbook.md) | Firmware, partitioning, hardware reconciliation, install, and first-console commands |
 | [`home-core` rollout plan](home-core-rollout-plan.md) | Ordered post-install stages, blockers, and exit gates from secrets to the n8n migration |
 | [Agent harness operations](agent-harness-operations.md) | Remote Pi/OMP access, tmux lifecycle, privilege boundary, and acceptance checks |
+| [Codex GB10 Local trial](codex-local-trial.md) | Explicit Cloud/GB10 Local sessions, repository classification, and the real-task evidence gate |
 | [NixOS operations guide](nixos-operations.md) | Commit checks, build/test/switch, rollback, input updates, and extension boundaries |
 | [Local and Tailscale access](access-policy.md) | Private DNS/TLS, grants, network flows, administrative access, and acceptance checks |
 | [Personal data and memory](personal-data-and-memory.md) | Principal/work domains, memory lifecycle, sharing, deletion, and administrator model |
@@ -128,6 +130,8 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-017](adr/017-consolidated-application-host.md) | `home-core` also hosts automations and personal agents; container isolation replaces the separate application host |
 | [ADR-018](adr/018-multiple-developer-harnesses.md) | Codex, Pi, and OMP are supported behind the same restricted developer account boundary |
 | [ADR-019](adr/019-single-gb10-model-roster.md) | Final GX10 roster: Qwen3.8-27B workhorse, exclusive Flash-Next cold swap, and four speech models |
+| [ADR-020](adr/020-workflow-first-local-inference.md) | Workflow-first rollout: local-only home-core routing, Aula first, explicit local Codex trials, and deferred features |
+| [ADR-021](adr/021-final-speech-stack-and-routing.md) | Final 2+2 speech roster, language routing, isolated runtimes, licenses, and qualification gates |
 
 ## Research and model evidence
 
@@ -139,17 +143,18 @@ Routing remains disabled and aliases unbound until the pinned vLLM/native-MTP
 tuple passes live qualification; SGLang/DFlash is a runtime comparison, not a
 second general-purpose model.
 
-The selected speech stack is Hviske v5.3 and Parakeet TDT 0.6B v2 for Danish
-and English STT, plus Plapre Nano v2 and Qwen3-TTS 1.7B CustomVoice for Danish
-and English TTS. The older Whisper/Piper scaffold is not the final speech
-deployment.
+The selected speech stack is Hviske v5.3 for Danish STT, Whisper large-v3-turbo
+for English/mixed/unknown STT, Plapre Nano v2 for Danish TTS, and Qwen3-TTS
+0.6B CustomVoice for supported non-Danish TTS. Piper remains the Danish CPU
+fallback. The older combined Whisper/Piper scaffold is not the final isolated
+speech deployment.
 
 | Topic | Documents |
 | --- | --- |
 | Platform and runtime | [GB10 appliance validation](research/gx10-platform-validation.md), [runtime evaluation](research/inference-runtime-evaluation.md), [gateway evaluation](research/gateway-evaluation.md), [control-plane runtime split review](research/control-plane-runtime-split-review.md) |
 | Current model shortlist | [Installation recommendation](research/llm-installation-recommendation.md), [September 2026 refresh](research/text-model-shortlist-refresh-2026-09-04.md), [GB10 precision audit](research/gb10-optimized-model-audit.md) |
 | Text roles | [General](research/general-model-evaluation.md), [coding](research/coding-model-evaluation.md), [Home Assistant](research/home-assistant-model-evaluation.md) |
-| Speech | [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
+| Speech | [Danish TTS qualification](tts-qualification.md), [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
 | Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md) |
 
 ## Repository artifacts

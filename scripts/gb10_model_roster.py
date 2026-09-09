@@ -14,19 +14,24 @@ from typing import Any
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 EXPECTED_SERVICES = {
     "stt_danish": ("syvai/hviske-v5.3", "cc-by-nc-4.0", "da"),
-    "stt_english": ("nvidia/parakeet-tdt-0.6b-v2", "cc-by-4.0", "en"),
+    "stt_english": ("openai/whisper-large-v3-turbo", "mit", "multilingual"),
     "tts_danish": ("syvai/plapre-nano-v2", "cc-by-4.0", "da"),
-    "tts_english": ("Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice", "apache-2.0", "en"),
+    "tts_english": ("Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice", "apache-2.0", "multilingual-excluding-da"),
 }
 REQUIRED_EXCLUSIONS = {
     "nvidia/DeepSeek-V4-Flash-NVFP4",
     "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
     "nvidia/Qwen3.6-35B-A3B-NVFP4",
     "openai/whisper-large-v3",
-    "openai/whisper-large-v3-turbo",
-    "syvai/hviske-v5-tiny",
+    "nvidia/parakeet-tdt-0.6b-v2",
     "syvai/Qwen3.8-27B-DFlash2-W4A16",
-    "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+    "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+}
+EXPECTED_RUNTIME_GROUPS = {
+    "stt_danish": ("hviske-vllm-0.19", "vllm", ">=0.19,<0.20"),
+    "stt_english": ("whisper-turbo", "transformers", "pinned-image-required"),
+    "tts_danish": ("plapre-vllm-0.15", "vllm", ">=0.15,<0.16"),
+    "tts_english": ("qwen3-tts-0.6", "qwen-tts", "pinned-image-required"),
 }
 
 
@@ -59,12 +64,12 @@ def _model(entry: Any, name: str) -> dict[str, Any]:
 def validate_roster(roster: dict[str, Any]) -> None:
     expected = {
         "schema_version", "roster_version", "hardware", "text_models", "services",
-        "excluded_models", "operating_profiles", "deployment_order",
+        "supporting_services", "excluded_models", "operating_profiles", "deployment_order",
     }
     if set(roster) != expected:
         raise RosterError("roster has unsupported or missing top-level keys")
-    if roster["schema_version"] != 2:
-        raise RosterError("schema_version must be 2")
+    if roster["schema_version"] != 3:
+        raise RosterError("schema_version must be 3")
 
     hardware = _object(roster["hardware"], "hardware")
     if hardware.get("accelerator") != "NVIDIA GB10" or hardware.get("unified_memory_gib") != 128:
@@ -124,6 +129,30 @@ def validate_roster(roster: dict[str, Any]) -> None:
         if service["model_id"] in active_ids:
             raise RosterError("model IDs must not be reused across roles")
         active_ids.add(service["model_id"])
+        runtime = _object(service.get("runtime_profile"), f"services.{name}.runtime_profile")
+        expected_runtime = EXPECTED_RUNTIME_GROUPS[name]
+        if (runtime.get("isolation_group"), runtime.get("runtime"), runtime.get("version_constraint")) != expected_runtime:
+            raise RosterError(f"services.{name} runtime isolation does not match the final contract")
+
+    groups = [services[name]["runtime_profile"]["isolation_group"] for name in EXPECTED_SERVICES]
+    if len(groups) != len(set(groups)):
+        raise RosterError("each speech model must use an isolated runtime group")
+    if services["stt_danish"].get("commercial_use_gate") != "SYVAI license review required for employer, work, or commercial use":
+        raise RosterError("Hviske must retain its commercial-use license gate")
+    if services["tts_danish"].get("voice_policy") != "approved-supplied-or-reference-voice-only":
+        raise RosterError("Plapre must prohibit unapproved arbitrary voice cloning")
+
+    supporting = _object(roster["supporting_services"], "supporting_services")
+    if set(supporting) != {"speaker_diarization", "tts_danish_fallback", "stt_danish_later_evaluation"}:
+        raise RosterError("supporting_services must contain diarization, Danish fallback, and later tiny evaluation")
+    for name, entry in supporting.items():
+        _model(entry, f"supporting_services.{name}")
+    if supporting["speaker_diarization"]["model_id"] != "pyannote/speaker-diarization-community-1":
+        raise RosterError("Community-1 must be the supporting diarization model")
+    if supporting["tts_danish_fallback"]["model_id"] != "rhasspy/piper-voices:da_DK-talesyntese-medium":
+        raise RosterError("Piper talesyntese medium must be the Danish CPU fallback")
+    if supporting["stt_danish_later_evaluation"]["disposition"] != "evaluate-later-not-primary":
+        raise RosterError("Hviske Tiny must remain evaluation-only")
 
     excluded = roster["excluded_models"]
     if not isinstance(excluded, list) or len(excluded) != len(set(excluded)):

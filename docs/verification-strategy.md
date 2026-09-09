@@ -127,9 +127,9 @@ speech response. Pass thresholds are URS-HA-003/004 and URS-PERF-001.
 ### V-STT-001 — Danish/English ASR
 
 Use speaker-balanced clean, near-field, far-field/noisy, number/time, room/entity
-name, and Danish/English code-switch audio. Benchmark Danish Parakeet, Whisper
-large-v3-turbo, and Whisper large-v3; include Plaud's transcript as a reference
-where available. Record WER, command semantic accuracy,
+name, and Danish/English code-switch audio. Qualify Hviske v5.3 for known
+Danish and Whisper large-v3-turbo for English, mixed, and unknown audio;
+include Plaud's transcript as a reference where available. Record WER, command semantic accuracy,
 punctuation, first partial/final latency, RTF, peak resources, and concurrent
 behavior. Pass thresholds are URS-STT-002 and URS-PERF-003.
 
@@ -139,7 +139,11 @@ Use a blinded/randomized listening set covering Danish names, numbers, times,
 rooms, compounds, English names, short confirmations, and long sentences.
 Record pronunciation pass, mean naturalness, first-audio latency, RTF,
 stability, voice consistency, resources, and concurrency. Pass thresholds are
-URS-TTS-002 and URS-PERF-003/004.
+URS-TTS-002 and URS-PERF-003/004. Run Plapre simultaneously with the resident
+LLM and require p95 first audio <=750 ms and p95 RTF <=0.5. Add four recovery
+fixtures: first-pass ASR verification, one resynthesis after mismatch, Piper
+fallback after a second mismatch, and Piper fallback after a Plapre timeout.
+Assert that no Danish fixture reaches Qwen3-TTS.
 
 ### Benchmark controls
 
@@ -248,6 +252,23 @@ recovery rather than a crash loop.
 
 ## 10. Stage 2 verification
 
+### V-CODEX-TRIAL-001 — Explicit local workflow and evidence gate
+
+1. With committed `cloud_allowed` metadata, starting the policy-aware entry
+   point without a mode selects Cloud.
+2. With missing, uncommitted, malformed, or `local_only` metadata, Cloud is
+   denied and the effective classification is `local_only`.
+3. Explicit GB10 Local selects the user-level `gb10` provider and `coding` for
+   the complete session without enabling fallback or automatic delegation.
+4. Record representative task outcomes without prompts, source, diffs, paths,
+   or review prose. Duplicate task IDs fail.
+5. Nineteen representative qualifying tasks remain below the gate. Twenty tasks
+   with exactly 14 qualifying results become `eligible_for_consideration`.
+6. Qualification requires completion, passing build/tests, at most two local
+   attempts, no cloud reimplementation, and cloud review without a serious
+   defect. The evaluator never changes configuration and always reports
+   automatic delegation disabled.
+
 ### V-CODEX-VER-001 — Versioned cross-provider capability gate
 
 Record the exact installed Codex binary/hash/version. For the first candidate,
@@ -325,8 +346,8 @@ egress approval alone shall never authorize the business action.
 After text acceptance, test Danish, English and code-switched Discord voice,
 participant stream separation, Opus dependencies on ARM64, STT/TTS latency,
 pause-during-TTS behavior, attempted interruption, reconnect and mixed load.
-Treat half duplex as the documented baseline. Parakeet is accepted only through
-a versioned adapter that passes the same corpus; speaker recognition never
+Treat half duplex as the documented baseline. Hviske and Whisper are accepted
+only through versioned adapters that pass the same corpus; speaker recognition never
 changes the authorized profile.
 
 ### V-PA-006 — Canonical events and proactive behavior

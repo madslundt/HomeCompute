@@ -112,8 +112,8 @@ The existing `ai_home` Hermes files are design intent, not a qualified install:
 Hermes requires at least a 64K context for each active session. Any earlier
 16K/32K model qualification therefore remains useful for other roles but does
 not qualify the assistant workload. Discord voice exists, but the documented
-path pauses listening during TTS and uses Whisper-compatible STT; Parakeet and
-barge-in require separate adapters and evidence.
+path pauses listening during TTS and uses Whisper-compatible STT; the selected
+Hviske route and barge-in require separate adapters and evidence.
 
 ## Existing Meeting Assistant
 

@@ -47,6 +47,8 @@ baseline.
 | URS-AI-011 | The existing AI Home LiteLLM control plane shall be reused if it passes the gateway suite; no second generic model gateway shall be deployed on GB10 by default. | Must | Current-state and deployment inspection |
 | URS-AI-012 | The control plane shall provide per-consumer alias allow-lists, revocation, usage attribution, and bounded quotas/rate limits where mixed-load evidence requires them. | Must | Gateway policy and load test |
 | URS-AI-013 | `home`, `meeting`, `assistant`, and private `automation` shall have no cloud fallback. `research` may fall back only for explicitly public/redacted workloads; `coding` fallback shall remain visible in Codex orchestration. | Must | Route-policy and egress test |
+| URS-AI-014 | The `home-core` model gateway shall contain only local inference backends and credentials. Local-versus-cloud selection and any permitted cloud fallback shall occur explicitly in the calling workflow before private context is assembled. | Must | Configuration inspection and forced-failure egress test |
+| URS-AI-015 | During the single-model milestone, `auto` shall resolve deterministically to the qualified resident default without prompt classification or model activation. A classifier may be introduced only in non-controlling shadow mode under a later acceptance gate. | Must | Router decision test |
 
 ## Model-role requirements
 
@@ -68,8 +70,12 @@ baseline.
 | URS-STT-001 | The STT capability shall support Danish and English audio and integrate with Home Assistant and Meeting Assistant through supported protocols. | Must | STT integration test |
 | URS-STT-002 | On the agreed Danish corpus, word error rate shall be no greater than 15% for clean speech and 25% for the noisy/far-field set. | Must | STT benchmark |
 | URS-STT-003 | STT shall preserve Danish/English code-switching without forcing translation, and the benchmark shall include Danish-only, English-only, and mixed meetings. | Must | Mixed-language benchmark |
+| URS-STT-004 | Known Danish audio shall route to Hviske v5.3; English, mixed, and unknown-language audio shall route to Whisper large-v3-turbo. Hviske employer, work, or commercial use shall remain disabled until its CC BY-NC 4.0 terms have a reviewed SYVAI licensing decision. | Must | Route-policy, license, and egress test |
 | URS-TTS-001 | The TTS capability shall provide a qualified Danish voice and integrate with Home Assistant through a supported local protocol. | Must | TTS integration test |
 | URS-TTS-002 | The Danish pronunciation set shall achieve at least 95% reviewer pass rate and a mean naturalness score of at least 3.5/5. | Must | Blinded listening test |
+| URS-TTS-003 | Plapre Nano v2 shall qualify under representative simultaneous LLM load with warm p95 first-audio latency no greater than 750 ms and warm p95 RTF no greater than 0.5. Piper `da_DK-talesyntese-medium` shall remain an independently available CPU fallback. | Must | TTS latency, mixed-load, and fallback benchmark |
+| URS-TTS-004 | Danish output shall never route to Qwen3-TTS. English and other publisher-supported non-Danish output may route to Qwen3-TTS 0.6B; if that GPU route is unavailable and no language-correct fallback is qualified, the request shall fail closed. | Must | Route-policy and forced-failure test |
+| URS-TTS-005 | Plapre shall use only approved supplied/reference voices. Arbitrary cloning requires documented subject consent and a separately approved policy. Qualification shall test ASR verification, at most one resynthesis, and Piper fallback after a second mismatch or timeout. | Must | Voice-policy and recovery test |
 
 ## Human chat and research requirements
 
@@ -172,12 +178,14 @@ must record the achieved values and any approved threshold revision.
 | --- | --- | --- | --- |
 | URS-CODEX-001 | Codex shall remain the only normal developer-facing harness; no separate coding UI shall be introduced. | Must | Workflow demonstration |
 | URS-CODEX-002 | The installed Codex client shall successfully run a complete local session using the GB10 custom provider and `coding`. | Must | PoC |
-| URS-CODEX-003 | Planning and review shall use the configured cloud frontier provider while implementation uses GB10 only after a pinned Codex client passes cross-provider provider-selection, task-delivery, tool, retry, and review tests; every client upgrade shall requalify this path. | Must | Version check and trace test |
+| URS-CODEX-003 | Automatic cloud-planning/local-implementation/cloud-review delegation may be enabled only after URS-CODEX-009 passes, a human promotion decision is recorded, and a pinned Codex client passes cross-provider provider-selection, task-delivery, tool, retry, and review tests; every client upgrade shall requalify this path. | Must | Trial ledger, version check, and trace test |
 | URS-CODEX-004 | No undocumented or unreleased Codex configuration field shall be used in the production workflow. | Must | Configuration inspection |
-| URS-CODEX-005 | After URS-CODEX-003 passes, the normal workflow shall perform one local implementation attempt, one evidence-informed local retry, then cloud implementation fallback without manual provider switching. | Must | End-to-end fault scenario |
+| URS-CODEX-005 | If automatic delegation is separately promoted after URS-CODEX-003 passes, the workflow shall perform one local implementation attempt, one evidence-informed local retry, then visible cloud implementation fallback without manual provider switching. | Must | End-to-end fault scenario |
 | URS-CODEX-006 | Planning/review shall remain usable during a GB10 outage; implementation shall record an explicit fallback or blocked reason. | Must | Outage test |
 | URS-CODEX-007 | Coding metrics shall record task/model/runtime, attempts, build/tests, fallback, review findings, duration, and token/performance metadata without source or prompt content. | Must | Metrics test |
-| URS-CODEX-008 | Until URS-CODEX-003 is feasible, the platform shall expose explicit whole-session cloud and GB10 modes and shall report Stage 2 automatic routing as not accepted. | Must | Documentation and UX test |
+| URS-CODEX-008 | During the initial trial, the platform shall expose Cloud as the default for repositories explicitly marked `cloud_allowed` and GB10 Local as an explicit whole-session mode. Missing repository classification shall default to `local_only`. Automatic delegation shall remain disabled even when trial evidence first becomes eligible for consideration. | Must | Documentation, policy, gate, and UX test |
+| URS-CODEX-009 | Automatic local implementation shall remain disabled until at least 20 representative real tasks are complete and at least 70% pass build/tests and frontier review without cloud reimplementation, with no more than one evidence-informed local retry and no serious review defect. | Must | Retained trial evidence and promotion test |
+| URS-CODEX-010 | Each repository shall declare `local_only` or `cloud_allowed` in committed project metadata. Missing or invalid metadata shall fail closed to `local_only`; no per-request override shall send a `local_only` repository to cloud. | Must | Provider-selection denial test |
 
 ## Maintainability and change requirements
 

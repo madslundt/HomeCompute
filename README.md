@@ -55,16 +55,17 @@ SGLang/DFlash is kept only if it is materially better on real workloads.
 | Normal text inference | `unsloth/Qwen3.8-27B-NVFP4`; vLLM/native MTP baseline, then SGLang with the `incoai` DFlash2 drafter |
 | Heavy coding and research | `RadixArk/Qwen3.8-Flash-Next-NVFP4` through the pinned `blazux` single-GB10 recipe |
 | Danish STT | `syvai/hviske-v5.3` |
-| English STT | `nvidia/parakeet-tdt-0.6b-v2` |
+| English, mixed, or unknown STT | `openai/whisper-large-v3-turbo` |
 | Danish TTS | `syvai/plapre-nano-v2` |
-| English TTS | `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice` |
+| English and supported non-Danish TTS | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` |
 
-DeepSeek V4 Flash, Nemotron, Qwen3.6, duplicate Qwen3.8 variants, Whisper,
-Hviske Tiny, Piper, MOSS-TTS, and Qwen3-TTS 0.6B are not installed initially.
+Piper `da_DK-talesyntese-medium` remains the independent Danish CPU fallback;
+Community-1 diarization is supporting-only and Hviske Tiny is evaluation-only.
+Speech services remain inactive until qualification.
 The immutable machine-readable policy is
 [`config/gb10-model-roster.json`](config/gb10-model-roster.json); see the
-[final roster ADR](docs/adr/019-single-gb10-model-roster.md) for lifecycle and
-qualification caveats.
+[speech ADR](docs/adr/021-final-speech-stack-and-routing.md) for language,
+runtime, license, voice-consent, and qualification caveats.
 
 ## Setup in order
 

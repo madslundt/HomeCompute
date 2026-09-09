@@ -218,12 +218,15 @@ matches the direct qualified baseline.
 
 ### E — Add audio capabilities incrementally
 
-1. Select and pin the STT image/model/runtime tuple.
+1. Pin isolated runtime images for selected Hviske v5.3 and Whisper
+   large-v3-turbo STT tuples.
 2. Validate Danish and English word/error quality, punctuation, latency,
    concurrency, privacy, and Meeting Assistant compatibility.
-3. Select and pin the Danish TTS tuple; validate intelligibility, voice quality,
-   latency, and long-text behavior.
-4. Add diarization only when the Meeting Assistant/Plaud workflow requires it.
+3. Pin isolated Plapre Nano v2 and Qwen3-TTS 0.6B profiles; validate language
+   routing, intelligibility, voice quality, latency, RTF, ASR/resynthesis
+   recovery, and long-text behavior. Keep Danish Piper on CPU as fallback.
+4. Add Community-1 diarization only when the Meeting Assistant/Plaud workflow
+   requires it.
 5. Repeat mixed-load and memory-headroom tests with text and audio together.
 6. Keep each audio route fixed-path and private; do not introduce hidden cloud
    fallback.

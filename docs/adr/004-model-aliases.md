@@ -36,8 +36,9 @@ to qualified local or cloud backends and enforces per-key allow-lists.
 
 ## Status
 
-Revised by the 2026-08-25 handoff review; proposed until consumer migration is
-verified.
+Alias decision retained. The cloud-backend consequence is superseded by
+[ADR-020](020-workflow-first-local-inference.md), which makes the `home-core`
+gateway local-only; any cloud selection now belongs to the caller.
 
 ## Evidence
 

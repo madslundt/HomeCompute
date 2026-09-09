@@ -2,20 +2,26 @@
 
 ## Context
 
-The target Stage 2 flow uses cloud planning/review, GB10 implementation, one
-evidence-informed local retry, then cloud implementation fallback without
-manual model switching. Installed Codex 0.145.0 can apply `model_provider` from
-a custom agent role file, but 0.149.1 omits it and nearby releases have reported
-cross-provider assignment-loss bugs.
+The possible later Stage 2 flow uses cloud planning/review, GB10
+implementation, one evidence-informed local retry, then cloud implementation
+fallback without manual model switching. Installed Codex 0.145.0 can apply
+`model_provider` from a custom agent role file, but 0.149.1 omits it and nearby
+releases have reported cross-provider assignment-loss bugs. Local coding must
+also prove useful on real work before automation is considered.
 
 ## Decision
 
-Adopt the local-first orchestration as the target design. Test and pin installed
-0.145.0, proving provider selection plus initial/follow-up assignment delivery.
-Until that complete canary passes, offer explicit whole-session cloud and GB10
-modes. After the gate, implement the retry/fallback flow inside Codex
-orchestration and record each provider transition. Block every client upgrade
-until it passes the same canary.
+Begin with explicit whole-session Cloud and GB10 Local modes; Cloud is the
+default where committed repository metadata permits it. Unknown repositories
+default to `local_only`; ordinary private repositories may be explicitly
+`cloud_allowed`. Run at least 20 representative local coding tasks and require
+at least 70% to complete with passing verification, no cloud reimplementation,
+at most one local retry, and no serious cloud-review defect. Crossing this gate
+only makes automation eligible for consideration and does not activate it.
+
+If automation is later approved, also test and pin the installed client,
+proving provider selection plus initial/follow-up assignment delivery. Block
+every client upgrade until it passes the same canary.
 
 ## Alternatives
 
@@ -26,14 +32,15 @@ until it passes the same canary.
 
 ## Consequences
 
-Stage 1 and local coding benchmarks can proceed. Automatic Stage 2 remains
-blocked, with a precise pinned-version/canary exit condition rather than a
-fabricated implementation. A successful 0.145.0 result creates an upgrade hold
-until a newer client is separately qualified.
+Stage 1 and explicit local coding trials can proceed. Automatic Stage 2 remains
+disabled until both the real-task evidence gate and the versioned canary pass,
+followed by a separate human promotion decision. A successful 0.145.0 canary
+creates an upgrade hold until a newer client is separately qualified.
 
 ## Status
 
-Target accepted; activation blocked on URS-CODEX-003 and V-CODEX-VER-001.
+Explicit trial accepted; automatic activation disabled pending the real-task
+gate, URS-CODEX-003, V-CODEX-VER-001, and a separate promotion decision.
 
 ## Evidence
 

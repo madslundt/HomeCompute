@@ -26,6 +26,14 @@ destinations are rejected. Home Assistant's name is mapped explicitly in
 the container. The target retains the original cloud AI credentials; it does
 not depend on an undeployed LiteLLM gateway or GB10.
 
+The repository-side local-only Aula qualification scaffold now lives in
+[`automations/aula-local`](../../automations/aula-local/README.md). It does not
+change this live deployment. Keep its workflow unpublished and its action nodes
+absent until the GB10 route, local-only n8n credential, replay results, live
+shadow results, and outage behavior have passed the documented gate. The
+production cutover is a separate operator action because live workflow and
+credential identifiers are intentionally not committed.
+
 The archived workflow, Email analyzer, and search sub-workflow retain their
 previous unpublished state. Outlook/webhook integrations may require updated
 callback URLs if enabled later; a Tailscale-only URL is not public webhook ingress.

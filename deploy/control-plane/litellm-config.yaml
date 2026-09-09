@@ -1,9 +1,13 @@
 model_list:
-  - model_name: coding
+  - model_name: auto
     litellm_params: &local_model
-      model: openai/coding
+      model: openai/auto
       api_base: os.environ/COMPUTE_OPENAI_BASE_URL
       api_key: os.environ/COMPUTE_API_KEY
+  - model_name: coding
+    litellm_params:
+      <<: *local_model
+      model: openai/coding
   - model_name: automation
     litellm_params:
       <<: *local_model

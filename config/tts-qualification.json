@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "qualification_id": "danish-home-assistant-tts-v2",
+  "language": "da-DK",
+  "warmup_requests": 3,
+  "trials_per_phrase": 3,
+  "gates": {
+    "minimum_warm_samples": 20,
+    "maximum_warm_first_audio_p95_ms": 750,
+    "maximum_warm_rtf_p95": 0.5,
+    "maximum_failure_rate_percent": 0,
+    "minimum_reviewers": 3,
+    "minimum_pronunciation_pass_rate_percent": 95,
+    "minimum_naturalness_mean": 3.5
+  },
+  "candidates": [
+    {
+      "id": "plapre-nano-v2-gb10",
+      "role": "primary",
+      "model_id": "syvai/plapre-nano-v2",
+      "quantization": "FP32",
+      "host_class": "gb10"
+    },
+    {
+      "id": "piper-talesyntese-home-core",
+      "role": "fallback",
+      "model_id": "da_DK-talesyntese-medium",
+      "quantization": "ONNX",
+      "host_class": "home-core-cpu"
+    }
+  ],
+  "recovery_qualification": {
+    "asr_verifier": "stt_danish",
+    "maximum_resample_attempts": 1,
+    "fallback_after_second_mismatch": "piper-talesyntese-home-core",
+    "required_scenarios": [
+      "asr-match-accept-first-synthesis",
+      "asr-mismatch-resample-once-and-pass",
+      "asr-second-mismatch-fallback-to-piper",
+      "plapre-timeout-fallback-to-piper"
+    ]
+  },
+  "phrases": [
+    {"id": "confirmation-light", "text": "Lyset i køkkenet er nu tændt."},
+    {"id": "confirmation-lock", "text": "Hoveddøren er låst."},
+    {"id": "question-temperature", "text": "Skal temperaturen sættes til 21,5 grader?"},
+    {"id": "time", "text": "Vækkeuret ringer klokken 06.45 i morgen."},
+    {"id": "date", "text": "Aftalen er tirsdag den 15. september 2026."},
+    {"id": "ordinal", "text": "Robotstøvsugeren starter på anden sal."},
+    {"id": "negative-temperature", "text": "Udendørstemperaturen er minus 3 grader."},
+    {"id": "percentage", "text": "Batteriet i sensoren er på 17 procent."},
+    {"id": "address", "text": "Pakken leveres til Nørrebrogade 42."},
+    {"id": "compound", "text": "Gulvvarmestyringen er sat på energisparetilstand."},
+    {"id": "danish-name", "text": "Mads Lundt er kommet hjem."},
+    {"id": "mixed-english", "text": "Apple TV i stuen er sat på pause."},
+    {"id": "abbreviation", "text": "CO2-niveauet er 850 ppm på kontoret."},
+    {"id": "decimal-energy", "text": "Solcellerne producerer 4,8 kilowatt."},
+    {"id": "duration", "text": "Vaskemaskinen er færdig om 1 time og 12 minutter."},
+    {"id": "weather", "text": "Der kommer kraftig regn over København i aften."},
+    {"id": "urgent", "text": "Advarsel: Der er registreret vand i bryggerset."},
+    {"id": "doorbell", "text": "Der står nogen ved hoveddøren."},
+    {"id": "scene", "text": "Godnat-scenen slukker alle lamper om 30 sekunder."},
+    {"id": "long-status", "text": "Alle vinduer er lukkede, alarmen er slået til, og temperaturen i soveværelset er 19 grader."}
+  ]
+}

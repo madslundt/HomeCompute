@@ -71,6 +71,17 @@ class RosterTests(unittest.TestCase):
                 with self.assertRaisesRegex(ROSTER_MODULE.RosterError, f"services.{role}"):
                     ROSTER_MODULE.validate_roster(roster)
 
+    def test_speech_runtime_groups_are_isolated(self) -> None:
+        groups = [entry["runtime_profile"]["isolation_group"] for entry in ROSTER["services"].values()]
+        self.assertEqual(len(groups), len(set(groups)))
+        self.assertEqual(">=0.19,<0.20", ROSTER["services"]["stt_danish"]["runtime_profile"]["version_constraint"])
+        self.assertEqual(">=0.15,<0.16", ROSTER["services"]["tts_danish"]["runtime_profile"]["version_constraint"])
+
+    def test_supporting_services_are_not_primary_routes(self) -> None:
+        supporting = ROSTER["supporting_services"]
+        self.assertEqual("evaluate-later-not-primary", supporting["stt_danish_later_evaluation"]["disposition"])
+        self.assertNotIn("speaker_diarization", ROSTER["operating_profiles"]["normal"]["speech_services"])
+
     def test_router_contains_only_the_two_selected_text_models(self) -> None:
         primary = ROSTER["text_models"]["primary"]
         heavy = ROSTER["text_models"]["heavy"]

@@ -151,6 +151,13 @@ contract. Diarization uses a private versioned route consumed only by Meeting
 Assistant. Every service exposes separate liveness/readiness. Audio bytes and
 transcripts are not logged by infrastructure.
 
+Known Danish audio selects Hviske; English, mixed, and unknown audio selects
+Whisper Turbo. Danish synthesis selects Plapre and may fall back to CPU Piper;
+supported non-Danish synthesis selects Qwen3-TTS and fails closed if no
+language-correct fallback is qualified. Qwen3-TTS is forbidden for Danish.
+Hviske, Whisper, Plapre, and Qwen3-TTS use isolated runtime profiles because
+their dependency requirements cannot be treated as one compatible environment.
+
 ### 4.5 Telemetry
 
 The implementation exposes Prometheus-compatible metrics to a management-only
@@ -344,8 +351,17 @@ The machine-local user configuration defines the GB10 provider and `coding`;
 repository configuration does not attempt to override provider
 definitions. Secrets are injected through a named environment variable.
 
-Phase C accepts a whole Codex session on GB10. Automatic Stage 2 is activated
-only when all are true:
+Phase C accepts a whole Codex session on GB10. Cloud is the supported default
+only when committed repository metadata says `cloud_allowed`; absent or invalid
+metadata means `local_only`. GB10 Local is an explicit whole-session selection.
+The first promotion gate requires at least 20 representative real tasks and at
+least 70% qualifying completion. A qualifying task passes its build/tests, uses
+at most one local retry, requires no cloud reimplementation, and has no serious
+cloud-review defect. Passing this gate creates evidence for consideration and
+does not activate delegation.
+
+Automatic Stage 2 may be activated by a later explicit decision only when the
+real-task gate has passed and all are true:
 
 1. the exact pinned client implements the role-layer `model_provider` override (installed 0.145.0 is the first candidate);
 2. provider metadata proves that the child actually uses GB10 and `coding`;

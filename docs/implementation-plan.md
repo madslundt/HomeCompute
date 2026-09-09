@@ -168,9 +168,11 @@ They refuse a run without the release/artifact manifest.
    it only if real coding wall time, throughput, TTFT, long context, tool/JSON
    correctness, concurrency, memory, and soak stability materially improve.
    Do not reopen the checkpoint shortlist without a measured gap.
-3. Qualify Hviske v5.3 and Parakeet TDT 0.6B v2 for Danish and English STT,
-   and Plapre Nano v2 and Qwen3-TTS 1.7B CustomVoice for Danish and English
-   TTS. Record Hviske's non-commercial license constraint.
+3. Qualify Hviske v5.3 for Danish STT and Whisper large-v3-turbo for
+   English/mixed/unknown STT. Qualify Plapre Nano v2 for Danish TTS and
+   Qwen3-TTS 0.6B CustomVoice for supported non-Danish TTS. Keep their runtimes
+   isolated and record Hviske's non-commercial gate, Plapre's approved-voice
+   policy, and the independent Danish Piper fallback.
 4. Verify Flash-Next last using the pinned Blazux recipe and the serialized
    stop-primary/start-heavy/stop-heavy/restart-primary lifecycle.
 5. Select the simpler of the two passing 27B runtime profiles when performance
@@ -212,29 +214,35 @@ passing evidence and no unaccepted high/critical residual risk.
 
 ## Phase F — Stage 2 Codex workflow
 
-**Status: Blocked pending the pinned 0.145.0 cross-provider canary**
+**Status: Explicit whole-session trial active; automatic delegation disabled**
 
 ### Work allowed before unblock
 
 - qualify complete GB10 Codex whole-session mode;
+- collect at least 20 representative real-task records through the explicit
+  GB10 Local mode and require at least 70% qualifying completion;
 - maintain the inactive target-agent schema/template;
 - build coding fixtures and metrics schema;
 - run V-CODEX-VER-001 on installed 0.145.0, then rerun it before every client upgrade.
 
-### Activation after unblock
+### Eligibility for a later activation decision
 
-1. Pin installed Codex 0.145.0 and record its binary/version; do not upgrade during qualification.
-2. Run a cloud-parent → GB10-child canary that proves provider, initial assignment, follow-up, credentials and tools.
-3. Implement planner, bounded task contract, local implementer, local retry,
+1. Confirm the trial evidence gate without enabling any automation. A
+   qualifying task passes build/tests, uses no more than one local retry,
+   requires no cloud reimplementation, and has no serious cloud-review defect.
+2. Record an explicit human decision to pursue automatic delegation.
+3. Pin the Codex client and record its binary/version; do not upgrade during qualification.
+4. Run a cloud-parent → GB10-child canary that proves provider, initial assignment, follow-up, credentials and tools.
+5. Implement planner, bounded task contract, local implementer, local retry,
    cloud implementer fallback, and cloud reviewer inside Codex.
-4. Add explicit escalation codes and provider/fallback metrics.
-5. Run V-CODEX-E2E-001, outage tests, real-repository corpus, and log canary.
-6. Document installation/update/rollback and the accepted client versions.
+6. Add explicit escalation codes and provider/fallback metrics.
+7. Run V-CODEX-E2E-001, outage tests, real-repository corpus, and log canary.
+8. Document installation/update/rollback and the accepted client versions.
 
-**Gate F / Stage 2 acceptance:** all URS-CODEX requirements pass, including no
-manual switching in the normal workflow. If 0.145.0 loses the task or cannot be
-pinned safely, Stage 2 remains blocked until a later client passes rather than
-being replaced by an unapproved harness.
+**Gate F / Stage 2 acceptance:** all URS-CODEX requirements pass. Until a later
+automatic workflow is explicitly promoted, Cloud and GB10 Local remain visible
+whole-session choices and automatic delegation stays disabled. A failed client
+canary leaves the explicit trial intact and automatic Stage 2 blocked.
 
 ## Phase G — Home Assistant, n8n, and speech migration
 
@@ -267,8 +275,9 @@ of model artifacts.
    Meeting Assistant; do not use an undocumented private API.
 4. Add immutable raw, speaker-attributed, and cleaned transcript artifacts with
    checksums and provenance.
-5. Benchmark Whisper large-v3-turbo, large-v3, Danish Parakeet, Plaud's
-   transcript reference, and pyannote or another qualified diarization candidate.
+5. Benchmark the selected language routes: Hviske v5.3 for known Danish,
+   Whisper large-v3-turbo for English/mixed/unknown, Plaud's transcript
+   reference, and Community-1 diarization.
 6. Add the versioned structured meeting schema and human-verifiable links to
    transcript layers.
 7. Run failure/resume, backup/restore, retention/deletion, privacy-egress,
@@ -331,8 +340,8 @@ or broad LAN credentials.
    threat review plus approval/restore evidence.
 6. Add Discord voice through the qualified STT/TTS services only after text is
    stable. Treat the documented pause-during-TTS behavior as the baseline;
-   barge-in is not accepted until demonstrated. Parakeet requires a maintained
-   adapter and its own Danish/English/ARM64 latency tests.
+   barge-in is not accepted until demonstrated. The selected Hviske and Whisper
+   adapters require their own Danish/English/ARM64 latency tests.
 7. Add cross-source reasoning only after every individual source has an owner,
    provenance contract, replay behavior, and passing access tests.
 

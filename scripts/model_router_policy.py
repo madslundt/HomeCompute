@@ -39,6 +39,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
     allowed_top_level = {
         "schema_version",
         "policy_version",
+        "provider_scope",
         "mode",
         "load_on_demand",
         "qualification",
@@ -55,6 +56,8 @@ def validate_policy(policy: dict[str, Any]) -> None:
     if policy.get("schema_version") != 1:
         raise PolicyError("schema_version must be 1")
     _string(policy.get("policy_version"), "policy_version")
+    if policy.get("provider_scope") != "local_only":
+        raise PolicyError("provider_scope must be local_only")
     if policy.get("mode") not in {"disabled", "shadow", "active"}:
         raise PolicyError("mode must be disabled, shadow, or active")
     if not isinstance(policy.get("load_on_demand"), bool):
@@ -136,8 +139,14 @@ def validate_policy(policy: dict[str, Any]) -> None:
                 raise PolicyError(f"aliases.{alias} must reference the selected primary; heavy mode is operator-swapped")
 
     auto = _object(policy.get("auto"), "auto")
-    if set(auto) != {"confidence_threshold", "low_confidence_policy", "classifier_failure_policy"}:
+    if set(auto) != {"strategy", "confidence_threshold", "low_confidence_policy", "classifier_failure_policy"}:
         raise PolicyError("auto contains unsupported or missing keys")
+    if auto["strategy"] not in {"fixed_default", "classifier"}:
+        raise PolicyError("auto.strategy must be fixed_default or classifier")
+    if auto["strategy"] == "fixed_default" and policy["mode"] != "disabled":
+        raise PolicyError("fixed_default auto strategy requires disabled classifier mode")
+    if auto["strategy"] == "classifier" and policy["mode"] == "disabled":
+        raise PolicyError("classifier auto strategy requires shadow or active mode")
     confidence = auto["confidence_threshold"]
     if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not 0 <= confidence <= 1:
         raise PolicyError("auto.confidence_threshold must be between 0 and 1")
@@ -319,6 +328,7 @@ def decide(policy: dict[str, Any], request: dict[str, Any], runtime: dict[str, A
             requested_model,
             default_model,
             "disabled",
+            upstream_model="auto",
             classifier_invoked=False,
             classifier_status="not_called",
             classifier_confidence=None,

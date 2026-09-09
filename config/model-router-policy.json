@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
-  "policy_version": "2026-09-08-final-stack-live-gated",
+  "policy_version": "2026-09-08-workflow-first-live-gated",
+  "provider_scope": "local_only",
   "mode": "disabled",
   "load_on_demand": false,
   "qualification": {
@@ -10,6 +11,7 @@
   },
   "default_model": null,
   "auto": {
+    "strategy": "fixed_default",
     "confidence_threshold": 0.75,
     "low_confidence_policy": "fixed_default",
     "classifier_failure_policy": "active_default"

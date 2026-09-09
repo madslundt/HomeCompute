@@ -10,6 +10,48 @@ under `benchmarks/results/`, which is ignored because prompts and responses may
 contain sensitive data. Commit only synthetic fixtures and explicitly sanitized
 summary records under `docs/benchmarks/`.
 
+## Explicit GB10 Codex trial
+
+The initial developer workflow deliberately has two whole-session modes. Cloud
+is the default only for a repository whose committed `.codex/data-policy.json`
+sets `classification` to `cloud_allowed`. Missing metadata fails closed to
+`local_only`. Start a session through the policy-aware entry point:
+
+```bash
+python3 scripts/codex_session.py                 # Cloud, when allowed
+python3 scripts/codex_session.py local           # GB10 Local for the whole session
+python3 scripts/codex_session.py local -- --no-alt-screen
+```
+
+The local command selects the user-configured `gb10` provider and logical
+`coding` model. It does not install provider configuration or read a secret.
+The required user-level provider configuration is documented in
+`docs/codex-local-trial.md`. Automatic cloud-plan/local-build delegation remains
+disabled.
+
+After a real local task and its cloud diff review, append metadata-only evidence
+to a private ledger under the ignored `benchmarks/results/` directory:
+
+```bash
+python3 benchmarks/codex_trial.py record \
+  --ledger benchmarks/results/codex-local-trials.jsonl \
+  --task-id HC-001 --representative yes --outcome completed \
+  --local-attempts 1 --verification passed \
+  --cloud-reimplementation no --cloud-review passed \
+  --duration-minutes 12 --model coding --runtime qwen3.8-27b-nvfp4-vllm \
+  --input-tokens 12000 --output-tokens 2400 \
+  --throughput-tokens-per-second 42.5
+
+python3 benchmarks/codex_trial.py status \
+  --ledger benchmarks/results/codex-local-trials.jsonl
+```
+
+A task qualifies only when it completes locally with passing build/tests, at
+most two local attempts, no cloud reimplementation, and a passing cloud review
+with no serious defect. The status becomes `eligible_for_consideration` after
+at least 20 representative tasks and a qualifying rate of at least 70%. This is
+evidence for a human decision and never activates automatic delegation.
+
 ## Start with the synthetic smoke suite
 
 ```bash

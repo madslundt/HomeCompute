@@ -8,6 +8,8 @@ they do not use them as production configuration in place.
 | --- | --- | --- |
 | `compute-node.env.example` | `setup-compute-node.sh`, `setup-compute-modalities.sh` | Immutable text and staged modality artifact tuples, exact private ports, bind policy, and compute limits |
 | `gb10-model-roster.json` | `gb10_model_roster.py`, operators, and deployment profiles | Final two-model text roster, four speech selections, immutable revisions, cold-swap policy, and deployment order |
+| `speech-routing-policy.json` | `speech_routing_policy.py` and future speech adapters | Inactive Danish/non-Danish STT/TTS routes, fallback behavior, and license/voice gates |
+| `tts-qualification.json` | `tts-qualification.py` | Danish phrase set, 750 ms/RTF/listening gates, and ASR/resynthesis recovery scenarios |
 | `model-router-policy.json` | `model_router_policy.py` and the future LiteLLM routing integration | Qualification-gated aliases, model inventory, client permissions, and the one-resident text-model limit |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, `/srv/state`, and sops-nix runtime secret paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
@@ -29,7 +31,7 @@ The compute template now pins the selected Qwen3.8-27B vLLM/native-MTP
 baseline. Its older embedding, vision, Whisper, and Piper fields support only
 the pre-decision modality scaffold. They are not members of the final roster
 and must not be installed as the new speech stack. Replace that scaffold with
-separately pinned Hviske, Parakeet, Plapre, and Qwen3-TTS runtime profiles
+separately pinned Hviske, Whisper Turbo, Plapre, and Qwen3-TTS runtime profiles
 before enabling speech in production.
 
 `gb10-model-roster.json` is the selection authority. It permits one resident

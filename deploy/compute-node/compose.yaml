@@ -280,7 +280,7 @@ services:
         set --
         if [ -n "$${VLLM_SPECULATIVE_CONFIG}" ]; then set -- --speculative-config "$${VLLM_SPECULATIVE_CONFIG}"; fi
         exec vllm serve "${MODEL_ID}" --revision "${MODEL_REVISION}" --tokenizer-revision "${TOKENIZER_REVISION}" --code-revision "${CODE_REVISION}" \
-          --served-model-name coding automation research home meeting assistant --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
+          --served-model-name auto coding automation research home meeting assistant --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
           --kv-cache-dtype fp8 --attention-backend "${VLLM_ATTENTION_BACKEND:-flashinfer}" --moe-backend "${VLLM_MOE_BACKEND:-marlin}" \
           --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.40}" --generation-config vllm --max-model-len "${VLLM_MAX_MODEL_LEN:-32768}" \
           --max-num-seqs "${VLLM_MAX_NUM_SEQS:-2}" --max-num-batched-tokens "${VLLM_MAX_BATCHED_TOKENS:-8192}" --enable-chunked-prefill \

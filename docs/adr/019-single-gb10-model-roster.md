@@ -34,8 +34,7 @@ Use `RadixArk/Qwen3.8-Flash-Next-NVFP4` with the pinned
 27B service before starting Flash-Next, and restart the 27B service after the
 heavy session. LiteLLM must not dynamically load either checkpoint per request.
 
-Install four language-specific speech services after the text-runtime
-comparison:
+The speech selection below is historical and is superseded by ADR-021:
 
 - Danish STT: `syvai/hviske-v5.3`;
 - English STT: `nvidia/parakeet-tdt-0.6b-v2`;
@@ -70,12 +69,13 @@ physical-host gates. SGLang, speech, and heavy-mode profiles require their own
 immutable runtime image pins and tests; model selection alone is not a safe
 runtime recipe.
 
-Do not install additional general models, Whisper variants, Hviske Tiny, Piper,
-MOSS-TTS, or Qwen3-TTS 0.6B without a measured gap and a reviewed change.
+Do not install additional general text models without a measured gap and a
+reviewed change. ADR-021 owns the current speech roster and exclusions.
 
 ## Status
 
-Accepted; live runtime qualification pending.
+Accepted for text; speech portion superseded by ADR-021. Live runtime
+qualification remains pending.
 
 ## Evidence
 
