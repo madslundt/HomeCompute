@@ -29,4 +29,8 @@
     mode = "0600";
     source = ../../config/books_importer.env.example;
   };
+  environment.etc."homecompute/piper-tts.env" = {
+    mode = "0600";
+    source = ../../config/piper-tts.env.example;
+  };
 }

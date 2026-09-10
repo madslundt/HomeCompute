@@ -1,0 +1,55 @@
+name: homecompute-piper-tts
+
+services:
+  piper:
+    image: ${PIPER_IMAGE:?Set PIPER_IMAGE to an immutable image digest}
+    container_name: home-core-piper-tts
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 4
+    mem_limit: 2g
+    pids_limit: 256
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:${PIPER_WYOMING_PORT:-10200}:10200"
+      - "${PIPER_LAN_ADDRESS:?Set the home-core LAN address}:${PIPER_WYOMING_PORT:-10200}:10200"
+    environment:
+      PIPER_VOICE_ID: ${PIPER_VOICE_ID:?Set PIPER_VOICE_ID}
+      PIPER_MODEL_SHA256: ${PIPER_MODEL_SHA256:?Set PIPER_MODEL_SHA256}
+      PIPER_CONFIG_SHA256: ${PIPER_CONFIG_SHA256:?Set PIPER_CONFIG_SHA256}
+      PIPER_MODEL_CARD_SHA256: ${PIPER_MODEL_CARD_SHA256:?Set PIPER_MODEL_CARD_SHA256}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        printf '%s  %s\n' "$${PIPER_MODEL_SHA256}" "/data/$${PIPER_VOICE_ID}.onnx" | sha256sum -c -
+        printf '%s  %s\n' "$${PIPER_CONFIG_SHA256}" "/data/$${PIPER_VOICE_ID}.onnx.json" | sha256sum -c -
+        printf '%s  %s\n' "$${PIPER_MODEL_CARD_SHA256}" /data/MODEL_CARD | sha256sum -c -
+        exec /usr/src/.venv/bin/python3 -m wyoming_piper \
+          --uri tcp://0.0.0.0:10200 \
+          --data-dir /data \
+          --download-dir /tmp/piper \
+          --voice "$${PIPER_VOICE_ID}"
+    volumes:
+      - /srv/state/piper-tts/models:/data:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=0700
+    healthcheck:
+      test: [CMD, /usr/src/.venv/bin/python3, -m, wyoming_piper.health_check]
+      interval: 30s
+      timeout: 20s
+      retries: 10
+      start_period: 2m
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+    networks: [tts]
+
+networks:
+  tts:
+    driver: bridge
+    internal: true
+    enable_ipv6: false

@@ -55,6 +55,23 @@
         iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j REJECT
       done
 
+      # Wyoming carries no client authentication. Only the Home Assistant
+      # appliance may reach the Danish Piper publication on the home LAN.
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j HC-PIPER-INGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j HC-PIPER-INGRESS
+      done
+      iptables -w -N HC-PIPER-INGRESS 2>/dev/null || true
+      iptables -w -F HC-PIPER-INGRESS
+      iptables -w -A HC-PIPER-INGRESS -i enp44s0 -s 192.168.30.30/32 -j RETURN
+      iptables -w -A HC-PIPER-INGRESS -j REJECT
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j HC-PIPER-INGRESS
+      iptables -w -C HC-PIPER-INGRESS -i enp44s0 -s 192.168.30.30/32 -j RETURN
+      iptables -w -C HC-PIPER-INGRESS -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j REJECT
+      done
+
       # Keep bridge egress and Aula ingress fail-closed while replacing the
       # live policy. Always add fresh guards: failures leave both protections.
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
@@ -119,6 +136,14 @@
       if iptables -w -L HC-CADDY-LAN -n >/dev/null 2>&1; then
         iptables -w -F HC-CADDY-LAN
         iptables -w -X HC-CADDY-LAN
+      fi
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j HC-PIPER-INGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j HC-PIPER-INGRESS
+      done
+      if iptables -w -L HC-PIPER-INGRESS -n >/dev/null 2>&1; then
+        iptables -w -F HC-PIPER-INGRESS
+        iptables -w -X HC-PIPER-INGRESS
       fi
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
       iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT

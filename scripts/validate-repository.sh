@@ -47,6 +47,7 @@ shell_files=(
   "$REPO_ROOT/scripts/configure-compute-firewall.sh"
   "$REPO_ROOT/scripts/setup-compute-node.sh"
   "$REPO_ROOT/scripts/setup-compute-modalities.sh"
+  "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
   "$REPO_ROOT/tests/config-loader-test.sh"
@@ -119,6 +120,7 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/control-plane/litellm-config.yaml" \
     "$REPO_ROOT/deploy/compute-node/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
+    "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/config/services.yaml" \
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
     "$REPO_ROOT/deploy/homepage/config/widgets.yaml" \
@@ -383,6 +385,27 @@ jq -e '
   (.networks.default.driver_opts["com.docker.network.bridge.host_binding_ipv4"] == "127.0.0.1")
 ' "$books_json" >/dev/null
 
+piper_json="$temporary_root/piper.json"
+docker compose --env-file "$REPO_ROOT/config/piper-tts.env.example" \
+  -f "$REPO_ROOT/deploy/piper-tts/compose.yaml" config --format json >"$piper_json"
+jq -e '
+  ((.services | keys) == ["piper"]) and
+  (.services.piper.image | test("@sha256:[0-9a-f]{64}$")) and
+  (.services.piper.user == "1000:1000") and
+  (.services.piper.read_only == true) and
+  (.services.piper.cap_drop | index("ALL") != null) and
+  (.services.piper.security_opt | index("no-new-privileges:true") != null) and
+  (.services.piper.ports | length == 2) and
+  ([.services.piper.ports[].host_ip] | sort == ["127.0.0.1", "192.168.30.122"]) and
+  all(.services.piper.ports[]; .published == "10200" and .target == 10200 and .protocol == "tcp") and
+  (.services.piper.volumes | length == 1) and
+  (.services.piper.volumes[0].source == "/srv/state/piper-tts/models") and
+  (.services.piper.volumes[0].read_only == true) and
+  (.services.piper.mem_limit > 0 and .services.piper.cpus > 0 and .services.piper.pids_limit > 0) and
+  (.networks.tts.internal == true) and
+  (.networks.tts.enable_ipv6 == false)
+' "$piper_json" >/dev/null
+
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
 # per-project container controls are the only boundary left between them. Each
 # pattern below removes that boundary outright rather than weakening it, so the
@@ -399,7 +422,7 @@ fi
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage piper-tts | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

@@ -36,16 +36,24 @@ nixos-rebuild switch --flake "$release#home-core"
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
+piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/deploy/piper-tts/compose.yaml")
 "${gateway[@]}" config --quiet
 "${automation[@]}" config --quiet
 "${homepage[@]}" config --quiet
+"${piper[@]}" config --quiet
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
 "${homepage[@]}" pull
+"${piper[@]}" pull
 "${automation[@]}" build aula-mcp
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
 "${homepage[@]}" up -d --wait --wait-timeout 180
+if [[ -s /srv/state/piper-tts/models/da_DK-talesyntese-medium.onnx ]]; then
+  "${piper[@]}" up -d --wait --wait-timeout 180
+else
+  printf 'Piper voice is not prepared; leaving Danish TTS stopped.\n'
+fi
 if [[ -L /srv/homecompute/current ]]; then
   previous=$(readlink /srv/homecompute/current)
   if [[ "$previous" != "$release" ]]; then ln -sfn "$previous" /srv/homecompute/previous; fi

@@ -7,6 +7,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | --- | --- | --- |
 | `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `firewall`, `install`, `rollback`, `down` |
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
+| `setup-home-core-piper.sh` | Pinned Danish Piper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
 | `gb10_model_roster.py` | Offline configuration validation | Enforces the Qwen3.8 workhorse, two runtime profiles, exclusive Flash-Next cold swap, and exact four-model speech roster |
@@ -120,6 +121,6 @@ D2 is installed.
 ## Published home-core deployments
 
 `deploy-home-core.sh FULL_COMMIT_SHA` runs on home-core with sudo. It deploys a
-clean GitHub commit, rebuilds NixOS, and applies the existing gateway and n8n
-projects. See [Git deployment](../docs/git-deployment.md) for prerequisites and
-rollback limits. The books importer remains staged.
+clean GitHub commit, rebuilds NixOS, and applies the gateway, n8n, Homepage,
+and prepared Piper projects. See [Git deployment](../docs/git-deployment.md)
+for prerequisites and rollback limits. The books importer remains staged.

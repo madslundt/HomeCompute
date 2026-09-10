@@ -8,6 +8,8 @@ Deployment files are split by stable node role:
   control-plane Compose workload.
 - [`homepage/`](homepage/README.md) contains the source-controlled service
   dashboard for `home-core`.
+- [`piper-tts/`](piper-tts/README.md) contains the CPU-native Danish Wyoming
+  TTS service for Home Assistant.
 
 These artifacts are invoked by scripts in [`../scripts/`](../scripts/README.md)
 and depend on validated external configuration. They are scaffolding for the
