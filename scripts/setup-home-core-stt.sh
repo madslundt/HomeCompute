@@ -35,11 +35,22 @@ done
 
 compose=(docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/deploy/wyoming-stt/compose.yaml")
 
+verify_cached_file() {
+  local filename="$1" candidate resolved
+  while IFS= read -r -d '' candidate; do
+    resolved="$(realpath -e -- "$candidate")" || continue
+    if [[ "$resolved" == "$MODEL_DIR/"* && -f "$resolved" && -s "$resolved" ]]; then
+      return 0
+    fi
+  done < <(find "$MODEL_DIR" \( -type f -o -type l \) -name "$filename" -print0)
+  return 1
+}
+
 verify_model() {
   [[ -f "$READY_FILE" && ! -L "$READY_FILE" ]] || return 1
   [[ $(<"$READY_FILE") == "$WYOMING_STT_MODEL" ]] || return 1
-  find "$MODEL_DIR" -type f -name config.json -size +0c -print -quit | grep -q . || return 1
-  find "$MODEL_DIR" -type f -name model.bin -size +0c -print -quit | grep -q .
+  verify_cached_file config.json || return 1
+  verify_cached_file model.bin
 }
 
 case "$action" in
@@ -48,10 +59,10 @@ case "$action" in
     "${compose[@]}" pull stt-model-fetch
     "${compose[@]}" --profile prepare up -d --wait --wait-timeout 900 stt-model-fetch
     "${compose[@]}" --profile prepare rm -sf stt-model-fetch
-    find "$MODEL_DIR" -type f -name config.json -size +0c -print -quit | grep -q . || {
+    verify_cached_file config.json || {
       printf 'Prepared model has no non-empty config.json.\n' >&2; exit 1;
     }
-    find "$MODEL_DIR" -type f -name model.bin -size +0c -print -quit | grep -q . || {
+    verify_cached_file model.bin || {
       printf 'Prepared model has no non-empty model.bin.\n' >&2; exit 1;
     }
     printf '%s\n' "$WYOMING_STT_MODEL" >"$READY_FILE"
