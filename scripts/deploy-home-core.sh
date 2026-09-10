@@ -37,14 +37,18 @@ gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$relea
 automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/deploy/piper-tts/compose.yaml")
+stt=(docker compose --env-file /etc/homecompute/wyoming-stt.env -f "$release/deploy/wyoming-stt/compose.yaml")
 "${gateway[@]}" config --quiet
 "${automation[@]}" config --quiet
 "${homepage[@]}" config --quiet
 "${piper[@]}" config --quiet
+"${stt[@]}" config --quiet
+stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environment.WYO_WHISPER_MODEL')"
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
 "${homepage[@]}" pull
 "${piper[@]}" pull
+"${stt[@]}" pull stt
 "${automation[@]}" build aula-mcp
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
@@ -53,6 +57,12 @@ if [[ -s /srv/state/piper-tts/models/da_DK-talesyntese-medium.onnx ]]; then
   "${piper[@]}" up -d --wait --wait-timeout 180
 else
   printf 'Piper voice is not prepared; leaving Danish TTS stopped.\n'
+fi
+if [[ -f /srv/state/wyoming-stt/models/.homecompute-ready-model ]] &&
+  [[ $(</srv/state/wyoming-stt/models/.homecompute-ready-model) == "$stt_model" ]]; then
+  "${stt[@]}" up -d --wait --wait-timeout 300 stt
+else
+  printf 'Faster Whisper model is not prepared; leaving Danish STT stopped.\n'
 fi
 if [[ -L /srv/homecompute/current ]]; then
   previous=$(readlink /srv/homecompute/current)

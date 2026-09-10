@@ -13,6 +13,7 @@ they do not use them as production configuration in place.
 | `model-router-policy.json` | `model_router_policy.py` and the future LiteLLM routing integration | Qualification-gated aliases, model inventory, client permissions, and the one-resident text-model limit |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, `/srv/state`, and sops-nix runtime secret paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
+| `wyoming-stt.env.example` | `deploy/wyoming-stt/compose.yaml` | Pinned CPU STT image, Danish `base-int8` settings, explicit LAN binding, and bounded resources |
 | `books_importer.env.example` | `deploy/books_importer/compose.yaml` | Pinned book service images; compare with source deployment digests before migration |
 | `books_importer-secrets.env.example` | `deploy/books_importer/compose.yaml` | Reference for the encrypted SOPS books_importer/environment entry |
 

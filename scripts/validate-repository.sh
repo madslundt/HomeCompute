@@ -48,6 +48,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-compute-node.sh"
   "$REPO_ROOT/scripts/setup-compute-modalities.sh"
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
+  "$REPO_ROOT/scripts/setup-home-core-stt.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
   "$REPO_ROOT/tests/config-loader-test.sh"
@@ -121,6 +122,7 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/compute-node/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
+    "$REPO_ROOT/deploy/wyoming-stt/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/config/services.yaml" \
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
     "$REPO_ROOT/deploy/homepage/config/widgets.yaml" \
@@ -411,6 +413,51 @@ jq -e '
   (.networks.tts.ipam.config[0].subnet == "172.28.202.0/24")
 ' "$piper_json" >/dev/null
 
+stt_json="$temporary_root/wyoming-stt.json"
+docker compose --env-file "$REPO_ROOT/config/wyoming-stt.env.example" \
+  -f "$REPO_ROOT/deploy/wyoming-stt/compose.yaml" config --format json >"$stt_json"
+jq -e '
+  ((.services | keys) == ["stt"]) and
+  (.services.stt.image | test("@sha256:[0-9a-f]{64}$")) and
+  (.services.stt.user == "1000:1000") and
+  (.services.stt.read_only == true) and
+  (.services.stt.cap_drop | index("ALL") != null) and
+  (.services.stt.security_opt | index("no-new-privileges:true") != null) and
+  (.services.stt.environment.WYO_WHISPER_MODEL == "base-int8") and
+  (.services.stt.environment.WYO_WHISPER_LANGUAGE == "da") and
+  (.services.stt.environment.WYO_WHISPER_BEAM_SIZE == "1") and
+  (.services.stt.environment.HF_HUB_DISABLE_XET == "1") and
+  (.services.stt.environment.HF_HUB_OFFLINE == "1") and
+  (.services.stt.environment.XDG_CACHE_HOME == "/data/cache") and
+  (.services.stt.environment.WYO_WHISPER_LOCAL_FILES_ONLY == "true") and
+  (.services.stt.healthcheck.test == ["CMD", "/usr/src/.venv/bin/python3", "/opt/homecompute/wyoming-stt-health-check.py"]) and
+  (.services.stt.healthcheck.start_period == "5m0s") and
+  (.services.stt.ports | length == 2) and
+  ([.services.stt.ports[].host_ip] | sort == ["127.0.0.1", "192.168.30.122"]) and
+  all(.services.stt.ports[]; .published == "10300" and .target == 10300 and .protocol == "tcp") and
+  (.services.stt.volumes | length == 2) and
+  (any(.services.stt.volumes[]; .source == "/srv/state/wyoming-stt/models" and .target == "/data" and .read_only != true)) and
+  (any(.services.stt.volumes[]; (.source | endswith("/deploy/wyoming-stt/health-check.py")) and .target == "/opt/homecompute/wyoming-stt-health-check.py" and .read_only == true)) and
+  (.services.stt.networks.stt.ipv4_address == "172.28.203.2") and
+  (.services.stt.mem_limit > 0 and .services.stt.cpus > 0 and .services.stt.pids_limit > 0) and
+  (.networks.stt.enable_ipv6 == false) and
+  (.networks.stt.driver_opts["com.docker.network.bridge.name"] == "br-hc-stt") and
+  (.networks.stt.ipam.config[0].subnet == "172.28.203.0/24")
+' "$stt_json" >/dev/null
+
+stt_prepare_json="$temporary_root/wyoming-stt-prepare.json"
+docker compose --env-file "$REPO_ROOT/config/wyoming-stt.env.example" --profile prepare \
+  -f "$REPO_ROOT/deploy/wyoming-stt/compose.yaml" config --format json >"$stt_prepare_json"
+jq -e '
+  ((.services | keys) == ["stt", "stt-model-fetch"]) and
+  (.services["stt-model-fetch"].ports == null) and
+  (.services["stt-model-fetch"].restart == "no") and
+  (.services["stt-model-fetch"].environment.WYO_WHISPER_LOCAL_FILES_ONLY == null) and
+  (.services["stt-model-fetch"].networks["model-fetch"].ipv4_address == "172.28.204.2") and
+  (.networks["model-fetch"].driver_opts["com.docker.network.bridge.name"] == "br-hc-sttfetch") and
+  (.networks["model-fetch"].ipam.config[0].subnet == "172.28.204.0/24")
+' "$stt_prepare_json" >/dev/null
+
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
 # per-project container controls are the only boundary left between them. Each
 # pattern below removes that boundary outright rather than weakening it, so the
@@ -427,7 +474,7 @@ fi
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage piper-tts | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage piper-tts wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

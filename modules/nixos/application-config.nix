@@ -33,4 +33,8 @@
     mode = "0600";
     source = ../../config/piper-tts.env.example;
   };
+  environment.etc."homecompute/wyoming-stt.env" = {
+    mode = "0600";
+    source = ../../config/wyoming-stt.env.example;
+  };
 }

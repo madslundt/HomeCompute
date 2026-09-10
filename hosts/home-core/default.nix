@@ -7,6 +7,7 @@
     ../../modules/nixos/networking.nix
     ../../modules/nixos/firewall.nix
     ../../modules/nixos/compute-link.nix
+    ../../modules/nixos/wyoming-stt-network.nix
     ../../modules/nixos/platform-monitoring.nix
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix

@@ -15,5 +15,7 @@
     "d /srv/state/automation/aula-mcp 0700 1000 1000 - -"
     "d /srv/state/piper-tts 0750 root homecompute-state - -"
     "d /srv/state/piper-tts/models 0755 root root - -"
+    "d /srv/state/wyoming-stt 0750 root homecompute-state - -"
+    "d /srv/state/wyoming-stt/models 0750 1000 1000 - -"
   ];
 }

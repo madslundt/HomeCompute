@@ -10,6 +10,8 @@ Deployment files are split by stable node role:
   dashboard for `home-core`.
 - [`piper-tts/`](piper-tts/README.md) contains the CPU-native Danish Wyoming
   TTS service for Home Assistant.
+- [`wyoming-stt/`](wyoming-stt/README.md) contains the CPU-native Danish
+  Faster Whisper fallback for Home Assistant.
 
 These artifacts are invoked by scripts in [`../scripts/`](../scripts/README.md)
 and depend on validated external configuration. They are scaffolding for the

@@ -1,0 +1,81 @@
+name: homecompute-wyoming-stt
+
+x-stt-common: &stt-common
+  image: ${WYOMING_STT_IMAGE:?Set WYOMING_STT_IMAGE to an immutable image digest}
+  init: true
+  user: "1000:1000"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  cpus: ${WYOMING_STT_CPUS:-4}
+  mem_limit: ${WYOMING_STT_MEMORY_LIMIT:-4g}
+  pids_limit: 256
+  stop_grace_period: 30s
+  environment: &stt-environment
+    HF_HUB_DISABLE_XET: "1"
+    XDG_CACHE_HOME: /data/cache
+    WYO_WHISPER_URI: tcp://0.0.0.0:10300
+    WYO_WHISPER_DATA_DIR: /data
+    WYO_WHISPER_DOWNLOAD_DIR: /data
+    WYO_WHISPER_DEVICE: cpu
+    WYO_WHISPER_MODEL: ${WYOMING_STT_MODEL:-base-int8}
+    WYO_WHISPER_LANGUAGE: ${WYOMING_STT_LANGUAGE:-da}
+    WYO_WHISPER_BEAM_SIZE: ${WYOMING_STT_BEAM_SIZE:-1}
+    WYO_WHISPER_CPU_THREADS: ${WYOMING_STT_CPU_THREADS:-4}
+  volumes:
+    - /srv/state/wyoming-stt/models:/data
+    - ./health-check.py:/opt/homecompute/wyoming-stt-health-check.py:ro
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=256m,uid=1000,gid=1000,mode=0700
+  healthcheck:
+    test: [CMD, /usr/src/.venv/bin/python3, /opt/homecompute/wyoming-stt-health-check.py]
+    interval: 30s
+    timeout: 20s
+    retries: 3
+    start_period: 5m
+  logging:
+    driver: local
+    options: {max-size: 10m, max-file: "3"}
+
+services:
+  stt:
+    <<: *stt-common
+    container_name: home-core-wyoming-stt
+    restart: unless-stopped
+    environment:
+      <<: *stt-environment
+      HF_HUB_OFFLINE: "1"
+      WYO_WHISPER_LOCAL_FILES_ONLY: "true"
+    ports:
+      - "127.0.0.1:${WYOMING_STT_PORT:-10300}:10300"
+      - "${WYOMING_STT_LAN_ADDRESS:?Set the home-core LAN address}:${WYOMING_STT_PORT:-10300}:10300"
+    networks:
+      stt:
+        ipv4_address: 172.28.203.2
+
+  stt-model-fetch:
+    <<: *stt-common
+    profiles: [prepare]
+    container_name: home-core-wyoming-stt-model-fetch
+    restart: "no"
+    networks:
+      model-fetch:
+        ipv4_address: 172.28.204.2
+
+networks:
+  stt:
+    driver: bridge
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-hc-stt
+    ipam:
+      config:
+        - subnet: 172.28.203.0/24
+  model-fetch:
+    driver: bridge
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-hc-sttfetch
+    ipam:
+      config:
+        - subnet: 172.28.204.0/24
