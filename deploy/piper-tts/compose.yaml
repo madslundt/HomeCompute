@@ -46,10 +46,16 @@ services:
     logging:
       driver: local
       options: {max-size: 10m, max-file: "3"}
-    networks: [tts]
+    networks:
+      tts:
+        ipv4_address: 172.28.202.2
 
 networks:
   tts:
     driver: bridge
-    internal: true
     enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-hc-piper
+    ipam:
+      config:
+        - subnet: 172.28.202.0/24

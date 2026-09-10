@@ -6,10 +6,11 @@ catalogue and therefore the highest-quality official Piper option currently
 available for Danish. The model runs efficiently on `home-core`'s CPU.
 
 The image, voice repository revision, and all three downloaded artifacts are
-pinned. The container runs non-root with a read-only filesystem and no runtime
-internet access. Wyoming does not authenticate clients, so the host
-`DOCKER-USER` policy permits only Home Assistant at `192.168.30.30` to reach
-the LAN publication. A loopback publication is retained for host smoke tests.
+pinned. The container runs non-root with a read-only filesystem. Its dedicated
+bridge has deny-all runtime egress. Wyoming does not authenticate clients, so
+the host `DOCKER-USER` policy permits only Home Assistant at `192.168.30.30` to
+reach the LAN publication. A loopback publication is retained for host smoke
+tests.
 
 Prepare and start the service on `home-core` from a published release:
 

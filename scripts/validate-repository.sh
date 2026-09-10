@@ -401,9 +401,12 @@ jq -e '
   (.services.piper.volumes | length == 1) and
   (.services.piper.volumes[0].source == "/srv/state/piper-tts/models") and
   (.services.piper.volumes[0].read_only == true) and
+  (.services.piper.networks.tts.ipv4_address == "172.28.202.2") and
   (.services.piper.mem_limit > 0 and .services.piper.cpus > 0 and .services.piper.pids_limit > 0) and
-  (.networks.tts.internal == true) and
-  (.networks.tts.enable_ipv6 == false)
+  (.networks.tts.internal != true) and
+  (.networks.tts.enable_ipv6 == false) and
+  (.networks.tts.driver_opts["com.docker.network.bridge.name"] == "br-hc-piper") and
+  (.networks.tts.ipam.config[0].subnet == "172.28.202.0/24")
 ' "$piper_json" >/dev/null
 
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so

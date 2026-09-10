@@ -72,6 +72,23 @@
         iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j REJECT
       done
 
+      # The bridge needs a gateway for Docker's host publication, so enforce
+      # the offline runtime boundary explicitly in DOCKER-USER.
+      iptables -w -I DOCKER-USER 1 -i br-hc-piper -j REJECT
+      while iptables -w -C DOCKER-USER -i br-hc-piper -j HC-PIPER-EGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-piper -j HC-PIPER-EGRESS
+      done
+      iptables -w -N HC-PIPER-EGRESS 2>/dev/null || true
+      iptables -w -F HC-PIPER-EGRESS
+      iptables -w -A HC-PIPER-EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -A HC-PIPER-EGRESS -j REJECT
+      iptables -w -I DOCKER-USER 1 -i br-hc-piper -j HC-PIPER-EGRESS
+      iptables -w -C HC-PIPER-EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -C HC-PIPER-EGRESS -j REJECT
+      while iptables -w -C DOCKER-USER -i br-hc-piper -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-piper -j REJECT
+      done
+
       # Keep bridge egress and Aula ingress fail-closed while replacing the
       # live policy. Always add fresh guards: failures leave both protections.
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
@@ -144,6 +161,14 @@
       if iptables -w -L HC-PIPER-INGRESS -n >/dev/null 2>&1; then
         iptables -w -F HC-PIPER-INGRESS
         iptables -w -X HC-PIPER-INGRESS
+      fi
+      iptables -w -I DOCKER-USER 1 -i br-hc-piper -j REJECT
+      while iptables -w -C DOCKER-USER -i br-hc-piper -j HC-PIPER-EGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-piper -j HC-PIPER-EGRESS
+      done
+      if iptables -w -L HC-PIPER-EGRESS -n >/dev/null 2>&1; then
+        iptables -w -F HC-PIPER-EGRESS
+        iptables -w -X HC-PIPER-EGRESS
       fi
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
       iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT
