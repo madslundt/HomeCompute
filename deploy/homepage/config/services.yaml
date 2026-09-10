@@ -22,10 +22,10 @@
         id: homecore-calibre-web
         icon: calibre-web.png
         href: /__homecore_service__/http/8083/
-        description: Requires the documented SSH tunnel
+        description: E-book library
 
     - Shelfmark:
         id: homecore-shelfmark
         icon: mdi-bookshelf
         href: /__homecore_service__/http/8084/
-        description: Requires the documented SSH tunnel
+        description: Book discovery and requests

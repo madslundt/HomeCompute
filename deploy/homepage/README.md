@@ -19,11 +19,10 @@ example, n8n resolves to `http://home-core:15678` when Homepage was opened on
 Tailscale name. `config/custom.js` supplies this behavior because a normal
 relative URL cannot replace the current URL's port.
 
-Calibre Web Automated and Shelfmark remain bound to host loopback by design.
-Their dynamically resolved links therefore work directly only when the chosen
-hostname can reach those ports; with the present deployment, use the documented
-SSH tunnel and open their localhost URLs instead. They have not been exposed
-merely to make the dashboard links work.
+Calibre Web Automated and Shelfmark bind to loopback plus the same explicit LAN
+and Tailscale addresses as Homepage. Their dynamically resolved links therefore
+work from either approved network without an SSH tunnel. Neither application is
+published on an unspecified host interface.
 
 Docker discovery and container statistics are disabled. The project receives
 no container-engine API access and joins no other application's Docker network.

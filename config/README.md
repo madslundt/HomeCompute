@@ -99,7 +99,10 @@ sudo docker compose --env-file /etc/homecompute/books_importer/runtime.env \
 Run these commands from the repository root on home-core. Use `config --quiet`:
 the ordinary `config` output includes resolved credentials. From your workstation,
 run `ssh -L 8083:127.0.0.1:8083 -L 8084:127.0.0.1:8084 mads@home-core`,
-then open `http://localhost:8083` and `http://localhost:8084`. Internal service
-connections use Docker DNS (`http://cwa:8083` and `http://shelfmark:8084`).
+then open `http://localhost:8083` and `http://localhost:8084`. Normal LAN and
+Tailscale access uses the hostname or address chosen for Homepage on ports 8083
+and 8084; the Compose project binds only those explicit host addresses plus
+loopback. Internal service connections use Docker DNS (`http://cwa:8083` and
+`http://shelfmark:8084`).
 Docker restart policies restart existing containers after a reboot; this stack
 does not yet have a NixOS systemd unit to reconcile Compose changes.

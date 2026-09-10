@@ -380,7 +380,9 @@ jq -e '
     (.security_opt | index("no-new-privileges:true") != null) and
     (.logging.driver == "local") and
     all(.volumes[]; .type == "bind" and (.source | startswith("/srv/state/books_importer/")))) and
-  ([.services[].ports[]?.host_ip] == ["127.0.0.1", "127.0.0.1"]) and
+  all([.services.cwa, .services.shelfmark][];
+    (.ports | length == 3) and
+    ([.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"])) and
   (.services["shelfmark-automated"].ports == null) and
   (.networks.default.driver_opts["com.docker.network.bridge.host_binding_ipv4"] == "127.0.0.1")
 ' "$books_json" >/dev/null

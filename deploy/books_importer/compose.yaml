@@ -25,6 +25,8 @@ services:
       - /srv/state/books_importer/import:/cwa-book-ingest
     ports:
       - "127.0.0.1:8083:8083"
+      - "${BOOKS_LAN_ADDRESS:?Set the home-core LAN address}:8083:8083"
+      - "${BOOKS_TAILSCALE_ADDRESS:?Set the home-core Tailscale address}:8083:8083"
 
   shelfmark:
     image: ${SHELFMARK_IMAGE:?Set SHELFMARK_IMAGE}
@@ -49,6 +51,8 @@ services:
       - /srv/state/books_importer/import:/downloads
     ports:
       - "127.0.0.1:8084:8084"
+      - "${BOOKS_LAN_ADDRESS:?Set the home-core LAN address}:8084:8084"
+      - "${BOOKS_TAILSCALE_ADDRESS:?Set the home-core Tailscale address}:8084:8084"
 
   shelfmark-automated:
     image: ${SHELFMARK_AUTOMATED_IMAGE:?Set SHELFMARK_AUTOMATED_IMAGE}
