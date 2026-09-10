@@ -419,6 +419,8 @@ jq -e '
 python3 -m py_compile \
   "$REPO_ROOT/deploy/piper-tts/moss-wyoming.py" \
   "$REPO_ROOT/deploy/piper-tts/moss-health-check.py"
+rg -F 'iptables -w -A HC-PIPER-EGRESS -s 172.28.202.3/32 -d 172.28.202.2/32 -p tcp --dport 10200 -j RETURN' \
+  "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
 # per-project container controls are the only boundary left between them. Each
