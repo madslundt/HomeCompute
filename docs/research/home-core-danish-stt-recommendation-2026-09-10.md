@@ -79,3 +79,18 @@ is necessary because OpenAI explicitly says Whisper performance varies by
 language and recommends evaluating the intended context; model size alone does
 not establish Danish quality.
 
+## Initial deployment result
+
+`small-int8` was promoted on 2026-09-10 in HomeCompute revision `7f9d28b`.
+After a container restart it returned healthy with a 4 GiB limit and used about
+350 MiB while idle. Home Assistant Core could still connect through the
+restricted LAN endpoint.
+
+A preliminary synthetic check used the macOS Danish Sara voice, 16 kHz mono
+PCM, and sent audio from the Home Assistant Core container over Wyoming. For
+`Hvad er klokken?`, Base returned `Vi er klåttet.` in 2.933 seconds while Small
+returned the intended sentence in 1.534 seconds. For `Tænd lyset i køkkenet`,
+Small returned `og tændt lyset i køkkenet.` in 1.782 seconds, retaining the
+action and room but adding words. These two synthetic samples justify keeping
+Small deployed, but they do not replace the real household-voice promotion
+corpus described above.
