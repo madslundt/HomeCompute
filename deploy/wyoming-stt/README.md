@@ -2,7 +2,7 @@
 
 This project runs the official `rhasspy/wyoming-whisper` CPU image as the
 stable `home-core` speech-to-text fallback. It serves Danish Faster Whisper at
-`tcp://192.168.30.122:10300` with the CPU-friendly `base-int8` model, beam size
+`tcp://192.168.30.122:10300` with the higher-accuracy `small-int8` model, beam size
 `1`, and persistent model storage in `/srv/state/wyoming-stt/models`.
 
 The service name and state path describe the stable role, not the future GB10
@@ -56,7 +56,7 @@ From Home Assistant, add the **Wyoming Protocol** integration with exactly:
 - Host: `192.168.30.122`
 - Port: `10300`
 
-Select the reported `base-int8` Faster Whisper engine in the Danish Assist
+Select the reported `small-int8` Faster Whisper engine in the Danish Assist
 pipeline and test several short Danish commands, names, numbers, and a sentence
 with background noise. Treat successful container health as service readiness,
 not as Danish accuracy qualification.

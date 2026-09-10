@@ -436,7 +436,7 @@ jq -e '
   (.services.stt.read_only == true) and
   (.services.stt.cap_drop | index("ALL") != null) and
   (.services.stt.security_opt | index("no-new-privileges:true") != null) and
-  (.services.stt.environment.WYO_WHISPER_MODEL == "base-int8") and
+  (.services.stt.environment.WYO_WHISPER_MODEL == "small-int8") and
   (.services.stt.environment.WYO_WHISPER_LANGUAGE == "da") and
   (.services.stt.environment.WYO_WHISPER_BEAM_SIZE == "1") and
   (.services.stt.environment.HF_HUB_DISABLE_XET == "1") and
