@@ -35,6 +35,26 @@
         iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT
       done
 
+      # The LAN publication is reachable from the trusted Default network and
+      # through the advertised Tailscale subnet route. Other VLANs remain
+      # fail-closed at the host even if upstream UniFi policy is broadened.
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j HC-CADDY-LAN 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j HC-CADDY-LAN
+      done
+      iptables -w -N HC-CADDY-LAN 2>/dev/null || true
+      iptables -w -F HC-CADDY-LAN
+      iptables -w -A HC-CADDY-LAN -i enp44s0 -s 192.168.10.0/24 -j RETURN
+      iptables -w -A HC-CADDY-LAN -i tailscale0 -j RETURN
+      iptables -w -A HC-CADDY-LAN -j REJECT
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j HC-CADDY-LAN
+      iptables -w -C HC-CADDY-LAN -i enp44s0 -s 192.168.10.0/24 -j RETURN
+      iptables -w -C HC-CADDY-LAN -i tailscale0 -j RETURN
+      iptables -w -C HC-CADDY-LAN -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j REJECT
+      done
+
       # Keep bridge egress and Aula ingress fail-closed while replacing the
       # live policy. Always add fresh guards: failures leave both protections.
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
@@ -91,6 +111,14 @@
       if iptables -w -L HC-CADDY-INGRESS -n >/dev/null 2>&1; then
         iptables -w -F HC-CADDY-INGRESS
         iptables -w -X HC-CADDY-INGRESS
+      fi
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j HC-CADDY-LAN 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j HC-CADDY-LAN
+      done
+      if iptables -w -L HC-CADDY-LAN -n >/dev/null 2>&1; then
+        iptables -w -F HC-CADDY-LAN
+        iptables -w -X HC-CADDY-LAN
       fi
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
       iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT

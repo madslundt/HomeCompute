@@ -29,6 +29,7 @@ let
 
       edge_healthy=0
       n8n_ready=0
+      n8n_edge_ready=0
       gx10_ready=0
       gx10_text_ready=0
       gx10_embedding_ready=0
@@ -66,6 +67,21 @@ let
         n8n_ready=1
       else
         echo 'homecompute n8n readiness probe failed' >&2
+      fi
+
+      if curl \
+        --silent \
+        --fail \
+        --output /dev/null \
+        --connect-timeout 2 \
+        --max-time 5 \
+        --proto '=https' \
+        --cacert '${edgeCA}' \
+        --resolve 'n8n.home.arpa:443:100.110.248.102' \
+        'https://n8n.home.arpa/healthz/readiness'; then
+        n8n_edge_ready=1
+      else
+        echo 'homecompute n8n HTTPS edge readiness probe failed' >&2
       fi
 
       if [ -r '${computeKeyFile}' ]; then
@@ -109,6 +125,9 @@ let
       # HELP homecompute_n8n_ready n8n readiness endpoint returned success.
       # TYPE homecompute_n8n_ready gauge
       homecompute_n8n_ready $n8n_ready
+      # HELP homecompute_n8n_edge_ready n8n readiness through the HTTPS edge returned success.
+      # TYPE homecompute_n8n_edge_ready gauge
+      homecompute_n8n_edge_ready $n8n_edge_ready
       # HELP homecompute_gx10_model_ready The baseline GX10 text service returned ready; staged modality readiness is reported separately.
       # TYPE homecompute_gx10_model_ready gauge
       homecompute_gx10_model_ready $gx10_ready

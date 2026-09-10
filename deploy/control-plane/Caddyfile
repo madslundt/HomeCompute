@@ -19,7 +19,7 @@
 	}
 }
 
-{$AI_FQDN} {
+{$AI_FQDN}, {$AI_LEGACY_FQDN} {
 	tls internal
 	encode zstd gzip
 
@@ -51,6 +51,26 @@
 	}
 
 	respond 404
+
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
+{$N8N_FQDN} {
+	tls internal
+	encode zstd gzip
+
+	reverse_proxy {$N8N_UPSTREAM} {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
 
 	log {
 		output stdout

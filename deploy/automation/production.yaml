@@ -2,10 +2,12 @@
 services:
   n8n:
     environment:
-      N8N_HOST: home-core
-      N8N_EDITOR_BASE_URL: http://home-core:15678
-      N8N_MCP_BASE_URL: http://home-core:15678
-      WEBHOOK_URL: http://home-core:15678/
+      N8N_HOST: n8n.home.arpa
+      N8N_PROTOCOL: https
+      N8N_EDITOR_BASE_URL: https://n8n.home.arpa
+      N8N_MCP_BASE_URL: https://n8n.home.arpa
+      WEBHOOK_URL: https://n8n.home.arpa/
+      N8N_PROXY_HOPS: "1"
     extra_hosts:
       - homeassistant.local:192.168.30.30
     ports:

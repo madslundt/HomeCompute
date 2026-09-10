@@ -259,9 +259,13 @@ CONTROL_PLANE_SECRET_GID=1
 CONTROL_PLANE_EDGE_SUBNET=172.28.200.0/24
 CADDY_EDGE_IP=172.28.200.2
 LITELLM_EDGE_IP=172.28.200.3
-CONTROL_PLANE_BIND_ADDRESS=127.0.0.1
+CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=127.0.0.1
+CONTROL_PLANE_LAN_BIND_ADDRESS=127.0.0.2
 CONTROL_PLANE_HTTPS_PORT=8443
 AI_FQDN=ai.home.arpa
+AI_LEGACY_FQDN=home-core.invalid
+N8N_FQDN=n8n.home.arpa
+N8N_UPSTREAM=http://192.168.30.122:15678
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -289,9 +293,9 @@ jq -e '
     ["/config", "/data", "/var/lib/postgresql/data"] and
   ([.services[].volumes[]? | select(.type == "bind") | .target] | sort) ==
     ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/litellm-entrypoint.sh", "/var/lib/postgresql/data"] and
-  (.services.caddy.ports | length == 1) and
-  (.services.caddy.ports[0].host_ip == "127.0.0.1") and
-  (.services.caddy.ports[0].protocol == "tcp") and
+  (.services.caddy.ports | length == 2) and
+  ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2"]) and
+  (all(.services.caddy.ports[]; .protocol == "tcp")) and
   (.services.litellm.ports == null) and
   (.services.postgres.ports == null) and
   (.services.postgres.user == "70:70") and

@@ -16,9 +16,13 @@ services:
       - no-new-privileges:true
     environment:
       AI_FQDN: ${AI_FQDN:?Set AI_FQDN}
+      AI_LEGACY_FQDN: ${AI_LEGACY_FQDN:?Set AI_LEGACY_FQDN}
+      N8N_FQDN: ${N8N_FQDN:?Set N8N_FQDN}
+      N8N_UPSTREAM: ${N8N_UPSTREAM:?Set N8N_UPSTREAM}
       CADDY_HTTPS_PORT: "8443"
     ports:
-      - ${CONTROL_PLANE_BIND_ADDRESS:?Set an explicit IPv4 bind address}:${CONTROL_PLANE_HTTPS_PORT:-443}:8443/tcp
+      - ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:${CONTROL_PLANE_HTTPS_PORT:-443}:8443/tcp
+      - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${CONTROL_PLANE_HTTPS_PORT:-443}:8443/tcp
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/caddy-data:/data
