@@ -44,13 +44,14 @@ piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/dep
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
 "${homepage[@]}" pull
-"${piper[@]}" pull
+"${piper[@]}" pull piper
+"${piper[@]}" build moss
 "${automation[@]}" build aula-mcp
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
 "${homepage[@]}" up -d --wait --wait-timeout 180
 if [[ -s /srv/state/piper-tts/models/da_DK-talesyntese-medium.onnx ]]; then
-  "${piper[@]}" up -d --wait --wait-timeout 180
+  "${piper[@]}" up -d --wait --wait-timeout 600
 else
   printf 'Piper voice is not prepared; leaving Danish TTS stopped.\n'
 fi

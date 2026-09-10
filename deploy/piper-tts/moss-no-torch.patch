@@ -1,0 +1,24 @@
+diff --git a/onnx_tts_runtime.py b/onnx_tts_runtime.py
+index 48db6e1..23dc177 100644
+--- a/onnx_tts_runtime.py
++++ b/onnx_tts_runtime.py
+@@ -9,8 +9,6 @@ from typing import Any, Sequence
+ 
+ import numpy as np
+ import sentencepiece as spm
+-import torch
+-import torchaudio
+ 
+ from moss_tts_nano.defaults import DEFAULT_OUTPUT_DIR
+ from text_normalization_pipeline import WeTextProcessingManager, prepare_tts_request_texts
+@@ -461,6 +459,10 @@ class OnnxTtsRuntime(OrtCpuRuntime):
+         return waveform.unsqueeze(0).detach().cpu().numpy().astype(np.float32, copy=False)
+
+     def encode_reference_audio(self, reference_audio_path: str | Path) -> list[list[int]]:
++        # The HomeCompute runtime uses only the built-in Adam reference codes.
++        # Keep PyTorch and torchaudio out of the production image. Custom voice
++        # cloning should use an image variant that restores these dependencies.
++        raise RuntimeError("Custom reference audio is disabled in this CPU-only image")
+         waveform = self._load_reference_audio(reference_audio_path)
+         waveform_length = int(waveform.shape[-1])
+         outputs = self.sessions["codec_encode"].run(

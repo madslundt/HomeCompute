@@ -1,6 +1,57 @@
 name: homecompute-piper-tts
 
 services:
+  moss:
+    build:
+      context: .
+      dockerfile: Dockerfile.moss
+      args:
+        MOSS_SOURCE_REVISION: ${MOSS_SOURCE_REVISION:?Set MOSS_SOURCE_REVISION}
+        MOSS_TTS_MODEL_REVISION: ${MOSS_TTS_MODEL_REVISION:?Set MOSS_TTS_MODEL_REVISION}
+        MOSS_CODEC_MODEL_REVISION: ${MOSS_CODEC_MODEL_REVISION:?Set MOSS_CODEC_MODEL_REVISION}
+    container_name: home-core-moss-tts
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 10
+    mem_limit: 8g
+    pids_limit: 512
+    stop_grace_period: 2m
+    command:
+      - --cpu-threads
+      - "8"
+      - --voice
+      - Adam
+      - --fallback-uri
+      - tcp://piper:10200
+    environment:
+      OMP_NUM_THREADS: "8"
+      OPENBLAS_NUM_THREADS: "8"
+      MALLOC_ARENA_MAX: "2"
+    ports:
+      - "127.0.0.1:${PIPER_WYOMING_PORT:-10200}:10200"
+      - "${PIPER_LAN_ADDRESS:?Set the home-core LAN address}:${PIPER_WYOMING_PORT:-10200}:10200"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m,uid=1000,gid=1000,mode=0700
+    healthcheck:
+      test: [CMD, python, /app/moss-health-check.py]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 5m
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+    depends_on:
+      piper:
+        condition: service_healthy
+    networks:
+      tts:
+        ipv4_address: 172.28.202.3
+
   piper:
     image: ${PIPER_IMAGE:?Set PIPER_IMAGE to an immutable image digest}
     container_name: home-core-piper-tts
@@ -14,9 +65,6 @@ services:
     mem_limit: 2g
     pids_limit: 256
     stop_grace_period: 30s
-    ports:
-      - "127.0.0.1:${PIPER_WYOMING_PORT:-10200}:10200"
-      - "${PIPER_LAN_ADDRESS:?Set the home-core LAN address}:${PIPER_WYOMING_PORT:-10200}:10200"
     environment:
       PIPER_VOICE_ID: ${PIPER_VOICE_ID:?Set PIPER_VOICE_ID}
       PIPER_MODEL_SHA256: ${PIPER_MODEL_SHA256:?Set PIPER_MODEL_SHA256}

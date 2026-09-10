@@ -23,7 +23,7 @@ set -a
 source "$ENV_FILE"
 set +a
 
-required=(PIPER_IMAGE PIPER_LAN_ADDRESS PIPER_WYOMING_PORT PIPER_VOICE_ID PIPER_VOICE_REVISION PIPER_MODEL_SHA256 PIPER_CONFIG_SHA256 PIPER_MODEL_CARD_SHA256)
+required=(PIPER_IMAGE PIPER_LAN_ADDRESS PIPER_WYOMING_PORT PIPER_VOICE_ID PIPER_VOICE_REVISION PIPER_MODEL_SHA256 PIPER_CONFIG_SHA256 PIPER_MODEL_CARD_SHA256 MOSS_SOURCE_REVISION MOSS_TTS_MODEL_REVISION MOSS_CODEC_MODEL_REVISION)
 for name in "${required[@]}"; do
   [[ -n "${!name:-}" ]] || { printf 'Missing setting: %s\n' "$name" >&2; exit 1; }
 done
@@ -72,12 +72,13 @@ case "$action" in
     fetch_file "$PIPER_VOICE_ID.onnx.json" 4878 "$PIPER_CONFIG_SHA256"
     fetch_file MODEL_CARD 308 "$PIPER_MODEL_CARD_SHA256"
     verify_all
-    "${compose[@]}" pull
-    printf 'Prepared pinned Danish Piper voice.\n'
+    "${compose[@]}" pull piper
+    "${compose[@]}" build moss
+    printf 'Prepared pinned MOSS-TTS-Nano and Danish Piper fallback.\n'
     ;;
   up)
     verify_all || { printf 'Run prepare first.\n' >&2; exit 1; }
-    "${compose[@]}" up -d --wait --wait-timeout 180
+    "${compose[@]}" up -d --wait --wait-timeout 600
     ;;
   down)
     "${compose[@]}" down

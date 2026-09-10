@@ -1,0 +1,61 @@
+FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254 AS artifacts
+
+ARG MOSS_SOURCE_REVISION
+ARG MOSS_TTS_MODEL_REVISION
+ARG MOSS_CODEC_MODEL_REVISION
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir huggingface-hub==0.34.4
+
+RUN git clone --filter=blob:none https://github.com/OpenMOSS/MOSS-TTS-Nano.git /opt/moss-tts-nano \
+    && git -C /opt/moss-tts-nano checkout "${MOSS_SOURCE_REVISION}" \
+    && rm -rf /opt/moss-tts-nano/.git
+
+COPY moss-no-torch.patch /tmp/moss-no-torch.patch
+RUN git -C /opt/moss-tts-nano apply /tmp/moss-no-torch.patch
+
+RUN MOSS_TTS_MODEL_REVISION="${MOSS_TTS_MODEL_REVISION}" \
+    MOSS_CODEC_MODEL_REVISION="${MOSS_CODEC_MODEL_REVISION}" \
+    python - <<'PY'
+import os
+from huggingface_hub import snapshot_download
+
+root = "/opt/moss-tts-nano/models"
+snapshot_download(
+    repo_id="OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX",
+    revision=os.environ["MOSS_TTS_MODEL_REVISION"],
+    local_dir=f"{root}/MOSS-TTS-Nano-100M-ONNX",
+    allow_patterns=["*.onnx", "*.data", "*.json", "tokenizer.model"],
+)
+snapshot_download(
+    repo_id="OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX",
+    revision=os.environ["MOSS_CODEC_MODEL_REVISION"],
+    local_dir=f"{root}/MOSS-Audio-Tokenizer-Nano-ONNX",
+    allow_patterns=["*.onnx", "*.data", "*.json"],
+)
+PY
+
+FROM python:3.12-slim-bookworm@sha256:782412e85d0f0984994c290652577d4018aff08145c85b262bb63dc0c7522254
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/opt/moss-tts-nano
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir \
+        numpy==2.2.6 \
+        onnxruntime==1.22.1 \
+        sentencepiece==0.2.1 \
+        wyoming==1.10.2
+
+COPY --from=artifacts /opt/moss-tts-nano /opt/moss-tts-nano
+COPY moss-wyoming.py /app/moss-wyoming.py
+COPY moss-health-check.py /app/moss-health-check.py
+
+WORKDIR /app
+EXPOSE 10200
+ENTRYPOINT ["python", "/app/moss-wyoming.py"]
