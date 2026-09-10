@@ -61,4 +61,4 @@ fi
 ln -sfn "$release" /srv/homecompute/current
 printf '%s\n' "$revision" > /var/lib/homecompute/deployed-revision
 printf 'Healthy deployment: %s\n' "$revision"
-printf 'Books importer is staged only; migration and source cutover are separate.\n'
+printf 'Books importer is managed separately; this deployment does not reconcile it.\n'

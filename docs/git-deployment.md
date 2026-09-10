@@ -61,16 +61,17 @@ PostgreSQL contents, or Caddy CA state. Off-host backups remain deferred.
 ## Books importer
 
 The book stack is tracked and checked by the repository validator but is not
-started by the deployment script. Its application images and Calibre mod are
-pinned to registry digests resolved on 2026-09-04. These are not claimed to be
-the versions currently running on HAOS. Compare them with the source before
-migration and keep upgrades separate from data transfer.
+reconciled by the deployment script. Its application images and Calibre mod are
+pinned to registry digests resolved on 2026-09-04. The migrated stack is managed
+with its dedicated Compose file so a general host deployment cannot initialize
+or replace its state as a side effect.
 
 The existing image startup model uses root and writable image filesystems;
 we preserved that model while bounding CPU, memory, process counts, and logs,
-and disabling privilege escalation. Only loopback UI ports are published. The
-stack has not been runtime-qualified on this host; migrate its five state
-directories and configure/test credentials before enabling its synchronization
-service. See `config/README.md`. The encrypted credentials are already available
-through SOPS, and NixOS supplies the image settings at
+and disabling privilege escalation. UI ports are published on loopback plus
+the host's explicit LAN and Tailscale addresses. The five state directories and
+credentials have been migrated and the three services runtime-qualified on
+`home-core`; the retained HAOS source is rollback material. See
+`config/README.md`. Encrypted credentials are supplied through SOPS, and NixOS
+supplies the image settings and bind addresses at
 `/etc/homecompute/books_importer/runtime.env`.

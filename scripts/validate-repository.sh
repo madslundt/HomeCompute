@@ -366,8 +366,8 @@ jq -e '
   (.volumes[0].source == "/srv/state/automation/aula-mcp" and .volumes[0].target == "/data") and
   (.mem_limit > 0 and .cpus > 0 and .pids_limit > 0)
 ' "$automation_json" >/dev/null
-# Books remains staged until source data and cutover are reviewed. Validate its
-# own private bindings, resource limits, and image pins before accepting it.
+# Books is reconciled separately from the general deployment. Validate its
+# explicit host bindings, resource limits, and image pins before accepting it.
 books_json="$temporary_root/books.json"
 docker compose --env-file "$REPO_ROOT/config/books_importer.env.example" \
   --env-file "$REPO_ROOT/config/books_importer-secrets.env.example" \
