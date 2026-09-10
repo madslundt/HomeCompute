@@ -393,15 +393,23 @@ piper_json="$temporary_root/piper.json"
 docker compose --env-file "$REPO_ROOT/config/piper-tts.env.example" \
   -f "$REPO_ROOT/deploy/piper-tts/compose.yaml" config --format json >"$piper_json"
 jq -e '
-  ((.services | keys) == ["piper"]) and
+  ((.services | keys) == ["moss", "piper"]) and
+  (.services.moss.build.dockerfile == "Dockerfile.moss") and
+  (.services.moss.user == "1000:1000") and
+  (.services.moss.read_only == true) and
+  (.services.moss.cap_drop | index("ALL") != null) and
+  (.services.moss.security_opt | index("no-new-privileges:true") != null) and
+  (.services.moss.ports | length == 2) and
+  ([.services.moss.ports[].host_ip] | sort == ["127.0.0.1", "192.168.30.122"]) and
+  all(.services.moss.ports[]; .published == "10200" and .target == 10200 and .protocol == "tcp") and
+  (.services.moss.networks.tts.ipv4_address == "172.28.202.3") and
+  (.services.moss.mem_limit > 0 and .services.moss.cpus > 0 and .services.moss.pids_limit > 0) and
   (.services.piper.image | test("@sha256:[0-9a-f]{64}$")) and
   (.services.piper.user == "1000:1000") and
   (.services.piper.read_only == true) and
   (.services.piper.cap_drop | index("ALL") != null) and
   (.services.piper.security_opt | index("no-new-privileges:true") != null) and
-  (.services.piper.ports | length == 2) and
-  ([.services.piper.ports[].host_ip] | sort == ["127.0.0.1", "192.168.30.122"]) and
-  all(.services.piper.ports[]; .published == "10200" and .target == 10200 and .protocol == "tcp") and
+  (.services.piper.ports == null) and
   (.services.piper.volumes | length == 1) and
   (.services.piper.volumes[0].source == "/srv/state/piper-tts/models") and
   (.services.piper.volumes[0].read_only == true) and
@@ -412,6 +420,11 @@ jq -e '
   (.networks.tts.driver_opts["com.docker.network.bridge.name"] == "br-hc-piper") and
   (.networks.tts.ipam.config[0].subnet == "172.28.202.0/24")
 ' "$piper_json" >/dev/null
+python3 -m py_compile \
+  "$REPO_ROOT/deploy/piper-tts/moss-wyoming.py" \
+  "$REPO_ROOT/deploy/piper-tts/moss-health-check.py"
+rg -F 'iptables -w -A HC-PIPER-EGRESS -s 172.28.202.3/32 -d 172.28.202.2/32 -p tcp --dport 10200 -j RETURN' \
+  "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 
 stt_json="$temporary_root/wyoming-stt.json"
 docker compose --env-file "$REPO_ROOT/config/wyoming-stt.env.example" \

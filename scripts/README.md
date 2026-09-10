@@ -7,7 +7,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | --- | --- | --- |
 | `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `firewall`, `install`, `rollback`, `down` |
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
-| `setup-home-core-piper.sh` | Pinned Danish Piper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
+| `setup-home-core-piper.sh` | Pinned Danish MOSS ONNX with automatic Piper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `setup-home-core-stt.sh` | Pinned Wyoming Faster Whisper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |

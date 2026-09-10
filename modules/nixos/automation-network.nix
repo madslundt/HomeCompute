@@ -72,8 +72,9 @@
         iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 10200 -j REJECT
       done
 
-      # The bridge needs a gateway for Docker's host publication, so enforce
-      # the offline runtime boundary explicitly in DOCKER-USER.
+      # The bridge needs a gateway for Docker's host publication. Permit only
+      # MOSS (.3) to reach the Piper fallback (.2), then enforce the offline
+      # runtime boundary explicitly in DOCKER-USER.
       iptables -w -I DOCKER-USER 1 -i br-hc-piper -j REJECT
       while iptables -w -C DOCKER-USER -i br-hc-piper -j HC-PIPER-EGRESS 2>/dev/null; do
         iptables -w -D DOCKER-USER -i br-hc-piper -j HC-PIPER-EGRESS
@@ -81,9 +82,11 @@
       iptables -w -N HC-PIPER-EGRESS 2>/dev/null || true
       iptables -w -F HC-PIPER-EGRESS
       iptables -w -A HC-PIPER-EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -A HC-PIPER-EGRESS -s 172.28.202.3/32 -d 172.28.202.2/32 -p tcp --dport 10200 -j RETURN
       iptables -w -A HC-PIPER-EGRESS -j REJECT
       iptables -w -I DOCKER-USER 1 -i br-hc-piper -j HC-PIPER-EGRESS
       iptables -w -C HC-PIPER-EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -C HC-PIPER-EGRESS -s 172.28.202.3/32 -d 172.28.202.2/32 -p tcp --dport 10200 -j RETURN
       iptables -w -C HC-PIPER-EGRESS -j REJECT
       while iptables -w -C DOCKER-USER -i br-hc-piper -j REJECT 2>/dev/null; do
         iptables -w -D DOCKER-USER -i br-hc-piper -j REJECT
