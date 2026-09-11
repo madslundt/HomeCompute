@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .config import Settings, get_settings
-from .home_assistant import HomeAssistantUnavailable, forward_event
+from .home_assistant import HomeAssistantUnavailable, forward_event, forward_raw_callback
 from .ttlock import normalize, parse_payload
 
 
@@ -212,6 +212,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="Invalid TTLock event") from error
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
             raise HTTPException(status_code=400, detail="Malformed webhook body") from error
+
+        if (
+            records
+            and configured.ha_ttlock_webhook_url is not None
+            and content_type == "application/x-www-form-urlencoded"
+        ):
+            try:
+                await forward_raw_callback(
+                    bytes(chunks),
+                    content_type,
+                    str(configured.ha_ttlock_webhook_url),
+                    configured.ha_timeout_seconds,
+                )
+            except HomeAssistantUnavailable as error:
+                log_event(
+                    logging.WARNING,
+                    "TTLock integration relay failed",
+                    record_count=len(records),
+                    error=type(error).__name__,
+                )
+                raise HTTPException(
+                    status_code=503,
+                    detail="Downstream temporarily unavailable",
+                ) from error
+            log_event(
+                logging.INFO,
+                "TTLock integration callback relayed",
+                record_count=len(records),
+            )
 
         for record in records:
             event = normalize(record)

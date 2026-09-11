@@ -2,7 +2,9 @@
 
 This project is the only public ingress for TTLock. Tailscale Funnel terminates
 HTTPS and proxies to `127.0.0.1:8085`; the container forwards an allow-listed,
-normalized event to one private Home Assistant webhook. It does not use a Home
+normalized event to one private Home Assistant webhook. When configured, it also
+relays the validated form callback to the private webhook owned by Home Assistant's
+TTLock integration so its entities receive push updates. It does not use a Home
 Assistant token and does not expose Home Assistant.
 
 ## Security and delivery behavior
@@ -93,12 +95,16 @@ Compose rendering. Create a real encrypted dotenv document containing at least:
 ```dotenv
 TTLOCK_WEBHOOK_SECRET=<first-secret>
 HA_WEBHOOK_URL=http://homeassistant.local/api/webhook/<second-secret>
+HA_TTLOCK_WEBHOOK_URL=http://homeassistant.local/api/webhook/<integration-webhook-id>
 HOME_ASSISTANT_ADDRESS=192.168.30.30
 TTLOCK_GATEWAY_PORT=8085
 ```
 
 The explicit `HOME_ASSISTANT_ADDRESS` mapping lets the container use the local
 `.local` hostname even though Docker DNS does not provide multicast DNS.
+`HA_TTLOCK_WEBHOOK_URL` is optional unless the HACS TTLock integration is installed;
+copy its private URL from the Home Assistant repair notice. It is a separate secret
+and must never be configured as TTLock's public callback URL.
 
 ## NixOS deployment and reboot recovery
 

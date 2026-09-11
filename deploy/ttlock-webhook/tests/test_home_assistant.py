@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from app.home_assistant import HomeAssistantUnavailable, forward_event
+from app.home_assistant import HomeAssistantUnavailable, forward_event, forward_raw_callback
 from app.models import NormalizedEvent
 
 
@@ -58,3 +58,25 @@ async def test_non_retryable_home_assistant_rejection_stops(normalized: Normaliz
     with pytest.raises(HomeAssistantUnavailable):
         await forward_event(normalized, "http://ha/webhook", 0.1, lambda **kwargs: fake)
     assert fake.post.await_count == 1
+
+
+async def test_raw_callback_relay_preserves_body_and_content_type() -> None:
+    fake = FakeClient([httpx.Response(200)])
+    body = b"lockId=1&records=%5B%5D"
+
+    await forward_raw_callback(
+        body,
+        "application/x-www-form-urlencoded",
+        "http://ha/webhook",
+        0.1,
+        lambda **kwargs: fake,
+    )
+
+    fake.post.assert_awaited_once_with(
+        "http://ha/webhook",
+        content=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "homecompute-ttlock-webhook/1",
+        },
+    )

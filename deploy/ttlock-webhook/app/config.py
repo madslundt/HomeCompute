@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     ttlock_webhook_secret: SecretStr = Field(min_length=32)
     ha_webhook_url: AnyHttpUrl
+    ha_ttlock_webhook_url: AnyHttpUrl | None = None
     max_body_bytes: int = Field(default=16_384, ge=1_024, le=1_048_576)
     rate_limit_per_minute: int = Field(default=30, ge=1, le=600)
     dedupe_ttl_seconds: int = Field(default=600, ge=30, le=86_400)

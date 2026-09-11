@@ -154,6 +154,57 @@ def test_form_encoded_records_are_normalized_and_forwarded(
     assert normalized.event_type == "keypad_unlock"
 
 
+def test_form_records_are_relayed_to_the_ttlock_integration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalized_forward = AsyncMock()
+    raw_forward = AsyncMock()
+    monkeypatch.setattr("app.main.forward_event", normalized_forward)
+    monkeypatch.setattr("app.main.forward_raw_callback", raw_forward)
+    settings = Settings(
+        ttlock_webhook_secret=SecretStr(SECRET),
+        ha_webhook_url="http://home-assistant.local/api/webhook/normalized-secret",
+        ha_ttlock_webhook_url="http://home-assistant.local/api/webhook/integration-secret",
+    )
+    body = {
+        "lockId": "123456",
+        "notifyType": "1",
+        "records": json.dumps([event(recordId=9005)]),
+    }
+
+    with TestClient(create_app(settings)) as relay_client:
+        response = relay_client.post(URL, data=body)
+
+    assert response.status_code == 200
+    raw_forward.assert_awaited_once()
+    assert raw_forward.await_args.args[1] == "application/x-www-form-urlencoded"
+    assert "integration-secret" in raw_forward.await_args.args[2]
+    normalized_forward.assert_awaited_once()
+
+
+def test_raw_relay_failure_requests_a_ttlock_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalized_forward = AsyncMock()
+    raw_forward = AsyncMock(side_effect=HomeAssistantUnavailable("timeout"))
+    monkeypatch.setattr("app.main.forward_event", normalized_forward)
+    monkeypatch.setattr("app.main.forward_raw_callback", raw_forward)
+    settings = Settings(
+        ttlock_webhook_secret=SecretStr(SECRET),
+        ha_webhook_url="http://home-assistant.local/api/webhook/normalized-secret",
+        ha_ttlock_webhook_url="http://home-assistant.local/api/webhook/integration-secret",
+    )
+
+    with TestClient(create_app(settings)) as relay_client:
+        response = relay_client.post(
+            URL,
+            data={"records": json.dumps([event(recordId=9006)])},
+        )
+
+    assert response.status_code == 503
+    normalized_forward.assert_not_awaited()
+
+
 def test_oversized_body_is_rejected(client: TestClient, forward: AsyncMock) -> None:
     response = client.post(URL, json={"padding": "x" * 1200})
     assert response.status_code == 413

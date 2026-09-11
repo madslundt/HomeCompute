@@ -13,6 +13,7 @@ services:
     environment:
       TTLOCK_WEBHOOK_SECRET: ${TTLOCK_WEBHOOK_SECRET:?Set a unique high-entropy path secret}
       HA_WEBHOOK_URL: ${HA_WEBHOOK_URL:?Set the private Home Assistant webhook URL}
+      HA_TTLOCK_WEBHOOK_URL: ${HA_TTLOCK_WEBHOOK_URL:-}
       MAX_BODY_BYTES: ${MAX_BODY_BYTES:-16384}
       RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-30}
       DEDUPE_TTL_SECONDS: ${DEDUPE_TTL_SECONDS:-600}
