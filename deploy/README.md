@@ -12,6 +12,8 @@ Deployment files are split by stable node role:
   TTS service for Home Assistant.
 - [`wyoming-stt/`](wyoming-stt/README.md) contains the CPU-native Danish
   Faster Whisper fallback for Home Assistant.
+- [`ttlock-webhook/`](ttlock-webhook/README.md) contains the loopback-only,
+  Funnel-fronted TTLock ingress for a private Home Assistant webhook.
 
 These artifacts are invoked by scripts in [`../scripts/`](../scripts/README.md)
 and depend on validated external configuration. They are scaffolding for the

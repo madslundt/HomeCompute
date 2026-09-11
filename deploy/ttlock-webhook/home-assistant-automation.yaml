@@ -1,0 +1,23 @@
+# Replace the placeholder with the HA-only secret from HA_WEBHOOK_URL.
+automation:
+  - alias: TTLock webhook receiver
+    id: ttlock_webhook_receiver
+    mode: queued
+    max: 20
+    triggers:
+      - trigger: webhook
+        webhook_id: REPLACE_WITH_HA_ONLY_SECRET
+        allowed_methods: [POST]
+        local_only: true
+    actions:
+      - event: ttlock_event
+        event_data:
+          source: "{{ trigger.json.source }}"
+          event_type: "{{ trigger.json.event_type }}"
+          lock_id: "{{ trigger.json.lock_id }}"
+          user_id: "{{ trigger.json.user_id }}"
+          user_name: "{{ trigger.json.user_name }}"
+          timestamp: "{{ trigger.json.timestamp }}"
+          event_id: "{{ trigger.json.event_id }}"
+          raw_event_type: "{{ trigger.json.raw_event_type }}"
+          success: "{{ trigger.json.success }}"

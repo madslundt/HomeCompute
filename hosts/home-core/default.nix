@@ -14,6 +14,7 @@
     ../../modules/nixos/docker.nix
     ../../modules/nixos/ssh.nix
     ../../modules/nixos/tailscale.nix
+    ../../modules/nixos/ttlock-webhook.nix
     ../../modules/nixos/storage.nix
     ../../modules/nixos/backups.nix
     ../../modules/nixos/secrets.nix
@@ -47,4 +48,8 @@
 
   # Enable after configuring a real off-host repository and password file.
   homecompute.backups.enable = false;
+
+  # Enable only after adding ttlock-webhook/environment to the encrypted SOPS
+  # document and confirming the account-specific TTLock callback contract.
+  homecompute.ttlockWebhook.enable = true;
 }

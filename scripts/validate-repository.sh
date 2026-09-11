@@ -122,6 +122,8 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/compute-node/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
+    "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" \
+    "$REPO_ROOT/deploy/ttlock-webhook/home-assistant-automation.yaml" \
     "$REPO_ROOT/deploy/wyoming-stt/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/config/services.yaml" \
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
@@ -341,6 +343,32 @@ jq -e '
   all(.services.homepage.volumes[]; .type == "bind" and .read_only == true) and
   (.services.homepage.mem_limit > 0 and .services.homepage.cpus > 0 and .services.homepage.pids_limit > 0)
 ' "$homepage_json" >/dev/null
+
+ttlock_json="$temporary_root/ttlock-webhook.json"
+docker compose --env-file "$REPO_ROOT/config/ttlock-webhook.env.example" \
+  -f "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" config --format json >"$ttlock_json"
+jq -e '
+  ((.services | keys) == ["gateway"]) and
+  (.services.gateway.build != null) and
+  (.services.gateway.user == "10001:10001") and
+  (.services.gateway.read_only == true) and
+  (.services.gateway.cap_drop | index("ALL") != null) and
+  (.services.gateway.security_opt | index("no-new-privileges:true") != null) and
+  (.services.gateway.ports | length == 1) and
+  (.services.gateway.ports[0].host_ip == "127.0.0.1") and
+  (.services.gateway.ports[0].published == "8085") and
+  (.services.gateway.ports[0].target == 8080) and
+  (.services.gateway.extra_hosts == ["homeassistant.local=192.168.30.30"]) and
+  (.services.gateway.mem_limit > 0 and .services.gateway.cpus > 0 and .services.gateway.pids_limit > 0) and
+  (.networks.gateway.enable_ipv6 == false) and
+  (.networks.gateway.driver_opts["com.docker.network.bridge.host_binding_ipv4"] == "127.0.0.1")
+' "$ttlock_json" >/dev/null
+python3 -m py_compile "$REPO_ROOT/deploy/ttlock-webhook/app/"*.py \
+  "$REPO_ROOT/deploy/ttlock-webhook/healthcheck.py"
+rg -F 'FROM python:3.12.12-slim-bookworm@sha256:' \
+  "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
+rg -F 'pip install --no-compile --require-hashes -r requirements.lock' \
+  "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
 docker compose --env-file "$REPO_ROOT/config/automation.env.example" \
   -f "$REPO_ROOT/deploy/automation/compose.yaml" \
   -f "$REPO_ROOT/deploy/automation/production.yaml" config --format json >"$automation_json"
@@ -487,7 +515,7 @@ fi
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage piper-tts wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

@@ -18,5 +18,11 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install validation tools
         run: sudo apt-get update && sudo apt-get install --yes jq ripgrep shellcheck
+      - name: Test TTLock webhook gateway
+        run: |
+          python3 -m venv /tmp/ttlock-test-venv
+          /tmp/ttlock-test-venv/bin/pip install --require-hashes -r deploy/ttlock-webhook/requirements-test.lock
+          /tmp/ttlock-test-venv/bin/pip install --no-deps -e deploy/ttlock-webhook
+          /tmp/ttlock-test-venv/bin/pytest deploy/ttlock-webhook/tests
       - name: Validate NixOS, scripts, JSON, and Compose
         run: bash ./scripts/validate-repository.sh
