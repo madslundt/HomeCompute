@@ -1,5 +1,9 @@
 # Model and use-case alignment review after the GB10 precision audit
 
+The later [Flash-Next review](qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
+supports ADR-019's Qwen3.8-27B workhorse and exclusive Flash-Next heavy mode.
+Qwen3.6 is not a planned benchmark.
+
 Verified: 2026-08-30
 
 Status: historical 2026-08-30 reconciliation review. Its requested updates

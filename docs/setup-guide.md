@@ -82,7 +82,8 @@ The model selection is final. The shipped compute configuration prepares the
 first qualification stage: pinned Qwen3.8-27B with native MTP on vLLM at 64K.
 Routing remains disabled until that exact tuple passes the live appliance
 gates. SGLang/DFlash is then compared on real workloads before one runtime is
-kept as normal production.
+kept as normal production. Qwen3.6 is not part of the qualification ladder;
+replace any remaining legacy profile rather than adapting it in place.
 
 ## Before you start
 

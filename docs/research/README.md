@@ -12,6 +12,7 @@ Start with these current synthesis documents:
 | Model installation order | [`llm-installation-recommendation.md`](llm-installation-recommendation.md) |
 | Latest text-model shortlist audit (2026-09-04) | [`text-model-shortlist-refresh-2026-09-04.md`](text-model-shortlist-refresh-2026-09-04.md) |
 | GPT-OSS replacement decision and current Qwen comparison | [`gpt-oss-replacement-assessment.md`](gpt-oss-replacement-assessment.md) |
+| Qwen3.8 primary and Flash-Next runtime outlook | [`qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md`](qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md) |
 | Cross-role model trade-offs and switch rules | [`model-role-tradeoff-matrix.md`](model-role-tradeoff-matrix.md) |
 | GB10 precision and optimized artifacts | [`gb10-optimized-model-audit.md`](gb10-optimized-model-audit.md) |
 | Model/use-case alignment | [`model-use-case-alignment-review.md`](model-use-case-alignment-review.md) |

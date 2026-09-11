@@ -66,6 +66,8 @@ The immutable machine-readable policy is
 [`config/gb10-model-roster.json`](config/gb10-model-roster.json); see the
 [speech ADR](docs/adr/021-final-speech-stack-and-routing.md) for language,
 runtime, license, voice-consent, and qualification caveats.
+The [Flash-Next single-GB10 review](docs/research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
+records why it remains an exclusive heavy mode rather than the resident primary.
 
 ## Setup in order
 

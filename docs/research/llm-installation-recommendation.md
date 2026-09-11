@@ -52,9 +52,9 @@ creating another resident service.
 - Do not substitute `nvidia/Qwen3.8-Flash-Next-NVFP4` into the `blazux` recipe.
   It is a distinct quantized checkpoint without the same pinned single-GB10
   evidence.
-- Retire `nvidia/Qwen3.6-35B-A3B-NVFP4` after the new tuples pass integration
-  smoke tests. It remains represented only as the legacy installer baseline
-  until one new runtime profile is audited.
+- Do not schedule or download `nvidia/Qwen3.6-35B-A3B-NVFP4` for evaluation.
+  It remains represented only as legacy installer history and must not be used
+  as a benchmark, fallback, or deployment profile.
 - Ornith, Muse, Gemma, GPT-OSS, Devstral, GLM, and other general LLMs stay out
   of the retained roster unless a selected model fails a named acceptance gate.
 - Do not use NVIDIA Magpie TTS for Danish; Danish is absent from its listed
@@ -80,4 +80,6 @@ creating another resident service.
    their evidence and rollback decision have been retained.
 
 The detailed evidence, owner reports, and direct source links are in the
-[dated recommendation](gb10-model-installation-recommendation-2026-09-07.md).
+[dated recommendation](gb10-model-installation-recommendation-2026-09-07.md)
+and the later
+[Flash-Next single-GB10 review](qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md).

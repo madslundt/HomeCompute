@@ -142,6 +142,9 @@ selected workhorse and Flash-Next is the exclusive cold-swap heavy lane.
 Routing remains disabled and aliases unbound until the pinned vLLM/native-MTP
 tuple passes live qualification; SGLang/DFlash is a runtime comparison, not a
 second general-purpose model.
+The dated [Flash-Next review](research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
+documents the single-GB10 runtime evidence behind that resident-versus-heavy
+split.
 
 The selected speech stack is Hviske v5.3 for Danish STT, Whisper large-v3-turbo
 for English/mixed/unknown STT, Plapre Nano v2 for Danish TTS, and Qwen3-TTS
@@ -152,7 +155,7 @@ speech deployment.
 | Topic | Documents |
 | --- | --- |
 | Platform and runtime | [GB10 appliance validation](research/gx10-platform-validation.md), [runtime evaluation](research/inference-runtime-evaluation.md), [gateway evaluation](research/gateway-evaluation.md), [control-plane runtime split review](research/control-plane-runtime-split-review.md) |
-| Current model shortlist | [Installation recommendation](research/llm-installation-recommendation.md), [September 2026 refresh](research/text-model-shortlist-refresh-2026-09-04.md), [GB10 precision audit](research/gb10-optimized-model-audit.md) |
+| Current model shortlist | [ADR-019](adr/019-single-gb10-model-roster.md), [machine-readable roster](../config/gb10-model-roster.json), [Flash-Next single-GB10 review](research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md) |
 | Text roles | [General](research/general-model-evaluation.md), [coding](research/coding-model-evaluation.md), [Home Assistant](research/home-assistant-model-evaluation.md) |
 | Speech | [Danish TTS qualification](tts-qualification.md), [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
 | Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md) |

@@ -1,5 +1,11 @@
 # n8n model routing, scheduling, and GB10 residency
 
+> Model-order update (2026-09-11): ADR-019 selects Qwen3.8-27B as the normal
+> workhorse and Flash-Next as an exclusive heavy mode. Qwen3.6 is not a planned
+> benchmark; its examples below preserve the earlier routing analysis. The
+> semantic aliases and scheduling rules are unchanged. See the
+> [current primary-model evaluation](qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md).
+
 **Verified:** 2026-08-26  
 **Status:** practical starting policy; exact model promotion and capacity remain
 hardware-benchmark gates  

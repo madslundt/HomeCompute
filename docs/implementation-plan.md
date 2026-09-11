@@ -163,7 +163,8 @@ They refuse a run without the release/artifact manifest.
 ### D2 — Qualify the selected text and audio artifacts
 
 1. Establish the Qwen3.8-27B vLLM/native-MTP baseline against every role
-   scorecard.
+   scorecard. Do not schedule Qwen3.6 as a comparison; its checked-in remnants
+   are legacy scaffolding to replace.
 2. Run the same checkpoint and fixtures with the SGLang/DFlash2 profile. Keep
    it only if real coding wall time, throughput, TTFT, long context, tool/JSON
    correctness, concurrency, memory, and soak stability materially improve.

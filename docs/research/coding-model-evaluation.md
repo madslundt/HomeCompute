@@ -7,6 +7,10 @@ Status: historical benchmark analysis. Candidate selection is superseded by
 [current roster](../../config/gb10-model-roster.json); do not execute the older
 Qwen3.6/Qwen3.8-FP8 ladder below.
 
+The later [Flash-Next review](qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
+supports the resident-workhorse/heavy-mode split in ADR-019. Qwen3.6 is not a
+planned benchmark.
+
 ## Recommendation
 
 Benchmark the following in this order for `coding`:
