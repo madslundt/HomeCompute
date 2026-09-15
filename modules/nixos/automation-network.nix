@@ -109,6 +109,9 @@
       iptables -w -A HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
       iptables -w -A HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
       iptables -w -A HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
+      # Allow the local-only Home Assistant webhook used by the Aula morning
+      # reminder; all other private-network egress remains fail-closed below.
+      iptables -w -A HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
       for subnet in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4; do
         iptables -w -A HC-AUTOMATION -d "$subnet" -j REJECT
       done
@@ -123,6 +126,7 @@
       iptables -w -C HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
       iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
       iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
+      iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
       for subnet in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4; do
         iptables -w -C HC-AUTOMATION -d "$subnet" -j REJECT
       done
