@@ -21,7 +21,8 @@ Release references: [LiteLLM](https://github.com/BerriAI/litellm/releases/tag/v1
 
 API base: `https://home-core.tail479ad.ts.net/v1` over Tailscale.
 Health endpoint: `https://home-core.tail479ad.ts.net/healthz`.
-Only Caddy publishes a port, on `100.110.248.102:443`.
+Only Caddy publishes a port, on `100.110.248.102:8443`; Tailscale Funnel owns
+port 443 for the TTLock webhook.
 The host NixOS firewall already permits TCP 443 on `tailscale0`.
 
 The certificate uses Caddy's private CA. The public root certificate is available

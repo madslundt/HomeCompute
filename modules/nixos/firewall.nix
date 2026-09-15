@@ -10,6 +10,7 @@
     interfaces."tailscale0".allowedTCPPorts = [
       22
       443
+      8443
     ];
   };
 }

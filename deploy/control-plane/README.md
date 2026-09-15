@@ -56,7 +56,7 @@ daemon-wide default bind for future user-defined bridge publications to
 Start on `127.0.0.1`. The production Tailscale publication is paired with the
 repository-owned `HC-CADDY-INGRESS` policy in
 `modules/nixos/automation-network.nix`: Docker's original destination
-`100.110.248.102:443` is accepted only from `tailscale0` and rejected from every
+`100.110.248.102:8443` is accepted only from `tailscale0` and rejected from every
 other forwarded ingress path. Rebuild NixOS and verify both allowed and denied
 clients whenever the address or interface changes.
 

@@ -20,19 +20,19 @@
 
       # Docker DNAT bypasses INPUT. Keep the Caddy publication fail-closed
       # while replacing its ingress policy, then permit only Tailscale traffic.
-      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT
-      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS 2>/dev/null; do
-        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j HC-CADDY-INGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j HC-CADDY-INGRESS
       done
       iptables -w -N HC-CADDY-INGRESS 2>/dev/null || true
       iptables -w -F HC-CADDY-INGRESS
       iptables -w -A HC-CADDY-INGRESS -i tailscale0 -j RETURN
       iptables -w -A HC-CADDY-INGRESS -j REJECT
-      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j HC-CADDY-INGRESS
       iptables -w -C HC-CADDY-INGRESS -i tailscale0 -j RETURN
       iptables -w -C HC-CADDY-INGRESS -j REJECT
-      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT 2>/dev/null; do
-        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j REJECT
       done
 
       # The LAN publication is reachable from the trusted Default network and
@@ -141,9 +141,9 @@
 
     preStop = ''
       iptables -w -N DOCKER-USER 2>/dev/null || true
-      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j REJECT
-      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS 2>/dev/null; do
-        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 443 -j HC-CADDY-INGRESS
+      iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j REJECT
+      while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j HC-CADDY-INGRESS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 100.110.248.102 --ctorigdstport 8443 -j HC-CADDY-INGRESS
       done
       if iptables -w -L HC-CADDY-INGRESS -n >/dev/null 2>&1; then
         iptables -w -F HC-CADDY-INGRESS

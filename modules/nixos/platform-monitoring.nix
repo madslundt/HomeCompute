@@ -49,8 +49,8 @@ let
         --max-time 5 \
         --proto '=https' \
         --cacert '${edgeCA}' \
-        --resolve 'home-core.tail479ad.ts.net:443:100.110.248.102' \
-        'https://home-core.tail479ad.ts.net/healthz'; then
+        --resolve 'home-core.tail479ad.ts.net:8443:100.110.248.102' \
+        'https://home-core.tail479ad.ts.net:8443/healthz'; then
         edge_healthy=1
       else
         echo 'homecompute edge process health probe failed' >&2
@@ -77,8 +77,8 @@ let
         --max-time 5 \
         --proto '=https' \
         --cacert '${edgeCA}' \
-        --resolve 'n8n.home.arpa:443:100.110.248.102' \
-        'https://n8n.home.arpa/healthz/readiness'; then
+        --resolve 'n8n.home.arpa:8443:100.110.248.102' \
+        'https://n8n.home.arpa:8443/healthz/readiness'; then
         n8n_edge_ready=1
       else
         echo 'homecompute n8n HTTPS edge readiness probe failed' >&2

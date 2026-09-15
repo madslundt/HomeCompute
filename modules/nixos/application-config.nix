@@ -7,11 +7,13 @@
     text = lib.replaceStrings
       [
         "CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=127.0.0.1"
+        "CONTROL_PLANE_TAILSCALE_HTTPS_PORT=443"
         "CONTROL_PLANE_LAN_BIND_ADDRESS=127.0.0.2"
         "AI_LEGACY_FQDN=home-core.invalid"
       ]
       [
         "CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=100.110.248.102"
+        "CONTROL_PLANE_TAILSCALE_HTTPS_PORT=8443"
         "CONTROL_PLANE_LAN_BIND_ADDRESS=192.168.30.122"
         "AI_LEGACY_FQDN=home-core.tail479ad.ts.net"
       ]
