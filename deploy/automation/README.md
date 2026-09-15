@@ -218,7 +218,7 @@ Aula, leaving n8n running. Run this block in Bash on home-core:
 cd /home/mads/HomeCompute
 compose=(sudo docker compose --env-file /etc/homecompute/automation.env \
   -f deploy/automation/compose.yaml -f deploy/automation/production.yaml)
-"${compose[@]}" build aula-mcp
+"${compose[@]}" build --no-cache aula-mcp
 "${compose[@]}" up -d --no-deps --wait --wait-timeout 90 aula-mcp
 "${compose[@]}" exec -it aula-mcp bun apps/cli/src/index.ts login
 "${compose[@]}" exec aula-mcp bun apps/cli/src/index.ts doctor
