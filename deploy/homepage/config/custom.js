@@ -10,17 +10,25 @@
       const parts = markerUrl.pathname.slice(marker.length).split("/");
       const [protocol, port, ...pathParts] = parts;
 
-      if (!/^(http|https)$/.test(protocol) || !/^\d{1,5}$/.test(port)) {
+      if (!/^(http|https)$/.test(protocol) || !/^(\d{1,5}|edge)$/.test(port)) {
         continue;
       }
 
       const path = `/${pathParts.join("/")}`;
+      // Funnel owns Tailscale 443 for TTLock. Caddy therefore uses 8443 on
+      // the tailnet but retains the standard HTTPS port on the home LAN.
+      const resolvedPort =
+        port === "edge"
+          ? window.location.hostname.endsWith(".ts.net")
+            ? "8443"
+            : "443"
+          : port;
       const defaultPort =
-        (protocol === "http" && port === "80") ||
-        (protocol === "https" && port === "443");
+        (protocol === "http" && resolvedPort === "80") ||
+        (protocol === "https" && resolvedPort === "443");
       const authority = defaultPort
         ? window.location.hostname
-        : `${window.location.hostname}:${port}`;
+        : `${window.location.hostname}:${resolvedPort}`;
 
       link.href = `${protocol}://${authority}${path}${markerUrl.search}${markerUrl.hash}`;
     }
