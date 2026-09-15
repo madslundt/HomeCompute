@@ -3,9 +3,9 @@ FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-# Full commit, frozen dependencies, and digest-pinned runtimes.
+# Upstream default-branch HEAD, frozen dependencies, and digest-pinned runtimes.
 RUN git init . && git remote add origin https://github.com/Casperjuel/aula-mcp.git \
-    && git fetch --depth 1 origin af49805ae9c6d7c9026f6e559f2e01ca209c9e46 \
+    && git fetch --depth 1 origin HEAD \
     && git checkout --detach FETCH_HEAD && rm -rf .git
 COPY aula-n8n.patch /tmp/aula-n8n.patch
 RUN git apply --check /tmp/aula-n8n.patch \

@@ -98,11 +98,11 @@ must be configured separately after restore validation. The initial 2 CPU /
 
 ## Aula MCP
 
-The production overlay includes [Casperjuel/aula-mcp](https://github.com/Casperjuel/aula-mcp)
-at commit `af49805ae9c6d7c9026f6e559f2e01ca209c9e46`. The local Dockerfile
-builds frozen upstream dependencies using Node and runs the server with Bun;
-both base images are pinned by digest. `scripts/deploy-home-core.sh` builds
-this image during deployment. Aula is absent from the isolated restore stack.
+The production overlay builds [Casperjuel/aula-mcp](https://github.com/Casperjuel/aula-mcp)
+from its upstream default-branch `HEAD` whenever the image is rebuilt. The local
+Dockerfile builds frozen upstream dependencies using Node and runs the server
+with Bun; both base images are pinned by digest. `scripts/deploy-home-core.sh`
+builds this image during deployment. Aula is absent from the isolated restore stack.
 The local `aula-n8n.patch` changes MCP tool-name dots to underscores because
 OpenAI accepts only letters, digits, underscores, and hyphens in function
 names. It also expresses positive integer IDs as `minimum: 1` instead of
