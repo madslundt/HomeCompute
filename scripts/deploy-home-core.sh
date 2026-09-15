@@ -54,6 +54,13 @@ stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environmen
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
 "${homepage[@]}" up -d --wait --wait-timeout 180
+
+# Tailscale terminates a publicly trusted certificate for household devices.
+# Keep these endpoints inside the tailnet: Funnel would publish them publicly.
+tailscale funnel reset
+tailscale serve --https=443 --bg http://127.0.0.1:8085
+tailscale serve --https=15679 --bg http://127.0.0.1:15678
+
 if [[ -s /srv/state/piper-tts/models/da_DK-talesyntese-medium.onnx ]]; then
   "${piper[@]}" up -d --wait --wait-timeout 600
 else

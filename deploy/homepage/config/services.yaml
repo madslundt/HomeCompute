@@ -5,11 +5,17 @@
         href: http://homeassistant.local/
         description: Smart home control
 
-    - n8n:
-        id: homecore-n8n
+    - n8n (local):
+        id: homecore-n8n-local
         icon: n8n.png
         href: https://n8n.home.arpa/
-        description: Automations and workflows
+        description: Automations and workflows on the home network
+
+    - n8n (Tailscale):
+        id: homecore-n8n-tailscale
+        icon: n8n.png
+        href: https://home-core.tail479ad.ts.net:15679/
+        description: Automations and workflows via Tailscale
 
     - AI gateway:
         id: homecore-ai-gateway
