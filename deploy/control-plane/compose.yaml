@@ -21,7 +21,9 @@ services:
       N8N_UPSTREAM: ${N8N_UPSTREAM:?Set N8N_UPSTREAM}
       CADDY_HTTPS_PORT: "8443"
     ports:
-      - ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:${CONTROL_PLANE_HTTPS_PORT:-443}:8443/tcp
+      # Tailscale Serve owns the Tailscale HTTPS listener and terminates a
+      # publicly trusted certificate. Caddy remains available on the LAN for
+      # the private home.arpa names.
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${CONTROL_PLANE_HTTPS_PORT:-443}:8443/tcp
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
