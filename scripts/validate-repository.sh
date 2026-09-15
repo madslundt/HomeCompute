@@ -129,6 +129,8 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
     "$REPO_ROOT/deploy/homepage/config/widgets.yaml" \
     "$REPO_ROOT/deploy/homepage/config/proxmox.yaml" \
+    "$REPO_ROOT/.github/dependabot.yml" \
+    "$REPO_ROOT/.github/workflows/update-flake.yml" \
     "$REPO_ROOT/.github/workflows/validate.yml"
 else
   printf '[validate] Ruby not installed; YAML syntax check skipped\n'

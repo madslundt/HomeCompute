@@ -191,6 +191,13 @@ restore test.
 
 ## Update pinned inputs
 
+GitHub checks the flake every Monday and opens or refreshes the
+`automation/nix-flake-update` pull request when `flake.lock` changes. The
+workflow never deploys to `home-core`: review the lockfile, wait for the
+required validation, and deploy the merged commit through the normal release
+procedure. Dependabot also opens weekly pull requests for GitHub Actions,
+Docker definitions, and the TTLock Python dependency.
+
 Update one dependency at a time when practical:
 
 ```bash

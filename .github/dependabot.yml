@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Checks Dockerfiles and Compose definitions. Host-only image variables remain
+  # deliberately outside Git and require a reviewed source configuration update.
+  - package-ecosystem: docker
+    directories:
+      - /deploy/automation
+      - /deploy/books_importer
+      - /deploy/compute-node
+      - /deploy/control-plane
+      - /deploy/homepage
+      - /deploy/piper-tts
+      - /deploy/ttlock-webhook
+      - /deploy/wyoming-stt
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: pip
+    directory: /deploy/ttlock-webhook
+    schedule:
+      interval: weekly
+      day: monday
