@@ -1,9 +1,15 @@
 - Home services:
-    - Home Assistant:
-        id: homecore-home-assistant
+    - Home Assistant (local):
+        id: homecore-home-assistant-local
         icon: home-assistant.png
         href: http://homeassistant.local/
-        description: Smart home control
+        description: Smart home control on the home network
+
+    - Home Assistant (Tailscale):
+        id: homecore-home-assistant-tailscale
+        icon: home-assistant.png
+        href: http://192.168.30.30/
+        description: Smart home control via the Tailscale subnet route
 
     - n8n (local):
         id: homecore-n8n-local
@@ -24,14 +30,26 @@
         description: LiteLLM API gateway health
 
 - Local operator access:
-    - Calibre Web Automated:
-        id: homecore-calibre-web
+    - Calibre Web Automated (local):
+        id: homecore-calibre-web-local
         icon: calibre-web.png
-        href: /__homecore_service__/http/8083/
-        description: E-book library
+        href: http://192.168.30.122:8083/
+        description: E-book library on the home network
 
-    - Shelfmark:
-        id: homecore-shelfmark
+    - Calibre Web Automated (Tailscale):
+        id: homecore-calibre-web-tailscale
+        icon: calibre-web.png
+        href: https://home-core.tail479ad.ts.net:18083/
+        description: E-book library via Tailscale
+
+    - Shelfmark (local):
+        id: homecore-shelfmark-local
         icon: mdi-bookshelf
-        href: /__homecore_service__/http/8084/
-        description: Book discovery and requests
+        href: http://192.168.30.122:8084/
+        description: Book discovery and requests on the home network
+
+    - Shelfmark (Tailscale):
+        id: homecore-shelfmark-tailscale
+        icon: mdi-bookshelf
+        href: https://home-core.tail479ad.ts.net:18084/
+        description: Book discovery and requests via Tailscale

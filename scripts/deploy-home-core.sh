@@ -60,6 +60,8 @@ stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environmen
 tailscale funnel reset
 tailscale serve --https=443 --bg http://127.0.0.1:8085
 tailscale serve --https=15679 --bg http://127.0.0.1:15678
+tailscale serve --https=18083 --bg http://127.0.0.1:8083
+tailscale serve --https=18084 --bg http://127.0.0.1:8084
 
 if [[ -s /srv/state/piper-tts/models/da_DK-talesyntese-medium.onnx ]]; then
   "${piper[@]}" up -d --wait --wait-timeout 600
