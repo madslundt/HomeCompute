@@ -116,6 +116,15 @@ in
       description = "Unprivileged administrative user created by cloud-init.";
     };
 
+    dataClassification = lib.mkOption {
+      type = lib.types.enum [
+        "synthetic-only"
+        "household"
+      ];
+      default = "household";
+      description = "Maximum data class permitted in the guest.";
+    };
+
     resources = {
       vcpus = lib.mkOption {
         type = lib.types.ints.positive;
@@ -170,15 +179,36 @@ in
     };
   };
 
-  config = lib.mkIf cfg.enable {
+  config = lib.mkMerge [
+    {
+      # Keep the state path present while the guest is staged but disabled so
+      # the local bootstrap job has a deterministic, non-missing source.
+      users.groups.homecompute-agents-vm = { };
+      users.users.homecompute-agents-vm = {
+        isSystemUser = true;
+        group = "homecompute-agents-vm";
+        extraGroups = [ "kvm" ];
+      };
+      systemd.tmpfiles.rules = [
+        "d ${statePath} 0750 homecompute-agents-vm homecompute-agents-vm - -"
+      ];
+    }
+
+    (lib.mkIf cfg.enable {
     assertions = [
       {
         assertion = cfg.sshAuthorizedKeys != [ ];
         message = "homecompute.agentsVm.sshAuthorizedKeys must contain at least one reviewed public key";
       }
       {
-        assertion = config.homecompute.backups.enable;
-        message = "homecompute.agentsVm requires encrypted off-host backups to be enabled first";
+        assertion =
+          config.homecompute.backups.enable
+          || (
+            cfg.dataClassification == "synthetic-only"
+            && config.homecompute.agentsVm.localBootstrapBackup.enable
+            && config.homecompute.agentsVm.localBootstrapBackup.riskAccepted
+          );
+        message = "household data requires off-host backup; local bootstrap permits synthetic-only pilots";
       }
       {
         assertion = lib.any (
@@ -198,16 +228,6 @@ in
         assertion = cfg.resources.memoryMiB >= 8192 && cfg.resources.diskGiB >= 40;
         message = "homecompute.agentsVm resources must meet the NemoClaw minimums (8 GiB RAM and 40 GiB disk)";
       }
-    ];
-
-    users.groups.homecompute-agents-vm = { };
-    users.users.homecompute-agents-vm = {
-      isSystemUser = true;
-      group = "homecompute-agents-vm";
-      extraGroups = [ "kvm" ];
-    };
-    systemd.tmpfiles.rules = [
-      "d ${statePath} 0750 homecompute-agents-vm homecompute-agents-vm - -"
     ];
 
     networking.networkmanager.unmanaged = [
@@ -404,6 +424,10 @@ in
       path = [ pkgs.qemu_kvm ];
       preStart = ''
         test -c /dev/kvm
+        if [ -e /run/homecompute/agents-vm-backup-in-progress ]; then
+          echo "agents VM backup is in progress; refusing VM start" >&2
+          exit 1
+        fi
         rm -f ${statePath}/qmp.sock
         if [ ! -e ${guestDisk} ]; then
           umask 0077
@@ -471,5 +495,6 @@ in
         ];
       };
     };
-  };
+    })
+  ];
 }

@@ -72,10 +72,19 @@ should not be copied literally:
 
 These gates should be completed before a real household message enters Hermes:
 
-1. **Off-host backup and restore:** HomeCompute currently has backups disabled.
-   Enable encrypted off-host backup and complete one restore drill for the
-   existing control plane, then add the agents guest and Hermes snapshots to
-   that procedure.
+1. **Backup and restore:** a same-host encrypted Restic repository may be used
+   only as an explicitly labelled `local-bootstrap` safeguard while the empty
+   or synthetic-data guest is staged. It protects against accidental state
+   deletion but not loss of `home-core` or its disk. Before any real household
+   message enters Hermes, replace it with encrypted off-host backup and complete
+   a restore drill, including the agents guest and Hermes snapshots.
+
+   The staged NixOS configuration implements this as the separate
+   `agents-vm-bootstrap` Restic job, not as `homecompute.backups`. It stores only
+   `/srv/state/agents-vm` in `/srv/backup/restic-homecompute`, requires explicit
+   risk acceptance, and is accepted by the VM gate only when the guest is
+   classified `synthetic-only`. The default `household` classification still
+   requires the off-host backup contract.
 2. **A working assistant inference lane:** the current `assistant` alias points
    at stopped Qwen3.8. Qualify the already-resident Qwen3.6 model for Hermes and
    expose it through a dedicated `assistant-canary` alias, or restore another

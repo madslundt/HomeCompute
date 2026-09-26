@@ -1,4 +1,8 @@
-{ lib, ... }:
+{
+  config,
+  lib,
+  ...
+}:
 {
   imports = [
     ./hardware-configuration.nix
@@ -13,6 +17,7 @@
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix
     ../../modules/nixos/agents-vm.nix
+    ../../modules/nixos/agents-vm-backup.nix
     ../../modules/nixos/docker.nix
     ../../modules/nixos/ssh.nix
     ../../modules/nixos/tailscale.nix
@@ -55,11 +60,18 @@
   # SSH fallback active until the link is restored and requalified.
   homecompute.computeSshTunnel.enable = lib.mkDefault true;
 
-  # Enable after configuring a real off-host repository and password file.
+  # The production backup contract remains explicitly off-host and is not
+  # satisfied by the temporary same-host agents bootstrap repository below.
   homecompute.backups.enable = false;
 
-  # The KVM guest remains gated on off-host backups and an explicit reviewed
-  # guest SSH key. Enabling it without those prerequisites fails evaluation.
+  homecompute.agentsVm.localBootstrapBackup = {
+    enable = true;
+    riskAccepted = true;
+    passwordFile = config.sops.secrets."restic/password".path;
+  };
+
+  # Keep the guest staged off until the local-bootstrap repository has run and
+  # an explicit reviewed guest SSH key is configured.
   homecompute.agentsVm.enable = false;
 
   # Enable only after adding ttlock-webhook/environment to the encrypted SOPS

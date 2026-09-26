@@ -8,7 +8,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = (ROOT / "modules/nixos/agents-vm.nix").read_text(encoding="utf-8")
+BACKUP_MODULE = (ROOT / "modules/nixos/agents-vm-backup.nix").read_text(encoding="utf-8")
 HOST = (ROOT / "hosts/home-core/default.nix").read_text(encoding="utf-8")
+SECRETS = (ROOT / "modules/nixos/secrets.nix").read_text(encoding="utf-8")
 
 
 class AgentsVmModuleTest(unittest.TestCase):
@@ -25,6 +27,8 @@ class AgentsVmModuleTest(unittest.TestCase):
 
     def test_activation_requires_backup_and_operator_key(self) -> None:
         self.assertIn("config.homecompute.backups.enable", MODULE)
+        self.assertIn('cfg.dataClassification == "synthetic-only"', MODULE)
+        self.assertIn("config.homecompute.agentsVm.localBootstrapBackup.riskAccepted", MODULE)
         self.assertIn('path == "/srv/state" || path == statePath', MODULE)
         self.assertIn('statePath = "/srv/state/agents-vm"', MODULE)
         self.assertIn("cfg.sshAuthorizedKeys != [ ]", MODULE)
@@ -67,6 +71,42 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn("homecompute-agents-memory-preflight", MODULE)
         self.assertIn("homecompute-control-plane-automation-backup-1", MODULE)
         self.assertIn("docker inspect --format '{{.State.Running}}'", MODULE)
+
+    def test_local_bootstrap_mode_is_truthful_and_outside_state(self) -> None:
+        self.assertIn('repository = "/srv/backup/restic-homecompute";', BACKUP_MODULE)
+        self.assertIn('source = "/srv/state/agents-vm";', BACKUP_MODULE)
+        self.assertIn("initialize = true;", BACKUP_MODULE)
+        self.assertIn("riskAccepted = true;", HOST)
+        self.assertIn('passwordFile = config.sops.secrets."restic/password".path;', HOST)
+        self.assertIn("homecompute.backups.enable = false;", HOST)
+
+    def test_backup_quiesces_and_conditionally_restarts_vm(self) -> None:
+        marker = "/run/homecompute/agents-vm-backup-was-active"
+        self.assertEqual(BACKUP_MODULE.count(marker), 1)
+        self.assertIn("systemctl stop homecompute-agents-vm.service", BACKUP_MODULE)
+        self.assertIn("systemctl start homecompute-agents-vm.service", BACKUP_MODULE)
+        self.assertIn("backupCleanupCommand", BACKUP_MODULE)
+        self.assertLess(
+            BACKUP_MODULE.index("systemctl is-active --quiet"),
+            BACKUP_MODULE.index("systemctl stop"),
+        )
+        self.assertIn("agents-vm-backup-in-progress", BACKUP_MODULE)
+        self.assertIn("agents-vm-backup-in-progress", MODULE)
+        self.assertIn("--property=LoadState", BACKUP_MODULE)
+        self.assertIn("--property=MainPID", BACKUP_MODULE)
+        self.assertIn("qemu-img check -q", BACKUP_MODULE)
+
+    def test_backup_runtime_preflight_is_fail_closed(self) -> None:
+        self.assertIn("[ -L ${repository} ]", BACKUP_MODULE)
+        self.assertIn("0:0:700", BACKUP_MODULE)
+        self.assertIn("[ ! -s ${cfg.passwordFile} ]", BACKUP_MODULE)
+        self.assertIn("0:0:400|0:0:600", BACKUP_MODULE)
+        self.assertIn("minimumFreeGiB", BACKUP_MODULE)
+        self.assertIn("df --output=avail -B1", BACKUP_MODULE)
+
+    def test_restic_secret_is_available_for_either_backup_contract(self) -> None:
+        self.assertIn("config.homecompute.backups.enable", SECRETS)
+        self.assertIn("config.homecompute.agentsVm.localBootstrapBackup.enable", SECRETS)
 
 
 if __name__ == "__main__":

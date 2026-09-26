@@ -69,7 +69,10 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
-          } // lib.optionalAttrs config.homecompute.backups.enable {
+          } // lib.optionalAttrs (
+            config.homecompute.backups.enable
+            || config.homecompute.agentsVm.localBootstrapBackup.enable
+          ) {
             "restic/password" = {
               mode = "0400";
             };
