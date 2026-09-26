@@ -73,7 +73,7 @@
 
     # Package/bootstrap access only. Return this to false once the pinned
     # NemoClaw tuple has been installed and the canary is healthy.
-    network.maintenanceEgress = true;
+    network.maintenanceEgress = false;
 
     localBootstrapBackup = {
       enable = true;
