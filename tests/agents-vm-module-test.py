@@ -100,6 +100,7 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn("inferenceBridgePort = 18080;", MODULE)
         self.assertIn("TCP4-LISTEN:${toString inferenceBridgePort},bind=${hostAddress}", MODULE)
         self.assertIn("OPENSSL:192.168.30.122:443,verify=1", MODULE)
+        self.assertIn("commonname=ai.home.arpa", MODULE)
         self.assertIn("snihost=ai.home.arpa", MODULE)
         self.assertIn("caddy-data/caddy/pki/authorities/local/root.crt", MODULE)
 

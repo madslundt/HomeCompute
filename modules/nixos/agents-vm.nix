@@ -413,7 +413,7 @@ in
       after = [ "homecompute-agents-network.service" ];
       path = [ pkgs.socat ];
       serviceConfig = {
-        ExecStart = "${pkgs.socat}/bin/socat TCP4-LISTEN:${toString inferenceBridgePort},bind=${hostAddress},reuseaddr,fork OPENSSL:192.168.30.122:443,verify=1,cafile=/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt,snihost=ai.home.arpa";
+        ExecStart = "${pkgs.socat}/bin/socat TCP4-LISTEN:${toString inferenceBridgePort},bind=${hostAddress},reuseaddr,fork OPENSSL:192.168.30.122:443,verify=1,cafile=/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt,commonname=ai.home.arpa,snihost=ai.home.arpa";
         NoNewPrivileges = true;
         PrivateTmp = true;
         ProtectHome = true;
