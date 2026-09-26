@@ -101,7 +101,7 @@ validate_candidate() {
   [[ "$AUTOMATION_CHAT_TEMPLATE_SHA256" == e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259 ]] ||
     die "Automation chat template digest changed"
   [[ "$AUTOMATION_ARTIFACT_MAX_BYTES:$AUTOMATION_ARTIFACT_MAX_FILES" == 28000000000:32 ]] || die "Automation artifact limits changed"
-  [[ "$AUTOMATION_MAX_MODEL_LEN:$AUTOMATION_MAX_NUM_SEQS:$AUTOMATION_MAX_BATCHED_TOKENS" == 65536:4:8192 ]] ||
+  [[ "$AUTOMATION_MAX_MODEL_LEN:$AUTOMATION_MAX_NUM_SEQS:$AUTOMATION_MAX_BATCHED_TOKENS" == 131072:4:8192 ]] ||
     die "Automation context or concurrency tuple changed"
   [[ "$AUTOMATION_GPU_MEMORY_UTILIZATION" == 0.40 ]] || die "Automation memory budget changed"
   [[ "$AUTOMATION_MOE_BACKEND:$AUTOMATION_FP8_MOE_BACKEND:$AUTOMATION_TOOL_CALL_PARSER" == cutlass:triton:qwen3_coder ]] ||

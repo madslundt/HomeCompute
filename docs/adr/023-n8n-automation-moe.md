@@ -20,7 +20,7 @@ Retain pinned `unsloth/Qwen3.6-35B-A3B-NVFP4` revision
 candidate. Serve it only as `automation-moe` during qualification. The ordinary
 `automation` alias continues to use Qwen3.8-27B.
 
-Use the pinned NVIDIA vLLM 26.08 image, 64K context, FP8 KV cache,
+Use the pinned NVIDIA vLLM 26.08 image, 128K context, FP8 KV cache,
 native `cutlass` NVFP4 MoE backend, portable `triton` for the mixed FP8
 expert path, `qwen3` reasoning parser, `qwen3_coder` tool parser, and disabled
 thinking. The separate FP8 override is required because vLLM applies the MoE

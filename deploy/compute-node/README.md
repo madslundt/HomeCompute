@@ -39,7 +39,7 @@ The `prepare-automation` and `automation-moe` profiles add the pinned
 `unsloth/Qwen3.6-35B-A3B-NVFP4` n8n candidate. It uses the current pinned
 NVIDIA vLLM 26.08 image (vLLM 0.27.1), `sm_121a`, the
 native `cutlass` NVFP4 MoE backend, a portable `triton` override for the
-model's mixed FP8 expert path, `qwen3_coder` tool parser, 64K context, and
+model's mixed FP8 expert path, `qwen3_coder` tool parser, 128K context, and
 non-thinking defaults. MTP is deliberately disabled for the correctness
 baseline. The candidate has its own accepted cache manifest, edge relay, API
 port 8005, and `automation-moe` served name. It is excluded from default
