@@ -1,11 +1,11 @@
 {
-  "schema_version": 3,
-  "roster_version": "2026-09-09-final-2-plus-2-speech-stack",
+  "schema_version": 4,
+  "roster_version": "2026-09-26-qwen36-automation-plus-speech-stack",
   "hardware": {
     "accelerator": "NVIDIA GB10",
     "unified_memory_gib": 128,
     "resident_text_model_limit": 1,
-    "retained_text_model_limit": 2
+    "retained_text_model_limit": 3
   },
   "text_models": {
     "primary": {
@@ -30,6 +30,27 @@
           "status": "benchmark-after-baseline"
         }
       }
+    },
+    "automation_moe": {
+      "model_id": "unsloth/Qwen3.6-35B-A3B-NVFP4",
+      "revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
+      "license_id": "apache-2.0",
+      "disposition": "qualification-candidate",
+      "activation": "operator-exclusive",
+      "roles": ["automation-moe"],
+      "default_thinking_mode": "disabled",
+      "runtime_profile": {
+        "runtime": "vllm",
+        "speculative_method": "disabled-for-baseline",
+        "tool_call_parser": "qwen3_coder",
+        "status": "qualify-with-n8n-tools"
+      },
+      "qualification_gates": [
+        "danish-workflow-fixtures",
+        "structured-output-fixtures",
+        "small-and-large-tool-surface",
+        "mixed-load-memory"
+      ]
     },
     "heavy": {
       "model_id": "RadixArk/Qwen3.8-Flash-Next-NVFP4",
@@ -117,6 +138,12 @@
       "allowed_text_runtime_profiles": ["baseline", "performance"],
       "speech_services": ["stt_danish", "stt_english", "tts_danish", "tts_english"]
     },
+    "automation_moe": {
+      "text_model": "automation_moe",
+      "stop_text_model_first": "primary",
+      "restart_text_model_after": "primary",
+      "dynamic_router_activation": false
+    },
     "heavy": {
       "text_model": "heavy",
       "stop_text_model_first": "primary",
@@ -127,6 +154,8 @@
   "deployment_order": [
     "primary.runtime_profiles.baseline",
     "benchmark.baseline",
+    "automation_moe.runtime_profile",
+    "benchmark.automation_moe",
     "primary.runtime_profiles.performance",
     "benchmark.runtime-comparison",
     "services.stt_danish",

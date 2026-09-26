@@ -1,0 +1,10 @@
+*
+!deploy/
+deploy/*
+!deploy/compute-node/
+deploy/compute-node/*
+!deploy/compute-node/plapre/
+!deploy/compute-node/plapre/**
+!scripts/
+scripts/*
+!scripts/tcp-edge-proxy.py

@@ -65,6 +65,8 @@ services:
     entrypoint: [/bin/sh, /opt/homecompute/litellm-entrypoint.sh]
     environment:
       COMPUTE_OPENAI_BASE_URL: ${COMPUTE_OPENAI_BASE_URL:?Set COMPUTE_OPENAI_BASE_URL}
+      COMPUTE_AUTOMATION_BASE_URL: ${COMPUTE_AUTOMATION_BASE_URL:?Set COMPUTE_AUTOMATION_BASE_URL}
+      COMPUTE_HOME_BASE_URL: ${COMPUTE_HOME_BASE_URL:?Set COMPUTE_HOME_BASE_URL}
       LITELLM_CONFIG: /etc/litellm/config.yaml
       LITELLM_MIGRATION_DIR: /app/migrations
       PRISMA_BINARY_CACHE_DIR: /app/cache/prisma-python/binaries
@@ -80,7 +82,7 @@ services:
       - litellm_salt_key
       - postgres_app_password
     volumes:
-      - ./litellm-config.yaml:/etc/litellm/config.yaml:ro
+      - ${LITELLM_CONFIG_FILE:-./litellm-config.yaml}:/etc/litellm/config.yaml:ro
       - ./litellm-entrypoint.sh:/opt/homecompute/litellm-entrypoint.sh:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=101,gid=101,mode=1770
@@ -110,6 +112,150 @@ services:
         gw_priority: 1
         ipv4_address: ${LITELLM_EDGE_IP:?Set LITELLM_EDGE_IP}
       state: {}
+      automation-backup: {}
+
+  automation-backup:
+    profiles: [automation-backup]
+    image: ${AUTOMATION_BACKUP_IMAGE:?Set AUTOMATION_BACKUP_IMAGE to an immutable amd64 image digest}
+    restart: on-failure:3
+    init: true
+    user: "65532:65532"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - --model
+      - /models/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+      - --alias
+      - automation-backup
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --threads
+      - ${AUTOMATION_BACKUP_THREADS:-8}
+      - --threads-batch
+      - ${AUTOMATION_BACKUP_BATCH_THREADS:-10}
+      - --ctx-size
+      - ${AUTOMATION_BACKUP_CONTEXT_SIZE:-32768}
+      - --parallel
+      - "1"
+      - --batch-size
+      - "512"
+      - --ubatch-size
+      - "256"
+      - --jinja
+      - --reasoning
+      - "off"
+      - --api-key-file
+      - /run/secrets/compute_api_key
+      - --no-webui
+      - --no-slots
+      - --metrics
+      - --log-disable
+    expose:
+      - "8080"
+    secrets:
+      - compute_api_key
+    volumes:
+      - ${AUTOMATION_BACKUP_STATE_ROOT:?Set AUTOMATION_BACKUP_STATE_ROOT}/models:/models:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,uid=65532,gid=65532,mode=0700
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          key="$$(cat /run/secrets/compute_api_key)" &&
+          curl --fail --silent --show-error --max-time 5
+          --header "Authorization: Bearer $$key"
+          http://127.0.0.1:8080/health >/dev/null
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 15m
+    cpus: ${AUTOMATION_BACKUP_CPUS:-8.0}
+    mem_limit: ${AUTOMATION_BACKUP_MEMORY_LIMIT:-28g}
+    memswap_limit: ${AUTOMATION_BACKUP_MEMORY_LIMIT:-28g}
+    pids_limit: 384
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+    networks:
+      automation-backup: {}
+
+  plapre-wyoming-proxy:
+    profiles: [speech-proxies]
+    image: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to an immutable image digest}
+    restart: unless-stopped
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      EDGE_LISTEN_PORT: "10201"
+      EDGE_UPSTREAM_HOST: ${PLAPRE_WYOMING_UPSTREAM_HOST:-10.77.10.10}
+      EDGE_UPSTREAM_PORT: ${PLAPRE_WYOMING_UPSTREAM_PORT:-10201}
+    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
+    ports:
+      - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${PLAPRE_WYOMING_LAN_PORT:-10201}:10201/tcp
+    volumes:
+      - ../../scripts/tcp-edge-proxy.py:/opt/homecompute/tcp-edge-proxy.py:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532,mode=0700
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      interval: 15s
+      timeout: 7s
+      retries: 4
+      start_period: 15s
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 64
+    logging:
+      driver: local
+      options: {max-size: 5m, max-file: "2"}
+    networks:
+      edge:
+        ipv4_address: ${PLAPRE_PROXY_EDGE_IP:?Set PLAPRE_PROXY_EDGE_IP}
+
+  hviske-wyoming-proxy:
+    profiles: [speech-proxies]
+    image: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to an immutable image digest}
+    restart: unless-stopped
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      EDGE_LISTEN_PORT: "10301"
+      EDGE_UPSTREAM_HOST: ${HVISKE_WYOMING_UPSTREAM_HOST:-10.77.10.10}
+      EDGE_UPSTREAM_PORT: ${HVISKE_WYOMING_UPSTREAM_PORT:-10301}
+    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
+    ports:
+      - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${HVISKE_WYOMING_LAN_PORT:-10301}:10301/tcp
+    volumes:
+      - ../../scripts/tcp-edge-proxy.py:/opt/homecompute/tcp-edge-proxy.py:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532,mode=0700
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      interval: 15s
+      timeout: 7s
+      retries: 4
+      start_period: 15s
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 64
+    logging:
+      driver: local
+      options: {max-size: 5m, max-file: "2"}
+    networks:
+      edge:
+        ipv4_address: ${HVISKE_PROXY_EDGE_IP:?Set HVISKE_PROXY_EDGE_IP}
 
   postgres:
     image: ${POSTGRES_IMAGE:?Set POSTGRES_IMAGE to an immutable image digest}
@@ -162,7 +308,13 @@ networks:
     ipam:
       config:
         - subnet: ${CONTROL_PLANE_EDGE_SUBNET:?Set CONTROL_PLANE_EDGE_SUBNET}
+          gateway: ${CONTROL_PLANE_EDGE_GATEWAY:?Set CONTROL_PLANE_EDGE_GATEWAY}
   state:
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  automation-backup:
     driver: bridge
     internal: true
     driver_opts:

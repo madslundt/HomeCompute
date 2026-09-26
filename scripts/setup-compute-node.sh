@@ -8,6 +8,7 @@ COMPOSE_FILE="$REPO_ROOT/deploy/compute-node/compose.yaml"
 ENV_TEMPLATE="$REPO_ROOT/config/compute-node.env.example"
 FIREWALL_HELPER="$SCRIPT_DIR/configure-compute-firewall.sh"
 CACHE_INTEGRITY_HELPER="$SCRIPT_DIR/model-cache-integrity.py"
+EDGE_PROXY_HELPER="$SCRIPT_DIR/tcp-edge-proxy.py"
 SECRET_INITIALIZER="$SCRIPT_DIR/initialize-compute-secrets.py"
 CONFIG_MIGRATOR="$SCRIPT_DIR/migrate-compute-config.py"
 # shellcheck disable=SC1091
@@ -16,11 +17,16 @@ COMPUTE_CONFIG_KEYS=(
   COMPUTE_NODE_NAME VLLM_IMAGE MODEL_ID MODEL_REVISION TOKENIZER_REVISION CODE_REVISION
   MODEL_PROVENANCE_URL MODEL_LICENSE_ID MODEL_WEIGHT_FORMAT MODEL_QUANTIZATION CHAT_TEMPLATE_SHA256
   GB10_ROOT GB10_RUNTIME_UID GB10_RUNTIME_GID GB10_BIND_ADDRESS COMPUTE_HOST_PORTS
-  VLLM_HOST_PORT EMBEDDING_HOST_PORT VISION_HOST_PORT STT_HOST_PORT TTS_HOST_PORT WYOMING_TTS_HOST_PORT GATEWAY_CIDR
+  VLLM_HOST_PORT EMBEDDING_HOST_PORT VISION_HOST_PORT STT_HOST_PORT TTS_HOST_PORT AUTOMATION_HOST_PORT WYOMING_TTS_HOST_PORT PLAPRE_WYOMING_PORT HVISKE_WYOMING_PORT GATEWAY_CIDR
   HF_TOKEN_FILE VLLM_API_KEY_FILE MIN_FREE_DISK_GIB VLLM_MAX_MODEL_LEN VLLM_MAX_NUM_SEQS
   VLLM_MAX_BATCHED_TOKENS VLLM_GPU_MEMORY_UTILIZATION VLLM_SHM_SIZE
   VLLM_ATTENTION_BACKEND VLLM_MOE_BACKEND VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER
-  VLLM_SPECULATIVE_CONFIG ALLOW_UNSUPPORTED_HOST
+  VLLM_SPECULATIVE_CONFIG VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS ALLOW_UNSUPPORTED_HOST
+  AUTOMATION_MODEL_ID AUTOMATION_MODEL_REVISION AUTOMATION_TOKENIZER_REVISION AUTOMATION_CODE_REVISION
+  AUTOMATION_MODEL_LICENSE_ID AUTOMATION_CHAT_TEMPLATE_SHA256 AUTOMATION_ARTIFACT_MAX_BYTES
+  AUTOMATION_ARTIFACT_MAX_FILES AUTOMATION_MAX_MODEL_LEN AUTOMATION_MAX_NUM_SEQS
+  AUTOMATION_MAX_BATCHED_TOKENS AUTOMATION_GPU_MEMORY_UTILIZATION AUTOMATION_MOE_BACKEND AUTOMATION_FP8_MOE_BACKEND
+  AUTOMATION_TOOL_CALL_PARSER AUTOMATION_SPECULATIVE_CONFIG AUTOMATION_DEFAULT_CHAT_TEMPLATE_KWARGS
   EMBEDDING_MODEL_ID EMBEDDING_MODEL_REVISION EMBEDDING_MODEL_LICENSE_ID EMBEDDING_GPU_MEMORY_UTILIZATION
   VISION_MODEL_ID VISION_MODEL_REVISION VISION_MODEL_LICENSE_ID VISION_GPU_MEMORY_UTILIZATION
   STT_MODEL_ID STT_MODEL_REVISION STT_MODEL_LICENSE_ID STT_GPU_MEMORY_UTILIZATION
@@ -75,18 +81,22 @@ parse_options() {
   done
 }
 config_needs_migration() {
-  local line saw_ports=false saw_budget=false
+  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_plapre=false saw_hviske=false
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" != COMPUTE_HOST_PORTS=* ]] || saw_ports=true
     [[ "$line" != HF_CACHE_MAX_BYTES=* ]] || saw_budget=true
+    [[ "$line" != VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS=* ]] || saw_template_defaults=true
+    [[ "$line" != AUTOMATION_MODEL_ID=* ]] || saw_automation=true
+    [[ "$line" != PLAPRE_WYOMING_PORT=* ]] || saw_plapre=true
+    [[ "$line" != HVISKE_WYOMING_PORT=* ]] || saw_hviske=true
     [[ "$line" != FIREWALL_CONFIRMED=* ]] || return 0
   done <"$ENV_FILE"
-  [[ "$saw_ports" == false || "$saw_budget" == false ]]
+  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_plapre" == false || "$saw_hviske" == false ]]
 }
 migrate_config_if_needed() {
   local temporary
-  [[ -e "$ENV_FILE" ]] || return
-  config_needs_migration || return
+  [[ -e "$ENV_FILE" ]] || return 0
+  config_needs_migration || return 0
   load_trusted_env_file "$ENV_FILE" 0 "Legacy compute-node configuration" "${LEGACY_CONFIG_KEYS[@]}" ||
     die "Refusing untrusted or malformed legacy configuration: $ENV_FILE"
   [[ -x "$CONFIG_MIGRATOR" ]] || die "Configuration migrator is missing or not executable"
@@ -118,7 +128,8 @@ validate_compute_ports() {
   local name port number previous=-1 expected=''
   local -a port_names=(
     VLLM_HOST_PORT EMBEDDING_HOST_PORT VISION_HOST_PORT STT_HOST_PORT
-    TTS_HOST_PORT WYOMING_TTS_HOST_PORT
+    TTS_HOST_PORT AUTOMATION_HOST_PORT WYOMING_TTS_HOST_PORT
+    PLAPRE_WYOMING_PORT HVISKE_WYOMING_PORT
   )
   require_env_value COMPUTE_HOST_PORTS
   for name in "${port_names[@]}"; do
@@ -131,7 +142,7 @@ validate_compute_ports() {
     previous=$number; expected+="${expected:+,}$port"
   done
   [[ "$COMPUTE_HOST_PORTS" == "$expected" ]] ||
-    die "COMPUTE_HOST_PORTS must exactly match the six ordered listener ports"
+    die "COMPUTE_HOST_PORTS must exactly match the nine ordered listener ports"
 }
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 file_links() { stat -c '%h' "$1" 2>/dev/null || stat -f '%l' "$1"; }
@@ -177,7 +188,8 @@ validate_config() {
     GB10_ROOT GB10_RUNTIME_UID GB10_RUNTIME_GID GB10_BIND_ADDRESS VLLM_HOST_PORT VLLM_API_KEY_FILE \
     HF_TOKEN_FILE MIN_FREE_DISK_GIB VLLM_MAX_MODEL_LEN VLLM_MAX_NUM_SEQS VLLM_MAX_BATCHED_TOKENS \
     VLLM_GPU_MEMORY_UTILIZATION VLLM_SHM_SIZE VLLM_ATTENTION_BACKEND VLLM_MOE_BACKEND \
-    VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER ALLOW_UNSUPPORTED_HOST HF_CACHE_MAX_BYTES \
+    VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS \
+    ALLOW_UNSUPPORTED_HOST HF_CACHE_MAX_BYTES \
     HF_CACHE_MAX_FILES TEXT_ARTIFACT_MAX_BYTES TEXT_ARTIFACT_MAX_FILES; do require_env_value "$value"; done
   [[ ! -L "$ENV_FILE" ]] || die "Environment file must not be a symbolic link"
   mode="$(file_mode "$ENV_FILE")"; [[ "$mode" =~ ^(600|640|400|440)$ ]] || die "Environment file must not be world-accessible"
@@ -210,6 +222,8 @@ validate_config() {
   [[ "$CHAT_TEMPLATE_SHA256" == 12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce ]] || die "Qwen3.8 chat template digest changed"
   [[ "$VLLM_ATTENTION_BACKEND:$VLLM_MOE_BACKEND:$VLLM_REASONING_PARSER:$VLLM_TOOL_CALL_PARSER" == flashinfer:marlin:qwen3:qwen3_xml ]] || die "Qwen3.8 backend/parser recipe changed"
   [[ "${VLLM_SPECULATIVE_CONFIG:-}" == '{"method":"qwen3_5_mtp","num_speculative_tokens":3}' ]] || die "Qwen3.8 baseline requires native qwen3_5_mtp"
+  [[ "$VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS" == '{"enable_thinking":false}' ]] ||
+    die "Qwen3.8 normal lane must disable thinking by default"
   [[ "$registry_secret" != true ]] || check_secret_file HF_TOKEN_FILE; check_secret_file VLLM_API_KEY_FILE
   require_command docker; docker compose version >/dev/null; compose config --quiet
   log "Configuration is complete, immutable, firewall-bound, and Compose-valid"
@@ -319,7 +333,7 @@ wait_ready() {
   compose logs --tail 100 text-primary >&2; die "Timed out waiting for text-primary readiness"
 }
 one_line() { tr '\n\r' '  ' <<<"$1" | awk '{$1=$1;print}'; }
-gpu_field() { local value; value="$(nvidia-smi --query-gpu="$1" --format=csv,noheader,nounits 2>/dev/null | awk 'NR==1{print;exit}' || true)"; printf '%s' "${value:-unavailable}"; }
+gpu_field() { local value; value="$(nvidia-smi --query-gpu="$1" --format=csv,noheader,nounits 2>/dev/null | awk 'NR==1{value=$0} END{if(value!="")print value}' || true)"; printf '%s' "${value:-unavailable}"; }
 cache_snapshot() { local repo path; repo="models--${MODEL_ID//\//--}"; path="$GB10_ROOT/cache/huggingface/hub/$repo/snapshots/$1"; realpath -e "$path" 2>/dev/null || printf unavailable; }
 active_cache_manifest() { printf '%s/manifests/accepted-model-cache.json' "$GB10_ROOT"; }
 model_tuple_digest() {
@@ -349,18 +363,23 @@ activate_cache_manifest() {
 }
 runtime_cache_helper() { printf '%s/runtime/model-cache-integrity.py' "$GB10_ROOT"; }
 install_runtime_cache_helper() {
-  local destination temporary
-  destination="$(runtime_cache_helper)"; temporary="$(mktemp "$GB10_ROOT/runtime/.model-cache-integrity.XXXXXX")"
-  install -m 0440 -o root -g gb10-ai "$CACHE_INTEGRITY_HELPER" "$temporary"
-  mv -fT "$temporary" "$destination"
+  local source destination temporary
+  for source in "$CACHE_INTEGRITY_HELPER" "$EDGE_PROXY_HELPER"; do
+    destination="$GB10_ROOT/runtime/$(basename -- "$source")"
+    temporary="$(mktemp "$GB10_ROOT/runtime/.$(basename -- "$source").XXXXXX")"
+    install -m 0440 -o root -g gb10-ai "$source" "$temporary"
+    mv -fT "$temporary" "$destination"
+  done
 }
 verify_runtime_cache_helper() {
-  local destination
-  destination="$(runtime_cache_helper)"
-  config_path_is_trusted "$destination" 0 "Installed cache-integrity helper" ||
-    die "Installed cache-integrity helper is missing or untrusted"
-  cmp -s "$CACHE_INTEGRITY_HELPER" "$destination" ||
-    die "Installed cache-integrity helper differs from this release; run install"
+  local source destination
+  for source in "$CACHE_INTEGRITY_HELPER" "$EDGE_PROXY_HELPER"; do
+    destination="$GB10_ROOT/runtime/$(basename -- "$source")"
+    config_path_is_trusted "$destination" 0 "Installed runtime helper" ||
+      die "Installed runtime helper is missing or untrusted: $destination"
+    cmp -s "$source" "$destination" ||
+      die "Installed runtime helper differs from this release; run install"
+  done
 }
 accept_model_cache() {
   local manifest temporary
@@ -399,7 +418,7 @@ write_release_record() {
   if command -v nvpmodel >/dev/null 2>&1; then power_profile="$(one_line "$(nvpmodel -q --verbose 2>/dev/null || true)")"; fi
   [[ -n "$power_profile" ]] || power_profile=unavailable
   os_description="$(awk '/^PRETTY_NAME=/{sub(/^[^=]*=/,"");gsub(/^"|"$/,"");print;exit}' /etc/os-release)"
-  cuda_version="$(nvidia-smi | awk '/CUDA Version:/{for(i=1;i<=NF;i++)if($i=="CUDA"&&$(i+1)=="Version:"){print $(i+2);exit}}')"
+  cuda_version="$(nvidia-smi | awk '/CUDA Version:/{for(i=1;i<=NF;i++)if($i=="CUDA"&&$(i+1)=="Version:")value=$(i+2)} END{if(value!="")print value}')"
   model_snapshot="$(cache_snapshot "$MODEL_REVISION")"; tokenizer_snapshot="$(cache_snapshot "$TOKENIZER_REVISION")"; code_snapshot="$(cache_snapshot "$CODE_REVISION")"
   [[ "$model_snapshot" != unavailable && "$tokenizer_snapshot" != unavailable && "$code_snapshot" != unavailable ]] ||
     die "Pinned model/tokenizer/code snapshots are not all present in the Hugging Face cache"
@@ -423,15 +442,16 @@ write_release_record() {
     printf 'MODEL_PROVENANCE_URL=%q\n' "$MODEL_PROVENANCE_URL"; printf 'MODEL_LICENSE_ID=%q\n' "$MODEL_LICENSE_ID"; printf 'MODEL_WEIGHT_FORMAT=%q\n' "$MODEL_WEIGHT_FORMAT"; printf 'MODEL_QUANTIZATION=%q\n' "$MODEL_QUANTIZATION"; printf 'CHAT_TEMPLATE_SHA256=%q\n' "$CHAT_TEMPLATE_SHA256"
     printf 'MODEL_CACHE_MANIFEST_SHA256=%q\n' "$accepted_manifest_sha"; printf 'FIREWALL_POLICY=%q\n' "$([[ "$GB10_BIND_ADDRESS" == 127.0.0.1 ]] && printf loopback-only || printf docker-user-original-destination)"
     printf 'MODEL_CACHE_HELPER_SHA256=%q\n' "$(sha256sum "$(runtime_cache_helper)" | awk '{print $1}')"
+    printf 'TCP_EDGE_PROXY_SHA256=%q\n' "$(sha256sum "$GB10_ROOT/runtime/tcp-edge-proxy.py" | awk '{print $1}')"
     printf 'FIREWALL_CHAIN=%q\n' "$([[ "$GB10_BIND_ADDRESS" == 127.0.0.1 ]] && printf not-applicable || printf GB10-COMPUTE)"; printf 'GATEWAY_CIDR=%q\n' "${GATEWAY_CIDR:-not-applicable}"; printf 'ALLOW_UNSUPPORTED_HOST=%q\n' "$ALLOW_UNSUPPORTED_HOST"
     printf 'GB10_RUNTIME_UID=%q\n' "$GB10_RUNTIME_UID"; printf 'GB10_RUNTIME_GID=%q\n' "$GB10_RUNTIME_GID"; printf 'MIN_FREE_DISK_GIB=%q\n' "$MIN_FREE_DISK_GIB"; printf 'TEXT_ARTIFACT_MAX_BYTES=%q\n' "$TEXT_ARTIFACT_MAX_BYTES"; printf 'TEXT_ARTIFACT_MAX_FILES=%q\n' "$TEXT_ARTIFACT_MAX_FILES"; printf 'HF_CACHE_MAX_BYTES=%q\n' "$HF_CACHE_MAX_BYTES"; printf 'HF_CACHE_MAX_FILES=%q\n' "$HF_CACHE_MAX_FILES"
-    for digest in VLLM_MAX_MODEL_LEN VLLM_MAX_NUM_SEQS VLLM_MAX_BATCHED_TOKENS VLLM_GPU_MEMORY_UTILIZATION VLLM_ATTENTION_BACKEND VLLM_MOE_BACKEND VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER VLLM_SPECULATIVE_CONFIG; do printf '%s=%q\n' "$digest" "${!digest:-}"; done
+    for digest in VLLM_MAX_MODEL_LEN VLLM_MAX_NUM_SEQS VLLM_MAX_BATCHED_TOKENS VLLM_GPU_MEMORY_UTILIZATION VLLM_ATTENTION_BACKEND VLLM_MOE_BACKEND VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER VLLM_SPECULATIVE_CONFIG VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS; do printf '%s=%q\n' "$digest" "${!digest:-}"; done
   } >"$temporary"
   digest="$(sha256sum "$temporary" | awk '{print $1}')"; record="$GB10_ROOT/manifests/installed-$timestamp-${digest:0:12}.env"
   [[ ! -e "$record" ]] || die "Release record already exists: $record"; chown root:gb10-ai "$temporary"; chmod 0440 "$temporary"; mv "$temporary" "$record"
   log "Wrote immutable secret-free release record: $record"
 }
-smoke_test() {
+smoke_test() (
   local base_url api_key auth_header stream_file denial models_json responses_json terminal_json alias
   validate_config false; require_command curl; require_command jq
   base_url="http://${GB10_BIND_ADDRESS}:${VLLM_HOST_PORT}"; api_key="$(<"$VLLM_API_KEY_FILE")"
@@ -450,7 +470,7 @@ smoke_test() {
   jq -e '.type=="response.completed" and .response.status=="completed" and (.response.id|type=="string")' <<<"$terminal_json" >/dev/null || die "Responses stream terminal payload was not completed"
   rm -f -- "$auth_header" "$stream_file"; trap - EXIT
   log "Smoke passed: liveness, auth denial, aliases, ordinary Responses, and terminal streaming"
-}
+)
 prepare_model_artifacts() {
   install_runtime_cache_helper
   log "Acquiring pinned model tuple in isolated fetch network"
@@ -497,7 +517,7 @@ case "$COMMAND" in
   up) start_release ;;
   status) show_status ;;
   smoke) smoke_test ;;
-  logs) load_env; compose logs --tail 200 text-primary ;;
-  down) require_root; load_env; compose stop text-primary; log "Stopped text-primary; modality services and persistent artifacts retained" ;;
+  logs) load_env; compose logs --tail 200 text-primary text-edge ;;
+  down) require_root; load_env; compose stop text-primary text-edge; log "Stopped text runtime and edge; modality services and persistent artifacts retained" ;;
   *) usage >&2; die "Unknown command: $COMMAND" ;;
 esac

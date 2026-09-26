@@ -1,0 +1,29 @@
+diff --git a/src/kanade_tokenizer/util.py b/src/kanade_tokenizer/util.py
+index 516145a..0000000 100644
+--- a/src/kanade_tokenizer/util.py
++++ b/src/kanade_tokenizer/util.py
+@@ -1,4 +1,5 @@
+ import logging
++import os
+ from typing import Literal
+ 
+ import torch
+@@ -67,11 +68,15 @@ def load_vocoder(name: Literal["vocos", "hift"] = "vocos") -> torch.nn.Module:
+         model = model.eval()
+         return model
+     elif name == "hift":
+-        from huggingface_hub import hf_hub_download
+         from .module.hift import HiFTGenerator
+ 
+-        # Download hte HiFT model from FunAudioLLM/CosyVoice2-0.5B
+-        model_path = hf_hub_download(repo_id="FunAudioLLM/CosyVoice2-0.5B", filename="hift.pt")
++        model_path = os.environ.get("KANADE_HIFT_PATH")
++        if not model_path:
++            raise RuntimeError(
++                "KANADE_HIFT_PATH is required; mutable Hub defaults are disabled"
++            )
++        if not os.path.isfile(model_path):
++            raise RuntimeError(f"KANADE_HIFT_PATH is not a regular file: {model_path}")
+         model = HiFTGenerator()
+         model.load_weights(model_path)
+         model = model.eval()

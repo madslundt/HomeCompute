@@ -14,6 +14,38 @@ MIGRATOR = REPO_ROOT / "scripts" / "migrate-compute-config.py"
 
 
 class MigrationTests(unittest.TestCase):
+    def test_known_compute_port_schema_is_migrated(self) -> None:
+        self.existing.write_text(
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,10200\n",
+            encoding="utf-8",
+        )
+        self.template.write_text(
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301\n",
+            encoding="utf-8",
+        )
+        result = self.migrate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301",
+            self.output.read_text(encoding="utf-8"),
+        )
+
+    def test_previous_automation_port_schema_is_migrated(self) -> None:
+        self.existing.write_text(
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200\n",
+            encoding="utf-8",
+        )
+        self.template.write_text(
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301\n",
+            encoding="utf-8",
+        )
+        result = self.migrate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301",
+            self.output.read_text(encoding="utf-8"),
+        )
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary_directory.cleanup)

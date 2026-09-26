@@ -8,6 +8,9 @@ services:
       N8N_MCP_BASE_URL: https://n8n.home.arpa
       WEBHOOK_URL: https://n8n.home.arpa/
       N8N_PROXY_HOPS: "1"
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/homecompute-caddy-root.crt
+    volumes:
+      - ${HOMECOMPUTE_CA_CERT_FILE:-/srv/state/automation/certs/homecompute-caddy-root.crt}:/etc/ssl/certs/homecompute-caddy-root.crt:ro
     extra_hosts:
       - homeassistant.local:192.168.30.30
     ports:

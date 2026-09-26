@@ -17,6 +17,7 @@ SPEC.loader.exec_module(ROUTER)
 POLICY = json.loads((ROOT / "config" / "model-router-policy.json").read_text(encoding="utf-8"))
 PRIMARY = POLICY["qualification"]["selected_primary"]
 HEAVY = next(name for name, model in POLICY["models"].items() if model["selection_lane"] == "heavy")
+AUTOMATION = next(name for name, model in POLICY["models"].items() if model["selection_lane"] == "automation")
 
 
 def runtime(*models: str) -> dict:
@@ -55,6 +56,7 @@ class PolicyValidationTests(unittest.TestCase):
         self.assertFalse(POLICY["activation"]["enabled"])
         self.assertIsNone(POLICY["default_model"])
         self.assertTrue(all(model is None for model in POLICY["aliases"].values()))
+        self.assertEqual(1, POLICY["qualification"]["resident_text_model_limit"])
 
     def test_pending_policy_cannot_activate_aliases_or_models(self) -> None:
         policy = copy.deepcopy(POLICY)
@@ -100,7 +102,7 @@ class RoutingDecisionTests(unittest.TestCase):
                 with self.assertRaisesRegex(ROUTER.PolicyError, "routing_not_qualified"):
                     ROUTER.decide(POLICY, request(requested_model, client="operator"), runtime(PRIMARY))
 
-    def test_all_semantic_aliases_use_primary_after_qualification(self) -> None:
+    def test_semantic_aliases_use_primary_after_qualification(self) -> None:
         policy = qualified_policy()
         ROUTER.validate_policy(policy)
         for alias in policy["aliases"]:
@@ -133,10 +135,10 @@ class RoutingDecisionTests(unittest.TestCase):
         with self.assertRaisesRegex(ROUTER.PolicyError, "operator-swapped"):
             ROUTER.validate_policy(policy)
 
-    def test_one_resident_limit_blocks_overlapping_cold_swap(self) -> None:
+    def test_one_resident_limit_blocks_overlapping_alternate_mode(self) -> None:
         policy = qualified_policy()
         with self.assertRaisesRegex(ROUTER.PolicyError, "resident_text_model_limit_exceeded"):
-            ROUTER.decide(policy, request(PRIMARY, client="operator"), runtime(PRIMARY, HEAVY))
+            ROUTER.decide(policy, request(PRIMARY, client="operator"), runtime(PRIMARY, AUTOMATION))
 
 
 if __name__ == "__main__":

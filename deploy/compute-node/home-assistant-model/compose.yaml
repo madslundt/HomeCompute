@@ -1,0 +1,171 @@
+name: homecompute-home-model
+
+x-runtime: &runtime
+  image: ${VLLM_IMAGE:?Set VLLM_IMAGE}
+  restart: unless-stopped
+  init: true
+  user: "${GB10_RUNTIME_UID:?Set GB10_RUNTIME_UID}:${GB10_RUNTIME_GID:?Set GB10_RUNTIME_GID}"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 512
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "5"}
+
+services:
+  home-fetch:
+    profiles: [prepare]
+    image: ${VLLM_IMAGE:?Set VLLM_IMAGE}
+    user: "${GB10_RUNTIME_UID:?Set GB10_RUNTIME_UID}:${GB10_RUNTIME_GID:?Set GB10_RUNTIME_GID}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 4
+    mem_limit: 8g
+    pids_limit: 256
+    environment:
+      HOME: /var/cache/vllm
+      HF_HOME: /var/cache/huggingface
+      MODEL_ID: ${HOME_MODEL_ID:?Set HOME_MODEL_ID}
+      MODEL_REVISION: ${HOME_MODEL_REVISION:?Set HOME_MODEL_REVISION}
+      TOKENIZER_REVISION: ${HOME_TOKENIZER_REVISION:?Set HOME_TOKENIZER_REVISION}
+      CODE_REVISION: ${HOME_CODE_REVISION:?Set HOME_CODE_REVISION}
+      CHAT_TEMPLATE_SHA256: ${HOME_CHAT_TEMPLATE_SHA256:?Set HOME_CHAT_TEMPLATE_SHA256}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_CACHE_MAX_BYTES: ${HF_CACHE_MAX_BYTES:?Set HF_CACHE_MAX_BYTES}
+      HF_CACHE_MAX_FILES: ${HF_CACHE_MAX_FILES:?Set HF_CACHE_MAX_FILES}
+      MIN_FREE_DISK_GIB: ${MIN_FREE_DISK_GIB:?Set MIN_FREE_DISK_GIB}
+      ARTIFACT_MAX_BYTES: ${HOME_ARTIFACT_MAX_BYTES:?Set HOME_ARTIFACT_MAX_BYTES}
+      ARTIFACT_MAX_FILES: ${HOME_ARTIFACT_MAX_FILES:?Set HOME_ARTIFACT_MAX_FILES}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        export HF_TOKEN="$$(cat /run/secrets/hf_token)"
+        python3 /opt/homecompute/model-cache-integrity.py fetch --cache-root /var/cache/huggingface \
+          --repo-id "$${MODEL_ID}" --revision "$${MODEL_REVISION}" --revision "$${TOKENIZER_REVISION}" --revision "$${CODE_REVISION}" \
+          --max-artifact-bytes "$${ARTIFACT_MAX_BYTES}" --max-artifact-files "$${ARTIFACT_MAX_FILES}" \
+          --max-cache-bytes "$${HF_CACHE_MAX_BYTES}" --max-cache-files "$${HF_CACHE_MAX_FILES}" \
+          --min-free-bytes "$$((MIN_FREE_DISK_GIB * 1073741824))"
+        python3 - <<'PY'
+        import hashlib, os
+        from pathlib import Path
+        root = Path(os.environ["HF_HOME"]) / "hub" / f"models--{os.environ['MODEL_ID'].replace('/', '--')}" / "snapshots" / os.environ["TOKENIZER_REVISION"]
+        actual = hashlib.sha256((root / "chat_template.jinja").read_bytes()).hexdigest()
+        if actual != os.environ["CHAT_TEMPLATE_SHA256"].lower():
+            raise RuntimeError(f"chat template SHA-256 mismatch: {actual}")
+        PY
+    secrets: [hf_token]
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+        target: /var/cache/huggingface
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
+        target: /var/cache/vllm
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+        target: /opt/homecompute/model-cache-integrity.py
+        read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=1g"]
+    networks: [artifact-fetch]
+
+  home-edge:
+    <<: *runtime
+    container_name: gb10-home-edge
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+    entrypoint: [/usr/bin/python3, /opt/homecompute/tcp-edge-proxy.py]
+    command: []
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      EDGE_LISTEN_PORT: "8000"
+      EDGE_UPSTREAM_HOST: home-primary
+      EDGE_UPSTREAM_PORT: "8000"
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/tcp-edge-proxy.py
+        target: /opt/homecompute/tcp-edge-proxy.py
+        read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=16m"]
+    ports:
+      - "${GB10_BIND_ADDRESS:?Set GB10_BIND_ADDRESS}:${HOME_MODEL_HOST_PORT:?Set HOME_MODEL_HOST_PORT}:8000"
+    networks: [edge, inference]
+
+  home-primary:
+    <<: *runtime
+    container_name: gb10-home-primary
+    shm_size: 8gb
+    environment:
+      HOME: /var/cache/vllm/home-fast
+      HF_HOME: /var/cache/huggingface
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS: ${HOME_DEFAULT_CHAT_TEMPLATE_KWARGS:?Set HOME_DEFAULT_CHAT_TEMPLATE_KWARGS}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface \
+          --repo-id "${HOME_MODEL_ID}" --revision "${HOME_MODEL_REVISION}" --revision "${HOME_TOKENIZER_REVISION}" --revision "${HOME_CODE_REVISION}" \
+          --manifest /run/accepted-home-model-cache.json
+        export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
+        exec vllm serve "${HOME_MODEL_ID}" --revision "${HOME_MODEL_REVISION}" \
+          --tokenizer-revision "${HOME_TOKENIZER_REVISION}" --code-revision "${HOME_CODE_REVISION}" \
+          --served-model-name home-fast --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
+          --language-model-only --kv-cache-dtype fp8 --gpu-memory-utilization "${HOME_GPU_MEMORY_UTILIZATION}" \
+          --generation-config vllm --max-model-len "${HOME_MAX_MODEL_LEN}" --max-num-seqs "${HOME_MAX_NUM_SEQS}" \
+          --max-num-batched-tokens "${HOME_MAX_BATCHED_TOKENS}" --enable-chunked-prefill --async-scheduling \
+          --enable-prefix-caching --load-format fastsafetensors --reasoning-parser gemma4 --tool-call-parser gemma4 \
+          --default-chat-template-kwargs "$${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS}" --enable-auto-tool-choice \
+          --allowed-media-domains invalid.homecompute.invalid --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+        target: /var/cache/huggingface
+        read_only: true
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
+        target: /var/cache/vllm
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+        target: /opt/homecompute/model-cache-integrity.py
+        read_only: true
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-home-model-cache.json
+        target: /run/accepted-home-model-cache.json
+        read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=4g"]
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 15m
+    depends_on:
+      home-edge: {condition: service_started}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks: [inference]
+
+secrets:
+  hf_token:
+    file: ${HF_TOKEN_FILE:?Set HF_TOKEN_FILE}
+  vllm_api_key:
+    file: ${VLLM_API_KEY_FILE:?Set VLLM_API_KEY_FILE}
+
+networks:
+  inference:
+    internal: true
+  edge: {}
+  artifact-fetch: {}

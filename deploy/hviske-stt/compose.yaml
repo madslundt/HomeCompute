@@ -1,0 +1,180 @@
+name: hviske-stt
+
+x-runtime: &runtime
+  restart: unless-stopped
+  init: true
+  user: "${GB10_RUNTIME_UID:?Set GB10_RUNTIME_UID}:${GB10_RUNTIME_GID:?Set GB10_RUNTIME_GID}"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "5"}
+
+services:
+  hviske-fetch:
+    profiles: [prepare]
+    image: ${HVISKE_IMAGE:?Set HVISKE_IMAGE to the pinned vLLM 0.19 ARM64 digest}
+    user: "${GB10_RUNTIME_UID:?Set GB10_RUNTIME_UID}:${GB10_RUNTIME_GID:?Set GB10_RUNTIME_GID}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 4
+    mem_limit: 8g
+    pids_limit: 256
+    environment:
+      HF_HOME: /var/cache/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      MODEL_ID: ${HVISKE_MODEL_ID:?Set HVISKE_MODEL_ID}
+      MODEL_REVISION: ${HVISKE_MODEL_REVISION:?Set HVISKE_MODEL_REVISION}
+      ARTIFACT_MAX_BYTES: ${HVISKE_ARTIFACT_MAX_BYTES:?Set HVISKE_ARTIFACT_MAX_BYTES}
+      ARTIFACT_MAX_FILES: ${HVISKE_ARTIFACT_MAX_FILES:?Set HVISKE_ARTIFACT_MAX_FILES}
+      HF_CACHE_MAX_BYTES: ${HF_CACHE_MAX_BYTES:?Set HF_CACHE_MAX_BYTES}
+      HF_CACHE_MAX_FILES: ${HF_CACHE_MAX_FILES:?Set HF_CACHE_MAX_FILES}
+      MIN_FREE_DISK_GIB: ${MIN_FREE_DISK_GIB:?Set MIN_FREE_DISK_GIB}
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        exec python3 /opt/homecompute/model-cache-integrity.py fetch --cache-root /var/cache/huggingface \
+          --repo-id "$${MODEL_ID}" --revision "$${MODEL_REVISION}" \
+          --max-artifact-bytes "$${ARTIFACT_MAX_BYTES}" --max-artifact-files "$${ARTIFACT_MAX_FILES}" \
+          --max-cache-bytes "$${HF_CACHE_MAX_BYTES}" --max-cache-files "$${HF_CACHE_MAX_FILES}" \
+          --min-free-bytes "$$((MIN_FREE_DISK_GIB * 1073741824))"
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+        target: /var/cache/huggingface
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+        target: /opt/homecompute/model-cache-integrity.py
+        read_only: true
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=1g"
+    networks: [artifact-fetch]
+
+  hviske-primary:
+    <<: *runtime
+    profiles: [hviske]
+    image: ${HVISKE_IMAGE:?Set HVISKE_IMAGE to the pinned vLLM 0.19 ARM64 digest}
+    container_name: gb10-hviske-primary
+    shm_size: 8gb
+    cpus: 6
+    mem_limit: 24g
+    pids_limit: 512
+    environment:
+      HOME: /var/cache/vllm
+      USER: gb10-ai
+      LOGNAME: gb10-ai
+      TORCHINDUCTOR_CACHE_DIR: /var/cache/vllm/torchinductor
+      HF_MODULES_CACHE: /var/cache/vllm/hf-modules
+      HF_HOME: /var/cache/huggingface
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+      TOKENIZERS_PARALLELISM: "false"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface \
+          --repo-id "${HVISKE_MODEL_ID}" --revision "${HVISKE_MODEL_REVISION}" \
+          --manifest /run/accepted-hviske-cache.json
+        export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
+        exec vllm serve "${HVISKE_MODEL_ID}" --revision "${HVISKE_MODEL_REVISION}" \
+          --served-model-name stt-danish --trust-remote-code --host 0.0.0.0 --port 8000 \
+          --gpu-memory-utilization "${HVISKE_GPU_MEMORY_UTILIZATION:-0.10}" \
+          --max-num-seqs "${HVISKE_MAX_NUM_SEQS:-4}" \
+          --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
+        target: /var/cache/huggingface
+        read_only: true
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm/hviske
+        target: /var/cache/vllm
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
+        target: /opt/homecompute/model-cache-integrity.py
+        read_only: true
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-hviske-cache.json
+        target: /run/accepted-hviske-cache.json
+        read_only: true
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=4g"
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail --silent --show-error http://127.0.0.1:8000/health >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 15m
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks: [inference]
+
+  hviske-wyoming:
+    <<: *runtime
+    profiles: [hviske]
+    image: ${HVISKE_IMAGE:?Set HVISKE_IMAGE to the pinned vLLM 0.19 ARM64 digest}
+    container_name: gb10-hviske-wyoming
+    cpus: 1
+    mem_limit: 512m
+    pids_limit: 128
+    ports: ["${GB10_BIND_ADDRESS:-127.0.0.1}:${HVISKE_WYOMING_PORT:-10301}:10301"]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      WYOMING_BIND_ADDRESS: 0.0.0.0
+      WYOMING_PORT: "10301"
+      STT_UPSTREAM_URL: http://hviske-primary:8000/v1/audio/transcriptions
+      STT_API_KEY_FILE: /run/secrets/vllm_api_key
+      STT_MODEL: stt-danish
+      STT_LANGUAGE: da
+      STT_MAX_AUDIO_BYTES: ${HVISKE_MAX_AUDIO_BYTES:-10000000}
+      STT_MAX_AUDIO_SECONDS: ${HVISKE_MAX_AUDIO_SECONDS:-60}
+      STT_UPSTREAM_TIMEOUT_SECONDS: ${HVISKE_UPSTREAM_TIMEOUT_SECONDS:-120}
+      STT_MAX_CONNECTIONS: ${HVISKE_MAX_CONNECTIONS:-4}
+    entrypoint: [python3, /opt/homecompute/wyoming-openai-stt.py]
+    secrets: [vllm_api_key]
+    volumes:
+      - type: bind
+        source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/wyoming-openai-stt.py
+        target: /opt/homecompute/wyoming-openai-stt.py
+        read_only: true
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=64m"
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/wyoming-openai-stt.py, --probe-ready]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 2m
+    depends_on:
+      hviske-primary: {condition: service_healthy}
+    networks: [edge, inference]
+
+networks:
+  edge:
+    name: gb10-hviske-edge
+    driver: bridge
+    attachable: false
+  inference:
+    name: gb10-hviske-inference
+    driver: bridge
+    attachable: false
+    internal: true
+  artifact-fetch:
+    name: gb10-hviske-artifact-fetch
+    driver: bridge
+    attachable: false
+
+secrets:
+  vllm_api_key:
+    file: ${VLLM_API_KEY_FILE:?Set VLLM_API_KEY_FILE}

@@ -28,7 +28,9 @@ inside the existing n8n workflow, never a GB10 service.
 
 ## Status
 
-Accepted.
+Accepted as amended by [ADR-022](022-optional-home-core-inference.md):
+`home-spark` remains the primary inference appliance, with a qualified,
+lightweight utility backend permitted on `home-core` after its stated gates.
 
 ## Evidence
 

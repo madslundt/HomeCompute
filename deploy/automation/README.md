@@ -274,6 +274,34 @@ Stop Aula before making a consistent encrypted backup or restoring the
 directory. Never put token bundles or CLI output containing personal data in
 Git. Off-host backups remain deferred under the existing owner decision.
 
+## Local automation model
+
+n8n reaches the HomeCompute gateway at `https://ai.home.arpa/v1`. Production
+mounts a world-readable copy of Caddy's public local root certificate read-only
+and sets `NODE_EXTRA_CA_CERTS`, so workflow nodes retain normal TLS
+verification. The Docker egress policy permits only the post-DNAT Caddy
+endpoint (`172.28.200.2:8443`) for this local path before rejecting other
+private destinations; Caddy's ingress policy separately permits only n8n's
+fixed bridge address (`172.28.201.2`).
+
+The source Caddy state is intentionally root-private, so refresh the public
+certificate copy after initial Caddy provisioning or any CA rotation:
+
+```sh
+sudo install -d -o root -g root -m 0755 /srv/state/automation/certs
+sudo install -o root -g root -m 0444 \
+  /srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt \
+  /srv/state/automation/certs/homecompute-caddy-root.crt
+```
+
+The inactive workflow `Local MoE — Danish tool-call qualification`
+(`3gx5hnQD65rXTe6Y`) is the canary for `automation-moe`. Configure its
+`HomeCompute LiteLLM bearer` templated credential with a separately revocable
+LiteLLM virtual key; do not reuse the LiteLLM master key or the public OpenAI
+credential. Run it only after the private compute link is up and the guarded
+MoE cold swap is active. Keep the workflow unpublished and existing production
+AI nodes unchanged until the direct and gateway replays pass.
+
 To update, review and change the source commit, image tag, and runtime digests,
 build and smoke-test, then deploy. Keep the previous image and a stopped-state
 snapshot for rollback. Stop/remove only `aula-mcp` to withdraw this integration;

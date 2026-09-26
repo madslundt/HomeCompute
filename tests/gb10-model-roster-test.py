@@ -22,8 +22,8 @@ class RosterTests(unittest.TestCase):
     def test_checked_in_roster_is_valid_and_bounded(self) -> None:
         ROSTER_MODULE.validate_roster(ROSTER)
         self.assertEqual(1, ROSTER["hardware"]["resident_text_model_limit"])
-        self.assertEqual(2, ROSTER["hardware"]["retained_text_model_limit"])
-        self.assertEqual({"primary", "heavy"}, set(ROSTER["text_models"]))
+        self.assertEqual(3, ROSTER["hardware"]["retained_text_model_limit"])
+        self.assertEqual({"primary", "automation_moe", "heavy"}, set(ROSTER["text_models"]))
 
     def test_primary_and_draft_checkpoints_are_fixed(self) -> None:
         roster = copy.deepcopy(ROSTER)
@@ -55,6 +55,13 @@ class RosterTests(unittest.TestCase):
         with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "Blazux"):
             ROSTER_MODULE.validate_roster(roster)
 
+    def test_automation_lane_is_qwen36_and_qualification_gated(self) -> None:
+        automation = ROSTER["text_models"]["automation_moe"]
+        self.assertEqual("unsloth/Qwen3.6-35B-A3B-NVFP4", automation["model_id"])
+        self.assertEqual(["automation-moe"], automation["roles"])
+        self.assertEqual("operator-exclusive", automation["activation"])
+        self.assertEqual("qwen3_coder", automation["runtime_profile"]["tool_call_parser"])
+
     def test_required_exclusions_cannot_be_removed(self) -> None:
         for model_id in ROSTER_MODULE.REQUIRED_EXCLUSIONS:
             with self.subTest(model_id=model_id):
@@ -82,11 +89,13 @@ class RosterTests(unittest.TestCase):
         self.assertEqual("evaluate-later-not-primary", supporting["stt_danish_later_evaluation"]["disposition"])
         self.assertNotIn("speaker_diarization", ROSTER["operating_profiles"]["normal"]["speech_services"])
 
-    def test_router_contains_only_the_two_selected_text_models(self) -> None:
+    def test_router_contains_the_three_selected_text_models(self) -> None:
         primary = ROSTER["text_models"]["primary"]
+        automation = ROSTER["text_models"]["automation_moe"]
         heavy = ROSTER["text_models"]["heavy"]
         expected = {
             f"qwen3.8-27b-nvfp4@{primary['revision']}",
+            f"qwen3.6-35b-a3b-nvfp4@{automation['revision']}",
             f"qwen3.8-flash-next-nvfp4@{heavy['revision']}",
         }
         self.assertEqual(expected, set(ROUTER_POLICY["models"]))

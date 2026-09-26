@@ -45,14 +45,16 @@ after it passes each use case's quality, safety, latency, and recovery tests.
 
 ## GB10 model roster
 
-The final steady state is two text models at most, with only one resident:
-Qwen3.8-27B is the normal production workhorse and Flash-Next is an exclusive
-operator-controlled heavy mode. Native MTP on vLLM is established first, then
-SGLang/DFlash is kept only if it is materially better on real workloads.
+The retained text set has three models, with only one resident until measured
+mixed-load evidence supports more: Qwen3.8-27B is the normal workhorse,
+Qwen3.6-35B-A3B is an opt-in n8n/tool qualification lane, and Flash-Next is an
+exclusive operator-controlled heavy mode. Neither alternate is loaded by
+default.
 
 | Role | Selection |
 | --- | --- |
 | Normal text inference | `unsloth/Qwen3.8-27B-NVFP4`; vLLM/native MTP baseline, then SGLang with the `incoai` DFlash2 drafter |
+| Opt-in n8n MoE candidate | `unsloth/Qwen3.6-35B-A3B-NVFP4`; non-thinking vLLM baseline, `qwen3_coder`, MTP initially disabled |
 | Heavy coding and research | `RadixArk/Qwen3.8-Flash-Next-NVFP4` through the pinned `blazux` single-GB10 recipe |
 | Danish STT | `syvai/hviske-v5.3` |
 | English, mixed, or unknown STT | `openai/whisper-large-v3-turbo` |
@@ -66,6 +68,8 @@ The immutable machine-readable policy is
 [`config/gb10-model-roster.json`](config/gb10-model-roster.json); see the
 [speech ADR](docs/adr/021-final-speech-stack-and-routing.md) for language,
 runtime, license, voice-consent, and qualification caveats.
+The [automation-MoE ADR](docs/adr/023-n8n-automation-moe.md) records the
+opt-in alias, cold-swap rule, Danish/tool gates, and promotion criteria.
 The [Flash-Next single-GB10 review](docs/research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
 records why it remains an exclusive heavy mode rather than the resident primary.
 
@@ -94,8 +98,8 @@ clients.
 7. Point the already-loopback-tested gateway at the qualified compute endpoint,
    apply its exact ingress/egress policy, then expose `https://ai.home.arpa` to
    approved clients.
-8. Benchmark the two Qwen3.8-27B runtime profiles, then migrate automations or
-   consumers one at a time, retaining rollback until each gate passes.
+8. Benchmark the two Qwen3.8-27B runtime profiles and the explicit
+   `automation-moe` cold-swap candidate, then migrate consumers one at a time.
 
 The node baselines may be built in parallel. Gateway integration needs both
 nodes, and no durable service should move before an off-host restore test.

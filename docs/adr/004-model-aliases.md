@@ -28,6 +28,9 @@ send to cloud; policy is bound to the authenticated consumer and alias.
   require consumer edits.
 - Additional fast/reasoning aliases: deferred until a real workload justifies them.
 
+ADR-023 adds `automation-moe` as an explicit qualification-only alias. It is
+not a stable production role and does not replace `automation` until promotion.
+
 ## Consequences
 
 Consumers remain stable while the registry changes. Different aliases do not

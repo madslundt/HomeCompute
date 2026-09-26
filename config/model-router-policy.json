@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "policy_version": "2026-09-08-workflow-first-live-gated",
+  "policy_version": "2026-09-26-dedicated-automation-lane-live-gated",
   "provider_scope": "local_only",
   "mode": "disabled",
   "load_on_demand": false,
@@ -46,6 +46,15 @@
       "quality_rank": 200,
       "auto_eligible": false,
       "capabilities": ["chat", "reasoning", "tools", "vision"],
+      "protocols": ["chat_completions", "responses"],
+      "max_context_tokens": 262144
+    },
+    "qwen3.6-35b-a3b-nvfp4@739af1e7aac320af1682ed1e0cce369af4c5265d": {
+      "upstream_model": "automation-moe",
+      "selection_lane": "automation",
+      "quality_rank": 190,
+      "auto_eligible": false,
+      "capabilities": ["chat", "reasoning", "tools"],
       "protocols": ["chat_completions", "responses"],
       "max_context_tokens": 262144
     },

@@ -164,8 +164,10 @@ therefore cover more state and matter more than they did under ADR-016.
 ## Status
 
 Accepted. Amends ADR-016 by defining workload placement it left unstated, and
-amends ADR-013's placement of Hermes on a separate application host. Does not
-change ADR-001; `home-spark` remains inference-only.
+amends ADR-013's placement of Hermes on a separate application host. At the
+time of this decision it did not change ADR-001. ADR-022 later permits a
+separately qualified lightweight utility backend on `home-core`; the primary
+inference role remains with `home-spark`.
 
 Hermes is deferred by owner decision on 2026-09-04, so only stage 1 is built.
 

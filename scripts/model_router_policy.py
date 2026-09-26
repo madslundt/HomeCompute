@@ -95,7 +95,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
         if set(model) != required:
             raise PolicyError(f"models.{model_name} must contain exactly {', '.join(sorted(required))}")
         _string(model["upstream_model"], f"models.{model_name}.upstream_model")
-        if model["selection_lane"] not in {"primary", "heavy"}:
+        if model["selection_lane"] not in {"primary", "automation", "heavy"}:
             raise PolicyError(f"models.{model_name}.selection_lane is invalid")
         if not isinstance(model["quality_rank"], int):
             raise PolicyError(f"models.{model_name}.quality_rank must be an integer")
@@ -136,7 +136,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
                 raise PolicyError(f"aliases.{alias} references an unknown model")
         for alias, model_name in aliases.items():
             if model_name != selected_primary:
-                raise PolicyError(f"aliases.{alias} must reference the selected primary; heavy mode is operator-swapped")
+                raise PolicyError(f"aliases.{alias} must reference the selected primary; alternate lanes are operator-swapped")
 
     auto = _object(policy.get("auto"), "auto")
     if set(auto) != {"strategy", "confidence_threshold", "low_confidence_policy", "classifier_failure_policy"}:

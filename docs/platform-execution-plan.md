@@ -27,7 +27,7 @@ The names do not depend on a hardware vendor:
 | System role | Stable name | Initial hardware | Responsibility |
 | --- | --- | --- | --- |
 | AI compute node | `home-spark` | NVIDIA GB10 or DGX Spark-class appliance | Rebuildable GPU inference: text, STT, TTS, and later diarization |
-| AI services node | `home-core` | Supported x86 NixOS host | Trusted Caddy/LiteLLM/PostgreSQL Compose stack and `/srv/state` |
+| AI services node | `home-core` | Supported x86 NixOS host | Trusted Caddy/LiteLLM/PostgreSQL Compose stack and `/srv/state`; optional lightweight inference only after ADR-022 gates pass |
 | Application projects | Isolated Compose projects on `home-core` | Same host, separate networks/users/state/secrets | n8n, MCP, browser workers, personal agents, CI, and experimental tools |
 
 Suggested DNS is `home-spark.home.arpa` and `home-core.home.arpa`.
@@ -45,6 +45,8 @@ flowchart LR
         Gateway[Caddy + LiteLLM + PostgreSQL]
         State[/srv/state/control-plane]
         Gateway --> State
+        Local[Optional qualified lightweight model]
+        Gateway -. approved local task aliases .-> Local
     end
 
     subgraph Apps[Isolated Compose projects on home-core]
@@ -95,6 +97,9 @@ credentials in this repository:
 - Reserve the role-based DNS names and IP addresses.
 - Confirm that the GB10 is compute-only and the services node owns durable
   application state.
+- Keep `home-spark` as the primary inference plane. Any K15/home-core model is
+  optional and remains deferred until the model, resource envelope, LiteLLM
+  route, and outage behavior pass [ADR-022](adr/022-optional-home-core-inference.md).
 - Confirm that `ai.home.arpa` is the sole production client entry point.
 
 **Exit:** Names, addresses, data ownership, and rollback owners are recorded.

@@ -175,6 +175,11 @@ Only `home-core` attaches to the private GB10 link, and within it only
 LiteLLM. Home Assistant remains on its current host unless a later, separately
 restored and tested migration is approved.
 
+ADR-022 permits a future lightweight utility model on `home-core` after model,
+runtime, resource, LiteLLM-routing, and outage gates pass. That optional path
+does not make `home-core` the primary inference host, and consumers still use
+the shared LiteLLM boundary.
+
 The three application projects share `home-core`'s kernel because no
 fourth machine exists. Their separation is by Compose project, Docker network,
 runtime user, `/srv/state` subtree, sops secret group, and resource limit — not

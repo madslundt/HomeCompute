@@ -44,18 +44,33 @@
     ip6tables -w -C FORWARD -o enp45s0 -j REJECT 2>/dev/null ||
       ip6tables -w -I FORWARD 1 -o enp45s0 -j REJECT
 
-    if ! iptables -w -C FORWARD -i enp45s0 -j HC-COMPUTE-V1 2>/dev/null &&
-      ! iptables -w -C FORWARD -o enp45s0 -j HC-COMPUTE-V1 2>/dev/null; then
-      iptables -w -N HC-COMPUTE-V1 2>/dev/null || true
-      iptables -w -F HC-COMPUTE-V1
-      iptables -w -A HC-COMPUTE-V1 -s 172.28.200.3/32 -d 10.77.10.10/32 -o enp45s0 -p tcp -m multiport --dports 8000,8001,8002,8003,8004,10200 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-      iptables -w -A HC-COMPUTE-V1 -i enp45s0 -s 10.77.10.10/32 -d 172.28.200.3/32 -p tcp -m multiport --sports 8000,8001,8002,8003,8004,10200 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-      iptables -w -A HC-COMPUTE-V1 -j REJECT
+    if ! iptables -w -C FORWARD -i enp45s0 -j HC-COMPUTE-V2 2>/dev/null &&
+      ! iptables -w -C FORWARD -o enp45s0 -j HC-COMPUTE-V2 2>/dev/null; then
+      iptables -w -N HC-COMPUTE-V2 2>/dev/null || true
+      iptables -w -F HC-COMPUTE-V2
+      iptables -w -A HC-COMPUTE-V2 -s 172.28.200.3/32 -d 10.77.10.10/32 -o enp45s0 -p tcp -m multiport --dports 8000,8001,8002,8003,8004,8005 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+      iptables -w -A HC-COMPUTE-V2 -i enp45s0 -s 10.77.10.10/32 -d 172.28.200.3/32 -p tcp -m multiport --sports 8000,8001,8002,8003,8004,8005 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      iptables -w -A HC-COMPUTE-V2 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10201 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+      iptables -w -A HC-COMPUTE-V2 -i enp45s0 -s 10.77.10.10/32 -d 172.28.200.4/32 -p tcp --sport 10201 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      iptables -w -A HC-COMPUTE-V2 -s 172.28.200.5/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10301 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+      iptables -w -A HC-COMPUTE-V2 -i enp45s0 -s 10.77.10.10/32 -d 172.28.200.5/32 -p tcp --sport 10301 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+      iptables -w -A HC-COMPUTE-V2 -j REJECT
     fi
-    iptables -w -C FORWARD -i enp45s0 -j HC-COMPUTE-V1 2>/dev/null ||
-      iptables -w -I FORWARD 1 -i enp45s0 -j HC-COMPUTE-V1
-    iptables -w -C FORWARD -o enp45s0 -j HC-COMPUTE-V1 2>/dev/null ||
-      iptables -w -I FORWARD 1 -o enp45s0 -j HC-COMPUTE-V1
+    iptables -w -C FORWARD -i enp45s0 -j HC-COMPUTE-V2 2>/dev/null ||
+      iptables -w -I FORWARD 1 -i enp45s0 -j HC-COMPUTE-V2
+    iptables -w -C FORWARD -o enp45s0 -j HC-COMPUTE-V2 2>/dev/null ||
+      iptables -w -I FORWARD 1 -o enp45s0 -j HC-COMPUTE-V2
+
+    while iptables -w -C FORWARD -i enp45s0 -j HC-COMPUTE-V1 2>/dev/null; do
+      iptables -w -D FORWARD -i enp45s0 -j HC-COMPUTE-V1
+    done
+    while iptables -w -C FORWARD -o enp45s0 -j HC-COMPUTE-V1 2>/dev/null; do
+      iptables -w -D FORWARD -o enp45s0 -j HC-COMPUTE-V1
+    done
+    if iptables -w -L HC-COMPUTE-V1 -n >/dev/null 2>&1; then
+      iptables -w -F HC-COMPUTE-V1
+      iptables -w -X HC-COMPUTE-V1
+    fi
 
     while iptables -w -C FORWARD -i enp45s0 -j HC-COMPUTE 2>/dev/null; do
       iptables -w -D FORWARD -i enp45s0 -j HC-COMPUTE

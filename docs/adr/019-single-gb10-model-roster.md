@@ -58,8 +58,9 @@ CC BY-NC 4.0 restriction must be revisited before any commercial use.
 
 ## Consequences
 
-The retained general-purpose text roster is exactly two checkpoints, with at
-most one resident at a time. All semantic LiteLLM aliases resolve to the 27B
+ADR-023 adds one opt-in Qwen3.6 automation-MoE qualification checkpoint, so
+the retained text roster is now three checkpoints, still with at most one
+resident at a time. All ordinary semantic LiteLLM aliases resolve to the 27B
 workhorse during normal mode. Heavy mode changes the active service behind the
 stable boundary only through an operator lifecycle action.
 
@@ -74,8 +75,9 @@ reviewed change. ADR-021 owns the current speech roster and exclusions.
 
 ## Status
 
-Accepted for text; speech portion superseded by ADR-021. Live runtime
-qualification remains pending.
+Accepted for primary/heavy text; speech portion superseded by ADR-021 and text
+roster bound amended by ADR-023. Live alternate-model qualification remains
+pending.
 
 ## Evidence
 

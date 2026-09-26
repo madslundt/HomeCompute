@@ -132,6 +132,8 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-019](adr/019-single-gb10-model-roster.md) | Final GX10 roster: Qwen3.8-27B workhorse, exclusive Flash-Next cold swap, and four speech models |
 | [ADR-020](adr/020-workflow-first-local-inference.md) | Workflow-first rollout: local-only home-core routing, Aula first, explicit local Codex trials, and deferred features |
 | [ADR-021](adr/021-final-speech-stack-and-routing.md) | Final 2+2 speech roster, language routing, isolated runtimes, licenses, and qualification gates |
+| [ADR-022](adr/022-optional-home-core-inference.md) | Optional lightweight home-core inference, gated on qualification and routed only through LiteLLM |
+| [ADR-023](adr/023-n8n-automation-moe.md) | Opt-in Qwen3.6 MoE lane for Danish n8n tools; single-resident cold swap and no default Flash-Next |
 
 ## Research and model evidence
 
@@ -145,12 +147,17 @@ second general-purpose model.
 The dated [Flash-Next review](research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
 documents the single-GB10 runtime evidence behind that resident-versus-heavy
 split.
+The opt-in [Qwen3.6 automation-MoE review](research/n8n-danish-moe-recommendation-2026-09-26.md)
+selects the Unsloth NVFP4 artifact over NVIDIA's quant because the latter has
+an unresolved large-tool-surface failure report on GB10.
 
 The selected speech stack is Hviske v5.3 for Danish STT, Whisper large-v3-turbo
 for English/mixed/unknown STT, Plapre Nano v2 for Danish TTS, and Qwen3-TTS
 0.6B CustomVoice for supported non-Danish TTS. Piper remains the Danish CPU
 fallback. The older combined Whisper/Piper scaffold is not the final isolated
-speech deployment.
+speech deployment. The dated [Plapre deployment review](research/plapre-nano-v2-gb10-home-assistant-deployment-2026-09-26.md)
+records the pinned runtime, Wyoming adapter, voice-provenance gate, and staged
+Home Assistant path.
 
 | Topic | Documents |
 | --- | --- |

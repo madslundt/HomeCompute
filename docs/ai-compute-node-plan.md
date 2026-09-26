@@ -22,7 +22,7 @@ Consumers use `https://ai.home.arpa` and logical aliases. Direct access to
 | --- | --- |
 | Hostname | `home-spark` |
 | DNS | `home-spark.home.arpa` |
-| Trusted-management address | Reserved during the network worksheet |
+| Trusted-management address | `192.168.30.126` (observed 2026-09-26) |
 | Private compute address | `10.77.10.10/24` proposed |
 | Private peer | `home-core` at `10.77.10.2/24` |
 | Production client endpoint | `https://ai.home.arpa` |
@@ -30,6 +30,22 @@ Consumers use `https://ai.home.arpa` and logical aliases. Direct access to
 The private link has no default gateway. Bind inference ports only to loopback
 during direct qualification, then to the private address with a firewall rule
 allowing only `home-core`.
+
+## Observed host baseline
+
+Read-only SSH inspection on 2026-09-26 found the Spark at
+`192.168.30.126`, currently named `gx10`, running Ubuntu 24.04.5 LTS on
+`aarch64`. It reports an NVIDIA GB10 and driver 580.178.04, 121 GiB of system
+memory, a 916 GiB root filesystem with 822 GiB available, and 15 GiB of swap.
+The connected Ethernet interface is `enP7s7`; no second Ethernet interface is
+present in the current interface list. `home-core`'s configured private-link
+interface `enp45s0` has no carrier, so the private compute path is not ready.
+
+The SSH account `madslundt` can read host inventory but requires interactive
+sudo and cannot currently access the Docker socket. Hostname changes and the
+compute-node installer remain pending an administrative shell. Do not expose
+the inference endpoint over the shared management LAN to work around the
+missing private link.
 
 ## Execution checklist
 

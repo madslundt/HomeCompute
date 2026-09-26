@@ -37,6 +37,16 @@
       "project_url": "https://huggingface.co/RadixArk/Qwen3.8-Flash-Next-NVFP4"
     },
     {
+      "id": "automation-moe-candidate",
+      "kind": "huggingface_model",
+      "label": "Unsloth Qwen3.6 35B A3B NVFP4",
+      "role": "Opt-in Danish n8n/tool qualification checkpoint",
+      "request_url": "https://huggingface.co/api/models/unsloth/Qwen3.6-35B-A3B-NVFP4",
+      "project_url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4",
+      "benchmark_artifact_source": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4",
+      "benchmark_candidate_ids": ["qwen3.6-35b-a3b-vllm-baseline"]
+    },
+    {
       "id": "flash-next-single-gb10-recipe",
       "kind": "github_file",
       "label": "Qwen3.8 Flash-Next single-GB10 recipe",

@@ -68,21 +68,22 @@ def validate_roster(roster: dict[str, Any]) -> None:
     }
     if set(roster) != expected:
         raise RosterError("roster has unsupported or missing top-level keys")
-    if roster["schema_version"] != 3:
-        raise RosterError("schema_version must be 3")
+    if roster["schema_version"] != 4:
+        raise RosterError("schema_version must be 4")
 
     hardware = _object(roster["hardware"], "hardware")
     if hardware.get("accelerator") != "NVIDIA GB10" or hardware.get("unified_memory_gib") != 128:
         raise RosterError("roster must target one 128 GiB NVIDIA GB10")
     if hardware.get("resident_text_model_limit") != 1:
-        raise RosterError("only one text model may be resident")
-    if hardware.get("retained_text_model_limit") != 2:
-        raise RosterError("the final stack retains exactly two general-purpose text models")
+        raise RosterError("only one text model may be resident until mixed-load qualification passes")
+    if hardware.get("retained_text_model_limit") != 3:
+        raise RosterError("the final stack retains primary, automation, and heavy text models")
 
     text_models = _object(roster["text_models"], "text_models")
-    if set(text_models) != {"primary", "heavy"}:
-        raise RosterError("text_models must contain exactly primary and heavy")
+    if set(text_models) != {"primary", "automation_moe", "heavy"}:
+        raise RosterError("text_models must contain exactly primary, automation_moe, and heavy")
     primary = _model(text_models["primary"], "text_models.primary")
+    automation = _model(text_models["automation_moe"], "text_models.automation_moe")
     heavy = _model(text_models["heavy"], "text_models.heavy")
     if primary["model_id"] != "unsloth/Qwen3.8-27B-NVFP4":
         raise RosterError("the production workhorse must be unsloth/Qwen3.8-27B-NVFP4")
@@ -107,6 +108,25 @@ def validate_roster(roster: dict[str, Any]) -> None:
         raise RosterError("the DFlash runtime must use the incoai draft checkpoint")
     _revision(performance.get("draft_revision"), "text_models.primary.runtime_profiles.performance.draft_revision")
 
+    if automation["model_id"] != "unsloth/Qwen3.6-35B-A3B-NVFP4":
+        raise RosterError("the automation candidate must use Unsloth Qwen3.6-35B-A3B NVFP4")
+    if automation.get("disposition") != "qualification-candidate" or automation.get("activation") != "operator-exclusive":
+        raise RosterError("the automation MoE must remain an operator-exclusive qualification candidate")
+    if automation.get("roles") != ["automation-moe"] or automation.get("default_thinking_mode") != "disabled":
+        raise RosterError("the automation MoE must use only its opt-in non-thinking role")
+    automation_runtime = _object(automation.get("runtime_profile"), "text_models.automation_moe.runtime_profile")
+    if automation_runtime != {
+        "runtime": "vllm", "speculative_method": "disabled-for-baseline", "tool_call_parser": "qwen3_coder",
+        "status": "qualify-with-n8n-tools",
+    }:
+        raise RosterError("the automation runtime must use the pinned vLLM MTP/Qwen tool profile")
+    required_gates = {
+        "danish-workflow-fixtures", "structured-output-fixtures",
+        "small-and-large-tool-surface", "mixed-load-memory",
+    }
+    if set(automation.get("qualification_gates", [])) != required_gates:
+        raise RosterError("the automation model is missing required qualification gates")
+
     if heavy["model_id"] != "RadixArk/Qwen3.8-Flash-Next-NVFP4":
         raise RosterError("the heavy lane must use the RadixArk Flash-Next checkpoint")
     if heavy.get("disposition") != "cold-swap-heavy" or heavy.get("activation") != "operator-exclusive":
@@ -119,7 +139,7 @@ def validate_roster(roster: dict[str, Any]) -> None:
     services = _object(roster["services"], "services")
     if set(services) != set(EXPECTED_SERVICES):
         raise RosterError("services must contain exactly two STT and two TTS models")
-    active_ids = {primary["model_id"], heavy["model_id"], performance["draft_model_id"]}
+    active_ids = {primary["model_id"], automation["model_id"], heavy["model_id"], performance["draft_model_id"]}
     for name, (model_id, license_id, language) in EXPECTED_SERVICES.items():
         service = _model(services[name], f"services.{name}")
         if (service["model_id"], service["license_id"], service.get("language")) != (model_id, license_id, language):
@@ -164,13 +184,19 @@ def validate_roster(roster: dict[str, Any]) -> None:
         raise RosterError("required exclusions are missing: " + ", ".join(sorted(missing)))
 
     profiles = _object(roster["operating_profiles"], "operating_profiles")
-    if set(profiles) != {"normal", "heavy"}:
-        raise RosterError("operating_profiles must contain normal and heavy")
+    if set(profiles) != {"normal", "automation_moe", "heavy"}:
+        raise RosterError("operating_profiles must contain normal, automation_moe, and heavy")
     normal = _object(profiles["normal"], "operating_profiles.normal")
     if normal.get("text_model") != "primary" or normal.get("allowed_text_runtime_profiles") != ["baseline", "performance"]:
         raise RosterError("normal mode must use the primary model with either qualified runtime")
     if normal.get("speech_services") != list(EXPECTED_SERVICES):
         raise RosterError("normal mode must list all four speech services")
+    automation_profile = _object(profiles["automation_moe"], "operating_profiles.automation_moe")
+    if automation_profile != {
+        "text_model": "automation_moe", "stop_text_model_first": "primary",
+        "restart_text_model_after": "primary", "dynamic_router_activation": False,
+    }:
+        raise RosterError("automation MoE mode must be an explicit primary-model cold swap")
     heavy_profile = _object(profiles["heavy"], "operating_profiles.heavy")
     if heavy_profile != {
         "text_model": "heavy", "stop_text_model_first": "primary",
@@ -179,8 +205,9 @@ def validate_roster(roster: dict[str, Any]) -> None:
         raise RosterError("heavy mode must serialize the primary/Flash-Next cold swap")
 
     order = roster["deployment_order"]
-    if not isinstance(order, list) or order[:4] != [
+    if not isinstance(order, list) or order[:6] != [
         "primary.runtime_profiles.baseline", "benchmark.baseline",
+        "automation_moe.runtime_profile", "benchmark.automation_moe",
         "primary.runtime_profiles.performance", "benchmark.runtime-comparison",
     ] or order[-1:] != ["heavy"]:
         raise RosterError("deployment_order must establish baseline, compare runtimes, then install heavy last")

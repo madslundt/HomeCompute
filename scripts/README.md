@@ -6,9 +6,14 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | Script | Target | Mutating commands |
 | --- | --- | --- |
 | `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `firewall`, `install`, `rollback`, `down` |
+| `setup-compute-automation-moe.sh` | Opt-in Qwen3.6 MoE candidate on `home-spark` | `prepare`, `install`, `activate`, `deactivate` |
+| `setup-compute-home-assistant-model.sh` | Isolated Gemma 4 E4B fast Home Assistant fallback | `prepare`, `install`, `up`, `smoke`, `down` |
+| `setup-compute-plapre.sh` | Isolated Plapre Nano v2 Danish TTS on `home-spark` | `build`, `up`, `down` |
+| `setup-compute-hviske-stt.sh` | Isolated Hviske v5.3 Danish STT on `home-spark` | `prepare`, `install`, `up`, `down` |
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
 | `setup-home-core-piper.sh` | Pinned Danish MOSS ONNX with automatic Piper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `setup-home-core-stt.sh` | Pinned Wyoming Faster Whisper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
+| `setup-home-core-automation-backup.sh` | On-demand Qwen3.6 Q4 CPU standby for planned Spark swaps | `prepare`, `maintenance-start`, `smoke`, `maintenance-stop`, `status` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
 | `gb10_model_roster.py` | Offline configuration validation | Enforces the Qwen3.8 workhorse, two runtime profiles, exclusive Flash-Next cold swap, and exact four-model speech roster |
@@ -23,6 +28,9 @@ models, caches, secrets, previous release records, or the text runtime.
 
 ```bash
 ./scripts/setup-compute-node.sh help
+./scripts/setup-compute-automation-moe.sh help
+./scripts/setup-compute-plapre.sh help
+./scripts/setup-compute-hviske-stt.sh help
 ./scripts/setup-compute-modalities.sh help
 nix flake check
 nixos-rebuild build --flake .#home-core
@@ -31,6 +39,17 @@ nixos-rebuild build --flake .#home-core
 The script must run from an intact repository checkout because it resolves
 templates relative to their own location. Production configuration lives under
 `/etc`, and runtime/model data lives outside the repository.
+
+## Opt-in n8n automation MoE
+
+`setup-compute-automation-moe.sh install` downloads and accepts the pinned
+Unsloth Qwen3.6-35B-A3B NVFP4 artifact but does not load it. `activate` stops
+the normal Qwen3.8 service before starting the separate `automation-moe`
+profile on port 8005; `deactivate` restores Qwen3.8. The baseline disables
+thinking and MTP, uses the model-card `qwen3_coder` parser, and remains an
+explicit qualification route. The ordinary `automation` alias does not move
+until Danish, structured-output, real n8n, 64-tool, memory, and recovery tests
+pass. Flash-Next is never started by this lifecycle.
 
 ## Legacy modality scaffold
 

@@ -1,0 +1,86 @@
+diff --git a/plapre/inference.py b/plapre/inference.py
+index accc089..72a797c 100644
+--- a/plapre/inference.py
++++ b/plapre/inference.py
+@@ -43,12 +43,22 @@ log = logging.getLogger(__name__)
+ SAMPLE_RATE = 24000
+ SPEAKER_DIM = 128
+ HIDDEN_SIZE = 960
+-KANADE_MODEL = "frothywater/kanade-25hz-clean"
+-
+ GGUF_QUANTS = ["f16", "q8_0", "q6_k", "q4_k_m", "q4_0"]
+ DEFAULT_QUANT = "q8_0"
+ 
+ 
++class _CrossDeviceModule(nn.Module):
++    """Run one unsupported GB10 operator on CPU and return to its caller's device."""
++
++    def __init__(self, module: nn.Module, output_device: torch.device):
++        super().__init__()
++        self.module = module
++        self.output_device = output_device
++
++    def forward(self, value: torch.Tensor) -> torch.Tensor:
++        return self.module(value.cpu()).to(self.output_device)
++
++
+ def _patch_tokenizer_compat():
+     """Patch transformers tokenizer for vLLM compatibility (tokenizers 5.x → 4.x)."""
+     import transformers.tokenization_utils_base as tub
+@@ -226,8 +236,23 @@ class Plapre:
+         log.info("Loading Kanade vocoder …")
+         from kanade_tokenizer import KanadeModel, load_vocoder
+ 
+-        self.kanade = KanadeModel.from_pretrained(KANADE_MODEL).eval().to(self.device)
+-        self.vocoder = load_vocoder(self.kanade.config.vocoder_name).to(self.device)
++        kanade_config = os.environ.get("PLAPRE_KANADE_CONFIG")
++        kanade_weights = os.environ.get("PLAPRE_KANADE_WEIGHTS")
++        if not kanade_config or not kanade_weights:
++            raise RuntimeError(
++                "PLAPRE_KANADE_CONFIG and PLAPRE_KANADE_WEIGHTS are required; "
++                "mutable Hub defaults are disabled"
++            )
++        self.kanade = KanadeModel.from_pretrained(
++            config_path=kanade_config, weights_path=kanade_weights
++        ).eval().to(self.device)
++        hybrid_decode = os.environ.get("PLAPRE_GB10_HYBRID_DECODE") == "1"
++        if hybrid_decode:
++            self.kanade.mel_conv_upsample = _CrossDeviceModule(
++                self.kanade.mel_conv_upsample.cpu(), self.device
++            )
++        self.vocoder_device = torch.device("cpu") if hybrid_decode else self.device
++        self.vocoder = load_vocoder(self.kanade.config.vocoder_name).to(self.vocoder_device)
+ 
+         # Cache for projected speaker embeddings
+         self._proj_cache: dict[bytes, torch.Tensor] = {}
+@@ -582,7 +607,7 @@ class Plapre:
+             )
+             from kanade_tokenizer import vocode
+ 
+-            waveform = vocode(self.vocoder, mel.unsqueeze(0))
++            waveform = vocode(self.vocoder, mel.unsqueeze(0).to(self.vocoder_device))
+         return waveform.squeeze().cpu().numpy()
+ 
+     def _synthesize(
+@@ -724,7 +749,7 @@ class Plapre:
+             )
+             from kanade_tokenizer import vocode
+ 
+-            waveform = vocode(self.vocoder, mel.unsqueeze(0))
++            waveform = vocode(self.vocoder, mel.unsqueeze(0).to(self.vocoder_device))
+         return waveform.squeeze().cpu().numpy()
+ 
+     def _generate_audio(
+diff --git a/plapre/server.py b/plapre/server.py
+index dd70ace..89334c4 100644
+--- a/plapre/server.py
++++ b/plapre/server.py
+@@ -143,7 +143,7 @@ async def speech(req: SpeechRequest):
+                         _tts._tokens_to_audio, tokens, spk
+                     )
+                 except (torch.OutOfMemoryError, RuntimeError) as e:
+-                    log.warning("Vocoder failed for sentence %d: %s", i, e)
++                    log.exception("Vocoder failed for sentence %d", i)
+                     audio = None
+             if audio is not None:
+                 yield _float32_to_pcm16(audio)

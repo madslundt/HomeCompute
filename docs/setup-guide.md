@@ -70,6 +70,7 @@ model behind an alias after the replacement passes the same tests.
 | --- | --- | --- |
 | `coding` | Codex editing, tools, builds, and tests | Qwen3.8-27B; operator cold-swap to Flash-Next after repeated struggle |
 | `automation` | n8n, structured output, and approved tools | Qwen3.8-27B in non-thinking mode by default |
+| `automation-moe` | Explicit n8n MoE qualification route | Unsloth Qwen3.6-35B-A3B NVFP4; cold swap, non-thinking, MTP off initially |
 | `research` | Private, source-bounded synthesis | Qwen3.8-27B; Flash-Next only for sustained heavy sessions |
 | `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.8-27B |
 | `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.8-27B |
@@ -82,8 +83,10 @@ The model selection is final. The shipped compute configuration prepares the
 first qualification stage: pinned Qwen3.8-27B with native MTP on vLLM at 64K.
 Routing remains disabled until that exact tuple passes the live appliance
 gates. SGLang/DFlash is then compared on real workloads before one runtime is
-kept as normal production. Qwen3.6 is not part of the qualification ladder;
-replace any remaining legacy profile rather than adapting it in place.
+kept as normal production. The separate Qwen3.6 MoE profile is staged only
+after that baseline and is never loaded with the primary until aggregate
+unified-memory evidence proves safe co-residency. It must beat or complement
+Qwen3.8 on Danish n8n and tool fixtures before `automation` may move.
 
 ## Before you start
 
@@ -314,6 +317,16 @@ Details: [compute-node plan](ai-compute-node-plan.md).
 
 Pull the private cable and verify a clear unavailable response. Private aliases
 must not silently switch to a cloud provider.
+
+If the physical interface is known to be unavailable, the explicitly enabled
+SSH loopback fallback in
+[`deploy/control-plane/README.md`](../deploy/control-plane/README.md#opt-in-ssh-fallback-while-the-private-nic-is-down)
+may carry only the automation MoE, Plapre, and Hviske ports. It is not an
+automatic failover and does not make the primary text route available. Keep
+`homecompute.computeSshTunnel.enable = true` only while the dedicated link is
+unavailable and the restricted key,
+pinned host key, remote forwarding-only account, host INPUT rules, and negative
+tests are all in place.
 
 **Checkpoint:** only the private interface on `home-core` can reach the compute service.
 

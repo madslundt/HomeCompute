@@ -46,6 +46,9 @@ shell_files=(
   "$REPO_ROOT/scripts/lib/config.sh"
   "$REPO_ROOT/scripts/configure-compute-firewall.sh"
   "$REPO_ROOT/scripts/setup-compute-node.sh"
+  "$REPO_ROOT/scripts/setup-compute-automation-moe.sh"
+  "$REPO_ROOT/scripts/setup-compute-plapre.sh"
+  "$REPO_ROOT/scripts/setup-compute-hviske-stt.sh"
   "$REPO_ROOT/scripts/setup-compute-modalities.sh"
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
@@ -69,6 +72,13 @@ printf '[validate] compute configuration migration tests\n'
 python3 "$REPO_ROOT/tests/migrate-compute-config-test.py"
 printf '[validate] bounded model-cache acquisition tests\n'
 python3 "$REPO_ROOT/tests/model-cache-integrity-test.py"
+printf '[validate] compute edge relay tests\n'
+python3 "$REPO_ROOT/tests/tcp-edge-proxy-test.py"
+printf '[validate] Hviske Wyoming adapter tests\n'
+python3 "$REPO_ROOT/tests/wyoming-openai-stt-test.py"
+printf '[validate] Plapre deployment and Wyoming adapter tests\n'
+python3 "$REPO_ROOT/tests/plapre-deployment-test.py"
+python3 "$REPO_ROOT/tests/plapre-wyoming-test.py"
 printf '[validate] TTS adapter tests\n'
 python3 "$REPO_ROOT/tests/openai-wyoming-tts-test.py"
 python3 "$REPO_ROOT/tests/tts-qualification-test.py"
@@ -120,6 +130,8 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/control-plane/compose.yaml" \
     "$REPO_ROOT/deploy/control-plane/litellm-config.yaml" \
     "$REPO_ROOT/deploy/compute-node/compose.yaml" \
+    "$REPO_ROOT/deploy/compute-node/plapre/compose.yaml" \
+    "$REPO_ROOT/deploy/hviske-stt/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
     "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" \
@@ -152,15 +164,35 @@ GB10_ROOT=$temporary_root/runtime
 GB10_RUNTIME_UID=1000
 GB10_RUNTIME_GID=1000
 GB10_BIND_ADDRESS=127.0.0.1
-COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,10200
+COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301
 VLLM_HOST_PORT=8000
 EMBEDDING_HOST_PORT=8001
 VISION_HOST_PORT=8002
 STT_HOST_PORT=8003
 TTS_HOST_PORT=8004
+AUTOMATION_HOST_PORT=8005
 WYOMING_TTS_HOST_PORT=10200
+PLAPRE_WYOMING_PORT=10201
+HVISKE_WYOMING_PORT=10301
 HF_TOKEN_FILE=$secret_file
 VLLM_API_KEY_FILE=$secret_file
+AUTOMATION_MODEL_ID=unsloth/Qwen3.6-35B-A3B-NVFP4
+AUTOMATION_MODEL_REVISION=739af1e7aac320af1682ed1e0cce369af4c5265d
+AUTOMATION_TOKENIZER_REVISION=739af1e7aac320af1682ed1e0cce369af4c5265d
+AUTOMATION_CODE_REVISION=739af1e7aac320af1682ed1e0cce369af4c5265d
+AUTOMATION_MODEL_LICENSE_ID=apache-2.0
+AUTOMATION_CHAT_TEMPLATE_SHA256=e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259
+AUTOMATION_ARTIFACT_MAX_BYTES=28000000000
+AUTOMATION_ARTIFACT_MAX_FILES=32
+AUTOMATION_MAX_MODEL_LEN=65536
+AUTOMATION_MAX_NUM_SEQS=4
+AUTOMATION_MAX_BATCHED_TOKENS=8192
+AUTOMATION_GPU_MEMORY_UTILIZATION=0.40
+AUTOMATION_MOE_BACKEND=cutlass
+AUTOMATION_FP8_MOE_BACKEND=triton
+AUTOMATION_TOOL_CALL_PARSER=qwen3_coder
+AUTOMATION_SPECULATIVE_CONFIG=''
+AUTOMATION_DEFAULT_CHAT_TEMPLATE_KWARGS='{"enable_thinking":false}'
 EMBEDDING_MODEL_ID=Qwen/Qwen3-VL-Embedding-2B
 EMBEDDING_MODEL_REVISION=3333333333333333333333333333333333333333
 EMBEDDING_MODEL_LICENSE_ID=Apache-2.0
@@ -203,6 +235,7 @@ HF_CACHE_MAX_BYTES=536870912000
 HF_CACHE_MAX_FILES=50000
 MIN_FREE_DISK_GIB=200
 VLLM_SPECULATIVE_CONFIG='{"method":"qwen3_5_mtp","num_speculative_tokens":3}'
+VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS='{"enable_thinking":false}'
 EOF
 
 printf '[validate] Compose rendering\n'
@@ -215,25 +248,40 @@ docker compose --env-file "$compose_env" --profile prepare-modalities \
   -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
 docker compose --env-file "$compose_env" --profile modalities \
   -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
+docker compose --env-file "$compose_env" --profile prepare-automation --profile automation-moe \
+  -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
 compute_default_json="$temporary_root/compute-default.json"
 compute_modalities_json="$temporary_root/compute-modalities.json"
+compute_automation_json="$temporary_root/compute-automation.json"
 docker compose --env-file "$compose_env" \
   -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --format json >"$compute_default_json"
 docker compose --env-file "$compose_env" --profile prepare --profile prepare-modalities --profile modalities \
   -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --format json >"$compute_modalities_json"
+docker compose --env-file "$compose_env" --profile prepare-automation --profile automation-moe \
+  -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --format json >"$compute_automation_json"
 jq -e '
-  ((.services | keys) == ["text-primary"]) and
+  ((.services | keys) == ["text-edge", "text-primary"]) and
   (.services["text-primary"].read_only == true) and
   (.services["text-primary"].cap_drop | index("ALL") != null) and
-  (.networks.inference.internal == true)
+  (.services["text-primary"].ports == null) and
+  (.services["text-primary"].networks | has("inference")) and
+  (.services["text-edge"].ports[0].published == "8000") and
+  (.services["text-edge"].networks | has("edge")) and
+  (.services["text-edge"].networks | has("inference")) and
+  (.networks.inference.internal == true) and
+  (.networks.edge.internal != true)
 ' "$compute_default_json" >/dev/null
 jq -e --arg runtime_root "$temporary_root/runtime/runtime" '
-  ((.services | keys) == ["embedding-primary", "modality-fetch", "model-fetch", "stt-primary", "text-primary", "tts-openai-adapter", "tts-primary", "vision-primary"]) and
+  ((.services | keys) == ["embedding-primary", "modality-fetch", "model-fetch", "stt-primary", "text-edge", "text-primary", "tts-openai-adapter", "tts-primary", "vision-primary"]) and
   all(.services[]; (.privileged // false) == false and (.network_mode // "") != "host") and
   all(.services[]; ((.devices // []) | length) == 0) and
   all(.services[]; .read_only == true and (.cap_drop | index("ALL") != null) and (.security_opt | index("no-new-privileges:true") != null)) and
   (.services["modality-fetch"].secrets == null) and
   (.services["modality-fetch"].environment.HF_TOKEN == null) and
+  (.services["text-primary"].ports == null) and
+  (.services["text-edge"].ports[0].published == "8000") and
+  (.services["text-edge"].networks | has("edge")) and
+  (.services["text-edge"].networks | has("inference")) and
   ([.services[].ports[]?.host_ip] | unique == ["127.0.0.1"]) and
   ([.services["model-fetch"], .services["modality-fetch"]] | all(.[]; .cpus == 4 and .mem_limit == "8589934592" and .pids_limit == 256)) and
   ([.services[].ports[]?.published] | sort == ["10200", "8000", "8001", "8002", "8003", "8004"]) and
@@ -244,7 +292,8 @@ jq -e --arg runtime_root "$temporary_root/runtime/runtime" '
   (any(.services["modality-fetch"].volumes[]; .source == ($runtime_root + "/model-cache-integrity.py") and .target == "/opt/homecompute/model-cache-integrity.py")) and
   (.services["model-fetch"].command | join(" ") | contains("model-cache-integrity.py fetch") and contains("--max-cache-bytes")) and
   (.services["modality-fetch"].command | join(" ") | contains("model-cache-integrity.py fetch") and contains("--max-cache-bytes")) and
-  (.services["text-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
+  (.services["text-primary"].environment.VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS == "{\"enable_thinking\":false}") and
+  (.services["text-primary"].command | join(" ") | contains("--no-enable-log-requests") and contains("--default-chat-template-kwargs") and (contains("--disable-log-requests") | not)) and
   (.services["embedding-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
   (.services["stt-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
   (.services["vision-primary"].command | join(" ") | contains("--no-enable-log-requests") and contains("--gpu-memory-utilization \"0.18\"") and (contains("--lora-extra-vocab-size") | not)) and
@@ -252,8 +301,30 @@ jq -e --arg runtime_root "$temporary_root/runtime/runtime" '
   ((.services["stt-primary"].command | join(" ") | contains("--runner transcription")) | not) and
   (.services["modality-fetch"].command | join(" ") | contains("63_201_294") and contains("os.link(temporary, target)")) and
   (.networks.inference.internal == true) and
+  (.networks.edge.internal != true) and
   (.networks["artifact-fetch"].internal != true)
 ' "$compute_modalities_json" >/dev/null
+jq -e --arg runtime_root "$temporary_root/runtime/runtime" '
+  ((.services | keys) == ["automation-edge", "automation-fetch", "automation-primary", "text-edge", "text-primary"]) and
+  all(.services[]; (.privileged // false) == false and (.network_mode // "") != "host") and
+  all(.services[]; .read_only == true and (.cap_drop | index("ALL") != null) and (.security_opt | index("no-new-privileges:true") != null)) and
+  (.services["automation-fetch"].secrets == null) and
+  (.services["automation-primary"].ports == null) and
+  (.services["automation-edge"].ports[0].published == "8005") and
+  (.services["automation-edge"].networks | has("edge") and has("inference")) and
+  (.services["automation-primary"].networks | has("inference")) and
+  (.services["automation-primary"].environment.CUTE_DSL_ARCH == "sm_121a") and
+  (.services["automation-primary"].environment.VLLM_SPECULATIVE_CONFIG == "") and
+  (.services["automation-primary"].environment.VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS == "{\"enable_thinking\":false}") and
+  (.services["automation-primary"].command | join(" ") | contains("--served-model-name automation-moe") and contains("--moe-backend \"cutlass\"") and contains("--tool-call-parser \"qwen3_coder\"") and contains("--no-enable-log-requests")) and
+  .services["automation-primary"].environment.VLLM_FP8_MOE_BACKEND == "triton" and
+  (any(.services["automation-primary"].volumes[]; .source == ($runtime_root + "/model-cache-integrity.py") and .target == "/opt/homecompute/model-cache-integrity.py")) and
+  (any(.services["automation-edge"].volumes[]; .source == ($runtime_root + "/tcp-edge-proxy.py") and .target == "/opt/homecompute/tcp-edge-proxy.py")) and
+  (.services["automation-fetch"].command | join(" ") | contains("model-cache-integrity.py fetch") and contains("--max-cache-bytes")) and
+  (.networks.inference.internal == true) and
+  (.networks.edge.internal != true) and
+  (.networks["artifact-fetch"].internal != true)
+' "$compute_automation_json" >/dev/null
 control_plane_env="$temporary_root/control-plane.env"
 control_plane_state="$temporary_root/state/control-plane"
 mkdir -p \
@@ -265,8 +336,11 @@ TIMEZONE=Europe/Copenhagen
 CONTROL_PLANE_STATE_ROOT=$control_plane_state
 CONTROL_PLANE_SECRET_GID=1
 CONTROL_PLANE_EDGE_SUBNET=172.28.200.0/24
+CONTROL_PLANE_EDGE_GATEWAY=172.28.200.1
 CADDY_EDGE_IP=172.28.200.2
 LITELLM_EDGE_IP=172.28.200.3
+PLAPRE_PROXY_EDGE_IP=172.28.200.4
+HVISKE_PROXY_EDGE_IP=172.28.200.5
 CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=127.0.0.1
 CONTROL_PLANE_LAN_BIND_ADDRESS=127.0.0.2
 CONTROL_PLANE_TAILSCALE_HTTPS_PORT=8443
@@ -278,7 +352,24 @@ N8N_UPSTREAM=http://192.168.30.122:15678
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
+SPEECH_PROXY_IMAGE=example.invalid/python@sha256:0000000000000000000000000000000000000000000000000000000000000000
+AUTOMATION_BACKUP_IMAGE=ghcr.io/ggml-org/llama.cpp:server@sha256:b74a168a10b13129ce8973582a5c699fadecde45945a8b8b004b79e34f4ff1ab
+AUTOMATION_BACKUP_STATE_ROOT=/srv/state/automation-backup
+AUTOMATION_BACKUP_THREADS=8
+AUTOMATION_BACKUP_BATCH_THREADS=10
+AUTOMATION_BACKUP_CONTEXT_SIZE=32768
+AUTOMATION_BACKUP_CPUS=8.0
+AUTOMATION_BACKUP_MEMORY_LIMIT=28g
 COMPUTE_OPENAI_BASE_URL=https://10.77.10.10:8000/v1
+COMPUTE_AUTOMATION_BASE_URL=https://10.77.10.10:8005/v1
+COMPUTE_HOME_BASE_URL=https://10.77.10.10:8006/v1
+COMPUTE_TRANSPORT=dedicated-link
+PLAPRE_WYOMING_UPSTREAM_HOST=10.77.10.10
+PLAPRE_WYOMING_UPSTREAM_PORT=10201
+PLAPRE_WYOMING_LAN_PORT=10201
+HVISKE_WYOMING_UPSTREAM_HOST=10.77.10.10
+HVISKE_WYOMING_UPSTREAM_PORT=10301
+HVISKE_WYOMING_LAN_PORT=10301
 COMPUTE_EMBEDDING_BASE_URL=http://10.77.10.10:8001/v1
 COMPUTE_VISION_BASE_URL=http://10.77.10.10:8002/v1
 COMPUTE_STT_BASE_URL=http://10.77.10.10:8003/v1
@@ -311,10 +402,79 @@ jq -e '
   (.services.postgres.cap_add == null) and
   (.services.postgres.cap_drop | index("ALL") != null) and
   (.services.caddy.cap_add == ["NET_BIND_SERVICE"]) and
+  (.networks.edge.ipam.config[0].gateway == "172.28.200.1") and
   (.networks.state.internal == true) and
   (.services.caddy.networks.state == null) and
   (.services.postgres.networks.edge == null)
 ' "$control_plane_json" >/dev/null
+control_plane_speech_json="$temporary_root/control-plane-speech.json"
+docker compose --profile speech-proxies --env-file "$control_plane_env" \
+  -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --format json >"$control_plane_speech_json"
+jq -e '
+  ((.services | keys) == ["caddy", "hviske-wyoming-proxy", "litellm", "plapre-wyoming-proxy", "postgres"]) and
+  (.services["plapre-wyoming-proxy"].profiles == ["speech-proxies"]) and
+  (.services["hviske-wyoming-proxy"].profiles == ["speech-proxies"]) and
+  (.services["plapre-wyoming-proxy"].ports[0].host_ip == "127.0.0.2") and
+  (.services["plapre-wyoming-proxy"].ports[0].published == "10201") and
+  (.services["plapre-wyoming-proxy"].ports[0].target == 10201) and
+  (.services["hviske-wyoming-proxy"].ports[0].host_ip == "127.0.0.2") and
+  (.services["hviske-wyoming-proxy"].ports[0].published == "10301") and
+  (.services["hviske-wyoming-proxy"].ports[0].target == 10301) and
+  (.services["plapre-wyoming-proxy"].networks.edge.ipv4_address == "172.28.200.4") and
+  (.services["hviske-wyoming-proxy"].networks.edge.ipv4_address == "172.28.200.5") and
+  (.services["plapre-wyoming-proxy"].read_only == true and .services["hviske-wyoming-proxy"].read_only == true) and
+  (.services["plapre-wyoming-proxy"].cap_drop | index("ALL") != null) and
+  (.services["hviske-wyoming-proxy"].cap_drop | index("ALL") != null) and
+  (all(.services["plapre-wyoming-proxy"].volumes[]; .read_only == true)) and
+  (all(.services["hviske-wyoming-proxy"].volumes[]; .read_only == true))
+' "$control_plane_speech_json" >/dev/null
+rg -F 'iptables -w -A HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RETURN' \
+  "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
+rg -F 'iptables -w -A HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN' \
+  "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
+rg -F 'for port in 10201 10301; do' \
+  "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
+rg -F 'HC-COMPUTE-V2 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10201' \
+  "$REPO_ROOT/modules/nixos/compute-link.nix" >/dev/null
+rg -F 'HC-COMPUTE-V2 -s 172.28.200.5/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10301' \
+  "$REPO_ROOT/modules/nixos/compute-link.nix" >/dev/null
+rg -F 'homecompute.computeSshTunnel.enable = lib.mkDefault true;' \
+  "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
+rg -F 'COMPUTE_AUTOMATION_BASE_URL=http://172.28.200.1:18005/v1' \
+  "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
+rg -F 'COMPUTE_HOME_BASE_URL=http://172.28.200.1:18006/v1' \
+  "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
+rg -F 'PLAPRE_WYOMING_UPSTREAM_PORT=18201' \
+  "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
+rg -F 'HVISKE_WYOMING_UPSTREAM_PORT=18301' \
+  "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
+rg -F -- '-o ExitOnForwardFailure=yes' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F -- '-o ServerAliveInterval=15' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F -- 'exec ssh -F /dev/null -N -T' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F -- '-L "$bind_address:18005:127.0.0.1:8005"' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F -- '-L "$bind_address:18006:127.0.0.1:8006"' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F -- '-L "$bind_address:18201:127.0.0.1:10201"' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F -- '-L "$bind_address:18301:127.0.0.1:10301"' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+[[ $(rg -c '^[[:space:]]+-L ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix") == 4 ]]
+if rg -n '^[[:space:]]+-(D|R) ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix"; then
+  printf '[validate] compute SSH fallback contains an unapproved dynamic or remote forward\n' >&2
+  exit 1
+fi
+rg -F 'HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18005' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F 'HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18006' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F 'HC-COMPUTE-TUNNEL -s 172.28.200.4/32 -d 172.28.200.1/32 -p tcp --dport 18201' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
+rg -F 'HC-COMPUTE-TUNNEL -s 172.28.200.5/32 -d 172.28.200.1/32 -p tcp --dport 18301' \
+  "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 printf '[validate] Application project isolation (ADR-017)\n'
 automation_json="$temporary_root/automation-compose.json"
 docker compose --env-file "$REPO_ROOT/config/automation.env.example" \
@@ -378,6 +538,8 @@ docker compose --env-file "$REPO_ROOT/config/automation.env.example" \
 jq -e '
   (.services.n8n.ports | length == 3) and
   ([.services.n8n.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"]) and
+  (.services.n8n.environment.NODE_EXTRA_CA_CERTS == "/etc/ssl/certs/homecompute-caddy-root.crt") and
+  (any(.services.n8n.volumes[]; .source == "/srv/state/automation/certs/homecompute-caddy-root.crt" and .target == "/etc/ssl/certs/homecompute-caddy-root.crt" and .read_only == true)) and
   (.networks.migration.internal != true) and
   (.networks.migration.enable_ipv6 == false) and
   (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n")
@@ -502,6 +664,28 @@ jq -e '
   (.networks["model-fetch"].ipam.config[0].subnet == "172.28.204.0/24")
 ' "$stt_prepare_json" >/dev/null
 
+hviske_json="$temporary_root/hviske-stt.json"
+docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  --profile prepare --profile hviske \
+  -f "$REPO_ROOT/deploy/hviske-stt/compose.yaml" config --format json >"$hviske_json"
+jq -e '
+  ((.services | keys) == ["hviske-fetch", "hviske-primary", "hviske-wyoming"]) and
+  (.services["hviske-primary"].ports == null) and
+  (.services["hviske-primary"].read_only == true) and
+  (.services["hviske-primary"].cap_drop | index("ALL") != null) and
+  (.services["hviske-primary"].environment.HF_HUB_OFFLINE == "1") and
+  (.services["hviske-primary"].command | join(" ") | contains("--served-model-name stt-danish") and contains("--no-enable-log-requests")) and
+  (.services["hviske-wyoming"].ports[0].host_ip == "127.0.0.1") and
+  (.services["hviske-wyoming"].ports[0].published == "10301") and
+  (.services["hviske-wyoming"].ports[0].target == 10301) and
+  (.services["hviske-wyoming"].environment.STT_LANGUAGE == "da") and
+  (.services["hviske-wyoming"].environment.STT_MAX_AUDIO_SECONDS == "60") and
+  (.services["hviske-wyoming"].read_only == true) and
+  (.services["hviske-fetch"].ports == null) and
+  (.networks.inference.internal == true) and
+  (.networks["artifact-fetch"].internal != true)
+' "$hviske_json" >/dev/null
+
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
 # per-project container controls are the only boundary left between them. Each
 # pattern below removes that boundary outright rather than weakening it, so the
@@ -518,7 +702,7 @@ fi
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane homepage piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hviske-stt homepage piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
@@ -543,14 +727,18 @@ if command -v nix >/dev/null 2>&1; then
   printf '[validate] Nix flake evaluation\n'
   nix --extra-experimental-features 'nix-command flakes' flake check \
     "path:$REPO_ROOT" --no-build --all-systems
+  nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
+    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
+    >/dev/null
 else
   printf '[validate] Nix flake evaluation (containerized)\n'
   docker run --rm \
     -v "$REPO_ROOT:/src:ro" \
     -w /src \
     nixos/nix:2.34.1@sha256:1d59121e0c361076b4f23c158d236702f2f045b3b477b51075b81ceb6188d34a \
-    nix --extra-experimental-features 'nix-command flakes' flake check \
-      path:/src --no-build --all-systems
+    sh -ec \
+      'nix --extra-experimental-features "nix-command flakes" flake check path:/src --no-build --all-systems
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
 fi
 
 printf '[validate] PASS\n'

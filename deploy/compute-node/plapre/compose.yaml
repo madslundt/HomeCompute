@@ -1,0 +1,145 @@
+name: homecompute-plapre
+
+x-runtime: &runtime
+  image: ${PLAPRE_LOCAL_IMAGE:?Set PLAPRE_LOCAL_IMAGE}
+  restart: unless-stopped
+  init: true
+  user: "${PLAPRE_RUNTIME_UID:?Set PLAPRE_RUNTIME_UID}:${PLAPRE_RUNTIME_GID:?Set PLAPRE_RUNTIME_GID}"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 256
+  tmpfs:
+    - "/tmp:rw,noexec,nosuid,nodev,size=1g"
+    - "/var/cache/huggingface:rw,noexec,nosuid,nodev,size=32m"
+    - "/var/cache/vllm:rw,noexec,nosuid,nodev,size=1g"
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "5"}
+
+services:
+  plapre-primary:
+    <<: *runtime
+    build:
+      context: ../../..
+      dockerfile: deploy/compute-node/plapre/Dockerfile
+      args:
+        PLAPRE_BASE_IMAGE: ${PLAPRE_BASE_IMAGE:?Set PLAPRE_BASE_IMAGE}
+        PLAPRE_CODE_REVISION: ${PLAPRE_CODE_REVISION:?Set PLAPRE_CODE_REVISION}
+        PLAPRE_MODEL_REVISION: ${PLAPRE_MODEL_REVISION:?Set PLAPRE_MODEL_REVISION}
+        KANADE_CODE_REVISION: ${KANADE_CODE_REVISION:?Set KANADE_CODE_REVISION}
+        KANADE_MODEL_REVISION: ${KANADE_MODEL_REVISION:?Set KANADE_MODEL_REVISION}
+        HIFT_MODEL_REVISION: ${HIFT_MODEL_REVISION:?Set HIFT_MODEL_REVISION}
+        TORCHAUDIO_CODE_REVISION: ${TORCHAUDIO_CODE_REVISION:?Set TORCHAUDIO_CODE_REVISION}
+    environment:
+      HOME: /tmp
+      USER: plapre
+      LOGNAME: plapre
+      HF_HOME: /var/cache/huggingface
+      TORCHINDUCTOR_CACHE_DIR: /var/cache/triton/torchinductor
+      TRITON_CACHE_DIR: /var/cache/triton
+      CUDA_CACHE_PATH: /tmp/cuda
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      PLAPRE_KANADE_CONFIG: /opt/plapre/models/kanade/config.yaml
+      PLAPRE_KANADE_WEIGHTS: /opt/plapre/models/kanade/model.safetensors
+      KANADE_HIFT_PATH: /opt/plapre/models/cosyvoice/hift.pt
+      PLAPRE_ENFORCE_EAGER: "1"
+      PLAPRE_GB10_HYBRID_DECODE: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    entrypoint: [/opt/plapre/venv/bin/plapre-serve]
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8004"
+      - --checkpoint
+      - /opt/plapre/models/plapre
+      - --gpu-mem
+      - ${PLAPRE_GPU_MEMORY_UTILIZATION:?Set PLAPRE_GPU_MEMORY_UTILIZATION}
+      - --max-model-len
+      - ${PLAPRE_MAX_MODEL_LEN:?Set PLAPRE_MAX_MODEL_LEN}
+    shm_size: 8g
+    # Triton compiles and dlopens a small device-driver helper on first use.
+    # Keep general-purpose /tmp noexec, and confine executable JIT output to
+    # this container-private, size-bounded tmpfs.
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=1g"
+      - "/var/cache/huggingface:rw,noexec,nosuid,nodev,size=32m"
+      - "/var/cache/vllm:rw,noexec,nosuid,nodev,size=1g"
+      - "/var/cache/triton:rw,exec,nosuid,nodev,size=1g"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: [CMD, /opt/plapre/venv/bin/python, /opt/plapre/bin/plapre_health_check.py]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 15m
+    networks: [inference]
+
+  plapre-wyoming:
+    <<: *runtime
+    depends_on:
+      plapre-primary: {condition: service_healthy}
+    environment:
+      PLAPRE_VOICE_ALIAS: ${PLAPRE_VOICE_ALIAS:?Set PLAPRE_VOICE_ALIAS}
+      PLAPRE_SPEAKER_ID: ${PLAPRE_SPEAKER_ID:?Set PLAPRE_SPEAKER_ID}
+      PLAPRE_TEMPO: ${PLAPRE_TEMPO:?Set PLAPRE_TEMPO}
+    entrypoint: [/opt/plapre/venv/bin/python, /opt/plapre/bin/wyoming_adapter.py]
+    command:
+      - --uri=tcp://0.0.0.0:10201
+      - --upstream-url=http://plapre-primary:8004
+      - --voice-alias=${PLAPRE_VOICE_ALIAS:?Set PLAPRE_VOICE_ALIAS}
+      - --speaker-id=${PLAPRE_SPEAKER_ID:?Set PLAPRE_SPEAKER_ID}
+      - --tempo=${PLAPRE_TEMPO:?Set PLAPRE_TEMPO}
+      - --max-input-chars=${PLAPRE_MAX_INPUT_CHARS:?Set PLAPRE_MAX_INPUT_CHARS}
+      - --max-pcm-bytes=${PLAPRE_MAX_PCM_BYTES:?Set PLAPRE_MAX_PCM_BYTES}
+      - --timeout-seconds=${PLAPRE_REQUEST_TIMEOUT_SECONDS:?Set PLAPRE_REQUEST_TIMEOUT_SECONDS}
+      - --samples-per-chunk=4096
+    cpus: 1
+    mem_limit: 512m
+    healthcheck:
+      test: [CMD, /opt/plapre/venv/bin/python, /opt/plapre/bin/wyoming_health_check.py]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks: [inference]
+
+  plapre-edge:
+    <<: *runtime
+    depends_on:
+      plapre-wyoming: {condition: service_healthy}
+    environment:
+      EDGE_LISTEN_PORT: "10201"
+      EDGE_UPSTREAM_HOST: plapre-wyoming
+      EDGE_UPSTREAM_PORT: "10201"
+    entrypoint: [/opt/plapre/venv/bin/python, /opt/plapre/bin/tcp-edge-proxy.py]
+    command: []
+    cpus: 0.5
+    mem_limit: 256m
+    ports:
+      - "${PLAPRE_BIND_ADDRESS:?Set PLAPRE_BIND_ADDRESS}:${PLAPRE_WYOMING_PORT:?Set PLAPRE_WYOMING_PORT}:10201"
+    healthcheck:
+      test: [CMD, /opt/plapre/venv/bin/python, /opt/plapre/bin/tcp-edge-proxy.py, --probe-upstream]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks: [edge, inference]
+
+networks:
+  inference:
+    internal: true
+  edge: {}

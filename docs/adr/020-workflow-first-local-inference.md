@@ -32,6 +32,10 @@ Use one qualified Qwen3.8-27B service for every text alias initially. Expose
 classification may be evaluated in shadow mode later and cannot control model
 activation during this milestone.
 
+ADR-023 retains this default while adding `automation-moe` as an explicit,
+operator-controlled cold-swap evaluation route. It does not change existing
+n8n workflows or the ordinary `automation` alias before promotion.
+
 Implement the first milestone in this order:
 
 1. Qualify the Qwen3.8-27B API and bind the semantic aliases.

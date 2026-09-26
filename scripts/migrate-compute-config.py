@@ -9,6 +9,12 @@ from pathlib import Path
 
 KEY_VALUE = re.compile(r"^([A-Z][A-Z0-9_]*)=(.*)$")
 REMOVED_KEYS = {"FIREWALL_CONFIRMED"}
+MIGRATED_EXACT_VALUES = {
+    "COMPUTE_HOST_PORTS": {
+        "8000,8001,8002,8003,8004,10200": "8000,8001,8002,8003,8004,8005,10200,10201,10301",
+        "8000,8001,8002,8003,8004,8005,10200": "8000,8001,8002,8003,8004,8005,10200,10201,10301",
+    },
+}
 
 
 def parse_values(path: Path) -> dict[str, str]:
@@ -33,6 +39,10 @@ def migrate(existing: Path, template: Path, output: Path) -> None:
     unknown = set(old_values) - set(template_values) - REMOVED_KEYS
     if unknown:
         raise ValueError(f"legacy configuration has unknown keys: {', '.join(sorted(unknown))}")
+
+    for key, migrations in MIGRATED_EXACT_VALUES.items():
+        if key in old_values and key in template_values:
+            old_values[key] = migrations.get(old_values[key], old_values[key])
 
     rendered: list[str] = []
     for raw_line in template.read_text(encoding="utf-8").splitlines():

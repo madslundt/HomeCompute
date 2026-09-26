@@ -7,6 +7,7 @@
     ../../modules/nixos/networking.nix
     ../../modules/nixos/firewall.nix
     ../../modules/nixos/compute-link.nix
+    ../../modules/nixos/compute-ssh-tunnel.nix
     ../../modules/nixos/wyoming-stt-network.nix
     ../../modules/nixos/platform-monitoring.nix
     ../../modules/nixos/model-update-monitor.nix
@@ -45,6 +46,13 @@
     enable = true;
     defaultSopsFile = ../../secrets/home-core.sops.yaml;
   };
+
+  # Emergency inference transport only. The dedicated enp45s0 link remains
+  # preferred. Root may set this true after provisioning the restricted key,
+  # pinned known_hosts file, and forwarding-only home-spark account.
+  # The dedicated compute link is physically down. Keep the narrowly scoped
+  # SSH fallback active until the link is restored and requalified.
+  homecompute.computeSshTunnel.enable = lib.mkDefault true;
 
   # Enable after configuring a real off-host repository and password file.
   homecompute.backups.enable = false;
