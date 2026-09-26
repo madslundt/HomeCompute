@@ -171,7 +171,7 @@ class PlapreWyomingTest(unittest.TestCase):
             upstream_url="http://plapre-primary:8004",
             voice_alias="danish-default",
             speaker_id="tor",
-            tempo=1.25,
+            tempo=1.2,
             max_input_chars=40,
             max_pcm_bytes=1024,
             timeout_seconds=30,
@@ -225,16 +225,16 @@ class PlapreWyomingTest(unittest.TestCase):
     def test_tempo_adjustment_is_pitch_preserving_and_keeps_pcm_contract(self) -> None:
         completed = types.SimpleNamespace(returncode=0, stdout=b"\x01\x02", stderr=b"")
         with patch.object(ADAPTER.subprocess, "run", return_value=completed) as run:
-            self.assertEqual(ADAPTER.adjust_tempo(b"\x00\x00\x00\x00", 1.25, 30, 32), b"\x01\x02")
+            self.assertEqual(ADAPTER.adjust_tempo(b"\x00\x00\x00\x00", 1.2, 30, 32), b"\x01\x02")
         command = run.call_args.args[0]
-        self.assertIn("atempo=1.250000", command)
+        self.assertIn("atempo=1.200000", command)
         self.assertEqual(run.call_args.kwargs["input"], b"\x00\x00\x00\x00")
 
     def test_tempo_adjustment_rejects_failed_or_invalid_output(self) -> None:
         failed = types.SimpleNamespace(returncode=1, stdout=b"", stderr=b"private detail")
         with patch.object(ADAPTER.subprocess, "run", return_value=failed):
             with self.assertRaises(ADAPTER.UpstreamError):
-                ADAPTER.adjust_tempo(b"\x00\x00", 1.25, 30, 32)
+                ADAPTER.adjust_tempo(b"\x00\x00", 1.2, 30, 32)
 
 
 if __name__ == "__main__":

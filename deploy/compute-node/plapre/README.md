@@ -41,7 +41,7 @@ private-link/firewall rule is independently installed and confirmed.
 The adapter advertises only `danish-default`, maps it internally to packaged
 speaker `tor`, limits text and response size, and verifies Plapre's 24 kHz,
 16-bit, mono PCM headers. It neither accepts reference audio nor exposes voice
-cloning or internal speaker IDs. The household profile applies a fixed 1.25x
+cloning or internal speaker IDs. The household profile applies a fixed 1.20x
 pitch-preserving tempo adjustment before emitting the same PCM format.
 
 ## Voice and fallback gates

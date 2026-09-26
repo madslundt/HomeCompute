@@ -64,8 +64,8 @@ class PlapreDeploymentTest(unittest.TestCase):
         self.assertNotIn("syvai/plapre-nano-v2", command)
         self.assertEqual(services["plapre-wyoming"]["environment"]["PLAPRE_VOICE_ALIAS"], "danish-default")
         self.assertEqual(services["plapre-wyoming"]["environment"]["PLAPRE_SPEAKER_ID"], "tor")
-        self.assertEqual(services["plapre-wyoming"]["environment"]["PLAPRE_TEMPO"], "1.25")
-        self.assertIn("--tempo=1.25", services["plapre-wyoming"]["command"])
+        self.assertEqual(services["plapre-wyoming"]["environment"]["PLAPRE_TEMPO"], "1.20")
+        self.assertIn("--tempo=1.20", services["plapre-wyoming"]["command"])
 
     def test_image_build_closes_mutable_revision_gaps(self) -> None:
         text = DOCKERFILE.read_text(encoding="utf-8")

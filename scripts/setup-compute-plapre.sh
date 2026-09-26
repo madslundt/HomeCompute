@@ -77,7 +77,7 @@ validate_config() {
   [[ "$PLAPRE_WYOMING_PORT" == 10201 ]] || die "Wyoming port must be 10201"
   [[ "$PLAPRE_VOICE_ALIAS:$PLAPRE_SPEAKER_ID" == danish-default:tor ]] ||
     die "Only the reviewed external alias mapping may be advertised"
-  [[ "$PLAPRE_TEMPO" == 1.25 ]] || die "Plapre household tempo must be 1.25"
+  [[ "$PLAPRE_TEMPO" == 1.20 ]] || die "Plapre household tempo must be 1.20"
   [[ "$PLAPRE_MAX_INPUT_CHARS:$PLAPRE_MAX_PCM_BYTES:$PLAPRE_REQUEST_TIMEOUT_SECONDS" == 2000:48000000:300 ]] ||
     die "Adapter request bounds differ from the reviewed tuple"
   [[ "$PLAPRE_RUNTIME_UID" =~ ^[1-9][0-9]*$ && "$PLAPRE_RUNTIME_GID" =~ ^[1-9][0-9]*$ ]] ||
