@@ -94,8 +94,8 @@ validate_runtime_config() {
   [[ "$HERMES_SANDBOX_NAME" == agent-owner ]] || die 'The pilot sandbox must be agent-owner'
   [[ "$HERMES_RESTORE_TARGET" == agent-owner-verify ]] || die 'The restore target must be agent-owner-verify'
   [[ "$HERMES_MODEL" == assistant-canary ]] || die 'The pilot model must be assistant-canary'
-  [[ "$HERMES_ENDPOINT_URL" == https://ai.home.arpa/v1 ]] ||
-    die 'The pilot endpoint must be https://ai.home.arpa/v1'
+  [[ "$HERMES_ENDPOINT_URL" == http://ai.home.arpa:18080/v1 ]] ||
+    die 'The pilot endpoint must be the isolated http://ai.home.arpa:18080/v1 compatibility bridge'
   [[ "$HERMES_TRUSTED_PRIVATE_HOSTS" == ai.home.arpa ]] ||
     die 'Only ai.home.arpa may be trusted as the pilot private host'
   local path_variable

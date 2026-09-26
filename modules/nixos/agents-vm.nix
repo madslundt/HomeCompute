@@ -11,6 +11,7 @@ let
   guestAddress = cfg.network.guestAddress;
   hostAddress = cfg.network.hostAddress;
   prefixLength = toString cfg.network.prefixLength;
+  inferenceBridgePort = 18080;
   statePath = "/srv/state/agents-vm";
   guestDisk = "${statePath}/agents.qcow2";
 
@@ -242,6 +243,7 @@ in
       allowedTCPPorts = [
         53
         443
+        inferenceBridgePort
       ];
       allowedUDPPorts = [ 53 ];
     };
@@ -395,6 +397,29 @@ in
         PrivateTmp = true;
         ProtectHome = true;
         ProtectSystem = "strict";
+      };
+    };
+
+    # OpenShell 0.0.116's inference router does not load NemoClaw's imported
+    # private CA for its reqwest client, even though the CA is installed in the
+    # sandbox OS trust store. Keep TLS on every other path and terminate this
+    # one compatibility hop only on the isolated /30 bridge. The upstream leg
+    # is verified against Caddy's private root and retains the original Host
+    # header; LiteLLM still requires the sandbox-specific API key.
+    systemd.services.homecompute-agents-ai-http-bridge = {
+      description = "Host-only HTTP compatibility bridge for OpenShell inference";
+      wantedBy = [ "multi-user.target" ];
+      requires = [ "homecompute-agents-network.service" ];
+      after = [ "homecompute-agents-network.service" ];
+      path = [ pkgs.socat ];
+      serviceConfig = {
+        ExecStart = "${pkgs.socat}/bin/socat TCP4-LISTEN:${toString inferenceBridgePort},bind=${hostAddress},reuseaddr,fork OPENSSL:192.168.30.122:443,verify=1,cafile=/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt,snihost=ai.home.arpa";
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectHome = true;
+        ProtectSystem = "strict";
+        Restart = "on-failure";
+        RestartSec = "5s";
       };
     };
 

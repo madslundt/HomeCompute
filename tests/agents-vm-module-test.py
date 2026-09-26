@@ -59,6 +59,7 @@ class AgentsVmModuleTest(unittest.TestCase):
         body = allowed_match.group("body")
         self.assertIn("53", body)
         self.assertIn("443", body)
+        self.assertIn("inferenceBridgePort", body)
         for forbidden_port in (22, 8642, 5900):
             self.assertNotRegex(body, rf"\b{forbidden_port}\b")
 
@@ -94,6 +95,13 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn("systemd.services.homecompute-agents-ai-proxy = {", MODULE)
         self.assertNotIn('systemd.services."homecompute-agents-ai-proxy@"', MODULE)
         self.assertNotIn('StandardInput = "socket";', MODULE)
+
+    def test_http_inference_bridge_is_host_only_and_verifies_caddy(self) -> None:
+        self.assertIn("inferenceBridgePort = 18080;", MODULE)
+        self.assertIn("TCP4-LISTEN:${toString inferenceBridgePort},bind=${hostAddress}", MODULE)
+        self.assertIn("OPENSSL:192.168.30.122:443,verify=1", MODULE)
+        self.assertIn("snihost=ai.home.arpa", MODULE)
+        self.assertIn("caddy-data/caddy/pki/authorities/local/root.crt", MODULE)
 
     def test_vm_start_refuses_known_large_memory_peer(self) -> None:
         self.assertIn("homecompute-agents-memory-preflight", MODULE)

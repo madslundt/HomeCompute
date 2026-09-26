@@ -45,7 +45,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
     def write_config(self, extra: str = "", **overrides: str) -> None:
         values = {
             "HERMES_SANDBOX_NAME": "agent-owner",
-            "HERMES_ENDPOINT_URL": "https://ai.home.arpa/v1",
+            "HERMES_ENDPOINT_URL": "http://ai.home.arpa:18080/v1",
             "HERMES_MODEL": "assistant-canary",
             "HERMES_TRUSTED_PRIVATE_HOSTS": "ai.home.arpa",
             "HERMES_CA_BUNDLE": str(self.ca),
@@ -154,7 +154,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
                     test "${{NEMOCLAW_POLICY_TIER:-}}" = restricted
                     test "${{NEMOCLAW_WEB_SEARCH_PROVIDER:-}}" = none
-                    test "${{NEMOCLAW_ENDPOINT_URL:-}}" = https://ai.home.arpa/v1
+                    test "${{NEMOCLAW_ENDPOINT_URL:-}}" = http://ai.home.arpa:18080/v1
                     test "${{NEMOCLAW_TRUSTED_PRIVATE_HOSTS:-}}" = ai.home.arpa
                     test "${{NEMOCLAW_CORPORATE_CA_BUNDLE:-}}" = {self.ca!s}
                     test "${{NODE_EXTRA_CA_CERTS:-}}" = {self.ca!s}
@@ -207,7 +207,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
     def test_validate_accepts_only_the_canary_contract(self) -> None:
         result = self.run_cli("validate")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.write_config(HERMES_ENDPOINT_URL="http://ai.home.arpa/v1")
+        self.write_config(HERMES_ENDPOINT_URL="https://ai.home.arpa/v1")
         result = self.run_cli("validate")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("endpoint must be", result.stderr)

@@ -11,7 +11,10 @@ The pilot is intentionally narrow:
   `26922313bba96184e65c3663b351683ebae9504d`;
 - the release-managed Hermes `0.21.3` and OpenShell `0.0.116` tuple;
 - one sandbox named `agent-owner` using `assistant-canary` at
-  `https://ai.home.arpa/v1`;
+  `http://ai.home.arpa:18080/v1` over the isolated agents bridge. The host
+  verifies and forwards the upstream TLS connection to `ai.home.arpa`; this
+  compatibility hop exists because the pinned OpenShell 0.0.116 inference
+  client does not consume NemoClaw's imported private CA;
 - Restricted policy, no web search, no messaging, no MCP servers, no host
   mounts, and synthetic data only.
 
