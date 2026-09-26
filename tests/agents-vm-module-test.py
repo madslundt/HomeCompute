@@ -88,8 +88,12 @@ class AgentsVmModuleTest(unittest.TestCase):
         body = socket_match.group("body")
         self.assertIn('wantedBy = [ "multi-user.target" ];', body)
         self.assertIn('after = [ "homecompute-agents-network.service" ];', body)
+        self.assertIn('Accept = false;', body)
         self.assertNotIn('wantedBy = [ "sockets.target" ];', body)
         self.assertNotRegex(body, r'Service\s*=\s*".*@\.service"')
+        self.assertIn("systemd.services.homecompute-agents-ai-proxy = {", MODULE)
+        self.assertNotIn('systemd.services."homecompute-agents-ai-proxy@"', MODULE)
+        self.assertNotIn('StandardInput = "socket";', MODULE)
 
     def test_vm_start_refuses_known_large_memory_peer(self) -> None:
         self.assertIn("homecompute-agents-memory-preflight", MODULE)

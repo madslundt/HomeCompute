@@ -380,11 +380,14 @@ in
       requires = [ "homecompute-agents-network.service" ];
       after = [ "homecompute-agents-network.service" ];
       socketConfig = {
-        Accept = true;
+        # Give the listening socket to one long-running socket-proxyd process.
+        # Per-connection activation would require an inetd-style template and
+        # proved less reliable for this opaque TLS stream.
+        Accept = false;
         ListenStream = "${hostAddress}:443";
       };
     };
-    systemd.services."homecompute-agents-ai-proxy@" = {
+    systemd.services.homecompute-agents-ai-proxy = {
       description = "Proxy an agents guest connection to the local Caddy edge";
       serviceConfig = {
         DynamicUser = true;
@@ -392,8 +395,6 @@ in
         PrivateTmp = true;
         ProtectHome = true;
         ProtectSystem = "strict";
-        StandardInput = "socket";
-        StandardOutput = "inherit";
       };
     };
 
