@@ -57,11 +57,9 @@ The key must be authorized only for `assistant-canary`, with its own budget and
 rate limit. Never use the LiteLLM master key or the automation client key.
 
 The mutating commands also require two external readiness records at the paths
-in the config: `off-host-backup.json` and `agents-network.json`. They are not
-created by this helper. The NixOS deployment/operations work must write them
-only after the encrypted off-host restore drill and host-only network denial
-tests pass. Each mode-`0600` record has this schema (with the corresponding
-`gate` value):
+in the config: `backup-readiness.json` and `agents-network.json`. They are not
+created by this helper. The durable backup gate retains this mode-`0600`
+schema, while the network record uses the corresponding `agents-network` gate:
 
 ```json
 {
@@ -74,9 +72,41 @@ tests pass. Each mode-`0600` record has this schema (with the corresponding
 }
 ```
 
+For the synthetic bootstrap only, the backup path may instead hold this exact,
+temporary exception schema:
+
+```json
+{
+  "schema_version": 1,
+  "gate": "local-bootstrap-backup",
+  "status": "ready",
+  "scope": "hermes-synthetic-canary",
+  "observed_at": "2026-09-26T12:00:00Z",
+  "durability": "same-host-same-disk",
+  "risk_acknowledged": true,
+  "snapshot_id": "agents-vm-bootstrap-20260926",
+  "restore_evidence": "reference to the completed synthetic restore drill",
+  "limitations": "Loss of the home-core disk loses source and backup.",
+  "data_classification": "synthetic-only",
+  "allowed_sandbox": "agent-owner",
+  "allowed_model": "assistant-canary",
+  "integrations": "none",
+  "expires_at": "2026-09-27T12:00:00Z"
+}
+```
+
+Every field is mandatory and additional fields are rejected. `expires_at` must
+still be in the future whenever a mutating command runs. This exception admits
+only the already hard-coded `agent-owner`/`assistant-canary` sandbox with
+synthetic data and no messaging, web search, MCP, host mounts, or real personal
+data. It does not satisfy the production household rollout gate. Replace it
+with the durable `off-host-backup` record before creating any other user,
+adding an integration, or importing real data.
+
 `install`, `onboard-canary`, `snapshot`, and `restore-verify` fail before
-invoking NemoClaw when either record is absent or invalid. `validate` and
-`preflight` remain available while the deployment is still blocked.
+invoking NemoClaw when either record is absent, invalid, or—when using the
+local exception—expired. `validate` and `preflight` remain available while the
+deployment is still blocked.
 
 ## Validate, install, and onboard
 

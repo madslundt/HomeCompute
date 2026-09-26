@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -75,6 +76,36 @@ class HermesGuestRuntimeTest(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
+        path.chmod(0o600)
+
+    @staticmethod
+    def write_local_backup_gate(
+        path: Path,
+        *,
+        expires_at: str,
+        risk_acknowledged: bool = True,
+        extra: dict[str, object] | None = None,
+    ) -> None:
+        document: dict[str, object] = {
+            "schema_version": 1,
+            "gate": "local-bootstrap-backup",
+            "status": "ready",
+            "scope": "hermes-synthetic-canary",
+            "observed_at": "2026-09-26T12:00:00Z",
+            "durability": "same-host-same-disk",
+            "risk_acknowledged": risk_acknowledged,
+            "snapshot_id": "agents-vm-bootstrap-20260926",
+            "restore_evidence": "synthetic restore drill passed",
+            "limitations": "Loss of the home-core disk loses both source and backup.",
+            "data_classification": "synthetic-only",
+            "allowed_sandbox": "agent-owner",
+            "allowed_model": "assistant-canary",
+            "integrations": "none",
+            "expires_at": expires_at,
+        }
+        if extra:
+            document.update(extra)
+        path.write_text(json.dumps(document) + "\n", encoding="utf-8")
         path.chmod(0o600)
 
     def run_cli(self, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -212,8 +243,53 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         env = {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
         result = self.sourced_call("preflight_runtime() { :; }\nonboard_canary", env)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("off-host-backup readiness record", result.stderr)
+        self.assertIn("backup readiness record", result.stderr)
         self.assertFalse(log.exists(), "NemoClaw was invoked before prerequisites passed")
+
+    def test_unexpired_local_bootstrap_gate_allows_only_fixed_canary(self) -> None:
+        expires = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.write_local_backup_gate(self.backup_gate, expires_at=expires)
+        bin_dir, log = self.make_mock_nemohermes()
+        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        result = self.sourced_call("preflight_runtime() { :; }\nonboard_canary", env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("onboard --non-interactive", log.read_text(encoding="utf-8"))
+
+        self.write_config(HERMES_SANDBOX_NAME="agent-partner")
+        rejected = self.run_cli("validate", env=env)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("pilot sandbox must be agent-owner", rejected.stderr)
+
+    def test_local_bootstrap_gate_rejects_expiry_risk_and_schema_drift(self) -> None:
+        expired = (datetime.now(timezone.utc) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.write_local_backup_gate(self.backup_gate, expires_at=expired)
+        result = self.sourced_call("require_mutation_gates")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unexpired synthetic-only", result.stderr)
+
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.write_local_backup_gate(self.backup_gate, expires_at=future, risk_acknowledged=False)
+        result = self.sourced_call("require_mutation_gates")
+        self.assertNotEqual(result.returncode, 0)
+
+        self.write_local_backup_gate(self.backup_gate, expires_at=future, extra={"unexpected": "field"})
+        result = self.sourced_call("require_mutation_gates")
+        self.assertNotEqual(result.returncode, 0)
+
+        for field, value in (
+            ("snapshot_id", ""),
+            ("restore_evidence", ""),
+            ("limitations", ""),
+            ("durability", "off-host"),
+            ("data_classification", "personal"),
+            ("allowed_sandbox", "agent-partner"),
+            ("allowed_model", "assistant"),
+            ("integrations", "messaging"),
+        ):
+            with self.subTest(field=field):
+                self.write_local_backup_gate(self.backup_gate, expires_at=future, extra={field: value})
+                result = self.sourced_call("require_mutation_gates")
+                self.assertNotEqual(result.returncode, 0)
 
     def test_health_captures_and_validates_pinned_versions(self) -> None:
         bin_dir, _ = self.make_mock_nemohermes()

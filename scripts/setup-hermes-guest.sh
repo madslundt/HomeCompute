@@ -123,10 +123,74 @@ validate_readiness_gate() {
     "$path" >/dev/null || die "$expected_gate readiness record is invalid or not ready"
 }
 
+validate_backup_readiness_gate() {
+  local path="$1" now
+  validate_private_file "$path" 'backup readiness record' 8#022
+  (( $(wc -c <"$path") <= 16384 )) || die 'backup readiness record is too large'
+
+  # The durable production gate keeps its existing schema and behavior.
+  if jq -e \
+    '.schema_version == 1 and
+     .gate == "off-host-backup" and
+     .status == "ready" and
+     .scope == "hermes-synthetic-canary" and
+     (.observed_at | type == "string" and
+       test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+     (.evidence | type == "string" and length > 0 and length <= 2048)' \
+    "$path" >/dev/null; then
+    log 'Durable off-host backup readiness record is present'
+    return 0
+  fi
+
+  # The local exception is deliberately non-general: its exact schema binds it
+  # to this synthetic owner canary, the canary route, and zero integrations.
+  # UTC timestamps in this fixed-width format compare chronologically as text.
+  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  jq -e --arg now "$now" '
+    (keys | sort) == ([
+      "allowed_model",
+      "allowed_sandbox",
+      "data_classification",
+      "durability",
+      "expires_at",
+      "gate",
+      "integrations",
+      "limitations",
+      "observed_at",
+      "restore_evidence",
+      "risk_acknowledged",
+      "schema_version",
+      "scope",
+      "snapshot_id",
+      "status"
+    ] | sort) and
+    .schema_version == 1 and
+    .gate == "local-bootstrap-backup" and
+    .status == "ready" and
+    .scope == "hermes-synthetic-canary" and
+    .durability == "same-host-same-disk" and
+    .risk_acknowledged == true and
+    .data_classification == "synthetic-only" and
+    .allowed_sandbox == "agent-owner" and
+    .allowed_model == "assistant-canary" and
+    .integrations == "none" and
+    (.observed_at | type == "string" and
+      test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+    (.expires_at | type == "string" and
+      test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$") and . > $now) and
+    (.snapshot_id | type == "string" and
+      test("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")) and
+    (.restore_evidence | type == "string" and length > 0 and length <= 2048) and
+    (.limitations | type == "string" and length > 0 and length <= 2048)
+  ' "$path" >/dev/null ||
+    die 'backup readiness record is neither a ready off-host backup nor an unexpired synthetic-only local bootstrap backup'
+  log 'Temporary same-host/same-disk backup exception is active for synthetic agent-owner only'
+}
+
 require_mutation_gates() {
-  validate_readiness_gate "$HERMES_BACKUP_READINESS_FILE" off-host-backup
+  validate_backup_readiness_gate "$HERMES_BACKUP_READINESS_FILE"
   validate_readiness_gate "$HERMES_NETWORK_READINESS_FILE" agents-network
-  log 'External backup and network readiness records are present'
+  log 'Backup and network readiness records are present'
 }
 
 validate_private_file() {
