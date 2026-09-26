@@ -1,11 +1,10 @@
 # HomeCompute
 
-> **Current priority (2026-09-04):** prepare and install home-core, then migrate
-> inventoried HAOS supporting services one at a time. GB10 is not available.
-> Follow the [home-core-first rollout](docs/home-core-rollout-plan.md#start-now-without-gb10);
-> non-AI migrations require host, backup/restore, networking, and application
-> gates, but do not require GB10 or a new AI gateway. Home Assistant stays on
-> HAOS and Hermes remains deferred.
+> **Observed live state (2026-09-26):** `home-core` and `home-spark` are
+> deployed. n8n uses the dedicated Qwen3.6 MoE route; Gemma 4 E4B serves the
+> fast Home Assistant route; Hviske and Plapre are live through guarded SSH
+> forwards. Qwen3.8-27B is currently stopped while the MoE is resident. See
+> [current state](docs/current-state.md) for the exact snapshot and open gaps.
 
 HomeCompute is a local-first AI platform for private inference, automation,
 voice, meetings, coding, research, and personal agents.
@@ -21,9 +20,9 @@ The platform has two physical node roles:
 Clients use `https://ai.home.arpa`. They do not call the compute node or concrete
 model names directly.
 
-> **Status:** this repository is a guarded deployment scaffold, not a turnkey
-> installer. Physical installation and production qualification have not been
-> completed.
+> **Status:** the guarded definitions now back a live deployment, but this is
+> not a turnkey installer. Off-host restore testing, direct private-link
+> cutover, production-run evidence, and complete model failover remain open.
 
 ![Target platform overview](diagrams/gb10-platform.svg)
 
@@ -45,16 +44,15 @@ after it passes each use case's quality, safety, latency, and recovery tests.
 
 ## GB10 model roster
 
-The retained text set has three models, with only one resident until measured
-mixed-load evidence supports more: Qwen3.8-27B is the normal workhorse,
-Qwen3.6-35B-A3B is an opt-in n8n/tool qualification lane, and Flash-Next is an
-exclusive operator-controlled heavy mode. Neither alternate is loaded by
-default.
+The retained text set has three models. The live 2026-09-26 allocation keeps
+Qwen3.6-35B-A3B resident for n8n, alongside the smaller Gemma 4 E4B Home
+Assistant model; Qwen3.8-27B is stopped, and Flash-Next remains an exclusive
+operator-controlled cold swap.
 
 | Role | Selection |
 | --- | --- |
 | Normal text inference | `unsloth/Qwen3.8-27B-NVFP4`; vLLM/native MTP baseline, then SGLang with the `incoai` DFlash2 drafter |
-| Opt-in n8n MoE candidate | `unsloth/Qwen3.6-35B-A3B-NVFP4`; non-thinking vLLM baseline, `qwen3_coder`, MTP initially disabled |
+| Active n8n MoE | `unsloth/Qwen3.6-35B-A3B-NVFP4`; non-thinking vLLM, `qwen3_coder`, MTP disabled |
 | Heavy coding and research | `RadixArk/Qwen3.8-Flash-Next-NVFP4` through the pinned `blazux` single-GB10 recipe |
 | Danish STT | `syvai/hviske-v5.3` |
 | English, mixed, or unknown STT | `openai/whisper-large-v3-turbo` |
@@ -63,7 +61,9 @@ default.
 
 Piper `da_DK-talesyntese-medium` remains the independent Danish CPU fallback;
 Community-1 diarization is supporting-only and Hviske Tiny is evaluation-only.
-Speech services remain inactive until qualification.
+Hviske v5.3 and Plapre Nano v2 are active for the Home Assistant canary;
+Plapre currently uses a pitch-preserving `1.20x` tempo. Piper and Faster
+Whisper remain independent rollback services on `home-core`.
 The immutable machine-readable policy is
 [`config/gb10-model-roster.json`](config/gb10-model-roster.json); see the
 [speech ADR](docs/adr/021-final-speech-stack-and-routing.md) for language,

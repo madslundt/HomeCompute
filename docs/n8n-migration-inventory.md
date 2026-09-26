@@ -1,5 +1,32 @@
 # n8n source inventory
 
+## Local model cutover complete (2026-09-26)
+
+The following active workflows were updated and published through the n8n MCP:
+
+| Workflow | ID | Local model consumers |
+| --- | --- | --- |
+| Shopping list | `xHrpkUT21u7Zs6UV` | `Shopping AI Agent`, `Category sync AI Agent` |
+| Sub-Workflow: Aula Collector & Analyze | `O0JTIc9aqA7OkrQS` | `Aula AI Agent` |
+| Aula calendar sync | `Bp4ePUN4mEDzs7g8` | `Extract Aula events` |
+| Notion AI automations | `reK3QQ0NYgxge1CB` | `AI Agent` |
+
+Each uses `HomeCompute automation model`, OpenAI-compatible Chat Completions,
+LiteLLM alias `automation-moe`, temperature 0, no n8n-level retry, and the
+`HomeCompute LiteLLM OpenAI` credential. Responses API is disabled. The
+existing OpenAI and Gemini model nodes were retained but disconnected; the
+generic AI Agent nodes were reused.
+
+An isolated Danish response returned `lokal model virker` in 759 ms. A second
+isolation test returned the required `calculate_total` tool call with
+`quantity: 29` and `unit_price: 3847` in 921 ms. The temporary smoke workflow
+was archived, and no production workflow was manually executed.
+
+Operational limitation: the workflows call `automation-moe`, but the cached
+home-core CPU standby is currently registered only in the `automation` group.
+Stopping the Spark MoE therefore has no automatic n8n fallback. Address this
+before treating model swaps as transparent to automations.
+
 ## Cutover complete (2026-09-04)
 
 The owner logged into the restored instance and its community-node UI was

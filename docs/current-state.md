@@ -1,7 +1,7 @@
 # Current-state analysis
 
-**Date:** 2026-08-25  
-**Status:** Repository evidence complete; live-host verification blocked by unavailable host resolution
+**Date:** 2026-09-26
+**Status:** Live deployment observed on both hosts; canary and hardening gaps remain
 
 ## Scope and evidence rules
 
@@ -11,11 +11,92 @@ This inventory separates three evidence levels:
 - **Observed running:** a process, container, or host was inspected directly.
 - **Unverified:** documentation describes it, but no live endpoint or exported configuration was available.
 
-The MacBook Docker context contained no running `ai_home` containers. The SSH
-aliases `mac-mini` and `haos` did not resolve from the inspected machine, so the
-Mac Mini and HAOS runtime state is **unverified**, not absent.
+The current snapshot was obtained through direct SSH inspection of
+`home-core` and `home-spark`, container health, rendered runtime commands, and
+isolated n8n model executions. It supersedes the historical source-only
+baseline retained later in this document.
 
-## GB10 project
+## Observed live snapshot
+
+| Host | Capability | Observed state on 2026-09-26 |
+| --- | --- | --- |
+| `home-core` | Gateway | Caddy 2.11.4, LiteLLM 1.99.1, and PostgreSQL 16.15 are healthy |
+| `home-core` | Automations | n8n 2.38.3 plus Aula and Tilbudstrolden MCP services are healthy |
+| `home-core` | Speech relays | Home Assistant-restricted Plapre `:10201` and Hviske `:10301` proxies are healthy |
+| `home-core` | CPU model standby | Qwen3.6-35B-A3B `UD-Q4_K_M`, 22,134,528,992 bytes, is cached and stopped; a live maintenance cutover test passed |
+| `home-spark` | n8n LLM | `unsloth/Qwen3.6-35B-A3B-NVFP4` revision `739af1e7aac320af1682ed1e0cce369af4c5265d` serves `automation-moe` at 64K and is healthy |
+| `home-spark` | Home Assistant LLM | `google/gemma-4-E4B-it-qat-w4a16-ct` revision `6cd26aaa2357fb2bad8c51699a7558a4d1a965bb` serves `home-fast` at 32K and is healthy |
+| `home-spark` | Danish STT | `syvai/hviske-v5.3` revision `5d1a09822018702dc51d763e3a867b62d26b3501` plus its Wyoming adapter are healthy |
+| `home-spark` | Danish TTS | Plapre Nano v2 and its Wyoming adapter are healthy; the household tempo is `1.20x` |
+| `home-spark` | General text | Qwen3.8-27B and its edge relay are stopped while the automation MoE is resident |
+
+`home-core` had about 39 GiB available memory with the CPU standby stopped.
+`home-spark` had about 45 GiB available with Qwen3.6 MoE, Gemma 4 E4B,
+Hviske, and Plapre resident. These are point observations, not capacity or
+mixed-load qualification results.
+
+The dedicated compute link is not carrying the live canary routes. The
+hardened `homecompute-compute-ssh-tunnel` service is active and forwards only:
+
+- LiteLLM to `automation-moe` on local port 18005 and `home-fast` on 18006;
+- the Plapre relay to local port 18201; and
+- the Hviske relay to local port 18301.
+
+## n8n local-model status
+
+Four published workflows now use an OpenAI-compatible model node named
+`HomeCompute automation model` with LiteLLM alias `automation-moe`:
+
+- `Shopping list`;
+- `Sub-Workflow: Aula Collector & Analyze`;
+- `Aula calendar sync`; and
+- `Notion AI automations`.
+
+Their previous OpenAI and Gemini model nodes remain on the canvas with no
+`ai_languageModel` connections. An isolated Danish response completed in
+759 ms, and an isolated Danish tool call completed in 921 ms with the exact
+requested arguments. No production workflow was manually executed for the
+cutover.
+
+## Known missing or incomplete work
+
+1. **n8n failover does not yet cover the live alias.** The cached home-core
+   standby protects the `automation` group, while n8n now calls
+   `automation-moe`. A Spark outage or deliberate MoE stop can therefore hang
+   or fail n8n until the workflows are rerouted or a fallback is added to the
+   same alias.
+2. **Dead upstreams can wait too long.** LiteLLM's current request timeout is
+   600 seconds. A test against the stopped normal text route demonstrated that
+   a TCP-accepting but non-responsive upstream does not fail over promptly.
+3. **The general aliases are unavailable.** `auto`, `coding`, `automation`,
+   `research`, `meeting`, and `assistant` still point at the stopped
+   Qwen3.8-27B listener. Do not treat gateway model listing as availability.
+4. **The private compute link is not in service.** The restricted SSH forwards
+   are an accepted temporary transport, not the final topology.
+5. **Production evidence is narrow.** The n8n model-only and tool-call smokes
+   passed, but scheduled production runs, mixed load, retry/idempotency, and
+   outage recovery have not been captured after cutover.
+6. **Home Assistant acceptance is incomplete.** Plapre playback has been heard
+   through Home Assistant, but the repository lacks a recorded Hviske
+   transcription acceptance run and a complete Assist pipeline latency test.
+7. **Backups remain incomplete.** No scheduled encrypted off-host backup and
+   full restore drill covers the current gateway, n8n, credentials, and model
+   routing state.
+8. **Credential hygiene remains open.** Rotate the LiteLLM administrative key
+   after coordinating all dependent clients; a diagnostic briefly placed it
+   in a root-visible process argument. The production scripts now read it only
+   from the mounted secret file.
+9. **Heavy/general model qualification remains open.** Qwen3.8-27B mixed-load
+   evidence, Flash-Next, SGLang/DFlash, and the later community-model
+   candidates remain evaluation work rather than production routes.
+
+## Historical baseline retained for provenance
+
+The following sections describe the earlier source inventory and design
+baseline. Statements that hosts or services were unobserved are historical and
+must not be used as the present operational status.
+
+### GB10 project (historical)
 
 `HomeCompute` contains requirements, architecture, design, risks, verification,
 ADRs, research, and an implementation plan. The final checkpoint roster now
@@ -39,7 +120,7 @@ The current documents already make several sound decisions:
 - production selection depends on real Danish, tool, mixed-load, memory, and
 recovery measurements.
 
-## Planned AI services node
+### Planned AI services node (historical)
 
 The application host `home-core` has 48 GB RAM
 and 1 TB NVMe, with NixOS 26.05 selected as its Git-first provisioning baseline.
@@ -56,7 +137,7 @@ live services remain on their current hosts until `home-core` passes host,
 container, backup/restore, service-equivalence, and rollback gates documented
 in `nixos-control-plane-node-plan.md`.
 
-## Existing AI Home Hub
+### Existing AI Home Hub (historical)
 
 The separate `ai_home` repository is a one-commit Docker Compose design for an
 always-on Mac Mini. Source contains:

@@ -1,11 +1,9 @@
 # HomeCompute documentation guide
 
-> **Current priority (2026-09-04):** prepare and install home-core, then migrate
-> inventoried HAOS supporting services one at a time. GB10 is not available.
-> Follow the [home-core-first rollout](home-core-rollout-plan.md#start-now-without-gb10);
-> non-AI migrations require host, backup/restore, networking, and application
-> gates, but do not require GB10 or a new AI gateway. Home Assistant stays on
-> HAOS and Hermes remains deferred.
+> **Observed live state (2026-09-26):** both physical nodes are deployed.
+> Qwen3.6 MoE serves n8n, Gemma 4 E4B serves the fast Home Assistant route,
+> and Hviske/Plapre are live through the restricted SSH transport. Start with
+> [current state](current-state.md) for exact evidence and unresolved gaps.
 
 This directory describes a local-first AI platform with two stable node roles:
 `home-spark` is a rebuildable NVIDIA GB10 or DGX Spark-class inference
@@ -16,8 +14,8 @@ its durable state. Because the platform has three machines rather than four, it
 also carries automations and personal-agent sandboxes as separately isolated
 Compose projects ([ADR-017](adr/017-consolidated-application-host.md)).
 
-Existing services remain in place until their replacements pass. Neither node
-is yet an observed production deployment.
+Both nodes are now observed live. Historical plans remain useful for rebuilds
+and acceptance criteria, but they do not override the dated live snapshot.
 
 Start with the [setup guide](setup-guide.md). It contains the complete ordered
 path for both nodes. Use the detailed plans only when you need rationale,
@@ -25,13 +23,11 @@ edge-case handling, or full acceptance criteria.
 
 ## Current gate and next action
 
-The repository is at **Phase B review / Phase C0 preparation**. Design approval
-and access to the physical nodes are still required. No production model,
-gateway path, speech service, or personal-agent deployment has passed yet.
-
-After approval, use the setup guide to build the empty services baseline and
-the direct compute baseline. Do not migrate Home Assistant, audio, Meeting
-Assistant, automations, or personal agents before their preceding gates pass.
+The platform is in **live canary / hardening**. The immediate work is to add a
+real n8n fallback for `automation-moe`, replace the SSH transport with the
+dedicated private link, observe scheduled workflow runs, complete Home
+Assistant STT acceptance, and configure/restore-test off-host backups. Hermes
+and other personal-agent services remain deferred.
 
 ## Start here
 

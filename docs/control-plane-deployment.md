@@ -9,6 +9,9 @@ Deployed 2026-09-04 on `home-core` (`192.168.30.122`, Tailscale
 | LiteLLM | 1.99.1 non-root | Authenticated API and virtual-key database |
 | PostgreSQL | 16.15 Alpine | Dedicated LiteLLM database, no host port |
 | n8n | 2.38.3 | Existing migrated instance remains running |
+| Plapre relay | Python 3.12.12 | Healthy; Home Assistant-only LAN ingress on 10201 |
+| Hviske relay | Python 3.12.12 | Healthy; Home Assistant-only LAN ingress on 10301 |
+| Automation standby | llama.cpp b11176 | Qwen3.6 Q4 cached, normally stopped |
 
 Immutable image digests are recorded in `config/control-plane.env.example`.
 LiteLLM's digest was verified with cosign using the upstream public key pinned
@@ -40,8 +43,9 @@ Normal API clients need scoped LiteLLM virtual keys. The administrative master
 key is not a client credential. Key-management endpoints and the admin UI are
 not exposed through Caddy. An administrator can call `/key/generate` or
 `/key/delete` at `http://127.0.0.1:4000` inside the LiteLLM container, reading its
-master key from `/run/secrets/litellm_master_key`. No permanent consumer keys
-were provisioned yet; the deployment-test key was revoked.
+master key from `/run/secrets/litellm_master_key`. A persistent n8n consumer
+credential is now stored encrypted in n8n for the OpenAI-compatible local
+endpoint. The administrative master key is still not a client credential.
 
 ## Secrets and operations
 
@@ -92,17 +96,17 @@ NixOS. See [Git deployment](git-deployment.md) for the single-command workflow.
 
 ## Remaining work
 
-The aliases `coding`, `automation`, `research`, `home`, `meeting`, and `assistant`
-are configured for `https://10.77.10.10:8000/v1`. **The GB10 is not connected, so
-these aliases cannot serve model requests yet.** No inference request or paid
-cloud request was made. Gateway health and model listing test only the gateway.
-Cloud provider credentials from n8n have not been copied into LiteLLM.
-
-Off-host backups and restore testing remain deferred at the user's request.
-The encrypted file alone cannot recover secrets without the age private key.
-The Restic secret is materialized only when backups are enabled.
-
-Hermes/OpenShell, browser workers, other HAOS migrations, and model runtimes have
-no deployable application definitions here yet. Existing Home Assistant services
-remain on HAOS. n8n's first scheduled post-migration business run and off-LAN
-Tailscale access remain to be verified separately.
+- n8n uses the healthy tunneled `automation-moe` route. The home-core CPU
+  standby is registered only under `automation`, so it is not yet a fallback
+  for those workflows.
+- Qwen3.8-27B is stopped. The general semantic aliases that still use its
+  direct `10.77.10.10:8000` endpoint are unavailable.
+- Replace the SSH fallback with the dedicated private compute link and repeat
+  all positive/negative network tests.
+- Capture scheduled n8n production executions, mixed-load results, and
+  retry/idempotency evidence after the local-model cutover.
+- Complete Home Assistant Hviske and end-to-end Assist latency acceptance.
+- Configure encrypted off-host backups and perform a complete restore drill.
+- Rotate the LiteLLM administrative key after coordinating clients.
+- Hermes/OpenShell, browser workers, and remaining HAOS migrations remain
+  deferred.

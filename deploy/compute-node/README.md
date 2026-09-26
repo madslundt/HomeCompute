@@ -6,6 +6,25 @@ credential-free `text-edge` TCP relay.
 The existing `prepare` profile still contains only the token-authenticated
 `model-fetch` job for text.
 
+## Observed live allocation (2026-09-26)
+
+The active text allocation differs from the default no-profile startup:
+
+- Qwen3.6-35B-A3B NVFP4 is healthy as `automation-moe` and serves four
+  published n8n workflows;
+- Gemma 4 E4B QAT W4A16 is healthy as the separate `home-fast` service;
+- Qwen3.8-27B is stopped because the automation lifecycle performs an
+  exclusive cold swap; and
+- Flash-Next remains stopped.
+
+Hviske v5.3 and Plapre Nano v2 are also healthy. Plapre's Wyoming adapter
+applies a fixed `1.20x` pitch-preserving tempo. The current transport to
+`home-core` is the restricted SSH fallback, not the dedicated compute NIC.
+
+Do not run `deactivate` while n8n still targets `automation-moe`: the cached
+home-core standby currently protects only the separate `automation` alias and
+will not receive those requests automatically.
+
 The text service is the first final-roster deployment stage: pinned
 `unsloth/Qwen3.8-27B-NVFP4` on vLLM with native `qwen3_5_mtp`. The current
 selection authority is

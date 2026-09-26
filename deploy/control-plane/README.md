@@ -83,6 +83,7 @@ It forwards only these `home-spark` loopback listeners:
 | Edge client | Host-side tunnel endpoint | Remote loopback destination |
 | --- | --- | --- |
 | LiteLLM `172.28.200.3` | `172.28.200.1:18005` | `127.0.0.1:8005` (automation MoE) |
+| LiteLLM `172.28.200.3` | `172.28.200.1:18006` | `127.0.0.1:8006` (Home Assistant fast model) |
 | Plapre relay `172.28.200.4` | `172.28.200.1:18201` | `127.0.0.1:10201` |
 | Hviske relay `172.28.200.5` | `172.28.200.1:18301` | `127.0.0.1:10301` |
 
@@ -105,7 +106,7 @@ store:
    `authorized_keys`, prefixed with:
 
    ```text
-   restrict,port-forwarding,permitopen="127.0.0.1:8005",permitopen="127.0.0.1:10201",permitopen="127.0.0.1:10301"
+   restrict,port-forwarding,permitopen="127.0.0.1:8005",permitopen="127.0.0.1:8006",permitopen="127.0.0.1:10201",permitopen="127.0.0.1:10301"
    ```
 
    The `home-spark` host firewall must admit SSH for this account only from
@@ -116,9 +117,10 @@ store:
    group/world writable.
 4. Set `homecompute.computeSshTunnel.enable = true` in the `home-core` host
    configuration, build, inspect the diff, and switch. This single option
-   starts the persistent service and rewrites only the automation, Plapre, and
-   Hviske upstreams in `/etc/homecompute/control-plane.env` to the host-side
-   ports above. The checked-in environment template remains on
+   starts the persistent service and rewrites only the automation, Home
+   Assistant, Plapre, and Hviske upstreams in
+   `/etc/homecompute/control-plane.env` to the host-side ports above. The
+   checked-in environment template remains on
    `COMPUTE_TRANSPORT=dedicated-link`.
 5. Recreate LiteLLM and, when ready, the optional speech relays using the
    regenerated environment file. Verify positive access from `.3`, `.4`, and
@@ -135,8 +137,10 @@ not run both transports under the same semantic route during cutover.
 The K15 deployment is recorded in [control-plane-deployment.md](../../docs/control-plane-deployment.md).
 Its gateway uses `home-core.tail479ad.ts.net` on the Tailscale address, and
 `/etc/homecompute/control-plane.env` holds the resolved production settings.
-Backups remain deferred by the operator. Model aliases are configured for the
-GB10, which is not connected yet; gateway health does not establish inference
+Backups remain deferred by the operator. The restricted SSH transport is live
+for `automation-moe`, `home-fast`, Plapre, and Hviske. The direct Qwen3.8 text
+endpoint is stopped, so the remaining semantic aliases are configured but not
+available; gateway health and model listing alone do not establish inference
 availability.
 
 The gateway has local backends only. `auto` is initially another served name
@@ -179,6 +183,13 @@ When stopped, this is a cold cached recovery path rather than instant failover.
 An unexpected Spark outage can still produce failures until an operator starts
 the standby. Never retry an entire n8n workflow after it may have performed a
 write; retry only the model step, and keep write steps idempotent.
+
+Live measurements on 2026-09-26: the 22,134,528,992-byte GGUF loaded in about
+11–16 seconds, used about 12.7 GiB RSS, passed direct Danish/tool-call smokes
+and a LiteLLM maintenance-route smoke, then stopped cleanly. `home-core` had
+about 39 GiB available RAM afterward. This standby protects `automation`, not
+the currently deployed n8n alias `automation-moe`; that alias mismatch is an
+open availability gap.
 
 ## Installation
 
