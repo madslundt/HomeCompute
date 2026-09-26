@@ -19,7 +19,8 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn("homecompute.agentsVm = {", HOST)
         self.assertIn("enable = true;", HOST)
         self.assertIn('dataClassification = "synthetic-only";', HOST)
-        self.assertIn("network.maintenanceEgress = false;", HOST)
+        self.assertIn("network.maintenanceEgress = true;", HOST)
+        self.assertIn("Temporary for the synthetic canary", HOST)
 
     def test_image_is_immutable_and_checksum_pinned(self) -> None:
         self.assertRegex(MODULE, r"release-[0-9]{8}/ubuntu-24\.04-server-cloudimg-amd64\.img")

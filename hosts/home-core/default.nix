@@ -73,7 +73,9 @@
 
     # Package/bootstrap access only. Return this to false once the pinned
     # NemoClaw tuple has been installed and the canary is healthy.
-    network.maintenanceEgress = false;
+    # Temporary for the synthetic canary: NemoClaw 0.0.129 needs GHCR access
+    # to recreate its managed sandbox after a VM lifecycle event.
+    network.maintenanceEgress = true;
 
     localBootstrapBackup = {
       enable = true;
