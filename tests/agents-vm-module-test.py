@@ -14,9 +14,12 @@ SECRETS = (ROOT / "modules/nixos/secrets.nix").read_text(encoding="utf-8")
 
 
 class AgentsVmModuleTest(unittest.TestCase):
-    def test_module_is_imported_but_disabled_by_default(self) -> None:
+    def test_module_is_imported_with_synthetic_pilot_enabled(self) -> None:
         self.assertIn("../../modules/nixos/agents-vm.nix", HOST)
-        self.assertIn("homecompute.agentsVm.enable = false;", HOST)
+        self.assertIn("homecompute.agentsVm = {", HOST)
+        self.assertIn("enable = true;", HOST)
+        self.assertIn('dataClassification = "synthetic-only";', HOST)
+        self.assertIn("network.maintenanceEgress = true;", HOST)
 
     def test_image_is_immutable_and_checksum_pinned(self) -> None:
         self.assertRegex(MODULE, r"release-[0-9]{8}/ubuntu-24\.04-server-cloudimg-amd64\.img")

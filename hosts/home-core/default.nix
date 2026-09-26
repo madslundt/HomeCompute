@@ -64,15 +64,23 @@
   # satisfied by the temporary same-host agents bootstrap repository below.
   homecompute.backups.enable = false;
 
-  homecompute.agentsVm.localBootstrapBackup = {
+  homecompute.agentsVm = {
     enable = true;
-    riskAccepted = true;
-    passwordFile = config.sops.secrets."restic/password".path;
-  };
+    dataClassification = "synthetic-only";
+    sshAuthorizedKeys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILT+ES2e5sbGFzBMLOWKZMawBm/kyadBthAldjAmK8Uc mads@home-core-admin"
+    ];
 
-  # Keep the guest staged off until the local-bootstrap repository has run and
-  # an explicit reviewed guest SSH key is configured.
-  homecompute.agentsVm.enable = false;
+    # Package/bootstrap access only. Return this to false once the pinned
+    # NemoClaw tuple has been installed and the canary is healthy.
+    network.maintenanceEgress = true;
+
+    localBootstrapBackup = {
+      enable = true;
+      riskAccepted = true;
+      passwordFile = config.sops.secrets."restic/password".path;
+    };
+  };
 
   # Enable only after adding ttlock-webhook/environment to the encrypted SOPS
   # document and confirming the account-specific TTLock callback contract.
