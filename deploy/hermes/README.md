@@ -157,7 +157,8 @@ Verify it by restoring the disposable synthetic canary in place:
 NemoClaw 0.0.129 does not support `--to` restores for its managed sandbox
 images. The helper therefore permits this in-place operation only while the
 synthetic-only backup exception is valid, never uses `--force`, and immediately
-runs the full health evidence suite against the restored canary.
+restarts the gateway before running the full health evidence suite against the
+restored canary.
 
 NemoClaw snapshots remain under the guest's NemoClaw state and are not an
 off-host backup by themselves. Provider credentials are not snapshot payload;

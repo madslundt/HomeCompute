@@ -461,6 +461,7 @@ restore_verify() {
   # so verify the supported in-place restore and immediately rerun health.
   log "Restoring snapshot in place to synthetic canary $HERMES_RESTORE_TARGET"
   nemohermes "$HERMES_SANDBOX_NAME" snapshot restore "$snapshot"
+  nemohermes "$HERMES_SANDBOX_NAME" gateway restart
   health_for "$HERMES_RESTORE_TARGET" restore-verify
 }
 

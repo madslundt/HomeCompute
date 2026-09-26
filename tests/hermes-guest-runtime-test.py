@@ -149,6 +149,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                     ;;
                   list\\ --json) printf '{{"sandboxes":[{{"name":"agent-owner"}}]}}\\n' ;;
                   agent-owner\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
+                  agent-owner\\ gateway\\ restart) printf 'restarted\\n' ;;
                   agent-owner\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
                   onboard\\ --non-interactive\\ --yes-i-accept-third-party-software)
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
@@ -335,6 +336,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         invocations = log.read_text(encoding="utf-8")
         self.assertIn("snapshot create --name pre-restore-test", invocations)
         self.assertIn("snapshot restore pre-restore-test", invocations)
+        self.assertIn("agent-owner gateway restart", invocations)
         self.assertNotIn("--to", invocations)
         self.assertNotIn("--force", invocations)
         self.assertNotIn("destroy", invocations)
