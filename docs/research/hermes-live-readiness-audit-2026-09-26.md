@@ -177,3 +177,16 @@ certificate hashes/validation, HTTP health/auth probes, and two minimal
 tool-forcing inference requests. Secret files were read only inside root-owned
 remote shells to construct Authorization headers; secret values were never
 printed or copied.
+
+## Deployment update — 23:13 CEST
+
+Commit `dbdef0519d080490dff122c9b92f37919ea6f81b` was deployed through the
+repository's immutable `deploy-home-core.sh` path after this audit. The NixOS
+switch and all managed containers reported healthy. The new
+`assistant-canary` alias was present in LiteLLM and passed both a content smoke
+and a required `get_temperature` tool-call smoke against the live 64K backend.
+
+The `agents` VM remains disabled, no `/srv/state/agents-vm` directory exists,
+and no Hermes/NemoClaw sandbox was created. The off-host backup and restore
+blocker therefore remains the next required action; deployment did not bypass
+it.

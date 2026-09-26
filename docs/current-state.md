@@ -24,6 +24,7 @@ baseline retained later in this document.
 | `home-core` | Automations | n8n 2.38.3 plus Aula and Tilbudstrolden MCP services are healthy |
 | `home-core` | Speech relays | Home Assistant-restricted Plapre `:10201` and Hviske `:10301` proxies are healthy |
 | `home-core` | CPU model standby | Qwen3.6-35B-A3B `UD-Q4_K_M`, 22,134,528,992 bytes, is cached and stopped; a live maintenance cutover test passed |
+| `home-core` | Hermes substrate | Commit `dbdef0519d080490dff122c9b92f37919ea6f81b` is deployed. The NixOS-owned agents VM definition and pinned guest tooling are present but safely disabled because off-host backup is not configured. |
 | `home-spark` | n8n LLM | `unsloth/Qwen3.6-35B-A3B-NVFP4` revision `739af1e7aac320af1682ed1e0cce369af4c5265d` serves `automation-moe` at 64K and is healthy |
 | `home-spark` | Home Assistant LLM | `google/gemma-4-E4B-it-qat-w4a16-ct` revision `6cd26aaa2357fb2bad8c51699a7558a4d1a965bb` serves `home-fast` at 32K and is healthy |
 | `home-spark` | Danish STT | `syvai/hviske-v5.3` revision `5d1a09822018702dc51d763e3a867b62d26b3501` plus its Wyoming adapter are healthy |
@@ -68,9 +69,12 @@ cutover.
 2. **Dead upstreams can wait too long.** LiteLLM's current request timeout is
    600 seconds. A test against the stopped normal text route demonstrated that
    a TCP-accepting but non-responsive upstream does not fail over promptly.
-3. **The general aliases are unavailable.** `auto`, `coding`, `automation`,
-   `research`, `meeting`, and `assistant` still point at the stopped
-   Qwen3.8-27B listener. Do not treat gateway model listing as availability.
+3. **The stable general aliases are unavailable.** `auto`, `coding`,
+   `automation`, `research`, `meeting`, and `assistant` still point at the
+   stopped Qwen3.8-27B listener. The separate synthetic-only
+   `assistant-canary` alias now routes to the live 64K `automation-moe` backend
+   and passed content plus required-tool smokes through LiteLLM. Do not promote
+   it or treat the other gateway model listings as availability.
 4. **The private compute link is not in service.** The restricted SSH forwards
    are an accepted temporary transport, not the final topology.
 5. **Production evidence is narrow.** The n8n model-only and tool-call smokes
