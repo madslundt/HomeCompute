@@ -51,6 +51,7 @@ stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environmen
 "${piper[@]}" build moss
 "${stt[@]}" pull stt
 "${automation[@]}" build --no-cache aula-mcp
+"${automation[@]}" build --no-cache tilbudstrolden-mcp
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
 "${homepage[@]}" up -d --wait --wait-timeout 180

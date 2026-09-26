@@ -16,7 +16,7 @@ services:
       - "100.110.248.102:15678:5678"
 
   aula-mcp:
-    image: homecompute/aula-mcp:head-n8n1
+    image: homecompute/aula-mcp:f1360000eaccf7cae528bed1cab6b0d0b2a32cfc-n8n1
     pull_policy: never
     build:
       context: .
@@ -53,6 +53,45 @@ services:
     pids_limit: 128
     healthcheck:
       test: [CMD, bun, -e, "fetch('http://127.0.0.1:7878/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  tilbudstrolden-mcp:
+    image: homecompute/tilbudstrolden-mcp:1749d507faadda5c8bd699e190828da172889448
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: tilbudstrolden.Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      TZ: Europe/Copenhagen
+      TILBUDSTROLDEN_DATA: /data/tilbudstrolden.json
+    volumes:
+      - ${TILBUDSTROLDEN_STATE_ROOT:?Set TILBUDSTROLDEN_STATE_ROOT}:/data
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,uid=1000,gid=1000,mode=1770
+    ports:
+      - "127.0.0.1:17879:8000"
+    networks:
+      migration:
+        ipv4_address: 172.28.201.4
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3

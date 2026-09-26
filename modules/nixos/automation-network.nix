@@ -92,22 +92,27 @@
         iptables -w -D DOCKER-USER -i br-hc-piper -j REJECT
       done
 
-      # Keep bridge egress and Aula ingress fail-closed while replacing the
-      # live policy. Always add fresh guards: failures leave both protections.
+      # Keep bridge egress and automation ingress fail-closed while replacing
+      # the live policy. Always add fresh guards: failures leave protections.
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
-      iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT
+      for service_ip in 172.28.201.3 172.28.201.4; do
+        iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d "$service_ip/32" -j REJECT
+      done
 
       while iptables -w -C DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION 2>/dev/null; do
         iptables -w -D DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION
       done
-      while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null; do
-        iptables -w -D DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      for service_ip in 172.28.201.3 172.28.201.4; do
+        while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null; do
+          iptables -w -D DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+        done
       done
 
       iptables -w -N HC-AUTOMATION 2>/dev/null || true
       iptables -w -F HC-AUTOMATION
       iptables -w -A HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
       iptables -w -A HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
+      iptables -w -A HC-AUTOMATION -o br-hc-n8n -d 172.28.201.4/32 -p tcp --dport 8000 -j RETURN
       iptables -w -A HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
       iptables -w -A HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
       for subnet in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4; do
@@ -118,11 +123,14 @@
 
       # The temporary guard stays ahead of both live rules until the complete
       # replacement policy and its jump have been installed and verified.
-      iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      for service_ip in 172.28.201.3 172.28.201.4; do
+        iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      done
       iptables -w -I DOCKER-USER 2 -i br-hc-n8n -j HC-AUTOMATION
 
       iptables -w -C HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
       iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
+      iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.4/32 -p tcp --dport 8000 -j RETURN
       iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
       iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
       for subnet in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 127.0.0.0/8 224.0.0.0/4; do
@@ -130,14 +138,18 @@
       done
       iptables -w -C HC-AUTOMATION -p tcp --dport 443 -j RETURN
       iptables -w -C HC-AUTOMATION -j REJECT
-      iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      for service_ip in 172.28.201.3 172.28.201.4; do
+        iptables -w -C DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      done
       iptables -w -C DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION
 
       while iptables -w -C DOCKER-USER -i br-hc-n8n -j REJECT 2>/dev/null; do
         iptables -w -D DOCKER-USER -i br-hc-n8n -j REJECT
       done
-      while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT 2>/dev/null; do
-        iptables -w -D DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT
+      for service_ip in 172.28.201.3 172.28.201.4; do
+        while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -j REJECT 2>/dev/null; do
+          iptables -w -D DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -j REJECT
+        done
       done
     '';
 
@@ -176,13 +188,17 @@
         iptables -w -X HC-PIPER-EGRESS
       fi
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
-      iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d 172.28.201.3/32 -j REJECT
+      for service_ip in 172.28.201.3 172.28.201.4; do
+        iptables -w -I DOCKER-USER 2 ! -i br-hc-n8n -d "$service_ip/32" -j REJECT
+      done
 
       while iptables -w -C DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION 2>/dev/null; do
         iptables -w -D DOCKER-USER -i br-hc-n8n -j HC-AUTOMATION
       done
-      while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null; do
-        iptables -w -D DOCKER-USER ! -i br-hc-n8n -d 172.28.201.3/32 -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+      for service_ip in 172.28.201.3 172.28.201.4; do
+        while iptables -w -C DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null; do
+          iptables -w -D DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
+        done
       done
 
       if iptables -w -L HC-AUTOMATION -n >/dev/null 2>&1; then

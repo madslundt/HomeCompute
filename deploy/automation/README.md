@@ -99,10 +99,11 @@ must be configured separately after restore validation. The initial 2 CPU /
 ## Aula MCP
 
 The production overlay builds [Casperjuel/aula-mcp](https://github.com/Casperjuel/aula-mcp)
-from its upstream default-branch `HEAD` whenever the image is rebuilt. The local
-Dockerfile builds frozen upstream dependencies using Node and runs the server
-with Bun; both base images are pinned by digest. `scripts/deploy-home-core.sh`
-builds this image during deployment. Aula is absent from the isolated restore stack.
+from reviewed upstream commit `f1360000eaccf7cae528bed1cab6b0d0b2a32cfc`.
+The local Dockerfile builds frozen upstream dependencies using Node and runs
+the server with Bun; both base images are pinned by digest.
+`scripts/deploy-home-core.sh` rebuilds this image during deployment. Aula is
+absent from the isolated restore stack.
 The local `aula-n8n.patch` changes MCP tool-name dots to underscores because
 OpenAI accepts only letters, digits, underscores, and hyphens in function
 names. It also expresses positive integer IDs as `minimum: 1` instead of
@@ -110,13 +111,10 @@ names. It also expresses positive integer IDs as `minimum: 1` instead of
 Gemini's function-schema subset. Reapply and review this patch whenever the
 upstream commit changes; the image build fails if it no longer applies cleanly.
 
-Deployed on home-core on 2026-09-04 from the modified checkout at
-`/home/mads/HomeCompute`, with NixOS build/test/switch completed. The container
-`homecompute-automation-aula-mcp-1` is healthy; host loopback, n8n access, and
-outbound Aula HTTPS passed. LAN port 17878 and access from an unrelated Docker
-bridge were blocked. MitID login remains an owner action. These changes await
-a committed release; `/srv/homecompute/current` still identifies the previous
-release, so use the working checkout for Aula operations until promotion.
+The previous deployed image was built on 2026-09-20 from upstream commit
+`af49805ae9c6d7c9026f6e559f2e01ca209c9e46`. Rebuild and recreate Aula from
+the reviewed current pin during this deployment. Its existing persistent
+state and MitID login remain in place.
 
 Access is limited to home-core: host processes use
 `http://127.0.0.1:17878/mcp`; n8n uses `http://aula-mcp:7878/mcp` with
@@ -136,6 +134,30 @@ map, then inspect the workflow for excessive retries or concurrency:
 ```sh
 sudo docker restart homecompute-automation-aula-mcp-1
 ```
+
+## TilbudsTrolden MCP
+
+The production overlay builds
+[olgasafonova/tilbudstrolden-mcp](https://github.com/olgasafonova/tilbudstrolden-mcp)
+from upstream commit `1749d507faadda5c8bd699e190828da172889448`. This upstream
+server only supports stdio, so the image uses Supergateway `4.0.0` to expose
+Streamable HTTP at `/mcp` for n8n. The project dependency lockfile and gateway
+lockfile are installed with `npm ci`; Node's runtime image is digest-pinned.
+
+The only host publication is loopback port 17879. On home-core use
+`http://127.0.0.1:17879/mcp`; n8n uses
+`http://tilbudstrolden-mcp:8000/mcp`, Streamable HTTP, authentication **None**.
+The automation firewall permits n8n to connect to the service and rejects new
+connections from other Docker bridges. No LAN, Tailscale, or reverse-proxy
+publication is configured. The service needs outbound HTTPS to fetch current
+offers; no API key is required.
+
+Household settings, recipes, pantry contents, meal history, and spend history
+are stored in `/srv/state/automation/tilbudstrolden-mcp/tilbudstrolden.json`.
+The directory is owned by UID/GID 1000 with mode 0700 and is mounted into a
+read-only container. Upstream tools can modify this file, so preserve it across
+rebuilds and back it up as household data. No initial household setup is run
+automatically.
 
 ### Log in again from your Mac
 
@@ -211,17 +233,15 @@ sudo systemctl --failed
 sudo nixos-rebuild switch --flake path:/home/mads/HomeCompute#home-core
 ```
 
-Check for activation failures before proceeding. Then build and start only
-Aula, leaving n8n running. Run this block in Bash on home-core:
+Check for activation failures before proceeding. Build and start both MCP
+services while leaving n8n running. Run this block in Bash on home-core:
 
 ```sh
 cd /home/mads/HomeCompute
 compose=(sudo docker compose --env-file /etc/homecompute/automation.env \
   -f deploy/automation/compose.yaml -f deploy/automation/production.yaml)
-"${compose[@]}" build --no-cache aula-mcp
-"${compose[@]}" up -d --no-deps --wait --wait-timeout 90 aula-mcp
-"${compose[@]}" exec -it aula-mcp bun apps/cli/src/index.ts login
-"${compose[@]}" exec aula-mcp bun apps/cli/src/index.ts doctor
+"${compose[@]}" build --no-cache aula-mcp tilbudstrolden-mcp
+"${compose[@]}" up -d --no-deps --wait --wait-timeout 90 aula-mcp tilbudstrolden-mcp
 ```
 
 If `/etc/homecompute/automation.env` is missing, first confirm you are on
@@ -230,15 +250,18 @@ home-core; otherwise apply the NixOS configuration above. If Docker reports
 before retrying login. Running either command against Docker on your Mac does
 not operate the home-core container.
 
-Login requires the owner's interactive MitID approval. Health checks only
-confirm the HTTP process is alive; successful login and `doctor` are required
-before connecting workflows. Existing n8n workflows are not changed or executed
-by this addition. Confirm reachability from n8n without invoking Aula tools:
+The existing Aula login state persists, so rebuilding should not require a new
+MitID approval. If Aula requests login, use the interactive command in
+[Log in again from your Mac](#log-in-again-from-your-mac). Confirm reachability
+from n8n without invoking MCP tools:
 
 ```sh
 "${compose[@]}" exec -T n8n node -e \
   'fetch("http://aula-mcp:7878/healthz").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))'
+"${compose[@]}" exec -T n8n node -e \
+  'fetch("http://tilbudstrolden-mcp:8000/healthz").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))'
 curl --fail http://127.0.0.1:17878/healthz
+curl --fail http://127.0.0.1:17879/healthz
 ```
 
 From another machine, port 17878 on home-core's LAN and Tailscale addresses

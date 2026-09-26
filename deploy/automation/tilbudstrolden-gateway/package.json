@@ -1,0 +1,8 @@
+{
+  "name": "homecompute-tilbudstrolden-gateway",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "supergateway": "4.0.0"
+  }
+}
