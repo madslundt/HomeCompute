@@ -70,6 +70,27 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn('seq 1 110', MODULE)
         self.assertIn('TimeoutStopSec = "2m"', MODULE)
 
+    def test_vm_can_traverse_only_its_protected_state_parent(self) -> None:
+        self.assertIn(
+            '"a+ /srv/state - - - - u:homecompute-agents-vm:--x"',
+            MODULE,
+        )
+        self.assertNotIn('extraGroups = [ "kvm" "homecompute-state" ];', MODULE)
+        self.assertNotIn('SupplementaryGroups = [ "kvm" "homecompute-state" ];', MODULE)
+
+    def test_ai_proxy_socket_waits_for_bridge_without_boot_cycle(self) -> None:
+        socket_match = re.search(
+            r"systemd\.sockets\.homecompute-agents-ai-proxy = \{(?P<body>.*?)\n    \};",
+            MODULE,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(socket_match)
+        body = socket_match.group("body")
+        self.assertIn('wantedBy = [ "multi-user.target" ];', body)
+        self.assertIn('after = [ "homecompute-agents-network.service" ];', body)
+        self.assertNotIn('wantedBy = [ "sockets.target" ];', body)
+        self.assertNotRegex(body, r'Service\s*=\s*".*@\.service"')
+
     def test_vm_start_refuses_known_large_memory_peer(self) -> None:
         self.assertIn("homecompute-agents-memory-preflight", MODULE)
         self.assertIn("homecompute-control-plane-automation-backup-1", MODULE)

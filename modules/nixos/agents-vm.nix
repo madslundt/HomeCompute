@@ -191,6 +191,10 @@ in
       };
       systemd.tmpfiles.rules = [
         "d ${statePath} 0750 homecompute-agents-vm homecompute-agents-vm - -"
+        # /srv/state is intentionally not searchable by unrelated services.
+        # Grant this VM account traversal only; the child remains its private
+        # 0750 directory and no other state directory becomes readable.
+        "a+ /srv/state - - - - u:homecompute-agents-vm:--x"
       ];
     }
 
@@ -369,13 +373,15 @@ in
 
     systemd.sockets.homecompute-agents-ai-proxy = {
       description = "Host-only AI TLS edge for the agents guest";
-      wantedBy = [ "sockets.target" ];
+      # This listener binds an address created by the custom bridge service.
+      # Starting it from sockets.target creates a boot ordering cycle because
+      # that target is reached before the bridge's multi-user service.
+      wantedBy = [ "multi-user.target" ];
       requires = [ "homecompute-agents-network.service" ];
       after = [ "homecompute-agents-network.service" ];
       socketConfig = {
         Accept = true;
         ListenStream = "${hostAddress}:443";
-        Service = "homecompute-agents-ai-proxy@.service";
       };
     };
     systemd.services."homecompute-agents-ai-proxy@" = {
