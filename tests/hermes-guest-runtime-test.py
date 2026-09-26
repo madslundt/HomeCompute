@@ -51,7 +51,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
             "HERMES_CA_BUNDLE": str(self.ca),
             "HERMES_LITELLM_API_KEY_FILE": str(self.key),
             "HERMES_EVIDENCE_DIR": str(self.evidence),
-            "HERMES_RESTORE_TARGET": "agent-owner-verify",
+            "HERMES_RESTORE_TARGET": "agent-owner",
             "HERMES_BACKUP_READINESS_FILE": str(self.backup_gate),
             "HERMES_NETWORK_READINESS_FILE": str(self.network_gate),
         }
@@ -148,7 +148,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                     printf 'Probe timing: result=ready\\n'
                     ;;
                   list\\ --json) printf '{{"sandboxes":[{{"name":"agent-owner"}}]}}\\n' ;;
-                  agent-owner\\ snapshot\\ restore\\ *\\ --to\\ agent-owner-verify) printf 'restored\\n' ;;
+                  agent-owner\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
                   agent-owner\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
                   onboard\\ --non-interactive\\ --yes-i-accept-third-party-software)
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
@@ -325,7 +325,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("credential appeared", result.stderr)
 
-    def test_snapshot_and_restore_use_non_destructive_target(self) -> None:
+    def test_snapshot_and_restore_verify_managed_image_in_place(self) -> None:
         bin_dir, log = self.make_mock_nemohermes()
         env = {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
         snapshot = self.run_cli("snapshot", "pre-restore-test", env=env)
@@ -334,7 +334,8 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertEqual(restored.returncode, 0, restored.stderr)
         invocations = log.read_text(encoding="utf-8")
         self.assertIn("snapshot create --name pre-restore-test", invocations)
-        self.assertIn("snapshot restore pre-restore-test --to agent-owner-verify", invocations)
+        self.assertIn("snapshot restore pre-restore-test", invocations)
+        self.assertNotIn("--to", invocations)
         self.assertNotIn("--force", invocations)
         self.assertNotIn("destroy", invocations)
 

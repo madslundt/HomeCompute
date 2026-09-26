@@ -44,7 +44,7 @@ Commands:
   onboard-canary           Create only the synthetic agent-owner sandbox
   health                   Capture redacted doctor, status, route, and version evidence
   snapshot NAME            Create a named snapshot of the synthetic canary
-  restore-verify SNAPSHOT  Restore to agent-owner-verify and run health probes
+  restore-verify SNAPSHOT  Restore the synthetic canary in place and run health probes
 
 The API key is read from HERMES_LITELLM_API_KEY_FILE. It is never accepted as
 an argument or configuration value. This helper does not configure messaging,
@@ -92,7 +92,8 @@ load_runtime_config() {
 
 validate_runtime_config() {
   [[ "$HERMES_SANDBOX_NAME" == agent-owner ]] || die 'The pilot sandbox must be agent-owner'
-  [[ "$HERMES_RESTORE_TARGET" == agent-owner-verify ]] || die 'The restore target must be agent-owner-verify'
+  [[ "$HERMES_RESTORE_TARGET" == "$HERMES_SANDBOX_NAME" ]] ||
+    die 'The managed-image restore target must be the synthetic canary itself'
   [[ "$HERMES_MODEL" == assistant-canary ]] || die 'The pilot model must be assistant-canary'
   [[ "$HERMES_ENDPOINT_URL" == http://ai.home.arpa:18080/v1 ]] ||
     die 'The pilot endpoint must be the isolated http://ai.home.arpa:18080/v1 compatibility bridge'
@@ -451,20 +452,16 @@ create_snapshot() {
 }
 
 restore_verify() {
-  local snapshot="$1" inventory
+  local snapshot="$1"
   validate_snapshot_name "$snapshot"
   require_mutation_gates
-  require_command jq
   validate_installed_cli_version
-  inventory="$(nemohermes list --json)"
-  if jq -e --arg name "$HERMES_RESTORE_TARGET" '[.. | objects | .name? // empty] | index($name) != null' \
-    <<<"$inventory" >/dev/null; then
-    die "Restore target already exists; refusing to replace it: $HERMES_RESTORE_TARGET"
-  fi
-  log "Restoring snapshot into disposable verification target $HERMES_RESTORE_TARGET"
-  nemohermes "$HERMES_SANDBOX_NAME" snapshot restore "$snapshot" --to "$HERMES_RESTORE_TARGET"
+  # NemoClaw 0.0.129 does not support --to for NemoClaw-managed images. The
+  # backup exception limits this command to the disposable synthetic canary,
+  # so verify the supported in-place restore and immediately rerun health.
+  log "Restoring snapshot in place to synthetic canary $HERMES_RESTORE_TARGET"
+  nemohermes "$HERMES_SANDBOX_NAME" snapshot restore "$snapshot"
   health_for "$HERMES_RESTORE_TARGET" restore-verify
-  log "Verification target was intentionally retained for operator inspection: $HERMES_RESTORE_TARGET"
 }
 
 main() {

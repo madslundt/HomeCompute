@@ -147,19 +147,17 @@ Create a named snapshot only after the synthetic canary is healthy:
   --config /etc/homecompute-hermes/agent-owner.env
 ```
 
-Verify it by restoring into the fixed, non-production name
-`agent-owner-verify`:
+Verify it by restoring the disposable synthetic canary in place:
 
 ```bash
 ./scripts/setup-hermes-guest.sh restore-verify synthetic-baseline \
   --config /etc/homecompute-hermes/agent-owner.env
 ```
 
-The helper refuses to overwrite an existing verification target and never uses
-`--force` or destroys a sandbox. It intentionally leaves the restored sandbox
-for inspection. Remove it later with the reviewed NemoClaw lifecycle command
-only after checking its evidence and confirming that no diagnostic process
-still depends on it.
+NemoClaw 0.0.129 does not support `--to` restores for its managed sandbox
+images. The helper therefore permits this in-place operation only while the
+synthetic-only backup exception is valid, never uses `--force`, and immediately
+runs the full health evidence suite against the restored canary.
 
 NemoClaw snapshots remain under the guest's NemoClaw state and are not an
 off-host backup by themselves. Provider credentials are not snapshot payload;
