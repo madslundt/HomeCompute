@@ -320,7 +320,21 @@ onboard_canary() {
   preflight_runtime
   require_mutation_gates
   validate_installed_cli_version
-  local api_key
+  local api_key temporary_dir host_validation_ca system_ca_bundle=''
+  # NemoClaw imports the explicit standalone CA into the managed image, but
+  # its pre-sandbox endpoint probe uses the host curl/Node trust variables.
+  # Give that probe a temporary merged bundle so public roots remain trusted
+  # while the private home-core root is added for ai.home.arpa.
+  for system_ca_bundle in /etc/ssl/certs/ca-certificates.crt /etc/ssl/cert.pem; do
+    [[ -r "$system_ca_bundle" && -s "$system_ca_bundle" ]] && break
+    system_ca_bundle=''
+  done
+  [[ -n "$system_ca_bundle" ]] || die 'Cannot locate the operating-system CA bundle for endpoint validation'
+  temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/homecompute-hermes-ca.XXXXXX")"
+  trap 'rm -rf -- "${temporary_dir:-}"' EXIT
+  host_validation_ca="$temporary_dir/host-validation-ca.pem"
+  cat -- "$system_ca_bundle" "$HERMES_CA_BUNDLE" >"$host_validation_ca"
+  chmod 0600 "$host_validation_ca"
   api_key="$(read_api_key)"
   log 'Onboarding the synthetic owner canary with Restricted policy and no integrations'
   env \
@@ -332,6 +346,8 @@ onboard_canary() {
     -u TAVILY_API_KEY \
     -u WHATSAPP_ACCESS_TOKEN \
     COMPATIBLE_API_KEY="$api_key" \
+    CURL_CA_BUNDLE="$host_validation_ca" \
+    GIT_SSL_CAINFO="$host_validation_ca" \
     NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 \
     NEMOCLAW_AGENT=hermes \
     NEMOCLAW_CORPORATE_CA_BUNDLE="$HERMES_CA_BUNDLE" \
@@ -344,9 +360,14 @@ onboard_canary() {
     NEMOCLAW_SANDBOX_NAME="$HERMES_SANDBOX_NAME" \
     NEMOCLAW_TRUSTED_PRIVATE_HOSTS="$HERMES_TRUSTED_PRIVATE_HOSTS" \
     NEMOCLAW_WEB_SEARCH_PROVIDER=none \
+    NODE_EXTRA_CA_CERTS="$HERMES_CA_BUNDLE" \
+    REQUESTS_CA_BUNDLE="$host_validation_ca" \
+    SSL_CERT_FILE="$host_validation_ca" \
     nemohermes onboard --non-interactive --yes-i-accept-third-party-software
   api_key=''
   unset api_key
+  rm -rf -- "$temporary_dir"
+  trap - EXIT
 }
 
 new_evidence_directory() {

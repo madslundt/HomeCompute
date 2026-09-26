@@ -156,6 +156,12 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                     test "${{NEMOCLAW_WEB_SEARCH_PROVIDER:-}}" = none
                     test "${{NEMOCLAW_ENDPOINT_URL:-}}" = https://ai.home.arpa/v1
                     test "${{NEMOCLAW_TRUSTED_PRIVATE_HOSTS:-}}" = ai.home.arpa
+                    test "${{NEMOCLAW_CORPORATE_CA_BUNDLE:-}}" = {self.ca!s}
+                    test "${{NODE_EXTRA_CA_CERTS:-}}" = {self.ca!s}
+                    test -s "${{CURL_CA_BUNDLE:-}}"
+                    test "${{CURL_CA_BUNDLE:-}}" = "${{SSL_CERT_FILE:-}}"
+                    test "${{CURL_CA_BUNDLE:-}}" = "${{REQUESTS_CA_BUNDLE:-}}"
+                    test "${{CURL_CA_BUNDLE:-}}" = "${{GIT_SSL_CAINFO:-}}"
                     test -z "${{DISCORD_BOT_TOKEN:-}}"
                     test -z "${{TAVILY_API_KEY:-}}"
                     printf 'onboarded\\n'
