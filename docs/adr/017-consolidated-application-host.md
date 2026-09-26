@@ -73,7 +73,7 @@ front:
 | --- | --- | --- |
 | Host (NixOS) | Docker Engine, sops-nix, Tailscale, firewall, backups, and the gateway project | The asset being protected, and the only attachment to the private GB10 link |
 | `automation` microVM | n8n, MCP servers, browser workers, queue and workflow state | Browser workers render arbitrary web content and n8n code nodes execute JS |
-| `agents` microVM | Hermes `owner`/`partner`/`family` as three containers, plus scoped memory | Prompt injection makes model behavior attacker-influenceable while it holds tool credentials |
+| `agents` KVM guest | NemoClaw/OpenShell plus Hermes `agent-owner`, `agent-partner`, `agent-child1`, `agent-child2`, and optional `agent-family` sandboxes | Prompt injection makes model behavior attacker-influenceable while it holds tool credentials |
 
 A fourth `toolbox` microVM is added only if that workload is ever built; it
 runs unreviewed code by design and must not sit beside agent credentials.
@@ -88,7 +88,12 @@ Stage 1 is the current state: one kernel, containers only, with the controls
 above enforced by `scripts/validate-repository.sh`. Stage 2 adds the `agents`
 microVM and is a precondition for Hermes handling any real personal data or
 untrusted input. Stage 3 adds the `automation` microVM when browser workers
-appear. Hermes is deferred, so stage 1 is sufficient today.
+appear. The 2026-09-26 household rollout starts stage 2. `home-core` remains
+NixOS and declaratively owns the VM, host-only bridge, firewall, resource
+limits, and backup inclusion. The guest uses Ubuntu 24.04 because that is the
+validated NemoClaw host path; it does not replace or weaken the NixOS host
+baseline. NemoClaw/OpenShell owns the containers inside the guest rather than
+a repository-authored Compose project.
 
 ## Alternatives
 
@@ -169,10 +174,14 @@ time of this decision it did not change ADR-001. ADR-022 later permits a
 separately qualified lightweight utility backend on `home-core`; the primary
 inference role remains with `home-spark`.
 
-Hermes is deferred by owner decision on 2026-09-04, so only stage 1 is built.
+The owner resumed Hermes implementation on 2026-09-26. Stage 2 therefore uses
+a NixOS-managed Ubuntu 24.04 KVM guest rather than the earlier deferred
+`microvm.nix` implementation detail. Real personal or unauthored data remains
+blocked until that guest, off-host restore, effective sandbox policy, and
+cross-sandbox denial gates pass.
 
-URS-PA-019 is rewritten to state the container-level controls, URS-PA-020 makes
-the `agents` microVM a precondition for real data rather than an aspiration, and
+URS-PA-019 is rewritten to state the guest and sandbox controls, URS-PA-020 makes
+the `agents` KVM guest a precondition for real data rather than an aspiration, and
 URS-PA-021 requires the controls to be machine-enforced. The architecture,
 setup guide, execution plan, implementation plan, design specification,
 current state, dependency graph, both READMEs, and the control-plane

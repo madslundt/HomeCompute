@@ -291,16 +291,17 @@ and restore.
 
 ## Phase I — Hermes personal assistant pilot
 
-**Status: Deferred by owner decision (2026-09-04). Also pending Gate E, live AI
-Home inventory, measured `home-core` headroom, and the `agents` microVM
-required by URS-PA-020 before any real or unauthored data reaches a sandbox.**
+**Status: Resumed by owner decision (2026-09-26). Real or unauthored data
+remains pending Gate E, measured `home-core` headroom, encrypted off-host
+restore, and the `agents` KVM guest required by URS-PA-020.**
 
 1. Decide whether the existing unverified AI Home Hermes Compose/profile files
    are discarded, migrated, or retained only as intent; do not deploy their
    floating image, shared master key, or assumed profile schema as-is.
-2. Pin the supported Hermes, NemoClaw, OpenShell, sandbox image, and host tuple.
-   Create one synthetic-data `owner` sandbox as its own Compose project on
-   `home-core`, with the URS-PA-019 isolation controls in place first.
+2. Pin the supported Hermes, NemoClaw, OpenShell, sandbox image, and guest tuple.
+   Create one synthetic-data `agent-owner` OpenShell sandbox inside the
+   NixOS-managed Ubuntu 24.04 `agents` KVM guest, with the URS-PA-019 isolation
+   controls in place first.
 3. Qualify Hermes first against direct GB10 vLLM and then through the existing
    `ai.home.arpa` LiteLLM path at the required 64K context. Test streaming, tools,
    memory headroom, restart persistence, snapshot/restore, upgrade, rollback,
@@ -323,9 +324,11 @@ or broad LAN credentials.
 
 **Status: Pending Gate I and an accepted canonical personal-store deployment decision**
 
-1. Create separate `owner`, `partner`, and `family` OpenShell sandboxes, persistent
-   states, Discord credentials, virtual keys, data roles, managed tool
-   credentials, egress policies, quotas, and offline snapshot backups.
+1. Create separate `agent-owner`, `agent-partner`, `agent-child1`, and
+   `agent-child2` OpenShell sandboxes, plus optional `agent-family` only after a
+   shared-data contract exists. Give each distinct persistent state, messaging
+   credentials, virtual keys, data roles, managed tool credentials, egress
+   policies, quotas, and offline snapshot backups.
 2. Implement the versioned personal-event API/store with mandatory
    `principal_scope`, `data_domain`, `visibility`, provenance, idempotency,
    retention, and filtered semantic
@@ -347,7 +350,7 @@ or broad LAN credentials.
    provenance contract, replay behavior, and passing access tests.
 
 **Gate J:** V-PA-002 through V-PA-006 pass; each source has a named owner and
-retention policy; three sandboxes pass a 24-hour mixed-load soak and offline
+retention policy; all enabled sandboxes pass a 24-hour mixed-load soak and offline
 restore; a GB10/Hermes outage leaves home control and canonical data intact.
 
 ## Change control

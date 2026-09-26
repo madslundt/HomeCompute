@@ -11,7 +11,7 @@ LITELLM = ROOT / "deploy" / "control-plane" / "litellm-config.yaml"
 LITELLM_BACKUP = ROOT / "deploy" / "control-plane" / "litellm-config-automation-backup.yaml"
 COMPUTE = ROOT / "deploy" / "compute-node" / "compose.yaml"
 SEMANTIC = {"auto", "assistant", "automation", "coding", "home", "meeting", "research"}
-EXPECTED = SEMANTIC | {"automation-moe"}
+EXPECTED = SEMANTIC | {"assistant-canary", "automation-moe"}
 
 
 class LocalOnlyControlPlaneTests(unittest.TestCase):
@@ -20,13 +20,23 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
         names = set(re.findall(r"^\s*- model_name:\s*(\S+)\s*$", text, re.MULTILINE))
         upstreams = set(re.findall(r"^\s*model:\s*openai/(\S+)\s*$", text, re.MULTILINE))
         self.assertEqual(EXPECTED, names)
-        self.assertEqual((EXPECTED - {"home"}) | {"home-fast", "automation-backup"}, upstreams)
+        self.assertEqual(
+            (EXPECTED - {"home", "assistant-canary"})
+            | {"home-fast", "automation-backup"},
+            upstreams,
+        )
         self.assertIn("api_base: os.environ/COMPUTE_OPENAI_BASE_URL", text)
         self.assertIn("api_base: os.environ/COMPUTE_AUTOMATION_BASE_URL", text)
         self.assertIn("api_base: os.environ/COMPUTE_HOME_BASE_URL", text)
         self.assertRegex(
             text,
             r"(?s)model: openai/automation\s+order: 1.*?model: openai/automation-backup.*?order: 2",
+        )
+        self.assertRegex(
+            text,
+            r"(?s)model_name: assistant-canary\s+litellm_params:\s+"
+            r"model: openai/automation-moe\s+"
+            r"api_base: os\.environ/COMPUTE_AUTOMATION_BASE_URL",
         )
 
     def test_maintenance_config_only_inverts_automation_priority(self) -> None:

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "release_date": "2026-09-23",
+  "nemoclaw": {
+    "tag": "v0.0.129",
+    "commit": "26922313bba96184e65c3663b351683ebae9504d",
+    "install_script_sha256": "738cb07356dc5638ca91351ef78c1e0af7cb689a4bdf579726408306e282e72c"
+  },
+  "managed_components": {
+    "hermes_version": "0.21.3",
+    "hermes_tag": "v2026.9.14",
+    "openshell_version": "0.0.116",
+    "openshell_tag": "v0.0.116",
+    "openshell_commit": "d1155aa70042d3e2ee49dbfa15346b108b7c1d92"
+  },
+  "managed_hermes_base_image": "ghcr.io/nvidia/nemoclaw/hermes-sandbox-base@sha256:ad2a0a3d2b3e8aa8edc162f304f1ca8fc9417ce412e0b385bf6d78066313f242",
+  "policy": {
+    "tier": "restricted",
+    "web_search": "none",
+    "messaging": false,
+    "custom_image": false
+  }
+}

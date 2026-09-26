@@ -24,6 +24,14 @@ model_list:
       model: openai/automation-moe
       api_base: os.environ/COMPUTE_AUTOMATION_BASE_URL
       api_key: os.environ/COMPUTE_API_KEY
+  # Synthetic Hermes qualification lane. This deliberately reuses the live
+  # automation backend while keeping a separately revocable client key and
+  # stable alias; it is not permission to reuse the n8n client identity.
+  - model_name: assistant-canary
+    litellm_params:
+      model: openai/automation-moe
+      api_base: os.environ/COMPUTE_AUTOMATION_BASE_URL
+      api_key: os.environ/COMPUTE_API_KEY
   - model_name: research
     litellm_params:
       <<: *local_model

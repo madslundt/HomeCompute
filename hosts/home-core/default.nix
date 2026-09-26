@@ -12,6 +12,7 @@
     ../../modules/nixos/platform-monitoring.nix
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix
+    ../../modules/nixos/agents-vm.nix
     ../../modules/nixos/docker.nix
     ../../modules/nixos/ssh.nix
     ../../modules/nixos/tailscale.nix
@@ -56,6 +57,10 @@
 
   # Enable after configuring a real off-host repository and password file.
   homecompute.backups.enable = false;
+
+  # The KVM guest remains gated on off-host backups and an explicit reviewed
+  # guest SSH key. Enabling it without those prerequisites fails evaluation.
+  homecompute.agentsVm.enable = false;
 
   # Enable only after adding ttlock-webhook/environment to the encrypted SOPS
   # document and confirming the account-specific TTLock callback contract.

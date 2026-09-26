@@ -126,6 +126,14 @@ class HomeCoreAutomationBackupTest(unittest.TestCase):
         self.assertIn("switch_gateway \"$BACKUP_LITELLM_CONFIG\"", text)
         self.assertIn("switch_gateway \"$NORMAL_LITELLM_CONFIG\"", text)
 
+    def test_standby_refuses_to_compete_with_agents_vm(self) -> None:
+        text = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn(
+            "systemctl is-active --quiet homecompute-agents-vm.service",
+            text,
+        )
+        self.assertIn("stop the agents VM first", text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-home-core-piper.sh` | Pinned Danish MOSS ONNX with automatic Piper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `setup-home-core-stt.sh` | Pinned Wyoming Faster Whisper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `setup-home-core-automation-backup.sh` | On-demand Qwen3.6 Q4 CPU standby for planned Spark swaps | `prepare`, `maintenance-start`, `smoke`, `maintenance-stop`, `status` |
+| `setup-hermes-guest.sh` | Synthetic `agent-owner` Hermes canary inside the isolated Ubuntu agents guest | `validate`, `preflight`, `install`, `onboard-canary`, `health`, `snapshot`, `restore-verify` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
 | `gb10_model_roster.py` | Offline configuration validation | Enforces the Qwen3.8 workhorse, two runtime profiles, exclusive Flash-Next cold swap, and exact four-model speech roster |

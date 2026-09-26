@@ -187,6 +187,9 @@ maintenance_start() {
   require_root
   validate
   validate_model
+  if systemctl is-active --quiet homecompute-agents-vm.service; then
+    die "Refusing to start the 28 GiB standby while the 16 GiB agents VM is running; stop the agents VM first"
+  fi
   docker image inspect "$IMAGE" >/dev/null 2>&1 || die "Pinned image is missing; run prepare first"
   compose up -d --no-build --wait --wait-timeout 1200 automation-backup
   smoke

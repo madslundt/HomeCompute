@@ -180,12 +180,15 @@ runtime, resource, LiteLLM-routing, and outage gates pass. That optional path
 does not make `home-core` the primary inference host, and consumers still use
 the shared LiteLLM boundary.
 
-The three application projects share `home-core`'s kernel because no
-fourth machine exists. Their separation is by Compose project, Docker network,
-runtime user, `/srv/state` subtree, sops secret group, and resource limit — not
-by host. [ADR-017](adr/017-consolidated-application-host.md) records that
-trade-off and its residual risk; URS-PA-019 lists the mandatory controls. See
-also the [NixOS control-plane plan](nixos-control-plane-node-plan.md).
+The trusted gateway and current automation projects share the NixOS
+`home-core` kernel because no fourth machine exists. Personal agents instead
+run inside the dedicated `agents` KVM guest managed by that host. The guest
+provides a separate kernel from gateway secrets and the compute link; OpenShell
+sandbox state, credentials, identity routing, and effective policy provide the
+per-person privacy boundaries. [ADR-017](adr/017-consolidated-application-host.md)
+records the staged boundary and its residual risk; URS-PA-019 lists the
+mandatory controls. See also the
+[NixOS control-plane plan](nixos-control-plane-node-plan.md).
 
 ## 3. Shared API and GB10 services
 

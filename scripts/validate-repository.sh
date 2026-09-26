@@ -52,6 +52,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-compute-modalities.sh"
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
+  "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
   "$REPO_ROOT/tests/config-loader-test.sh"
@@ -68,6 +69,10 @@ shellcheck "${shell_files[@]}"
 
 printf '[validate] configuration-loader tests\n'
 bash "$REPO_ROOT/tests/config-loader-test.sh"
+printf '[validate] agents VM boundary tests\n'
+python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
+printf '[validate] Hermes guest runtime tests\n'
+python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
 printf '[validate] compute configuration migration tests\n'
 python3 "$REPO_ROOT/tests/migrate-compute-config-test.py"
 printf '[validate] bounded model-cache acquisition tests\n'
@@ -702,7 +707,11 @@ fi
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hviske-stt homepage piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
+# Hermes is guest-operated through its fail-closed lifecycle helper; it must
+# not silently grow a host-side Compose project beside the NixOS VM boundary.
+[[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
+[[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hermes hviske-stt homepage piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

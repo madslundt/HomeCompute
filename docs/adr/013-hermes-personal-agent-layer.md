@@ -16,12 +16,12 @@ mixed load, and not the sole home of durable personal data.
 
 Add Hermes as an optional Phase I personal-agent layer, with household scope
 expansion in Phase J, after the text-runtime and shared-gateway gates. Run
-`owner`, `partner`, and `family` in three separately
-qualified OpenShell sandboxes on an always-on application host — since amended
-by ADR-017, which makes that host `home-core` and replaces host separation
-from the gateway with per-project container isolation. Use the
-NemoClaw Hermes integration and route inference through the existing
-`ai.home.arpa`/LiteLLM path to GB10 vLLM.
+`agent-owner`, `agent-partner`, `agent-child1`, and `agent-child2` in four
+separately qualified OpenShell sandboxes, with an optional fifth
+`agent-family` sandbox containing explicitly shared household context only.
+ADR-017 places those sandboxes in a dedicated KVM guest managed by the NixOS
+`home-core` host. Use the NemoClaw Hermes integration and route inference
+through the existing `ai.home.arpa`/LiteLLM path to GB10 vLLM.
 
 Hermes memory remains per-sandbox working context. A separate canonical event
 service enforces principal, data-domain, and visibility scope as refined by
@@ -53,18 +53,20 @@ contention, and failure recovery.
 
 The GB10 remains rebuildable and dedicated to inference. The assistant gains a
 supported local model path without duplicating the model gateway. Operations
-must now qualify and back up an application host plus three sandboxes, enforce
-cross-sandbox access below the model, and re-run memory/mixed-load tests at
+must now qualify and back up an application guest plus four private sandboxes
+and the optional family sandbox, enforce cross-sandbox access below the model,
+and re-run memory/mixed-load tests at
 Hermes' required 64K context. Assistant availability depends on both hosts, but
 deterministic home control remains independent of both.
 
 ## Status
 
-Accepted as the design baseline; implementation awaits Phase I gates. Amended
-by [ADR-017](017-consolidated-application-host.md): the application host is
-`home-core`, shared with the gateway, so the sandboxes' isolation is by
-Compose project, network, runtime user, state subtree, secret group, and
-resource limit rather than by machine.
+Accepted as the design baseline; implementation proceeds through Phase I
+gates. Amended by [ADR-017](017-consolidated-application-host.md): `home-core`
+remains NixOS and manages a dedicated Ubuntu 24.04 KVM `agents` guest. Each
+person receives a separate OpenShell sandbox inside that guest; the VM restores
+the separate-kernel boundary from the trusted gateway while sandbox policy,
+state, credentials, and backups provide the household privacy boundaries.
 
 ## Evidence
 

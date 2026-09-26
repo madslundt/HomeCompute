@@ -301,8 +301,8 @@ full corpus must meet URS-CODE-002.
 
 ### V-PA-001 — Runtime, inference, policy and recovery pilot
 
-On the pinned application-host/OpenShell/NemoClaw/Hermes tuple, create one `owner`
-sandbox with synthetic data. Prove local model/tool operation first against
+On the pinned Ubuntu-guest/OpenShell/NemoClaw/Hermes tuple, create one
+`agent-owner` sandbox with synthetic data. Prove local model/tool operation first against
 direct GB10 vLLM and then the existing Caddy/LiteLLM path at 64K context. Record
 TTFT, throughput, unified-memory/KV pressure, effective model, streaming/tool
 behavior, restart persistence, upgrade/rollback, snapshot/offline restore, and
@@ -313,10 +313,11 @@ damage canonical data.
 
 ### V-PA-002 — Cross-sandbox and personal-data isolation
 
-Create `owner`, `partner`, and `family` sandboxes with unique state, Discord bot,
+Create `agent-owner`, `agent-partner`, `agent-child1`, and `agent-child2`
+sandboxes, plus optional `agent-family`, with unique state, messaging identity,
 virtual key, event-API/database role, managed providers, notification target,
 and backup. For each principal, attempt direct and prompt-mediated access to
-the other principal's memory, sessions, APIs, records, embeddings/vector
+every other principal's memory, sessions, APIs, records, embeddings/vector
 search, cache, snapshots, logs, MCP credentials, tools, and notification
 destinations. `owner` and `partner` see only their own private records and
 explicit household-shared projections; `family` sees only household-shared

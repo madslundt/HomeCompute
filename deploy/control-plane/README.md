@@ -191,6 +191,12 @@ about 39 GiB available RAM afterward. This standby protects `automation`, not
 the currently deployed n8n alias `automation-moe`; that alias mismatch is an
 open availability gap.
 
+The `assistant-canary` alias routes to the live 64K `automation-moe` endpoint
+for the synthetic Hermes pilot. Give Hermes its own LiteLLM virtual key limited
+to `assistant-canary`; never reuse the n8n key or the LiteLLM administrative
+key. Promotion to the stable `assistant` alias requires the Hermes streaming,
+tool-call, mixed-load, outage, and rollback gates.
+
 ## Installation
 
 ```bash
