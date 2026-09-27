@@ -60,7 +60,7 @@ class HomeComputeCliTests(unittest.TestCase):
             if argv[:3] == ["git", "-C", str(hc.ROOT)]:
                 return subprocess.CompletedProcess(argv, 0, "", "")
             remote = argv[-1]
-            if remote == "python3 -":
+            if remote == "bash -s":
                 host = argv[-2]
                 payload = {"schema_version": 1, "host": host, "containers": [], "failed_units": [],
                            "required_tools": {"git": True, "docker": True, "docker-compose-plugin": True,

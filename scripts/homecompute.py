@@ -15,45 +15,59 @@ from typing import Any, Callable
 ROOT = Path(__file__).resolve().parent.parent
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 HOSTS = ("home-core", "home-spark")
-REMOTE_STATUS = r'''import json, os, pathlib, platform, shutil, subprocess
-def run(args):
-    try:
-        p=subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=12)
-        return p.stdout.strip() if p.returncode == 0 else None
-    except (OSError, subprocess.SubprocessError): return None
-def read(path):
-    try: return pathlib.Path(path).read_text().strip()
-    except OSError: return None
-os_release={}
-for line in (read('/etc/os-release') or '').splitlines():
-    if '=' in line:
-        k,v=line.split('=',1); os_release[k]=v.strip('"')
-host=run(['hostname','-s']) or platform.node()
-revision_file='/var/lib/homecompute/deployed-revision' if host == 'home-core' else '/var/lib/homecompute/home-spark-deployed-revision'
-revision=read(revision_file)
-current='/srv/homecompute/current'
-containers=[]
-raw=run(['docker','ps','-a','--format','{{json .}}'])
-if raw:
-    for line in raw.splitlines():
-        try:
-            item=json.loads(line)
-            containers.append({'name':item.get('Names'), 'image':item.get('Image'), 'status':item.get('Status'), 'ports':item.get('Ports')})
-        except json.JSONDecodeError: pass
-failed=run(['systemctl','--failed','--no-legend','--plain'])
-gpu=run(['nvidia-smi','--query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total','--format=csv,noheader,nounits'])
-platform_updates=None
-if host == 'home-spark':
-    output=run(['apt','list','--upgradable']) or ''
-    platform_updates='\n'.join(line for line in output.splitlines() if '[upgradable from:' in line)
-tools={name:bool(shutil.which(name)) for name in ['git','docker','jq','curl','python3','nvidia-smi','nvidia-ctk','nvidia-container-cli','nix','nixos-rebuild','flock','awk','sha256sum','realpath','cmp']}
-tools['docker-compose-plugin']=bool(run(['docker','compose','version']))
-tools['docker-access']=bool(run(['docker','info','--format','{{.ServerVersion}}']))
-tools['sudo-nopasswd']=bool(run(['sudo','-n','true']))
-update_report=None
-try: update_report=json.loads(read('/var/lib/homecompute/model-update-check/report.json') or 'null')
-except (json.JSONDecodeError, TypeError): pass
-print(json.dumps({'schema_version':1,'host':host,'os':os_release.get('PRETTY_NAME'),'kernel':platform.release(),'revision':revision,'current_target':os.readlink(current) if os.path.islink(current) else None,'containers':containers,'failed_units':failed.splitlines() if failed else [],'gpu':gpu,'platform_updates':platform_updates,'required_tools':tools,'model_update_report':update_report}, separators=(',',':')))
+REMOTE_STATUS = r'''#!/usr/bin/env bash
+set -u
+present() { command -v "$1" >/dev/null 2>&1 && printf true || printf false; }
+host="$(hostname -s)"
+# /etc/os-release is a trusted vendor/NixOS file; source it to preserve exact
+# values without depending on Python being installed before the first rollout.
+source /etc/os-release
+os_name="${PRETTY_NAME:-unknown}"
+revision_file=/var/lib/homecompute/deployed-revision
+current=/srv/homecompute/current
+if [[ "$host" == home-spark ]]; then revision_file=/var/lib/homecompute/home-spark-deployed-revision; fi
+revision="$(cat "$revision_file" 2>/dev/null || sudo -n cat "$revision_file" 2>/dev/null || true)"
+current_target="$(readlink "$current" 2>/dev/null || true)"
+docker_access=false
+docker_prefix=()
+if docker info --format '{{.ServerVersion}}' >/dev/null 2>&1; then
+  docker_access=true
+elif sudo -n docker info --format '{{.ServerVersion}}' >/dev/null 2>&1; then
+  docker_access=true
+  docker_prefix=(sudo -n)
+fi
+containers='[]'
+if [[ "$docker_access" == true ]]; then
+  containers="$("${docker_prefix[@]}" docker ps -a --format '{{json .}}' 2>/dev/null | jq -s '[.[] | {name:.Names,image:.Image,status:.Status,ports:.Ports}]' 2>/dev/null || printf '[]')"
+fi
+failed_raw="$(systemctl --failed --no-legend --plain 2>/dev/null || true)"
+failed_units="$(printf '%s\n' "$failed_raw" | jq -Rn '[inputs | select(length > 0)]')"
+gpu="$(nvidia-smi --query-gpu=name,driver_version,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null || true)"
+platform_updates=''
+if [[ "$host" == home-spark ]]; then
+  platform_updates="$(apt list --upgradable 2>/dev/null | grep '\[upgradable from:' || true)"
+fi
+update_report=null
+report_file=/var/lib/homecompute/model-update-check/report.json
+if [[ -r "$report_file" ]]; then update_report="$(jq -c . "$report_file" 2>/dev/null || printf null)"
+elif sudo -n test -r "$report_file" 2>/dev/null; then update_report="$(sudo -n jq -c . "$report_file" 2>/dev/null || printf null)"; fi
+tools="$(jq -cn \
+  --argjson git "$(present git)" --argjson docker "$(present docker)" \
+  --argjson jq "$(present jq)" --argjson curl "$(present curl)" \
+  --argjson python3 "$(present python3)" --argjson nvidia_smi "$(present nvidia-smi)" \
+  --argjson nvidia_ctk "$(present nvidia-ctk)" --argjson nvidia_container_cli "$(present nvidia-container-cli)" \
+  --argjson nix "$(present nix)" --argjson nixos_rebuild "$(present nixos-rebuild)" \
+  --argjson flock "$(present flock)" --argjson awk "$(present awk)" \
+  --argjson sha256sum "$(present sha256sum)" --argjson realpath "$(present realpath)" \
+  --argjson cmp "$(present cmp)" --argjson compose "$(docker compose version >/dev/null 2>&1 && echo true || echo false)" \
+  --argjson docker_access "$docker_access" --argjson sudo_nopasswd "$(sudo -n true >/dev/null 2>&1 && echo true || echo false)" \
+  '{git:$git,docker:$docker,jq:$jq,curl:$curl,python3:$python3,"nvidia-smi":$nvidia_smi,"nvidia-ctk":$nvidia_ctk,"nvidia-container-cli":$nvidia_container_cli,nix:$nix,"nixos-rebuild":$nixos_rebuild,flock:$flock,awk:$awk,sha256sum:$sha256sum,realpath:$realpath,cmp:$cmp,"docker-compose-plugin":$compose,"docker-access":$docker_access,"sudo-nopasswd":$sudo_nopasswd}')"
+jq -cn --arg host "$host" --arg os "$os_name" --arg kernel "$(uname -r)" \
+  --arg revision "$revision" --arg current_target "$current_target" --arg gpu "$gpu" \
+  --arg platform_updates "$platform_updates" --argjson containers "$containers" \
+  --argjson failed_units "$failed_units" --argjson required_tools "$tools" \
+  --argjson model_update_report "$update_report" \
+  '{schema_version:1,host:$host,os:$os,kernel:$kernel,revision:(if $revision=="" then null else $revision end),current_target:(if $current_target=="" then null else $current_target end),containers:$containers,failed_units:$failed_units,gpu:(if $gpu=="" then null else $gpu end),platform_updates:(if $platform_updates=="" then null else $platform_updates end),required_tools:$required_tools,model_update_report:$model_update_report}'
 '''
 
 
@@ -156,7 +170,7 @@ def ssh_argv(host: str, remote_command: str) -> list[str]:
 
 def remote_status(host: str, runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner) -> dict[str, Any]:
     try:
-        result = runner(ssh_argv(host, "python3 -"), input_text=REMOTE_STATUS, timeout=25)
+        result = runner(ssh_argv(host, "bash -s"), input_text=REMOTE_STATUS, timeout=25)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise OperatorError(f"{host}: SSH status failed: {exc}") from exc
     if result.returncode:
@@ -176,7 +190,7 @@ def desired_revision(args: argparse.Namespace, runner: Callable[..., subprocess.
     return sha
 
 
-def deploy_host(host: str, revision: str, runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner) -> None:
+def deploy_host(host: str, revision: str, runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner) -> str:
     valid_sha(revision)
     script = "deploy-home-core.sh" if host == "home-core" else "deploy-home-spark.sh"
     command = f"sudo -n bash -s -- {revision}"
@@ -197,6 +211,7 @@ def deploy_host(host: str, revision: str, runner: Callable[..., subprocess.Compl
         raise OperatorError(f"{host}: deployment transport failed: {exc}") from exc
     if result.returncode:
         raise OperatorError(f"{host}: deployment failed ({result.stderr.strip() or result.returncode})")
+    return result.stdout.strip()
 
 
 def render_human(data: dict[str, Any]) -> str:
@@ -233,19 +248,29 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
             targets = ["home-spark", "home-core"] if args.host == "all" else [args.host]
             print(f"Deploying {revision} to {', '.join(targets)}")
             preflight = {}
+            preflight_errors: list[str] = []
             for host in targets:
                 # Preflight every target before changing either host.
-                preflight[host] = remote_status(host, runner)
+                try:
+                    preflight[host] = remote_status(host, runner)
+                except OperatorError as exc:
+                    preflight_errors.append(str(exc))
+            for host, item in preflight.items():
                 required = ("docker", "docker-compose-plugin", "docker-access", "sudo-nopasswd")
-                if host == "home-core": required += ("git", "nix", "nixos-rebuild", "flock", "jq", "python3")
+                if host == "home-core": required += ("git", "nix", "nixos-rebuild", "flock", "jq")
                 else: required += ("git", "python3", "flock", "jq", "curl", "awk", "sha256sum", "realpath", "cmp", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli")
-                missing = [tool for tool in required if not preflight[host].get("required_tools", {}).get(tool, False)]
+                missing = [tool for tool in required if not item.get("required_tools", {}).get(tool, False)]
                 if missing:
-                    raise OperatorError(f"{host}: deployment preflight missing required tools/access: {', '.join(missing)}")
-                print(f"  {host}: preflight passed (deployed {preflight[host].get('revision') or 'revision unknown'})")
+                    preflight_errors.append(f"{host}: deployment preflight missing required tools/access: {', '.join(missing)}")
+            if preflight_errors:
+                raise OperatorError("; ".join(preflight_errors))
+            for host, item in preflight.items():
+                print(f"  {host}: preflight passed (deployed {item.get('revision') or 'revision unknown'})")
             for host in targets:
-                deploy_host(host, revision, runner)
-                print(f"  {host}: deployment command succeeded; see host checks above")
+                result = deploy_host(host, revision, runner)
+                lines = [line for line in result.splitlines() if line.strip()]
+                outcome = lines[-1] if lines else "command returned success"
+                print(f"  {host}: {outcome}")
             if args.host == "all":
                 print("Cross-host smoke check: not configured; verify gateway routes with homecompute doctor")
             return 0
