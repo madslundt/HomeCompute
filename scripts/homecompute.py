@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import re
 import shutil
@@ -36,7 +37,7 @@ elif sudo -n docker info --format '{{.ServerVersion}}' >/dev/null 2>&1; then
   docker_access=true
   docker_prefix=(sudo -n)
 fi
-containers='[]'
+containers=null
 if [[ "$docker_access" == true ]]; then
   containers="$("${docker_prefix[@]}" docker ps -a --format '{{json .}}' 2>/dev/null | jq -s '[.[] | {name:.Names,image:.Image,status:.Status,ports:.Ports}]' 2>/dev/null || printf '[]')"
 fi
@@ -60,8 +61,9 @@ tools="$(jq -cn \
   --argjson flock "$(present flock)" --argjson awk "$(present awk)" \
   --argjson sha256sum "$(present sha256sum)" --argjson realpath "$(present realpath)" \
   --argjson cmp "$(present cmp)" --argjson compose "$(docker compose version >/dev/null 2>&1 && echo true || echo false)" \
+  --argjson sudo "$(present sudo)" \
   --argjson docker_access "$docker_access" --argjson sudo_nopasswd "$(sudo -n true >/dev/null 2>&1 && echo true || echo false)" \
-  '{git:$git,docker:$docker,jq:$jq,curl:$curl,python3:$python3,"nvidia-smi":$nvidia_smi,"nvidia-ctk":$nvidia_ctk,"nvidia-container-cli":$nvidia_container_cli,nix:$nix,"nixos-rebuild":$nixos_rebuild,flock:$flock,awk:$awk,sha256sum:$sha256sum,realpath:$realpath,cmp:$cmp,"docker-compose-plugin":$compose,"docker-access":$docker_access,"sudo-nopasswd":$sudo_nopasswd}')"
+  '{git:$git,docker:$docker,jq:$jq,curl:$curl,python3:$python3,"nvidia-smi":$nvidia_smi,"nvidia-ctk":$nvidia_ctk,"nvidia-container-cli":$nvidia_container_cli,nix:$nix,"nixos-rebuild":$nixos_rebuild,flock:$flock,awk:$awk,sha256sum:$sha256sum,realpath:$realpath,cmp:$cmp,sudo:$sudo,"docker-compose-plugin":$compose,"docker-access":$docker_access,"sudo-nopasswd":$sudo_nopasswd}')"
 jq -cn --arg host "$host" --arg os "$os_name" --arg kernel "$(uname -r)" \
   --arg revision "$revision" --arg current_target "$current_target" --arg gpu "$gpu" \
   --arg platform_updates "$platform_updates" --argjson containers "$containers" \
@@ -152,7 +154,7 @@ def parse_remote_output(stdout: str, host: str) -> dict[str, Any]:
     if not isinstance(data, dict) or data.get("schema_version") != 1 or data.get("host") != host:
         raise OperatorError(f"{host}: remote status output has an unsupported schema or host identity")
     for key, expected in (("containers", list), ("failed_units", list)):
-        if not isinstance(data.get(key), expected):
+        if not isinstance(data.get(key), expected) and not (key == "containers" and data.get(key) is None):
             raise OperatorError(f"{host}: remote status field {key} is malformed")
     return data
 
@@ -161,11 +163,16 @@ def default_runner(argv: list[str], *, input_text: str | None = None, timeout: i
     return subprocess.run(argv, input=input_text, text=True, capture_output=True, timeout=timeout, check=False)
 
 
-def ssh_argv(host: str, remote_command: str) -> list[str]:
+def ssh_argv(host: str, remote_command: str, *, batch_mode: bool = True) -> list[str]:
     if host not in HOSTS:
         raise OperatorError(f"unsupported host: {host}")
-    return ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5",
+    argv = ["ssh"]
+    if batch_mode:
+        argv.extend(["-o", "BatchMode=yes"])
+    argv.extend(["-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8", "-o", "ServerAliveInterval=5",
             "-o", "ServerAliveCountMax=2", host, remote_command]
+    )
+    return argv
 
 
 def remote_status(host: str, runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner) -> dict[str, Any]:
@@ -190,7 +197,8 @@ def desired_revision(args: argparse.Namespace, runner: Callable[..., subprocess.
     return sha
 
 
-def deploy_host(host: str, revision: str, runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner) -> str:
+def deploy_host(host: str, revision: str, *, sudo_nopasswd: bool = True,
+                runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner) -> str:
     valid_sha(revision)
     script = "deploy-home-core.sh" if host == "home-core" else "deploy-home-spark.sh"
     command = f"sudo -n bash -s -- {revision}"
@@ -206,12 +214,21 @@ def deploy_host(host: str, revision: str, runner: Callable[..., subprocess.Compl
         content = subprocess.CompletedProcess([], 0, (ROOT / "scripts" / script).read_text(), "")
     payload = content.stdout
     try:
-        result = runner(ssh_argv(host, command), input_text=payload, timeout=7200)
+        if sudo_nopasswd or runner is not default_runner:
+            result = runner(ssh_argv(host, command), input_text=payload, timeout=7200)
+        else:
+            if not sys.stdin.isatty():
+                raise OperatorError(f"{host}: interactive sudo is required; run deployment from a terminal")
+            encoded = base64.b64encode(payload.encode()).decode("ascii")
+            interactive_command = f"sudo bash -c 'printf %s {encoded} | base64 -d | bash -s -- {revision}'"
+            argv = ssh_argv(host, interactive_command, batch_mode=False)
+            argv.insert(-2, "-tt")
+            result = subprocess.run(argv, timeout=7200, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise OperatorError(f"{host}: deployment transport failed: {exc}") from exc
     if result.returncode:
         raise OperatorError(f"{host}: deployment failed ({result.stderr.strip() or result.returncode})")
-    return result.stdout.strip()
+    return (result.stdout or "").strip()
 
 
 def render_human(data: dict[str, Any]) -> str:
@@ -224,7 +241,8 @@ def render_human(data: dict[str, Any]) -> str:
         state = compare_drift(data.get("desired_revision"), item)
         lines.append(f"\n{host} ({item.get('os') or 'OS unknown'})")
         lines.append(f"  deployment: {item.get('revision') or 'unknown'} ({state})")
-        lines.append(f"  containers: {len(item['containers'])} observed")
+        container_state = f"{len(item['containers'])} observed" if item["containers"] is not None else "unknown (no Docker access)"
+        lines.append(f"  containers: {container_state}")
         lines.append(f"  failed units: {len(item['failed_units'])}")
         if item.get("gpu") is not None:
             lines.append(f"  GPU: {item['gpu'] or 'unavailable'}")
@@ -256,7 +274,7 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
                 except OperatorError as exc:
                     preflight_errors.append(str(exc))
             for host, item in preflight.items():
-                required = ("docker", "docker-compose-plugin", "docker-access", "sudo-nopasswd")
+                required = ("docker", "docker-compose-plugin", "sudo")
                 if host == "home-core": required += ("git", "nix", "nixos-rebuild", "flock", "jq")
                 else: required += ("git", "python3", "flock", "jq", "curl", "awk", "sha256sum", "realpath", "cmp", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli")
                 missing = [tool for tool in required if not item.get("required_tools", {}).get(tool, False)]
@@ -267,7 +285,9 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
             for host, item in preflight.items():
                 print(f"  {host}: preflight passed (deployed {item.get('revision') or 'revision unknown'})")
             for host in targets:
-                result = deploy_host(host, revision, runner)
+                result = deploy_host(host, revision,
+                                     sudo_nopasswd=item.get("required_tools", {}).get("sudo-nopasswd", False),
+                                     runner=runner)
                 lines = [line for line in result.splitlines() if line.strip()]
                 outcome = lines[-1] if lines else "command returned success"
                 print(f"  {host}: {outcome}")
@@ -304,7 +324,9 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
         if args.command == "services":
             for host, item in observations.items():
                 print(f"{host} (observed containers)")
-                for c in item["containers"]: print(f"  {c['name']}: {c['status']} [{c['image']}]")
+                if item["containers"] is None: print("  unknown: Docker access unavailable")
+                else:
+                    for c in item["containers"]: print(f"  {c['name']}: {c['status']} [{c['image']}]")
             for host, error in failures.items(): print(f"{host}: unknown ({error})")
             return 0 if not failures else 1
         if args.command == "doctor":
@@ -315,7 +337,8 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
                 print(f"✓ {host}: reachable; revision {item.get('revision') or 'unknown'}")
                 print(f"{'✓' if not item['failed_units'] else '✗'} failed units: {len(item['failed_units'])}")
                 issues = issues or bool(item["failed_units"])
-                print(f"{'✓' if item['containers'] else '⚠'} Docker containers observed: {len(item['containers'])}")
+                docker_count = len(item["containers"]) if item["containers"] is not None else None
+                print(f"{'✓' if docker_count else '⚠'} Docker containers observed: {docker_count if docker_count is not None else 'unknown (no access)'}")
                 for tool, present in item.get("required_tools", {}).items():
                     required = tool not in ("nix", "nixos-rebuild", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli") or host == "home-core" and tool in ("nix", "nixos-rebuild") or host == "home-spark" and tool.startswith("nvidia-")
                     if required:
@@ -330,7 +353,7 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
                 if host in failures: print(f"{host}: unknown ({failures[host]})"); continue
                 item=observations[host]; state=compare_drift(desired,item)
                 print(f"{host}: {state} (desired {desired or 'unknown'}, deployed {item.get('revision') or 'unknown'})")
-                for service in item["containers"]:
+                for service in item["containers"] or []:
                     print(f"  observed {service.get('name')}: {service.get('status')} ({service.get('image')})")
             if args.command == "updates":
                 print("Application updates")

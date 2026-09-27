@@ -4,10 +4,13 @@ The workstation CLI is `scripts/homecompute` (Python 3 standard library only).
 Run it from any directory in this checkout. It uses the normal OpenSSH client
 and SSH aliases `home-core` and `home-spark`; configure those hosts and pinned
 host keys in `~/.ssh/config` and `~/.ssh/known_hosts` first. It enforces
-`StrictHostKeyChecking=yes`, uses batch mode, and bounds connection timeouts.
-Status runs as the SSH user. Deployment requires non-interactive `sudo -n`
-permission and checks it during preflight; passwords are never passed as
-command arguments or stored by HomeCompute.
+`StrictHostKeyChecking=yes` and bounds connection timeouts. Read-only status uses
+SSH batch mode. Deployment uses non-interactive `sudo -n` when available; when
+sudo requires a password, run deployment from a terminal and enter it at the
+remote sudo prompt. HomeCompute never passes a sudo password as an argument or
+stores it. Status runs as the SSH user, so Docker inventory is reported as
+unknown when that account cannot query Docker directly or through passwordless
+sudo.
 
 ## Everyday operation
 
@@ -142,10 +145,12 @@ release pointer and exact SHA. Neither host garbage-collects old releases.
 1. Keep the checkout and SSH host aliases on the operator workstation.
 2. Add and verify both host keys in `known_hosts`; do not disable host-key
    checking.
-3. Confirm each account has non-interactive sudo permission for deployment and
-   Docker access for status/preflight. `home-core` already disables the wheel
-   password requirement in its NixOS configuration. Configure the Spark
-   operator's sudo policy through its supported host administration procedure.
+3. Confirm each account has sudo permission for deployment and Docker access
+   for a complete service inventory. `home-core` already disables the wheel
+   password requirement in its NixOS configuration. Spark can use an
+   interactive terminal sudo prompt; configure its sudo policy through the
+   supported host administration procedure if unattended deployments are
+   needed.
 4. Publish reviewed changes and wait for repository CI, then run
    `./scripts/homecompute status` and `./scripts/homecompute deploy all`.
 5. Stop using `git pull` as a production deployment step. Existing host
@@ -153,13 +158,15 @@ release pointer and exact SHA. Neither host garbage-collects old releases.
    release paths.
 
 `home-spark` needs one-time root-owned `/srv/homecompute` and
-`/var/lib/homecompute` paths, created by its first deployment. The CLI requires
-the target accounts to have Docker access for status and preflight. It does not
-modify sshd, sudoers, Docker group membership, or host-key policy.
+`/var/lib/homecompute` paths, created by its first deployment. Without Docker
+access, status marks container inventory unknown; it does not block a
+deployment. The CLI does not modify sshd, sudoers, Docker group membership, or
+host-key policy.
 
 ## Current limitations
 
-- Services output lists observed Docker containers; it does not yet parse each
+- Services output lists observed Docker containers when the SSH account has
+  access; otherwise the inventory is unknown. It does not yet parse each
   host Compose file into a complete expected-versus-actual service matrix.
 - `doctor` checks executable presence and Docker access. It does not yet prove
   package declaration for each tool; NixOS remains authoritative on home-core,

@@ -64,7 +64,7 @@ class HomeComputeCliTests(unittest.TestCase):
                 host = argv[-2]
                 payload = {"schema_version": 1, "host": host, "containers": [], "failed_units": [],
                            "required_tools": {"git": True, "docker": True, "docker-compose-plugin": True,
-                                              "docker-access": True, "sudo-nopasswd": True, "nix": True, "python3": True,
+                                              "docker-access": True, "sudo-nopasswd": True, "sudo": True, "nix": True, "python3": True,
                                               "nixos-rebuild": True, "flock": True, "jq": True,
                                               "curl": True, "awk": True, "sha256sum": True, "realpath": True, "cmp": True,
                                               "nvidia-smi": True, "nvidia-ctk": True, "nvidia-container-cli": True}}
