@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LITELLM = ROOT / "deploy" / "control-plane" / "litellm-config.yaml"
 LITELLM_BACKUP = ROOT / "deploy" / "control-plane" / "litellm-config-automation-backup.yaml"
 COMPUTE = ROOT / "deploy" / "compute-node" / "compose.yaml"
+DEPLOYMENT = ROOT / "docs" / "control-plane-deployment.md"
 SEMANTIC = {"auto", "assistant", "automation", "coding", "home", "meeting", "research"}
 EXPECTED = SEMANTIC | {"assistant-canary", "automation-moe"}
 
@@ -86,6 +87,15 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
         self.assertIsNotNone(match)
         assert match is not None
         self.assertEqual(SEMANTIC, set(match.group(1).split()))
+
+    def test_client_key_scope_is_distinguished_from_backend_tool_support(self) -> None:
+        deployment = re.sub(r"\s+", " ", DEPLOYMENT.read_text(encoding="utf-8"))
+        helper = (ROOT / "scripts" / "homecompute_chat.py").read_text(encoding="utf-8")
+        self.assertIn("each list only `automation-moe`", deployment)
+        self.assertIn("returns HTTP 403", deployment)
+        self.assertIn("does not change key permissions", deployment)
+        self.assertIn("does not grant access", helper)
+        self.assertIn("Documented client keys currently allow only automation-moe", helper)
 
 
 if __name__ == "__main__":

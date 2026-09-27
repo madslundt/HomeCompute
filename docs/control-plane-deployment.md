@@ -94,6 +94,25 @@ NixOS. See [Git deployment](git-deployment.md) for the single-command workflow.
 - NixOS activation and the control-plane Compose assertions pass. The books
   importer now has dedicated Compose/isolation checks in repository validation.
 
+### Client key scope and tool-call verification
+
+Live verification on 2026-09-27 confirmed valid `required` and `auto`
+`get_temperature` tool calls through the gateway for `automation-moe`,
+`assistant-canary`, and `home` (Gemma 4). These checks used the administrative
+verification credential. The three documented client keys
+(`HOMECOMPUTE_SCRIPT_API_KEY`, `HOMECOMPUTE_API_KEY`, and
+`HOMECOMPUTE_PI_API_KEY`) each list only `automation-moe` from authenticated
+`/v1/models`; requesting another alias returns HTTP 403. Tool-call capability
+at a backend therefore does not imply that a client key is allowed to use its
+alias. The chat helper's `--model` option chooses the requested alias and does
+not change key permissions. Provision a separately scoped virtual key for any
+additional alias; do not broaden existing client keys by default.
+
+The live gateway tool checks do not establish current runtime support for the
+stopped Qwen3.8 primary or the stopped CPU `automation-backup` service. Their
+configuration-level smokes are not a substitute for activating and qualifying
+those runtimes.
+
 ## Remaining work
 
 - n8n uses the healthy tunneled `automation-moe` route. The home-core CPU

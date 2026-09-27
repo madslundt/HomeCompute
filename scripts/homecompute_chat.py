@@ -49,7 +49,14 @@ def render_message(message):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("message", nargs="*", help="Text sent as the user message")
-    parser.add_argument("--model", default="automation-moe", help="HomeCompute model alias (default: automation-moe)")
+    parser.add_argument(
+        "--model",
+        default="automation-moe",
+        help=(
+            "Requested HomeCompute alias (default: automation-moe); this does not grant access. "
+            "Documented client keys currently allow only automation-moe."
+        ),
+    )
     parser.add_argument("--tools", action="store_true", help="Offer the example get_temperature function")
     parser.add_argument("--tool-choice", choices=("auto", "required", "none"), default="auto")
     args = parser.parse_args(argv)
