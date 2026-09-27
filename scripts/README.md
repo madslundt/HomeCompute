@@ -1,5 +1,9 @@
 # Setup scripts
 
+The workstation `homecompute` CLI provides status, updates, model and service
+inventory, diagnostics, and explicit SHA-based host deployment. See
+[`docs/homecompute-operations.md`](../docs/homecompute-operations.md).
+
 The repository retains a privileged setup helper only for the vendor-managed
 compute appliance. `home-core` is configured with `nixos-rebuild`.
 

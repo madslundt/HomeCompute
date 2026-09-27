@@ -1,4 +1,7 @@
-# Deploying published commits to home-core
+# Low-level Git release mechanism
+
+For normal workstation use, follow [HomeCompute operations](homecompute-operations.md).
+This page documents the core host mechanism used by that CLI and recovery.
 
 The MacBook authors, validates, commits, and pushes. home-core reads GitHub over
 HTTPS and never needs a GitHub write credential. The GB10 is not required for
@@ -18,9 +21,11 @@ git rev-parse HEAD
 The MacBook remote uses `git@github.com:madslundt/HomeCompute.git`. Use the full
 40-character commit printed by the last command for deployment.
 
-## Deploy on home-core
+## Core release host command
 
-From a clean checkout containing the deployment script:
+The workstation CLI sends this script to the host over SSH with the resolved
+full SHA. For direct recovery from an already-reviewed host checkout, the
+low-level invocation remains available:
 
 ```bash
 sudo bash scripts/deploy-home-core.sh FULL_COMMIT_SHA

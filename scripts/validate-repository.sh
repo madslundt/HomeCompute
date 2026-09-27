@@ -54,7 +54,9 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
+  "$REPO_ROOT/scripts/deploy-home-spark.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
+  "$REPO_ROOT/scripts/homecompute"
   "$REPO_ROOT/tests/config-loader-test.sh"
 )
 
@@ -99,6 +101,7 @@ python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/speech-routing-policy-test.py"
 python3 "$REPO_ROOT/tests/model-registry-test.py"
 python3 "$REPO_ROOT/tests/modelctl-test.py"
+python3 "$REPO_ROOT/tests/homecompute-cli-test.py"
 python3 "$REPO_ROOT/tests/client-model-access-test.py"
 python3 "$REPO_ROOT/tests/litellm-routing-integration-test.py"
 python3 "$REPO_ROOT/tests/control-plane-routing-test.py"

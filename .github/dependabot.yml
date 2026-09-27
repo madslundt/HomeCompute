@@ -17,11 +17,14 @@ updates:
       - /deploy/automation
       - /deploy/books_importer
       - /deploy/compute-node
+      - /deploy/compute-node/home-assistant-model
+      - /deploy/compute-node/plapre
       - /deploy/control-plane
       - /deploy/homepage
       - /deploy/piper-tts
       - /deploy/ttlock-webhook
       - /deploy/wyoming-stt
+      - /deploy/hviske-stt
     schedule:
       interval: weekly
       day: monday

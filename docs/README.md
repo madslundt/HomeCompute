@@ -14,6 +14,9 @@ its durable state. Because the platform has three machines rather than four, it
 also carries automations and personal-agent sandboxes as separately isolated
 Compose projects ([ADR-017](adr/017-consolidated-application-host.md)).
 
+For everyday two-host administration, start with
+[HomeCompute operations](homecompute-operations.md).
+
 Both nodes are now observed live. Historical plans remain useful for rebuilds
 and acceptance criteria, but they do not override the dated live snapshot.
 

@@ -213,5 +213,6 @@ third-party software keep their own licenses and are not redistributed here.
 
 ## Deploy the current K15 configuration
 
-See [the Git deployment workflow](docs/git-deployment.md): publish from the
-MacBook, then deploy an exact commit on home-core using read-only GitHub access.
+See [HomeCompute operations](docs/homecompute-operations.md) for the workstation
+CLI and two-host deployment workflow. The lower-level [Git deployment notes](docs/git-deployment.md)
+document the retained home-core release mechanism.

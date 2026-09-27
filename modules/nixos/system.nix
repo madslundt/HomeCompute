@@ -59,6 +59,7 @@
     docker-compose
     git
     jq
+    python3
     restic
     smartmontools
     sops
