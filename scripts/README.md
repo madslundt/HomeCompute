@@ -110,6 +110,13 @@ python3 scripts/gb10_model_roster.py \
   --roster config/gb10-model-roster.json
 ```
 
+The stdlib chat example supports every allowed alias with `--model`. It keeps
+plain chat as the default and accepts `--tools --tool-choice auto|required` to
+show a function schema and surface returned `tool_calls` without executing
+them. The guarded model smoke commands test both `required` and `auto` for the
+Qwen3.8 aliases, `automation-moe`, `home-fast`, and the planned-maintenance CPU
+standby. These checks do not publish or invoke any n8n workflow.
+
 The offline [Danish TTS qualification](../docs/tts-qualification.md) qualifies
 Plapre Nano v2 on the GB10 against the independent Piper fallback. Its harness
 creates blinded listening packets and enforces warm p95 first audio at 750 ms

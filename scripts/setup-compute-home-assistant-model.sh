@@ -149,7 +149,9 @@ smoke() (
     --data '{"model":"home-fast","messages":[{"role":"system","content":"Du er Home Assistant. Svar kort på dansk."},{"role":"user","content":"Svar kun med ordet KLAR."}],"temperature":0,"max_tokens":32,"chat_template_kwargs":{"enable_thinking":false}}' \
     "$base/v1/chat/completions")"
   jq -e '.choices[0].message.content | ascii_upcase | contains("KLAR")' <<<"$response" >/dev/null || die "Danish direct-response smoke failed"
-  log "home-fast health, auth, alias, and Danish non-thinking response passed"
+  python3 "$SCRIPT_DIR/tool_call_smoke.py" --base-url "$base" --model home-fast \
+    --api-key-file "$VLLM_API_KEY_FILE" --choices required auto || die "home-fast tool-call smoke failed"
+  log "home-fast health, auth, alias, Danish text, and required/automatic tool-call smokes passed"
 )
 
 case "$COMMAND" in

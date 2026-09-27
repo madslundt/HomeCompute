@@ -141,7 +141,25 @@ JSON
     $f.name == "get_temperature" and
     (($f.arguments | fromjson).room | ascii_downcase | contains("køkken"))
   ' <<<"$response" >/dev/null || die "Danish tool-call smoke failed"
-  log "Danish content and structured tool-call smokes passed"
+
+  # Expansion inside this single-quoted script belongs to the container.
+  # shellcheck disable=SC2016
+  response="$(compose exec -T automation-backup sh -ec '
+    key="$(cat /run/secrets/compute_api_key)"
+    curl --fail --silent --show-error --max-time 300 \
+      --header "Authorization: Bearer $key" \
+      --header "Content-Type: application/json" \
+      --data-binary @- http://127.0.0.1:8080/v1/chat/completions
+  ' <<'JSON'
+{"model":"automation-backup","messages":[{"role":"system","content":"Use the supplied function to answer. Do not answer directly."},{"role":"user","content":"Read the temperature in the kitchen."}],"tools":[{"type":"function","function":{"name":"get_temperature","description":"Read the temperature in a room","parameters":{"type":"object","properties":{"room":{"type":"string"}},"required":["room"],"additionalProperties":false}}}],"tool_choice":"auto","temperature":0,"max_tokens":96}
+JSON
+)"
+  jq -e '
+    .choices[0].message.tool_calls[0].function as $f |
+    $f.name == "get_temperature" and
+    (($f.arguments | fromjson).room | type == "string" and length > 0)
+  ' <<<"$response" >/dev/null || die "Automatic tool-call smoke failed"
+  log "Danish content and required/automatic tool-call smokes passed"
 }
 
 gateway_smoke() {
@@ -174,6 +192,47 @@ content = document["choices"][0]["message"]["content"]
 if "KLAR" not in content.upper():
     print("Stable automation alias returned an unexpected response", file=sys.stderr)
     raise SystemExit(1)
+
+tool = {
+    "type": "function",
+    "function": {
+        "name": "get_temperature",
+        "description": "Read the temperature in a room",
+        "parameters": {
+            "type": "object",
+            "properties": {"room": {"type": "string"}},
+            "required": ["room"],
+            "additionalProperties": False,
+        },
+    },
+}
+for choice in ("required", "auto"):
+    request = urllib.request.Request(
+        "http://127.0.0.1:4000/v1/chat/completions",
+        data=json.dumps({
+            "model": "automation",
+            "messages": [
+                {"role": "system", "content": "Use the supplied function to answer. Do not answer directly."},
+                {"role": "user", "content": "Read the temperature in the kitchen."},
+            ],
+            "tools": [tool],
+            "tool_choice": choice,
+            "temperature": 0,
+            "max_tokens": 96,
+        }).encode(),
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=300) as response:
+        result = json.load(response)
+    try:
+        call = result["choices"][0]["message"]["tool_calls"][0]
+        args = call["function"]["arguments"]
+        args = json.loads(args) if isinstance(args, str) else args
+        if call["function"]["name"] != "get_temperature" or not args.get("room"):
+            raise ValueError("unexpected function call")
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
+        print(f"Stable automation alias failed tool_choice={choice}: {error}", file=sys.stderr)
+        raise SystemExit(1)
 print("Stable automation alias reached the home-core standby")
 PY
 }

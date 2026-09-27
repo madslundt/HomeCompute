@@ -24,6 +24,14 @@ class RosterTests(unittest.TestCase):
         self.assertEqual(1, ROSTER["hardware"]["resident_text_model_limit"])
         self.assertEqual(3, ROSTER["hardware"]["retained_text_model_limit"])
         self.assertEqual({"primary", "automation_moe", "heavy"}, set(ROSTER["text_models"]))
+        self.assertEqual(
+            "qwen3_coder",
+            ROSTER["text_models"]["primary"]["runtime_profiles"]["baseline"]["tool_call_parser"],
+        )
+        self.assertEqual(
+            "qwen3_coder",
+            ROSTER["text_models"]["primary"]["runtime_profiles"]["performance"]["tool_call_parser"],
+        )
 
     def test_primary_and_draft_checkpoints_are_fixed(self) -> None:
         roster = copy.deepcopy(ROSTER)

@@ -184,7 +184,9 @@ smoke_candidate() (
     --data '{"model":"automation-moe","input":"Svar kun med ordet KLAR.","max_output_tokens":32}' "$base/v1/responses")"
   jq -e '.status == "completed" and ([.output[]?.content[]?.text // empty] | join(" ") | length > 0)' <<<"$response" >/dev/null ||
     die "Responses smoke did not complete"
-  log "automation-moe health, auth denial, alias, and Danish Responses smoke passed"
+  python3 "$SCRIPT_DIR/tool_call_smoke.py" --base-url "$base" --model automation-moe \
+    --api-key-file "$VLLM_API_KEY_FILE" --choices required auto || die "Tool-call smoke failed"
+  log "automation-moe health, auth denial, alias, Danish Responses, and required/automatic tool smokes passed"
 )
 
 write_release_record() {

@@ -31,6 +31,28 @@ selection authority is
 [`config/gb10-model-roster.json`](../../config/gb10-model-roster.json).
 The normal lane disables thinking in the server's default chat-template kwargs;
 qualified callers can still request it explicitly.
+The Qwen3.8 lane serves `auto`, `coding`, `automation`, `research`, `home`,
+`meeting`, and `assistant` from one model process, with the `qwen3_coder` tool
+parser and automatic tool choice enabled. Its guarded smoke command checks
+required and automatic function selection for every served alias. The dedicated
+`home-fast` Gemma 4 process and the opt-in Qwen3.6 `automation-moe` process
+have their matching `gemma4` and `qwen3_coder` parsers and run the same two
+selection checks. The `assistant-canary` gateway alias maps to the same
+`automation-moe` process and parser; it does not introduce another model tuple.
+The staged SGLang/DFlash alternative records the same Qwen3.8 parser contract
+in the model roster, but it has no serving profile yet and remains unverified.
+Flash-Next likewise has no routable serving profile, so it is not represented
+as a tool-capable route.
+
+The planned-maintenance CPU standby uses llama.cpp's model chat template via
+`--jinja`; its smoke checks both tool-choice modes directly and through the
+stable `automation` gateway alias before the gateway can be switched to it.
+Function selection is model behavior, so a successful parser/template
+configuration alone does not guarantee a call. The smoke commands require a
+returned function name and valid JSON arguments and fail if either mode returns
+ordinary text instead. Re-run them whenever the pinned model, serving image, or
+chat template changes.
+
 SGLang/DFlash and Flash-Next need separate pinned runtime profiles because
 their images, drafts, memory behavior, and startup contracts are not
 interchangeable with this launcher.

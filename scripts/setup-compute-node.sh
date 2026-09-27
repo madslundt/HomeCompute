@@ -220,7 +220,7 @@ validate_config() {
   [[ "$MODEL_ID" == unsloth/Qwen3.8-27B-NVFP4 && "$MODEL_REVISION" == 57926baca9a82b4d6906b43f2750d55315f5b10f && "$TOKENIZER_REVISION" == "$MODEL_REVISION" && "$CODE_REVISION" == "$MODEL_REVISION" ]] || die "Only the pinned Qwen3.8-27B NVFP4 artifact is supported"
   [[ "$MODEL_PROVENANCE_URL" == https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4 && "${MODEL_LICENSE_ID,,}" == apache-2.0 && "${MODEL_WEIGHT_FORMAT,,}" == compressed-tensors-safetensors && "${MODEL_QUANTIZATION,,}" == nvfp4 ]] || die "Qwen3.8 provenance metadata changed"
   [[ "$CHAT_TEMPLATE_SHA256" == 12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce ]] || die "Qwen3.8 chat template digest changed"
-  [[ "$VLLM_ATTENTION_BACKEND:$VLLM_MOE_BACKEND:$VLLM_REASONING_PARSER:$VLLM_TOOL_CALL_PARSER" == flashinfer:marlin:qwen3:qwen3_xml ]] || die "Qwen3.8 backend/parser recipe changed"
+  [[ "$VLLM_ATTENTION_BACKEND:$VLLM_MOE_BACKEND:$VLLM_REASONING_PARSER:$VLLM_TOOL_CALL_PARSER" == flashinfer:marlin:qwen3:qwen3_coder ]] || die "Qwen3.8 backend/parser recipe changed"
   [[ "${VLLM_SPECULATIVE_CONFIG:-}" == '{"method":"qwen3_5_mtp","num_speculative_tokens":3}' ]] || die "Qwen3.8 baseline requires native qwen3_5_mtp"
   [[ "$VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS" == '{"enable_thinking":false}' ]] ||
     die "Qwen3.8 normal lane must disable thinking by default"
@@ -461,7 +461,11 @@ smoke_test() (
   denial="$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "$base_url/v1/models")"; [[ "$denial" == 401 ]] || die "Missing credentials were not rejected with HTTP 401"
   denial="$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer invalid-smoke-credential' "$base_url/v1/models")"; [[ "$denial" == 401 ]] || die "Invalid credentials were not rejected with HTTP 401"
   models_json="$(curl --fail --silent --show-error --max-time 30 --header "@$auth_header" "$base_url/v1/models")"
-  for alias in coding automation research home meeting assistant; do jq -e --arg alias "$alias" '.data|any(.id==$alias)' <<<"$models_json" >/dev/null || die "Missing served alias: $alias"; done
+  for alias in auto coding automation research home meeting assistant; do jq -e --arg alias "$alias" '.data|any(.id==$alias)' <<<"$models_json" >/dev/null || die "Missing served alias: $alias"; done
+  for alias in auto coding automation research home meeting assistant; do
+    python3 "$SCRIPT_DIR/tool_call_smoke.py" --base-url "$base_url" --model "$alias" \
+      --api-key-file "$VLLM_API_KEY_FILE" --choices required auto || die "Tool-call smoke failed for alias: $alias"
+  done
   responses_json="$(curl --fail --silent --show-error --max-time 300 --header "@$auth_header" -H 'Content-Type: application/json' --data '{"model":"automation","input":"Reply with exactly READY.","max_output_tokens":16}' "$base_url/v1/responses")"
   jq -e '(.id|type=="string") and .status=="completed"' <<<"$responses_json" >/dev/null || die "Ordinary Responses request did not complete"
   curl --fail --silent --show-error --no-buffer --max-time 300 --header "@$auth_header" -H 'Content-Type: application/json' --data '{"model":"automation","input":"Reply with exactly STREAM_READY.","max_output_tokens":16,"stream":true}' "$base_url/v1/responses" >"$stream_file"
@@ -469,7 +473,7 @@ smoke_test() (
   terminal_json="$(awk '{sub(/\r$/,"")} /^event: response.completed$/{getline;sub(/\r$/,"");sub(/^data: /,"");print;exit}' "$stream_file")"
   jq -e '.type=="response.completed" and .response.status=="completed" and (.response.id|type=="string")' <<<"$terminal_json" >/dev/null || die "Responses stream terminal payload was not completed"
   rm -f -- "$auth_header" "$stream_file"; trap - EXIT
-  log "Smoke passed: liveness, auth denial, aliases, ordinary Responses, and terminal streaming"
+  log "Smoke passed: liveness, auth denial, aliases, required/automatic tools, ordinary Responses, and terminal streaming"
 )
 prepare_model_artifacts() {
   install_runtime_cache_helper

@@ -98,12 +98,14 @@ def validate_roster(roster: dict[str, Any]) -> None:
     baseline = _object(runtimes["baseline"], "text_models.primary.runtime_profiles.baseline")
     if baseline != {
         "runtime": "vllm", "speculative_method": "qwen3_5_mtp",
-        "draft_model_id": None, "status": "implement-first",
+        "draft_model_id": None, "tool_call_parser": "qwen3_coder", "status": "implement-first",
     }:
         raise RosterError("the baseline runtime must be vLLM with native qwen3_5_mtp")
     performance = _object(runtimes["performance"], "text_models.primary.runtime_profiles.performance")
     if performance.get("runtime") != "sglang" or performance.get("speculative_method") != "dflash":
         raise RosterError("the performance runtime must be SGLang with DFlash")
+    if performance.get("tool_call_parser") != "qwen3_coder":
+        raise RosterError("the performance runtime must retain the Qwen3.8 tool-call parser")
     if performance.get("draft_model_id") != "incoai/Qwen3.8-27B-DFlash2":
         raise RosterError("the DFlash runtime must use the incoai draft checkpoint")
     _revision(performance.get("draft_revision"), "text_models.primary.runtime_profiles.performance.draft_revision")

@@ -405,7 +405,7 @@ services:
           --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.40}" --generation-config vllm --max-model-len "${VLLM_MAX_MODEL_LEN:-131072}" \
           --max-num-seqs "${VLLM_MAX_NUM_SEQS:-2}" --max-num-batched-tokens "${VLLM_MAX_BATCHED_TOKENS:-8192}" --enable-chunked-prefill \
           --async-scheduling --enable-prefix-caching "$$@" --load-format fastsafetensors --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" \
-          --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_xml}" --default-chat-template-kwargs "$${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS}" \
+          --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_coder}" --default-chat-template-kwargs "$${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS}" \
           --enable-auto-tool-choice --no-enable-log-requests --disable-uvicorn-access-log
     secrets: [vllm_api_key]
     volumes: *text-volumes

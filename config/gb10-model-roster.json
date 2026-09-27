@@ -20,11 +20,13 @@
           "runtime": "vllm",
           "speculative_method": "qwen3_5_mtp",
           "draft_model_id": null,
+          "tool_call_parser": "qwen3_coder",
           "status": "implement-first"
         },
         "performance": {
           "runtime": "sglang",
           "speculative_method": "dflash",
+          "tool_call_parser": "qwen3_coder",
           "draft_model_id": "incoai/Qwen3.8-27B-DFlash2",
           "draft_revision": "dedf8df68adfb1afeaf7b7480c0a0243108177b4",
           "status": "benchmark-after-baseline"

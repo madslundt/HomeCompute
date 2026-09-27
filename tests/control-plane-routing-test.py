@@ -38,6 +38,9 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
             r"model: openai/automation-moe\s+"
             r"api_base: os\.environ/COMPUTE_AUTOMATION_BASE_URL",
         )
+        self.assertIn("drop_params: false", text)
+        self.assertRegex(text, r"(?s)model_name: home\s+litellm_params:\s+model: openai/home-fast")
+        self.assertRegex(text, r"(?s)model_name: assistant-canary\s+litellm_params:\s+model: openai/automation-moe")
 
     def test_maintenance_config_only_inverts_automation_priority(self) -> None:
         normal = LITELLM.read_text(encoding="utf-8")

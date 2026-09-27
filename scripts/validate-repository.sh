@@ -227,7 +227,7 @@ VLLM_SHM_SIZE=16gb
 VLLM_ATTENTION_BACKEND=flashinfer
 VLLM_MOE_BACKEND=marlin
 VLLM_REASONING_PARSER=qwen3
-VLLM_TOOL_CALL_PARSER=qwen3_xml
+VLLM_TOOL_CALL_PARSER=qwen3_coder
 TEXT_ARTIFACT_MAX_BYTES=25000000000
 TEXT_ARTIFACT_MAX_FILES=32
 EMBEDDING_ARTIFACT_MAX_BYTES=5000000000
@@ -298,7 +298,7 @@ jq -e --arg runtime_root "$temporary_root/runtime/runtime" '
   (.services["model-fetch"].command | join(" ") | contains("model-cache-integrity.py fetch") and contains("--max-cache-bytes")) and
   (.services["modality-fetch"].command | join(" ") | contains("model-cache-integrity.py fetch") and contains("--max-cache-bytes")) and
   (.services["text-primary"].environment.VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS == "{\"enable_thinking\":false}") and
-  (.services["text-primary"].command | join(" ") | contains("--no-enable-log-requests") and contains("--default-chat-template-kwargs") and (contains("--disable-log-requests") | not)) and
+  (.services["text-primary"].command | join(" ") | contains("--tool-call-parser \"qwen3_coder\"") and contains("--enable-auto-tool-choice") and contains("--no-enable-log-requests") and contains("--default-chat-template-kwargs") and (contains("--disable-log-requests") | not)) and
   (.services["embedding-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
   (.services["stt-primary"].command | join(" ") | contains("--no-enable-log-requests") and (contains("--disable-log-requests") | not)) and
   (.services["vision-primary"].command | join(" ") | contains("--no-enable-log-requests") and contains("--gpu-memory-utilization \"0.18\"") and (contains("--lora-extra-vocab-size") | not)) and
