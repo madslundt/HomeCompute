@@ -70,7 +70,7 @@ validate_config() {
   [[ "$HOME_ARTIFACT_MAX_BYTES:$HOME_ARTIFACT_MAX_FILES" == 13000000000:16 ]] || die "Artifact bounds changed"
   [[ "$GB10_BIND_ADDRESS:$HOME_MODEL_HOST_PORT" == 127.0.0.1:8006 ]] || die "home-fast must publish only on loopback port 8006"
   [[ "$HOME_MAX_MODEL_LEN:$HOME_MAX_NUM_SEQS:$HOME_MAX_BATCHED_TOKENS" == 32768:4:4096 ]] || die "Context/concurrency tuple changed"
-  [[ "$HOME_GPU_MEMORY_UTILIZATION" == 0.22 ]] || die "Memory envelope changed"
+  [[ "$HOME_GPU_MEMORY_UTILIZATION" == 0.24 ]] || die "Memory envelope changed"
   [[ "$HOME_DEFAULT_CHAT_TEMPLATE_KWARGS" == '{"enable_thinking":false}' ]] || die "Fast path must disable thinking"
   compose --profile prepare config --quiet
   command -v docker >/dev/null || die "docker is required"
