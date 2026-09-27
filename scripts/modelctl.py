@@ -31,6 +31,7 @@ def validate_env(deployment_id: str, catalog: dict[str, Any], environ: dict[str,
     deployment, artifact, runtime = deployment_tuple(deployment_id, catalog)
     runtime_config = deployment.get("runtime_config", {})
     key = lambda name: f"{prefix}{name}"
+    artifact_key = lambda name: f"TEXT_{name}" if not prefix else key(name)
     expected = {
         key("MODEL_ID"): artifact["upstream_model_id"],
         key("MODEL_REVISION"): artifact["revision"],
@@ -41,8 +42,8 @@ def validate_env(deployment_id: str, catalog: dict[str, Any], environ: dict[str,
         key("MODEL_PROVENANCE_URL"): artifact.get("provenance_url"),
         key("MODEL_WEIGHT_FORMAT"): artifact.get("weight_format"),
         key("CHAT_TEMPLATE_SHA256"): artifact.get("chat_template_sha256"),
-        key("ARTIFACT_MAX_BYTES"): None if "artifact_max_bytes" not in artifact else str(artifact["artifact_max_bytes"]),
-        key("ARTIFACT_MAX_FILES"): None if "artifact_max_files" not in artifact else str(artifact["artifact_max_files"]),
+        artifact_key("ARTIFACT_MAX_BYTES"): None if "artifact_max_bytes" not in artifact else str(artifact["artifact_max_bytes"]),
+        artifact_key("ARTIFACT_MAX_FILES"): None if "artifact_max_files" not in artifact else str(artifact["artifact_max_files"]),
         "VLLM_IMAGE": runtime.get("image"),
         key("MODEL_HOST_PORT" if prefix == "HOME_" else "HOST_PORT" if prefix else "VLLM_HOST_PORT"): str(deployment.get("compute_host_port", runtime_config.get("host_port", ""))),
         key("MAX_MODEL_LEN" if prefix else "VLLM_MAX_MODEL_LEN"): str(runtime_config.get("max_model_len", "")),
