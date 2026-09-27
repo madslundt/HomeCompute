@@ -227,7 +227,8 @@ def deploy_host(host: str, revision: str, *, sudo_nopasswd: bool = True,
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise OperatorError(f"{host}: deployment transport failed: {exc}") from exc
     if result.returncode:
-        raise OperatorError(f"{host}: deployment failed ({result.stderr.strip() or result.returncode})")
+        error = getattr(result, "stderr", None)
+        raise OperatorError(f"{host}: deployment failed ({error.strip() if error else result.returncode})")
     return (result.stdout or "").strip()
 
 
