@@ -15,12 +15,33 @@ install -d -m 0755 /srv/homecompute/releases
 install -d -m 0700 /var/lib/homecompute
 exec 9>/var/lib/homecompute/home-spark-deploy.lock
 flock -n 9 || { printf 'Another home-spark deployment is running.\n' >&2; exit 1; }
+source_repo=/home/madslundt/HomeCompute
+[[ -d "$source_repo" && -d "$source_repo/.git" ]] || {
+  printf 'Expected the HomeCompute source checkout at %s.\n' "$source_repo" >&2; exit 1;
+}
+source_owner="$(stat -c '%U' "$source_repo")"
+[[ "$source_owner" == madslundt ]] || {
+  printf 'Unexpected owner for the HomeCompute source checkout: %s\n' "$source_owner" >&2; exit 1;
+}
+git_source() { runuser -u "$source_owner" -- git -C "$source_repo" "$@"; }
+[[ "$(git_source branch --show-current)" == master ]] || {
+  printf 'The HomeCompute source checkout must be on master.\n' >&2; exit 1;
+}
+[[ -z $(git_source status --porcelain --untracked-files=all) ]] || {
+  printf 'The HomeCompute source checkout is dirty; preserving it: %s\n' "$source_repo" >&2; exit 1;
+}
+git_source fetch --no-tags https://github.com/madslundt/HomeCompute.git refs/heads/master
+source_revision="$(git_source rev-parse 'FETCH_HEAD^{commit}')"
+git_source merge-base --is-ancestor HEAD "$source_revision" || {
+  printf 'The HomeCompute source checkout has diverged from origin/master; preserving it.\n' >&2; exit 1;
+}
+git_source merge --ff-only "$source_revision"
 release="/srv/homecompute/releases/$revision"
 if [[ ! -d "$release" ]]; then
-  git clone --no-checkout https://github.com/madslundt/HomeCompute.git "$release"
+  git -c "safe.directory=$source_repo" clone --no-checkout "$source_repo" "$release"
 fi
 if ! git -C "$release" cat-file -e "$revision^{commit}" 2>/dev/null; then
-  git -C "$release" fetch --no-tags origin "$revision"
+  git -c "safe.directory=$source_repo" -C "$release" fetch --no-tags "$source_repo" "$revision"
 fi
 git -C "$release" cat-file -e "$revision^{commit}"
 
@@ -43,6 +64,7 @@ git -C "$release" checkout --detach "$revision"
 # Validate against the selected release. The default text-primary in this
 # Compose project is intentionally stopped in the current production roster;
 # do not make an update implicitly start that additional GPU process.
+"$release/scripts/setup-compute-node.sh" migrate-config
 "$release/scripts/setup-compute-node.sh" validate
 if [[ -n $(docker ps --quiet --filter status=running --filter label=com.docker.compose.service=text-primary) ]]; then
   # When this exact baseline is already serving, use its guarded install path

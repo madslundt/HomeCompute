@@ -60,10 +60,11 @@ tools="$(jq -cn \
   --argjson nix "$(present nix)" --argjson nixos_rebuild "$(present nixos-rebuild)" \
   --argjson flock "$(present flock)" --argjson awk "$(present awk)" \
   --argjson sha256sum "$(present sha256sum)" --argjson realpath "$(present realpath)" \
-  --argjson cmp "$(present cmp)" --argjson compose "$(docker compose version >/dev/null 2>&1 && echo true || echo false)" \
+  --argjson cmp "$(present cmp)" --argjson runuser "$(present runuser)" \
+  --argjson compose "$(docker compose version >/dev/null 2>&1 && echo true || echo false)" \
   --argjson sudo "$(present sudo)" \
   --argjson docker_access "$docker_access" --argjson sudo_nopasswd "$(sudo -n true >/dev/null 2>&1 && echo true || echo false)" \
-  '{git:$git,docker:$docker,jq:$jq,curl:$curl,python3:$python3,"nvidia-smi":$nvidia_smi,"nvidia-ctk":$nvidia_ctk,"nvidia-container-cli":$nvidia_container_cli,nix:$nix,"nixos-rebuild":$nixos_rebuild,flock:$flock,awk:$awk,sha256sum:$sha256sum,realpath:$realpath,cmp:$cmp,sudo:$sudo,"docker-compose-plugin":$compose,"docker-access":$docker_access,"sudo-nopasswd":$sudo_nopasswd}')"
+  '{git:$git,docker:$docker,jq:$jq,curl:$curl,python3:$python3,"nvidia-smi":$nvidia_smi,"nvidia-ctk":$nvidia_ctk,"nvidia-container-cli":$nvidia_container_cli,nix:$nix,"nixos-rebuild":$nixos_rebuild,flock:$flock,awk:$awk,sha256sum:$sha256sum,realpath:$realpath,cmp:$cmp,runuser:$runuser,sudo:$sudo,"docker-compose-plugin":$compose,"docker-access":$docker_access,"sudo-nopasswd":$sudo_nopasswd}')"
 jq -cn --arg host "$host" --arg os "$os_name" --arg kernel "$(uname -r)" \
   --arg revision "$revision" --arg current_target "$current_target" --arg gpu "$gpu" \
   --arg platform_updates "$platform_updates" --argjson containers "$containers" \
@@ -277,7 +278,7 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
             for host, item in preflight.items():
                 required = ("docker", "docker-compose-plugin", "sudo")
                 if host == "home-core": required += ("git", "nix", "nixos-rebuild", "flock", "jq")
-                else: required += ("git", "python3", "flock", "jq", "curl", "awk", "sha256sum", "realpath", "cmp", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli")
+                else: required += ("git", "python3", "flock", "jq", "curl", "awk", "sha256sum", "realpath", "cmp", "runuser", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli")
                 missing = [tool for tool in required if not item.get("required_tools", {}).get(tool, False)]
                 if missing:
                     preflight_errors.append(f"{host}: deployment preflight missing required tools/access: {', '.join(missing)}")
@@ -341,7 +342,7 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
                 docker_count = len(item["containers"]) if item["containers"] is not None else None
                 print(f"{'✓' if docker_count else '⚠'} Docker containers observed: {docker_count if docker_count is not None else 'unknown (no access)'}")
                 for tool, present in item.get("required_tools", {}).items():
-                    required = tool not in ("nix", "nixos-rebuild", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli") or host == "home-core" and tool in ("nix", "nixos-rebuild") or host == "home-spark" and tool.startswith("nvidia-")
+                    required = tool not in ("nix", "nixos-rebuild", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli", "runuser") or host == "home-core" and tool in ("nix", "nixos-rebuild") or host == "home-spark" and (tool.startswith("nvidia-") or tool == "runuser")
                     if required:
                         print(f"{'✓' if present else '✗'} {tool}: {'present' if present else 'missing'}")
                         issues = issues or not present

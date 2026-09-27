@@ -45,6 +45,7 @@ Commands:
   preflight  Read-only platform, Docker/NVIDIA, disk, and clock gates
   init       Create the service account, directories, config, and secret files
   firewall   Install/reapply and verify the persistent compute ingress policy
+  migrate-config  Migrate the trusted host config to this release's schema
   validate   Reject mutable artifacts and unsafe deployment inputs
   install    Validate, pull, preflight, acquire artifacts, deploy, and smoke
   up         Start an initialized and validated release
@@ -507,12 +508,19 @@ start_release() {
   firewall_policy apply; compose up -d text-primary; firewall_policy apply; firewall_policy verify; wait_ready
 }
 show_status() { validate_config false; compose ps; local url="http://${GB10_BIND_ADDRESS}:${VLLM_HOST_PORT}"; if curl --fail --silent --max-time 3 "$url/health" >/dev/null 2>&1; then log "Health endpoint: ready"; else warn "Health endpoint: unavailable"; fi; }
+migrate_configuration() {
+  require_root
+  migrate_config_if_needed
+  load_env
+  log "Configuration schema is current; configured values were preserved"
+}
 parse_options "$@"
 case "$COMMAND" in
   help) usage ;;
   preflight) load_env; preflight ;;
   init) initialize ;;
   firewall) configure_firewall ;;
+  migrate-config) migrate_configuration ;;
   validate) validate_config ;;
   install|rollback) deploy_release ;;
   up) start_release ;;

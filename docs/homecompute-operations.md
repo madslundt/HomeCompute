@@ -98,19 +98,22 @@ On Spark, `deploy-home-spark.sh` keeps small Git checkouts in
 `previous` pointers and an atomic revision file. This location is suitable for
 the code checkout because Spark already uses `/srv/gb10-ai` for HomeCompute
 application storage; model artifacts stay there and are not copied into
-releases. The script runs the guarded `setup-compute-node.sh install` workflow,
-which validates the catalog tuple, immutable image, cached artifacts, GPU,
-firewall and runtime smoke checks. It does not call `apt upgrade` or update
-DGX OS, kernel, drivers, CUDA, firmware, Docker, or NVIDIA Container Toolkit.
-Those remain vendor-managed.
+releases. Before creating a release, the script requires a clean `master`
+checkout at `/home/madslundt/HomeCompute`, fast-forwards that checkout from
+GitHub, and makes the selected exact-SHA release from it. A dirty or diverged
+source checkout is preserved and stops deployment. The script migrates older
+trusted compute configuration schemas before validation, preserving configured
+values. It validates the release against the host's configured compute tuple.
+It does not call `apt upgrade` or update DGX OS, kernel, drivers, CUDA, firmware,
+Docker, or NVIDIA Container Toolkit; those remain vendor-managed.
 
-Spark's wrapper validates the selected runtime configuration and only runs its
-install, readiness, and model smoke path if `text-primary` is already running.
-The current roster intentionally keeps that baseline stopped, so a normal Spark
-release will not start it as a side effect. In that case the wrapper records
-the repository release after validation; it does not claim the active
-automation-MoE, Gemma, speech, or adapter Compose projects have been reconciled.
-Those remain on their dedicated guarded lifecycles and qualification gates.
+If `text-primary` is already running, the wrapper runs its install, readiness,
+and model smoke path. The current roster intentionally keeps that baseline
+stopped, so a normal Spark release will not start it as a side effect. In that
+case the wrapper records the repository release after validation; it does not
+claim the active automation-MoE, Gemma, speech, or adapter Compose projects have
+been reconciled. Those remain on their dedicated guarded lifecycles and
+qualification gates.
 This preserves cold-swap behavior but means the Spark revision pointer tracks
 the application checkout, not a single atomic revision for every independently
 managed runtime project. Inspect `homecompute services` after deployment.
