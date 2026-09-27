@@ -23,9 +23,19 @@ if ! git -C "$release" cat-file -e "$revision^{commit}" 2>/dev/null; then
   git -C "$release" fetch --no-tags origin "$revision"
 fi
 git -C "$release" cat-file -e "$revision^{commit}"
-[[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]] || {
-  printf 'Release checkout is dirty; preserving it: %s\n' "$release" >&2; exit 1;
-}
+
+# A --no-checkout clone has an empty index and worktree, which Git reports as
+# staged deletions for every tracked path. Populate only that empty state so a
+# prior attempt by older versions of this wrapper is recoverable. Any checkout
+# containing files or index entries remains protected by the dirty check.
+if [[ -z $(git -C "$release" ls-files --cached) ]] &&
+   [[ -z $(find "$release" -mindepth 1 -maxdepth 1 ! -name .git -print -quit) ]]; then
+  git -C "$release" reset --hard "$revision"
+else
+  [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]] || {
+    printf 'Release checkout is dirty; preserving it: %s\n' "$release" >&2; exit 1;
+  }
+fi
 git -C "$release" checkout --detach "$revision"
 [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]] || {
   printf 'Release checkout became dirty; refusing deployment.\n' >&2; exit 1;
