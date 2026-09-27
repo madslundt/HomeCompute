@@ -46,6 +46,13 @@ class HomeComputeCliTests(unittest.TestCase):
         with self.assertRaises(hc.OperatorError):
             hc.parse_remote_output(json.dumps({"schema_version": 1, "host": "other", "containers": [], "failed_units": []}), "home-core")
 
+    def test_revision_falls_back_to_immutable_release_pointer(self):
+        sha = "e" * 40
+        payload = {"schema_version": 1, "host": "home-spark", "revision": None,
+                   "current_target": f"/srv/homecompute/releases/{sha}",
+                   "containers": None, "failed_units": []}
+        self.assertEqual(hc.parse_remote_output(json.dumps(payload), "home-spark")["revision"], sha)
+
     def test_unreachable_host_is_clear_and_strict_host_key_is_enabled(self):
         def runner(argv, **kwargs):
             self.assertIn("StrictHostKeyChecking=yes", argv)

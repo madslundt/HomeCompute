@@ -157,6 +157,10 @@ def parse_remote_output(stdout: str, host: str) -> dict[str, Any]:
     for key, expected in (("containers", list), ("failed_units", list)):
         if not isinstance(data.get(key), expected) and not (key == "containers" and data.get(key) is None):
             raise OperatorError(f"{host}: remote status field {key} is malformed")
+    if data.get("revision") is None and isinstance(data.get("current_target"), str):
+        pointer_revision = data["current_target"].rstrip("/").rsplit("/", 1)[-1]
+        if SHA_RE.fullmatch(pointer_revision):
+            data["revision"] = pointer_revision
     return data
 
 
