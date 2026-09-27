@@ -130,6 +130,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-021](adr/021-final-speech-stack-and-routing.md) | Final 2+2 speech roster, language routing, isolated runtimes, licenses, and qualification gates |
 | [ADR-022](adr/022-optional-home-core-inference.md) | Optional lightweight home-core inference, gated on qualification and routed only through LiteLLM |
 | [ADR-023](adr/023-n8n-automation-moe.md) | Opt-in Qwen3.6 MoE lane for Danish n8n tools; single-resident cold swap and no default Flash-Next |
+| [ADR-024](adr/024-model-artifact-deployment-capability-separation.md) | Separate artifacts, deployments, stable capability routes, and consumer authorization |
 
 ## Research and model evidence
 

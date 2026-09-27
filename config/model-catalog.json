@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "catalog_version": "2026-09-27-capability-refactor",
+  "runtime_profiles": {
+    "vllm-qwen": {
+      "family": "vllm",
+      "image": "nvcr.io/nvidia/vllm@sha256:d049bead397430803ac5b705d50094492f23782716677d746ab721e43f054cf6",
+      "supported_protocols": ["chat_completions", "responses"],
+      "capabilities": ["chat", "tools", "structured_output"],
+      "tool_call_parser": "qwen3_coder",
+      "reasoning_parser": "qwen3",
+      "default_thinking_mode": "disabled"
+    },
+    "vllm-gemma": {
+      "family": "vllm",
+      "image": "nvcr.io/nvidia/vllm@sha256:d049bead397430803ac5b705d50094492f23782716677d746ab721e43f054cf6",
+      "supported_protocols": ["chat_completions"],
+      "capabilities": ["chat", "tools", "structured_output"],
+      "tool_call_parser": "gemma",
+      "default_thinking_mode": "disabled"
+    }
+  },
+  "artifacts": {
+    "qwen36-35b-a3b-nvfp4": {
+      "upstream_model_id": "unsloth/Qwen3.6-35B-A3B-NVFP4",
+      "revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
+      "tokenizer_revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
+      "code_revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
+      "license_id": "apache-2.0",
+      "quantization": "NVFP4",
+      "chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+      "artifact_max_bytes": 28000000000,
+      "artifact_max_files": 32,
+      "max_context_tokens": 262144,
+      "runtime_profiles": ["vllm-qwen"],
+      "capabilities": ["chat", "tools", "structured_output"],
+      "qualification": {
+        "automation": "qualified",
+        "assistant": "candidate"
+      }
+    },
+    "gemma4-e4b-qat-w4a16-ct": {
+      "upstream_model_id": "google/gemma-4-E4B-it-qat-w4a16-ct",
+      "revision": "6cd26aaa2357fb2bad8c51699a7558a4d1a965bb",
+      "tokenizer_revision": "6cd26aaa2357fb2bad8c51699a7558a4d1a965bb",
+      "code_revision": "6cd26aaa2357fb2bad8c51699a7558a4d1a965bb",
+      "license_id": "apache-2.0",
+      "chat_template_sha256": "0a2c8073c878ab1da004bee933a998606537bbb62016310352c7285c3f01c5b5",
+      "artifact_max_bytes": 13000000000,
+      "artifact_max_files": 16,
+      "quantization": "QAT-W4A16",
+      "max_context_tokens": 32768,
+      "runtime_profiles": ["vllm-gemma"],
+      "capabilities": ["chat", "tools", "structured_output"],
+      "qualification": {"home": "qualified"}
+    },
+    "qwen38-27b-nvfp4": {
+      "upstream_model_id": "unsloth/Qwen3.8-27B-NVFP4",
+      "revision": "57926baca9a82b4d6906b43f2750d55315f5b10f",
+      "tokenizer_revision": "57926baca9a82b4d6906b43f2750d55315f5b10f",
+      "code_revision": "57926baca9a82b4d6906b43f2750d55315f5b10f",
+      "license_id": "apache-2.0",
+      "provenance_url": "https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4",
+      "weight_format": "compressed-tensors-safetensors",
+      "quantization": "NVFP4",
+      "chat_template_sha256": "12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce",
+      "artifact_max_bytes": 25000000000,
+      "artifact_max_files": 32,
+      "max_context_tokens": 262144,
+      "runtime_profiles": ["vllm-qwen"],
+      "capabilities": ["chat", "tools", "structured_output"],
+      "qualification": {}
+    }
+  },
+  "deployments": {
+    "automation-spark-primary": {
+      "artifact": "qwen36-35b-a3b-nvfp4",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "runtime_profile": "vllm-qwen",
+      "endpoint_env": "COMPUTE_AUTOMATION_BASE_URL",
+      "served_model_name": "automation-moe",
+      "context_tokens": 65536,
+      "concurrency": 4,
+      "lifecycle": "resident",
+      "availability": "active",
+      "priority": 10,
+      "runtime_config": {
+        "max_model_len": 131072,
+        "max_num_seqs": 4,
+        "max_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.4,
+        "moe_backend": "cutlass",
+        "fp8_moe_backend": "triton",
+        "tool_call_parser": "qwen3_coder",
+        "speculative_config": null,
+        "default_chat_template_kwargs": {"enable_thinking": false},
+        "host_port": 8005
+      }
+    },
+    "home-spark-primary": {
+      "artifact": "gemma4-e4b-qat-w4a16-ct",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "runtime_profile": "vllm-gemma",
+      "endpoint_env": "COMPUTE_HOME_BASE_URL",
+      "served_model_name": "home-fast",
+      "context_tokens": 32768,
+      "concurrency": 2,
+      "lifecycle": "resident",
+      "availability": "active",
+      "priority": 10,
+      "compute_host_port": 8006,
+      "runtime_config": {
+        "max_model_len": 32768,
+        "max_num_seqs": 4,
+        "max_batched_tokens": 4096,
+        "gpu_memory_utilization": 0.24,
+        "default_chat_template_kwargs": {"enable_thinking": false}
+      }
+    },
+    "general-spark-qwen38": {
+      "artifact": "qwen38-27b-nvfp4",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "runtime_profile": "vllm-qwen",
+      "compute_host_port": 8000,
+      "endpoint_env": "COMPUTE_OPENAI_BASE_URL",
+      "served_model_name": "assistant",
+      "context_tokens": 262144,
+      "concurrency": 1,
+      "lifecycle": "disabled",
+      "availability": "intentionally-stopped",
+      "priority": 10,
+      "runtime_config": {
+        "max_model_len": 131072,
+        "max_num_seqs": 2,
+        "max_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.4,
+        "attention_backend": "flashinfer",
+        "moe_backend": "marlin",
+        "reasoning_parser": "qwen3",
+        "tool_call_parser": "qwen3_coder",
+        "speculative_config": {"method": "qwen3_5_mtp", "num_speculative_tokens": 3},
+        "default_chat_template_kwargs": {"enable_thinking": false}
+      }
+    }
+  }
+}

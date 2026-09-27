@@ -57,6 +57,23 @@ client pin. Until it passes, cloud and GB10 are explicit whole-session modes.
 12. Profile identity, `principal_scope`, `data_domain`, and `visibility` are enforced before/below the model; prompt instructions never grant access.
 13. Existing deterministic home control remains independent of GB10 and the assistant.
 
+## 0.1 Model routing registry (staged)
+
+The text routing source now separates model artifact, runnable deployment,
+stable capability route, and LiteLLM consumer authorization. Artifact and
+deployment data live in `config/model-catalog.json`; stable route names,
+privacy, required protocols/capabilities/context, timeout profiles, and
+deployment order live in `config/capability-routes.json`. The deterministic
+renderer owns only LiteLLM's `model_list` block. It does not derive key access,
+firewall rules, runtime lifecycle, or fallback behavior from model metadata.
+
+Current stable generated routes are `automation` and `home`. The stopped
+Qwen3.8 service no longer contributes `auto`, `coding`, `research`, `meeting`,
+or `assistant` as active routes. `assistant-canary` remains a separate
+qualification route. The generated source configuration is not yet applied to
+the live gateway, and n8n still has its scoped `automation-moe` credential.
+ADR-024 records the staged migration and its remaining promotion gates.
+
 ## 1. System context
 
 ```mermaid

@@ -45,7 +45,12 @@ class HomeAssistantModelDeploymentTest(unittest.TestCase):
         self.assertIn("--language-model-only", command)
         self.assertIn("--tool-call-parser gemma4", command)
         self.assertIn("--reasoning-parser gemma4", command)
-        self.assertIn('--gpu-memory-utilization "0.22"', command)
+        expected_gpu_utilization = next(
+            line.partition("=")[2]
+            for line in ENV.read_text().splitlines()
+            if line.startswith("HOME_GPU_MEMORY_UTILIZATION=")
+        )
+        self.assertIn(f'--gpu-memory-utilization "{expected_gpu_utilization}"', command)
         self.assertEqual(primary["environment"]["VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS"], '{"enable_thinking":false}')
         self.assertTrue(primary["read_only"])
         self.assertEqual(primary["cap_drop"], ["ALL"])

@@ -24,6 +24,33 @@ would otherwise introduce another credential and prompt/response retention
 surface. Add a LiteLLM-dedicated Redis/Valkey only before enabling multiple
 workers/replicas or after explicitly approving response caching and retention.
 
+## Model routes
+
+The LiteLLM `model_list` is generated from
+[`config/model-catalog.json`](../../config/model-catalog.json) and
+[`config/capability-routes.json`](../../config/capability-routes.json):
+
+```bash
+python3 scripts/model_registry.py validate
+python3 scripts/model_registry.py check
+python3 scripts/model_registry.py render
+```
+
+The renderer changes only the `model_list` block. Key scopes, authentication,
+privacy/logging, database configuration, retries, and transport remain explicit
+and reviewed. The current generated routes include `automation` and `home`,
+retain the separately authorized `automation-moe` migration route, and retain
+the isolated `assistant-canary`. Disabled aliases backed by the stopped
+Qwen3.8 service are omitted. The cold CPU automation standby is not included in
+ordinary routing; its existing start/switch procedure remains an operator-run
+maintenance action.
+
+Home and automation have per-deployment request budgets of 20 and 120 seconds.
+Those values are initial budgets, not final p95/p99-based SLOs. Verify timeout
+behavior against the pinned LiteLLM 1.99.1 image with synthetic refused,
+non-responsive, error, and streaming upstreams before promoting the generated
+config. Model generation does not create, broaden, or revoke any virtual key.
+
 Caddy remains in this project while it fronts only this gateway. The official
 image starts as root, but it listens on unprivileged container port 8443, has
 only its binary-required `NET_BIND_SERVICE` capability, has a read-only root filesystem, and can write

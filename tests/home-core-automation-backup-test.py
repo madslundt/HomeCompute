@@ -100,14 +100,10 @@ class HomeCoreAutomationBackupTest(unittest.TestCase):
         ).stdout.splitlines()
         self.assertNotIn("automation-backup", default)
 
-    def test_maintenance_route_explicitly_inverts_automation_priority(self) -> None:
+    def test_cold_standby_is_only_present_in_the_explicit_maintenance_config(self) -> None:
         normal = NORMAL_CONFIG.read_text(encoding="utf-8")
         maintenance = BACKUP_CONFIG.read_text(encoding="utf-8")
-        self.assertRegex(
-            normal,
-            r"(?s)model: openai/automation\s+order: 1.*?"
-            r"model: openai/automation-backup.*?order: 2",
-        )
+        self.assertNotIn("automation-backup", normal)
         self.assertRegex(
             maintenance,
             r"(?s)model: openai/automation-backup.*?order: 1.*?"

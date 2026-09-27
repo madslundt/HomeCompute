@@ -15,101 +15,78 @@ assert SPEC and SPEC.loader
 ROSTER_MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ROSTER_MODULE)
 ROSTER = json.loads((ROOT / "config" / "gb10-model-roster.json").read_text(encoding="utf-8"))
-ROUTER_POLICY = json.loads((ROOT / "config" / "model-router-policy.json").read_text(encoding="utf-8"))
 
 
-class RosterTests(unittest.TestCase):
-    def test_checked_in_roster_is_valid_and_bounded(self) -> None:
+class RosterInvariantTests(unittest.TestCase):
+    def test_current_roster_is_valid(self) -> None:
         ROSTER_MODULE.validate_roster(ROSTER)
-        self.assertEqual(1, ROSTER["hardware"]["resident_text_model_limit"])
-        self.assertEqual(3, ROSTER["hardware"]["retained_text_model_limit"])
-        self.assertEqual({"primary", "automation_moe", "heavy"}, set(ROSTER["text_models"]))
-        self.assertEqual(
-            "qwen3_coder",
-            ROSTER["text_models"]["primary"]["runtime_profiles"]["baseline"]["tool_call_parser"],
-        )
-        self.assertEqual(
-            "qwen3_coder",
-            ROSTER["text_models"]["primary"]["runtime_profiles"]["performance"]["tool_call_parser"],
-        )
 
-    def test_primary_and_draft_checkpoints_are_fixed(self) -> None:
+    def test_model_replacement_does_not_change_validator_contract(self) -> None:
         roster = copy.deepcopy(ROSTER)
-        roster["text_models"]["primary"]["model_id"] = "RadixArk/Qwen3.8-27B-NVFP4"
-        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "production workhorse"):
-            ROSTER_MODULE.validate_roster(roster)
-
-        roster = copy.deepcopy(ROSTER)
-        roster["text_models"]["primary"]["runtime_profiles"]["performance"]["draft_model_id"] = (
-            "syvai/Qwen3.8-27B-DFlash2-W4A16"
-        )
-        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "incoai draft"):
-            ROSTER_MODULE.validate_roster(roster)
-
-    def test_runtime_order_is_baseline_then_performance(self) -> None:
-        roster = copy.deepcopy(ROSTER)
-        roster["deployment_order"][0:2] = ["benchmark.baseline", "primary.runtime_profiles.baseline"]
-        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "deployment_order"):
-            ROSTER_MODULE.validate_roster(roster)
-
-    def test_flash_next_is_exclusive_and_uses_blazux(self) -> None:
-        roster = copy.deepcopy(ROSTER)
-        roster["text_models"]["heavy"]["activation"] = "load-on-demand"
-        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "operator-exclusive cold swap"):
-            ROSTER_MODULE.validate_roster(roster)
-
-        roster = copy.deepcopy(ROSTER)
-        roster["text_models"]["heavy"]["recipe"]["url"] = "https://example.invalid/recipe"
-        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "Blazux"):
-            ROSTER_MODULE.validate_roster(roster)
-
-    def test_automation_lane_is_qwen36_and_qualification_gated(self) -> None:
-        automation = ROSTER["text_models"]["automation_moe"]
-        self.assertEqual("unsloth/Qwen3.6-35B-A3B-NVFP4", automation["model_id"])
-        self.assertEqual(["automation-moe"], automation["roles"])
-        self.assertEqual("operator-exclusive", automation["activation"])
-        self.assertEqual("qwen3_coder", automation["runtime_profile"]["tool_call_parser"])
-
-    def test_required_exclusions_cannot_be_removed(self) -> None:
-        for model_id in ROSTER_MODULE.REQUIRED_EXCLUSIONS:
-            with self.subTest(model_id=model_id):
-                roster = copy.deepcopy(ROSTER)
-                roster["excluded_models"].remove(model_id)
-                with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "exclusions are missing"):
-                    ROSTER_MODULE.validate_roster(roster)
-
-    def test_service_models_licenses_and_languages_are_contractual(self) -> None:
-        for role in ROSTER_MODULE.EXPECTED_SERVICES:
-            with self.subTest(role=role):
-                roster = copy.deepcopy(ROSTER)
-                roster["services"][role]["model_id"] = "example/incorrect-model"
-                with self.assertRaisesRegex(ROSTER_MODULE.RosterError, f"services.{role}"):
-                    ROSTER_MODULE.validate_roster(roster)
-
-    def test_speech_runtime_groups_are_isolated(self) -> None:
-        groups = [entry["runtime_profile"]["isolation_group"] for entry in ROSTER["services"].values()]
-        self.assertEqual(len(groups), len(set(groups)))
-        self.assertEqual(">=0.19,<0.20", ROSTER["services"]["stt_danish"]["runtime_profile"]["version_constraint"])
-        self.assertEqual(">=0.15,<0.16", ROSTER["services"]["tts_danish"]["runtime_profile"]["version_constraint"])
-
-    def test_supporting_services_are_not_primary_routes(self) -> None:
-        supporting = ROSTER["supporting_services"]
-        self.assertEqual("evaluate-later-not-primary", supporting["stt_danish_later_evaluation"]["disposition"])
-        self.assertNotIn("speaker_diarization", ROSTER["operating_profiles"]["normal"]["speech_services"])
-
-    def test_router_contains_the_three_selected_text_models(self) -> None:
-        primary = ROSTER["text_models"]["primary"]
-        automation = ROSTER["text_models"]["automation_moe"]
-        heavy = ROSTER["text_models"]["heavy"]
-        expected = {
-            f"qwen3.8-27b-nvfp4@{primary['revision']}",
-            f"qwen3.6-35b-a3b-nvfp4@{automation['revision']}",
-            f"qwen3.8-flash-next-nvfp4@{heavy['revision']}",
+        replacement = copy.deepcopy(roster["text_models"]["primary"])
+        replacement["model_id"] = "example/next-generation-model"
+        replacement["revision"] = "a" * 40
+        replacement["license_id"] = "apache-2.0"
+        replacement["disposition"] = "candidate"
+        replacement["roles"] = ["coding"]
+        roster["text_models"] = {
+            "coding_candidate": replacement,
+            "small_helper": {
+                "model_id": "example/small-helper",
+                "revision": "sha256:" + "b" * 64,
+                "license_id": "mit",
+                "disposition": "candidate",
+                "runtime_profile": {"runtime": "llamacpp-gguf"},
+            },
         }
-        self.assertEqual(expected, set(ROUTER_POLICY["models"]))
-        self.assertEqual(1, ROUTER_POLICY["qualification"]["resident_text_model_limit"])
-        self.assertEqual("pending", ROUTER_POLICY["qualification"]["status"])
-        self.assertEqual(next(name for name in expected if name.startswith("qwen3.8-27b")), ROUTER_POLICY["qualification"]["selected_primary"])
+        roster["operating_profiles"] = {
+            "normal": {"text_model": "coding_candidate"},
+            "candidate": {"text_model": "small_helper", "dynamic_router_activation": False},
+        }
+        ROSTER_MODULE.validate_roster(roster)
+
+    def test_runtime_parser_is_data_not_a_fixed_platform_requirement(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        roster["text_models"]["primary"]["runtime_profiles"]["baseline"] = {
+            "runtime": "sglang-qwen",
+            "tool_call_parser": "new-parser",
+            "status": "candidate",
+        }
+        ROSTER_MODULE.validate_roster(roster)
+
+    def test_revision_must_be_immutable(self) -> None:
+        for invalid in ("main", "", "sha256:1234", "A" * 40):
+            with self.subTest(invalid=invalid):
+                roster = copy.deepcopy(ROSTER)
+                roster["text_models"]["primary"]["revision"] = invalid
+                with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "immutable"):
+                    ROSTER_MODULE.validate_roster(roster)
+
+    def test_conflicting_revisions_for_same_model_are_rejected(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        second = copy.deepcopy(roster["text_models"]["primary"])
+        second["revision"] = "a" * 40
+        roster["services"]["additional_role"] = second
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "conflicting immutable revisions"):
+            ROSTER_MODULE.validate_roster(roster)
+
+    def test_route_references_must_resolve(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        roster["operating_profiles"]["normal"]["text_model"] = "missing-artifact"
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "unknown artifact"):
+            ROSTER_MODULE.validate_roster(roster)
+
+    def test_memory_and_lifecycle_limits_are_consistent(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        roster["hardware"]["resident_text_model_limit"] = 4
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "retained_text_model_limit"):
+            ROSTER_MODULE.validate_roster(roster)
+
+    def test_configuration_rejects_secret_bearing_fields(self) -> None:
+        roster = copy.deepcopy(ROSTER)
+        roster["text_models"]["primary"]["api_key"] = "never-commit"
+        with self.assertRaisesRegex(ROSTER_MODULE.RosterError, "secret-bearing"):
+            ROSTER_MODULE.validate_roster(roster)
 
 
 if __name__ == "__main__":

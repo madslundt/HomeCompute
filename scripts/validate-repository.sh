@@ -97,14 +97,17 @@ python3 -m unittest "$REPO_ROOT/tests/benchmark_correctness_test.py"
 python3 "$REPO_ROOT/tests/model-update-check-test.py"
 python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/speech-routing-policy-test.py"
-python3 "$REPO_ROOT/tests/model-router-policy-test.py"
+python3 "$REPO_ROOT/tests/model-registry-test.py"
+python3 "$REPO_ROOT/tests/modelctl-test.py"
+python3 "$REPO_ROOT/tests/client-model-access-test.py"
+python3 "$REPO_ROOT/tests/litellm-routing-integration-test.py"
 python3 "$REPO_ROOT/tests/control-plane-routing-test.py"
 python3 "$REPO_ROOT/scripts/gb10_model_roster.py" \
   --roster "$REPO_ROOT/config/gb10-model-roster.json"
+python3 "$REPO_ROOT/scripts/model_registry.py" validate
+python3 "$REPO_ROOT/scripts/model_registry.py" check
 python3 "$REPO_ROOT/scripts/speech_routing_policy.py" \
   --policy "$REPO_ROOT/config/speech-routing-policy.json"
-python3 "$REPO_ROOT/scripts/model_router_policy.py" validate \
-  --policy "$REPO_ROOT/config/model-router-policy.json"
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/smoke.json" \
   --release "$REPO_ROOT/benchmarks/manifests/release.example.json"
@@ -186,6 +189,7 @@ AUTOMATION_MODEL_REVISION=739af1e7aac320af1682ed1e0cce369af4c5265d
 AUTOMATION_TOKENIZER_REVISION=739af1e7aac320af1682ed1e0cce369af4c5265d
 AUTOMATION_CODE_REVISION=739af1e7aac320af1682ed1e0cce369af4c5265d
 AUTOMATION_MODEL_LICENSE_ID=apache-2.0
+AUTOMATION_MODEL_QUANTIZATION=NVFP4
 AUTOMATION_CHAT_TEMPLATE_SHA256=e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259
 AUTOMATION_ARTIFACT_MAX_BYTES=28000000000
 AUTOMATION_ARTIFACT_MAX_FILES=32

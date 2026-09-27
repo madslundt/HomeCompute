@@ -51,10 +51,10 @@ def main(argv=None):
     parser.add_argument("message", nargs="*", help="Text sent as the user message")
     parser.add_argument(
         "--model",
-        default="automation-moe",
+        default="automation",
         help=(
-            "Requested HomeCompute alias (default: automation-moe); this does not grant access. "
-            "Documented client keys currently allow only automation-moe."
+            "Requested stable HomeCompute capability (default: automation); this does not grant access. "
+            "The deployed client credentials still need migration to the stable alias."
         ),
     )
     parser.add_argument("--tools", action="store_true", help="Offer the example get_temperature function")

@@ -9,10 +9,11 @@ they do not use them as production configuration in place.
 | `compute-node.env.example` | `setup-compute-node.sh`, `setup-compute-modalities.sh` | Immutable text and staged modality artifact tuples, exact private ports, bind policy, and compute limits |
 | `plapre-tts.env.example` | `setup-compute-plapre.sh` | Pinned Plapre/Kanade/HiFT tuple, Danish voice gate, resource bounds, and Wyoming publication policy |
 | `hviske-stt.env.example` | `setup-compute-hviske-stt.sh` | Pinned Hviske v5.3 tuple, license decision, bounded transcription, and Wyoming publication policy |
-| `gb10-model-roster.json` | `gb10_model_roster.py`, operators, and deployment profiles | Final two-model text roster, four speech selections, immutable revisions, cold-swap policy, and deployment order |
+| `model-catalog.json` | `scripts/model_registry.py` and the LiteLLM renderer | Immutable text artifacts, supported runtime profiles, deployment identities, endpoint environment names, lifecycle, and qualification evidence |
+| `capability-routes.json` | `scripts/model_registry.py` and the LiteLLM renderer | Stable capabilities, deployment mapping, local-only policy, context requirements, and named timeout profiles |
+| `gb10-model-roster.json` | `gb10_model_roster.py` and GB10 installation planning | Hardware-scoped model and modality staging inventory; generic structural validation only |
 | `speech-routing-policy.json` | `speech_routing_policy.py` and future speech adapters | Inactive Danish/non-Danish STT/TTS routes, fallback behavior, and license/voice gates |
 | `tts-qualification.json` | `tts-qualification.py` | Danish phrase set, 750 ms/RTF/listening gates, and ASR/resynthesis recovery scenarios |
-| `model-router-policy.json` | `model_router_policy.py` and the future LiteLLM routing integration | Qualification-gated aliases, model inventory, client permissions, and the one-resident text-model limit |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, selected compute transport, `/srv/state`, and sops-nix runtime secret paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
 | `wyoming-stt.env.example` | `deploy/wyoming-stt/compose.yaml` | Pinned CPU STT image, Danish `small-int8` settings, explicit LAN binding, and bounded resources |
@@ -32,18 +33,24 @@ file. The optional compute SSH fallback key and pinned host-key file live under
 root-owned `/etc/homecompute/compute-tunnel`; only their paths and transport
 selection are configuration.
 
-The compute template now pins the selected Qwen3.8-27B vLLM/native-MTP
-baseline. Its older embedding, vision, Whisper, and Piper fields support only
-the pre-decision modality scaffold. They are not members of the final roster
-and must not be installed as the new speech stack. Replace that scaffold with
-separately pinned Hviske, Whisper Turbo, Plapre, and Qwen3-TTS runtime profiles
-before enabling speech in production.
+`model-catalog.json` and `capability-routes.json` are the source of truth for
+the LiteLLM text route section. `scripts/model_registry.py render` regenerates
+only `model_list`; `check` detects drift. Authentication, key scopes, logging,
+database, and network settings remain explicit in LiteLLM configuration and
+are not inferred from registry entries. Candidate deployments do not become
+stable capability routes automatically.
 
-`gb10-model-roster.json` is the selection authority. It permits one resident
-text model and two retained text models: Qwen3.8-27B plus Flash-Next. The
-checked-in compute environment implements the first vLLM/native-MTP stage;
-SGLang/DFlash, speech, and Flash-Next still require audited runtime images. The
-two text models must never be translated into simultaneous containers.
+The GB10 roster remains an installation plan for text and speech artifacts;
+its validator checks immutable references and internal consistency rather than
+requiring a fixed set of model winners. `setup-compute-node.sh` still has a
+guarded model-specific workflow and is scheduled for a later incremental
+`modelctl` migration. Do not treat catalog membership alone as a production
+promotion or as permission to add a firewall route.
+
+The checked-in timeout values are initial operational budgets, not measured
+final latency SLOs. Recent isolated Danish text/tool calls completed in under a
+second, but production p95/p99 and silent-stream behavior still need measured
+failure-injection results before declaring those budgets qualified.
 
 Configuration records artifact identity only. Never place API keys, audio,
 images, rendered document pages, transcripts, or responses in the environment

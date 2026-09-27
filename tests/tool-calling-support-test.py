@@ -82,15 +82,17 @@ class ToolCallSmokeTests(unittest.TestCase):
         self.assertEqual(["required", "auto"], [body["tool_choice"] for body in received])
         self.assertTrue(all(body["tools"][0]["function"]["name"] == "get_temperature" for body in received))
 
-    def test_compute_default_uses_qwen_parser_for_all_served_aliases(self) -> None:
+    def test_compute_default_uses_qwen_parser_for_internal_deployment(self) -> None:
         compose = (ROOT / "deploy" / "compute-node" / "compose.yaml").read_text()
         self.assertIn('--tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_coder}"', compose)
         self.assertIn("--enable-auto-tool-choice", compose)
         setup = (ROOT / "scripts" / "setup-compute-node.sh").read_text()
-        self.assertIn("flashinfer:marlin:qwen3:qwen3_coder", setup)
+        self.assertIn('python3 "$MODELCTL" validate --deployment "$MODEL_DEPLOYMENT_ID"', setup)
+        self.assertNotIn("Only the pinned Qwen3.8-27B NVFP4 artifact is supported", setup)
         smoke = (ROOT / "scripts" / "setup-compute-node.sh").read_text()
+        self.assertIn("general-spark-qwen38", smoke)
         for alias in ("auto", "coding", "automation", "research", "home", "meeting", "assistant"):
-            self.assertIn(alias, smoke)
+            self.assertNotIn(f'--model "{alias}"', smoke)
         self.assertIn("--choices required auto", smoke)
 
     def test_other_serving_profiles_have_tool_parsers_and_smoke_coverage(self) -> None:

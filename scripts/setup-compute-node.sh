@@ -8,13 +8,14 @@ COMPOSE_FILE="$REPO_ROOT/deploy/compute-node/compose.yaml"
 ENV_TEMPLATE="$REPO_ROOT/config/compute-node.env.example"
 FIREWALL_HELPER="$SCRIPT_DIR/configure-compute-firewall.sh"
 CACHE_INTEGRITY_HELPER="$SCRIPT_DIR/model-cache-integrity.py"
+MODELCTL="$SCRIPT_DIR/modelctl.py"
 EDGE_PROXY_HELPER="$SCRIPT_DIR/tcp-edge-proxy.py"
 SECRET_INITIALIZER="$SCRIPT_DIR/initialize-compute-secrets.py"
 CONFIG_MIGRATOR="$SCRIPT_DIR/migrate-compute-config.py"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/config.sh"
 COMPUTE_CONFIG_KEYS=(
-  COMPUTE_NODE_NAME VLLM_IMAGE MODEL_ID MODEL_REVISION TOKENIZER_REVISION CODE_REVISION
+  COMPUTE_NODE_NAME MODEL_DEPLOYMENT_ID VLLM_IMAGE MODEL_ID MODEL_REVISION TOKENIZER_REVISION CODE_REVISION
   MODEL_PROVENANCE_URL MODEL_LICENSE_ID MODEL_WEIGHT_FORMAT MODEL_QUANTIZATION CHAT_TEMPLATE_SHA256
   GB10_ROOT GB10_RUNTIME_UID GB10_RUNTIME_GID GB10_BIND_ADDRESS COMPUTE_HOST_PORTS
   VLLM_HOST_PORT EMBEDDING_HOST_PORT VISION_HOST_PORT STT_HOST_PORT TTS_HOST_PORT AUTOMATION_HOST_PORT WYOMING_TTS_HOST_PORT PLAPRE_WYOMING_PORT HVISKE_WYOMING_PORT GATEWAY_CIDR
@@ -23,7 +24,7 @@ COMPUTE_CONFIG_KEYS=(
   VLLM_ATTENTION_BACKEND VLLM_MOE_BACKEND VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER
   VLLM_SPECULATIVE_CONFIG VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS ALLOW_UNSUPPORTED_HOST
   AUTOMATION_MODEL_ID AUTOMATION_MODEL_REVISION AUTOMATION_TOKENIZER_REVISION AUTOMATION_CODE_REVISION
-  AUTOMATION_MODEL_LICENSE_ID AUTOMATION_CHAT_TEMPLATE_SHA256 AUTOMATION_ARTIFACT_MAX_BYTES
+  AUTOMATION_MODEL_LICENSE_ID AUTOMATION_MODEL_QUANTIZATION AUTOMATION_CHAT_TEMPLATE_SHA256 AUTOMATION_ARTIFACT_MAX_BYTES
   AUTOMATION_ARTIFACT_MAX_FILES AUTOMATION_MAX_MODEL_LEN AUTOMATION_MAX_NUM_SEQS
   AUTOMATION_MAX_BATCHED_TOKENS AUTOMATION_GPU_MEMORY_UTILIZATION AUTOMATION_MOE_BACKEND AUTOMATION_FP8_MOE_BACKEND
   AUTOMATION_TOOL_CALL_PARSER AUTOMATION_SPECULATIVE_CONFIG AUTOMATION_DEFAULT_CHAT_TEMPLATE_KWARGS
@@ -81,17 +82,19 @@ parse_options() {
   done
 }
 config_needs_migration() {
-  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_plapre=false saw_hviske=false
+  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_plapre=false saw_hviske=false saw_model_deployment=false
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" != COMPUTE_HOST_PORTS=* ]] || saw_ports=true
     [[ "$line" != HF_CACHE_MAX_BYTES=* ]] || saw_budget=true
     [[ "$line" != VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS=* ]] || saw_template_defaults=true
     [[ "$line" != AUTOMATION_MODEL_ID=* ]] || saw_automation=true
+    [[ "$line" != AUTOMATION_MODEL_QUANTIZATION=* ]] || saw_automation_quantization=true
     [[ "$line" != PLAPRE_WYOMING_PORT=* ]] || saw_plapre=true
     [[ "$line" != HVISKE_WYOMING_PORT=* ]] || saw_hviske=true
+    [[ "$line" != MODEL_DEPLOYMENT_ID=* ]] || saw_model_deployment=true
     [[ "$line" != FIREWALL_CONFIRMED=* ]] || return 0
   done <"$ENV_FILE"
-  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_plapre" == false || "$saw_hviske" == false ]]
+  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_automation_quantization" == false || "$saw_plapre" == false || "$saw_hviske" == false || "$saw_model_deployment" == false ]]
 }
 migrate_config_if_needed() {
   local temporary
@@ -183,7 +186,7 @@ validate_init_paths() {
 validate_config() {
   local registry_secret="${1:-true}" verify_firewall="${2:-true}" value mode
   load_env; require_command jq
-  for value in COMPUTE_NODE_NAME VLLM_IMAGE MODEL_ID MODEL_REVISION TOKENIZER_REVISION CODE_REVISION \
+  for value in COMPUTE_NODE_NAME MODEL_DEPLOYMENT_ID VLLM_IMAGE MODEL_ID MODEL_REVISION TOKENIZER_REVISION CODE_REVISION \
     MODEL_PROVENANCE_URL MODEL_LICENSE_ID MODEL_WEIGHT_FORMAT MODEL_QUANTIZATION CHAT_TEMPLATE_SHA256 \
     GB10_ROOT GB10_RUNTIME_UID GB10_RUNTIME_GID GB10_BIND_ADDRESS VLLM_HOST_PORT VLLM_API_KEY_FILE \
     HF_TOKEN_FILE MIN_FREE_DISK_GIB VLLM_MAX_MODEL_LEN VLLM_MAX_NUM_SEQS VLLM_MAX_BATCHED_TOKENS \
@@ -200,6 +203,7 @@ validate_config() {
   [[ "$CHAT_TEMPLATE_SHA256" =~ ^[a-fA-F0-9]{64}$ ]] || die "CHAT_TEMPLATE_SHA256 must be a 64-hex digest"
   [[ "$MODEL_PROVENANCE_URL" =~ ^https://[^[:space:]]+$ ]] || die "MODEL_PROVENANCE_URL must use HTTPS"
   [[ "$MODEL_LICENSE_ID" =~ ^[a-zA-Z0-9._+-]+$ && "$MODEL_WEIGHT_FORMAT" =~ ^[a-zA-Z0-9._-]+$ && "$MODEL_QUANTIZATION" =~ ^[a-zA-Z0-9._-]+$ ]] || die "Malformed provenance metadata"
+  [[ "$MODEL_DEPLOYMENT_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "MODEL_DEPLOYMENT_ID is malformed"
   validate_init_paths
   [[ "$GB10_RUNTIME_UID" =~ ^[0-9]+$ && "$GB10_RUNTIME_GID" =~ ^[0-9]+$ ]] || die "Runtime identity must be numeric"
   id gb10-ai >/dev/null 2>&1 || die "gb10-ai service account is missing (run init)"
@@ -217,13 +221,7 @@ validate_config() {
   if [[ ! "$VLLM_GPU_MEMORY_UTILIZATION" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v n="$VLLM_GPU_MEMORY_UTILIZATION" 'BEGIN {exit !(n>=.20 && n<=.90)}'; then die "GPU memory utilization must be 0.20 through 0.90"; fi
   [[ "$VLLM_SHM_SIZE" =~ ^[0-9]+[mMgG][bB]?$ ]] || die "Invalid VLLM_SHM_SIZE"
   for value in "$VLLM_ATTENTION_BACKEND" "$VLLM_MOE_BACKEND" "$VLLM_REASONING_PARSER" "$VLLM_TOOL_CALL_PARSER"; do [[ "$value" =~ ^[a-zA-Z0-9_.-]+$ ]] || die "Malformed backend/parser"; done
-  [[ "$MODEL_ID" == unsloth/Qwen3.8-27B-NVFP4 && "$MODEL_REVISION" == 57926baca9a82b4d6906b43f2750d55315f5b10f && "$TOKENIZER_REVISION" == "$MODEL_REVISION" && "$CODE_REVISION" == "$MODEL_REVISION" ]] || die "Only the pinned Qwen3.8-27B NVFP4 artifact is supported"
-  [[ "$MODEL_PROVENANCE_URL" == https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4 && "${MODEL_LICENSE_ID,,}" == apache-2.0 && "${MODEL_WEIGHT_FORMAT,,}" == compressed-tensors-safetensors && "${MODEL_QUANTIZATION,,}" == nvfp4 ]] || die "Qwen3.8 provenance metadata changed"
-  [[ "$CHAT_TEMPLATE_SHA256" == 12827f24b742ea4e80cdc12dbcf9622227056b9f797252a3149263d4f9aaadce ]] || die "Qwen3.8 chat template digest changed"
-  [[ "$VLLM_ATTENTION_BACKEND:$VLLM_MOE_BACKEND:$VLLM_REASONING_PARSER:$VLLM_TOOL_CALL_PARSER" == flashinfer:marlin:qwen3:qwen3_coder ]] || die "Qwen3.8 backend/parser recipe changed"
-  [[ "${VLLM_SPECULATIVE_CONFIG:-}" == '{"method":"qwen3_5_mtp","num_speculative_tokens":3}' ]] || die "Qwen3.8 baseline requires native qwen3_5_mtp"
-  [[ "$VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS" == '{"enable_thinking":false}' ]] ||
-    die "Qwen3.8 normal lane must disable thinking by default"
+  python3 "$MODELCTL" validate --deployment "$MODEL_DEPLOYMENT_ID" || die "Compute environment does not match its model-catalog deployment"
   [[ "$registry_secret" != true ]] || check_secret_file HF_TOKEN_FILE; check_secret_file VLLM_API_KEY_FILE
   require_command docker; docker compose version >/dev/null; compose config --quiet
   log "Configuration is complete, immutable, firewall-bound, and Compose-valid"
@@ -461,19 +459,18 @@ smoke_test() (
   denial="$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "$base_url/v1/models")"; [[ "$denial" == 401 ]] || die "Missing credentials were not rejected with HTTP 401"
   denial="$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' -H 'Authorization: Bearer invalid-smoke-credential' "$base_url/v1/models")"; [[ "$denial" == 401 ]] || die "Invalid credentials were not rejected with HTTP 401"
   models_json="$(curl --fail --silent --show-error --max-time 30 --header "@$auth_header" "$base_url/v1/models")"
-  for alias in auto coding automation research home meeting assistant; do jq -e --arg alias "$alias" '.data|any(.id==$alias)' <<<"$models_json" >/dev/null || die "Missing served alias: $alias"; done
-  for alias in auto coding automation research home meeting assistant; do
-    python3 "$SCRIPT_DIR/tool_call_smoke.py" --base-url "$base_url" --model "$alias" \
-      --api-key-file "$VLLM_API_KEY_FILE" --choices required auto || die "Tool-call smoke failed for alias: $alias"
-  done
-  responses_json="$(curl --fail --silent --show-error --max-time 300 --header "@$auth_header" -H 'Content-Type: application/json' --data '{"model":"automation","input":"Reply with exactly READY.","max_output_tokens":16}' "$base_url/v1/responses")"
+  alias=general-spark-qwen38
+  jq -e --arg alias "$alias" '.data|any(.id==$alias)' <<<"$models_json" >/dev/null || die "Missing internal deployment name: $alias"
+  python3 "$SCRIPT_DIR/tool_call_smoke.py" --base-url "$base_url" --model "$alias" \
+    --api-key-file "$VLLM_API_KEY_FILE" --choices required auto || die "Tool-call smoke failed for deployment: $alias"
+  responses_json="$(curl --fail --silent --show-error --max-time 300 --header "@$auth_header" -H 'Content-Type: application/json' --data '{"model":"general-spark-qwen38","input":"Reply with exactly READY.","max_output_tokens":16}' "$base_url/v1/responses")"
   jq -e '(.id|type=="string") and .status=="completed"' <<<"$responses_json" >/dev/null || die "Ordinary Responses request did not complete"
-  curl --fail --silent --show-error --no-buffer --max-time 300 --header "@$auth_header" -H 'Content-Type: application/json' --data '{"model":"automation","input":"Reply with exactly STREAM_READY.","max_output_tokens":16,"stream":true}' "$base_url/v1/responses" >"$stream_file"
+  curl --fail --silent --show-error --no-buffer --max-time 300 --header "@$auth_header" -H 'Content-Type: application/json' --data '{"model":"general-spark-qwen38","input":"Reply with exactly STREAM_READY.","max_output_tokens":16,"stream":true}' "$base_url/v1/responses" >"$stream_file"
   awk '{sub(/\r$/,"")} /^event: /{e=substr($0,8); if(done)bad=1; last=e; if(e=="response.completed")done++} END{exit !(done==1 && !bad && last=="response.completed")}' "$stream_file" || die "Responses stream lacked one terminal response.completed event"
   terminal_json="$(awk '{sub(/\r$/,"")} /^event: response.completed$/{getline;sub(/\r$/,"");sub(/^data: /,"");print;exit}' "$stream_file")"
   jq -e '.type=="response.completed" and .response.status=="completed" and (.response.id|type=="string")' <<<"$terminal_json" >/dev/null || die "Responses stream terminal payload was not completed"
   rm -f -- "$auth_header" "$stream_file"; trap - EXIT
-  log "Smoke passed: liveness, auth denial, aliases, required/automatic tools, ordinary Responses, and terminal streaming"
+  log "Smoke passed: liveness, auth denial, internal deployment name, required/automatic tools, ordinary Responses, and terminal streaming"
 )
 prepare_model_artifacts() {
   install_runtime_cache_helper

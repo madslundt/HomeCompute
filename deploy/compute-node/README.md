@@ -31,10 +31,11 @@ selection authority is
 [`config/gb10-model-roster.json`](../../config/gb10-model-roster.json).
 The normal lane disables thinking in the server's default chat-template kwargs;
 qualified callers can still request it explicitly.
-The Qwen3.8 lane serves `auto`, `coding`, `automation`, `research`, `home`,
-`meeting`, and `assistant` from one model process, with the `qwen3_coder` tool
-parser and automatic tool choice enabled. Its guarded smoke command checks
-required and automatic function selection for every served alias. The dedicated
+The general Qwen3.8 process serves only the internal deployment name
+`general-spark-qwen38`; it does not publish public capability aliases. Its
+guarded smoke command checks required and automatic function selection for
+that deployment. The separate registry-backed LiteLLM config omits this
+intentionally stopped deployment from active routes. The dedicated
 `home-fast` Gemma 4 process and the opt-in Qwen3.6 `automation-moe` process
 have their matching `gemma4` and `qwen3_coder` parsers and run the same two
 selection checks. The `assistant-canary` gateway alias maps to the same
@@ -45,8 +46,9 @@ Flash-Next likewise has no routable serving profile, so it is not represented
 as a tool-capable route.
 
 The planned-maintenance CPU standby uses llama.cpp's model chat template via
-`--jinja`; its smoke checks both tool-choice modes directly and through the
-stable `automation` gateway alias before the gateway can be switched to it.
+`--jinja`; its smoke checks both tool-choice modes directly. It remains a cold,
+operator-started maintenance route and is not listed as request-path automatic
+failover.
 Function selection is model behavior, so a successful parser/template
 configuration alone does not guarantee a call. The smoke commands require a
 returned function name and valid JSON arguments and fail if either mode returns

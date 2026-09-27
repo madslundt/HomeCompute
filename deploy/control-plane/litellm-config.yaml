@@ -1,54 +1,36 @@
 model_list:
-  - model_name: auto
-    litellm_params: &local_model
-      model: openai/auto
-      api_base: os.environ/COMPUTE_OPENAI_BASE_URL
-      api_key: os.environ/COMPUTE_API_KEY
-  - model_name: coding
+  - model_name: "automation"
     litellm_params:
-      <<: *local_model
-      model: openai/coding
-  - model_name: automation
-    litellm_params:
-      <<: *local_model
-      model: openai/automation
+      model: "openai/automation-moe"
       order: 1
-  - model_name: automation
-    litellm_params:
-      model: openai/automation-backup
-      api_base: http://automation-backup:8080/v1
+      api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
-      order: 2
-  - model_name: automation-moe
+      timeout: 120
+      stream_timeout: 120
+  - model_name: "home"
     litellm_params:
-      model: openai/automation-moe
-      api_base: os.environ/COMPUTE_AUTOMATION_BASE_URL
+      model: "openai/home-fast"
+      order: 1
+      api_base: "os.environ/COMPUTE_HOME_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
-  # Synthetic Hermes qualification lane. This deliberately reuses the live
-  # automation backend while keeping a separately revocable client key and
-  # stable alias; it is not permission to reuse the n8n client identity.
-  - model_name: assistant-canary
+      timeout: 20
+      stream_timeout: 20
+  - model_name: "automation-moe"
     litellm_params:
-      model: openai/automation-moe
-      api_base: os.environ/COMPUTE_AUTOMATION_BASE_URL
+      model: "openai/automation-moe"
+      order: 1
+      api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
-  - model_name: research
+      timeout: 120
+      stream_timeout: 120
+  - model_name: "assistant-canary"
     litellm_params:
-      <<: *local_model
-      model: openai/research
-  - model_name: home
-    litellm_params:
-      model: openai/home-fast
-      api_base: os.environ/COMPUTE_HOME_BASE_URL
+      model: "openai/automation-moe"
+      order: 1
+      api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
-  - model_name: meeting
-    litellm_params:
-      <<: *local_model
-      model: openai/meeting
-  - model_name: assistant
-    litellm_params:
-      <<: *local_model
-      model: openai/assistant
+      timeout: 120
+      stream_timeout: 120
 litellm_settings:
   request_timeout: 600
   num_retries: 0

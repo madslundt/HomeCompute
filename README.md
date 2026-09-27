@@ -23,6 +23,11 @@ model names directly.
 > **Status:** the guarded definitions now back a live deployment, but this is
 > not a turnkey installer. Off-host restore testing, direct private-link
 > cutover, production-run evidence, and complete model failover remain open.
+>
+> The model registry and generated LiteLLM route section now exist in source;
+> the generated configuration has not been applied to the live gateway or
+> n8n. See the [routing baseline](docs/model-routing-refactor-baseline-2026-09-27.md)
+> and [ADR-024](docs/adr/024-model-artifact-deployment-capability-separation.md).
 
 ![Target platform overview](diagrams/gb10-platform.svg)
 
@@ -72,6 +77,14 @@ The [automation-MoE ADR](docs/adr/023-n8n-automation-moe.md) records the
 opt-in alias, cold-swap rule, Danish/tool gates, and promotion criteria.
 The [Flash-Next single-GB10 review](docs/research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
 records why it remains an exclusive heavy mode rather than the resident primary.
+
+Consumer-facing text routes are declared separately in
+[`config/capability-routes.json`](config/capability-routes.json), and model,
+runtime, and deployment details live in
+[`config/model-catalog.json`](config/model-catalog.json). The LiteLLM renderer
+does not change client keys or deploy/reload the gateway. n8n still uses the
+temporary `automation-moe` alias until its key and workflows pass the staged
+migration gates.
 
 ## Setup in order
 

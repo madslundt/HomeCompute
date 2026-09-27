@@ -3,6 +3,37 @@
 **Date:** 2026-09-26
 **Status:** Live deployment observed on both hosts; canary and hardening gaps remain
 
+## 2026-09-27 routing-refactor baseline addendum
+
+The routing refactor rechecked reachable live state read-only before editing
+source configuration. On `home-core`, LiteLLM, Caddy, PostgreSQL, n8n, and the
+listed MCP/speech services were healthy; available memory was 35 GiB. The
+configured LiteLLM version remains 1.99.1. The three locally available client
+keys each listed only `automation-moe` at `/v1/models`. The administrative and
+Hermes canary credentials were not available for this check.
+
+`home-spark` reported 39 GiB available and 4 GiB swap in use. Docker status
+could not be read because the SSH account lacks Docker socket access and
+passwordless sudo. Therefore this addendum does not claim a newly observed
+Spark process state. See the detailed
+[routing baseline](model-routing-refactor-baseline-2026-09-27.md) for exact
+commands, unavailable measurements, and rollback state.
+
+The source tree now contains a canonical text model catalog and capability
+route file, plus a deterministic LiteLLM renderer. It removes stopped Qwen3.8
+aliases from the generated route list, maps the stable `automation` and `home`
+aliases, and gives `home` and `automation` explicit request timeouts. It does
+not restart LiteLLM, alter virtual keys, or modify n8n workflows. Thus the
+live n8n path remains `automation-moe` until a separately staged migration.
+
+Read-only n8n workflow inspection on 2026-09-27 found the HomeCompute
+`automation-moe` node in the active Shopping list, Aula calendar sync, and
+Notion AI automations workflows. Each node still has a 600,000 ms client
+timeout and zero retries. The current Aula Collector & Analyze subworkflow
+graph returned a Gemini model node, so the older inventory's blanket claim
+that every published subworkflow uses the local model must be rechecked against
+connections and production execution paths before serial migration.
+
 ## Scope and evidence rules
 
 This inventory separates three evidence levels:

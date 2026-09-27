@@ -91,11 +91,15 @@ fallback path if latency or future memory pressure makes it unsuitable.
 
 ## Status
 
-Accepted.
+Accepted. The disabled `model-router-policy.json` prototype referenced below
+was retired by ADR-024 because its model and alias inventory duplicated the
+canonical capability registry. The deterministic capability mapping in
+ADR-024 supersedes the prototype routing mechanism; this ADR's consumer and
+local-first constraints remain in force.
 
 ## Evidence
 
-- `config/model-router-policy.json`
+- `config/capability-routes.json` (current route source; see ADR-024)
 - `config/gb10-model-roster.json`
 - `docs/n8n-migration-inventory.md`
 - `benchmarks/`

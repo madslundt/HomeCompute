@@ -17,8 +17,10 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-hermes-guest.sh` | Synthetic `agent-owner` Hermes canary inside the isolated Ubuntu agents guest | `validate`, `preflight`, `install`, `onboard-canary`, `health`, `snapshot`, `restore-verify` |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
-| `gb10_model_roster.py` | Offline configuration validation | Enforces the Qwen3.8 workhorse, two runtime profiles, exclusive Flash-Next cold swap, and exact four-model speech roster |
-| `model_router_policy.py` | Offline model-router validation and decision tests | `validate`, `decide` |
+| `gb10_model_roster.py` | Offline hardware-roster validation | Immutable revisions, resolvable operating-profile references, runtime profile structure, and artifact bounds |
+| `model_registry.py` | Canonical text artifact/deployment/route validation and deterministic LiteLLM generation | `validate`, `render`, `check` |
+| `modelctl.py` | Show and validate compute releases against the model catalog | `show`, `validate` |
+| `verify_client_model_access.py` | Live `/v1/models` visibility audit for supplied client keys | Exact expected aliases per environment-variable credential; never prints key values |
 | `codex_session.py` | Policy-aware Codex session entry point | Cloud default for committed `cloud_allowed` repositories; explicit whole-session GB10 Local mode |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
@@ -103,11 +105,14 @@ Repository validation:
 ./scripts/validate-repository.sh
 ```
 
-Validate the selected model roster independently:
+Validate the hardware-scoped model roster and canonical capability registry:
 
 ```bash
 python3 scripts/gb10_model_roster.py \
   --roster config/gb10-model-roster.json
+python3 scripts/model_registry.py validate
+python3 scripts/model_registry.py render --output /tmp/litellm-config-candidate.yaml
+python3 scripts/model_registry.py check
 ```
 
 The stdlib chat example accepts an alias with `--model`, but that selects only
@@ -122,6 +127,17 @@ guarded model smoke commands test runtime profiles directly; they do not prove
 that a client key is authorized for those aliases. These checks do not publish
 or invoke any n8n workflow.
 
+The access audit reads keys from named environment variables and checks the
+exact `/v1/models` alias set without displaying credentials. For a live
+control-plane check, pass each scoped credential separately, for example:
+
+```bash
+python3 scripts/verify_client_model_access.py \
+  --base-url https://ai.home.arpa \
+  --ca-file ~/.config/homecompute/home-core-root.crt \
+  --expect HOMECOMPUTE_SCRIPT_API_KEY=automation-moe
+```
+
 The offline [Danish TTS qualification](../docs/tts-qualification.md) qualifies
 Plapre Nano v2 on the GB10 against the independent Piper fallback. Its harness
 creates blinded listening packets and enforces warm p95 first audio at 750 ms
@@ -131,20 +147,16 @@ resynthesis, and Piper recovery behavior. It does not install models.
 `speech_routing_policy.py` validates and exercises the inactive language route
 contract in `config/speech-routing-policy.json`; it never contacts a model.
 
-The router policy records Qwen3.8-27B as the selected primary but remains
-disabled and unbound until its exact runtime tuple passes live qualification. Validate it
-without contacting LiteLLM or `home-spark`:
+The model registry validates artifact/runtime compatibility, deployment
+references, local-only routes, qualification state, context requirements, and
+timeout profiles. The renderer edits only LiteLLM's `model_list`; it preserves
+key management, logging/privacy, database, retry, and router settings. The
+old experimental `model-router-policy.json` has been retired because it was
+not wired into LiteLLM and duplicated alias, model, and client-policy data.
 
-```bash
-python3 scripts/model_router_policy.py validate \
-  --policy config/model-router-policy.json
-```
-
-The checked-in contract keeps model activation and load-on-demand disabled. It
-resolves the six task aliases without invoking a classifier, limits exact model
-selection to the operator policy, and records `auto` proposals while serving
-the active default. It is not yet wired into the live gateway; that integration
-waits for Responses/stream lifecycle and lease tests.
+`render` writes the checked-in LiteLLM config by default. Review its diff and
+retain the prior config before any controlled deployment. It does not deploy
+or reload LiteLLM, change virtual-key permissions, or open compute ports.
 
 This checks Bash syntax and ShellCheck, the non-executing configuration loader,
 automation JSON, YAML when Ruby is installed, Compose rendering (including the

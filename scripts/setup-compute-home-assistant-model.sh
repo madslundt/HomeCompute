@@ -12,8 +12,8 @@ EDGE_HELPER="$SCRIPT_DIR/tcp-edge-proxy.py"
 source "$SCRIPT_DIR/lib/config.sh"
 
 CONFIG_KEYS=(
-  VLLM_IMAGE HOME_MODEL_ID HOME_MODEL_REVISION HOME_TOKENIZER_REVISION HOME_CODE_REVISION
-  HOME_MODEL_LICENSE_ID HOME_CHAT_TEMPLATE_SHA256 HOME_ARTIFACT_MAX_BYTES HOME_ARTIFACT_MAX_FILES
+  VLLM_IMAGE HOME_DEPLOYMENT_ID HOME_MODEL_ID HOME_MODEL_REVISION HOME_TOKENIZER_REVISION HOME_CODE_REVISION
+  HOME_MODEL_LICENSE_ID HOME_MODEL_QUANTIZATION HOME_CHAT_TEMPLATE_SHA256 HOME_ARTIFACT_MAX_BYTES HOME_ARTIFACT_MAX_FILES
   GB10_ROOT GB10_RUNTIME_UID GB10_RUNTIME_GID GB10_BIND_ADDRESS HOME_MODEL_HOST_PORT
   HF_TOKEN_FILE VLLM_API_KEY_FILE HF_CACHE_MAX_BYTES HF_CACHE_MAX_FILES MIN_FREE_DISK_GIB
   HOME_MAX_MODEL_LEN HOME_MAX_NUM_SEQS HOME_MAX_BATCHED_TOKENS HOME_GPU_MEMORY_UTILIZATION
@@ -61,17 +61,10 @@ manifest_path() { printf '%s/manifests/accepted-home-model-cache.json' "$GB10_RO
 
 validate_config() {
   load_env
-  [[ "$VLLM_IMAGE" == nvcr.io/nvidia/vllm@sha256:d049bead397430803ac5b705d50094492f23782716677d746ab721e43f054cf6 ]] || die "Unexpected vLLM image"
-  [[ "$HOME_MODEL_ID" == google/gemma-4-E4B-it-qat-w4a16-ct ]] || die "Unexpected home model"
-  [[ "$HOME_MODEL_REVISION" == 6cd26aaa2357fb2bad8c51699a7558a4d1a965bb ]] || die "Unexpected home model revision"
-  [[ "$HOME_TOKENIZER_REVISION:$HOME_CODE_REVISION" == "$HOME_MODEL_REVISION:$HOME_MODEL_REVISION" ]] || die "Model revisions must match"
-  [[ "${HOME_MODEL_LICENSE_ID,,}" == apache-2.0 ]] || die "Unexpected model license"
-  [[ "$HOME_CHAT_TEMPLATE_SHA256" == 0a2c8073c878ab1da004bee933a998606537bbb62016310352c7285c3f01c5b5 ]] || die "Chat template digest changed"
-  [[ "$HOME_ARTIFACT_MAX_BYTES:$HOME_ARTIFACT_MAX_FILES" == 13000000000:16 ]] || die "Artifact bounds changed"
-  [[ "$GB10_BIND_ADDRESS:$HOME_MODEL_HOST_PORT" == 127.0.0.1:8006 ]] || die "home-fast must publish only on loopback port 8006"
-  [[ "$HOME_MAX_MODEL_LEN:$HOME_MAX_NUM_SEQS:$HOME_MAX_BATCHED_TOKENS" == 32768:4:4096 ]] || die "Context/concurrency tuple changed"
-  [[ "$HOME_GPU_MEMORY_UTILIZATION" == 0.24 ]] || die "Memory envelope changed"
-  [[ "$HOME_DEFAULT_CHAT_TEMPLATE_KWARGS" == '{"enable_thinking":false}' ]] || die "Fast path must disable thinking"
+  [[ "$HOME_DEPLOYMENT_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "HOME_DEPLOYMENT_ID is malformed"
+  python3 "$SCRIPT_DIR/modelctl.py" validate --deployment "$HOME_DEPLOYMENT_ID" --prefix HOME_ ||
+    die "Home deployment differs from the model catalog"
+  [[ "$GB10_BIND_ADDRESS:$HOME_MODEL_HOST_PORT" == 127.0.0.1:8006 ]] || die "home service must publish only on its reviewed loopback endpoint"
   compose --profile prepare config --quiet
   command -v docker >/dev/null || die "docker is required"
   log "Pinned Gemma 4 E4B text-only home-fast tuple is valid"
