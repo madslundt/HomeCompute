@@ -211,8 +211,19 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and report security issues using
 HomeCompute uses the [Apache License 2.0](LICENSE). Models, images, and other
 third-party software keep their own licenses and are not redistributed here.
 
-## Deploy the current K15 configuration
+## Deploy the latest pushed code
 
-See [HomeCompute operations](docs/homecompute-operations.md) for the workstation
-CLI and two-host deployment workflow. The lower-level [Git deployment notes](docs/git-deployment.md)
-document the retained home-core release mechanism.
+From the operator workstation, push reviewed changes to `master` and deploy
+the same latest GitHub revision to both hosts:
+
+```bash
+git push origin master
+./scripts/homecompute deploy all
+./scripts/homecompute status
+```
+
+Run deployment in a terminal so you can enter a remote sudo password if
+prompted. See [HomeCompute operations](docs/homecompute-operations.md) for
+preflight, single-host deployment, verification, and rollback details. The
+lower-level [Git deployment notes](docs/git-deployment.md) document the
+home-core release mechanism.

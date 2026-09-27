@@ -56,20 +56,46 @@ weekly model monitor remains the model upstream detector. Flake and Docker
 dependency proposals continue through GitHub Actions/Dependabot PRs and
 repository CI; this CLI does not query GitHub PR status yet.
 
-## Deploy after merging
+## Deploy the latest pushed code
+
+Run deployment from the operator workstation checkout after committing and
+pushing the changes you want to release to `origin/master`. The CLI reads the
+current full commit SHA from GitHub once, then uses that same immutable
+revision for every selected host. It does not deploy uncommitted workstation
+files.
 
 ```bash
+git status --short --branch
+git push origin master
+./scripts/homecompute status
 ./scripts/homecompute deploy all
+./scripts/homecompute status
+./scripts/homecompute doctor
 ```
 
-This resolves `origin/master` once and pins both deployments to that same SHA.
-It checks SSH reachability and host prerequisites on every selected target
-before changing the first host. `all` deploys `home-spark` first, then
-`home-core`: the existing gateway remains unchanged if Spark fails. It stops
-after the first failed deployment. There is no automatic rollback of application
-data or model artifacts, and no automatic cross-host route smoke test; each
-host's existing deployment health checks must pass. Run `doctor` and verify the
-actual client route after a rollout.
+`deploy all` checks both hosts before changing either, then deploys
+`home-spark` followed by `home-core`. Run it from a terminal: if remote sudo
+requires a password, SSH displays the prompt and you enter it there. The CLI
+does not accept or store the password. Review the final status output for the
+deployed revisions and failed units; `doctor` reports host readiness, but the
+CLI does not yet run an authenticated cross-host route smoke test.
+
+To deploy only one node, use `./scripts/homecompute deploy home-core` or
+`./scripts/homecompute deploy home-spark`. Each command still selects the
+current `origin/master` revision. For a deliberate historical release, pass
+its full lowercase 40-character SHA with `--revision`.
+
+Do not use `git pull` on either production machine as the deployment step. The
+CLI invokes each host's guarded release script with the selected SHA. Spark's
+script also updates `/home/madslundt/HomeCompute` as its source checkout, then
+deploys the pinned SHA into an immutable release directory.
+
+## Deployment behavior
+
+`all` stops after the first failed deployment. There is no automatic rollback
+of application data or model artifacts, and no automatic cross-host route
+smoke test; each host's existing deployment health checks must pass. Run
+`doctor` and verify the actual client route after a rollout.
 
 The operator still reviews and merges changes before deployment. GitHub
 Actions only validates and proposes dependency updates; it has no SSH access
