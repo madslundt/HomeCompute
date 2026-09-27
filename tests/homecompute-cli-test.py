@@ -67,7 +67,6 @@ class HomeComputeCliTests(unittest.TestCase):
                                               "docker-access": True, "sudo-nopasswd": True, "sudo": True, "nix": True, "python3": True,
                                               "nixos-rebuild": True, "flock": True, "jq": True,
                                               "curl": True, "awk": True, "sha256sum": True, "realpath": True, "cmp": True,
-                                              "runuser": True,
                                               "nvidia-smi": True, "nvidia-ctk": True, "nvidia-container-cli": True}}
                 return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
             return subprocess.CompletedProcess(argv, 1, "", "guarded install failed")

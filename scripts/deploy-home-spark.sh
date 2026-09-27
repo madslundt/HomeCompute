@@ -20,14 +20,15 @@ source_repo=/home/madslundt/HomeCompute
   printf 'Expected the HomeCompute source checkout at %s.\n' "$source_repo" >&2; exit 1;
 }
 source_owner="$(stat -c '%U' "$source_repo")"
+source_group="$(stat -c '%G' "$source_repo")"
 [[ "$source_owner" == madslundt ]] || {
   printf 'Unexpected owner for the HomeCompute source checkout: %s\n' "$source_owner" >&2; exit 1;
 }
-git_source() { runuser -u "$source_owner" -- git -C "$source_repo" "$@"; }
+git_source() { git -c "safe.directory=$source_repo" -C "$source_repo" "$@"; }
 [[ "$(git_source branch --show-current)" == master ]] || {
   printf 'The HomeCompute source checkout must be on master.\n' >&2; exit 1;
 }
-[[ -z $(git_source status --porcelain --untracked-files=all) ]] || {
+[[ -z $(git_source status --porcelain --untracked-files=all --ignored=matching) ]] || {
   printf 'The HomeCompute source checkout is dirty; preserving it: %s\n' "$source_repo" >&2; exit 1;
 }
 git_source fetch --no-tags https://github.com/madslundt/HomeCompute.git refs/heads/master
@@ -36,6 +37,7 @@ git_source merge-base --is-ancestor HEAD "$source_revision" || {
   printf 'The HomeCompute source checkout has diverged from origin/master; preserving it.\n' >&2; exit 1;
 }
 git_source merge --ff-only "$source_revision"
+chown --no-dereference --recursive "$source_owner:$source_group" "$source_repo"
 release="/srv/homecompute/releases/$revision"
 if [[ ! -d "$release" ]]; then
   git -c "safe.directory=$source_repo" clone --no-checkout "$source_repo" "$release"
