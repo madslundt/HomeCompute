@@ -309,16 +309,6 @@ services:
       - type: bind
         source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
         target: /var/cache/vllm
-    tmpfs:
-      - "/tmp:rw,noexec,nosuid,nodev,size=1g"
-    networks: [artifact-fetch]
-    volumes:
-      - type: bind
-        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface
-        target: /var/cache/huggingface
-      - type: bind
-        source: ${GB10_ROOT:?Set GB10_ROOT}/cache/vllm
-        target: /var/cache/vllm
       - type: bind
         source: ${GB10_ROOT:?Set GB10_ROOT}/runtime/model-cache-integrity.py
         target: /opt/homecompute/model-cache-integrity.py
