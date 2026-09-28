@@ -28,6 +28,20 @@ Gemma and speech services, and the trial restored Unsloth successfully.
 
 The workflow's deterministic source checks and the published weekly filter are
 part of this qualification: the raw NVIDIA model alone did not satisfy the
-empty-delta and weekly-selection rules. Before the production cutover, repeat
-the broad tool surface gate and verify the stable `automation-moe` alias. The
-Unsloth artifact and stopped service remain available for rollback.
+empty-delta and weekly-selection rules.
+
+The 2026-09-29 production cutover repeated five semantic Aula tool selections
+against 64 available tools. All five passed, including `page: 0` after the
+test prompt stated that index explicitly. The NVIDIA service passed health,
+authentication, Responses, basic tool-call checks, and persistent restart
+policy checks. The old Unsloth containers and activation rollback marker were
+removed. The home-core LiteLLM gateway now mounts the new route configuration;
+an authenticated request to `automation-moe` through `ai.home.arpa` completed
+with thinking enabled. The active n8n Aula worker uses that model name. No
+post-cutover full Aula execution has been observed yet.
+
+A full home-core NixOS deployment was attempted but stopped before switching
+because the SOPS file lacks the separate model-manager `known-hosts` key. The
+gateway service was updated independently and passed its health check. The
+home-core `current` release symlink remains at the prior revision until that
+unrelated SOPS issue is resolved.

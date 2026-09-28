@@ -64,7 +64,7 @@ pass. Flash-Next is never started by this lifecycle.
 
 ## NVIDIA Qwen3.6 production service
 
-The NVIDIA ModelOpt candidate has a dedicated vLLM 0.28.0 ARM64 image,
+The NVIDIA ModelOpt production model has a dedicated vLLM 0.28.0 ARM64 image,
 pinned artifact, cache manifest, Compose profile, and gateway alias. Existing
 compute configurations must be migrated once so the NVIDIA tuple is included:
 
@@ -76,15 +76,17 @@ sudo ./scripts/setup-compute-automation-nvidia.sh activate
 sudo ./scripts/setup-compute-automation-nvidia.sh smoke
 ```
 
-`install` only pulls and stages. `activate` records whether Unsloth or Qwen3.8
-was running, stops it, and starts NVIDIA on the exclusive automation listener.
-Startup or smoke failure restores that exact source. NVIDIA serves both
+`install` only pulls and stages. The initial `activate` command records which
+text server was running, stops it, and starts NVIDIA on the exclusive automation
+listener. Startup or smoke failure restores that source. NVIDIA serves both
 `automation-moe-nvidia` and the stable `automation-moe` model name, so existing
 gateway clients continue working during the cold swap. Its containers use a
 persistent restart policy. The generated gateway route maps `automation` and
 `automation-moe` to the NVIDIA deployment. If rolling back after that gateway
 configuration is live, restore the previous gateway mapping before running
 `deactivate`; otherwise requests would still target the NVIDIA model name.
+The 2026-09-29 production cutover removed the old Unsloth containers and the
+activation rollback marker. Do not run `deactivate` for this deployment.
 The qualification results and their workflow guards are recorded in
 `docs/nvidia-qwen36-automation-qualification-2026-09-29.md`.
 

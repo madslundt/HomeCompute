@@ -59,16 +59,16 @@ SGLang/DFlash and Flash-Next need separate pinned runtime profiles because
 their images, drafts, memory behavior, and startup contracts are not
 interchangeable with this launcher.
 
-The `prepare-automation` and `automation-moe` profiles add the pinned
-`unsloth/Qwen3.6-35B-A3B-NVFP4` n8n candidate. It uses the current pinned
+The `prepare-automation` and `automation-moe` profiles retain the former
+`unsloth/Qwen3.6-35B-A3B-NVFP4` n8n service for historical recovery only.
+Its containers were removed after the NVIDIA cutover on 2026-09-29. It used the pinned
 NVIDIA vLLM 26.08 image (vLLM 0.27.1), `sm_121a`, the
 native `cutlass` NVFP4 MoE backend, a portable `triton` override for the
 model's mixed FP8 expert path, `qwen3_coder` tool parser, 128K context, and
 non-thinking defaults. MTP is deliberately disabled for the correctness
 baseline. The candidate has its own accepted cache manifest, edge relay, API
-port 8005, and `automation-moe` served name. It is excluded from default
-Compose startup and never replaces the ordinary `automation` alias until the
-Danish, structured-output, 64-tool, n8n replay, memory, and recovery gates pass.
+port 8005, and `automation-moe` served name. Do not start this retired profile
+while the NVIDIA production service owns that port.
 
 Use the guarded lifecycle rather than starting its Compose profile directly:
 
@@ -83,21 +83,22 @@ the MoE and restores Qwen3.8 automatically if startup or smoke fails.
 `deactivate` stops the MoE and restores Qwen3.8. Flash-Next is not part of
 either path and remains off by default.
 
-## NVIDIA ModelOpt qualification candidate
+## NVIDIA ModelOpt production service
 
 `setup-compute-automation-nvidia.sh` stages the pinned
 `nvidia/Qwen3.6-35B-A3B-NVFP4` revision separately from the Unsloth cache and
 uses the isolated vLLM 0.28.0 ARM64 image. Its GB10 recipe enables Marlin,
 FlashInfer, FP8 KV, and three-token MTP. It runs on the same exclusive port
-8005 during a cold-swap window and is exposed only as `automation-moe-nvidia`.
+8005 and serves both `automation-moe-nvidia` and `automation-moe`. The home-core
+gateway routes `automation` and `automation-moe` to this server.
 
 The script records whether `automation-primary` (qualified Unsloth) or
 `text-primary` (Qwen3.8) was running before activation. Startup or baseline
 smoke failure restores that exact service; `deactivate` restores it after the
-qualification window. Existing aliases that target the stopped source model
-are unavailable during the swap. `automation` and `automation-moe` routes are
-not promoted by this script. Complete the full qualification gates before
-changing production routes.
+qualification window. After the 2026-09-29 production cutover, the old
+Unsloth containers and activation rollback marker were removed. The script's
+legacy rollback behavior remains for other cold-swap scenarios; do not use
+`deactivate` as a production rollback without coordinating the gateway route.
 
 The account-free `prepare-modalities` profile is a legacy, pre-decision
 scaffold. It acquires these public artifacts at full publisher revisions:

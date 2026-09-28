@@ -69,9 +69,9 @@ model behind an alias after the replacement passes the same tests.
 | Alias or route | Use case | Initial candidate or comparison set |
 | --- | --- | --- |
 | `coding` | Codex editing, tools, builds, and tests | Qwen3.8-27B; operator cold-swap to Flash-Next after repeated struggle |
-| `automation` | n8n, structured output, and approved tools | Qwen3.8-27B in non-thinking mode by default |
-| `automation-moe` | Current qualified n8n MoE route and rollback | Unsloth Qwen3.6-35B-A3B NVFP4; retained until NVIDIA candidate clears gates |
-| `automation-moe-nvidia` | NVIDIA NVFP4 qualification candidate | NVIDIA Qwen3.6-35B-A3B NVFP4; vLLM 0.28.0 GB10 recipe, MTP-3; not promoted |
+| `automation` | n8n, structured output, and approved tools | NVIDIA Qwen3.6-35B-A3B NVFP4 on home-spark |
+| `automation-moe` | Stable n8n model name | NVIDIA Qwen3.6-35B-A3B NVFP4; vLLM 0.28.0, MTP-3 |
+| `automation-moe-nvidia` | Explicit NVIDIA model name | Same resident NVIDIA server; used for qualification and diagnostics |
 | `research` | Private, source-bounded synthesis | Qwen3.8-27B; Flash-Next only for sustained heavy sessions |
 | `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.8-27B |
 | `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.8-27B |
