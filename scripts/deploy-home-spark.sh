@@ -40,10 +40,13 @@ git_source merge --ff-only "$source_revision"
 chown --no-dereference --recursive "$source_owner:$source_group" "$source_repo"
 release="/srv/homecompute/releases/$revision"
 if [[ ! -d "$release" ]]; then
-  git -c "safe.directory=$source_repo" clone --no-checkout "$source_repo" "$release"
+  # Clone from the reviewed upstream commit rather than asking root to open the
+  # operator-owned working tree as a Git transport. Git rejects that nested
+  # .git path as dubious ownership even when the worktree is explicitly trusted.
+  git clone --no-checkout https://github.com/madslundt/HomeCompute.git "$release"
 fi
 if ! git -C "$release" cat-file -e "$revision^{commit}" 2>/dev/null; then
-  git -c "safe.directory=$source_repo" -C "$release" fetch --no-tags "$source_repo" "$revision"
+  git -C "$release" fetch --no-tags https://github.com/madslundt/HomeCompute.git "$revision"
 fi
 git -C "$release" cat-file -e "$revision^{commit}"
 
