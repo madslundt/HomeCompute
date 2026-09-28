@@ -49,7 +49,7 @@ eligibility check at execution time.
 1. Deploy the Spark adapter and its root-owned Sparkrun allowlist separately.
    The control-plane Compose project must create the external
    `homecompute-control-plane_clients` network. This Compose project creates a
-   dedicated `br-hc-model-manager-ssh` bridge with address `172.28.205.2`; the
+   dedicated `br-hc-mm-ssh` bridge with address `172.28.205.2`; the
    host firewall must restrict it to `192.168.30.126:22` only.
 2. Provision four secret files on home-core: manager username, manager
    password, dedicated Spark SSH private key, and pinned Spark `known_hosts`.

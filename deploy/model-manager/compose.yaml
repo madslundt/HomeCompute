@@ -64,7 +64,7 @@ networks:
     driver: bridge
     enable_ipv6: false
     driver_opts:
-      com.docker.network.bridge.name: br-hc-model-manager-ssh
+      com.docker.network.bridge.name: br-hc-mm-ssh
     ipam:
       config:
         - subnet: 172.28.205.0/24

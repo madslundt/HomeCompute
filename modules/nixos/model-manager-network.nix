@@ -19,14 +19,14 @@
       iptables -w -N DOCKER-USER 2>/dev/null || true
 
       # Fail closed while installing or replacing the rules.
-      iptables -w -I DOCKER-USER 1 -i br-hc-model-manager-ssh -j REJECT
-      iptables -w -I DOCKER-USER 1 -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j REJECT
+      iptables -w -I DOCKER-USER 1 -i br-hc-mm-ssh -j REJECT
+      iptables -w -I DOCKER-USER 1 -o br-hc-mm-ssh -d 172.28.205.0/24 -j REJECT
 
-      while iptables -w -C DOCKER-USER -i br-hc-model-manager-ssh -j HC-MODEL-MANAGER-SSH 2>/dev/null; do
-        iptables -w -D DOCKER-USER -i br-hc-model-manager-ssh -j HC-MODEL-MANAGER-SSH
+      while iptables -w -C DOCKER-USER -i br-hc-mm-ssh -j HC-MODEL-MANAGER-SSH 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-mm-ssh -j HC-MODEL-MANAGER-SSH
       done
-      while iptables -w -C DOCKER-USER -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN 2>/dev/null; do
-        iptables -w -D DOCKER-USER -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
+      while iptables -w -C DOCKER-USER -o br-hc-mm-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN 2>/dev/null; do
+        iptables -w -D DOCKER-USER -o br-hc-mm-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
       done
 
       iptables -w -N HC-MODEL-MANAGER-SSH 2>/dev/null || true
@@ -40,34 +40,34 @@
       iptables -w -A HC-MODEL-MANAGER-RETURN -s 192.168.30.126/32 -d 172.28.205.2/32 -m conntrack --ctstate RELATED -j RETURN
       iptables -w -A HC-MODEL-MANAGER-RETURN -j REJECT
 
-      iptables -w -I DOCKER-USER 1 -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
-      iptables -w -I DOCKER-USER 1 -i br-hc-model-manager-ssh -j HC-MODEL-MANAGER-SSH
+      iptables -w -I DOCKER-USER 1 -o br-hc-mm-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
+      iptables -w -I DOCKER-USER 1 -i br-hc-mm-ssh -j HC-MODEL-MANAGER-SSH
 
       iptables -w -C HC-MODEL-MANAGER-SSH -s 172.28.205.2/32 -o enp44s0 -d 192.168.30.126/32 -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j RETURN
       iptables -w -C HC-MODEL-MANAGER-SSH -j REJECT
       iptables -w -C HC-MODEL-MANAGER-RETURN -s 192.168.30.126/32 -d 172.28.205.2/32 -p tcp --sport 22 -m conntrack --ctstate ESTABLISHED -j RETURN
       iptables -w -C HC-MODEL-MANAGER-RETURN -s 192.168.30.126/32 -d 172.28.205.2/32 -m conntrack --ctstate RELATED -j RETURN
       iptables -w -C HC-MODEL-MANAGER-RETURN -j REJECT
-      iptables -w -C DOCKER-USER -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
-      iptables -w -C DOCKER-USER -i br-hc-model-manager-ssh -j HC-MODEL-MANAGER-SSH
+      iptables -w -C DOCKER-USER -o br-hc-mm-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
+      iptables -w -C DOCKER-USER -i br-hc-mm-ssh -j HC-MODEL-MANAGER-SSH
 
-      while iptables -w -C DOCKER-USER -i br-hc-model-manager-ssh -j REJECT 2>/dev/null; do
-        iptables -w -D DOCKER-USER -i br-hc-model-manager-ssh -j REJECT
+      while iptables -w -C DOCKER-USER -i br-hc-mm-ssh -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-mm-ssh -j REJECT
       done
-      while iptables -w -C DOCKER-USER -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j REJECT 2>/dev/null; do
-        iptables -w -D DOCKER-USER -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j REJECT
+      while iptables -w -C DOCKER-USER -o br-hc-mm-ssh -d 172.28.205.0/24 -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -o br-hc-mm-ssh -d 172.28.205.0/24 -j REJECT
       done
     '';
     preStop = ''
       iptables -w -N DOCKER-USER 2>/dev/null || true
-      iptables -w -I DOCKER-USER 1 -i br-hc-model-manager-ssh -j REJECT
-      iptables -w -I DOCKER-USER 1 -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j REJECT
+      iptables -w -I DOCKER-USER 1 -i br-hc-mm-ssh -j REJECT
+      iptables -w -I DOCKER-USER 1 -o br-hc-mm-ssh -d 172.28.205.0/24 -j REJECT
 
-      while iptables -w -C DOCKER-USER -i br-hc-model-manager-ssh -j HC-MODEL-MANAGER-SSH 2>/dev/null; do
-        iptables -w -D DOCKER-USER -i br-hc-model-manager-ssh -j HC-MODEL-MANAGER-SSH
+      while iptables -w -C DOCKER-USER -i br-hc-mm-ssh -j HC-MODEL-MANAGER-SSH 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-mm-ssh -j HC-MODEL-MANAGER-SSH
       done
-      while iptables -w -C DOCKER-USER -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN 2>/dev/null; do
-        iptables -w -D DOCKER-USER -o br-hc-model-manager-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
+      while iptables -w -C DOCKER-USER -o br-hc-mm-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN 2>/dev/null; do
+        iptables -w -D DOCKER-USER -o br-hc-mm-ssh -d 172.28.205.0/24 -j HC-MODEL-MANAGER-RETURN
       done
 
       for chain in HC-MODEL-MANAGER-SSH HC-MODEL-MANAGER-RETURN; do
