@@ -139,7 +139,6 @@
   "excluded_models": [
     "nvidia/DeepSeek-V4-Flash-NVFP4",
     "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-    "nvidia/Qwen3.6-35B-A3B-NVFP4",
     "openai/whisper-large-v3",
     "nvidia/parakeet-tdt-0.6b-v2",
     "syvai/Qwen3.8-27B-DFlash2-W4A16",

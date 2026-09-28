@@ -543,7 +543,6 @@ services:
   automation-nvidia-edge:
     <<: *edge
     profiles: [automation-nvidia]
-    restart: "no"
     container_name: gb10-automation-nvidia-edge
     ports: ["${GB10_BIND_ADDRESS:-127.0.0.1}:${AUTOMATION_HOST_PORT:-8005}:8000"]
     environment:
@@ -555,7 +554,6 @@ services:
   automation-nvidia-primary:
     <<: *runtime
     profiles: [automation-nvidia]
-    restart: "no"
     image: ${NVIDIA_AUTOMATION_VLLM_IMAGE:?Set NVIDIA_AUTOMATION_VLLM_IMAGE to an immutable image digest}
     container_name: gb10-automation-nvidia-primary
     shm_size: "${VLLM_SHM_SIZE:-16gb}"
@@ -573,7 +571,7 @@ services:
         set --
         if [ -n "$${VLLM_SPECULATIVE_CONFIG}" ]; then set -- --speculative-config "$${VLLM_SPECULATIVE_CONFIG}"; fi
         exec vllm serve "${NVIDIA_AUTOMATION_MODEL_ID}" --revision "${NVIDIA_AUTOMATION_MODEL_REVISION}" --tokenizer-revision "${NVIDIA_AUTOMATION_TOKENIZER_REVISION}" --code-revision "${NVIDIA_AUTOMATION_CODE_REVISION}" \
-          --served-model-name automation-moe-nvidia --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
+          --served-model-name automation-moe-nvidia automation-moe --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
           --kv-cache-dtype fp8 --attention-backend "${NVIDIA_AUTOMATION_ATTENTION_BACKEND:-flashinfer}" --moe-backend "${NVIDIA_AUTOMATION_MOE_BACKEND:-marlin}" \
           --gpu-memory-utilization "${NVIDIA_AUTOMATION_GPU_MEMORY_UTILIZATION:-0.5}" --generation-config vllm --max-model-len "${NVIDIA_AUTOMATION_MAX_MODEL_LEN:-131072}" \
           --max-num-seqs "${NVIDIA_AUTOMATION_MAX_NUM_SEQS:-4}" --max-num-batched-tokens "${NVIDIA_AUTOMATION_MAX_BATCHED_TOKENS:-8192}" --enable-chunked-prefill \

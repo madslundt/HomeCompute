@@ -1,7 +1,7 @@
 # HomeCompute
 
-> **Observed live state (2026-09-26):** `home-core` and `home-spark` are
-> deployed. n8n uses the dedicated Qwen3.6 MoE route; Gemma 4 E4B serves the
+> **Observed live state (2026-09-29):** `home-core` and `home-spark` are
+> deployed. n8n uses the NVIDIA Qwen3.6 MoE route; Gemma 4 E4B serves the
 > fast Home Assistant route; Hviske and Plapre are live through guarded SSH
 > forwards. Qwen3.8-27B is currently stopped while the MoE is resident. See
 > [current state](docs/current-state.md) for the exact snapshot and open gaps.
@@ -49,15 +49,15 @@ after it passes each use case's quality, safety, latency, and recovery tests.
 
 ## GB10 model roster
 
-The retained text set has three models. The live 2026-09-26 allocation keeps
-Qwen3.6-35B-A3B resident for n8n, alongside the smaller Gemma 4 E4B Home
+The retained text set has three models. The live allocation keeps the NVIDIA
+Qwen3.6-35B-A3B build resident for n8n, alongside the smaller Gemma 4 E4B Home
 Assistant model; Qwen3.8-27B is stopped, and Flash-Next remains an exclusive
 operator-controlled cold swap.
 
 | Role | Selection |
 | --- | --- |
 | Normal text inference | `unsloth/Qwen3.8-27B-NVFP4`; vLLM/native MTP baseline, then SGLang with the `incoai` DFlash2 drafter |
-| Active n8n MoE | `unsloth/Qwen3.6-35B-A3B-NVFP4`; non-thinking vLLM, `qwen3_coder`, MTP disabled |
+| Active n8n MoE | `nvidia/Qwen3.6-35B-A3B-NVFP4`; vLLM 0.28.0, Marlin, FlashInfer, FP8 KV, MTP 3, `qwen3_coder`; Aula explicitly enables thinking |
 | Heavy coding and research | `RadixArk/Qwen3.8-Flash-Next-NVFP4` through the pinned `blazux` single-GB10 recipe |
 | Danish STT | `syvai/hviske-v5.3` |
 | English, mixed, or unknown STT | `openai/whisper-large-v3-turbo` |

@@ -15,7 +15,7 @@
       "required_protocols": ["chat_completions"],
       "minimum_context_tokens": 32768,
       "timeout_profile": "automation",
-      "deployments": ["automation-spark-primary"]
+      "deployments": ["automation-spark-nvidia-candidate"]
     },
     "home": {
       "state": "active",
@@ -71,7 +71,7 @@
       "required_protocols": ["chat_completions"],
       "minimum_context_tokens": 32768,
       "timeout_profile": "automation",
-      "deployments": ["automation-spark-primary"]
+      "deployments": ["automation-spark-nvidia-candidate"]
     },
     "automation-moe-nvidia": {
       "state": "candidate",
@@ -93,7 +93,7 @@
       "required_protocols": ["chat_completions"],
       "minimum_context_tokens": 65536,
       "timeout_profile": "assistant",
-      "deployments": ["automation-spark-primary"]
+      "deployments": ["automation-spark-nvidia-candidate"]
     }
   }
 }

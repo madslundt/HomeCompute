@@ -64,7 +64,7 @@
       "runtime_profiles": ["vllm-qwen36-nvidia-nvfp4"],
       "capabilities": ["chat", "tools", "structured_output"],
       "qualification": {
-        "automation": "candidate"
+        "automation": "qualified"
       }
     },
     "gemma4-e4b-qat-w4a16-ct": {
@@ -110,8 +110,8 @@
       "served_model_name": "automation-moe",
       "context_tokens": 65536,
       "concurrency": 4,
-      "lifecycle": "resident",
-      "availability": "active",
+      "lifecycle": "operator-on-demand",
+      "availability": "intentionally-stopped",
       "priority": 10,
       "runtime_config": {
         "max_model_len": 131072,
@@ -135,8 +135,8 @@
       "served_model_name": "automation-moe-nvidia",
       "context_tokens": 65536,
       "concurrency": 4,
-      "lifecycle": "operator-on-demand",
-      "availability": "candidate",
+      "lifecycle": "resident",
+      "availability": "active",
       "priority": 20,
       "runtime_config": {
         "max_model_len": 131072,

@@ -172,7 +172,8 @@ smoke_candidate() (
   code="$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 10 "$base/v1/models")"
   [[ "$code" == 401 || "$code" == 403 ]] || die "Unauthenticated model listing was not denied"
   models="$(curl --fail --silent --max-time 30 --header "@$auth_header" "$base/v1/models")"
-  jq -e '.data | any(.id == "automation-moe-nvidia")' <<<"$models" >/dev/null || die "NVIDIA candidate alias is missing"
+  jq -e '.data | (any(.id == "automation-moe-nvidia") and any(.id == "automation-moe"))' <<<"$models" >/dev/null ||
+    die "NVIDIA candidate or stable automation alias is missing"
   response="$(curl --fail --silent --max-time 300 --header "@$auth_header" -H 'Content-Type: application/json' \
     --data '{"model":"automation-moe-nvidia","input":"Svar kun med ordet KLAR.","max_output_tokens":32}' "$base/v1/responses")"
   jq -e '.status == "completed" and ([.output[]?.content[]?.text // empty] | join(" ") | length > 0)' <<<"$response" >/dev/null ||
@@ -281,7 +282,7 @@ activate_candidate() {
     restore_source || die "NVIDIA smoke failed and automatic source restoration failed; inspect $ROLLBACK_STATE"
     die "NVIDIA smoke failed; the prior service was restored"
   fi
-  log "NVIDIA is serving only automation-moe-nvidia for qualification. The old alias is not promoted."
+  log "NVIDIA is serving automation-moe-nvidia and automation-moe. Gateway routing can now be promoted."
 }
 
 deactivate_candidate() {

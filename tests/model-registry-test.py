@@ -34,7 +34,7 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_unqualified_candidate_cannot_be_promoted(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["artifacts"]["qwen36-35b-a3b-nvfp4"]["qualification"]["automation"] = "candidate"
+        catalog["artifacts"]["nvidia-qwen36-35b-a3b-nvfp4"]["qualification"]["automation"] = "candidate"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "not qualified"):
             REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 
@@ -51,19 +51,19 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_local_route_cannot_select_intentionally_stopped_backend(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["deployments"]["automation-spark-primary"]["availability"] = "intentionally-stopped"
+        catalog["deployments"]["automation-spark-nvidia-candidate"]["availability"] = "intentionally-stopped"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "not active"):
             REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 
     def test_local_only_route_cannot_select_cloud_deployment(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["deployments"]["automation-spark-primary"]["network_scope"] = "cloud"
+        catalog["deployments"]["automation-spark-nvidia-candidate"]["network_scope"] = "cloud"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "non-local deployment"):
             REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 
     def test_cold_standby_is_not_eligible_as_an_active_route(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["deployments"]["automation-spark-primary"]["lifecycle"] = "cold-standby"
+        catalog["deployments"]["automation-spark-nvidia-candidate"]["lifecycle"] = "cold-standby"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "non-resident"):
             REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 

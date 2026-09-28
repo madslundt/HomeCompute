@@ -11,7 +11,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | --- | --- | --- |
 | `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `firewall`, `install`, `rollback`, `down` |
 | `setup-compute-automation-moe.sh` | Opt-in Qwen3.6 MoE candidate on `home-spark` | `prepare`, `install`, `activate`, `deactivate` |
-| `setup-compute-automation-nvidia.sh` | NVIDIA ModelOpt Qwen3.6 qualification cold-swap on `home-spark` | `validate`, `prepare`, `install`, `activate`, `smoke`, `deactivate` |
+| `setup-compute-automation-nvidia.sh` | NVIDIA ModelOpt Qwen3.6 production cold-swap on `home-spark` | `validate`, `prepare`, `install`, `activate`, `smoke`, `deactivate` |
 | `setup-compute-home-assistant-model.sh` | Isolated Gemma 4 E4B fast Home Assistant fallback | `prepare`, `install`, `up`, `smoke`, `down` |
 | `setup-compute-plapre.sh` | Isolated Plapre Nano v2 Danish TTS on `home-spark` | `build`, `up`, `down` |
 | `setup-compute-hviske-stt.sh` | Isolated Hviske v5.3 Danish STT on `home-spark` | `prepare`, `install`, `up`, `down` |
@@ -62,7 +62,7 @@ explicit qualification route. The ordinary `automation` alias does not move
 until Danish, structured-output, real n8n, 64-tool, memory, and recovery tests
 pass. Flash-Next is never started by this lifecycle.
 
-## NVIDIA Qwen3.6 qualification
+## NVIDIA Qwen3.6 production service
 
 The NVIDIA ModelOpt candidate has a dedicated vLLM 0.28.0 ARM64 image,
 pinned artifact, cache manifest, Compose profile, and gateway alias. Existing
@@ -74,17 +74,19 @@ sudo ./scripts/setup-compute-automation-nvidia.sh validate
 sudo ./scripts/setup-compute-automation-nvidia.sh install
 sudo ./scripts/setup-compute-automation-nvidia.sh activate
 sudo ./scripts/setup-compute-automation-nvidia.sh smoke
-sudo ./scripts/setup-compute-automation-nvidia.sh deactivate
 ```
 
 `install` only pulls and stages. `activate` records whether Unsloth or Qwen3.8
 was running, stops it, and starts NVIDIA on the exclusive automation listener.
-Startup or smoke failure restores that exact source; `deactivate` does the same
-after qualification. While NVIDIA runs, the old served model name is
-unavailable, so schedule an explicit evaluation window. The candidate alias is
-`automation-moe-nvidia`; activation does not promote it to a production route.
-The basic smoke is not the promotion gate: the full 64-tool, Danish,
-structured-output, memory, and recovery qualification is still required.
+Startup or smoke failure restores that exact source. NVIDIA serves both
+`automation-moe-nvidia` and the stable `automation-moe` model name, so existing
+gateway clients continue working during the cold swap. Its containers use a
+persistent restart policy. The generated gateway route maps `automation` and
+`automation-moe` to the NVIDIA deployment. If rolling back after that gateway
+configuration is live, restore the previous gateway mapping before running
+`deactivate`; otherwise requests would still target the NVIDIA model name.
+The qualification results and their workflow guards are recorded in
+`docs/nvidia-qwen36-automation-qualification-2026-09-29.md`.
 
 ## sparkrun model manager
 

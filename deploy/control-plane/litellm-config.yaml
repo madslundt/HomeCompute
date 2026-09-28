@@ -1,9 +1,9 @@
 model_list:
   - model_name: "automation"
     litellm_params:
-      model: "openai/automation-moe"
+      model: "openai/automation-moe-nvidia"
       order: 1
-      api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 120
       stream_timeout: 120
@@ -17,9 +17,9 @@ model_list:
       stream_timeout: 20
   - model_name: "automation-moe"
     litellm_params:
-      model: "openai/automation-moe"
+      model: "openai/automation-moe-nvidia"
       order: 1
-      api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 120
       stream_timeout: 120
@@ -33,9 +33,9 @@ model_list:
       stream_timeout: 120
   - model_name: "assistant-canary"
     litellm_params:
-      model: "openai/automation-moe"
+      model: "openai/automation-moe-nvidia"
       order: 1
-      api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 120
       stream_timeout: 120

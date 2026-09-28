@@ -31,16 +31,17 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation", "home", "automation-moe", "assistant-canary"}, names)
+        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "assistant-canary"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 
     def test_deployment_mappings_and_timeouts_are_capability_scoped(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
-        self.assertRegex(text, r'(?s)model_name: "automation".*?openai/automation-moe.*?timeout: 120')
+        self.assertRegex(text, r'(?s)model_name: "automation".*?openai/automation-moe-nvidia.*?timeout: 120')
+        self.assertRegex(text, r'(?s)model_name: "automation-moe".*?openai/automation-moe-nvidia.*?timeout: 120')
         self.assertRegex(text, r'(?s)model_name: "home".*?openai/home-fast.*?timeout: 20')
         self.assertRegex(text, r'(?s)model_name: "home".*?stream_timeout: 20')
-        self.assertRegex(text, r'(?s)model_name: "assistant-canary".*?openai/automation-moe.*?timeout: 120')
+        self.assertRegex(text, r'(?s)model_name: "assistant-canary".*?openai/automation-moe-nvidia.*?timeout: 120')
         self.assertNotIn("automation-backup", text)
         self.assertIn("request_timeout: 600", text)
         self.assertIn("num_retries: 0", text)

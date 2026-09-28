@@ -377,6 +377,9 @@ CADDY_EDGE_IP=172.28.200.2
 LITELLM_EDGE_IP=172.28.200.3
 PLAPRE_PROXY_EDGE_IP=172.28.200.4
 HVISKE_PROXY_EDGE_IP=172.28.200.5
+CONTROL_PLANE_CLIENTS_SUBNET=172.28.210.0/24
+CADDY_CLIENTS_IP=172.28.210.2
+LITELLM_CLIENTS_IP=172.28.210.3
 CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=127.0.0.1
 CONTROL_PLANE_LAN_BIND_ADDRESS=127.0.0.2
 CONTROL_PLANE_TAILSCALE_HTTPS_PORT=8443
@@ -385,6 +388,8 @@ AI_FQDN=ai.home.arpa
 AI_LEGACY_FQDN=home-core.invalid
 N8N_FQDN=n8n.home.arpa
 N8N_UPSTREAM=http://192.168.30.122:15678
+CHAT_FQDN=chat.home.arpa
+MODELS_FQDN=models.home.arpa
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -398,6 +403,7 @@ AUTOMATION_BACKUP_CPUS=8.0
 AUTOMATION_BACKUP_MEMORY_LIMIT=28g
 COMPUTE_OPENAI_BASE_URL=https://10.77.10.10:8000/v1
 COMPUTE_AUTOMATION_BASE_URL=https://10.77.10.10:8005/v1
+COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=https://10.77.10.10:8005/v1
 COMPUTE_HOME_BASE_URL=https://10.77.10.10:8006/v1
 COMPUTE_TRANSPORT=dedicated-link
 PLAPRE_WYOMING_UPSTREAM_HOST=10.77.10.10
@@ -742,7 +748,7 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hermes hviske-stt homepage piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hermes hviske-stt homepage model-manager open-webui piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
