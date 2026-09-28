@@ -52,7 +52,7 @@ model_manager_ready=false
 if [[ -s /run/secrets/model-manager/username &&
       -s /run/secrets/model-manager/password &&
       -s /run/secrets/model-manager/spark-ssh-key &&
-      -s /etc/homecompute/model-manager-known-hosts &&
+      -s /run/secrets/model-manager/known-hosts &&
       $(grep -cx 'MODEL_MANAGER_SPARK_FORCED_COMMAND_READY=1' /etc/homecompute/model-manager.env || true) == 1 ]]; then
   model_manager_ready=true
   "${model_manager[@]}" config --quiet

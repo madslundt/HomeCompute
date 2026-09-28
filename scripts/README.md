@@ -160,6 +160,30 @@ ssh-keygen -t ed25519 -f ~/.ssh/homecompute-sparkrun-manager \
   -C sparkrun-manager@home-core
 ```
 
+Add the manager credentials, private key, and pinned Spark host key to the
+encrypted `secrets/home-core.sops.yaml` document with `sops`. Use these nested
+keys; the private SSH key and operator password must never be added as
+plaintext:
+
+```yaml
+model-manager:
+  username: <operator username>
+  password: <operator password>
+  spark-ssh-key: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  known-hosts: |
+    192.168.30.126 ssh-ed25519 <base64 host public key>
+```
+
+Get the host public key from the Spark's `/etc/ssh/ssh_host_ed25519_key.pub`
+and verify its fingerprint at the trusted Spark console before adding it.
+SOPS-Nix materializes these as root-only files under
+`/run/secrets/model-manager/` during activation. The Home Core deployment keeps
+the manager stopped until all four are present and the forced-command
+readiness flag is explicitly enabled.
+
 Transfer only its public half to `home-spark`, then place it in the root-only
 source file. The following commands assume `home-spark` is the SSH host alias
 and that the compute setup has created `/etc/gb10-ai/secrets`:

@@ -69,6 +69,18 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
+            "model-manager/username" = {
+              mode = "0400";
+            };
+            "model-manager/password" = {
+              mode = "0400";
+            };
+            "model-manager/spark-ssh-key" = {
+              mode = "0400";
+            };
+            "model-manager/known-hosts" = {
+              mode = "0400";
+            };
           } // lib.optionalAttrs (
             config.homecompute.backups.enable
             || config.homecompute.agentsVm.localBootstrapBackup.enable
