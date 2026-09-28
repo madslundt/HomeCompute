@@ -1,0 +1,315 @@
+{
+  "name": "Battery Plan — Daily Review and Weekly Report",
+  "nodes": [
+    {
+      "id": "be8dc261-60f0-4b4e-bb59-d44be50c7ccb",
+      "name": "Manual Review",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "636df4ea-712f-4872-853a-385e69f61b1a",
+      "name": "Read Battery and Price State",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "resource": "state",
+        "operation": "getAll",
+        "returnAll": true
+      },
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "id": "5775b10c-9b64-4629-b5f1-1105a34d61cd",
+      "name": "Prepare Review Snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        192
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const all = $input.all().map(item => item.json);\nconst systemsWeekly = $('Sunday 09:00 Systems Review').isExecuted;\nconst now = $now.setZone('Europe/Copenhagen');\nconst reportDay = now.minus({ days: 1 }).toISODate();\nconst weekStart = now.startOf('week').minus({ weeks: 1 }).toISODate();\nconst weekEnd = now.startOf('week').minus({ days: 1 }).toISODate();\n\nif (systemsWeekly) {\n  const automations = all.filter(e => String(e.entity_id || '').startsWith('automation.'))\n    .map(e => ({entity_id:e.entity_id,name:e.attributes?.friendly_name||e.entity_id,state:e.state,last_changed:e.last_changed}));\n  const unavailableAll = all.filter(e => ['unavailable','unknown'].includes(String(e.state||'').toLowerCase()));\n  const unavailable = unavailableAll.slice(0,40).map(e => ({entity_id:e.entity_id,state:e.state,name:e.attributes?.friendly_name||e.entity_id}));\n  const relevant = all.filter(e => {\n    const id=String(e.entity_id||'');\n    const name=String(e.attributes?.friendly_name||'');\n    return /staircase_battery|stromligning|home.?core|home.?spark|spark|core|model|performance|error|health|uptime|backup|update|cpu|gpu|memory|temperature/i.test(id+' '+name);\n  }).slice(0,100).map(e => ({entity_id:e.entity_id,name:e.attributes?.friendly_name||e.entity_id,state:e.state,last_updated:e.last_updated,installed_version:e.attributes?.installed_version,latest_version:e.attributes?.latest_version,unit_of_measurement:e.attributes?.unit_of_measurement,device_class:e.attributes?.device_class}));\n  const hostEntities=relevant.filter(e=>/home.?core|home.?spark|spark|core/i.test(e.entity_id+' '+e.name));\n  const updateEntities=relevant.filter(e=>String(e.entity_id).startsWith('update.')||e.latest_version);\n  const attentionAutomations=automations.filter(e=>['unavailable','unknown'].includes(String(e.state).toLowerCase()));\n  const snapshot={captured_at:now.toISO(),review_period:'Week '+weekStart+' through '+weekEnd,home_assistant:{total_entities:all.length,automations_total:automations.length,automations_unavailable_or_unknown:attentionAutomations,unavailable_or_unknown_entity_count:unavailableAll.length,unavailable_or_unknown_entities:unavailable,relevant_states:relevant},home_core_and_spark_coverage:{matching_entity_count:hostEntities.length,matching_entities:hostEntities,note:hostEntities.length?'HA has matching host telemetry; use only values present above.':'No Home-core or Home-spark telemetry entities were exposed through Home Assistant in this run.'},model_and_software_updates:updateEntities};\n  const title='HomeCompute weekly systems review — '+weekStart+' to '+weekEnd;\n  const prompt=[\n    'Prepare the weekly HomeCompute systems review for '+weekStart+' through '+weekEnd+'. Snapshot: '+JSON.stringify(snapshot),\n    'Verify evidence across Home Assistant, home-core, and home-spark. Separate observed facts from missing coverage. Do not infer a host is healthy when its telemetry is absent.',\n    'Review battery and energy states, automation availability, error or unavailable signals, model/software update signals, and any performance/resource metrics present. “off” is a normal automation state; do not report it as an error. This snapshot has current states, not historical automation success logs.',\n    'Use web search to identify at most two relevant new model/runtime/Home Assistant ideas from the allowed primary sources. Include source links and why they may fit this setup. Treat upstream claims as candidates only; do not claim they outperform current models without local benchmark evidence.',\n    'Return the dated heading and at most five concise bullets: findings, reliability/errors, performance, model/update signals, and one prioritized improvement idea. State clearly when core/Spark metrics or historical trends are not available. Never recommend control, deployment, or model-promotion changes as automatic actions.'\n  ].join('\\n');\n  return [{json:{reportType:'system_weekly',period:'Week '+weekStart+' through '+weekEnd,notificationTitle:title,prompt}}];\n}\n\nconst relevant=all.filter(e=>/staircase_battery|stromligning_current_price_vat|stromligning_tomorrow_available_vat/i.test(String(e.entity_id||'')));\nconst byId={}; for (const e of relevant) byId[e.entity_id]=e;\nconst weekly=$('Sunday 08:00 Weekly Report').isExecuted;\nconst period=weekly?'Completed week '+weekStart+' through '+weekEnd:'Completed day '+reportDay;\nconst reportType=weekly?'weekly':'daily';\nconst priceEntities=[byId['sensor.stromligning_current_price_vat'],byId['binary_sensor.stromligning_tomorrow_available_vat']].filter(Boolean);\nconst priceDays={};\nfor (const e of priceEntities) for (const s of (Array.isArray(e.attributes?.prices)?e.attributes.prices:[])) {\n const day=String(s.start||'').slice(0,10); if(!day||!Number.isFinite(Number(s.price))) continue;\n if(!priceDays[day]) priceDays[day]=[]; priceDays[day].push({start:s.start,price_dkk_per_kwh:Number(s.price)});\n}\nconst priceSummary=Object.entries(priceDays).map(([date,slots])=>{const sorted=[...slots].sort((a,b)=>a.price_dkk_per_kwh-b.price_dkk_per_kwh);const values=slots.map(s=>s.price_dkk_per_kwh);return {date,slot_count:slots.length,min:Math.min(...values),max:Math.max(...values),mean:values.reduce((a,b)=>a+b,0)/values.length,cheapest:sorted.slice(0,3),most_expensive:sorted.slice(-3).reverse()};});\nconst planEntity=byId['sensor.staircase_battery_operation_plan'];\nconst plan=planEntity?.attributes||{};\nconst rawBlocks=Array.isArray(plan.blocks)?plan.blocks:[];\nconst grouped=[];\nfor (const b of rawBlocks) {const prior=grouped[grouped.length-1];const gap=prior&&b.start&&prior.end?Math.abs(new Date(b.start)-new Date(prior.end)):999999;\n if(!prior||prior.action!==b.action||gap>60000) grouped.push({start:b.start,end:b.end,action:b.action,soc_start:b.soc_start??b.soc,soc_end:b.soc_end??b.soc,energy_kwh:Number(b.energy_kwh||0),expected_load_kwh:Number(b.expected_load_kwh||0),expected_grid_import_kwh:Number(b.expected_grid_import_kwh||0),expected_cost_dkk:Number(b.expected_cost_dkk||0),expected_savings_dkk:Number(b.expected_savings_dkk||0),reasons:b.reason?[b.reason]:[]});\n else {prior.end=b.end;prior.soc_end=b.soc_end??b.soc??prior.soc_end;prior.energy_kwh+=Number(b.energy_kwh||0);prior.expected_load_kwh+=Number(b.expected_load_kwh||0);prior.expected_grid_import_kwh+=Number(b.expected_grid_import_kwh||0);prior.expected_cost_dkk+=Number(b.expected_cost_dkk||0);prior.expected_savings_dkk+=Number(b.expected_savings_dkk||0);if(b.reason&&!prior.reasons.includes(b.reason))prior.reasons.push(b.reason);}\n}\nconst omit=new Set(['prices','blocks','friendly_name','icon','options','min','max','step','mode','editable']);\nconst clean=value=>{if(Array.isArray(value))return value.length>40?{item_count:value.length,first_items:value.slice(0,3),last_items:value.slice(-3)}:value;if(!value||typeof value!=='object')return value;const out={};for(const [k,v] of Object.entries(value))if(!omit.has(k))out[k]=clean(v);return out;};\nconst entities=relevant.filter(e=>!priceEntities.includes(e)&&e.entity_id!=='sensor.staircase_battery_operation_plan').map(e=>({entity_id:e.entity_id,state:e.state,last_updated:e.last_updated,attributes:clean(e.attributes||{})}));\nconst planSummary=planEntity?{entity_id:planEntity.entity_id,state:planEntity.state,last_updated:planEntity.last_updated,attributes:clean(Object.fromEntries(Object.entries(plan).filter(([k])=>k!=='blocks'))),block_count:rawBlocks.length,blocks:grouped}:null;\nconst tomorrow=byId['binary_sensor.stromligning_tomorrow_available_vat'];\nconst snapshot={captured_at:now.toISO(),review_period:period,report_type:reportType,price_days:priceSummary,tomorrow_price_availability:tomorrow?{state:tomorrow.state,attributes:clean(Object.fromEntries(Object.entries(tomorrow.attributes||{}).filter(([k])=>k!=='prices')))}:null,plan:planSummary,entities};\nconst title=weekly?'Battery plan weekly review — '+weekStart+' to '+weekEnd:'Battery plan daily review — '+reportDay;\nconst id=weekly?'battery_plan_week_'+weekStart:'battery_plan_day_'+reportDay;\nconst prompt=['Review '+period+'. Type: '+reportType+'. Snapshot: '+JSON.stringify(snapshot),'Daily: use dated actuals only for yesterday. Separately summarize today’s plan: modeled cost vs baseline and savings, SOC range and key charge/discharge window(s). Give compact price range and cheapest/peak times for each available plan date, plus tomorrow-price availability.','Weekly: give available last-week savings, charge, discharge and cycle totals (label estimates), plus dated plan/execution coverage out of 7 days. Do not reconstruct missing days.','No CT meter means grid import/export and bill impact are unknown, not zero. Qualify estimated totals and mention pre-1.5.4 telemetry only when relevant. Mention optimizer/execution/forecast only if abnormal or limiting.','Output max 650 characters: dated heading and at most 3 short bullets. Lead with result. Omit normal status, missing-detail inventories, long explanations, repeated caveats, full entity lists and follow-up. Label modeled/estimated values. Never recommend battery control changes.'].join('\\n');\nreturn [{json:{reportType,period,notificationTitle:title,notificationId:id,prompt,snapshotCharacters:JSON.stringify(snapshot).length}}];"
+      }
+    },
+    {
+      "id": "63c0ddbe-7fc7-459b-83f1-4115cbbff9c2",
+      "name": "Daily 19:00 Review",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 19 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "943b0424-2cf6-4b05-8209-4298ccd1585b",
+      "name": "Sunday 08:00 Weekly Report",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        384
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 8 * * 0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a2fec966-8adc-4754-85c8-36b1caa41651",
+      "name": "Send report to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1024,
+        192
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendRichMessage",
+        "chatId": "8754179061",
+        "richFormat": "markdown",
+        "richMessageText": "={{ $json.report }}",
+        "additionalFields": {
+          "disable_notification": false
+        }
+      },
+      "webhookId": "5addd3e6-fe02-42ab-a150-9fb8deac0bc9",
+      "credentials": {
+        "telegramApi": {
+          "id": "0BielfzpReUyW0it",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "41d32f80-c875-4d43-83af-9f30178601de",
+      "name": "Generate Battery Review",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "response",
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5.4",
+          "cachedResultName": "GPT-5.4"
+        },
+        "responses": {
+          "values": [
+            {
+              "type": "text",
+              "role": "user",
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        },
+        "simplify": true,
+        "options": {
+          "instructions": "You are a cautious HomeCompute and battery systems auditor. Use only the supplied snapshot and web search sources. Separate observed facts, estimates and missing evidence. Never claim a model is better without local benchmark evidence. For system_weekly, return a dated heading and at most five concise bullets, no more than 1100 characters. For battery daily/weekly reports, follow the prompt's tighter limit and format. Never recommend control, deployment, or model-promotion actions as automatic changes.",
+          "maxTokens": 1400,
+          "reasoning": {
+            "reasoningOptions": {
+              "effort": "medium",
+              "summary": "none"
+            }
+          }
+        },
+        "textFormat": {
+          "textOptions": [
+            {
+              "type": "text",
+              "verbosity": "medium"
+            }
+          ]
+        },
+        "store": false,
+        "builtInTools": {
+          "webSearch": {
+            "searchContextSize": "low",
+            "allowedDomains": "github.com,huggingface.co,nvidia.com,home-assistant.io"
+          }
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "KGwxQAdwy8MTtGPi",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "4c52db43-2321-430c-bd54-5b6427e84e8e",
+      "name": "Format Telegram Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const v=$input.first()?.json||{};\nconst candidates=[v.output_text,v.output,v.text,v.response,v.content,v.message?.content,v.output?.[0]?.content?.[0]?.text,v.output?.[0]?.text];\nconst report=candidates.find(x=>typeof x==='string'&&x.trim());\nif(!report) throw new Error('OpenAI returned no report text; Telegram delivery stopped.');\nreturn [{json:{report:report.trim()}}];"
+      }
+    },
+    {
+      "id": "f906f0a1-13f0-4e9a-9f36-0b05c1eab420",
+      "name": "Sunday 09:00 Systems Review",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "weeksInterval": 1,
+              "triggerAtDay": [
+                0
+              ],
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Review": {
+      "main": [
+        [
+          {
+            "node": "Read Battery and Price State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Battery and Price State": {
+      "main": [
+        [
+          {
+            "node": "Prepare Review Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Review Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Generate Battery Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Battery Review": {
+      "main": [
+        [
+          {
+            "node": "Format Telegram Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Telegram Report": {
+      "main": [
+        [
+          {
+            "node": "Send report to Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 19:00 Review": {
+      "main": [
+        [
+          {
+            "node": "Read Battery and Price State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sunday 08:00 Weekly Report": {
+      "main": [
+        [
+          {
+            "node": "Read Battery and Price State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sunday 09:00 Systems Review": {
+      "main": [
+        [
+          {
+            "node": "Read Battery and Price State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen"
+  }
+}
