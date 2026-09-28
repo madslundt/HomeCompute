@@ -71,6 +71,9 @@ forbidden.
 
 - `edge` contains Caddy and LiteLLM. It is the sole egress-capable application
   bridge; LiteLLM is given its default route there.
+- `clients` is an isolated internal bridge shared by Caddy, LiteLLM, Open WebUI,
+  and the model manager. It carries gateway and browser traffic without an
+  outbound route. Open WebUI and the model manager publish no host ports.
 - `state` contains LiteLLM and PostgreSQL, is `internal`, and uses Docker's
   isolated gateway mode. PostgreSQL has no host publication. Caddy cannot join
   this network.
@@ -275,9 +278,25 @@ compromise can mint trusted certificates; encrypt its off-host backup and
 limit client trust to devices that need this service.
 
 Caddy exposes only `/v1/*` and `/healthz`. It intentionally returns 404 for the
-LiteLLM admin UI and key-management API. Provision and revoke virtual keys from
-an administrator shell inside LiteLLM's container namespace; do not distribute
-the master key to clients or publish the management route for convenience.
+LiteLLM admin UI and key-management API on the AI gateway host. It also serves
+the separately named `chat.home.arpa` and `models.home.arpa` virtual hosts to
+Open WebUI and the model manager on `clients`. All three use Caddy's internal
+CA. Install that CA on approved clients before opening those pages.
+
+Provision and revoke virtual keys from an administrator shell inside LiteLLM's
+container namespace; do not distribute the master key to clients or publish the
+management route for convenience. Open WebUI receives its own revocable
+LiteLLM virtual key. `/srv/state/open-webui/data` contains its database,
+conversation history, and uploads; the state directory is provisioned by NixOS
+but still needs an encrypted off-host backup and restore procedure. The
+deployment script leaves Open WebUI stopped until both runtime key files exist.
+
+The model manager reaches the Spark only through its dedicated SSH bridge. The
+NixOS `HC-MODEL-MANAGER-SSH` policy permits the fixed container address to open
+TCP 22 to `192.168.30.126`; other outbound traffic and non-established return
+traffic are rejected. The deployment script also requires operator-provisioned
+model-manager credentials, the pinned host key, and an explicit forced-command
+readiness flag before it builds or starts the UI.
 Embedding, vision, STT, and TTS candidates are also absent from the production
 LiteLLM model list and Caddy route allow-list while staged. Qualify one modality
 at a time against its direct private listener; add a gateway alias only through

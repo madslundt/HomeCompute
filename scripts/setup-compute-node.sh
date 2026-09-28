@@ -28,6 +28,14 @@ COMPUTE_CONFIG_KEYS=(
   AUTOMATION_ARTIFACT_MAX_FILES AUTOMATION_MAX_MODEL_LEN AUTOMATION_MAX_NUM_SEQS
   AUTOMATION_MAX_BATCHED_TOKENS AUTOMATION_GPU_MEMORY_UTILIZATION AUTOMATION_MOE_BACKEND AUTOMATION_FP8_MOE_BACKEND
   AUTOMATION_TOOL_CALL_PARSER AUTOMATION_SPECULATIVE_CONFIG AUTOMATION_DEFAULT_CHAT_TEMPLATE_KWARGS
+  NVIDIA_AUTOMATION_VLLM_IMAGE NVIDIA_AUTOMATION_MODEL_ID NVIDIA_AUTOMATION_MODEL_REVISION
+  NVIDIA_AUTOMATION_TOKENIZER_REVISION NVIDIA_AUTOMATION_CODE_REVISION NVIDIA_AUTOMATION_MODEL_LICENSE_ID
+  NVIDIA_AUTOMATION_MODEL_QUANTIZATION NVIDIA_AUTOMATION_MODEL_PROVENANCE_URL NVIDIA_AUTOMATION_MODEL_WEIGHT_FORMAT
+  NVIDIA_AUTOMATION_CHAT_TEMPLATE_SHA256 NVIDIA_AUTOMATION_ARTIFACT_MAX_BYTES NVIDIA_AUTOMATION_ARTIFACT_MAX_FILES
+  NVIDIA_AUTOMATION_HOST_PORT NVIDIA_AUTOMATION_MAX_MODEL_LEN NVIDIA_AUTOMATION_MAX_NUM_SEQS
+  NVIDIA_AUTOMATION_MAX_BATCHED_TOKENS NVIDIA_AUTOMATION_GPU_MEMORY_UTILIZATION NVIDIA_AUTOMATION_ATTENTION_BACKEND
+  NVIDIA_AUTOMATION_MOE_BACKEND NVIDIA_AUTOMATION_REASONING_PARSER NVIDIA_AUTOMATION_TOOL_CALL_PARSER
+  NVIDIA_AUTOMATION_SPECULATIVE_CONFIG NVIDIA_AUTOMATION_DEFAULT_CHAT_TEMPLATE_KWARGS
   EMBEDDING_MODEL_ID EMBEDDING_MODEL_REVISION EMBEDDING_MODEL_LICENSE_ID EMBEDDING_GPU_MEMORY_UTILIZATION
   VISION_MODEL_ID VISION_MODEL_REVISION VISION_MODEL_LICENSE_ID VISION_GPU_MEMORY_UTILIZATION
   STT_MODEL_ID STT_MODEL_REVISION STT_MODEL_LICENSE_ID STT_GPU_MEMORY_UTILIZATION
@@ -83,19 +91,20 @@ parse_options() {
   done
 }
 config_needs_migration() {
-  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_plapre=false saw_hviske=false saw_model_deployment=false
+  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_nvidia_automation=false saw_plapre=false saw_hviske=false saw_model_deployment=false
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" != COMPUTE_HOST_PORTS=* ]] || saw_ports=true
     [[ "$line" != HF_CACHE_MAX_BYTES=* ]] || saw_budget=true
     [[ "$line" != VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS=* ]] || saw_template_defaults=true
     [[ "$line" != AUTOMATION_MODEL_ID=* ]] || saw_automation=true
     [[ "$line" != AUTOMATION_MODEL_QUANTIZATION=* ]] || saw_automation_quantization=true
+    [[ "$line" != NVIDIA_AUTOMATION_VLLM_IMAGE=* ]] || saw_nvidia_automation=true
     [[ "$line" != PLAPRE_WYOMING_PORT=* ]] || saw_plapre=true
     [[ "$line" != HVISKE_WYOMING_PORT=* ]] || saw_hviske=true
     [[ "$line" != MODEL_DEPLOYMENT_ID=* ]] || saw_model_deployment=true
     [[ "$line" != FIREWALL_CONFIRMED=* ]] || return 0
   done <"$ENV_FILE"
-  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_automation_quantization" == false || "$saw_plapre" == false || "$saw_hviske" == false || "$saw_model_deployment" == false ]]
+  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_automation_quantization" == false || "$saw_nvidia_automation" == false || "$saw_plapre" == false || "$saw_hviske" == false || "$saw_model_deployment" == false ]]
 }
 migrate_config_if_needed() {
   local temporary

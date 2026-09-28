@@ -1,0 +1,81 @@
+name: homecompute-model-manager
+
+services:
+  model-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: homecompute-model-manager:${MODEL_MANAGER_RELEASE:?Set MODEL_MANAGER_RELEASE to the source release SHA}
+    restart: unless-stopped
+    init: true
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    security_opt: [no-new-privileges:true]
+    environment:
+      MODEL_MANAGER_SSH_TARGET: ${MODEL_MANAGER_SSH_TARGET:?Set the dedicated forced-command SSH target}
+      MODEL_MANAGER_PUBLIC_ORIGIN: ${MODEL_MANAGER_PUBLIC_ORIGIN:?Set the exact HTTPS origin used by the browser}
+      MODEL_MANAGER_TRUSTED_PROXY_IP: ${CADDY_CLIENTS_IP:?Set the exact Caddy clients-network address}
+      MODEL_MANAGER_SPARK_FORCED_COMMAND_READY: ${MODEL_MANAGER_SPARK_FORCED_COMMAND_READY:?Set the Spark forced-command readiness gate}
+      MODEL_MANAGER_COOKIE_SECURE: "true"
+      MODEL_MANAGER_ACTION_TIMEOUT: "21600"
+    secrets:
+      - model_manager_username
+      - model_manager_password
+      - model_manager_ssh_key
+      - model_manager_known_hosts
+    volumes:
+      - ../../config/model-catalog.json:/app/config/model-catalog.json:ro
+    expose:
+      - "8080"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=0700
+      - /run/model-manager:rw,noexec,nosuid,nodev,size=1m,mode=0700
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=5)"
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 20s
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 96
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      clients: {}
+      ssh:
+        ipv4_address: 172.28.205.2
+
+networks:
+  clients:
+    external: true
+    name: homecompute-control-plane_clients
+  ssh:
+    name: homecompute-model-manager_ssh
+    driver: bridge
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-hc-model-manager-ssh
+    ipam:
+      config:
+        - subnet: 172.28.205.0/24
+          gateway: 172.28.205.1
+
+secrets:
+  model_manager_username:
+    file: ${MODEL_MANAGER_USERNAME_SECRET:?Set path to the operator username secret}
+  model_manager_password:
+    file: ${MODEL_MANAGER_PASSWORD_SECRET:?Set path to the operator password secret}
+  model_manager_ssh_key:
+    file: ${MODEL_MANAGER_SSH_KEY_SECRET:?Set path to the forced-command SSH key}
+  model_manager_known_hosts:
+    file: ${MODEL_MANAGER_KNOWN_HOSTS_SECRET:?Set path to the pinned Spark known_hosts file}

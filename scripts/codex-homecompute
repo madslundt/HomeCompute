@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run Codex in its own lean HomeCompute profile so local requests fit 64K.
+CODEX_HOME="$HOME/.config/homecompute/codex"
+export CODEX_HOME
+exec codex "$@"

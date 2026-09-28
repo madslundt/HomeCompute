@@ -1,0 +1,62 @@
+name: homecompute-open-webui
+
+services:
+  open-webui:
+    image: ${OPEN_WEBUI_IMAGE:?Set OPEN_WEBUI_IMAGE to an immutable image digest}
+    platform: linux/amd64
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    group_add:
+      - ${OPEN_WEBUI_SECRET_GID:?Set OPEN_WEBUI_SECRET_GID to the homecompute-secrets GID}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: [/bin/bash, /opt/homecompute/open-webui-entrypoint.sh]
+    command: [bash, start.sh]
+    environment:
+      PORT: "8080"
+      HOME: /tmp
+      PYTHONDONTWRITEBYTECODE: "1"
+      WEBUI_AUTH: "true"
+      ENABLE_INITIAL_ADMIN_SIGNUP: "true"
+      ENABLE_SIGNUP: "false"
+      ENABLE_OLLAMA_API: "false"
+      ENABLE_OPENAI_API: "true"
+      OPENAI_API_BASE_URLS: http://litellm:4000/v1
+      OPENAI_API_KEYS: ""
+      OLLAMA_BASE_URL: ""
+      OLLAMA_API_BASE_URL: ""
+      SAFE_MODE: "true"
+      SCARF_NO_ANALYTICS: "true"
+      DO_NOT_TRACK: "1"
+      ANONYMIZED_TELEMETRY: "false"
+    secrets:
+      - litellm_api_key
+      - webui_secret_key
+    volumes:
+      - ${OPEN_WEBUI_STATE_ROOT:?Set OPEN_WEBUI_STATE_ROOT}/data:/app/backend/data
+      - ./open-webui-entrypoint.sh:/opt/homecompute/open-webui-entrypoint.sh:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=0700
+    cpus: 2.0
+    mem_limit: 4g
+    pids_limit: 256
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      clients: {}
+
+networks:
+  clients:
+    external: true
+    name: homecompute-control-plane_clients
+
+secrets:
+  litellm_api_key:
+    file: ${OPEN_WEBUI_LITELLM_API_KEY_FILE:?Set OPEN_WEBUI_LITELLM_API_KEY_FILE to a least-privilege LiteLLM virtual-key file}
+  webui_secret_key:
+    file: ${OPEN_WEBUI_SECRET_KEY_FILE:?Set OPEN_WEBUI_SECRET_KEY_FILE to a stable random secret file}

@@ -11,6 +11,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | --- | --- | --- |
 | `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `firewall`, `install`, `rollback`, `down` |
 | `setup-compute-automation-moe.sh` | Opt-in Qwen3.6 MoE candidate on `home-spark` | `prepare`, `install`, `activate`, `deactivate` |
+| `setup-compute-automation-nvidia.sh` | NVIDIA ModelOpt Qwen3.6 qualification cold-swap on `home-spark` | `validate`, `prepare`, `install`, `activate`, `smoke`, `deactivate` |
 | `setup-compute-home-assistant-model.sh` | Isolated Gemma 4 E4B fast Home Assistant fallback | `prepare`, `install`, `up`, `smoke`, `down` |
 | `setup-compute-plapre.sh` | Isolated Plapre Nano v2 Danish TTS on `home-spark` | `build`, `up`, `down` |
 | `setup-compute-hviske-stt.sh` | Isolated Hviske v5.3 Danish STT on `home-spark` | `prepare`, `install`, `up`, `down` |
@@ -24,6 +25,8 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `gb10_model_roster.py` | Offline hardware-roster validation | Immutable revisions, resolvable operating-profile references, runtime profile structure, and artifact bounds |
 | `model_registry.py` | Canonical text artifact/deployment/route validation and deterministic LiteLLM generation | `validate`, `render`, `check` |
 | `modelctl.py` | Show and validate compute releases against the model catalog | `show`, `validate` |
+| `sparkrun-model-manager.py` | Fixed JSON interface for catalog-approved vLLM workloads on `home-spark` | `list`, `status`, `prepare`, `load`, `unload`, `replace` actions on stdin |
+| `setup-compute-sparkrun-manager.sh` | Root-run forced-command SSH boundary for the sparkrun model manager | `validate`, `install` |
 | `verify_client_model_access.py` | Live `/v1/models` visibility audit for supplied client keys | Exact expected aliases per environment-variable credential; never prints key values |
 | `codex_session.py` | Policy-aware Codex session entry point | Cloud default for committed `cloud_allowed` repositories; explicit whole-session GB10 Local mode |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
@@ -36,6 +39,7 @@ models, caches, secrets, previous release records, or the text runtime.
 ```bash
 ./scripts/setup-compute-node.sh help
 ./scripts/setup-compute-automation-moe.sh help
+./scripts/setup-compute-automation-nvidia.sh help
 ./scripts/setup-compute-plapre.sh help
 ./scripts/setup-compute-hviske-stt.sh help
 ./scripts/setup-compute-modalities.sh help
@@ -57,6 +61,130 @@ thinking and MTP, uses the model-card `qwen3_coder` parser, and remains an
 explicit qualification route. The ordinary `automation` alias does not move
 until Danish, structured-output, real n8n, 64-tool, memory, and recovery tests
 pass. Flash-Next is never started by this lifecycle.
+
+## NVIDIA Qwen3.6 qualification
+
+The NVIDIA ModelOpt candidate has a dedicated vLLM 0.28.0 ARM64 image,
+pinned artifact, cache manifest, Compose profile, and gateway alias. Existing
+compute configurations must be migrated once so the NVIDIA tuple is included:
+
+```bash
+sudo ./scripts/setup-compute-node.sh migrate-config
+sudo ./scripts/setup-compute-automation-nvidia.sh validate
+sudo ./scripts/setup-compute-automation-nvidia.sh install
+sudo ./scripts/setup-compute-automation-nvidia.sh activate
+sudo ./scripts/setup-compute-automation-nvidia.sh smoke
+sudo ./scripts/setup-compute-automation-nvidia.sh deactivate
+```
+
+`install` only pulls and stages. `activate` records whether Unsloth or Qwen3.8
+was running, stops it, and starts NVIDIA on the exclusive automation listener.
+Startup or smoke failure restores that exact source; `deactivate` does the same
+after qualification. While NVIDIA runs, the old served model name is
+unavailable, so schedule an explicit evaluation window. The candidate alias is
+`automation-moe-nvidia`; activation does not promote it to a production route.
+The basic smoke is not the promotion gate: the full 64-tool, Danish,
+structured-output, memory, and recovery qualification is still required.
+
+## sparkrun model manager
+
+`sparkrun-model-manager.py` is a one-shot JSON command boundary for an
+authenticated `home-core` dashboard. Run it on `home-spark` as root, normally
+through a fixed SSH command and narrowly scoped sudo rule. It accepts no
+command-line arguments and reads one JSON object from stdin. The caller can
+select only deployment IDs in `config/model-catalog.json`; hosts, model IDs,
+revisions, recipes, images, ports, runtime options, and shell text are never
+accepted from the request.
+
+Supported requests:
+
+```json
+{"action":"list"}
+{"action":"status"}
+{"action":"prepare","deployment":"automation-spark-primary"}
+{"action":"load","deployment":"automation-spark-primary"}
+{"action":"unload","deployment":"automation-spark-primary"}
+{"action":"replace","from":"automation-spark-primary","to":"home-spark-primary"}
+```
+
+Every response is one JSON object. Success uses `{"ok":true,"data":...}`;
+failure uses `{"ok":false,"error":{"code":...,"message":...}}`.
+`list` reports all catalog deployments with an eligibility flag. `status`
+reports sparkrun state and `port_available` for the known catalog recipes.
+`prepare` runs only the
+existing pinned-artifact and accepted-cache workflow, then writes and validates
+a root-owned local sparkrun recipe. `load` verifies the accepted cache again,
+refuses a catalog port already used by a Compose or other listener, launches
+the generated recipe with fixed sparkrun arguments, and runs the existing
+HomeCompute health, auth, protocol, and tool qualification smoke. A failed
+smoke stops the new workload. `replace` restores its source if the target
+fails. Unload retains model caches.
+
+Only the qualified `automation-spark-primary` and `home-spark-primary`
+deployments are mutable. `general-spark-qwen38` remains excluded while its
+catalog lifecycle is disabled and qualification is empty. Existing Compose
+services remain the production workloads; while they own a catalog port,
+sparkrun `load` safely refuses to start there. The helper does not perform a
+live migration.
+
+Generated recipes preserve catalog model commits and NVIDIA image digests,
+mount the accepted cache and API-key secret at fixed paths, and disable
+Hugging Face network fallback. Sparkrun does not expose all of Compose's
+container hardening controls, including a read-only root filesystem and
+dropping every Linux capability. Treat this manager as a migration adapter
+pending security and gateway-routing qualification; do not give the dashboard
+direct Docker access or a general-purpose shell.
+
+### Provisioning the SSH boundary
+
+The provisioning helper does not install Sparkrun or configure its cluster.
+Those steps must already be complete for root on `home-spark`, using the
+[official Sparkrun install/setup process](https://sparkrun.dev/getting-started/installation/).
+The documented install command is `uvx sparkrun setup install`; use the
+Sparkrun setup wizard to configure the root-owned `home-spark` cluster. Ensure
+the resulting protected executable is at `/usr/local/bin/sparkrun` or
+`/root/.local/bin/sparkrun`, then verify it with:
+
+```bash
+sudo /usr/local/bin/sparkrun cluster show home-spark --json
+```
+
+If installed at `/root/.local/bin/sparkrun`, substitute that path. Keep its
+root configuration and cluster SSH credentials protected; the dashboard
+account does not receive access to them.
+
+On `home-core`, make a dedicated client key if one does not already exist:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/homecompute-sparkrun-manager \
+  -C sparkrun-manager@home-core
+```
+
+Transfer only its public half to `home-spark`, then place it in the root-only
+source file. The following commands assume `home-spark` is the SSH host alias
+and that the compute setup has created `/etc/gb10-ai/secrets`:
+
+```bash
+scp ~/.ssh/homecompute-sparkrun-manager.pub home-spark:/tmp/sparkrun-manager.pub
+ssh home-spark 'sudo install -o root -g root -m 0600 /tmp/sparkrun-manager.pub /etc/gb10-ai/secrets/sparkrun-manager.pub && rm -f /tmp/sparkrun-manager.pub'
+```
+
+On `home-spark`, after deploying a trusted immutable HomeCompute release and
+securely installing/configuring Sparkrun for root:
+
+```bash
+sudo /srv/homecompute/current/scripts/setup-compute-sparkrun-manager.sh validate
+sudo /srv/homecompute/current/scripts/setup-compute-sparkrun-manager.sh install
+```
+
+The helper validates the one-line Ed25519 public key and installs a locked
+`sparkrun-manager` account with exactly one `authorized_keys` entry. That key
+is forced to the no-argument root wrapper at
+`/usr/local/sbin/homecompute-sparkrun-model-manager`; sudo permits only that
+wrapper with no arguments. The wrapper forwards JSON stdin to the adapter in
+the active release. Its JSON action and response contract is the one described
+above. The helper never reads or writes private-key material and does not
+start an HTTP service.
 
 ## Legacy modality scaffold
 

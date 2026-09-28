@@ -19,6 +19,8 @@ services:
       AI_LEGACY_FQDN: ${AI_LEGACY_FQDN:?Set AI_LEGACY_FQDN}
       N8N_FQDN: ${N8N_FQDN:?Set N8N_FQDN}
       N8N_UPSTREAM: ${N8N_UPSTREAM:?Set N8N_UPSTREAM}
+      CHAT_FQDN: ${CHAT_FQDN:?Set CHAT_FQDN}
+      MODELS_FQDN: ${MODELS_FQDN:?Set MODELS_FQDN}
       CADDY_HTTPS_PORT: "8443"
     ports:
       - ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:${CONTROL_PLANE_TAILSCALE_HTTPS_PORT:-443}:8443/tcp
@@ -49,6 +51,9 @@ services:
     networks:
       edge:
         ipv4_address: ${CADDY_EDGE_IP:?Set CADDY_EDGE_IP}
+        gw_priority: 1
+      clients:
+        ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
 
   litellm:
     image: ${LITELLM_IMAGE:?Set LITELLM_IMAGE to an immutable image digest}
@@ -66,6 +71,7 @@ services:
     environment:
       COMPUTE_OPENAI_BASE_URL: ${COMPUTE_OPENAI_BASE_URL:?Set COMPUTE_OPENAI_BASE_URL}
       COMPUTE_AUTOMATION_BASE_URL: ${COMPUTE_AUTOMATION_BASE_URL:?Set COMPUTE_AUTOMATION_BASE_URL}
+      COMPUTE_AUTOMATION_CANDIDATE_BASE_URL: ${COMPUTE_AUTOMATION_CANDIDATE_BASE_URL:?Set COMPUTE_AUTOMATION_CANDIDATE_BASE_URL}
       COMPUTE_HOME_BASE_URL: ${COMPUTE_HOME_BASE_URL:?Set COMPUTE_HOME_BASE_URL}
       LITELLM_CONFIG: /etc/litellm/config.yaml
       LITELLM_MIGRATION_DIR: /app/migrations
@@ -111,6 +117,8 @@ services:
       edge:
         gw_priority: 1
         ipv4_address: ${LITELLM_EDGE_IP:?Set LITELLM_EDGE_IP}
+      clients:
+        ipv4_address: ${LITELLM_CLIENTS_IP:?Set LITELLM_CLIENTS_IP}
       state: {}
       automation-backup: {}
 
@@ -319,6 +327,13 @@ networks:
     internal: true
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
+  clients:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_CLIENTS_SUBNET:?Set CONTROL_PLANE_CLIENTS_SUBNET}
 
 secrets:
   compute_api_key:

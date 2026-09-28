@@ -1,6 +1,9 @@
 { ... }:
 {
-  imports = [ ./automation-network.nix ];
+  imports = [
+    ./automation-network.nix
+    ./model-manager-network.nix
+  ];
 
   virtualisation.docker = {
     enable = true;

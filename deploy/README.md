@@ -6,6 +6,10 @@ Deployment files are split by stable node role:
   service definition.
 - [`control-plane/`](control-plane/README.md) contains the NixOS-hosted
   control-plane Compose workload.
+- [`open-webui/`](open-webui/compose.yaml) contains the browser chat UI,
+  connected to LiteLLM through the internal clients network.
+- [`model-manager/`](model-manager/README.md) contains the gated Spark model
+  lifecycle dashboard and its dedicated SSH bridge.
 - [`homepage/`](homepage/README.md) contains the source-controlled service
   dashboard for `home-core`.
 - [`piper-tts/`](piper-tts/README.md) contains the CPU-native Danish Wyoming

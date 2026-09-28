@@ -11,6 +11,15 @@
       "reasoning_parser": "qwen3",
       "default_thinking_mode": "disabled"
     },
+    "vllm-qwen36-nvidia-nvfp4": {
+      "family": "vllm",
+      "image": "vllm/vllm-openai@sha256:2a7cde230b59f3ce6cab33dd245ba6bee41aa87b38c9fe84f966ff24016813ce",
+      "supported_protocols": ["chat_completions", "responses"],
+      "capabilities": ["chat", "tools", "structured_output"],
+      "tool_call_parser": "qwen3_coder",
+      "reasoning_parser": "qwen3",
+      "default_thinking_mode": "disabled"
+    },
     "vllm-gemma": {
       "family": "vllm",
       "image": "nvcr.io/nvidia/vllm@sha256:d049bead397430803ac5b705d50094492f23782716677d746ab721e43f054cf6",
@@ -37,6 +46,25 @@
       "qualification": {
         "automation": "qualified",
         "assistant": "candidate"
+      }
+    },
+    "nvidia-qwen36-35b-a3b-nvfp4": {
+      "upstream_model_id": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "revision": "1355db6a052410cfd62085d94b58866fd0f2c3c5",
+      "tokenizer_revision": "1355db6a052410cfd62085d94b58866fd0f2c3c5",
+      "code_revision": "1355db6a052410cfd62085d94b58866fd0f2c3c5",
+      "license_id": "apache-2.0",
+      "provenance_url": "https://huggingface.co/nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "weight_format": "modelopt-safetensors",
+      "quantization": "NVFP4",
+      "chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+      "artifact_max_bytes": 28000000000,
+      "artifact_max_files": 32,
+      "max_context_tokens": 262144,
+      "runtime_profiles": ["vllm-qwen36-nvidia-nvfp4"],
+      "capabilities": ["chat", "tools", "structured_output"],
+      "qualification": {
+        "automation": "candidate"
       }
     },
     "gemma4-e4b-qat-w4a16-ct": {
@@ -94,6 +122,32 @@
         "fp8_moe_backend": "triton",
         "tool_call_parser": "qwen3_coder",
         "speculative_config": null,
+        "default_chat_template_kwargs": {"enable_thinking": false},
+        "host_port": 8005
+      }
+    },
+    "automation-spark-nvidia-candidate": {
+      "artifact": "nvidia-qwen36-35b-a3b-nvfp4",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "runtime_profile": "vllm-qwen36-nvidia-nvfp4",
+      "endpoint_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "served_model_name": "automation-moe-nvidia",
+      "context_tokens": 65536,
+      "concurrency": 4,
+      "lifecycle": "operator-on-demand",
+      "availability": "candidate",
+      "priority": 20,
+      "runtime_config": {
+        "max_model_len": 131072,
+        "max_num_seqs": 4,
+        "max_batched_tokens": 8192,
+        "gpu_memory_utilization": 0.5,
+        "moe_backend": "marlin",
+        "attention_backend": "flashinfer",
+        "tool_call_parser": "qwen3_coder",
+        "reasoning_parser": "qwen3",
+        "speculative_config": {"method": "mtp", "num_speculative_tokens": 3, "moe_backend": "triton"},
         "default_chat_template_kwargs": {"enable_thinking": false},
         "host_port": 8005
       }

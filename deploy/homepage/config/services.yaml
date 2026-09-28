@@ -17,6 +17,18 @@
         href: /__homecore_service__/https/edge/healthz
         description: LiteLLM API gateway health
 
+    - Open WebUI:
+        id: homecore-open-webui
+        icon: mdi-chat-processing-outline
+        href: https://chat.home.arpa/
+        description: Chat with local models
+
+    - Model manager:
+        id: homecore-model-manager
+        icon: mdi-server
+        href: https://models.home.arpa/
+        description: Load, unload, and replace Spark models
+
 - Local operator access:
     - Calibre Web Automated:
         id: homecore-calibre-web

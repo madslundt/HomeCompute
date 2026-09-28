@@ -83,6 +83,22 @@ the MoE and restores Qwen3.8 automatically if startup or smoke fails.
 `deactivate` stops the MoE and restores Qwen3.8. Flash-Next is not part of
 either path and remains off by default.
 
+## NVIDIA ModelOpt qualification candidate
+
+`setup-compute-automation-nvidia.sh` stages the pinned
+`nvidia/Qwen3.6-35B-A3B-NVFP4` revision separately from the Unsloth cache and
+uses the isolated vLLM 0.28.0 ARM64 image. Its GB10 recipe enables Marlin,
+FlashInfer, FP8 KV, and three-token MTP. It runs on the same exclusive port
+8005 during a cold-swap window and is exposed only as `automation-moe-nvidia`.
+
+The script records whether `automation-primary` (qualified Unsloth) or
+`text-primary` (Qwen3.8) was running before activation. Startup or baseline
+smoke failure restores that exact service; `deactivate` restores it after the
+qualification window. Existing aliases that target the stopped source model
+are unavailable during the swap. `automation` and `automation-moe` routes are
+not promoted by this script. Complete the full qualification gates before
+changing production routes.
+
 The account-free `prepare-modalities` profile is a legacy, pre-decision
 scaffold. It acquires these public artifacts at full publisher revisions:
 
@@ -160,6 +176,59 @@ the automation-MoE lifecycle for its opt-in cold swap, and the staged modality
 lifecycle script for modality preparation and deployment.
 They validate the release tuple, host, paths, service identity, secrets, bind
 policy, artifact integrity, and provenance.
+
+The repository also includes a constrained sparkrun JSON adapter at
+[`scripts/sparkrun-model-manager.py`](../../scripts/sparkrun-model-manager.py)
+for a future authenticated `home-core` model dashboard. It generates only
+local recipes from the canonical model catalog and reuses the accepted-cache
+and qualification workflows. The current Compose services remain production
+owners of their ports, so a sparkrun load is refused while one of those ports
+is occupied. No live workloads are switched by adding or deploying this
+adapter. Sparkrun does not currently expose all Compose hardening settings;
+qualify its container security and gateway routing before migration.
+
+To provision the fixed dashboard access boundary, Sparkrun must already be
+securely installed and configured for root on `home-spark`. Its root-owned,
+non-writable executable must be `/usr/local/bin/sparkrun` or
+`/root/.local/bin/sparkrun`, and this command must work as root:
+
+```bash
+sudo /usr/local/bin/sparkrun cluster show home-spark --json
+```
+
+If Sparkrun is installed at `/root/.local/bin/sparkrun`, use that path for the
+check. The official installation command is `uvx sparkrun setup install`; use
+the [Sparkrun setup wizard](https://sparkrun.dev/getting-started/setup-wizard/)
+to configure the root-owned `home-spark` cluster first. Protect the root
+Sparkrun configuration and credentials. Provision a
+dedicated Ed25519 key on `home-core`, copy only its `.pub` file to
+`/etc/gb10-ai/secrets/sparkrun-manager.pub` on Spark, and make that source
+`root:root` mode `0600`. For example, with an existing `home-spark` SSH alias:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/homecompute-sparkrun-manager \
+  -C sparkrun-manager@home-core
+scp ~/.ssh/homecompute-sparkrun-manager.pub home-spark:/tmp/sparkrun-manager.pub
+ssh home-spark 'sudo install -o root -g root -m 0600 /tmp/sparkrun-manager.pub /etc/gb10-ai/secrets/sparkrun-manager.pub && rm -f /tmp/sparkrun-manager.pub'
+ssh home-spark 'sudo /srv/homecompute/current/scripts/setup-compute-sparkrun-manager.sh validate'
+ssh home-spark 'sudo /srv/homecompute/current/scripts/setup-compute-sparkrun-manager.sh install'
+```
+
+Provisioning installs a locked `sparkrun-manager` SSH account, a single forced
+`authorized_keys` command, the root-owned no-argument wrapper
+`/usr/local/sbin/homecompute-sparkrun-model-manager`, and one exact no-argument
+NOPASSWD sudo rule. The SSH key can submit only the adapter's JSON actions;
+catalog IDs and all recipes/runtime settings remain server-side. The helper
+does not install/configure Sparkrun, generate keys, use private-key material,
+or expose an HTTP listener. `home-core` should keep the private client key
+readable only to the model-manager service identity.
+
+Generated Sparkrun recipes use host networking with vLLM bound to
+`127.0.0.1`, matching the current home-core SSH loopback tunnel. Do not change
+that bind to a Spark LAN address until the direct-link route, firewall,
+authentication, and gateway path have been separately qualified. Sparkrun's
+Docker executor still lacks the full Compose hardening tuple, including a
+read-only root filesystem and dropping every Linux capability.
 
 Changing an image, model, revision, tokenizer, template, parser, quantization,
 context, backend, adapter, voice, or decoding setting creates a new tuple that

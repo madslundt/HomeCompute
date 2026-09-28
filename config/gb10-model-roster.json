@@ -34,8 +34,8 @@
       }
     },
     "automation_moe": {
-      "model_id": "unsloth/Qwen3.6-35B-A3B-NVFP4",
-      "revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
+      "model_id": "nvidia/Qwen3.6-35B-A3B-NVFP4",
+      "revision": "1355db6a052410cfd62085d94b58866fd0f2c3c5",
       "license_id": "apache-2.0",
       "disposition": "qualification-candidate",
       "activation": "operator-exclusive",
@@ -43,9 +43,20 @@
       "default_thinking_mode": "disabled",
       "runtime_profile": {
         "runtime": "vllm",
-        "speculative_method": "disabled-for-baseline",
+        "version": "0.28.0",
+        "image": "vllm/vllm-openai@sha256:2a7cde230b59f3ce6cab33dd245ba6bee41aa87b38c9fe84f966ff24016813ce",
+        "quantization": "ModelOpt NVFP4",
+        "moe_backend": "marlin",
+        "kv_cache_dtype": "fp8",
+        "attention_backend": "flashinfer",
+        "speculative_method": "mtp-3",
         "tool_call_parser": "qwen3_coder",
         "status": "qualify-with-n8n-tools"
+      },
+      "rollback_model": {
+        "model_id": "unsloth/Qwen3.6-35B-A3B-NVFP4",
+        "revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
+        "status": "currently-qualified"
       },
       "qualification_gates": [
         "danish-workflow-fixtures",

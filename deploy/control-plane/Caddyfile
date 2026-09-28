@@ -80,3 +80,45 @@
 		}
 	}
 }
+
+{$CHAT_FQDN} {
+	tls internal
+	encode zstd gzip
+
+	reverse_proxy open-webui:8080 {
+		health_uri /health
+		health_interval 30s
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
+{$MODELS_FQDN} {
+	tls internal
+	encode zstd gzip
+
+	reverse_proxy model-manager:8080 {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}

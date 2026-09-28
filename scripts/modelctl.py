@@ -44,7 +44,7 @@ def validate_env(deployment_id: str, catalog: dict[str, Any], environ: dict[str,
         key("CHAT_TEMPLATE_SHA256"): artifact.get("chat_template_sha256"),
         artifact_key("ARTIFACT_MAX_BYTES"): None if "artifact_max_bytes" not in artifact else str(artifact["artifact_max_bytes"]),
         artifact_key("ARTIFACT_MAX_FILES"): None if "artifact_max_files" not in artifact else str(artifact["artifact_max_files"]),
-        "VLLM_IMAGE": runtime.get("image"),
+        (key("VLLM_IMAGE") if prefix.startswith("NVIDIA_AUTOMATION_") else "VLLM_IMAGE"): runtime.get("image"),
         key("MODEL_HOST_PORT" if prefix == "HOME_" else "HOST_PORT" if prefix else "VLLM_HOST_PORT"): str(deployment.get("compute_host_port", runtime_config.get("host_port", ""))),
         key("MAX_MODEL_LEN" if prefix else "VLLM_MAX_MODEL_LEN"): str(runtime_config.get("max_model_len", "")),
         key("MAX_NUM_SEQS" if prefix else "VLLM_MAX_NUM_SEQS"): str(runtime_config.get("max_num_seqs", "")),
@@ -78,7 +78,7 @@ def validate_env(deployment_id: str, catalog: dict[str, Any], environ: dict[str,
             failures.append(f"{name} differs from catalog")
     if deployment.get("network_scope") != "private_local":
         failures.append("compute launcher only accepts private_local deployments")
-    if deployment.get("lifecycle") not in {"resident", "hot-standby", "disabled"}:
+    if deployment.get("lifecycle") not in {"resident", "hot-standby", "operator-on-demand", "disabled"}:
         failures.append("deployment lifecycle is not supported by this launcher")
     if failures:
         raise ValueError("; ".join(failures))

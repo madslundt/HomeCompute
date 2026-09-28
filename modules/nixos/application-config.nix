@@ -7,6 +7,7 @@ let
         [
           "COMPUTE_TRANSPORT=dedicated-link"
           "COMPUTE_AUTOMATION_BASE_URL=http://10.77.10.10:8005/v1"
+          "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=http://10.77.10.10:8005/v1"
           "COMPUTE_HOME_BASE_URL=http://10.77.10.10:8006/v1"
           "PLAPRE_WYOMING_UPSTREAM_HOST=10.77.10.10"
           "PLAPRE_WYOMING_UPSTREAM_PORT=10201"
@@ -16,6 +17,7 @@ let
         [
           "COMPUTE_TRANSPORT=ssh-loopback-fallback"
           "COMPUTE_AUTOMATION_BASE_URL=http://172.28.200.1:18005/v1"
+          "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=http://172.28.200.1:18005/v1"
           "COMPUTE_HOME_BASE_URL=http://172.28.200.1:18006/v1"
           "PLAPRE_WYOMING_UPSTREAM_HOST=172.28.200.1"
           "PLAPRE_WYOMING_UPSTREAM_PORT=18201"
@@ -53,6 +55,14 @@ in
   environment.etc."homecompute/homepage.env" = {
     mode = "0600";
     source = ../../config/homepage.env.example;
+  };
+  environment.etc."homecompute/open-webui.env" = {
+    mode = "0600";
+    source = ../../config/open-webui.env.example;
+  };
+  environment.etc."homecompute/model-manager.env" = {
+    mode = "0600";
+    source = ../../config/model-manager.env.example;
   };
   environment.etc."homecompute/books_importer/runtime.env" = {
     mode = "0600";

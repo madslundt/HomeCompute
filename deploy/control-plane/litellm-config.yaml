@@ -23,6 +23,14 @@ model_list:
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 120
       stream_timeout: 120
+  - model_name: "automation-moe-nvidia"
+    litellm_params:
+      model: "openai/automation-moe-nvidia"
+      order: 1
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 120
+      stream_timeout: 120
   - model_name: "assistant-canary"
     litellm_params:
       model: "openai/automation-moe"
