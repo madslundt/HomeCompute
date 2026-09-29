@@ -1,0 +1,60 @@
+--- a/prepare-channel-deliveries.js
++++ b/prepare-channel-deliveries.js
+@@ -213 +213,2 @@
+-  .filter(f => relevantFact(f) && f?.very_important === true)
++  .filter(f => relevantFact(f) && f?.date === ctx.today &&
++    (f?.very_important === true || f?.requires_action === true || f?.importance === 'critical' || Boolean(morningActionDetail(f))))
+@@ -214,0 +216,10 @@
++
++function morningActionDetail(fact) {
++  const detail = childSafeText(fact?.detail, fact?.child).trim();
++  if (/hele dagen udenfor|udedag/i.test(detail) && /tøj efter vejret/i.test(detail) && /ekstra trøje/i.test(detail)) {
++    return 'Tøj efter vejret til hele dagen udenfor; ekstra trøje med';
++  }
++  const sentences = detail.split(/(?<=[.!?])\s+/).map(part => part.replace(/[.!?]+$/, '').trim());
++  const actions = sentences.filter(part => /\bhusk\b|medbring|skal\s+have|tag\s+.*\s+med|tøj efter vejret|ekstra\s+trøje|fjern.*(?:ørering|smykke)/i.test(part));
++  return actions.slice(0, 2).map(part => part.replace(/^(?:så\s+|det vil sige\s+)/i, '')).join('; ');
++}
+@@ -225,2 +236,2 @@
+-    // Push/TTS should be action-first and compact. Use the title only; detail
+-    // is intentionally omitted except for an explicit jewelry-removal reminder.
++    // Include the source-grounded action: generic post titles do not tell a
++    // parent what to bring or do before leaving home.
+@@ -229,0 +241 @@
++      .replace(/^info\.?\s*(?:til|om)\s+(?:vores\s+)?/i, '')
+@@ -231 +243,2 @@
+-
++    title = title.charAt(0).toLocaleUpperCase('da-DK') + title.slice(1);
++    let action = morningActionDetail(f);
+@@ -233,5 +246,6 @@
+-    if (earring && !/(ørering|smykke|piercing)/i.test(title)) {
+-      title = `${title}; ${earring}`;
+-    }
+-
+-    const sentence = `${child ? `${child}: ` : ''}${title}.`;
++    if (earring && !/(ørering|smykke|piercing)/i.test(`${title} ${action}`)) {
++      action = action ? `${action}; ${earring}` : earring;
++    }
++    const prefix = child ? `${child}: ` : '';
++    const message = `${title}${action ? ` – ${action}` : ''}`;
++    const sentence = `${prefix}${message}.`;
+@@ -245,2 +259 @@
+-    // Never lose the single highest-priority reminder because its source title
+-    // is verbose. Shorten only that first item and stop.
++    // Preserve the action if the first reminder exceeds the push limit.
+@@ -248,5 +261,5 @@
+-      const prefix = child ? `${child}: ` : '';
+-      const maxTitleLength = Math.max(12, MORNING_MAX_CHARS - prefix.length - 1);
+-      const compact = title.length > maxTitleLength
+-        ? `${title.slice(0, Math.max(0, maxTitleLength - 1)).trimEnd()}…`
+-        : title;
++      const essential = action || title;
++      const maxLength = Math.max(12, MORNING_MAX_CHARS - prefix.length - 1);
++      const compact = essential.length > maxLength
++        ? `${essential.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`
++        : essential;
+@@ -261,0 +275,4 @@
++if (ctx.mode === 'MORNING' && sendMorning) {
++  sendTelegram = true;
++  telegramHtml = `<b>🌅 Husk fra Aula i dag</b>\n\n${escapeHtml(morningText)}`;
++}
