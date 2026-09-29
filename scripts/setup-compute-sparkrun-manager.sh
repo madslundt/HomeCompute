@@ -192,7 +192,10 @@ install_account() {
   fi
   usermod --lock --shell /bin/sh --home "$ACCOUNT_HOME" --gid "$ACCOUNT" --groups '' "$ACCOUNT"
   install -d -o root -g root -m 0755 "$ACCOUNT_HOME"
-  install -d -o root -g root -m 0700 "$SSH_DIR"
+  # sshd reads authorized_keys before the forced command runs, so the public
+  # key path must be traversable/readable by the unprivileged auth process.
+  # Keep both objects root-owned and non-writable by the manager account.
+  install -d -o root -g root -m 0755 "$SSH_DIR"
 }
 
 install_wrapper() {
@@ -210,13 +213,13 @@ WRAPPER
 install_forced_key() {
   local public_key
   public_key="$(cat -- "$KEY_SOURCE")"
-  write_atomic "$SSH_DIR/authorized_keys" 0600 <<EOF
+  write_atomic "$SSH_DIR/authorized_keys" 0644 <<EOF
 restrict,command="/usr/bin/sudo -n $WRAPPER" $public_key
 EOF
   chown root:root "$SSH_DIR"
-  chmod 0700 "$SSH_DIR"
+  chmod 0755 "$SSH_DIR"
   chown root:root "$SSH_DIR/authorized_keys"
-  chmod 0600 "$SSH_DIR/authorized_keys"
+  chmod 0644 "$SSH_DIR/authorized_keys"
 }
 
 install_sudoers() {
@@ -247,8 +250,8 @@ case "$COMMAND" in
     install_sudoers
     # Verify the final authorization file is precisely the one key and mode
     # installed above. The source parser has already excluded embedded lines.
-    check_secure_file "$SSH_DIR/authorized_keys" 600
-    [[ "$(owner_of "$SSH_DIR")" == 0:0 && "$(mode_of "$SSH_DIR")" == 700 ]] || die 'authorized_keys directory permissions are unsafe'
+    check_secure_file "$SSH_DIR/authorized_keys" 644
+    [[ "$(owner_of "$SSH_DIR")" == 0:0 && "$(mode_of "$SSH_DIR")" == 755 ]] || die 'authorized_keys directory permissions are unsafe'
     [[ "$(owner_of "$WRAPPER")" == 0:0 && "$(mode_of "$WRAPPER")" == 755 ]] || die 'installed wrapper permissions are unsafe'
     [[ "$(owner_of "$SUDOERS")" == 0:0 && "$(mode_of "$SUDOERS")" == 440 ]] || die 'sudoers permissions are unsafe'
     /usr/sbin/visudo -cf "$SUDOERS" >/dev/null || die 'installed sudoers rule failed validation'
