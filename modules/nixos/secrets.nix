@@ -81,6 +81,14 @@ in
             "model-manager/known-hosts" = {
               mode = "0400";
             };
+            "open-webui/litellm-api-key" = {
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
+            "open-webui/webui-secret-key" = {
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
           } // lib.optionalAttrs (
             config.homecompute.backups.enable
             || config.homecompute.agentsVm.localBootstrapBackup.enable
