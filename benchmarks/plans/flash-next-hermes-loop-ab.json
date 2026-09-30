@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "flash-next-hermes-tool-loop",
+  "version": "0.1.0",
+  "trials": 3,
+  "random_seed": 20260930,
+  "cases": ["../fixtures/flash-next/hermes-15-call-recovery.json"],
+  "candidates": [
+    {
+      "id": "flash-quality-blazux-hermes-loop",
+      "adapter": "openai_tool_loop",
+      "model": "automation-qualification",
+      "base_url_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "api_key_env": "VLLM_API_KEY",
+      "artifact_ref": "flash-quality-blazux-nvidia",
+      "max_tool_calls": 30,
+      "request": {"temperature": 0, "reasoning_effort": "xhigh", "chat_template_kwargs": {"enable_thinking": true}}
+    },
+    {
+      "id": "flash-ultrafast-dime-hermes-loop",
+      "adapter": "openai_tool_loop",
+      "model": "automation-qualification",
+      "base_url_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "api_key_env": "VLLM_API_KEY",
+      "artifact_ref": "flash-ultrafast-dime-autoround",
+      "max_tool_calls": 30,
+      "request": {"temperature": 0, "reasoning_effort": "high", "chat_template_kwargs": {"enable_thinking": true}}
+    }
+  ]
+}

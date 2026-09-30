@@ -66,29 +66,20 @@ the design rationale.
 Clients use logical aliases, never model names. The gateway can change the
 model behind an alias after the replacement passes the same tests.
 
-| Alias or route | Use case | Initial candidate or comparison set |
+| Alias or route | Use case | Current or target state |
 | --- | --- | --- |
-| `coding` | Codex editing, tools, builds, and tests | Qwen3.8-27B; operator cold-swap to Flash-Next after repeated struggle |
-| `automation` | n8n, structured output, and approved tools | NVIDIA Qwen3.6-35B-A3B NVFP4 on home-spark |
-| `automation-moe` | Stable n8n model name | NVIDIA Qwen3.6-35B-A3B NVFP4; vLLM 0.28.0, MTP-3 |
-| `automation-moe-nvidia` | Explicit NVIDIA model name | Same resident NVIDIA server; used for qualification and diagnostics |
-| `research` | Private, source-bounded synthesis | Qwen3.8-27B; Flash-Next only for sustained heavy sessions |
-| `home` | Danish/English conversation and safe Home Assistant tool proposals | Qwen3.8-27B |
-| `meeting` | Transcript cleanup, summaries, decisions, and actions | Qwen3.8-27B |
-| `assistant` | Isolated personal-agent sessions and tools | Qwen3.8-27B at 64K or more |
-| STT route | Danish and English transcription | Hviske v5.3 for known Danish; Whisper large-v3-turbo for English, mixed, or unknown |
-| TTS route | Danish and non-Danish speech | Plapre Nano v2 for Danish; Qwen3-TTS 0.6B CustomVoice for supported non-Danish; Piper Danish CPU fallback |
-| Retrieval route | Private document search | Deferred Qwen3 Embedding and Reranker candidates |
+| `automation-moe` | Existing n8n consumer contract | CURRENT: Unsloth Qwen3.6-35B-A3B, pinned production revision |
+| `automation-qualification` | Isolated qualification only | CANDIDATE: Blazux/NVIDIA quality baseline or dime-online UltraFast challenger, selected by operator |
+| `automation` | Long-term semantic consumer alias | TARGET: route only after qualification and explicit approval |
+| `assistant`, `coding`, `research`, `home`, `meeting` | Semantic capability contracts | TARGET may share one text artifact while retaining separate policy |
+| STT | Danish speech recognition | Hviske v5.3 on Spark |
+| TTS | Danish speech synthesis | Plapre Nano v2 on Spark |
+| Whisper | Optional multilingual STT | Deferred; evaluate on `home-core` if needed |
 
-The model selection is final. The shipped compute configuration prepares the
-first qualification stage: pinned Qwen3.8-27B with native MTP on vLLM at 64K.
-Routing remains disabled until that exact tuple passes the live appliance
-gates. SGLang/DFlash is then compared on real workloads before one runtime is
-kept as normal production. The separate Qwen3.6 MoE profile is staged only
-after that baseline and is never loaded with the primary until aggregate
-unified-memory evidence proves safe co-residency. It must beat or complement
-Qwen3.8 on Danish n8n and tool fixtures before `automation` may move.
-
+Qwen3.8-27B remains a smaller cold fallback/workhorse artifact with no default
+route decision. Gemma and Qwen3-TTS are outside the proposed target. See
+[ADR-025](adr/025-flash-next-primary-candidate.md) and the
+[benchmark report](benchmarks/qwen36-vs-flash-next-automation.md).
 ## Before you start
 
 Create an operator-owned worksheet outside the repository. Record:

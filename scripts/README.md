@@ -10,9 +10,10 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | Script | Target | Mutating commands |
 | --- | --- | --- |
 | `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `firewall`, `install`, `rollback`, `down` |
-| `setup-compute-automation-moe.sh` | Opt-in Qwen3.6 MoE candidate on `home-spark` | `prepare`, `install`, `activate`, `deactivate` |
-| `setup-compute-automation-nvidia.sh` | NVIDIA ModelOpt Qwen3.6 production cold-swap on `home-spark` | `validate`, `prepare`, `install`, `activate`, `smoke`, `deactivate` |
-| `setup-compute-home-assistant-model.sh` | Isolated Gemma 4 E4B fast Home Assistant fallback | `prepare`, `install`, `up`, `smoke`, `down` |
+| `setup-compute-automation-moe.sh` | Current Qwen3.6 automation lifecycle and rollback | `prepare`, `install`, `activate`, `deactivate` |
+| `setup-compute-flash-next.sh` | Shared exclusive lifecycle for Blazux quality baseline and dime UltraFast challenger | `validate`, `prepare`, `install`, `activate-canary`, `switch-profile`, `smoke`, `status`, `deactivate-canary` with `--profile quality|ultrafast` |
+| `setup-compute-automation-nvidia.sh` | Historical NVIDIA Qwen3.6 qualification lifecycle | `validate`, `prepare`, `install`, `activate`, `smoke`, `deactivate` |
+| `setup-compute-home-assistant-model.sh` | Historical Gemma 4 E4B Home Assistant service | `prepare`, `install`, `up`, `smoke`, `down` |
 | `setup-compute-plapre.sh` | Isolated Plapre Nano v2 Danish TTS on `home-spark` | `build`, `up`, `down` |
 | `setup-compute-hviske-stt.sh` | Isolated Hviske v5.3 Danish STT on `home-spark` | `prepare`, `install`, `up`, `down` |
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
@@ -39,6 +40,7 @@ models, caches, secrets, previous release records, or the text runtime.
 ```bash
 ./scripts/setup-compute-node.sh help
 ./scripts/setup-compute-automation-moe.sh help
+./scripts/setup-compute-flash-next.sh help
 ./scripts/setup-compute-automation-nvidia.sh help
 ./scripts/setup-compute-plapre.sh help
 ./scripts/setup-compute-hviske-stt.sh help
@@ -51,17 +53,47 @@ The script must run from an intact repository checkout because it resolves
 templates relative to their own location. Production configuration lives under
 `/etc`, and runtime/model data lives outside the repository.
 
-## Opt-in n8n automation MoE
+## Current and candidate automation model lifecycle
 
-`setup-compute-automation-moe.sh install` downloads and accepts the pinned
-Unsloth Qwen3.6-35B-A3B NVFP4 artifact but does not load it. `activate` stops
-the normal Qwen3.8 service before starting the separate `automation-moe`
-profile on port 8005; `deactivate` restores Qwen3.8. The baseline disables
-thinking and MTP, uses the model-card `qwen3_coder` parser, and remains an
-explicit qualification route. The ordinary `automation` alias does not move
-until Danish, structured-output, real n8n, 64-tool, memory, and recovery tests
-pass. Flash-Next is never started by this lifecycle.
+Production remains on Unsloth Qwen3.6-35B-A3B NVFP4 revision
+`739af1e7aac320af1682ed1e0cce369af4c5265d`, served as `automation-moe`.
+The exact live request tuple still needs metadata-only verification.
 
+The Qwen3.6 and NVIDIA lifecycle instructions below are retained as dated
+qualification history; do not use their cold-swap commands as current model
+cutover instructions. Flash-Next profiles share one guarded lifecycle. Prepare
+either immutable profile without starting it, then cold-swap one profile at a
+time:
+
+```bash
+sudo ./scripts/setup-compute-flash-next.sh validate
+sudo ./scripts/setup-compute-flash-next.sh install
+sudo ./scripts/setup-compute-flash-next.sh status
+
+sudo ./scripts/setup-compute-flash-next.sh validate --profile ultrafast
+sudo ./scripts/setup-compute-flash-next.sh install --profile ultrafast
+sudo ./scripts/setup-compute-flash-next.sh switch-profile --profile ultrafast
+```
+
+Both profiles bind the same private qualification listener and expose the
+stable internal `automation-qualification` name. Select the candidate
+deployment in the control-plane registry for the A/B run; never change
+production semantic aliases as part of profile qualification.
+
+`install` builds and prepares the pinned source/artifact and leaves running
+models untouched. Candidate activation is a separate exclusive smoke/benchmark
+step; it records and restores previous text containers and does not change
+LiteLLM production routes. See
+[`deploy/compute-node/README.md`](../deploy/compute-node/README.md) and
+[ADR-025](../docs/adr/025-flash-next-primary-candidate.md).
+
+## Historical Qwen3.6 qualification scripts
+
+`setup-compute-automation-moe.sh` and `setup-compute-automation-nvidia.sh`
+contain earlier vLLM profiles. Their lifecycle notes below describe past
+qualification states, not the live production tuple or the new Flash-Next
+candidate. Preserve their rollback source until the current service owner
+reconciles them with the deployed host.
 ## NVIDIA Qwen3.6 production service
 
 The NVIDIA ModelOpt production model has a dedicated vLLM 0.28.0 ARM64 image,

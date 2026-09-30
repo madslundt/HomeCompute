@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import stat
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,7 @@ ROUTES_PATH = ROOT / "config/capability-routes.json"
 LITELLM_PATH = ROOT / "deploy/control-plane/litellm-config.yaml"
 YAML_BLOCK = re.compile(r"^model_list:\n.*?(?=^litellm_settings:\n)", re.MULTILINE | re.DOTALL)
 REVISION = re.compile(r"^(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})$")
+SEMANTIC_ALIAS = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 LIFECYCLES = {"resident", "hot-standby", "cold-standby", "operator-on-demand", "disabled"}
 AVAILABILITY = {"active", "intentionally-stopped", "candidate", "unavailable"}
 
@@ -142,8 +146,16 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
         if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds < 1:
             raise RegistryError(f"timeout_profiles.{timeout_id}.seconds must be a positive integer")
     routes = obj(routes_doc.get("routes"), "routes")
+    checkpoint_aliases = {
+        re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        for name in [*artifacts, *(artifact["upstream_model_id"] for artifact in artifacts.values())]
+    }
     for alias, raw_route in routes.items():
         route = obj(raw_route, f"routes.{alias}")
+        if not SEMANTIC_ALIAS.fullmatch(alias):
+            raise RegistryError(f"route alias {alias!r} must be a lowercase semantic alias")
+        if alias in checkpoint_aliases:
+            raise RegistryError(f"route alias {alias!r} is a checkpoint identity; consumers must use semantic aliases")
         if alias == "auto":
             raise RegistryError("auto is not a supported capability; clients must choose an explicit alias")
         state = route.get("state")
@@ -230,6 +242,28 @@ def render_config(current_text: str, catalog: dict[str, Any], routes_doc: dict[s
     return current_text[:match.start()] + render_model_list(catalog, routes_doc) + current_text[match.end():]
 
 
+def select_candidate_deployment(
+    catalog: dict[str, Any], routes_doc: dict[str, Any], alias: str, deployment_id: str
+) -> dict[str, Any]:
+    validate(catalog, routes_doc)
+    route = routes_doc.get("routes", {}).get(alias)
+    if not isinstance(route, dict) or route.get("state") != "candidate" or route.get("kind") != "candidate":
+        raise RegistryError(f"{alias!r} is not an isolated candidate route")
+    deployment = catalog.get("deployments", {}).get(deployment_id)
+    if not isinstance(deployment, dict):
+        raise RegistryError(f"unknown candidate deployment: {deployment_id}")
+    if deployment.get("availability") != "candidate" or deployment.get("lifecycle") != "operator-on-demand":
+        raise RegistryError("candidate route selection only accepts operator-on-demand candidate deployments")
+    old = list(route.get("deployments", []))
+    route["deployments"] = [deployment_id]
+    try:
+        validate(catalog, routes_doc)
+    except RegistryError:
+        route["deployments"] = old
+        raise
+    return routes_doc
+
+
 def load_json(path: Path) -> dict[str, Any]:
     try:
         return obj(json.loads(path.read_text(encoding="utf-8")), str(path))
@@ -243,6 +277,11 @@ def main(argv: list[str] | None = None) -> int:
     validate_parser = subparsers.add_parser("validate")
     validate_parser.add_argument("--catalog", type=Path, default=CATALOG_PATH)
     validate_parser.add_argument("--routes", type=Path, default=ROUTES_PATH)
+    select_parser = subparsers.add_parser("select-candidate")
+    select_parser.add_argument("--alias", required=True)
+    select_parser.add_argument("--deployment", required=True)
+    select_parser.add_argument("--catalog", type=Path, default=CATALOG_PATH)
+    select_parser.add_argument("--routes", type=Path, default=ROUTES_PATH)
     for command in ("render", "check"):
         command_parser = subparsers.add_parser(command)
         command_parser.add_argument("--catalog", type=Path, default=CATALOG_PATH)
@@ -257,6 +296,28 @@ def main(argv: list[str] | None = None) -> int:
         validate(catalog, routes_doc)
         if args.command == "validate":
             print(json.dumps({"catalog_version": catalog["catalog_version"], "valid": True}, sort_keys=True))
+            return 0
+        if args.command == "select-candidate":
+            selected = select_candidate_deployment(catalog, routes_doc, args.alias, args.deployment)
+            route_path = args.routes.resolve(strict=True)
+            if args.routes.is_symlink():
+                raise RegistryError("refusing to replace a symlinked route file")
+            fd, temp_name = tempfile.mkstemp(prefix=f".{route_path.name}.", dir=route_path.parent)
+            try:
+                os.fchmod(fd, stat.S_IMODE(route_path.stat().st_mode))
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(selected, handle, indent=2, ensure_ascii=False)
+                    handle.write("\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temp_name, route_path)
+            except Exception:
+                try:
+                    os.unlink(temp_name)
+                except OSError:
+                    pass
+                raise
+            print(f"Selected {args.deployment} for candidate route {args.alias}; production aliases are unchanged")
             return 0
         current = args.config.read_text(encoding="utf-8")
         rendered = render_config(current, catalog, routes_doc)

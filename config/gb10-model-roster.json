@@ -1,6 +1,6 @@
 {
   "schema_version": 4,
-  "roster_version": "2026-09-26-qwen36-automation-plus-speech-stack",
+  "roster_version": "2026-09-29-flash-next-qualification",
   "hardware": {
     "accelerator": "NVIDIA GB10",
     "unified_memory_gib": 128,
@@ -9,38 +9,142 @@
   },
   "text_models": {
     "primary": {
+      "model_id": "unsloth/Qwen3.6-35B-A3B-NVFP4",
+      "revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
+      "license_id": "apache-2.0",
+      "disposition": "current-production-automation",
+      "roles": [
+        "automation"
+      ],
+      "default_thinking_mode": "verify-live-effective-request-before-benchmark",
+      "runtime_profiles": {
+        "production": {
+          "runtime": "vllm",
+          "version": "runtime-image-to-be-captured-from-live-host",
+          "image": "runtime-image-digest-to-be-captured-from-live-host",
+          "tool_call_parser": "qwen3_coder",
+          "context_tokens": 131072,
+          "mtp": "disabled-for-baseline",
+          "kv_cache": "fp8",
+          "thinking": "effective-request-configuration-unverified"
+        }
+      }
+    },
+    "flash_next_candidate": {
+      "model_id": "nvidia/Qwen3.8-Flash-Next-NVFP4",
+      "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+      "license_id": "nvidia-open-model-license",
+      "provenance_url": "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4",
+      "disposition": "qualification-candidate-not-installed",
+      "activation": "operator-exclusive-candidate-route-only",
+      "roles": [
+        "automation",
+        "assistant",
+        "coding",
+        "research",
+        "home",
+        "meeting"
+      ],
+      "default_thinking_mode": "enabled",
+      "reasoning_effort": "xhigh",
+      "runtime_profile": {
+        "runtime": "blazux-qwen38-flash-dgx",
+        "revision": "b05e14681325f3cc5bd22e7f48537feeeb0bf266",
+        "base_image": "vllm/vllm-openai@sha256:4864d46625cbc3307623e29ac742030655e27249feba7b97ec925ce4cc4dfb56",
+        "built_image_digest": "not-yet-built-on-home-spark",
+        "mode": "hybrid",
+        "context_tokens": 262144,
+        "yarn": false,
+        "mtp": 2,
+        "sequences": 4,
+        "gpu_memory_steps": [
+          0.68,
+          0.7,
+          0.72
+        ],
+        "gpu_memory_utilization": 0.68,
+        "prefix_cache": true,
+        "deterministic_topk": true,
+        "effort_alias": true,
+        "kv_cache_dtype": "auto",
+        "extra_args": [
+          "--long-prefill-token-threshold",
+          "1024"
+        ],
+        "auto_tool_choice": true,
+        "tool_call_parser": "qwen3_coder",
+        "reasoning_parser": "qwen3",
+        "default_chat_template_kwargs": {
+          "enable_thinking": true
+        }
+      },
+      "qualification_gates": [
+        "qwen36-production-reasoning-baseline",
+        "aula-15-replay-cases",
+        "offers-10-replay-cases",
+        "shopping-50-reviewed-items",
+        "tool-surface-64-or-more",
+        "native-context-262144",
+        "hviske-plapre-mixed-load",
+        "24-hour-soak"
+      ]
+    },
+    "flash_next_ultrafast_challenger": {
+      "model_id": "Saren/Qwen3.8-Flash-Next-W4A16-AutoRound-hybrid",
+      "revision": "8b82f0b7abe3d1150a7827d298c75e86267636ae",
+      "license_id": "qwen-community-license-1.0-review-required",
+      "provenance_url": "https://huggingface.co/Saren/Qwen3.8-Flash-Next-W4A16-AutoRound-hybrid/tree/8b82f0b7abe3d1150a7827d298c75e86267636ae",
+      "disposition": "performance-challenger-not-production-qualified",
+      "activation": "operator-exclusive-candidate-route-only",
+      "roles": ["automation", "assistant", "coding", "research"],
+      "runtime_profile": {
+        "runtime": "dime-online-qwen38-flash-dgx-ultrafast",
+        "revision": "0c391a3e74b6a775cfe248691ca7fd855b1876a5",
+        "base_image": "vllm/vllm-openai:qwen38-flash-next@sha256:fc120ece0a388cc0aa1caad4a9f1cd92113484ab7ec2fd0efadd62585be05bf8",
+        "built_image_digest": "not-yet-built-on-home-spark",
+        "target_quantization": "AutoRound W4A16 routed experts, FP8 side layers, INT8 LM head",
+        "ple_table": "FP8 file-backed mmap",
+        "context_tokens": 262144,
+        "kv_cache_memory_bytes": "16g",
+        "mtp": 3,
+        "mtp_draft_vocabulary": 65536,
+        "prefix_cache": true,
+        "tool_call_parser": "qwen3_xml",
+        "reasoning_parser": "qwen3"
+      },
+      "qualification_gates": [
+        "same-homecompute-corpus-as-blazux-quality-baseline",
+        "hermes-15-30-sequential-tool-call-loops",
+        "danish-tool-and-structured-output-quality",
+        "32k-64k-128k-long-context-correctness",
+        "prefix-cache-correctness-and-warm-cold-latency",
+        "tool-errors-retries-and-recovery",
+        "mixed-load-memory-and-swap-headroom",
+        "repeated-run-reliability",
+        "overnight-soak"
+      ]
+    },
+    "qwen38_27b_fallback": {
       "model_id": "unsloth/Qwen3.8-27B-NVFP4",
       "revision": "57926baca9a82b4d6906b43f2750d55315f5b10f",
       "license_id": "apache-2.0",
-      "disposition": "production-workhorse",
-      "roles": ["assistant", "automation", "coding", "home", "meeting", "research"],
-      "default_thinking_mode": "disabled",
-      "runtime_profiles": {
-        "baseline": {
-          "runtime": "vllm",
-          "speculative_method": "qwen3_5_mtp",
-          "draft_model_id": null,
-          "tool_call_parser": "qwen3_coder",
-          "status": "implement-first"
-        },
-        "performance": {
-          "runtime": "sglang",
-          "speculative_method": "dflash",
-          "tool_call_parser": "qwen3_coder",
-          "draft_model_id": "incoai/Qwen3.8-27B-DFlash2",
-          "draft_revision": "dedf8df68adfb1afeaf7b7480c0a0243108177b4",
-          "status": "benchmark-after-baseline"
-        }
-      }
+      "provenance_url": "https://huggingface.co/unsloth/Qwen3.8-27B-NVFP4",
+      "disposition": "retained-efficient-cold-fallback-not-current-production",
+      "activation": "operator-exclusive-cold-swap",
+      "roles": ["efficient-workhorse-fallback"],
+      "runtime_profile_ref": "vllm-qwen",
+      "qualification": "retained artifact; future routing requires separate workload qualification"
     },
     "automation_moe": {
       "model_id": "nvidia/Qwen3.6-35B-A3B-NVFP4",
       "revision": "1355db6a052410cfd62085d94b58866fd0f2c3c5",
       "license_id": "apache-2.0",
-      "disposition": "qualification-candidate",
+      "disposition": "secondary-historical-qualification-candidate",
       "activation": "operator-exclusive",
-      "roles": ["automation-moe"],
-      "default_thinking_mode": "disabled",
+      "roles": [
+        "automation-moe"
+      ],
+      "default_thinking_mode": "not-promotion-baseline",
       "runtime_profile": {
         "runtime": "vllm",
         "version": "0.28.0",
@@ -56,7 +160,7 @@
       "rollback_model": {
         "model_id": "unsloth/Qwen3.6-35B-A3B-NVFP4",
         "revision": "739af1e7aac320af1682ed1e0cce369af4c5265d",
-        "status": "currently-qualified"
+        "status": "rollback-artifact-current-production"
       },
       "qualification_gates": [
         "danish-workflow-fixtures",
@@ -69,13 +173,15 @@
       "model_id": "RadixArk/Qwen3.8-Flash-Next-NVFP4",
       "revision": "7b719225242aacd3dbd3f9407468c2ee9a9d2594",
       "license_id": "other",
-      "disposition": "cold-swap-heavy",
-      "activation": "operator-exclusive",
-      "roles": ["coding", "research"],
+      "disposition": "superseded-flash-checkpoint-historical-reference",
+      "activation": "not-a-target-artifact",
+      "roles": [],
       "recipe": {
         "url": "https://github.com/blazux/qwen3.8-Flash-DGX",
         "revision": "2d9b5b744b8b8e25e0c40120f4a13bcec3554aa9"
-      }
+      },
+      "superseded_by": "flash_next_candidate",
+      "supersession_reason": "The pinned Blazux recipe currently defaults to NVIDIA\u2019s published NVFP4 artifact; see ADR-025."
     }
   },
   "services": {
@@ -83,18 +189,26 @@
       "model_id": "syvai/hviske-v5.3",
       "revision": "5d1a09822018702dc51d763e3a867b62d26b3501",
       "license_id": "cc-by-nc-4.0",
-      "disposition": "install",
+      "disposition": "deferred-optional-evaluate-on-home-core",
       "language": "da",
-      "runtime_profile": {"isolation_group": "hviske-vllm-0.19", "runtime": "vllm", "version_constraint": ">=0.19,<0.20"},
+      "runtime_profile": {
+        "isolation_group": "hviske-vllm-0.19",
+        "runtime": "vllm",
+        "version_constraint": ">=0.19,<0.20"
+      },
       "commercial_use_gate": "SYVAI license review required for employer, work, or commercial use"
     },
     "stt_english": {
       "model_id": "openai/whisper-large-v3-turbo",
       "revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
       "license_id": "mit",
-      "disposition": "install",
+      "disposition": "excluded-from-target-architecture",
       "language": "multilingual",
-      "runtime_profile": {"isolation_group": "whisper-turbo", "runtime": "transformers", "version_constraint": "pinned-image-required"}
+      "runtime_profile": {
+        "isolation_group": "whisper-turbo",
+        "runtime": "transformers",
+        "version_constraint": "pinned-image-required"
+      }
     },
     "tts_danish": {
       "model_id": "syvai/plapre-nano-v2",
@@ -102,7 +216,11 @@
       "license_id": "cc-by-4.0",
       "disposition": "install",
       "language": "da",
-      "runtime_profile": {"isolation_group": "plapre-vllm-0.15", "runtime": "vllm", "version_constraint": ">=0.15,<0.16"},
+      "runtime_profile": {
+        "isolation_group": "plapre-vllm-0.15",
+        "runtime": "vllm",
+        "version_constraint": ">=0.15,<0.16"
+      },
       "voice_policy": "approved-supplied-or-reference-voice-only"
     },
     "tts_english": {
@@ -111,7 +229,11 @@
       "license_id": "apache-2.0",
       "disposition": "install",
       "language": "multilingual-excluding-da",
-      "runtime_profile": {"isolation_group": "qwen3-tts-0.6", "runtime": "qwen-tts", "version_constraint": "pinned-image-required"}
+      "runtime_profile": {
+        "isolation_group": "qwen3-tts-0.6",
+        "runtime": "qwen-tts",
+        "version_constraint": "pinned-image-required"
+      }
     }
   },
   "supporting_services": {
@@ -137,6 +259,7 @@
     }
   },
   "excluded_models": [
+    "google/gemma-4-E4B-it-qat-w4a16-ct",
     "nvidia/DeepSeek-V4-Flash-NVFP4",
     "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
     "openai/whisper-large-v3",
@@ -147,8 +270,14 @@
   "operating_profiles": {
     "normal": {
       "text_model": "primary",
-      "allowed_text_runtime_profiles": ["baseline", "performance"],
-      "speech_services": ["stt_danish", "stt_english", "tts_danish", "tts_english"]
+      "allowed_text_runtime_profiles": [
+        "baseline",
+        "performance"
+      ],
+      "speech_services": [
+        "stt_danish",
+        "tts_danish"
+      ]
     },
     "automation_moe": {
       "text_model": "automation_moe",
@@ -161,19 +290,27 @@
       "stop_text_model_first": "primary",
       "restart_text_model_after": "primary",
       "dynamic_router_activation": false
+    },
+    "target_pending_approval": {
+      "text_model": null,
+      "candidate_selection": "pending-quality-and-reliability-qualification",
+      "exclusive_cold_swap": true,
+      "speech_services": [
+        "stt_danish",
+        "tts_danish"
+      ],
+      "dynamic_router_activation": false,
+      "approval_required": true
     }
   },
   "deployment_order": [
-    "primary.runtime_profiles.baseline",
-    "benchmark.baseline",
-    "automation_moe.runtime_profile",
-    "benchmark.automation_moe",
-    "primary.runtime_profiles.performance",
-    "benchmark.runtime-comparison",
-    "services.stt_danish",
-    "services.stt_english",
-    "services.tts_danish",
-    "services.tts_english",
-    "heavy"
+    "current-production.primary",
+    "flash_next_candidate.runtime_profile",
+    "flash_next_ultrafast_challenger.runtime_profile",
+    "benchmark.qwen36-production-reasoning",
+    "benchmark.flash-next-medium",
+    "benchmark.flash-next-xhigh",
+    "benchmark.mixed-speech-load",
+    "benchmark.24-hour-soak"
   ]
 }

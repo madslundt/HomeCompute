@@ -51,6 +51,8 @@ def json_path(value: Any, path: str) -> Any:
     for segment in path.split("."):
         if isinstance(current, dict) and segment in current:
             current = current[segment]
+        elif isinstance(current, list) and segment.isdecimal() and int(segment) < len(current):
+            current = current[int(segment)]
         else:
             raise KeyError(path)
     return current
@@ -284,6 +286,37 @@ def run_benchmark(
                 case["objective_checks"],
                 Path(workspace_value) if workspace_value else None,
             )
+            loop_assertions = case.get("tool_loop_assertions")
+            if loop_assertions is not None:
+                checks = list(record["objective"]["checks"])
+                metrics = {
+                    "tool_call_count": response.get("tool_call_count", 0),
+                    "tool_round_count": response.get("tool_round_count", 0),
+                    "wrong_tool_count": response.get("wrong_tool_count", 0),
+                    "duplicate_tool_count": response.get("duplicate_tool_count", 0),
+                    "malformed_tool_count": response.get("malformed_tool_count", 0),
+                    "missing_required_tool_calls": response.get("missing_required_tool_calls", 0),
+                    "missing_call_id_count": response.get("missing_call_id_count", 0),
+                    "duplicate_call_id_count": response.get("duplicate_call_id_count", 0),
+                }
+                minimum = loop_assertions.get("minimum_calls", 0)
+                maximum = loop_assertions.get("maximum_calls", 64)
+                checks.extend([
+                    {"id": "tool-loop-minimum-depth", "passed": metrics["tool_call_count"] >= minimum, "weight": 2, "description": f"at least {minimum} calls"},
+                    {"id": "tool-loop-maximum-depth", "passed": metrics["tool_call_count"] <= maximum, "weight": 1, "description": f"at most {maximum} calls"},
+                    {"id": "tool-loop-sequential-depth", "passed": metrics["tool_round_count"] >= loop_assertions.get("minimum_sequential_rounds", minimum), "weight": 2, "description": f"at least {loop_assertions.get('minimum_sequential_rounds', minimum)} sequential rounds"},
+                    {"id": "tool-loop-exact-selection", "passed": metrics["wrong_tool_count"] == 0 and metrics["missing_required_tool_calls"] == 0, "weight": 4, "description": "required tool sequence and arguments"},
+                    {"id": "tool-loop-no-duplicates", "passed": metrics["duplicate_tool_count"] == 0, "weight": 2, "description": "no duplicate tool calls"},
+                    {"id": "tool-loop-valid-calls", "passed": metrics["malformed_tool_count"] == 0 and metrics["missing_call_id_count"] == 0 and metrics["duplicate_call_id_count"] == 0, "weight": 2, "description": "valid JSON arguments and unique call IDs"},
+                    {"id": "tool-loop-error-path-exercised", "passed": response.get("tool_error_count", 0) >= loop_assertions.get("minimum_tool_errors", 0), "weight": 1, "description": "required simulated tool error was observed"},
+                ])
+                available = sum(item["weight"] for item in checks)
+                earned = sum(item["weight"] for item in checks if item["passed"])
+                record["objective"] = {
+                    "score": round(100 * earned / available, 2) if available else 100.0,
+                    "passed": all(item["passed"] for item in checks),
+                    "checks": checks,
+                }
             record["status"] = "completed"
         except BenchmarkError as exc:
             record.update({"status": "error", "error": str(exc), "objective": {"score": 0, "passed": False, "checks": []}})

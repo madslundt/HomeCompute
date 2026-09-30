@@ -1,12 +1,19 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026-09-27-capability-refactor",
+  "catalog_version": "2026-09-30-flash-next-quality-and-ultrafast-challenger",
   "runtime_profiles": {
     "vllm-qwen": {
       "family": "vllm",
       "image": "nvcr.io/nvidia/vllm@sha256:d049bead397430803ac5b705d50094492f23782716677d746ab721e43f054cf6",
-      "supported_protocols": ["chat_completions", "responses"],
-      "capabilities": ["chat", "tools", "structured_output"],
+      "supported_protocols": [
+        "chat_completions",
+        "responses"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
       "tool_call_parser": "qwen3_coder",
       "reasoning_parser": "qwen3",
       "default_thinking_mode": "disabled"
@@ -14,8 +21,15 @@
     "vllm-qwen36-nvidia-nvfp4": {
       "family": "vllm",
       "image": "vllm/vllm-openai@sha256:2a7cde230b59f3ce6cab33dd245ba6bee41aa87b38c9fe84f966ff24016813ce",
-      "supported_protocols": ["chat_completions", "responses"],
-      "capabilities": ["chat", "tools", "structured_output"],
+      "supported_protocols": [
+        "chat_completions",
+        "responses"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
       "tool_call_parser": "qwen3_coder",
       "reasoning_parser": "qwen3",
       "default_thinking_mode": "disabled"
@@ -23,10 +37,65 @@
     "vllm-gemma": {
       "family": "vllm",
       "image": "nvcr.io/nvidia/vllm@sha256:d049bead397430803ac5b705d50094492f23782716677d746ab721e43f054cf6",
-      "supported_protocols": ["chat_completions"],
-      "capabilities": ["chat", "tools", "structured_output"],
+      "supported_protocols": [
+        "chat_completions"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
       "tool_call_parser": "gemma",
       "default_thinking_mode": "disabled"
+    },
+    "blazux-qwen38-flash-dgx": {
+      "family": "blazux_qwen38_flash_dgx",
+      "image": "local image digest recorded in candidate install manifest",
+      "source_url": "https://github.com/blazux/qwen3.8-Flash-DGX",
+      "source_revision": "b05e14681325f3cc5bd22e7f48537feeeb0bf266",
+      "base_image": "vllm/vllm-openai@sha256:4864d46625cbc3307623e29ac742030655e27249feba7b97ec925ce4cc4dfb56",
+      "image_digest_status": "not-built",
+      "deployment_role": "quality-first-reference-baseline",
+      "supported_protocols": [
+        "chat_completions"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "tool_call_parser": "qwen3_coder",
+      "reasoning_parser": "qwen3",
+      "default_thinking_mode": "enabled"
+    },
+    "dime-qwen38-flash-ultrafast": {
+      "family": "dime_qwen38_flash_dgx_ultrafast",
+      "image": "local iter6d image digest recorded in candidate install manifest",
+      "source_url": "https://github.com/dime-online/qwen3.8-Flash-DGX-UltraFast",
+      "source_revision": "0c391a3e74b6a775cfe248691ca7fd855b1876a5",
+      "base_image": "vllm/vllm-openai:qwen38-flash-next@sha256:fc120ece0a388cc0aa1caad4a9f1cd92113484ab7ec2fd0efadd62585be05bf8",
+      "build_script_sha256": "a9418c3d2ad6321f7c348f017c8b7d19de3474f0334188d2a6afb8708ed4d0f4",
+      "dockerfile_iter6c_sha256": "e9aff690bf014b4913af3071c6a011bb1eadaeed1d7d4fea38fb012cc56cf89b",
+      "dockerfile_iter6d_sha256": "b302b04bf5cd23bdc69cec7b35cf1b57d8bad16b071bb68cf2e3924f30fa0ecf",
+      "serve_script_sha256": "3758d9552e09dd8778415305e62385dcbdfad1f886406d081f5d83136a375131",
+      "launcher_script_sha256": "5f81f5abe72cd5cb9e6aab2f226f7cf8f8f43249bc647f1fba45c761555764aa",
+      "upstream_env_sha256": "3ef3605f47da62905c70071791dab74aef39f1e039c3665082742842481c0641",
+      "build_profile": "v16b-iter6d-20260910",
+      "image_digest_status": "not-built",
+      "deployment_role": "performance-challenger-not-production-qualified",
+      "homecompute_launch_overlay": "deploy/compute-node/patches/dime-ultrafast-private-launch.patch",
+      "homecompute_launch_overlay_sha256": "9cf8895b57560381c555970d2d043c089df9fa3eb2b9dab69440a035b14228cb",
+      "supported_protocols": [
+        "chat_completions"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "tool_call_parser": "qwen3_xml",
+      "reasoning_parser": "qwen3",
+      "default_thinking_mode": "enabled"
     }
   },
   "artifacts": {
@@ -41,8 +110,14 @@
       "artifact_max_bytes": 28000000000,
       "artifact_max_files": 32,
       "max_context_tokens": 262144,
-      "runtime_profiles": ["vllm-qwen"],
-      "capabilities": ["chat", "tools", "structured_output"],
+      "runtime_profiles": [
+        "vllm-qwen"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
       "qualification": {
         "automation": "qualified",
         "assistant": "candidate"
@@ -61,8 +136,14 @@
       "artifact_max_bytes": 28000000000,
       "artifact_max_files": 32,
       "max_context_tokens": 262144,
-      "runtime_profiles": ["vllm-qwen36-nvidia-nvfp4"],
-      "capabilities": ["chat", "tools", "structured_output"],
+      "runtime_profiles": [
+        "vllm-qwen36-nvidia-nvfp4"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
       "qualification": {
         "automation": "qualified"
       }
@@ -78,9 +159,17 @@
       "artifact_max_files": 16,
       "quantization": "QAT-W4A16",
       "max_context_tokens": 32768,
-      "runtime_profiles": ["vllm-gemma"],
-      "capabilities": ["chat", "tools", "structured_output"],
-      "qualification": {"home": "qualified"}
+      "runtime_profiles": [
+        "vllm-gemma"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "qualification": {
+        "home": "qualified"
+      }
     },
     "qwen38-27b-nvfp4": {
       "upstream_model_id": "unsloth/Qwen3.8-27B-NVFP4",
@@ -95,9 +184,70 @@
       "artifact_max_bytes": 25000000000,
       "artifact_max_files": 32,
       "max_context_tokens": 262144,
-      "runtime_profiles": ["vllm-qwen"],
-      "capabilities": ["chat", "tools", "structured_output"],
+      "runtime_profiles": [
+        "vllm-qwen"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
       "qualification": {}
+    },
+    "qwen38-flash-next-nvfp4": {
+      "upstream_model_id": "nvidia/Qwen3.8-Flash-Next-NVFP4",
+      "revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+      "tokenizer_revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+      "code_revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+      "license_id": "nvidia-open-model-license",
+      "provenance_url": "https://huggingface.co/nvidia/Qwen3.8-Flash-Next-NVFP4",
+      "weight_format": "modelopt-safetensors",
+      "quantization": "NVFP4-with-prepared-FP8-hybrid-side-layers",
+      "artifact_max_bytes": 140000000000,
+      "artifact_max_files": 64,
+      "max_context_tokens": 262144,
+      "runtime_profiles": [
+        "blazux-qwen38-flash-dgx"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "qualification": {
+        "automation": "candidate"
+      }
+    },
+    "qwen38-flash-next-ultrafast-autoround": {
+      "upstream_model_id": "Saren/Qwen3.8-Flash-Next-W4A16-AutoRound-hybrid",
+      "revision": "8b82f0b7abe3d1150a7827d298c75e86267636ae",
+      "tokenizer_revision": "8b82f0b7abe3d1150a7827d298c75e86267636ae",
+      "code_revision": "8b82f0b7abe3d1150a7827d298c75e86267636ae",
+      "license_id": "qwen-community-1.0-review-required",
+      "provenance_url": "https://huggingface.co/Saren/Qwen3.8-Flash-Next-W4A16-AutoRound-hybrid/tree/8b82f0b7abe3d1150a7827d298c75e86267636ae",
+      "weight_format": "safetensors-autoround-hybrid-with-dense-mtp-drafter",
+      "quantization": "AutoRound-W4A16-routed-experts-FP8-side-layers-INT8-lm-head",
+      "ple_table": {
+        "upstream_model_id": "Saren/Qwen3.8-Flash-Next-ple-table-fp8",
+        "revision": "50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14",
+        "format": "FP8-mmap-file-backed"
+      },
+      "tokenizer_config_sha256": "792fa3f0cb88b111e54ef3134c873531008c4df471d108da17903426e308aa7b",
+      "chat_template": "vLLM built-in Qwen3 XML template selected by pinned qwen3_xml tool parser",
+      "artifact_max_bytes": 140000000000,
+      "artifact_max_files": 96,
+      "max_context_tokens": 262144,
+      "runtime_profiles": [
+        "dime-qwen38-flash-ultrafast"
+      ],
+      "capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "qualification": {
+        "automation": "candidate"
+      }
     }
   },
   "deployments": {
@@ -110,8 +260,8 @@
       "served_model_name": "automation-moe",
       "context_tokens": 65536,
       "concurrency": 4,
-      "lifecycle": "operator-on-demand",
-      "availability": "intentionally-stopped",
+      "lifecycle": "resident",
+      "availability": "active",
       "priority": 10,
       "runtime_config": {
         "max_model_len": 131072,
@@ -122,7 +272,9 @@
         "fp8_moe_backend": "triton",
         "tool_call_parser": "qwen3_coder",
         "speculative_config": null,
-        "default_chat_template_kwargs": {"enable_thinking": false},
+        "default_chat_template_kwargs": {
+          "enable_thinking": "verify-live-before-baseline"
+        },
         "host_port": 8005
       }
     },
@@ -135,8 +287,8 @@
       "served_model_name": "automation-moe-nvidia",
       "context_tokens": 65536,
       "concurrency": 4,
-      "lifecycle": "resident",
-      "availability": "active",
+      "lifecycle": "operator-on-demand",
+      "availability": "candidate",
       "priority": 20,
       "runtime_config": {
         "max_model_len": 131072,
@@ -147,8 +299,14 @@
         "attention_backend": "flashinfer",
         "tool_call_parser": "qwen3_coder",
         "reasoning_parser": "qwen3",
-        "speculative_config": {"method": "mtp", "num_speculative_tokens": 3, "moe_backend": "triton"},
-        "default_chat_template_kwargs": {"enable_thinking": false},
+        "speculative_config": {
+          "method": "mtp",
+          "num_speculative_tokens": 3,
+          "moe_backend": "triton"
+        },
+        "default_chat_template_kwargs": {
+          "enable_thinking": false
+        },
         "host_port": 8005
       }
     },
@@ -170,7 +328,9 @@
         "max_num_seqs": 4,
         "max_batched_tokens": 4096,
         "gpu_memory_utilization": 0.24,
-        "default_chat_template_kwargs": {"enable_thinking": false}
+        "default_chat_template_kwargs": {
+          "enable_thinking": false
+        }
       }
     },
     "general-spark-qwen38": {
@@ -195,8 +355,105 @@
         "moe_backend": "marlin",
         "reasoning_parser": "qwen3",
         "tool_call_parser": "qwen3_coder",
-        "speculative_config": {"method": "qwen3_5_mtp", "num_speculative_tokens": 3},
-        "default_chat_template_kwargs": {"enable_thinking": false}
+        "speculative_config": {
+          "method": "qwen3_5_mtp",
+          "num_speculative_tokens": 3
+        },
+        "default_chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      }
+    },
+    "automation-flash-next-candidate": {
+      "artifact": "qwen38-flash-next-nvfp4",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "runtime_profile": "blazux-qwen38-flash-dgx",
+      "endpoint_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "served_model_name": "automation-qualification",
+      "context_tokens": 262144,
+      "concurrency": 4,
+      "lifecycle": "operator-on-demand",
+      "availability": "candidate",
+      "priority": 30,
+      "runtime_config": {
+        "mode": "hybrid",
+        "context_tokens": 262144,
+        "yarn": false,
+        "mtp": 2,
+        "max_num_seqs": 4,
+        "gpu_memory_utilization": 0.68,
+        "gpu_memory_qualification_steps": [
+          0.68,
+          0.7,
+          0.72
+        ],
+        "prefix_cache": true,
+        "deterministic_topk": true,
+        "effort_alias": true,
+        "kv_cache_dtype": "auto",
+        "extra_args": [
+          "--long-prefill-token-threshold",
+          "1024"
+        ],
+        "enable_auto_tool_choice": true,
+        "tool_call_parser": "qwen3_coder",
+        "reasoning_parser": "qwen3",
+        "image_digest": "must-capture-after-pinned-build"
+      },
+      "qualification_request": {
+        "chat_template_kwargs": {
+          "enable_thinking": true
+        },
+        "reasoning_effort": "xhigh",
+        "temperature": 0
+      }
+    },
+    "automation-flash-next-ultrafast-challenger": {
+      "artifact": "qwen38-flash-next-ultrafast-autoround",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "runtime_profile": "dime-qwen38-flash-ultrafast",
+      "endpoint_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "served_model_name": "automation-qualification",
+      "context_tokens": 262144,
+      "concurrency": 8,
+      "lifecycle": "operator-on-demand",
+      "availability": "candidate",
+      "priority": 31,
+      "runtime_config": {
+        "source_revision": "0c391a3e74b6a775cfe248691ca7fd855b1876a5",
+        "model_revision": "8b82f0b7abe3d1150a7827d298c75e86267636ae",
+        "ple_table_revision": "50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14",
+        "parent_image": "vllm/vllm-openai:qwen38-flash-next@sha256:fc120ece0a388cc0aa1caad4a9f1cd92113484ab7ec2fd0efadd62585be05bf8",
+        "image_tag": "qwen38-flash-dgx:iter6d-20260910",
+        "image_digest": "must-capture-after-pinned-build",
+        "homecompute_launch_overlay_sha256": "9cf8895b57560381c555970d2d043c089df9fa3eb2b9dab69440a035b14228cb",
+        "quantization": "AutoRound-W4A16-routed-experts-FP8-side-layers-INT8-lm-head",
+        "ple_table": "FP8-mmap",
+        "context_tokens": 262144,
+        "kv_cache_dtype": "auto",
+        "kv_cache_memory_bytes": "16g",
+        "max_num_seqs": 8,
+        "gpu_memory_utilization": 0.01,
+        "mtp": 3,
+        "mtp_drafter": "dense-group-32",
+        "draft_vocab_size": 65536,
+        "prefix_cache": true,
+        "rejection_sample_method": "block",
+        "draft_sample_method": "probabilistic",
+        "tool_call_parser": "qwen3_xml",
+        "reasoning_parser": "qwen3",
+        "enable_auto_tool_choice": true,
+        "upstream_measured_context_tokens": 262144,
+        "upstream_measured_kv_pool": "16 GB",
+        "upstream_qualification": "not-homecompute-qualified"
+      },
+      "qualification_request": {
+        "temperature": 0,
+        "chat_template_kwargs": {
+          "enable_thinking": true
+        }
       }
     }
   }

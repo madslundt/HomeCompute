@@ -1,9 +1,10 @@
 # HomeCompute documentation guide
 
-> **Observed live state (2026-09-26):** both physical nodes are deployed.
-> Qwen3.6 MoE serves n8n, Gemma 4 E4B serves the fast Home Assistant route,
-> and Hviske/Plapre are live through the restricted SSH transport. Start with
-> [current state](current-state.md) for exact evidence and unresolved gaps.
+> **Current model handoff (2026-09-29):** production n8n remains on pinned
+> Unsloth Qwen3.6 through `automation-moe`. Blazux/NVIDIA Flash-Next is the
+> quality baseline candidate; dime UltraFast is a performance challenger.
+> Neither is production-qualified. Start with
+> [current state](current-state.md) for model status and benchmark gaps.
 
 This directory describes a local-first AI platform with two stable node roles:
 `home-spark` is a rebuildable NVIDIA GB10 or DGX Spark-class inference
@@ -134,30 +135,24 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-022](adr/022-optional-home-core-inference.md) | Optional lightweight home-core inference, gated on qualification and routed only through LiteLLM |
 | [ADR-023](adr/023-n8n-automation-moe.md) | Opt-in Qwen3.6 MoE lane for Danish n8n tools; single-resident cold swap and no default Flash-Next |
 | [ADR-024](adr/024-model-artifact-deployment-capability-separation.md) | Separate artifacts, deployments, stable capability routes, and consumer authorization |
+| [ADR-025](adr/025-flash-next-primary-candidate.md) | Proposed Flash-Next primary-model candidate; qualification is pending |
 
 ## Research and model evidence
 
-Start with [ADR-019](adr/019-single-gb10-model-roster.md) and the
-[machine-readable roster](../config/gb10-model-roster.json). Earlier model
-recommendations remain historical evaluation evidence. Qwen3.8-27B is the
-selected workhorse and Flash-Next is the exclusive cold-swap heavy lane.
-Routing remains disabled and aliases unbound until the pinned vLLM/native-MTP
-tuple passes live qualification; SGLang/DFlash is a runtime comparison, not a
-second general-purpose model.
-The dated [Flash-Next review](research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
-documents the single-GB10 runtime evidence behind that resident-versus-heavy
-split.
-The opt-in [Qwen3.6 automation-MoE review](research/n8n-danish-moe-recommendation-2026-09-26.md)
-selects the Unsloth NVFP4 artifact over NVIDIA's quant because the latter has
-an unresolved large-tool-surface failure report on GB10.
+Historical ADR-019 and dated model reviews preserve prior evaluation evidence.
+The current production baseline is Qwen3.6-35B-A3B at the pinned Unsloth
+revision in `config/gb10-model-roster.json`. Blazux/NVIDIA is the Flash-Next
+quality baseline and UltraFast is its separate performance challenger; neither
+is approved for cutover. Qwen3.8-27B remains a smaller cold fallback/workhorse
+artifact, with no future routing encoded. Gemma is outside the target and
+Qwen3-TTS is not part of the target speech stack. The required Spark speech pair is
+Hviske v5.3 and Plapre Nano v2. Whisper is deferred/optional for evaluation on
+`home-core`.
 
-The selected speech stack is Hviske v5.3 for Danish STT, Whisper large-v3-turbo
-for English/mixed/unknown STT, Plapre Nano v2 for Danish TTS, and Qwen3-TTS
-0.6B CustomVoice for supported non-Danish TTS. Piper remains the Danish CPU
-fallback. The older combined Whisper/Piper scaffold is not the final isolated
-speech deployment. The dated [Plapre deployment review](research/plapre-nano-v2-gb10-home-assistant-deployment-2026-09-26.md)
-records the pinned runtime, Wyoming adapter, voice-provenance gate, and staged
-Home Assistant path.
+See [ADR-025](adr/025-flash-next-primary-candidate.md) and the
+[Qwen3.6 vs Flash-Next benchmark report](benchmarks/qwen36-vs-flash-next-automation.md)
+for current qualification gates and missing evidence. Older recommendations
+remain historical; they are not erased or treated as the current target.
 
 | Topic | Documents |
 | --- | --- |

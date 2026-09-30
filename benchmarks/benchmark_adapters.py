@@ -85,14 +85,27 @@ def api_key_for(candidate: dict[str, Any]) -> str | None:
     return value
 
 
-def post_chat(candidate: dict[str, Any], messages: list[dict[str, str]], response_format: dict[str, Any] | None = None) -> dict[str, Any]:
-    base_url = candidate.get("base_url", "https://openrouter.ai/api/v1")
+def post_chat(
+    candidate: dict[str, Any],
+    messages: list[dict[str, str]],
+    response_format: dict[str, Any] | None = None,
+    request_override: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    base_url = candidate.get("base_url")
+    if not base_url and candidate.get("base_url_env"):
+        base_url = os.environ.get(candidate["base_url_env"])
+        if not base_url:
+            raise BenchmarkError(f"candidate {candidate['id']} requires environment variable {candidate['base_url_env']}")
+    base_url = base_url or "https://openrouter.ai/api/v1"
     _validated_endpoint(base_url, candidate)
     body = {
         "model": candidate["model"],
         "messages": messages,
         **candidate.get("request", {}),
+        **(request_override or {}),
     }
+    if "tools" in candidate:
+        body["tools"] = candidate["tools"]
     if response_format is not None:
         body["response_format"] = response_format
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -122,16 +135,141 @@ def post_chat(candidate: dict[str, Any], messages: list[dict[str, str]], respons
         raise BenchmarkError(f"invalid JSON response from {candidate['id']}: {exc}") from exc
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
     try:
-        text = payload["choices"][0]["message"]["content"]
+        message = payload["choices"][0]["message"]
+        text = message.get("content")
+        tool_calls = message.get("tool_calls", [])
     except (KeyError, IndexError, TypeError) as exc:
         raise BenchmarkError(f"unexpected response shape from {candidate['id']}") from exc
     return {
-        "text": text or "",
+        "text": text if isinstance(text, str) else json.dumps({"tool_calls": tool_calls}, ensure_ascii=False),
+        "tool_calls": tool_calls,
+        "tool_call_count": len(tool_calls),
+        "missing_call_id_count": sum(
+            not isinstance(call, dict) or not isinstance(call.get("id"), str) or not call.get("id")
+            for call in tool_calls
+        ),
+        "duplicate_call_id_count": len([call.get("id") for call in tool_calls if isinstance(call, dict) and call.get("id")])
+        - len({call.get("id") for call in tool_calls if isinstance(call, dict) and call.get("id")}),
+        "assistant_message": message,
         "duration_ms": elapsed_ms,
         "generation_id": payload.get("id"),
         "resolved_model": payload.get("model"),
         "resolved_provider": payload.get("provider"),
         "usage": payload.get("usage", {}),
+    }
+
+
+def post_tool_loop(candidate: dict[str, Any], case: dict[str, Any]) -> dict[str, Any]:
+    """Run a synthetic local-tool conversation; no external side effects occur."""
+    if "tools" not in case or not isinstance(case.get("tool_results"), dict):
+        return post_chat(candidate, case["messages"], case.get("response_format"), case.get("request"))
+    tools = case["tools"]
+    if not isinstance(tools, list) or not tools:
+        raise BenchmarkError(f"tool-loop case {case['id']} needs a non-empty tools array")
+    max_calls = candidate.get("max_tool_calls", 30)
+    if not isinstance(max_calls, int) or isinstance(max_calls, bool) or not 1 <= max_calls <= 64:
+        raise BenchmarkError(f"candidate {candidate['id']} max_tool_calls must be from 1 to 64")
+    messages = list(case["messages"])
+    trace: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+    duration_ms = 0.0
+    tool_round_count = 0
+    malformed = duplicate = wrong_tool = tool_errors = missing_call_id = duplicate_call_id = 0
+    call_ids: set[str] = set()
+    expected = case.get("required_tool_calls", [])
+    if not isinstance(expected, list):
+        raise BenchmarkError(f"tool-loop case {case['id']} required_tool_calls must be an array")
+    final_text = ""
+    for call_number in range(max_calls + 1):
+        response = post_chat(
+            candidate,
+            messages,
+            case.get("response_format"),
+            {**case.get("request", {}), "tools": tools, "tool_choice": "auto"},
+        )
+        duration_ms += response["duration_ms"]
+        for key in usage:
+            usage[key] += response.get("usage", {}).get(key, 0) or 0
+        assistant_message = response.get("assistant_message", {})
+        calls = response.get("tool_calls", [])
+        if not calls:
+            final_text = response.get("text", "")
+            break
+        tool_round_count += 1
+        if call_number == max_calls or len(trace) + len(calls) > max_calls:
+            final_text = "Tool loop exceeded max_tool_calls without a final answer."
+            break
+        messages.append({"role": "assistant", **assistant_message})
+        for tool_call in calls:
+            function = tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
+            name = function.get("name") if isinstance(function, dict) else None
+            raw_arguments = function.get("arguments") if isinstance(function, dict) else None
+            try:
+                arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else None
+                if not isinstance(arguments, dict):
+                    raise ValueError("arguments must be a JSON object")
+            except (json.JSONDecodeError, ValueError):
+                arguments = None
+                malformed += 1
+            canonical_args = json.dumps(arguments, sort_keys=True, separators=(",", ":")) if arguments is not None else str(raw_arguments)
+            key = (str(name), canonical_args)
+            required_at = len(trace)
+            wanted = expected[required_at] if required_at < len(expected) else None
+            if wanted is not None and (name != wanted.get("name") or arguments != wanted.get("arguments")):
+                wrong_tool += 1
+            elif wanted is None:
+                wrong_tool += 1
+            call_id = tool_call.get("id") if isinstance(tool_call, dict) else None
+            if not isinstance(call_id, str) or not call_id:
+                missing_call_id += 1
+            elif call_id in call_ids:
+                duplicate_call_id += 1
+            else:
+                call_ids.add(call_id)
+            tool_definitions = {
+                definition.get("function", {}).get("name")
+                for definition in tools
+                if isinstance(definition, dict) and isinstance(definition.get("function"), dict)
+            }
+            if name not in tool_definitions:
+                wrong_tool += 1
+                result: Any = {"error": "unknown_tool"}
+            elif arguments is None:
+                result = {"error": "invalid_arguments_json"}
+            else:
+                configured = case["tool_results"].get(name, {"error": "tool_not_configured"})
+                if isinstance(configured, list):
+                    occurrence = sum(row.get("name") == name for row in trace)
+                    result = configured[min(occurrence, len(configured) - 1)] if configured else {"error": "empty_tool_result"}
+                else:
+                    result = configured
+            if isinstance(result, dict) and "error" in result:
+                tool_errors += 1
+            else:
+                if key in seen:
+                    duplicate += 1
+                seen.add(key)
+            trace.append({"id": call_id, "round": tool_round_count, "name": name, "arguments": arguments, "raw_arguments": raw_arguments, "result": result})
+            messages.append({"role": "tool", "tool_call_id": call_id or f"missing-{len(trace)}", "name": name or "unknown", "content": json.dumps(result, ensure_ascii=False)})
+    missing_required = max(0, len(expected) - len(trace))
+    return {
+        "text": final_text,
+        "duration_ms": round(duration_ms, 2),
+        "tool_trace": trace,
+        "tool_call_count": len(trace),
+        "tool_round_count": tool_round_count,
+        "wrong_tool_count": wrong_tool,
+        "duplicate_tool_count": duplicate,
+        "malformed_tool_count": malformed,
+        "missing_required_tool_calls": missing_required,
+        "tool_error_count": tool_errors,
+        "missing_call_id_count": missing_call_id,
+        "duplicate_call_id_count": duplicate_call_id,
+        "usage": usage,
+        "generation_id": response.get("generation_id"),
+        "resolved_model": response.get("resolved_model"),
+        "resolved_provider": response.get("resolved_provider"),
     }
 
 
@@ -519,4 +657,6 @@ def invoke(candidate: dict[str, Any], case: dict[str, Any], plan: LoadedPlan) ->
         return post_n8n(candidate, case)
     if candidate["adapter"] == "codex_exec":
         return invoke_codex(candidate, case, plan.root)
-    return post_chat(candidate, case["messages"])
+    if candidate["adapter"] == "openai_tool_loop":
+        return post_tool_loop(candidate, case)
+    return post_chat(candidate, case["messages"], case.get("response_format"), case.get("request"))

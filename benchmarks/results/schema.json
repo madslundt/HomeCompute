@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://homecompute.local/schemas/automation-benchmark-result.json",
+  "title": "HomeCompute sanitized automation benchmark result",
+  "type": "object",
+  "required": ["schema_version", "run_id", "created_at_utc", "tuple", "corpus", "metrics", "safety"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{8,80}$"},
+    "created_at_utc": {"type": "string", "format": "date-time"},
+    "tuple": {
+      "type": "object",
+      "required": ["alias", "model_id", "model_revision", "runtime_revision", "runtime_image_digest", "reasoning_effort", "context_tokens", "temperature"],
+      "properties": {
+        "alias": {"type": "string"}, "model_id": {"type": "string"},
+        "model_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "runtime_revision": {"type": "string"},
+        "runtime_image_digest": {"type": "string"},
+        "reasoning_effort": {"enum": ["verified-production", "medium", "xhigh"]},
+        "context_tokens": {"type": "integer", "minimum": 1},
+        "temperature": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": true
+    },
+    "corpus": {
+      "type": "object",
+      "required": ["version", "sha256", "case_count", "repetitions"],
+      "properties": {
+        "version": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "case_count": {"type": "integer", "minimum": 1}, "repetitions": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "metrics": {"type": "object", "additionalProperties": {"type": ["number", "integer", "string", "null"]}},
+    "safety": {
+      "type": "object",
+      "required": ["side_effects_blocked", "raw_payloads_persisted", "notifications_sent"],
+      "properties": {
+        "side_effects_blocked": {"type": "boolean"},
+        "raw_payloads_persisted": {"const": false},
+        "notifications_sent": {"const": false}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

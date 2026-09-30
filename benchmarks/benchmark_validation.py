@@ -147,6 +147,26 @@ def load_plan(path: Path) -> LoadedPlan:
         ):
             raise BenchmarkError(f"case {case['id']} has invalid messages")
         _validate_objective_checks(case["objective_checks"], case["id"])
+        if "request" in case and not isinstance(case["request"], dict):
+            raise BenchmarkError(f"case {case['id']} request must be a JSON object")
+        if "tool_loop_assertions" in case:
+            assertions = case["tool_loop_assertions"]
+            if not isinstance(assertions, dict):
+                raise BenchmarkError(f"case {case['id']} tool_loop_assertions must be an object")
+            minimum = assertions.get("minimum_calls", 0)
+            maximum = assertions.get("maximum_calls", 64)
+            if (
+                not isinstance(minimum, int) or isinstance(minimum, bool)
+                or not isinstance(maximum, int) or isinstance(maximum, bool)
+                or not 0 <= minimum <= maximum <= 64
+            ):
+                raise BenchmarkError(f"case {case['id']} tool loop call bounds must satisfy 0 <= minimum <= maximum <= 64")
+            minimum_errors = assertions.get("minimum_tool_errors", 0)
+            if not isinstance(minimum_errors, int) or isinstance(minimum_errors, bool) or not 0 <= minimum_errors <= 64:
+                raise BenchmarkError(f"case {case['id']} minimum_tool_errors must be from 0 to 64")
+            minimum_rounds = assertions.get("minimum_sequential_rounds", minimum)
+            if not isinstance(minimum_rounds, int) or isinstance(minimum_rounds, bool) or not 0 <= minimum_rounds <= 64:
+                raise BenchmarkError(f"case {case['id']} minimum_sequential_rounds must be from 0 to 64")
         if case["track"] == "code-implementation":
             workspace = case.get("workspace")
             if not isinstance(workspace, dict) or "source" not in workspace:
@@ -252,9 +272,19 @@ def validate_candidate(candidate: dict[str, Any], plan: LoadedPlan) -> None:
             f"mock candidate {candidate['id']} response fixture",
         )
         read_json(responses_path)
-    elif adapter in {"openrouter", "openai_compatible"}:
-        if adapter == "openai_compatible" and "base_url" not in candidate:
-            raise BenchmarkError(f"candidate {candidate['id']} needs base_url")
+    elif adapter in {"openrouter", "openai_compatible", "openai_tool_loop"}:
+        if adapter in {"openai_compatible", "openai_tool_loop"} and not (candidate.get("base_url") or candidate.get("base_url_env")):
+            raise BenchmarkError(f"candidate {candidate['id']} needs base_url or base_url_env")
+        if candidate.get("base_url_env") and (
+            not isinstance(candidate["base_url_env"], str) or not candidate["base_url_env"]
+        ):
+            raise BenchmarkError(f"candidate {candidate['id']} base_url_env must be a non-empty string")
+        if "request" in candidate and not isinstance(candidate["request"], dict):
+            raise BenchmarkError(f"candidate {candidate['id']} request must be a JSON object")
+        if adapter == "openai_tool_loop":
+            max_calls = candidate.get("max_tool_calls", 30)
+            if not isinstance(max_calls, int) or isinstance(max_calls, bool) or not 1 <= max_calls <= 64:
+                raise BenchmarkError(f"candidate {candidate['id']} max_tool_calls must be from 1 to 64")
         if adapter == "openrouter":
             provider = candidate.get("request", {}).get("provider", {})
             if not provider.get("only") or provider.get("allow_fallbacks") is not False:

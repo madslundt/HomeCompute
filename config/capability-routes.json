@@ -1,36 +1,65 @@
 {
   "schema_version": 1,
-  "route_version": "2026-09-27-initial-capabilities",
+  "route_version": "2026-09-30-quality-baseline-ultrafast-challenger",
   "timeout_profiles": {
-    "home": {"seconds": 20},
-    "automation": {"seconds": 120},
-    "assistant": {"seconds": 120},
-    "long_running": {"seconds": 600}
+    "home": {
+      "seconds": 20
+    },
+    "automation": {
+      "seconds": 600
+    },
+    "assistant": {
+      "seconds": 120
+    },
+    "long_running": {
+      "seconds": 600
+    }
   },
   "routes": {
     "automation": {
       "state": "active",
       "privacy": "local_only",
-      "required_capabilities": ["chat", "tools", "structured_output"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 32768,
       "timeout_profile": "automation",
-      "deployments": ["automation-spark-nvidia-candidate"]
+      "deployments": [
+        "automation-spark-primary"
+      ]
     },
     "home": {
       "state": "active",
       "privacy": "local_only",
-      "required_capabilities": ["chat", "tools", "structured_output"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 8192,
       "timeout_profile": "home",
-      "deployments": ["home-spark-primary"]
+      "deployments": [
+        "home-spark-primary"
+      ]
     },
     "assistant": {
       "state": "disabled",
       "privacy": "local_only",
-      "required_capabilities": ["chat", "tools"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat",
+        "tools"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 65536,
       "timeout_profile": "assistant",
       "deployments": []
@@ -38,8 +67,12 @@
     "coding": {
       "state": "disabled",
       "privacy": "local_only",
-      "required_capabilities": ["chat"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 32768,
       "timeout_profile": "long_running",
       "deployments": []
@@ -47,8 +80,12 @@
     "research": {
       "state": "disabled",
       "privacy": "local_only",
-      "required_capabilities": ["chat"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 32768,
       "timeout_profile": "long_running",
       "deployments": []
@@ -56,44 +93,87 @@
     "meeting": {
       "state": "disabled",
       "privacy": "local_only",
-      "required_capabilities": ["chat"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 32768,
       "timeout_profile": "long_running",
       "deployments": []
     },
     "automation-moe": {
       "state": "active",
-      "kind": "compatibility",
       "qualification_capability": "automation",
       "privacy": "local_only",
-      "required_capabilities": ["chat", "tools"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat",
+        "tools"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 32768,
       "timeout_profile": "automation",
-      "deployments": ["automation-spark-nvidia-candidate"]
+      "deployments": [
+        "automation-spark-primary"
+      ]
     },
     "automation-moe-nvidia": {
       "state": "candidate",
       "kind": "candidate",
       "qualification_capability": "automation",
       "privacy": "local_only",
-      "required_capabilities": ["chat", "tools"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat",
+        "tools"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 32768,
       "timeout_profile": "automation",
-      "deployments": ["automation-spark-nvidia-candidate"]
+      "deployments": [
+        "automation-spark-nvidia-candidate"
+      ]
     },
     "assistant-canary": {
       "state": "candidate",
       "kind": "canary",
       "qualification_capability": "assistant",
       "privacy": "local_only",
-      "required_capabilities": ["chat", "tools"],
-      "required_protocols": ["chat_completions"],
+      "required_capabilities": [
+        "chat",
+        "tools"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
       "minimum_context_tokens": 65536,
       "timeout_profile": "assistant",
-      "deployments": ["automation-spark-nvidia-candidate"]
+      "deployments": [
+        "automation-spark-primary"
+      ]
+    },
+    "automation-qualification": {
+      "state": "candidate",
+      "kind": "candidate",
+      "qualification_capability": "automation",
+      "privacy": "local_only",
+      "required_capabilities": [
+        "chat",
+        "tools",
+        "structured_output"
+      ],
+      "required_protocols": [
+        "chat_completions"
+      ],
+      "minimum_context_tokens": 32768,
+      "timeout_profile": "automation",
+      "deployments": [
+        "automation-flash-next-candidate"
+      ]
     }
   }
 }

@@ -162,28 +162,24 @@ They refuse a run without the release/artifact manifest.
 
 ### D2 — Qualify the selected text and audio artifacts
 
-1. Establish the Qwen3.8-27B vLLM/native-MTP baseline against every role
-   scorecard. Do not schedule Qwen3.6 as a comparison; its checked-in remnants
-   are legacy scaffolding to replace.
-2. Run the same checkpoint and fixtures with the SGLang/DFlash2 profile. Keep
-   it only if real coding wall time, throughput, TTFT, long context, tool/JSON
-   correctness, concurrency, memory, and soak stability materially improve.
-   Do not reopen the checkpoint shortlist without a measured gap.
-3. Qualify Hviske v5.3 for Danish STT and Whisper large-v3-turbo for
-   English/mixed/unknown STT. Qualify Plapre Nano v2 for Danish TTS and
-   Qwen3-TTS 0.6B CustomVoice for supported non-Danish TTS. Keep their runtimes
-   isolated and record Hviske's non-commercial gate, Plapre's approved-voice
-   policy, and the independent Danish Piper fallback.
-4. Verify Flash-Next last using the pinned Blazux recipe and the serialized
-   stop-primary/start-heavy/stop-heavy/restart-primary lifecycle.
-5. Select the simpler of the two passing 27B runtime profiles when performance
-   is not materially different.
-6. Run M1–M5 mixed load and V-MEM-001.
-7. Decide shared vs reserved `home`, priority mechanism, resident set, and
-   context/concurrency. LiteLLM is already selected as the control-plane
-   candidate but still must pass C3.
-8. Publish dated results and the measured reason one 27B runtime profile was
-   retained, then update ADRs/design.
+1. Verify the live Qwen3.6 production request/runtime tuple without logging
+   prompts or tool bodies; preserve that pinned artifact as the baseline and
+   rollback.
+2. Build the Blazux/NVIDIA Flash-Next quality baseline and separately build the
+   pinned dime UltraFast challenger; capture both local image digests without
+   changing production routing.
+3. Compare Qwen3.6 reasoning, Blazux, and UltraFast against
+   matched Aula, offers, and reviewed shopping-category fixtures.
+4. Retain the existing 64+ tool qualification and run security, malformed
+   result, follow-up, recovery, no-call, and fabricated-success cases.
+5. Qualify Flash-Next at 64K, 128K, approximately 200K, and near 256K with YaRN
+   disabled; then measure the complete Hviske + Plapre mixed load and a 24-hour
+   soak at controlled GPU-memory steps.
+6. Publish sanitized workflow, memory, mixed-load, failure, and timing evidence.
+   Flash-Next remains a candidate unless every hard and relative quality gate
+   passes and the owner separately approves cutover.
+7. Keep production on Qwen3.6 until that separate decision. The later migration
+   uses the semantic `automation` alias and retains Qwen3.6 for rollback.
 
 **Gate D:** every alias has a winning qualified tuple, threshold evidence,
 license record, memory budget, and rollback candidate. No leaderboard-only

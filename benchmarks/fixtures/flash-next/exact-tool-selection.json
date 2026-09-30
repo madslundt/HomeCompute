@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "similar-tool-exact-argument-synthetic",
+  "track": "tool-call-exactness",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Use the appropriate tool exactly once. Do not call a similar tool."
+    },
+    {
+      "role": "user",
+      "content": "Find the Danish school event for child Freja on 2026-10-08."
+    }
+  ],
+  "request": {"tool_choice": "required"},
+  "objective_checks": [
+    {"id": "exact-tool", "type": "json_path_equals", "path": "tool_calls.0.function.name", "value": "aula_find_events", "weight": 5},
+    {"id": "exact-arguments", "type": "json_path_equals", "path": "tool_calls.0.function.arguments", "value": "{\"child_name\":\"Freja\",\"date\":\"2026-10-08\",\"language\":\"da\"}", "weight": 5}
+  ],
+  "rubric": [
+    {"id": "no-duplicate-call", "description": "Selects only the required Aula event lookup and does not duplicate it.", "weight": 1}
+  ]
+}

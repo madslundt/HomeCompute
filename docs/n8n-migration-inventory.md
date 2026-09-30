@@ -1,5 +1,29 @@
 # n8n source inventory
 
+## Model qualification state (2026-09-29)
+
+**CURRENT:** production consumers use the `automation-moe` semantic
+compatibility alias backed by `unsloth/Qwen3.6-35B-A3B-NVFP4` revision
+`739af1e7aac320af1682ed1e0cce369af4c5265d`.
+
+**CANDIDATES:** the isolated `automation-qualification` LiteLLM route selects
+one operator-on-demand profile at a time: Blazux/NVIDIA NVFP4 is the
+quality-first Flash-Next baseline; dime UltraFast is the AutoRound performance
+challenger. Neither is a production route or production-qualified.
+
+**TARGET:** after evidence and a separate owner approval, migrate consumers to
+`automation` while keeping Qwen3.6 cached as rollback. Qwen3.8-27B remains a
+smaller cold fallback/workhorse artifact; no future route is hard-coded.
+Priority benchmark workloads are Aula, Find Offers/Tilbudstrolden, and Shopping list category
+synchronization. Notion is optional and not a promotion gate.
+
+The repo's benchmark harness supports private result retention. Replay corpus
+and live tool traces still need operator-curated cases; no household payload
+belongs in Git. A qualification-only n8n workflow must stay unpublished, use
+read-only tools, and block every write and notification.
+
+---
+
 ## Local model cutover complete (2026-09-26)
 
 The following active workflows were updated and published through the n8n MCP:

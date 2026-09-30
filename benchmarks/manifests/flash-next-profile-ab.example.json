@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "release_id": "flash-next-profile-ab-template-2026-09-30",
+  "benchmark_commit": "WORKING_TREE",
+  "environment": {
+    "kind": "local-gb10-qualification",
+    "hardware": "record exact GB10 host, memory, OS, and co-services for each run",
+    "operating_system": "record exact OS release and kernel for each run"
+  },
+  "artifacts": [
+    {
+      "id": "flash-quality-blazux-nvidia",
+      "source": "https://github.com/blazux/qwen3.8-Flash-DGX",
+      "revision": "b05e14681325f3cc5bd22e7f48537feeeb0bf266",
+      "runtime": "Blazux hybrid vLLM base sha256:4864d46625cbc3307623e29ac742030655e27249feba7b97ec925ce4cc4dfb56; capture built image ID before execution",
+      "quantization": "NVIDIA NVFP4"
+    },
+    {
+      "id": "flash-ultrafast-dime-autoround",
+      "source": "https://github.com/dime-online/qwen3.8-Flash-DGX-UltraFast",
+      "revision": "0c391a3e74b6a775cfe248691ca7fd855b1876a5",
+      "runtime": "v16b iter6d; parent digest sha256:fc120ece0a388cc0aa1caad4a9f1cd92113484ab7ec2fd0efadd62585be05bf8; overlay sha256:9cf8895b57560381c555970d2d043c089df9fa3eb2b9dab69440a035b14228cb; capture final image ID before execution",
+      "quantization": "AutoRound W4A16 experts, FP8 side layers, INT8 LM head"
+    }
+  ]
+}

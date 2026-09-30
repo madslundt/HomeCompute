@@ -1,9 +1,9 @@
 # HomeCompute
 
 > **Observed live state (2026-09-29):** `home-core` and `home-spark` are
-> deployed. n8n uses the NVIDIA Qwen3.6 MoE route; Gemma 4 E4B serves the
-> fast Home Assistant route; Hviske and Plapre are live through guarded SSH
-> forwards. Qwen3.8-27B is currently stopped while the MoE is resident. See
+> deployed. n8n production remains on `unsloth/Qwen3.6-35B-A3B-NVFP4` at
+> revision `739af1e7aac320af1682ed1e0cce369af4c5265d`, served as
+> `automation-moe`. Flash-Next is not production-qualified. See
 > [current state](docs/current-state.md) for the exact snapshot and open gaps.
 
 HomeCompute is a local-first AI platform for private inference, automation,
@@ -47,44 +47,35 @@ model names directly.
 Logical aliases are stable contracts. A model may back several aliases only
 after it passes each use case's quality, safety, latency, and recovery tests.
 
-## GB10 model roster
+## GB10 model state
 
-The retained text set has three models. The live allocation keeps the NVIDIA
-Qwen3.6-35B-A3B build resident for n8n, alongside the smaller Gemma 4 E4B Home
-Assistant model; Qwen3.8-27B is stopped, and Flash-Next remains an exclusive
-operator-controlled cold swap.
+**CURRENT:** Qwen3.6 remains the production automation model at the immutable
+revision shown above. Preserve its artifact as the rollback baseline. Its live
+reasoning and runtime request tuple still needs metadata-only capture before
+benchmarking.
 
-| Role | Selection |
-| --- | --- |
-| Normal text inference | `unsloth/Qwen3.8-27B-NVFP4`; vLLM/native MTP baseline, then SGLang with the `incoai` DFlash2 drafter |
-| Active n8n MoE | `nvidia/Qwen3.6-35B-A3B-NVFP4`; vLLM 0.28.0, Marlin, FlashInfer, FP8 KV, MTP 3, `qwen3_coder`; Aula explicitly enables thinking |
-| Heavy coding and research | `RadixArk/Qwen3.8-Flash-Next-NVFP4` through the pinned `blazux` single-GB10 recipe |
-| Danish STT | `syvai/hviske-v5.3` |
-| English, mixed, or unknown STT | `openai/whisper-large-v3-turbo` |
-| Danish TTS | `syvai/plapre-nano-v2` |
-| English and supported non-Danish TTS | `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` |
+**QUALITY BASELINE CANDIDATE:** NVIDIA NVFP4 Flash-Next with the pinned Blazux
+hybrid runtime. **PERFORMANCE CHALLENGER:** dime-online UltraFast with a
+different AutoRound W4A16 target and FP8 PLE table. Both remain isolated
+qualification profiles. UltraFast must match Blazux on real HomeCompute quality
+and reliability gates before any performance comparison can matter.
 
-Piper `da_DK-talesyntese-medium` remains the independent Danish CPU fallback;
-Community-1 diarization is supporting-only and Hviske Tiny is evaluation-only.
-Hviske v5.3 and Plapre Nano v2 are active for the Home Assistant canary;
-Plapre currently uses a pitch-preserving `1.20x` tempo. Piper and Faster
-Whisper remain independent rollback services on `home-core`.
-The immutable machine-readable policy is
-[`config/gb10-model-roster.json`](config/gb10-model-roster.json); see the
-[speech ADR](docs/adr/021-final-speech-stack-and-routing.md) for language,
-runtime, license, voice-consent, and qualification caveats.
-The [automation-MoE ADR](docs/adr/023-n8n-automation-moe.md) records the
-opt-in alias, cold-swap rule, Danish/tool gates, and promotion criteria.
-The [Flash-Next single-GB10 review](docs/research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md)
-records why it remains an exclusive heavy mode rather than the resident primary.
+**TARGET (pending evidence and owner approval):** one resident general text
+model shared across semantic aliases, with alias-specific access and reasoning
+policies. Keep Hviske v5.3 for Danish STT and Plapre Nano v2 for Danish TTS.
+Qwen3.8-27B remains a smaller cold fallback/workhorse artifact; routing is
+undecided. Gemma and Qwen3-TTS are outside the target. Whisper is optional and
+deferred to `home-core`.
 
-Consumer-facing text routes are declared separately in
-[`config/capability-routes.json`](config/capability-routes.json), and model,
-runtime, and deployment details live in
-[`config/model-catalog.json`](config/model-catalog.json). The LiteLLM renderer
-does not change client keys or deploy/reload the gateway. n8n still uses the
-temporary `automation-moe` alias until its key and workflows pass the staged
-migration gates.
+The immutable model roster is
+[`config/gb10-model-roster.json`](config/gb10-model-roster.json). ADR-023 records
+the current Qwen3.6 automation decision. [ADR-025](docs/adr/025-flash-next-primary-candidate.md)
+and the [benchmark report](docs/benchmarks/qwen36-vs-flash-next-automation.md)
+track the pending Flash-Next qualification. Consumer-facing aliases and
+candidate isolation remain governed by the separate
+[`config/capability-routes.json`](config/capability-routes.json) registry.
+The later production procedure remains gated in
+[`docs/operations/flash-next-cutover.md`](docs/operations/flash-next-cutover.md).
 
 ## Setup in order
 
@@ -111,8 +102,8 @@ clients.
 7. Point the already-loopback-tested gateway at the qualified compute endpoint,
    apply its exact ingress/egress policy, then expose `https://ai.home.arpa` to
    approved clients.
-8. Benchmark the two Qwen3.8-27B runtime profiles and the explicit
-   `automation-moe` cold-swap candidate, then migrate consumers one at a time.
+8. Capture the Qwen3.6 production request tuple, then qualify Flash-Next against
+   Aula, offers, shopping categorization, and the complete speech mixed load.
 
 The node baselines may be built in parallel. Gateway integration needs both
 nodes, and no durable service should move before an off-host restore test.
@@ -122,7 +113,7 @@ nodes, and no durable service should move before an off-host restore test.
 - a guarded setup script for the vendor-managed compute node;
 - a pinned NixOS host configuration with integrated Home Manager and sops-nix;
 - a hardened control-plane Compose stack with state below `/srv/state`;
-- a hardened Compose definition for the selected Qwen3.8 vLLM/MTP baseline;
+- guarded lifecycle tooling for the current Qwen3.6 route and isolated Flash-Next profiles;
 - configuration templates that reject unresolved placeholders;
 - architecture, detailed plans, verification criteria, risks, and research;
 - editable D2 diagrams with rendered SVG and PNG versions.

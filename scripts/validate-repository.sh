@@ -121,6 +121,12 @@ python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/smoke.json" \
   --release "$REPO_ROOT/benchmarks/manifests/release.example.json"
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/flash-next-profile-ab.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/flash-next-profile-ab.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/flash-next-hermes-loop-ab.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/flash-next-hermes-loop-ab.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/n8n-smoke.example.json" \
   --release "$REPO_ROOT/benchmarks/manifests/n8n-openrouter.example.json"
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \

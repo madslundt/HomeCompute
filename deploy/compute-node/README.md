@@ -6,44 +6,40 @@ credential-free `text-edge` TCP relay.
 The existing `prepare` profile still contains only the token-authenticated
 `model-fetch` job for text.
 
-## Observed live allocation (2026-09-26)
+## Current and candidate model state (2026-09-29)
 
-The active text allocation differs from the default no-profile startup:
+**CURRENT:** production n8n uses `unsloth/Qwen3.6-35B-A3B-NVFP4` at revision
+`739af1e7aac320af1682ed1e0cce369af4c5265d`, served as `automation-moe`.
+This remains the production model and required rollback artifact.
 
-- Qwen3.6-35B-A3B NVFP4 is healthy as `automation-moe` and serves four
-  published n8n workflows;
-- Gemma 4 E4B QAT W4A16 is healthy as the separate `home-fast` service;
-- Qwen3.8-27B is stopped because the automation lifecycle performs an
-  exclusive cold swap; and
-- Flash-Next remains stopped.
+**QUALITY BASELINE CANDIDATE:** NVIDIA NVFP4 Qwen3.8-Flash-Next with the pinned
+Blazux hybrid runtime. **PERFORMANCE CHALLENGER:** a separately pinned dime
+UltraFast profile with AutoRound W4A16 routed experts, FP8 side layers, INT8
+head, mmap PLE, and optimized MTP. `scripts/setup-compute-flash-next.sh`
+provides `--profile quality|ultrafast` over the shared lifecycle. Preparation
+does not start a model or edit routes. Activation is an explicit exclusive
+cold swap; speech services stay running, startup/smoke failure restores prior
+text containers, and both profiles use only the private `automation-qualification`
+route. Neither profile has a recorded local image digest or physical
+qualification result yet.
 
-Hviske v5.3 and Plapre Nano v2 are also healthy. Plapre's Wyoming adapter
-applies a fixed `1.20x` pitch-preserving tempo. The current transport to
-`home-core` is the restricted SSH fallback, not the dedicated compute NIC.
+**TARGET (pending):** one resident general text model, with Hviske v5.3 and
+Plapre Nano v2 as the required Spark speech pair. Keep candidate and target
+claims pending until qualification and owner approval. The detailed tuple and
+cutover stop point are in [ADR-025](../../docs/adr/025-flash-next-primary-candidate.md)
+and the [cutover/rollback runbook](../../docs/operations/flash-next-cutover.md).
 
-Do not run `deactivate` while n8n still targets `automation-moe`: the cached
-home-core standby currently protects only the separate `automation` alias and
-will not receive those requests automatically.
+The model descriptions below that refer to the Qwen3.8-27B normal service,
+Gemma Home Assistant deployment, NVIDIA Qwen3.6 production deployment, or an
+unroutable Flash-Next candidate are historical repository snapshots. The
+2026-09-29 handoff above is the current authority: Unsloth Qwen3.6 is the
+production rollback baseline and Flash-Next has a separate canary route in
+source. The generated LiteLLM config is still not applied to the live gateway.
 
-The text service is the first final-roster deployment stage: pinned
-`unsloth/Qwen3.8-27B-NVFP4` on vLLM with native `qwen3_5_mtp`. The current
-selection authority is
-[`config/gb10-model-roster.json`](../../config/gb10-model-roster.json).
-The normal lane disables thinking in the server's default chat-template kwargs;
-qualified callers can still request it explicitly.
-The general Qwen3.8 process serves only the internal deployment name
-`general-spark-qwen38`; it does not publish public capability aliases. Its
-guarded smoke command checks required and automatic function selection for
-that deployment. The separate registry-backed LiteLLM config omits this
-intentionally stopped deployment from active routes. The dedicated
-`home-fast` Gemma 4 process and the opt-in Qwen3.6 `automation-moe` process
-have their matching `gemma4` and `qwen3_coder` parsers and run the same two
-selection checks. The `assistant-canary` gateway alias maps to the same
-`automation-moe` process and parser; it does not introduce another model tuple.
-The staged SGLang/DFlash alternative records the same Qwen3.8 parser contract
-in the model roster, but it has no serving profile yet and remains unverified.
-Flash-Next likewise has no routable serving profile, so it is not represented
-as a tool-capable route.
+Older operational traces are retained for diagnosis. They do not claim that
+those previous production tuples are still deployed. Consult
+[`docs/current-state.md`](../../docs/current-state.md) for date-bounded live
+evidence.
 
 The planned-maintenance CPU standby uses llama.cpp's model chat template via
 `--jinja`; its smoke checks both tool-choice modes directly. It remains a cold,
@@ -59,16 +55,11 @@ SGLang/DFlash and Flash-Next need separate pinned runtime profiles because
 their images, drafts, memory behavior, and startup contracts are not
 interchangeable with this launcher.
 
-The `prepare-automation` and `automation-moe` profiles retain the former
-`unsloth/Qwen3.6-35B-A3B-NVFP4` n8n service for historical recovery only.
-Its containers were removed after the NVIDIA cutover on 2026-09-29. It used the pinned
-NVIDIA vLLM 26.08 image (vLLM 0.27.1), `sm_121a`, the
-native `cutlass` NVFP4 MoE backend, a portable `triton` override for the
-model's mixed FP8 expert path, `qwen3_coder` tool parser, 128K context, and
-non-thinking defaults. MTP is deliberately disabled for the correctness
-baseline. The candidate has its own accepted cache manifest, edge relay, API
-port 8005, and `automation-moe` served name. Do not start this retired profile
-while the NVIDIA production service owns that port.
+The older `prepare-automation` and `automation-moe` profiles describe an
+Unsloth Qwen3.6 deployment snapshot. Do not infer the current production
+container state from these historical details; the current artifact and revision
+are stated above. Use the dedicated Flash-Next lifecycle for candidate
+preparation and canary activation.
 
 Use the guarded lifecycle rather than starting its Compose profile directly:
 
@@ -83,7 +74,7 @@ the MoE and restores Qwen3.8 automatically if startup or smoke fails.
 `deactivate` stops the MoE and restores Qwen3.8. Flash-Next is not part of
 either path and remains off by default.
 
-## NVIDIA ModelOpt production service
+## NVIDIA ModelOpt Qwen3.6 qualification history (not current production)
 
 `setup-compute-automation-nvidia.sh` stages the pinned
 `nvidia/Qwen3.6-35B-A3B-NVFP4` revision separately from the Unsloth cache and
@@ -101,18 +92,9 @@ legacy rollback behavior remains for other cold-swap scenarios; do not use
 `deactivate` as a production rollback without coordinating the gateway route.
 
 The account-free `prepare-modalities` profile is a legacy, pre-decision
-scaffold. It acquires these public artifacts at full publisher revisions:
-
-- Qwen3-VL-Embedding-2B (Apache-2.0);
-- Phi-4-multimodal-instruct and its `vision-lora` directory (MIT);
-- Whisper large-v3-turbo (MIT), staged for Danish/English qualification; and
-- the `da_DK-talesyntese-medium` Piper voice, config, and model card from the
-  pinned voice repository revision (CC0-1.0 dataset).
-
-These modality checkpoints are not in the final roster. Do not use this
-profile for the new speech deployment. It remains as historical scaffolding
-until dedicated Hviske, Parakeet, Plapre, and Qwen3-TTS services have pinned
-runtime images and equivalent acquisition, authentication, and smoke tests.
+scaffold for embeddings, vision, Whisper, and Piper. It is not the target
+speech deployment. The target requires only Hviske v5.3 and Plapre Nano v2 on
+Spark. Whisper is optional/deferred to `home-core`; Qwen3-TTS is excluded.
 
 The fetch job receives no registry token. Before each Hugging Face download,
 the bounded fetch helper resolves the exact commit metadata and rejects tuples

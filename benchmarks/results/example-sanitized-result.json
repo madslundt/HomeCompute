@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "run_id": "synthetic-example-0001",
+  "created_at_utc": "2026-09-29T00:00:00Z",
+  "tuple": {
+    "alias": "automation-flash-canary",
+    "model_id": "nvidia/Qwen3.8-Flash-Next-NVFP4",
+    "model_revision": "fc694b54fb0174e0913e6adf86691ef85a4ead47",
+    "runtime_revision": "b05e14681325f3cc5bd22e7f48537feeeb0bf266",
+    "runtime_image_digest": "sha256:replace-with-local-image-id-before-real-run",
+    "reasoning_effort": "xhigh",
+    "context_tokens": 262144,
+    "temperature": 0
+  },
+  "corpus": {
+    "version": "synthetic-example-only",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "case_count": 1,
+    "repetitions": 1
+  },
+  "metrics": {
+    "task_pass_rate": null,
+    "tool_calls": null,
+    "malformed_tool_calls": null,
+    "median_wall_ms": null,
+    "peak_memory_gib": null,
+    "swap_growth_gib": null
+  },
+  "safety": {
+    "side_effects_blocked": true,
+    "raw_payloads_persisted": false,
+    "notifications_sent": false
+  }
+}

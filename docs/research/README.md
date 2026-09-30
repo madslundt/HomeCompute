@@ -20,6 +20,7 @@ Start with these current synthesis documents:
 | Gateway | [`gateway-evaluation.md`](gateway-evaluation.md) |
 | Codex | [`codex-compatibility.md`](codex-compatibility.md) |
 | Personal agents / Hermes | [`nemoclaw-machine-placement.md`](nemoclaw-machine-placement.md) and [`hermes-personal-assistant-verification.md`](hermes-personal-assistant-verification.md) |
+| Hermes and n8n integration | [`hermes-n8n-integration-assessment-2026-09-29.md`](hermes-n8n-integration-assessment-2026-09-29.md) |
 | Home Assistant | [`home-assistant-model-evaluation.md`](home-assistant-model-evaluation.md) |
 | Speech | [`stt-model-evaluation.md`](stt-model-evaluation.md) and [`danish-tts-recommendation.md`](danish-tts-recommendation.md) |
 | Capacity and workload routing | [`n8n-model-routing-and-scheduling.md`](n8n-model-routing-and-scheduling.md) |

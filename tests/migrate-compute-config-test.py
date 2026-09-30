@@ -20,13 +20,13 @@ class MigrationTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.template.write_text(
-            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301\n",
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300\n",
             encoding="utf-8",
         )
         result = self.migrate()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301",
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300",
             self.output.read_text(encoding="utf-8"),
         )
 
@@ -36,13 +36,13 @@ class MigrationTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.template.write_text(
-            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301\n",
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300\n",
             encoding="utf-8",
         )
         result = self.migrate()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(
-            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301",
+            "COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300",
             self.output.read_text(encoding="utf-8"),
         )
 

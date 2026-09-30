@@ -1,5 +1,21 @@
 # Current-state analysis
 
+> **Model-current snapshot:** use the `Model replacement qualification` section at the end of this file for the 2026-09-29 model handoff. Earlier dated model statements document previous snapshots and are retained as history.
+
+## Immich and photo backup status (2026-09-29)
+
+The repository now defines a pinned Immich v3.2.4 Compose deployment, a
+configurable media path with local PostgreSQL state, and a reusable
+source-to-destination Restic model. It also includes a consistent SQL dump
+helper, strict-host-key SFTP target settings, weekly repository checks,
+machine-readable status files, a Google Takeout import helper, and an isolated
+restore helper. Immich is enabled in the host configuration with its database
+password provisioned in SOPS, but has not been deployed. Off-site backups remain
+disabled pending a purchased/configured Hetzner Storage Box and its credentials.
+No service deployment, backup, restore drill, or Takeout import has been
+observed.
+See [`immich.md`](immich.md) for setup and remaining release gates.
+
 **Date:** 2026-09-26
 **Status:** Live deployment observed on both hosts; canary and hardening gaps remain
 
@@ -350,3 +366,50 @@ streaming, tool, privacy, and latency corpus.
 9. Decide the canonical personal event-store host and API authorization model;
    do not infer that the existing LibreChat PostgreSQL/Qdrant/Redis stores are
    reusable or appropriately isolated.
+
+
+## Model replacement qualification (2026-09-29)
+
+**CURRENT:** the handoff identifies Unsloth Qwen3.6-35B-A3B NVFP4 revision
+`739af1e7aac320af1682ed1e0cce369af4c5265d` as production behind
+`automation-moe`. Older paragraphs in this file describe previous NVIDIA,
+Gemma, and Qwen3.8-27B snapshots and remain historical evidence; they do not
+change this current baseline. The exact live n8n reasoning request and runtime
+image still require metadata-only verification before a baseline run.
+
+**QUALITY BASELINE CANDIDATE:** NVIDIA Qwen3.8-Flash-Next NVFP4 revision
+`fc694b54fb0174e0913e6adf86691ef85a4ead47`, using Blazux commit
+`b05e14681325f3cc5bd22e7f48537feeeb0bf266` and pinned vLLM 0.30.0 ARM64 base
+image digest, is the quality-oriented reference implementation. Its final
+local image digest and physical qualification are pending.
+
+**PERFORMANCE CHALLENGER:** `dime-online/qwen3.8-Flash-DGX-UltraFast` is pinned
+to source commit `0c391a3e74b6a775cfe248691ca7fd855b1876a5`, AutoRound model
+revision `8b82f0b7abe3d1150a7827d298c75e86267636ae`, and FP8 PLE table revision
+`50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14`. It is not production-qualified.
+Its quantized target differs from NVIDIA NVFP4, so MTP target verification does
+not prove parity with the Blazux quality baseline. Both profiles use only the
+isolated `automation-qualification` route for A/B work; production routes stay
+unchanged.
+
+**TARGET (pending):** one resident general text model across semantic routes;
+retain only Hviske v5.3 and Plapre Nano v2 as required Spark speech services.
+Qwen3.8-27B remains a substantially smaller, efficient cold fallback/workhorse
+artifact. Its future routing is undecided. Gemma and Qwen3-TTS are outside the
+target; Whisper is optional/deferred to `home-core`.
+
+The exact benchmark comparison, unrun metrics, and remaining gates are tracked
+in [`benchmarks/qwen36-vs-flash-next-automation.md`](benchmarks/qwen36-vs-flash-next-automation.md).
+Production remains Qwen3.6; no production route or workflow was changed.
+
+**Live-host reconciliation note (2026-09-29):** read-only Docker inspection
+after access was granted found healthy container `gb10-automation-nvidia-primary`
+serving `nvidia/Qwen3.6-35B-A3B-NVFP4` revision
+`1355db6a052410cfd62085d94b58866fd0f2c3c5` behind both `automation-moe` and
+`automation-moe-nvidia`. Its vLLM image is pinned to
+`sha256:2a7cde230b59f3ce6cab33dd245ba6bee41aa87b38c9fe84f966ff24016813ce`;
+the configured context is 131072 and KV cache is FP8. This differs from the
+Unsloth `739af1e…` revision named as current production in the handoff and
+model catalog. The discrepancy must be reconciled before a Qwen3.6 baseline
+can be called representative of production. The candidate was not installed,
+started, or routed.
