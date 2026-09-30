@@ -40,6 +40,7 @@ open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$relea
 model_manager=(env "MODEL_MANAGER_RELEASE=$revision" docker compose --env-file /etc/homecompute/model-manager.env -f "$release/deploy/model-manager/compose.yaml")
 piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/deploy/piper-tts/compose.yaml")
 stt=(docker compose --env-file /etc/homecompute/wyoming-stt.env -f "$release/deploy/wyoming-stt/compose.yaml")
+immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
 "${gateway[@]}" config --quiet
 "${automation[@]}" config --quiet
 "${homepage[@]}" config --quiet
@@ -99,6 +100,24 @@ if [[ -f /srv/state/wyoming-stt/models/.homecompute-ready-model ]] &&
   "${stt[@]}" up -d --wait --wait-timeout 300 stt
 else
   printf 'Faster Whisper model is not prepared; leaving Danish STT stopped.\n'
+fi
+if [[ -f /etc/homecompute/immich.env ]]; then
+  immich_password_file=/run/secrets/immich/database-password
+  [[ -s $immich_password_file ]] || {
+    printf 'Immich is configured but its SOPS database password is missing; deployment stopped before Compose.\n' >&2
+    exit 1
+  }
+  DB_PASSWORD="$(<"$immich_password_file")"
+  [[ $DB_PASSWORD =~ ^[A-Za-z0-9]+$ ]] || {
+    printf 'Immich database password must be non-empty and alphanumeric.\n' >&2
+    exit 1
+  }
+  export DB_PASSWORD
+  "${immich[@]}" config --quiet
+  "${immich[@]}" pull
+  "${immich[@]}" up -d --wait --wait-timeout 1200
+else
+  printf 'Immich is not enabled in NixOS; leaving the photo service unchanged.\n'
 fi
 if [[ -L /srv/homecompute/current ]]; then
   previous=$(readlink /srv/homecompute/current)

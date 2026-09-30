@@ -24,6 +24,7 @@
     ../../modules/nixos/ttlock-webhook.nix
     ../../modules/nixos/storage.nix
     ../../modules/nixos/backups.nix
+    ../../modules/nixos/immich.nix
     ../../modules/nixos/secrets.nix
   ];
 
@@ -63,6 +64,38 @@
   # The production backup contract remains explicitly off-host and is not
   # satisfied by the temporary same-host agents bootstrap repository below.
   homecompute.backups.enable = false;
+  homecompute.backups.destinations.hetzner = {
+    # Replace the account and hostname after purchasing the dedicated BX11.
+    repositoryBase = "sftp:uXXXXX@uXXXXX.your-storagebox.de:/backups/homecompute";
+    passwordFile = "/run/secrets/restic/hetzner/password";
+    sshPrivateKeyFile = "/run/secrets/restic/hetzner/ssh-key";
+    knownHostsFile = "/etc/homecompute/restic/hetzner_known_hosts";
+  };
+  homecompute.backups.sources.immich = {
+    destinations = [ "hetzner" ];
+    paths = [ config.homecompute.immich.libraryPath "${config.homecompute.immich.stateRoot}/db-backups" ];
+    prepareCommand = ../../scripts/immich-db-backup.sh;
+    retention = {
+      daily = 30;
+      weekly = 12;
+      monthly = 24;
+      yearly = 10;
+    };
+    schedule = "daily";
+    randomizedDelay = "30m";
+  };
+
+  # The database credential is provisioned in SOPS. Enable Takeout import
+  # separately after creating an import-scoped API key in Immich.
+  homecompute.immich = {
+    enable = true;
+    importEnabled = false;
+    stateRoot = "/srv/state/immich";
+    libraryPath = "/srv/state/immich/library";
+    lanAddress = "192.168.30.122";
+    tailscaleAddress = "100.110.248.102";
+    port = 2283;
+  };
 
   homecompute.agentsVm = {
     enable = true;

@@ -1,0 +1,129 @@
+name: homecompute-immich
+
+services:
+  immich-server:
+    image: ${IMMICH_SERVER_IMAGE:?Set a digest-pinned Immich server image}
+    restart: unless-stopped
+    init: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    environment:
+      DB_HOSTNAME: database
+      DB_PORT: "5432"
+      DB_USERNAME: ${IMMICH_DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Provide the SOPS-managed Immich database password at runtime}
+      DB_DATABASE_NAME: ${IMMICH_DB_DATABASE_NAME:-immich}
+      REDIS_HOSTNAME: redis
+      REDIS_PORT: "6379"
+      TZ: ${TZ:-Europe/Copenhagen}
+    volumes:
+      - ${IMMICH_LIBRARY_PATH:?Set the configurable Immich library path}:/data
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "127.0.0.1:${IMMICH_PORT:-2283}:2283"
+      - "${IMMICH_LAN_ADDRESS:?Set the explicit LAN bind address}:${IMMICH_PORT:-2283}:2283"
+      - "${IMMICH_TAILSCALE_ADDRESS:?Set the explicit Tailscale bind address}:${IMMICH_PORT:-2283}:2283"
+    depends_on:
+      database:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    cpus: 4.0
+    mem_limit: 4g
+    pids_limit: 512
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:2283/api/server/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks: [backend]
+
+  immich-machine-learning:
+    image: ${IMMICH_MACHINE_LEARNING_IMAGE:?Set a digest-pinned Immich machine-learning image}
+    restart: unless-stopped
+    init: true
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    environment:
+      TZ: ${TZ:-Europe/Copenhagen}
+    volumes:
+      - ${IMMICH_MODEL_CACHE_PATH:?Set the model cache path}:/cache
+    cpus: 4.0
+    mem_limit: 4g
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3003/ping', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks: [backend]
+
+  database:
+    image: ${IMMICH_DATABASE_IMAGE:?Set the officially supported Immich PostgreSQL image by digest}
+    restart: unless-stopped
+    user: "999:999"
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Provide the SOPS-managed Immich database password at runtime}
+      POSTGRES_USER: ${IMMICH_DB_USERNAME:-postgres}
+      POSTGRES_DB: ${IMMICH_DB_DATABASE_NAME:-immich}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - ${IMMICH_DATABASE_PATH:?Set the local SSD PostgreSQL data path}:/var/lib/postgresql/data
+    shm_size: 128mb
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks: [backend]
+
+  redis:
+    image: ${IMMICH_VALKEY_IMAGE:?Set a digest-pinned Valkey image}
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    command: [valkey-server, --save, "60", "1", --loglevel, warning]
+    volumes:
+      - ${IMMICH_REDIS_PATH:?Set the Valkey data path}:/data
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
+    healthcheck:
+      test: [CMD-SHELL, "valkey-cli ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks: [backend]
+
+networks:
+  backend:
+    driver: bridge
+    enable_ipv6: false

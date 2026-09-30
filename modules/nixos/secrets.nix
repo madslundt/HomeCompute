@@ -96,6 +96,21 @@ in
             "restic/password" = {
               mode = "0400";
             };
+          } // lib.optionalAttrs config.homecompute.backups.enable {
+            "restic/hetzner/password" = {
+              mode = "0400";
+            };
+            "restic/hetzner/ssh-key" = {
+              mode = "0400";
+            };
+          } // lib.optionalAttrs config.homecompute.immich.enable {
+            "immich/database-password" = {
+              mode = "0400";
+            };
+          } // lib.optionalAttrs (config.homecompute.immich.enable && config.homecompute.immich.importEnabled) {
+            "immich/import-api-key" = {
+              mode = "0400";
+            };
           };
         };
       })

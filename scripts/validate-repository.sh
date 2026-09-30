@@ -43,6 +43,7 @@ if rg -n 'homeConfigurations' "$REPO_ROOT/flake.nix"; then
 fi
 
 shell_files=(
+  "$REPO_ROOT/scripts/setup-compute-flash-next.sh"
   "$REPO_ROOT/scripts/lib/config.sh"
   "$REPO_ROOT/scripts/configure-compute-firewall.sh"
   "$REPO_ROOT/scripts/setup-compute-node.sh"
@@ -55,6 +56,9 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
+  "$REPO_ROOT/scripts/immich-db-backup.sh"
+  "$REPO_ROOT/scripts/import-google-photos.sh"
+  "$REPO_ROOT/scripts/restore-immich.sh"
   "$REPO_ROOT/scripts/deploy-home-spark.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
   "$REPO_ROOT/scripts/homecompute"
@@ -101,6 +105,7 @@ python3 "$REPO_ROOT/tests/model-update-check-test.py"
 python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/speech-routing-policy-test.py"
 python3 "$REPO_ROOT/tests/model-registry-test.py"
+python3 "$REPO_ROOT/tests/flash-next-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/modelctl-test.py"
 python3 "$REPO_ROOT/tests/homecompute-cli-test.py"
 python3 "$REPO_ROOT/tests/client-model-access-test.py"
@@ -149,6 +154,7 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" \
     "$REPO_ROOT/deploy/ttlock-webhook/home-assistant-automation.yaml" \
     "$REPO_ROOT/deploy/wyoming-stt/compose.yaml" \
+    "$REPO_ROOT/deploy/immich/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/config/services.yaml" \
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
     "$REPO_ROOT/deploy/homepage/config/widgets.yaml" \
@@ -176,13 +182,14 @@ GB10_ROOT=$temporary_root/runtime
 GB10_RUNTIME_UID=1000
 GB10_RUNTIME_GID=1000
 GB10_BIND_ADDRESS=127.0.0.1
-COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301
+COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300
 VLLM_HOST_PORT=8000
 EMBEDDING_HOST_PORT=8001
 VISION_HOST_PORT=8002
 STT_HOST_PORT=8003
 TTS_HOST_PORT=8004
 AUTOMATION_HOST_PORT=8005
+FLASH_NEXT_HOST_PORT=18300
 WYOMING_TTS_HOST_PORT=10200
 PLAPRE_WYOMING_PORT=10201
 HVISKE_WYOMING_PORT=10301
@@ -403,7 +410,7 @@ AUTOMATION_BACKUP_CPUS=8.0
 AUTOMATION_BACKUP_MEMORY_LIMIT=28g
 COMPUTE_OPENAI_BASE_URL=https://10.77.10.10:8000/v1
 COMPUTE_AUTOMATION_BASE_URL=https://10.77.10.10:8005/v1
-COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=https://10.77.10.10:8005/v1
+COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=https://10.77.10.10:18300/v1
 COMPUTE_HOME_BASE_URL=https://10.77.10.10:8006/v1
 COMPUTE_TRANSPORT=dedicated-link
 PLAPRE_WYOMING_UPSTREAM_HOST=10.77.10.10
@@ -548,6 +555,41 @@ jq -e '
   all(.services.homepage.volumes[]; .type == "bind" and .read_only == true) and
   (.services.homepage.mem_limit > 0 and .services.homepage.cpus > 0 and .services.homepage.pids_limit > 0)
 ' "$homepage_json" >/dev/null
+printf '[validate] Immich deployment boundary\n'
+immich_json="$temporary_root/immich-compose.json"
+DB_PASSWORD=validation-only docker compose \
+  --env-file "$REPO_ROOT/config/immich.env.example" \
+  -f "$REPO_ROOT/deploy/immich/compose.yaml" config --format json >"$immich_json"
+jq -e '
+  ((.services | keys) == ["database", "immich-machine-learning", "immich-server", "redis"]) and
+  all(.services[];
+    (.image | test("@sha256:[0-9a-f]{64}$")) and
+    (.restart == "unless-stopped") and
+    (.security_opt | index("no-new-privileges:true") != null) and
+    (.cap_drop | index("ALL") != null) and
+    (.cpus != null and .mem_limit != null and .pids_limit != null) and
+    (.logging.driver == "local") and
+    (.logging.options["max-size"] == "10m") and
+    (.logging.options["max-file"] == "3") and
+    ((.privileged // false) == false) and
+    ((.network_mode // "") != "host") and
+    ((.pid // "") != "host") and
+    ((.ipc // "") != "host") and
+    ([.volumes[]?.source] | all(contains("docker.sock") | not))
+  ) and
+  ([.services[].ports[]?.host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"]) and
+  (.services["immich-server"].ports | length == 3) and
+  (.services.database.ports == null) and
+  (.services.redis.ports == null) and
+  (.services["immich-machine-learning"].ports == null) and
+  (.services.database.mem_limit == "2147483648") and
+  (.services.redis.mem_limit == "536870912") and
+  (any(.services["immich-server"].volumes[]; .source == "/srv/state/immich/library" and .target == "/data")) and
+  (any(.services.database.volumes[]; .source == "/srv/state/immich/database" and .target == "/var/lib/postgresql/data")) and
+  (all(.services[]; .networks | has("backend"))) and
+  (.services["immich-server"].environment.DB_PASSWORD == "validation-only") and
+  (.services.database.environment.POSTGRES_PASSWORD == "validation-only")
+' "$immich_json" >/dev/null
 
 ttlock_json="$temporary_root/ttlock-webhook.json"
 docker compose --env-file "$REPO_ROOT/config/ttlock-webhook.env.example" \
@@ -748,7 +790,7 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hermes hviske-stt homepage model-manager open-webui piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hermes hviske-stt homepage immich model-manager open-webui piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

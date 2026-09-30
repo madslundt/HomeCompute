@@ -218,8 +218,11 @@ in
       {
         assertion = lib.any (
           path: path == "/srv/state" || path == statePath
-        ) config.homecompute.backups.paths;
-        message = "homecompute.backups.paths must include /srv/state or the agents VM state directory";
+        ) (if config.homecompute.backups.enable then
+          lib.concatMap (source: source.paths) (builtins.attrValues config.homecompute.backups.sources)
+        else
+          config.homecompute.backups.paths);
+        message = "an enabled backup source must include /srv/state or the agents VM state directory";
       }
       {
         assertion = lib.hasPrefix "https://cloud-images.ubuntu.com/" cfg.image.url;
