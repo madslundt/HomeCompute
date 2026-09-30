@@ -103,7 +103,7 @@ parse_options() {
   done
 }
 config_needs_migration() {
-  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_nvidia_automation=false saw_plapre=false saw_hviske=false saw_model_deployment=false
+  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_nvidia_automation=false saw_plapre=false saw_hviske=false saw_model_deployment=false saw_flash_next=false
   while IFS= read -r line || [[ -n "$line" ]]; do
     [[ "$line" != COMPUTE_HOST_PORTS=* ]] || saw_ports=true
     [[ "$line" != HF_CACHE_MAX_BYTES=* ]] || saw_budget=true
@@ -114,9 +114,10 @@ config_needs_migration() {
     [[ "$line" != PLAPRE_WYOMING_PORT=* ]] || saw_plapre=true
     [[ "$line" != HVISKE_WYOMING_PORT=* ]] || saw_hviske=true
     [[ "$line" != MODEL_DEPLOYMENT_ID=* ]] || saw_model_deployment=true
+    [[ "$line" != FLASH_NEXT_HOST_PORT=* ]] || saw_flash_next=true
     [[ "$line" != FIREWALL_CONFIRMED=* ]] || return 0
   done <"$ENV_FILE"
-  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_automation_quantization" == false || "$saw_nvidia_automation" == false || "$saw_plapre" == false || "$saw_hviske" == false || "$saw_model_deployment" == false ]]
+  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_automation_quantization" == false || "$saw_nvidia_automation" == false || "$saw_plapre" == false || "$saw_hviske" == false || "$saw_model_deployment" == false || "$saw_flash_next" == false ]]
 }
 migrate_config_if_needed() {
   local temporary
