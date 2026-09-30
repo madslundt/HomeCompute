@@ -176,7 +176,7 @@ prepare_model() {
   [[ -d "$snapshot" ]] || die 'Pinned model revision did not produce the expected cache snapshot'
   mkdir -p "$refs"
   tmp="$refs/.main.$$"; printf '%s\n' "$FLASH_NEXT_MODEL_REVISION" >"$tmp"; mv -f "$tmp" "$refs/main"
-  MODEL="$FLASH_NEXT_MODEL_ID" HF_CACHE="$FLASH_NEXT_HF_CACHE" IMAGE="$FLASH_NEXT_IMAGE" "$dir/scripts/prepare-hybrid.sh"
+  (cd "$dir" && MODEL="$FLASH_NEXT_MODEL_ID" HF_CACHE="$FLASH_NEXT_HF_CACHE" IMAGE="$FLASH_NEXT_IMAGE" ./scripts/prepare-hybrid.sh)
   [[ -f "$snapshot-fp8hybrid/.prepared" ]] || die 'Hybrid layout preparation did not complete'
   hybrid_manifest="$FLASH_NEXT_STATE_DIR/hybrid-layout.sha256"
   find "$snapshot-fp8hybrid" -type f ! -name .prepared -print0 | LC_ALL=C sort -z | xargs -0 sha256sum >"$hybrid_manifest"

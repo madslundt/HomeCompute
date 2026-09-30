@@ -58,6 +58,7 @@ class FlashNextLifecycleTests(unittest.TestCase):
         self.assertIn("PROFILE=quality", SCRIPT)
         self.assertIn("PROFILE=\"$2\"", SCRIPT)
         self.assertIn("install_ultrafast()", SCRIPT)
+        self.assertIn('cd "$dir" && MODEL="$FLASH_NEXT_MODEL_ID"', SCRIPT)
         self.assertIn("switch-profile)", SCRIPT)
         self.assertIn("quality (default) or ultrafast", SCRIPT)
         self.assertIn("Stop the active qualification candidate before installing or rebuilding a profile", SCRIPT)
