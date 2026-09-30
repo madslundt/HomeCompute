@@ -105,7 +105,7 @@ parse_options() {
 config_needs_migration() {
   local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_nvidia_automation=false saw_plapre=false saw_hviske=false saw_model_deployment=false saw_flash_next=false
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" != COMPUTE_HOST_PORTS=* ]] || saw_ports=true
+    [[ "$line" != COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300 ]] || saw_ports=true
     [[ "$line" != HF_CACHE_MAX_BYTES=* ]] || saw_budget=true
     [[ "$line" != VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS=* ]] || saw_template_defaults=true
     [[ "$line" != AUTOMATION_MODEL_ID=* ]] || saw_automation=true
