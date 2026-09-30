@@ -103,6 +103,7 @@ services:
   redis:
     image: ${IMMICH_VALKEY_IMAGE:?Set a digest-pinned Valkey image}
     restart: unless-stopped
+    user: "999:999"
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     command: [valkey-server, --save, "60", "1", --loglevel, warning]
