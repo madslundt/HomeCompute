@@ -497,6 +497,8 @@ rg -F 'homecompute.computeSshTunnel.enable = lib.mkDefault true;' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
 rg -F 'COMPUTE_AUTOMATION_BASE_URL=http://172.28.200.1:18005/v1' \
   "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
+rg -F 'COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=http://172.28.200.1:18005/v1' \
+  "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
 rg -F 'COMPUTE_HOME_BASE_URL=http://172.28.200.1:18006/v1' \
   "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
 rg -F 'PLAPRE_WYOMING_UPSTREAM_PORT=18201' \
