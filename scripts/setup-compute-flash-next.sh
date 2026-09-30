@@ -111,7 +111,7 @@ validate_ultrafast() {
   [[ "$FLASH_ULTRAFAST_PLE_MODEL_ID" == Saren/Qwen3.8-Flash-Next-ple-table-fp8 && "$FLASH_ULTRAFAST_PLE_REVISION" == 50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14 ]] || die 'Unexpected UltraFast PLE table; refusing silent substitution'
   [[ "$FLASH_ULTRAFAST_CTX" == 262144 && "$FLASH_ULTRAFAST_MTP" == 3 && "$FLASH_ULTRAFAST_SEQS" == 8 && "$FLASH_ULTRAFAST_KV_BYTES" == 16g ]] || die 'UltraFast v16b context/MTP/sequence/KV tuple differs from the pinned profile'
   [[ "$FLASH_ULTRAFAST_HOST_PORT" == "$FLASH_NEXT_HOST_PORT" && "$FLASH_ULTRAFAST_SERVED_MODEL_NAME" == automation-qualification ]] || die 'UltraFast must use the isolated qualification listener and stable qualification alias'
-  [[ -n "$FLASH_ULTRAFAST_HOST_BIND" && "$FLASH_ULTRAFAST_HOST_BIND" != 0.0.0.0 && "$FLASH_ULTRAFAST_HOST_BIND" != '::' ]] || die 'UltraFast must bind to an explicit private address'
+  [[ "$FLASH_ULTRAFAST_HOST_BIND" == "$GB10_BIND_ADDRESS" ]] || die 'UltraFast must bind to the configured private GB10 address'
   if ! command -v git >/dev/null || ! command -v docker >/dev/null || ! command -v patch >/dev/null; then
     die 'git, docker and patch are required'
   fi
