@@ -62,7 +62,7 @@ let
         -o UserKnownHostsFile="$known_hosts" \
         -i "$identity" \
         -p '${toString cfg.sshPort}' \
-        -L "$bind_address:18005:127.0.0.1:8005" \
+        -L "$bind_address:18005:127.0.0.1:18300" \
         -L "$bind_address:18006:127.0.0.1:8006" \
         -L "$bind_address:18201:127.0.0.1:10201" \
         -L "$bind_address:18301:127.0.0.1:10301" \

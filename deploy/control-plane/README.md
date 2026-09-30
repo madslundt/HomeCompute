@@ -38,11 +38,11 @@ python3 scripts/model_registry.py render
 
 The renderer changes only the `model_list` block. Key scopes, authentication,
 privacy/logging, database configuration, retries, and transport remain explicit
-and reviewed. The current generated routes include `automation` and `home`,
-retain the separately authorized `automation-moe` migration route, and retain
-the isolated `assistant-canary`. Disabled aliases backed by the stopped
-Qwen3.8 service are omitted. The cold CPU automation standby is not included in
-ordinary routing; its existing start/switch procedure remains an operator-run
+and reviewed. The `automation` and `automation-moe` aliases currently route to
+the owner-directed Flash-Next trial; the artifact remains marked candidate
+because its quality qualification is incomplete. The isolated
+`assistant-canary` remains separate. Disabled aliases backed by stopped models
+are omitted. The cold CPU automation standby remains an operator-run
 maintenance action.
 
 Home and automation have per-deployment request budgets of 20 and 120 seconds.
@@ -112,7 +112,7 @@ It forwards only these `home-spark` loopback listeners:
 
 | Edge client | Host-side tunnel endpoint | Remote loopback destination |
 | --- | --- | --- |
-| LiteLLM `172.28.200.3` | `172.28.200.1:18005` | `127.0.0.1:8005` (automation MoE) |
+| LiteLLM `172.28.200.3` | `172.28.200.1:18005` | `127.0.0.1:18300` (Flash-Next behind the `automation-moe` alias) |
 | LiteLLM `172.28.200.3` | `172.28.200.1:18006` | `127.0.0.1:8006` (Home Assistant fast model) |
 | Plapre relay `172.28.200.4` | `172.28.200.1:18201` | `127.0.0.1:10201` |
 | Hviske relay `172.28.200.5` | `172.28.200.1:18301` | `127.0.0.1:10301` |
@@ -168,10 +168,10 @@ The K15 deployment is recorded in [control-plane-deployment.md](../../docs/contr
 Its gateway uses `home-core.tail479ad.ts.net` on the Tailscale address, and
 `/etc/homecompute/control-plane.env` holds the resolved production settings.
 Backups remain deferred by the operator. The restricted SSH transport is live
-for `automation-moe`, `home-fast`, Plapre, and Hviske. The direct Qwen3.8 text
-endpoint is stopped, so the remaining semantic aliases are configured but not
-available; gateway health and model listing alone do not establish inference
-availability.
+for `automation-moe`, `home-fast`, Plapre, and Hviske. It forwards the
+`automation-moe` alias to Qwen3.8 Flash-Next on home-spark loopback port 18300;
+the listener is not exposed on the LAN. The Qwen3.8-27B endpoint remains
+stopped.
 
 The gateway has local backends only. `auto` is initially another served name
 for the single resident workhorse, not a prompt classifier. The gateway never

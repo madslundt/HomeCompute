@@ -260,8 +260,8 @@
       "served_model_name": "automation-moe",
       "context_tokens": 65536,
       "concurrency": 4,
-      "lifecycle": "resident",
-      "availability": "active",
+      "lifecycle": "operator-on-demand",
+      "availability": "intentionally-stopped",
       "priority": 10,
       "runtime_config": {
         "max_model_len": 131072,
@@ -382,11 +382,12 @@
         "yarn": false,
         "mtp": 2,
         "max_num_seqs": 4,
-        "gpu_memory_utilization": 0.68,
+        "gpu_memory_utilization": 0.74,
         "gpu_memory_qualification_steps": [
           0.68,
           0.7,
-          0.72
+          0.72,
+          0.74
         ],
         "prefix_cache": true,
         "deterministic_topk": true,
@@ -399,7 +400,7 @@
         "enable_auto_tool_choice": true,
         "tool_call_parser": "qwen3_coder",
         "reasoning_parser": "qwen3",
-        "image_digest": "must-capture-after-pinned-build"
+        "image_digest": "sha256:12ef55e080d1a050a40f6801127dffa7b297e622f71e20d498456f9336db7127"
       },
       "qualification_request": {
         "chat_template_kwargs": {

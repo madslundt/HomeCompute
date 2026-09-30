@@ -93,7 +93,7 @@ validate_quality() {
   [[ "$FLASH_NEXT_REASONING_EFFORT" == xhigh ]] || die 'Primary qualification effort must remain xhigh'
   [[ "$FLASH_NEXT_ENABLE_THINKING" == true ]] || die 'Thinking must be enabled for the primary candidate tuple'
   [[ "$FLASH_NEXT_PREFIX_CACHE" == 1 && "$FLASH_NEXT_DET_TOPK" == 1 && "$FLASH_NEXT_EFFORT_ALIAS" == 1 && "$FLASH_NEXT_KV_DTYPE" == auto ]] || die 'Candidate cache/reasoning tuple differs from the qualified profile'
-  [[ "$FLASH_NEXT_GPU_MEM" == 0.68 || "$FLASH_NEXT_GPU_MEM" == 0.70 || "$FLASH_NEXT_GPU_MEM" == 0.72 ]] || die 'GPU memory must be one of the controlled 0.68/0.70/0.72 steps'
+  [[ "$FLASH_NEXT_GPU_MEM" == 0.68 || "$FLASH_NEXT_GPU_MEM" == 0.70 || "$FLASH_NEXT_GPU_MEM" == 0.72 || "$FLASH_NEXT_GPU_MEM" == 0.74 ]] || die 'GPU memory must be one of the controlled 0.68/0.70/0.72/0.74 steps'
   if ! command -v git >/dev/null || ! command -v docker >/dev/null; then die 'git and docker are required'; fi
   [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]] || die 'This candidate lifecycle runs only on the ARM64 DGX Spark host'
   local available_gib; available_gib="$(available_gib_on_existing_parent "$FLASH_NEXT_HF_CACHE")"

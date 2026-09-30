@@ -3,9 +3,11 @@
 ## Active endpoint and model
 
 Use `https://ai.home.arpa/v1` with a LiteLLM virtual key as a Bearer token.
-The current text model is `automation-moe` (NVIDIA Qwen3.6 35B A3B NVFP4,
-64K routed context). The old `coding` alias points to a stopped Qwen3.8 deployment. The
-HomeCompute gateway and Spark inference service are already running.
+The current text model is selected through the stable LiteLLM alias
+`automation-moe`. As of 2026-09-30, LiteLLM routes it to the owner-directed
+Qwen3.8 Flash-Next quality trial (262K context); qualification is incomplete.
+The old `coding` alias points to a stopped Qwen3.8 deployment. The HomeCompute
+gateway and Spark inference service are already running.
 
 On this Mac, the HomeCompute root CA is trusted by macOS and copied to
 `~/.config/homecompute/home-core-root.crt` for Node/Python clients. Other

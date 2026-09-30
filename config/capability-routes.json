@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "route_version": "2026-09-30-quality-baseline-ultrafast-challenger",
+  "route_version": "2026-09-30-qwen38-alias-trial",
   "timeout_profiles": {
     "home": {
       "seconds": 20
@@ -17,7 +17,7 @@
   },
   "routes": {
     "automation": {
-      "state": "active",
+      "state": "candidate",
       "privacy": "local_only",
       "required_capabilities": [
         "chat",
@@ -30,8 +30,9 @@
       "minimum_context_tokens": 32768,
       "timeout_profile": "automation",
       "deployments": [
-        "automation-spark-primary"
-      ]
+        "automation-flash-next-candidate"
+      ],
+      "kind": "candidate"
     },
     "home": {
       "state": "active",
@@ -104,7 +105,7 @@
       "deployments": []
     },
     "automation-moe": {
-      "state": "active",
+      "state": "candidate",
       "qualification_capability": "automation",
       "privacy": "local_only",
       "required_capabilities": [
@@ -117,8 +118,9 @@
       "minimum_context_tokens": 32768,
       "timeout_profile": "automation",
       "deployments": [
-        "automation-spark-primary"
-      ]
+        "automation-flash-next-candidate"
+      ],
+      "kind": "candidate"
     },
     "automation-moe-nvidia": {
       "state": "candidate",
@@ -153,7 +155,7 @@
       "minimum_context_tokens": 65536,
       "timeout_profile": "assistant",
       "deployments": [
-        "automation-spark-primary"
+        "automation-flash-next-candidate"
       ]
     },
     "automation-qualification": {

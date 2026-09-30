@@ -115,7 +115,9 @@ those runtimes.
 
 ## Remaining work
 
-- n8n uses the healthy tunneled `automation-moe` route. The home-core CPU
+- n8n uses the LiteLLM `automation-moe` alias. The alias is routed through the
+  restricted tunnel to the home-spark Flash-Next trial on loopback port 18300.
+  The home-core CPU
   standby is registered only under `automation`, so it is not yet a fallback
   for those workflows.
 - Qwen3.8-27B is stopped. The general semantic aliases that still use its

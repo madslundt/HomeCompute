@@ -1,11 +1,11 @@
 # Qwen3.6 and Flash-Next profile qualification
 
-**Status: NOT APPROVED FOR CUTOVER**  
-**Evidence state:** benchmark collection not run  
+**Status: owner-directed `automation-moe` trial; Flash-Next quality qualification remains incomplete**
+**Evidence state:** partial synthetic screening collected; full qualification remains incomplete
 **Report date:** 2026-09-30
 
-This report is the decision record for the current production Qwen3.6 baseline
-and the isolated Flash-Next candidate. Blank/not-run values are deliberate;
+This report is the decision record for the observed Qwen3.6 baseline and the
+owner-directed Flash-Next alias trial. Blank/not-run values are deliberate;
 no model-quality or capacity results are inferred from synthetic smoke checks
 or upstream benchmarks.
 
@@ -15,12 +15,12 @@ or upstream benchmarks.
 |---|---|---|---|---|
 | Qwen3.6 handoff baseline | `unsloth/Qwen3.6-35B-A3B-NVFP4` | `739af1e7aac320af1682ed1e0cce369af4c5265d` | Requested production reference; not the model observed running on `home-spark` during this task | Do not benchmark as the live baseline until the host and handoff state are reconciled |
 | Qwen3.6 observed live | `nvidia/Qwen3.6-35B-A3B-NVFP4` | `1355db6a052410cfd62085d94b58866fd0f2c3c5` | vLLM OpenAI image `vllm/vllm-openai@sha256:2a7cde230b59f3ce6cab33dd245ba6bee41aa87b38c9fe84f966ff24016813ce`; local image ID `sha256:89154ef00dd15368d2b293c167e5cc7dbb521fcfb2fbb77510e0d4df2b820e8f` | Healthy container serves both `automation-moe-nvidia` and `automation-moe`; live reasoning setting remains unverified |
-| Flash-Next quality baseline | `nvidia/Qwen3.8-Flash-Next-NVFP4` | `fc694b54fb0174e0913e6adf86691ef85a4ead47` | Blazux `b05e14681325f3cc5bd22e7f48537feeeb0bf266`; vLLM 0.30.0 ARM64 base `sha256:4864d46625cbc3307623e29ac742030655e27249feba7b97ec925ce4cc4dfb56`; local image ID pending build | `enable_thinking=true`, `xhigh`; `medium` diagnostic |
+| Flash-Next quality baseline | `nvidia/Qwen3.8-Flash-Next-NVFP4` | `fc694b54fb0174e0913e6adf86691ef85a4ead47` | Blazux `b05e14681325f3cc5bd22e7f48537feeeb0bf266`; vLLM 0.30.0 ARM64 base `sha256:4864d46625cbc3307623e29ac742030655e27249feba7b97ec925ce4cc4dfb56`; local image ID `sha256:12ef55e080d1a050a40f6801127dffa7b297e622f71e20d498456f9336db7127` | `enable_thinking=true`, `xhigh`; `medium` diagnostic |
 | Flash-Next UltraFast challenger | `Saren/Qwen3.8-Flash-Next-W4A16-AutoRound-hybrid` | `8b82f0b7abe3d1150a7827d298c75e86267636ae`; PLE `50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14` | dime commit `0c391a3e74b6a775cfe248691ca7fd855b1876a5`; v16b iter6d; parent image `sha256:fc120ece0a388cc0aa1caad4a9f1cd92113484ab7ec2fd0efadd62585be05bf8`; private launch overlay `sha256:9cf8895b57560381c555970d2d043c089df9fa3eb2b9dab69440a035b14228cb`; local image ID pending build | `enable_thinking=true`, profile default; exact effective effort must be captured |
 
 Runtime settings: hybrid layout, context 262144, YaRN disabled, MTP 2, four
 sequences, prefix cache and deterministic top-k enabled, effort alias enabled,
-`KV_DTYPE=auto`, GPU memory qualification steps 0.68/0.70/0.72, long-prefill
+`KV_DTYPE=auto`, GPU memory qualification steps 0.68/0.70/0.72/0.74, long-prefill
 threshold 1024, `qwen3_coder` tool parser, `qwen3` reasoning parser, automatic
 tool choice, temperature zero where supported. Each change to these settings
 creates a distinct tuple.
@@ -30,6 +30,43 @@ creates a distinct tuple.
 `NOT RUN` means the repository has no observed run evidence for that cell.
 Private prompts, household content, raw tool results, and credentials belong in
 protected local benchmark storage and are not committed.
+
+### Synthetic screening collected on 2026-09-30
+
+The same 3-case, 10-trial profile plan was run against the observed Qwen3.6
+NVIDIA baseline and the live Flash-Next quality container. The profile plan
+completed all 30 requests for each model. The separate synthetic tool-recovery
+loop completed 3 trials for each. Raw generations and comparison JSON remain in
+the ignored `benchmarks/results/` directory.
+
+| Metric | Qwen3.6 NVIDIA baseline | Flash-Next quality |
+|---|---:|---:|
+| Profile requests completed | 30/30 | 30/30 |
+| Mean objective score | 13.52% | 37.62% |
+| Full profile cases passing every check | 0/30 | 0/30 |
+| Median profile request time | 3,861.89 ms | 4,371.25 ms |
+| Danish exact-date checks | 0/10 | 0/10 |
+| Correct one-call tool name and JSON arguments, after parsing argument JSON | 10/10 | 10/10 |
+| Tool-loop mean objective score | 53.33% | 35.00% |
+| Tool-loop median duration | 16,540.35 ms | 13,841.82 ms |
+| Tool-loop mean tool calls / wrong calls | 16 / 12 | 0 / 0 |
+
+Flash-Next's mean profile objective score was 24.10 points higher, while its
+median request was 509 ms slower. It returned valid JSON in all 10 Danish cases
+and matched the expected title and child in all 10; it omitted the time and
+normalized date required by the fixture in every trial. Both models made the
+correct tool selection with semantically matching arguments in all 10 tool
+selection trials. The harness marked those tool checks as failed because it
+evaluates the empty assistant text instead of the returned tool call and
+compares raw argument JSON strings including whitespace. This also means the
+0/30 full-case pass counts do not establish a usable quality pass rate.
+
+The Qwen3.6 baseline's live reasoning and runtime settings were not fully
+verified. Flash-Next ran at GPU memory utilization 0.74 to provide enough KV
+cache for its 262144 context. These are useful screening
+results, not a matched-runtime promotion gate. The separate loop result is
+also unfavorable to Flash-Next: it made no tool calls in its three trials,
+while Qwen3.6 made 16 calls on average, including 12 wrong calls.
 
 | Metric | Qwen3.6 reasoning | Blazux quality baseline | UltraFast challenger |
 |---|---:|---:|---:|
@@ -77,9 +114,12 @@ or HomeCompute workflow results. See the [pinned v16b source](https://github.com
 
 ### Promotion decision
 
-There are no comparative results or local build digests, so neither Flash
-profile is technically ready for owner go/no-go review. Qwen3.6 remains
-production. No production alias or n8n workflow was switched. UltraFast MTP
+The synthetic comparison does not qualify Flash-Next: no profile case passed
+all checks, the recovery-loop run made no tool calls, and the harness has a
+known false-negative for tool-only responses. Qwen3.6 remains the stored
+rollback model. The owner directed LiteLLM's existing `automation-moe`
+consumer alias to this Flash-Next runtime without changing n8n. This is an
+operator-approved trial route, not a qualification result. UltraFast MTP
 verification against its own target cannot establish parity with the distinct
 NVIDIA NVFP4 Blazux target.
 

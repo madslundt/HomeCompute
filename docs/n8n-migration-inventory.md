@@ -2,17 +2,19 @@
 
 ## Model qualification state (2026-09-29)
 
-**CURRENT:** production consumers use the `automation-moe` semantic
-compatibility alias backed by `unsloth/Qwen3.6-35B-A3B-NVFP4` revision
-`739af1e7aac320af1682ed1e0cce369af4c5265d`.
+**CURRENT:** production consumers use the LiteLLM `automation-moe` semantic
+alias. On 2026-09-30 its backend was switched to the owner-directed Qwen3.8
+Flash-Next quality trial. The n8n nodes and credential continue using the
+alias; Flash-Next quality qualification remains incomplete.
 
 **CANDIDATES:** the isolated `automation-qualification` LiteLLM route selects
 one operator-on-demand profile at a time: Blazux/NVIDIA NVFP4 is the
 quality-first Flash-Next baseline; dime UltraFast is the AutoRound performance
 challenger. Neither is a production route or production-qualified.
 
-**TARGET:** after evidence and a separate owner approval, migrate consumers to
-`automation` while keeping Qwen3.6 cached as rollback. Qwen3.8-27B remains a
+**TARGET:** keep model identity in the LiteLLM deployment mapping so consumers
+can remain on a stable alias as the backend changes. Qwen3.6 remains cached for
+rollback. Qwen3.8-27B remains a
 smaller cold fallback/workhorse artifact; no future route is hard-coded.
 Priority benchmark workloads are Aula, Find Offers/Tilbudstrolden, and Shopping list category
 synchronization. Notion is optional and not a promotion gate.

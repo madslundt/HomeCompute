@@ -368,20 +368,22 @@ streaming, tool, privacy, and latency corpus.
    reusable or appropriately isolated.
 
 
-## Model replacement qualification (2026-09-29)
+## Model replacement qualification and alias trial (2026-09-30)
 
-**CURRENT:** the handoff identifies Unsloth Qwen3.6-35B-A3B NVFP4 revision
-`739af1e7aac320af1682ed1e0cce369af4c5265d` as production behind
-`automation-moe`. Older paragraphs in this file describe previous NVIDIA,
-Gemma, and Qwen3.8-27B snapshots and remain historical evidence; they do not
-change this current baseline. The exact live n8n reasoning request and runtime
-image still require metadata-only verification before a baseline run.
+**CURRENT:** n8n and other clients continue to call the LiteLLM alias
+`automation-moe`. The owner directed LiteLLM to route that alias to NVIDIA
+Qwen3.8-Flash-Next NVFP4 revision
+`fc694b54fb0174e0913e6adf86691ef85a4ead47` through the restricted home-core
+SSH tunnel to home-spark loopback port 18300. The model remains marked as a
+candidate: synthetic screening was inconclusive and full quality qualification
+is incomplete. Qwen3.6 is stopped and retained as the rollback model.
 
-**QUALITY BASELINE CANDIDATE:** NVIDIA Qwen3.8-Flash-Next NVFP4 revision
+**OWNER-DIRECTED TRIAL:** NVIDIA Qwen3.8-Flash-Next NVFP4 revision
 `fc694b54fb0174e0913e6adf86691ef85a4ead47`, using Blazux commit
 `b05e14681325f3cc5bd22e7f48537feeeb0bf266` and pinned vLLM 0.30.0 ARM64 base
-image digest, is the quality-oriented reference implementation. Its final
-local image digest and physical qualification are pending.
+image digest, is running at GPU memory utilization 0.74. Its measured local
+image digest is `sha256:12ef55e080d1a050a40f6801127dffa7b297e622f71e20d498456f9336db7127`.
+Physical and workflow quality qualification remain incomplete.
 
 **PERFORMANCE CHALLENGER:** `dime-online/qwen3.8-Flash-DGX-UltraFast` is pinned
 to source commit `0c391a3e74b6a775cfe248691ca7fd855b1876a5`, AutoRound model
@@ -395,12 +397,13 @@ unchanged.
 **TARGET (pending):** one resident general text model across semantic routes;
 retain only Hviske v5.3 and Plapre Nano v2 as required Spark speech services.
 Qwen3.8-27B remains a substantially smaller, efficient cold fallback/workhorse
-artifact. Its future routing is undecided. Gemma and Qwen3-TTS are outside the
+artifact. It is not part of the current n8n route. Gemma and Qwen3-TTS are outside the
 target; Whisper is optional/deferred to `home-core`.
 
-The exact benchmark comparison, unrun metrics, and remaining gates are tracked
+The benchmark comparison, unrun metrics, and remaining gates are tracked
 in [`benchmarks/qwen36-vs-flash-next-automation.md`](benchmarks/qwen36-vs-flash-next-automation.md).
-Production remains Qwen3.6; no production route or workflow was changed.
+The n8n workflow node and credential still use the alias; only the LiteLLM
+backend mapping changes during model swaps.
 
 **Live-host reconciliation note (2026-09-29):** read-only Docker inspection
 after access was granted found healthy container `gb10-automation-nvidia-primary`
