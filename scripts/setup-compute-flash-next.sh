@@ -12,6 +12,9 @@ COMMAND="${1:-help}"
 PROFILE=quality
 ENV_FILE="${GB10_ENV_FILE:-/etc/gb10-ai/gb10.env}"
 WAIT_SECONDS=1800
+log() { printf '[flash-next] %s\n' "$*"; }
+die() { printf '[flash-next] ERROR: %s\n' "$*" >&2; exit 1; }
+require_root() { [[ ${EUID} -eq 0 ]] || die 'Rerun this system-changing command with sudo'; }
 CONFIG_TEMPLATE="$SCRIPT_DIR/../config/compute-node.env.example"
 [[ -f "$CONFIG_TEMPLATE" ]] || die 'Compute-node configuration template is missing'
 mapfile -t CONFIG_KEYS < <(sed -nE 's/^([A-Z][A-Z0-9_]*)=.*/\1/p' "$CONFIG_TEMPLATE")
@@ -39,10 +42,6 @@ routes. Speech services are not stopped. The previous running text containers
 are recorded before they are stopped, so deactivate-canary can restore them.
 USAGE
 }
-log() { printf '[flash-next] %s\n' "$*"; }
-die() { printf '[flash-next] ERROR: %s\n' "$*" >&2; exit 1; }
-require_root() { [[ ${EUID} -eq 0 ]] || die 'Rerun this system-changing command with sudo'; }
-
 parse_options() {
   while (( $# )); do
     case "$1" in
@@ -75,6 +74,14 @@ image_record() {
 active_record() { printf '%s/previous-text-containers' "$FLASH_NEXT_STATE_DIR"; }
 active_profile_record() { printf '%s/active-profile' "$FLASH_NEXT_STATE_DIR"; }
 flash() { "$(source_dir)/flash" "$@"; }
+available_gib_on_existing_parent() {
+  local path="$1"
+  while [[ ! -e "$path" ]]; do
+    [[ "$path" != / ]] || die 'Could not find an existing filesystem for the candidate cache'
+    path="$(dirname -- "$path")"
+  done
+  df -BG --output=avail "$path" | tail -1 | tr -dc '0-9'
+}
 
 validate_quality() {
   load_env
@@ -89,7 +96,7 @@ validate_quality() {
   [[ "$FLASH_NEXT_GPU_MEM" == 0.68 || "$FLASH_NEXT_GPU_MEM" == 0.70 || "$FLASH_NEXT_GPU_MEM" == 0.72 ]] || die 'GPU memory must be one of the controlled 0.68/0.70/0.72 steps'
   if ! command -v git >/dev/null || ! command -v docker >/dev/null; then die 'git and docker are required'; fi
   [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]] || die 'This candidate lifecycle runs only on the ARM64 DGX Spark host'
-  local available_gib; available_gib="$(df -BG --output=avail "$FLASH_NEXT_HF_CACHE" 2>/dev/null | tail -1 | tr -dc '0-9')"
+  local available_gib; available_gib="$(available_gib_on_existing_parent "$FLASH_NEXT_HF_CACHE")"
   [[ "${available_gib:-0}" -ge 160 ]] || die 'Candidate cache filesystem requires at least 160 GiB free for the pinned weights and hybrid layout'
   [[ -d /dev/dri ]] || log 'No /dev/dri device node observed; NVIDIA container access still needs host qualification'
   docker info >/dev/null 2>&1 || die 'Docker daemon is unavailable'
@@ -109,7 +116,7 @@ validate_ultrafast() {
     die 'git, docker and patch are required'
   fi
   [[ "$(uname -m)" == aarch64 || "$(uname -m)" == arm64 ]] || die 'UltraFast lifecycle runs only on ARM64 GB10'
-  local available_gib; available_gib="$(df -BG --output=avail "$FLASH_ULTRAFAST_MODELS_ROOT" 2>/dev/null | tail -1 | tr -dc '0-9')"
+  local available_gib; available_gib="$(available_gib_on_existing_parent "$FLASH_ULTRAFAST_MODELS_ROOT")"
   [[ "${available_gib:-0}" -ge 160 ]] || die 'UltraFast model filesystem requires at least 160 GiB free'
   docker info >/dev/null 2>&1 || die 'Docker daemon is unavailable'
   log "UltraFast pins valid: $FLASH_ULTRAFAST_SOURCE_REVISION / $FLASH_ULTRAFAST_MODEL_ID@$FLASH_ULTRAFAST_MODEL_REVISION"

@@ -63,6 +63,8 @@ class FlashNextLifecycleTests(unittest.TestCase):
         self.assertIn("Stop the active qualification candidate before installing or rebuilding a profile", SCRIPT)
         self.assertIn("explicit private address", SCRIPT)
         self.assertIn("previous-text-containers", SCRIPT)
+        self.assertIn("available_gib_on_existing_parent", SCRIPT)
+        self.assertIn("while [[ ! -e \"$path\" ]]", SCRIPT)
         self.assertIn("HOST_BIND", PATCH)
         self.assertIn("docker container inspect", PATCH)
         self.assertIn("refusing to replace existing container", PATCH)
