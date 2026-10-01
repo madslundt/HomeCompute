@@ -165,6 +165,35 @@ off-host backup by themselves. Provider credentials are not snapshot payload;
 restore procedures must re-register them from the external secret source when
 the OpenShell provider store is also lost.
 
+## Dashboard access from the home LAN and Tailscale
+
+The guest keeps the Hermes dashboard bound to its loopback OpenShell forward.
+Hermes `dashboard.public_url` is set to `http://home-core:18789`, which engages
+the dashboard's basic-auth gate and accepts that exact host/origin. A guest-side
+TCP proxy binds only the host-only agents bridge (`10.77.20.2:18789`) and
+forwards to the local OpenShell dashboard port (`127.0.0.1:18790`). The NixOS
+host then publishes it only on its LAN and Tailscale addresses.
+
+Install the guest proxy after onboarding and configuring `dashboard.basic_auth`
+with a username and scrypt password hash:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y socat
+sudo install -m 0644 deploy/hermes/hermes-dashboard-proxy.service \
+  /etc/systemd/system/homecompute-hermes-dashboard-proxy.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now homecompute-hermes-dashboard-proxy.service
+```
+
+If NemoClaw allocates a different dashboard port later, update the proxy's
+`TCP:127.0.0.1:18790` target to the port printed by `nemohermes
+agent-owner dashboard-url --quiet` before starting the service.
+
+Use `http://home-core:18789/` on the home LAN or a Tailscale device with
+MagicDNS enabled. Keep this behind the trusted LAN/Tailscale boundary; Hermes
+basic auth is a single shared login, not per-person accounts.
+
 ## Production stop conditions
 
 Do not put personal data or messaging credentials into this canary. Stop before

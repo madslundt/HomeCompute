@@ -41,9 +41,7 @@ Commands:
   validate                 Validate the secret-free config and release tuple
   preflight                Validate the Ubuntu guest, tools, CA, key, and endpoint
   install                  Install the pinned NemoClaw CLI without onboarding
-  onboard-canary [--remote-dashboard]
-                           Create only the synthetic agent-owner sandbox;
-                           remote mode snapshots state and enables remote bind
+  onboard-canary           Create only the synthetic agent-owner sandbox
   health                   Capture redacted doctor, status, route, and version evidence
   snapshot NAME            Create a named snapshot of the synthetic canary
   restore-verify SNAPSHOT  Restore the synthetic canary in place and run health probes
@@ -320,25 +318,9 @@ read_api_key() {
 }
 
 onboard_canary() {
-  local dashboard_mode="${1:-loopback}" dashboard_bind='' snapshot_name=''
-  local -a recreate_args=()
-  case "$dashboard_mode" in
-    loopback) ;;
-    --remote-dashboard)
-      dashboard_bind='0.0.0.0'
-      recreate_args=(--recreate-sandbox)
-      ;;
-    *) die 'onboard-canary accepts only --remote-dashboard' ;;
-  esac
   preflight_runtime
   require_mutation_gates
   validate_installed_cli_version
-  if [[ "$dashboard_mode" == --remote-dashboard ]]; then
-    snapshot_name="pre-remote-dashboard-$(date -u +%Y%m%dT%H%M%SZ)"
-    validate_snapshot_name "$snapshot_name"
-    log "Creating recovery snapshot before sandbox recreation: $snapshot_name"
-    nemohermes "$HERMES_SANDBOX_NAME" snapshot create --name "$snapshot_name"
-  fi
   local api_key temporary_dir host_validation_ca system_ca_bundle=''
   # NemoClaw imports the explicit standalone CA into the managed image, but
   # its pre-sandbox endpoint probe uses the host curl/Node trust variables.
@@ -370,7 +352,6 @@ onboard_canary() {
     NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 \
     NEMOCLAW_AGENT=hermes \
     NEMOCLAW_CORPORATE_CA_BUNDLE="$HERMES_CA_BUNDLE" \
-    NEMOCLAW_DASHBOARD_BIND="$dashboard_bind" \
     NEMOCLAW_ENDPOINT_URL="$HERMES_ENDPOINT_URL" \
     NEMOCLAW_MODEL="$HERMES_MODEL" \
     NEMOCLAW_NON_INTERACTIVE=1 \
@@ -383,7 +364,7 @@ onboard_canary() {
     NODE_EXTRA_CA_CERTS="$HERMES_CA_BUNDLE" \
     REQUESTS_CA_BUNDLE="$host_validation_ca" \
     SSL_CERT_FILE="$host_validation_ca" \
-    nemohermes onboard --non-interactive --yes-i-accept-third-party-software "${recreate_args[@]}"
+    nemohermes onboard --non-interactive --yes-i-accept-third-party-software
   api_key=''
   unset api_key
   rm -rf -- "$temporary_dir"
@@ -513,7 +494,7 @@ main() {
     validate) [[ -z "$argument" ]] || die 'validate takes no argument'; log 'Configuration and release tuple are valid' ;;
     preflight) [[ -z "$argument" ]] || die 'preflight takes no argument'; preflight_runtime ;;
     install) [[ -z "$argument" ]] || die 'install takes no argument'; install_nemoclaw ;;
-    onboard-canary) onboard_canary "$argument" ;;
+    onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;
     snapshot) [[ -n "$argument" ]] || die 'snapshot requires NAME'; create_snapshot "$argument" ;;
     restore-verify) [[ -n "$argument" ]] || die 'restore-verify requires SNAPSHOT'; restore_verify "$argument" ;;
