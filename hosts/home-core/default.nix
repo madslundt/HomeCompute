@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 {
@@ -35,7 +36,47 @@
   networking.networkmanager.enable = lib.mkForce true;
   networking.useDHCP = lib.mkForce false;
   services.resolved.enable = lib.mkForce false;
-  networking.firewall.interfaces.enp44s0.allowedTCPPorts = [ 22 ];
+  networking.firewall.interfaces.enp44s0.allowedTCPPorts = [
+    22
+    18789
+  ];
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 18789 ];
+
+  # Publish the authenticated Hermes dashboard only on the home LAN and
+  # Tailscale addresses. The dashboard itself remains inside the agents VM.
+  systemd.services.homecompute-hermes-dashboard-proxy-lan = {
+    description = "Home LAN proxy for the authenticated Hermes dashboard";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" "homecompute-agents-vm.service" ];
+    after = [ "network-online.target" "homecompute-agents-vm.service" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18789,bind=192.168.30.122,reuseaddr,fork TCP:10.77.20.2:18789";
+      Restart = "on-failure";
+      RestartSec = "2s";
+      NoNewPrivileges = true;
+      ProtectSystem = "strict";
+      ProtectHome = true;
+      PrivateTmp = true;
+      CapabilityBoundingSet = "";
+    };
+  };
+
+  systemd.services.homecompute-hermes-dashboard-proxy-tailscale = {
+    description = "Tailscale proxy for the authenticated Hermes dashboard";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" "tailscaled.service" "homecompute-agents-vm.service" ];
+    after = [ "network-online.target" "tailscaled.service" "homecompute-agents-vm.service" ];
+    serviceConfig = {
+      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18789,bind=100.110.248.102,reuseaddr,fork TCP:10.77.20.2:18789";
+      Restart = "on-failure";
+      RestartSec = "2s";
+      NoNewPrivileges = true;
+      ProtectSystem = "strict";
+      ProtectHome = true;
+      PrivateTmp = true;
+      CapabilityBoundingSet = "";
+    };
+  };
 
   # This installed host has a 1 GiB ESP. Keep room for future kernels.
   boot.loader.systemd-boot.configurationLimit = lib.mkForce 5;

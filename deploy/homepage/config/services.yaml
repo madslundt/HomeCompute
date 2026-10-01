@@ -29,6 +29,12 @@
         href: https://models.home.arpa/
         description: Load, unload, and replace Spark models
 
+    - Mads' Hermes:
+        id: homecore-hermes-mads
+        icon: mdi-robot-outline
+        href: http://home-core:18789/
+        description: Private assistant · sign-in required
+
 - Local operator access:
     - Calibre Web Automated:
         id: homecore-calibre-web
