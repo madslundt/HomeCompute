@@ -99,7 +99,14 @@ def evaluate_check(text: str, check: dict[str, Any], workspace: Path | None = No
             return False, "valid JSON"
     if kind == "json_path_equals":
         try:
-            passed = json_path(json.loads(text), check["path"]) == check["value"]
+            actual = json_path(json.loads(text), check["path"])
+            expected = check["value"]
+            # OpenAI-compatible tool call arguments are commonly serialized JSON
+            # strings inside the outer response JSON. Compare those as data when
+            # the fixture supplies an object, independent of whitespace/key order.
+            if isinstance(actual, str) and isinstance(expected, (dict, list)):
+                actual = json.loads(actual)
+            passed = actual == expected
         except (json.JSONDecodeError, KeyError):
             passed = False
         return passed, f"JSON {check['path']} equals expected value"

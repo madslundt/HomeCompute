@@ -140,8 +140,14 @@ def post_chat(
         tool_calls = message.get("tool_calls", [])
     except (KeyError, IndexError, TypeError) as exc:
         raise BenchmarkError(f"unexpected response shape from {candidate['id']}") from exc
+    # Tool-only assistant turns frequently have content="". Preserve the
+    # structured call payload as the evaluable text instead of silently scoring
+    # an empty string.
+    evaluated_text = text if isinstance(text, str) and text else (
+        json.dumps({"tool_calls": tool_calls}, ensure_ascii=False) if tool_calls else ""
+    )
     return {
-        "text": text if isinstance(text, str) else json.dumps({"tool_calls": tool_calls}, ensure_ascii=False),
+        "text": evaluated_text,
         "tool_calls": tool_calls,
         "tool_call_count": len(tool_calls),
         "missing_call_id_count": sum(
