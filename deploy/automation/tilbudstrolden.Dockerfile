@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS build
+FROM node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2 AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -8,12 +8,12 @@ RUN git init . && git remote add origin https://github.com/olgasafonova/tilbudst
     && git checkout --detach FETCH_HEAD && rm -rf .git
 RUN npm ci && npm run build && npm prune --omit=dev
 
-FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS gateway
+FROM node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2 AS gateway
 WORKDIR /gateway
 COPY tilbudstrolden-gateway/package.json tilbudstrolden-gateway/package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
+FROM node:26-bookworm-slim@sha256:662933cf47f013bc8e4beb31a6116448427a82057ba7c42c97e4c5ba766504c2
 WORKDIR /app
 COPY --from=build --chown=1000:1000 /app/dist ./dist
 COPY --from=build --chown=1000:1000 /app/node_modules ./node_modules
