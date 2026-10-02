@@ -107,6 +107,11 @@ in
             "immich/database-password" = {
               mode = "0400";
             };
+          } // lib.optionalAttrs config.homecompute.immich.synologyMount.enable {
+            "immich/synology-smb-credentials" = {
+              sopsFile = ../../secrets/synology-immich.sops.yaml;
+              mode = "0400";
+            };
           } // lib.optionalAttrs (config.homecompute.immich.enable && config.homecompute.immich.importEnabled) {
             "immich/import-api-key" = {
               mode = "0400";

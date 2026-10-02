@@ -158,6 +158,12 @@
     lanAddress = "192.168.30.122";
     tailscaleAddress = "100.110.248.102";
     port = 2283;
+    # Mount the Synology share independently first. Keep Immich on its current
+    # local library until the NAS mount and any existing media are verified.
+    synologyMount.enable = true;
+    synologyMount.mountPath = "/mnt/immich-nas";
+    synologyMount.address = "192.168.30.236";
+    synologyMount.share = "immich-library";
   };
 
   homecompute.agentsVm = {

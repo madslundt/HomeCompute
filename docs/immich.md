@@ -41,6 +41,30 @@ checksums, mount the NAS, change `libraryPath`, start Immich, and verify sample
 assets. Keep the former library copy until the NAS-backed service and next
 Hetzner backup have been checked. Do not put PostgreSQL on NFS or SMB.
 
+### Synology SMB mount
+
+`home-core` mounts the Synology share `//192.168.30.236/immich-library` at
+`/mnt/immich-nas` using CIFS/SMB 3.1.1. The mount is systemd-automounted and
+does not block boot when the NAS is offline. Its credentials are supplied by
+the root-only SOPS secret `/run/secrets/immich/synology-smb-credentials`, in
+standard `mount.cifs` format:
+
+```text
+username=immich-svc
+password=<entered locally; do not commit or share>
+```
+
+Before deploying the mount, run
+`scripts/set-synology-immich-secret.sh` and paste the password at its hidden
+prompt. It asks twice, sends the value to SOPS through stdin, and updates only
+`secrets/synology-immich.sops.yaml`; that dedicated file contains no other
+credentials. The password is not placed in shell history, process arguments,
+or the Nix store. After deployment, access
+`/mnt/immich-nas` to trigger the mount and verify it with `findmnt` and a small
+test file. The active Immich library remains on local storage until a separate
+copy, checksum comparison, and cutover are completed. The Immich database
+stays on the local SSD.
+
 The web/API service listens at `http://192.168.30.122:2283` on the LAN and
 `http://100.110.248.102:2283` on Tailscale. Loopback is also bound for local
 maintenance. No public reverse proxy or router forwarding is configured.

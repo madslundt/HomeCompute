@@ -1,6 +1,7 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.homecompute.immich;
+  nas = cfg.synologyMount;
   environmentTemplate = builtins.readFile ../../config/immich.env.example;
 in
 {
@@ -35,6 +36,24 @@ in
       type = lib.types.port;
       default = 2283;
       description = "Immich web/API port.";
+    };
+    synologyMount = {
+      enable = lib.mkEnableOption "Synology SMB mount for Immich media storage";
+      mountPath = lib.mkOption {
+        type = lib.types.str;
+        default = "/mnt/immich-nas";
+        description = "Mount point for the Synology Immich SMB share.";
+      };
+      address = lib.mkOption {
+        type = lib.types.str;
+        default = "192.168.30.236";
+        description = "LAN address of the Synology NAS.";
+      };
+      share = lib.mkOption {
+        type = lib.types.str;
+        default = "immich-library";
+        description = "Synology SMB share containing Immich media.";
+      };
     };
   };
 
@@ -90,6 +109,31 @@ in
           "IMMICH_PORT=${toString cfg.port}"
         ]
         environmentTemplate;
+    };
+
+    environment.systemPackages = lib.optionals nas.enable [ pkgs.cifs-utils ];
+
+    fileSystems = lib.mkIf nas.enable {
+      "${nas.mountPath}" = {
+        device = "//${nas.address}/${nas.share}";
+        fsType = "cifs";
+        options = [
+          "noauto"
+          "x-systemd.automount"
+          "_netdev"
+          "nofail"
+          "vers=3.1.1"
+          "credentials=/run/secrets/immich/synology-smb-credentials"
+          # Immich's container runs as root in this deployment. Restrict host
+          # visibility to root while preserving owner read/write on the mount.
+          "uid=0"
+          "gid=0"
+          "file_mode=0640"
+          "dir_mode=0750"
+          "x-systemd.device-timeout=5s"
+          "x-systemd.mount-timeout=15s"
+        ];
+      };
     };
   };
 }

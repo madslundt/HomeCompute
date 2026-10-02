@@ -57,6 +57,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/immich-db-backup.sh"
+  "$REPO_ROOT/scripts/set-synology-immich-secret.sh"
   "$REPO_ROOT/scripts/import-google-photos.sh"
   "$REPO_ROOT/scripts/restore-immich.sh"
   "$REPO_ROOT/scripts/deploy-home-spark.sh"
