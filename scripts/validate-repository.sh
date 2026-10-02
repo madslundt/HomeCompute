@@ -496,6 +496,10 @@ rg -F 'TCP-LISTEN:18790,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18789' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
 rg -F 'HERMES_UPSTREAM=http://172.28.200.1:18790' \
   "$REPO_ROOT/config/control-plane.env.example" >/dev/null
+rg -F 'speech_gateway=(docker compose --profile speech-proxies' \
+  "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null
+rg -F '"${speech_gateway[@]}" down' \
+  "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null
 rg -F 'for port in 10201 10301; do' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 rg -F 'HC-COMPUTE-V2 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10201' \

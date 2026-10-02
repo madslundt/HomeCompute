@@ -34,6 +34,7 @@ git -C "$release" checkout --detach "$revision"
 (cd /var/lib/homecompute && nixos-rebuild build --flake "$release#home-core")
 nixos-rebuild switch --flake "$release#home-core"
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
+speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
@@ -76,14 +77,24 @@ if [[ "$model_manager_ready" == true ]]; then
   "${model_manager[@]}" build --no-cache model-manager
 fi
 edge_network=homecompute-control-plane_edge
+speech_proxies_to_restore=()
 if docker network inspect "$edge_network" >/dev/null 2>&1; then
   edge_bridge_name="$(docker network inspect --format '{{ index .Options "com.docker.network.bridge.name" }}' "$edge_network")"
   if [[ "$edge_bridge_name" != br-hc-ctrl ]]; then
     printf 'Recreating %s to apply its dedicated host bridge name; the control plane will be briefly unavailable.\n' "$edge_network"
-    "${gateway[@]}" down
+    for proxy in plapre-wyoming-proxy hviske-wyoming-proxy; do
+      container="homecompute-control-plane-${proxy}-1"
+      if [[ $(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true) == true ]]; then
+        speech_proxies_to_restore+=("$proxy")
+      fi
+    done
+    "${speech_gateway[@]}" down
   fi
 fi
 "${gateway[@]}" up -d --wait --wait-timeout 180
+if [[ ${#speech_proxies_to_restore[@]} -gt 0 ]]; then
+  "${speech_gateway[@]}" up -d --wait --wait-timeout 180 "${speech_proxies_to_restore[@]}"
+fi
 "${automation[@]}" up -d --wait --wait-timeout 180
 "${homepage[@]}" up -d --wait --wait-timeout 180
 if [[ "$open_webui_ready" == true ]]; then
