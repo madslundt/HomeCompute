@@ -27,7 +27,7 @@ done <"$ENV_FILE"
   exit 1
 }
 
-IFS= read -r DB_PASSWORD <"$PASSWORD_FILE"
+DB_PASSWORD="$(<"$PASSWORD_FILE")"
 [[ $DB_PASSWORD =~ ^[A-Za-z0-9]+$ ]] || {
   printf 'Immich database secret must be a non-empty alphanumeric password.\n' >&2
   exit 1
