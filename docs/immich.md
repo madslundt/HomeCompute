@@ -5,12 +5,12 @@
 The repository contains a pinned, LAN/Tailscale-only Immich Compose project,
 NixOS state and environment configuration, the reusable Restic source and
 destination model, and operator tooling for database dumps, Google Takeout
-imports, and isolated Restic restores. Immich is enabled in the host
-configuration and its database password is provisioned in SOPS. The Takeout
-import and Hetzner backup remain gated until their account-specific credentials
-are ready. No service has been deployed, no remote repository has been
-initialized, and no restore drill or Google Takeout import has been performed.
-Those are release gates, not completed acceptance criteria.
+imports, and isolated Restic restores. Immich is running on `home-core` and its
+database password is provisioned in SOPS. Its media library now uses the
+Synology SMB share; PostgreSQL remains on local NVMe. Google Takeout import and
+Hetzner backups remain gated until the import and Storage Box credentials are
+ready. A Hetzner repository has not been initialized, and no restore drill or
+Google Takeout import has been performed.
 
 Immich v3.2.4 is pinned by its Linux x86_64 image digests in
 [`config/immich.env.example`](../config/immich.env.example). The database image
@@ -28,18 +28,19 @@ available only to Restic; Immich has no cloud-backup credentials.
 | Host path | Use | Backup |
 | --- | --- | --- |
 | `/srv/state/immich/database` | PostgreSQL 14 / VectorChord data on local NVMe | No live-file backup; use SQL dump |
-| `/srv/state/immich/library` | Originals and Immich-managed media | Yes |
+| `/mnt/immich-nas` | Originals and Immich-managed media on Synology | Yes |
 | `/srv/state/immich/model-cache` | ML models | No, rebuildable |
 | `/srv/state/immich/redis` | Valkey state | No, rebuildable |
 | `/srv/state/immich/db-backups` | Atomic, compressed `pg_dumpall` output | Yes |
 | `/srv/state/immich/import` | Temporary Takeout staging | No |
 
 `homecompute.immich.libraryPath` controls the host path mounted at `/data` in
-Immich. PostgreSQL remains under `stateRoot/database` on local SSD. To migrate
-to a NAS later, stop uploads and Immich, copy the library with `rsync`, compare
-checksums, mount the NAS, change `libraryPath`, start Immich, and verify sample
-assets. Keep the former library copy until the NAS-backed service and next
-Hetzner backup have been checked. Do not put PostgreSQL on NFS or SMB.
+Immich. It is now set to `/mnt/immich-nas`; PostgreSQL and the application's
+SQL dumps remain under `stateRoot` on local SSD. The former local library copy
+is retained at `/srv/state/immich/library` for rollback. The deploy script
+checks that the configured SMB source is actually mounted before starting
+Immich, so an offline NAS cannot silently become an empty local library. Do not
+put PostgreSQL on NFS or SMB.
 
 ### Synology SMB mount
 
@@ -61,9 +62,10 @@ prompt. It asks twice, sends the value to SOPS through stdin, and updates only
 credentials. The password is not placed in shell history, process arguments,
 or the Nix store. After deployment, access
 `/mnt/immich-nas` to trigger the mount and verify it with `findmnt` and a small
-test file. The active Immich library remains on local storage until a separate
-copy, checksum comparison, and cutover are completed. The Immich database
-stays on the local SSD.
+test file. The existing library was copied to the share and checked with
+rsync's checksum comparison before cutover. The Immich database stays on local
+SSD. Keep the local copy until the NAS-backed service has been verified and
+the first off-site Hetzner backup and restore test are complete.
 
 The web/API service listens at `http://192.168.30.122:2283` on the LAN and
 `http://100.110.248.102:2283` on Tailscale. Loopback is also bound for local

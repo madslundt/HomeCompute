@@ -121,6 +121,27 @@ else
   printf 'Faster Whisper model is not prepared; leaving Danish STT stopped.\n'
 fi
 if [[ -f /etc/homecompute/immich.env ]]; then
+  immich_library_path="$(sed -n 's/^IMMICH_LIBRARY_PATH=//p' /etc/homecompute/immich.env)"
+  immich_library_mount_source="$(sed -n 's/^IMMICH_LIBRARY_MOUNT_SOURCE=//p' /etc/homecompute/immich.env)"
+  if [[ -n $immich_library_mount_source ]]; then
+    [[ -d $immich_library_path ]] || {
+      printf 'Immich library path is missing: %s\n' "$immich_library_path" >&2
+      exit 1
+    }
+    # Access triggers NixOS's systemd automount. Never start Immich against an
+    # empty local mountpoint if the NAS is offline or the wrong share is mounted.
+    timeout 20s stat "$immich_library_path" >/dev/null || {
+      printf 'Immich NAS library could not be mounted: %s\n' "$immich_library_path" >&2
+      exit 1
+    }
+    mounted_source="$(findmnt --noheadings --output SOURCE --target "$immich_library_path")"
+    mounted_type="$(findmnt --noheadings --output FSTYPE --target "$immich_library_path")"
+    [[ $mounted_source == "$immich_library_mount_source" && $mounted_type == cifs ]] || {
+      printf 'Immich library mount mismatch at %s (expected %s, found %s %s).\n' \
+        "$immich_library_path" "$immich_library_mount_source" "$mounted_source" "$mounted_type" >&2
+      exit 1
+    }
+  fi
   immich_password_file=/run/secrets/immich/database-password
   [[ -s $immich_password_file ]] || {
     printf 'Immich is configured but its SOPS database password is missing; deployment stopped before Compose.\n' >&2

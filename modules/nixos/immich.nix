@@ -76,9 +76,12 @@ in
       "d ${cfg.stateRoot}/redis 0750 999 999 - -"
       "d ${cfg.stateRoot}/db-backups 0700 root root - -"
       "d ${cfg.stateRoot}/import 0700 root root - -"
-    ] ++ lib.optional (cfg.libraryPath != "${cfg.stateRoot}/library")
+    ] ++ lib.optional (cfg.libraryPath != "${cfg.stateRoot}/library"
+      && !(nas.enable && cfg.libraryPath == nas.mountPath))
       "d ${cfg.libraryPath} 0750 root homecompute-state - -")
-      ++ lib.optional (cfg.stateRoot == "/srv/state/immich" && cfg.libraryPath != "${cfg.stateRoot}/library")
+      ++ lib.optional (cfg.stateRoot == "/srv/state/immich"
+        && cfg.libraryPath != "${cfg.stateRoot}/library"
+        && !(nas.enable && cfg.libraryPath == nas.mountPath))
         "d ${cfg.libraryPath} 0750 root homecompute-state - -";
 
     environment.etc."homecompute/immich.env" = {
@@ -87,6 +90,7 @@ in
         [
           "IMMICH_STATE_ROOT=/srv/state/immich"
           "IMMICH_LIBRARY_PATH=/srv/state/immich/library"
+          "IMMICH_LIBRARY_MOUNT_SOURCE=\n"
           "IMMICH_DATABASE_PATH=/srv/state/immich/database"
           "IMMICH_MODEL_CACHE_PATH=/srv/state/immich/model-cache"
           "IMMICH_REDIS_PATH=/srv/state/immich/redis"
@@ -99,6 +103,7 @@ in
         [
           "IMMICH_STATE_ROOT=${cfg.stateRoot}"
           "IMMICH_LIBRARY_PATH=${cfg.libraryPath}"
+          "IMMICH_LIBRARY_MOUNT_SOURCE=${if nas.enable && cfg.libraryPath == nas.mountPath then "//${nas.address}/${nas.share}" else ""}\n"
           "IMMICH_DATABASE_PATH=${cfg.stateRoot}/database"
           "IMMICH_MODEL_CACHE_PATH=${cfg.stateRoot}/model-cache"
           "IMMICH_REDIS_PATH=${cfg.stateRoot}/redis"
