@@ -2,7 +2,7 @@
     - Home Assistant:
         id: homecore-home-assistant
         icon: home-assistant.png
-        href: http://homeassistant.local/
+        href: http://192.168.30.30/
         description: Smart home control
 
     - n8n:
