@@ -41,6 +41,7 @@
     18789
   ];
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 18789 ];
+  networking.firewall.interfaces."br-hc-ctrl".allowedTCPPorts = [ 18790 ];
 
   # Publish the authenticated Hermes dashboard only on the home LAN and
   # Tailscale addresses. The dashboard itself remains inside the agents VM.
@@ -70,6 +71,27 @@
       ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18789,bind=100.110.248.102,reuseaddr,fork TCP:10.77.20.2:18789";
       Restart = "on-failure";
       RestartSec = "2s";
+      NoNewPrivileges = true;
+      ProtectSystem = "strict";
+      ProtectHome = true;
+      PrivateTmp = true;
+      CapabilityBoundingSet = "";
+    };
+  };
+
+  # Give the control-plane Caddy container a private bridge-only path to the
+  # authenticated dashboard. Docker owns this bridge and its gateway address;
+  # the service retries until the Compose project recreates it after boot.
+  systemd.services.homecompute-hermes-dashboard-proxy-control-plane = {
+    description = "Control-plane bridge proxy for the authenticated Hermes dashboard";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" "docker.service" "homecompute-agents-vm.service" ];
+    after = [ "network-online.target" "docker.service" "homecompute-agents-vm.service" ];
+    unitConfig.StartLimitIntervalSec = 0;
+    serviceConfig = {
+      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18790,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18789";
+      Restart = "on-failure";
+      RestartSec = "5s";
       NoNewPrivileges = true;
       ProtectSystem = "strict";
       ProtectHome = true;

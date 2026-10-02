@@ -280,8 +280,11 @@ limit client trust to devices that need this service.
 Caddy exposes only `/v1/*` and `/healthz`. It intentionally returns 404 for the
 LiteLLM admin UI and key-management API on the AI gateway host. It also serves
 the separately named `chat.home.arpa` and `models.home.arpa` virtual hosts to
-Open WebUI and the model manager on `clients`. All three use Caddy's internal
-CA. Install that CA on approved clients before opening those pages.
+Open WebUI and the model manager on `clients`, and `hermes.home.arpa` to the
+authenticated Hermes dashboard through its dedicated host bridge listener. The
+Hermes listener is reachable only from the control-plane Docker bridge. These
+virtual hosts use Caddy's internal CA. Install that CA on approved clients
+before opening those pages.
 
 Provision and revoke virtual keys from an administrator shell inside LiteLLM's
 container namespace; do not distribute the master key to clients or publish the

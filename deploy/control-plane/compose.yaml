@@ -315,6 +315,7 @@ networks:
     driver: bridge
     driver_opts:
       com.docker.network.bridge.host_binding_ipv4: 127.0.0.1
+      com.docker.network.bridge.name: br-hc-ctrl
     ipam:
       config:
         - subnet: ${CONTROL_PLANE_EDGE_SUBNET:?Set CONTROL_PLANE_EDGE_SUBNET}

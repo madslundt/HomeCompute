@@ -75,6 +75,14 @@ fi
 if [[ "$model_manager_ready" == true ]]; then
   "${model_manager[@]}" build --no-cache model-manager
 fi
+edge_network=homecompute-control-plane_edge
+if docker network inspect "$edge_network" >/dev/null 2>&1; then
+  edge_bridge_name="$(docker network inspect --format '{{ index .Options "com.docker.network.bridge.name" }}' "$edge_network")"
+  if [[ "$edge_bridge_name" != br-hc-ctrl ]]; then
+    printf 'Recreating %s to apply its dedicated host bridge name; the control plane will be briefly unavailable.\n' "$edge_network"
+    "${gateway[@]}" down
+  fi
+fi
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${automation[@]}" up -d --wait --wait-timeout 180
 "${homepage[@]}" up -d --wait --wait-timeout 180

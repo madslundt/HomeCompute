@@ -402,7 +402,7 @@ AI_LEGACY_FQDN=home-core.invalid
 N8N_FQDN=n8n.home.arpa
 N8N_UPSTREAM=http://192.168.30.122:15678
 HERMES_FQDN=hermes.home.arpa
-HERMES_UPSTREAM=http://192.168.30.122:18789
+HERMES_UPSTREAM=http://172.28.200.1:18790
 CHAT_FQDN=chat.home.arpa
 MODELS_FQDN=models.home.arpa
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -460,6 +460,7 @@ jq -e '
   (.services.postgres.cap_drop | index("ALL") != null) and
   (.services.caddy.cap_add == ["NET_BIND_SERVICE"]) and
   (.networks.edge.ipam.config[0].gateway == "172.28.200.1") and
+  (.networks.edge.driver_opts["com.docker.network.bridge.name"] == "br-hc-ctrl") and
   (.networks.state.internal == true) and
   (.services.caddy.networks.state == null) and
   (.services.postgres.networks.edge == null)
@@ -489,6 +490,12 @@ rg -F 'iptables -w -A HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RE
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 rg -F 'iptables -w -A HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
+rg -F 'networking.firewall.interfaces."br-hc-ctrl".allowedTCPPorts = [ 18790 ];' \
+  "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
+rg -F 'TCP-LISTEN:18790,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18789' \
+  "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
+rg -F 'HERMES_UPSTREAM=http://172.28.200.1:18790' \
+  "$REPO_ROOT/config/control-plane.env.example" >/dev/null
 rg -F 'for port in 10201 10301; do' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 rg -F 'HC-COMPUTE-V2 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10201' \
