@@ -81,6 +81,26 @@
 	}
 }
 
+{$HERMES_FQDN} {
+	tls internal
+	encode zstd gzip
+
+	reverse_proxy {$HERMES_UPSTREAM} {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
 {$CHAT_FQDN} {
 	tls internal
 	encode zstd gzip
