@@ -31,9 +31,11 @@ class FlashNextLifecycleTests(unittest.TestCase):
         self.assertEqual("qwen3_coder", runtime["tool_call_parser"])
         self.assertEqual("qwen3", runtime["reasoning_parser"])
 
-    def test_production_route_stays_on_qwen36_and_candidate_is_separate(self) -> None:
-        self.assertEqual("automation-spark-primary", ROUTES["routes"]["automation"]["deployments"][0])
-        self.assertEqual("automation-spark-primary", ROUTES["routes"]["automation-moe"]["deployments"][0])
+    def test_automation_trial_aliases_remain_candidates(self) -> None:
+        for alias in ("automation", "automation-moe"):
+            self.assertEqual("automation-flash-next-candidate", ROUTES["routes"][alias]["deployments"][0])
+            self.assertEqual("candidate", ROUTES["routes"][alias]["state"])
+        self.assertEqual("intentionally-stopped", CATALOG["deployments"]["automation-spark-primary"]["availability"])
         self.assertEqual("candidate", ROUTES["routes"]["automation-qualification"]["state"])
         self.assertEqual("automation-flash-next-candidate", ROUTES["routes"]["automation-qualification"]["deployments"][0])
 
