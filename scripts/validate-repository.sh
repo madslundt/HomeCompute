@@ -525,7 +525,7 @@ rg -F -- '-o ServerAliveInterval=15' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 rg -F -- 'exec ssh -F /dev/null -N -T' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-rg -F -- '-L "$bind_address:18005:127.0.0.1:8005"' \
+rg -F -- '-L "$bind_address:18005:127.0.0.1:18300"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 rg -F -- '-L "$bind_address:18006:127.0.0.1:8006"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
