@@ -44,7 +44,9 @@
       "request_url": "https://huggingface.co/api/models/unsloth/Qwen3.6-35B-A3B-NVFP4",
       "project_url": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4",
       "benchmark_artifact_source": "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-NVFP4",
-      "benchmark_candidate_ids": ["qwen3.6-35b-a3b-vllm-baseline"]
+      "benchmark_candidate_ids": [
+        "qwen3.6-35b-a3b-vllm-baseline"
+      ]
     },
     {
       "id": "flash-next-single-gb10-recipe",
@@ -133,6 +135,32 @@
       "role": "home-core operating-system update signal",
       "request_url": "https://api.github.com/repos/NixOS/nixpkgs/commits?sha=nixos-26.05&per_page=1",
       "project_url": "https://github.com/NixOS/nixpkgs/tree/nixos-26.05"
+    },
+    {
+      "id": "aula-mcp",
+      "kind": "github_file",
+      "label": "Aula MCP server",
+      "role": "home-core production MCP server; compare upstream main with the commit pinned in deploy/automation/aula.Dockerfile",
+      "request_url": "https://api.github.com/repos/Casperjuel/aula-mcp/commits?sha=main&per_page=1",
+      "project_url": "https://github.com/Casperjuel/aula-mcp",
+      "installed_revision": "f1360000eaccf7cae528bed1cab6b0d0b2a32cfc"
+    },
+    {
+      "id": "tilbudstrolden-mcp",
+      "kind": "github_file",
+      "label": "TilbudsTrolden MCP server",
+      "role": "home-core production MCP server; compare upstream main with the commit pinned in deploy/automation/tilbudstrolden.Dockerfile",
+      "request_url": "https://api.github.com/repos/olgasafonova/tilbudstrolden-mcp/commits?sha=main&per_page=1",
+      "project_url": "https://github.com/olgasafonova/tilbudstrolden-mcp",
+      "installed_revision": "1749d507faadda5c8bd699e190828da172889448"
+    },
+    {
+      "id": "repository-dependency-updates",
+      "kind": "github_pull_requests",
+      "label": "HomeCompute dependency update pull requests",
+      "role": "Review queue for Dependabot Docker, GitHub Actions, and Python updates plus the automated Nix flake update; PRs are never merged or deployed by this workflow",
+      "request_url": "https://api.github.com/repos/madslundt/HomeCompute/pulls?state=open&per_page=100&sort=updated&direction=desc",
+      "project_url": "https://github.com/madslundt/HomeCompute/pulls"
     }
   ]
 }

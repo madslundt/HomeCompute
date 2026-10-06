@@ -8,5 +8,5 @@ currently active in a production n8n instance.
 | --- | --- |
 | [Battery and HomeCompute systems review](battery-and-system-review/README.md) | Active workflow sends a weekly battery review and Sunday audit of Home Assistant, available host telemetry, automation availability, updates, and current primary-source ideas |
 | [Aula local-only qualification](aula-local/README.md) | Replay captured Aula inputs and shadow the read-only Aula workflow against the fixed local `automation` alias before an operator-owned cutover |
-| [Weekly setup update check](update-check/README.md) | Watch model, runtime, and DGX Spark recipe sources and produce a review notification when they change |
+| [Weekly HomeCompute software update review](update-check/README.md) | Watch model/runtime/NixOS sources and pinned production MCP commits; pair with GitHub Dependabot pull requests for repository-managed images and packages |
 | [Isolated model benchmark](model-benchmark/README.md) | Replay cases through different OpenRouter models using real read-only Aula MCP and public Tavily search, without schedules, notifications, or production writes |

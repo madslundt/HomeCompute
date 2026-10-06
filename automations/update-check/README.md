@@ -1,9 +1,13 @@
-# Weekly setup update check
+# Weekly HomeCompute software update review
 
 This directory contains an importable n8n workflow that checks the upstream
 projects relevant to the HomeCompute setup once a week. It produces a review
 notification when a watched artifact changes, an installed pin differs from
-upstream, a new NVIDIA NVFP4 model appears, or a source cannot be checked.
+upstream, a new NVIDIA NVFP4 model appears, or a source cannot be checked. The
+watchlist covers the production model/runtime sources, the HomeCompute NixOS
+release line, and the exact upstream commits used to build the Aula and
+TilbudsTrolden MCP servers on `home-core`. It also reports changes to open
+Dependabot and automated Nix flake update pull requests in this repository.
 
 The workflow is deliberately **review-only**. It never downloads, installs,
 promotes, or switches a model. An upstream revision is not proof that a model is
@@ -14,9 +18,11 @@ GB10 hardware.
 
 - `n8n-workflow.json` is the workflow export to import into n8n.
 - `watchlist.json` is the repository-owned list of models and projects to
-  monitor. Each benchmark-linked model also names the exact release-manifest
-  artifact source that is eligible for comparison. Update these bindings in
-  code review when the setup's candidate set changes.
+  monitor. Model revisions come from the model roster; MCP revisions are pinned
+  beside their upstream source entries and must match the commits in their
+  Dockerfiles. Each benchmark-linked model also names the exact
+  release-manifest artifact source that is eligible for comparison. Update
+  these bindings in code review when the setup's candidate set changes.
 - `../../scripts/check-model-updates.py` is the dependency-free headless
   checker; `../../scripts/update_check_http.py` is its restricted HTTP adapter.
 
@@ -170,6 +176,28 @@ The NVIDIA NVFP4 discovery query is intentionally broad. It can find a new
 artifact worth evaluating, but it cannot determine that the artifact is better
 for HomeCompute's workloads. Add promising discoveries to the explicit
 watchlist only after a human review.
+
+## Other host software update lanes
+
+The weekly review is one part of the Home-core and Home-spark maintenance
+loop. It watches upstream MCP commits and model/runtime/NixOS sources. Image
+and package updates that are expressed in repository Dockerfiles, Compose
+files, GitHub Actions, or the TTLock Python lockfile are proposed through the
+weekly GitHub Dependabot pull requests, whose open/updated status is included
+in the n8n review. The separate Nix flake update pull request is included too.
+Pinned host image values supplied via
+`/etc` runtime environment files, locally built images, and packages installed
+outside those manifests still need operator inventory and review; this n8n
+workflow does not inspect either host over SSH or change deployed software.
+
+Review each proposed change against the host that owns it. For `home-core`,
+use the NixOS generation and Compose build/deploy procedures in
+`docs/nixos-operations.md`. For `home-spark`, use the supported DGX OS and
+model/runtime qualification procedures in `docs/setup-guide.md` and
+`docs/current-state.md`. Back up state where needed, check upstream security
+and migration notes, build or validate the candidate, and retain a rollback
+path. Do not make this workflow automatically pull images, update packages,
+restart services, deploy MCPs, or promote model/runtime changes.
 
 ## Operational notes
 
