@@ -19,7 +19,7 @@ services:
       - "100.110.248.102:15678:5678"
 
   aula-mcp:
-    image: homecompute/aula-mcp:f1360000eaccf7cae528bed1cab6b0d0b2a32cfc-n8n1
+    image: homecompute/aula-mcp:8f9787221f933fbbc395f384228317639602caad-n8n1
     pull_policy: never
     build:
       context: .
@@ -67,7 +67,7 @@ services:
         max-file: "3"
 
   tilbudstrolden-mcp:
-    image: homecompute/tilbudstrolden-mcp:1749d507faadda5c8bd699e190828da172889448
+    image: homecompute/tilbudstrolden-mcp:b20a3a331f82f4415ff8cac42de7706b829f116a
     pull_policy: never
     build:
       context: .

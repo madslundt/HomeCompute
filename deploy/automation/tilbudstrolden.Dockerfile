@@ -4,8 +4,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /app
 # Build the reviewed upstream main commit with its committed npm lockfile.
 RUN git init . && git remote add origin https://github.com/olgasafonova/tilbudstrolden-mcp.git \
-    && git fetch --depth 1 origin 1749d507faadda5c8bd699e190828da172889448 \
+    && git fetch --depth 1 origin b20a3a331f82f4415ff8cac42de7706b829f116a \
     && git checkout --detach FETCH_HEAD && rm -rf .git
+COPY tilbudstrolden-security.patch /tmp/tilbudstrolden-security.patch
+RUN git apply --check /tmp/tilbudstrolden-security.patch \
+    && git apply /tmp/tilbudstrolden-security.patch
 RUN npm ci && npm run build && npm prune --omit=dev
 
 FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS gateway
