@@ -42,7 +42,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
         self.assertRegex(text, r'(?s)model_name: "automation-qualification".*?openai/automation-qualification.*?timeout: 600')
         self.assertRegex(text, r'(?s)model_name: "home".*?openai/home-fast.*?timeout: 20')
         self.assertRegex(text, r'(?s)model_name: "home".*?stream_timeout: 20')
-        self.assertRegex(text, r'(?s)model_name: "assistant-canary".*?openai/automation-moe.*?timeout: 120')
+        self.assertRegex(text, r'(?s)model_name: "assistant-canary".*?openai/automation-qualification.*?timeout: 120')
         self.assertNotIn("automation-backup", text)
         self.assertIn("request_timeout: 600", text)
         self.assertIn("num_retries: 0", text)
