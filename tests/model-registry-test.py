@@ -37,7 +37,7 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual("qwen3_coder", runtime["tool_call_parser"])
         self.assertEqual("qwen3", runtime["reasoning_parser"])
         self.assertEqual("nvidia-open-model-license", artifact["license_id"])
-        self.assertEqual("automation-spark-primary", ROUTES["routes"]["automation"]["deployments"][0])
+        self.assertEqual("automation-flash-next-candidate", ROUTES["routes"]["automation"]["deployments"][0])
         self.assertEqual("candidate", ROUTES["routes"]["automation-qualification"]["state"])
 
     def test_ultrafast_is_separate_unqualified_artifact_and_shared_qualification_contract(self) -> None:
@@ -56,7 +56,7 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual("16g", runtime["kv_cache_memory_bytes"])
         self.assertEqual("candidate", ROUTES["routes"]["automation-qualification"]["state"])
 
-    def test_candidate_route_can_select_either_profile_without_changing_consumer_routes(self) -> None:
+    def test_candidate_route_selects_candidate_deployments_without_changing_other_routes(self) -> None:
         routes = copy.deepcopy(ROUTES)
         REGISTRY.select_candidate_deployment(
             copy.deepcopy(CATALOG), routes, "automation-qualification", "automation-flash-next-ultrafast-challenger"
@@ -67,7 +67,7 @@ class ModelRegistryTests(unittest.TestCase):
         )
         self.assertEqual(ROUTES["routes"]["automation"]["deployments"], routes["routes"]["automation"]["deployments"])
         with self.assertRaisesRegex(REGISTRY.RegistryError, "isolated candidate route"):
-            REGISTRY.select_candidate_deployment(copy.deepcopy(CATALOG), routes, "automation", "automation-spark-primary")
+            REGISTRY.select_candidate_deployment(copy.deepcopy(CATALOG), routes, "home", "automation-flash-next-candidate")
 
         routes = copy.deepcopy(ROUTES)
         with self.assertRaisesRegex(REGISTRY.RegistryError, "operator-on-demand candidate deployments"):
@@ -103,9 +103,14 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_unqualified_candidate_cannot_be_promoted(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["artifacts"]["qwen36-35b-a3b-nvfp4"]["qualification"]["automation"] = "candidate"
+        routes = copy.deepcopy(ROUTES)
+        catalog["artifacts"]["qwen38-flash-next-nvfp4"]["qualification"]["automation"] = "candidate"
+        catalog["deployments"]["automation-flash-next-candidate"]["availability"] = "active"
+        catalog["deployments"]["automation-flash-next-candidate"]["lifecycle"] = "resident"
+        routes["routes"]["automation-qualification"]["state"] = "active"
+        routes["routes"]["automation-qualification"].pop("kind")
         with self.assertRaisesRegex(REGISTRY.RegistryError, "not qualified"):
-            REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
+            REGISTRY.validate(catalog, routes)
 
     def test_dangling_deployment_and_runtime_references_fail(self) -> None:
         catalog = copy.deepcopy(CATALOG)
@@ -120,13 +125,16 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_local_route_cannot_select_intentionally_stopped_backend(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["deployments"]["automation-spark-primary"]["availability"] = "intentionally-stopped"
+        routes = copy.deepcopy(ROUTES)
+        catalog["deployments"]["automation-flash-next-candidate"]["availability"] = "intentionally-stopped"
+        routes["routes"]["automation-qualification"]["state"] = "active"
+        routes["routes"]["automation-qualification"].pop("kind")
         with self.assertRaisesRegex(REGISTRY.RegistryError, "not active"):
-            REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
+            REGISTRY.validate(catalog, routes)
 
     def test_local_only_route_cannot_select_cloud_deployment(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["deployments"]["automation-spark-primary"]["network_scope"] = "cloud"
+        catalog["deployments"]["automation-flash-next-candidate"]["network_scope"] = "cloud"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "non-local deployment"):
             REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 
