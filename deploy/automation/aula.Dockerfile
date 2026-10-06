@@ -5,11 +5,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /app
 # Reviewed upstream main commit, frozen dependencies, and digest-pinned runtimes.
 RUN git init . && git remote add origin https://github.com/Casperjuel/aula-mcp.git \
-    && git fetch --depth 1 origin f1360000eaccf7cae528bed1cab6b0d0b2a32cfc \
+    && git fetch --depth 1 origin 8f9787221f933fbbc395f384228317639602caad \
     && git checkout --detach FETCH_HEAD && rm -rf .git
 COPY aula-n8n.patch /tmp/aula-n8n.patch
-RUN git apply --check /tmp/aula-n8n.patch \
-    && git apply /tmp/aula-n8n.patch
+RUN git apply --unidiff-zero --check /tmp/aula-n8n.patch \
+    && git apply --unidiff-zero /tmp/aula-n8n.patch
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate \
     && pnpm install --frozen-lockfile
 

@@ -1,570 +1,560 @@
+diff --git a/packages/mcp-server/src/discover.test.ts b/packages/mcp-server/src/discover.test.ts
+index c44a75c..e09e3cd 100644
+--- a/packages/mcp-server/src/discover.test.ts
++++ b/packages/mcp-server/src/discover.test.ts
+@@ -106 +106 @@ describe('buildDiscoverManifest', () => {
+-    expect(m.capabilities.ugeplan?.tools).toEqual(['aula.ugeplan.meebook']);
++    expect(m.capabilities.ugeplan?.tools).toEqual(['aula_ugeplan_meebook']);
+@@ -115 +115 @@ describe('buildDiscoverManifest', () => {
+-    expect(m.capabilities.ugeplan?.tools[0]).toBe('aula.ugeplan.easyiq_skoleportal');
++    expect(m.capabilities.ugeplan?.tools[0]).toBe('aula_ugeplan_easyiq_skoleportal');
+@@ -124,2 +124,2 @@ describe('buildDiscoverManifest', () => {
+-    expect(m.capabilities.ugeplan?.tools).toContain('aula.ugeplan.easyiq');
+-    expect(m.capabilities.ugeplan?.tools).toContain('aula.ugeplan.easyiq_skoleportal');
++    expect(m.capabilities.ugeplan?.tools).toContain('aula_ugeplan_easyiq');
++    expect(m.capabilities.ugeplan?.tools).toContain('aula_ugeplan_easyiq_skoleportal');
+@@ -127 +127 @@ describe('buildDiscoverManifest', () => {
+-    expect(m.capabilities.lektier?.tools).toEqual(['aula.lektier.easyiq']);
++    expect(m.capabilities.lektier?.tools).toEqual(['aula_lektier_easyiq']);
+@@ -156,2 +156,2 @@ describe('buildDiscoverManifest', () => {
+-      'aula.presence.today',
+-      'aula.presence.templates',
++      'aula_presence_today',
++      'aula_presence_templates',
+@@ -168,2 +168,2 @@ describe('buildDiscoverManifest', () => {
+-      expect(m.capabilities.presence?.tools).toContain('aula.presence.set_template');
+-      expect(m.capabilities.presence?.tools).toContain('aula.presence.report_sick');
++      expect(m.capabilities.presence?.tools).toContain('aula_presence_set_template');
++      expect(m.capabilities.presence?.tools).toContain('aula_presence_report_sick');
+@@ -184 +184 @@ describe('buildDiscoverManifest', () => {
+-      expect(off.capabilities.messages?.tools).not.toContain('aula.messages.mark_read');
++      expect(off.capabilities.messages?.tools).not.toContain('aula_messages_mark_read');
+@@ -189 +189 @@ describe('buildDiscoverManifest', () => {
+-      expect(on.capabilities.messages?.tools).toContain('aula.messages.mark_read');
++      expect(on.capabilities.messages?.tools).toContain('aula_messages_mark_read');
+@@ -211 +211 @@ describe('buildDiscoverManifest', () => {
+-    expect(hint).toContain('aula.calendar.events profileIds');
++    expect(hint).toContain('aula_calendar_events profileIds');
+diff --git a/packages/mcp-server/src/discover.ts b/packages/mcp-server/src/discover.ts
+index d12a213..1a550ea 100644
+--- a/packages/mcp-server/src/discover.ts
++++ b/packages/mcp-server/src/discover.ts
+@@ -2 +2 @@
+- * The `aula.discover` tool — the central thing this MCP server exists for.
++ * The `aula_discover` tool — the central thing this MCP server exists for.
+@@ -61 +61 @@ export interface DiscoverManifest {
+-  /** True when AULA_MCP_RAW=1 — the aula.raw_request escape hatch is callable. */
++  /** True when AULA_MCP_RAW=1 — the aula_raw_request escape hatch is callable. */
+@@ -63 +63 @@ export interface DiscoverManifest {
+-  /** True when AULA_MCP_WRITE=1 — write tools (aula.presence.set_template) are
++  /** True when AULA_MCP_WRITE=1 — write tools (aula_presence_set_template) are
+@@ -85,4 +85,4 @@ const WIDGET_PROVIDER_MAP: Readonly<
+-  '0001': { capability: 'ugeplan', provider: 'easyiq', tool: 'aula.ugeplan.easyiq' },
+-  '0004': { capability: 'ugeplan', provider: 'meebook', tool: 'aula.ugeplan.meebook' },
+-  '0029': { capability: 'ugebrev', provider: 'minuddannelse', tool: 'aula.ugebrev.minuddannelse' },
+-  '0030': { capability: 'opgaver', provider: 'minuddannelse', tool: 'aula.opgaver.minuddannelse' },
++  '0001': { capability: 'ugeplan', provider: 'easyiq', tool: 'aula_ugeplan_easyiq' },
++  '0004': { capability: 'ugeplan', provider: 'meebook', tool: 'aula_ugeplan_meebook' },
++  '0029': { capability: 'ugebrev', provider: 'minuddannelse', tool: 'aula_ugebrev_minuddannelse' },
++  '0030': { capability: 'opgaver', provider: 'minuddannelse', tool: 'aula_opgaver_minuddannelse' },
+@@ -92 +92 @@ const WIDGET_PROVIDER_MAP: Readonly<
+-    tool: 'aula.huskelisten.systematic',
++    tool: 'aula_huskelisten_systematic',
+@@ -97 +97 @@ const WIDGET_PROVIDER_MAP: Readonly<
+-    tool: 'aula.ugeplan.easyiq_skoleportal',
++    tool: 'aula_ugeplan_easyiq_skoleportal',
+@@ -102 +102 @@ const WIDGET_PROVIDER_MAP: Readonly<
+-    tool: 'aula.lektier.easyiq',
++    tool: 'aula_lektier_easyiq',
+@@ -163 +163 @@ export async function buildDiscoverManifest(context: AulaContext): Promise<Disco
+-        'Reuse this manifest for the rest of the session. Do not call aula.discover again unless a tool reports unknown children/widgets.',
++        'Reuse this manifest for the rest of the session. Do not call aula_discover again unless a tool reports unknown children/widgets.',
+@@ -165 +165 @@ export async function buildDiscoverManifest(context: AulaContext): Promise<Disco
+-        'Match kid names from the user prompt against children[].name (case-insensitive, partial). E.g. "luk" matches "Lukas". Use child.id for presence childIds and for aula.calendar.events profileIds. Use child.userId only for tools whose schema explicitly asks for a user/profile user ID.',
++        'Match kid names from the user prompt against children[].name (case-insensitive, partial). E.g. "luk" matches "Lukas". Use child.id for presence childIds and for aula_calendar_events profileIds. Use child.userId only for tools whose schema explicitly asks for a user/profile user ID.',
+@@ -206,3 +206,3 @@ function buildCapabilities(
+-    'aula.ugeplan.meebook',
+-    'aula.ugeplan.easyiq',
+-    'aula.ugeplan.easyiq_skoleportal',
++    'aula_ugeplan_meebook',
++    'aula_ugeplan_easyiq',
++    'aula_ugeplan_easyiq_skoleportal',
+@@ -216 +216 @@ function buildCapabilities(
+-      tools: ['aula.profiles.list'],
++      tools: ['aula_profiles_list'],
+@@ -226,4 +226,4 @@ function buildCapabilities(
+-            'aula.presence.today',
+-            'aula.presence.templates',
+-            'aula.presence.set_template',
+-            'aula.presence.report_sick',
++            'aula_presence_today',
++            'aula_presence_templates',
++            'aula_presence_set_template',
++            'aula_presence_report_sick',
+@@ -231 +231 @@ function buildCapabilities(
+-        : ['aula.presence.today', 'aula.presence.templates'],
++        : ['aula_presence_today', 'aula_presence_templates'],
+@@ -235 +235 @@ function buildCapabilities(
+-              'aula.presence.report_sick notifies the institution and applies to today. ' +
++              'aula_presence_report_sick notifies the institution and applies to today. ' +
+@@ -241,2 +241,2 @@ function buildCapabilities(
+-              'aula.presence.set_template (writing komme/gå times) and ' +
+-              'aula.presence.report_sick (reporting a child sick) are available only ' +
++              'aula_presence_set_template (writing komme/gå times) and ' +
++              'aula_presence_report_sick (reporting a child sick) are available only ' +
+@@ -249 +249 @@ function buildCapabilities(
+-      tools: ['aula.calendar.events'],
++      tools: ['aula_calendar_events'],
+@@ -257,2 +257,2 @@ function buildCapabilities(
+-        ? ['aula.messages.list_threads', 'aula.messages.get_thread', 'aula.messages.mark_read']
+-        : ['aula.messages.list_threads', 'aula.messages.get_thread'],
++        ? ['aula_messages_list_threads', 'aula_messages_get_thread', 'aula_messages_mark_read']
++        : ['aula_messages_list_threads', 'aula_messages_get_thread'],
+@@ -262 +262 @@ function buildCapabilities(
+-              'aula.messages.mark_read is irreversible — Aula offers no way to set a ' +
++              'aula_messages_mark_read is irreversible — Aula offers no way to set a ' +
+@@ -267 +267 @@ function buildCapabilities(
+-              'aula.messages.mark_read (marking a thread read) is available only when ' +
++              'aula_messages_mark_read (marking a thread read) is available only when ' +
+@@ -273 +273 @@ function buildCapabilities(
+-      tools: ['aula.notifications.list'],
++      tools: ['aula_notifications_list'],
+@@ -279 +279 @@ function buildCapabilities(
+-      tools: ['aula.posts.list', 'aula.posts.get_attachment', 'aula.utils.extract_pdf_text'],
++      tools: ['aula_posts_list', 'aula_posts_get_attachment', 'aula_utils_extract_pdf_text'],
+@@ -281 +281 @@ function buildCapabilities(
+-        'Omit profileIds on aula.posts.list — the default covers every institution ' +
++        'Omit profileIds on aula_posts_list — the default covers every institution ' +
+@@ -296 +296 @@ function buildCapabilities(
+-      tools: ['aula.opgaver.minuddannelse'],
++      tools: ['aula_opgaver_minuddannelse'],
+@@ -306 +306 @@ function buildCapabilities(
+-      tools: ['aula.ugebrev.minuddannelse'],
++      tools: ['aula_ugebrev_minuddannelse'],
+@@ -316 +316 @@ function buildCapabilities(
+-      tools: ['aula.huskelisten.systematic'],
++      tools: ['aula_huskelisten_systematic'],
+@@ -326 +326 @@ function buildCapabilities(
+-      tools: ['aula.lektier.easyiq'],
++      tools: ['aula_lektier_easyiq'],
+diff --git a/packages/mcp-server/src/server.test.ts b/packages/mcp-server/src/server.test.ts
+index 62b7ec7..4336d1b 100644
+--- a/packages/mcp-server/src/server.test.ts
++++ b/packages/mcp-server/src/server.test.ts
+@@ -83 +83 @@ interface FakeOptions {
+-  /** Thread id to its messages, for aula.messages.get_attachment. */
++  /** Thread id to its messages, for aula_messages_get_attachment. */
+@@ -321,21 +321,21 @@ describe('MCP server: tools/list', () => {
+-    expect(names).toContain('aula.discover');
+-    expect(names).toContain('aula.profiles.list');
+-    expect(names).toContain('aula.presence.today');
+-    expect(names).toContain('aula.presence.templates');
+-    expect(names).toContain('aula.calendar.events');
+-    expect(names).toContain('aula.messages.list_threads');
+-    expect(names).toContain('aula.messages.get_thread');
+-    expect(names).toContain('aula.messages.get_attachment');
+-    expect(names).toContain('aula.notifications.list');
+-    expect(names).toContain('aula.posts.list');
+-    expect(names).toContain('aula.posts.get_attachment');
+-    expect(names).toContain('aula.ugeplan.easyiq');
+-    expect(names).toContain('aula.ugeplan.meebook');
+-    expect(names).toContain('aula.ugeplan.easyiq_skoleportal');
+-    expect(names).toContain('aula.opgaver.minuddannelse');
+-    expect(names).toContain('aula.ugebrev.minuddannelse');
+-    expect(names).toContain('aula.huskelisten.systematic');
+-    // aula.raw_request is NOT in the list because AULA_MCP_RAW isn't set.
+-    expect(names).not.toContain('aula.raw_request');
+-    // aula.presence.set_template is gated the same way behind AULA_MCP_WRITE.
+-    expect(names).not.toContain('aula.presence.set_template');
++    expect(names).toContain('aula_discover');
++    expect(names).toContain('aula_profiles_list');
++    expect(names).toContain('aula_presence_today');
++    expect(names).toContain('aula_presence_templates');
++    expect(names).toContain('aula_calendar_events');
++    expect(names).toContain('aula_messages_list_threads');
++    expect(names).toContain('aula_messages_get_thread');
++    expect(names).toContain('aula_messages_get_attachment');
++    expect(names).toContain('aula_notifications_list');
++    expect(names).toContain('aula_posts_list');
++    expect(names).toContain('aula_posts_get_attachment');
++    expect(names).toContain('aula_ugeplan_easyiq');
++    expect(names).toContain('aula_ugeplan_meebook');
++    expect(names).toContain('aula_ugeplan_easyiq_skoleportal');
++    expect(names).toContain('aula_opgaver_minuddannelse');
++    expect(names).toContain('aula_ugebrev_minuddannelse');
++    expect(names).toContain('aula_huskelisten_systematic');
++    // aula_raw_request is NOT in the list because AULA_MCP_RAW isn't set.
++    expect(names).not.toContain('aula_raw_request');
++    // aula_presence_set_template is gated the same way behind AULA_MCP_WRITE.
++    expect(names).not.toContain('aula_presence_set_template');
+@@ -343 +343 @@ describe('MCP server: tools/list', () => {
+-    expect(names).not.toContain('aula.presence.report_sick');
++    expect(names).not.toContain('aula_presence_report_sick');
+@@ -347 +347 @@ describe('MCP server: tools/list', () => {
+-describe('MCP server: tools/call(aula.discover)', () => {
++describe('MCP server: tools/call(aula_discover)', () => {
+@@ -349 +349 @@ describe('MCP server: tools/call(aula.discover)', () => {
+-    const manifest = (await harness.call(2, 'aula.discover', {})) as unknown as {
++    const manifest = (await harness.call(2, 'aula_discover', {})) as unknown as {
+@@ -359 +359 @@ describe('MCP server: tools/call(aula.discover)', () => {
+-    expect(manifest.capabilities.ugeplan?.tools[0]).toBe('aula.ugeplan.easyiq');
++    expect(manifest.capabilities.ugeplan?.tools[0]).toBe('aula_ugeplan_easyiq');
+@@ -363 +363 @@ describe('MCP server: tools/call(aula.discover)', () => {
+-describe('MCP server: tools/call(aula.presence.templates)', () => {
++describe('MCP server: tools/call(aula_presence_templates)', () => {
+@@ -365 +365 @@ describe('MCP server: tools/call(aula.presence.templates)', () => {
+-    const data = (await harness.call(5, 'aula.presence.templates', {
++    const data = (await harness.call(5, 'aula_presence_templates', {
+@@ -397 +397 @@ describe('MCP server: tools/call validation', () => {
+-      params: { name: 'aula.presence.today', arguments: { childIds: [] } },
++      params: { name: 'aula_presence_today', arguments: { childIds: [] } },
+@@ -406 +406 @@ describe('MCP server: tools/call validation', () => {
+-// aula.presence.set_template — the write gate
++// aula_presence_set_template — the write gate
+@@ -409 +409 @@ describe('MCP server: tools/call validation', () => {
+-describe('MCP server: tools/call(aula.presence.set_template)', () => {
++describe('MCP server: tools/call(aula_presence_set_template)', () => {
+@@ -434 +434 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-    expect(names).toContain('aula.presence.set_template');
++    expect(names).toContain('aula_presence_set_template');
+@@ -436,2 +436,2 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-    expect(names).toContain('aula.presence.report_sick');
+-    expect(names).toContain('aula.messages.mark_read');
++    expect(names).toContain('aula_presence_report_sick');
++    expect(names).toContain('aula_messages_mark_read');
+@@ -441 +441 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-    const out = await writeHarness.call(11, 'aula.presence.set_template', {
++    const out = await writeHarness.call(11, 'aula_presence_set_template', {
+@@ -469 +469 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-    const out = await writeHarness.call(12, 'aula.presence.set_template', {
++    const out = await writeHarness.call(12, 'aula_presence_set_template', {
+@@ -491 +491 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-    const out = await writeHarness.call(13, 'aula.presence.set_template', {
++    const out = await writeHarness.call(13, 'aula_presence_set_template', {
+@@ -509 +509 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-        name: 'aula.presence.set_template',
++        name: 'aula_presence_set_template',
+@@ -523 +523 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-// aula.messages.get_attachment / aula.posts.get_attachment
++// aula_messages_get_attachment / aula_posts_get_attachment
+@@ -535 +535 @@ describe('MCP server: tools/call(aula.presence.set_template)', () => {
+-describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
++describe('MCP server: tools/call(aula_messages_get_attachment)', () => {
+@@ -569 +569 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(20, 'aula.messages.get_attachment', {
++    const out = await harness.call(20, 'aula_messages_get_attachment', {
+@@ -588 +588 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(21, 'aula.messages.get_attachment', {
++    const out = await harness.call(21, 'aula_messages_get_attachment', {
+@@ -602 +602 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(22, 'aula.messages.get_attachment', {
++    const out = await harness.call(22, 'aula_messages_get_attachment', {
+@@ -615 +615 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(25, 'aula.messages.get_attachment', {
++    const out = await harness.call(25, 'aula_messages_get_attachment', {
+@@ -627 +627 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(26, 'aula.messages.get_attachment', {
++    const out = await harness.call(26, 'aula_messages_get_attachment', {
+@@ -639 +639 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(23, 'aula.messages.get_attachment', {
++    const out = await harness.call(23, 'aula_messages_get_attachment', {
+@@ -654 +654 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(24, 'aula.messages.get_attachment', {
++    const out = await harness.call(24, 'aula_messages_get_attachment', {
+@@ -670 +670 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(25, 'aula.messages.get_attachment', {
++    const out = await harness.call(25, 'aula_messages_get_attachment', {
+@@ -698 +698 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(26, 'aula.messages.get_attachment', {
++    const out = await harness.call(26, 'aula_messages_get_attachment', {
+@@ -713 +713 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(27, 'aula.messages.get_attachment', {
++    const out = await harness.call(27, 'aula_messages_get_attachment', {
+@@ -725 +725 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(28, 'aula.messages.get_attachment', {
++    const out = await harness.call(28, 'aula_messages_get_attachment', {
+@@ -735 +735 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-  test('aula.posts.get_attachment writes with its own post- prefix', async () => {
++  test('aula_posts_get_attachment writes with its own post- prefix', async () => {
+@@ -737 +737 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(29, 'aula.posts.get_attachment', {
++    const out = await harness.call(29, 'aula_posts_get_attachment', {
+@@ -755 +755 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(31, 'aula.posts.get_attachment', {
++    const out = await harness.call(31, 'aula_posts_get_attachment', {
+@@ -768 +768 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(32, 'aula.posts.get_attachment', {
++    const out = await harness.call(32, 'aula_posts_get_attachment', {
+@@ -777 +777 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-  test('aula.posts.get_attachment surfaces download_failed the same way', async () => {
++  test('aula_posts_get_attachment surfaces download_failed the same way', async () => {
+@@ -779 +779 @@ describe('MCP server: tools/call(aula.messages.get_attachment)', () => {
+-    const out = await harness.call(30, 'aula.posts.get_attachment', {
++    const out = await harness.call(30, 'aula_posts_get_attachment', {
+diff --git a/packages/mcp-server/src/tools.test.ts b/packages/mcp-server/src/tools.test.ts
+index 6abd77c..fdfebe8 100644
+--- a/packages/mcp-server/src/tools.test.ts
++++ b/packages/mcp-server/src/tools.test.ts
+@@ -54 +54 @@ describe('validateSetTemplateArgs', () => {
+- * aula.messages.mark_read is registered only when AULA_MCP_WRITE=1, and its
++ * aula_messages_mark_read is registered only when AULA_MCP_WRITE=1, and its
+@@ -59 +59 @@ describe('validateSetTemplateArgs', () => {
+-describe('aula.messages.mark_read', () => {
++describe('aula_messages_mark_read', () => {
+@@ -97 +97 @@ describe('aula.messages.mark_read', () => {
+-        if (name === 'aula.messages.mark_read') handler = fn;
++        if (name === 'aula_messages_mark_read') handler = fn;
+@@ -109 +109 @@ describe('aula.messages.mark_read', () => {
+-    if (!handler) throw new Error('aula.messages.mark_read was not registered');
++    if (!handler) throw new Error('aula_messages_mark_read was not registered');
+@@ -178 +178 @@ describe('aula.messages.mark_read', () => {
+-        if (name === 'aula.messages.mark_read') seen = true;
++        if (name === 'aula_messages_mark_read') seen = true;
+diff --git a/packages/mcp-server/src/tools.ts b/packages/mcp-server/src/tools.ts
+index 572405d..cc5f61b 100644
 --- a/packages/mcp-server/src/tools.ts
 +++ b/packages/mcp-server/src/tools.ts
-@@ -24,8 +24,8 @@
- 
- /**
-  * Download a CloudFront presigned attachment to a local file and return a
+@@ -28,2 +28,2 @@ const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
 - * result payload. Shared by aula.messages.get_attachment and
 - * aula.posts.get_attachment — the two differ only in how they arrive at a
 + * result payload. Shared by aula_messages_get_attachment and
 + * aula_posts_get_attachment — the two differ only in how they arrive at a
-  * URL, not in what they do with it.
-  *
-  * Deliberately plain `fetch`, not AulaHttpClient: the signature in the URL
-@@ -171,7 +171,7 @@
-     .filter((a) => a.url);
- 
-   return {
+@@ -161 +161 @@ export function slimPost(post: AulaPost) {
 -    id: post.id, // needed for aula.posts.get_attachment's postId
 +    id: post.id, // needed for aula_posts_get_attachment's postId
-     title: post.title,
-     date: post.publishAt ?? post.timestamp,
-     author: post.ownerProfile?.fullName,
-@@ -198,7 +198,7 @@
- ] as const;
- 
- /**
+@@ -188 +188 @@ const SET_TEMPLATE_ACTIVITY_TYPES = [
 - * Subset of aula.presence.set_template's args that has cross-field rules.
 + * Subset of aula_presence_set_template's args that has cross-field rules.
-  * Optional fields spell out `| undefined` so the tool's Zod-inferred args
-  * (which carry explicit `undefined` under `exactOptionalPropertyTypes`)
-  * assign cleanly.
-@@ -213,7 +213,7 @@
- }
- 
- /**
+@@ -203 +203 @@ export interface SetTemplateArgs {
 - * Cross-field checks for aula.presence.set_template — the rules a flat Zod
 + * Cross-field checks for aula_presence_set_template — the rules a flat Zod
-  * schema can't express (a field required only for certain activityTypes).
-  * Returns human-readable problems; an empty array means the args cohere.
-  */
-@@ -243,10 +243,10 @@
- }
- 
- export function registerTools(server: McpServer, context: AulaContext): void {
+@@ -233 +233 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.discover -------------------------------------------------------
 +  // --- aula_discover -------------------------------------------------------
- 
-   server.registerTool(
+@@ -236 +236 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.discover',
 +    'aula_discover',
-     {
-       title: 'Discover Aula context',
-       description:
-@@ -262,10 +262,10 @@
-     },
-   );
- 
+@@ -252 +252 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.profiles.list --------------------------------------------------
 +  // --- aula_profiles_list --------------------------------------------------
- 
-   server.registerTool(
+@@ -255 +255 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.profiles.list',
 +    'aula_profiles_list',
-     {
-       title: 'List Aula profiles',
-       description: 'Raw profiles.getProfilesByLogin response — every child + institution.',
-@@ -277,10 +277,10 @@
-     },
-   );
- 
+@@ -267 +267 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.presence.today -------------------------------------------------
 +  // --- aula_presence_today -------------------------------------------------
- 
-   server.registerTool(
+@@ -270 +270 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.presence.today',
 +    'aula_presence_today',
-     {
-       title: 'Daily presence overview',
-       description:
-@@ -290,9 +290,9 @@
-         '6=FRITIDSAKTIVITET, 7=FYSISK_PLACERING, 8=GAAET (picked up/left).',
-       inputSchema: {
-         childIds: z
+@@ -280 +280 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          .array(z.number().int().positive())
 +          .array(z.number().int().min(1))
-           .min(1)
+@@ -282 +282 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          .describe('Aula child IDs (from aula.discover.children[].id)'),
 +          .describe('Aula child IDs (from aula_discover.children[].id)'),
-       },
-     },
-     async (args) => {
-@@ -301,23 +301,23 @@
-     },
-   );
- 
+@@ -291 +291 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.presence.templates ---------------------------------------------
 +  // --- aula_presence_templates ---------------------------------------------
- 
-   server.registerTool(
+@@ -294 +294 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.presence.templates',
 +    'aula_presence_templates',
-     {
-       title: 'Komme/gå templates (drop-off & pickup schedule)',
-       description:
-         'Recurring komme/gå (presence) templates for the given children — the drop-off ' +
-         'and pickup times a guardian has registered per day. Pass the same child IDs as ' +
+@@ -300 +300 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        '`aula.presence.today`. `from`/`to` bound the window (YYYY-MM-DD); they default ' +
 +        '`aula_presence_today`. `from`/`to` bound the window (YYYY-MM-DD); they default ' +
-         'to the current week. Each returned template carries the `institutionProfile.id` ' +
+@@ -302 +302 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        'that `aula.presence.set_template` needs. Read this before changing a schedule.',
 +        'that `aula_presence_set_template` needs. Read this before changing a schedule.',
-       inputSchema: {
-         childIds: z
+@@ -305 +305 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          .array(z.number().int().positive())
 +          .array(z.number().int().min(1))
-           .min(1)
+@@ -307 +307 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          .describe('Aula child IDs (from aula.discover.children[].id)'),
 +          .describe('Aula child IDs (from aula_discover.children[].id)'),
-         from: ISO_DATE.optional().describe('Window start YYYY-MM-DD. Defaults to this Monday.'),
-         to: ISO_DATE.optional().describe('Window end YYYY-MM-DD. Defaults to this Sunday.'),
-       },
-@@ -335,7 +335,7 @@
-     },
-   );
- 
+@@ -325 +325 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.presence.set_template (gated, write) ---------------------------
 +  // --- aula_presence_set_template (gated, write) ---------------------------
-   //
-   // The first and only tool that *writes* to Aula. Gated behind
-   // AULA_MCP_WRITE=1 so a server stays read-only by default — rescheduling a
-@@ -343,13 +343,13 @@
- 
-   if (process.env.AULA_MCP_WRITE === '1') {
-     server.registerTool(
+@@ -333 +333 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -      'aula.presence.set_template',
 +      'aula_presence_set_template',
-       {
-         title: 'Set a komme/gå template (drop-off & pickup time)',
-         description:
-           "Register or overwrite a child's komme/gå template for one day. WRITES to " +
-           'Aula — enabled when AULA_MCP_WRITE=1. Covers one child and one date per call; ' +
+@@ -339 +339 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          'call once per day to fill a week. Read `aula.presence.templates` first to see ' +
 +          'call once per day to fill a week. Read `aula_presence_templates` first to see ' +
-           'the current schedule and confirm the child id. `activityType` picks how the ' +
-           'child leaves: picked_up_by ("Hentes af", a named person collects), ' +
-           'self_decider ("Selvbestemmer", may leave alone between two times), ' +
-@@ -360,10 +360,10 @@
-           institutionProfileId: z
-             .number()
-             .int()
+@@ -350 +350 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -            .positive()
 +            .min(1)
-             .describe(
+@@ -352,2 +352,2 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -              'Child institution-profile id — the same id passed to aula.presence.today ' +
 -                'as childIds, and the institutionProfile.id from aula.presence.templates.',
 +              'Child institution-profile id — the same id passed to aula_presence_today ' +
 +                'as childIds, and the institutionProfile.id from aula_presence_templates.',
-             ),
-           date: ISO_DATE.describe(
-             'Day the template applies to (YYYY-MM-DD). With repeat set, this is the ' +
-@@ -429,7 +429,7 @@
-       },
-     );
- 
+@@ -419 +419 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    // --- aula.presence.report_sick (gated, write) --------------------------
 +    // --- aula_presence_report_sick (gated, write) --------------------------
-     //
-     // Same gate, and for the same reason: telling a daycare a child is ill is
-     // not something an agent should be able to do unasked.
-@@ -439,22 +439,22 @@
-     // status.
- 
-     server.registerTool(
+@@ -429 +429 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -      'aula.presence.report_sick',
 +      'aula_presence_report_sick',
-       {
-         title: 'Report a child sick (or well again)',
-         description:
-           'Mark a child as sick for today, or take the report back. WRITES to Aula — ' +
-           'enabled when AULA_MCP_WRITE=1. The institution is notified. Applies to today; ' +
+@@ -435 +435 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          'Aula has no future-dated sick report — use aula.presence.set_template or a ' +
 +          'Aula has no future-dated sick report — use aula_presence_set_template or a ' +
-           'vacation registration for a planned absence. An institution can withhold this ' +
-           'from guardians, in which case Aula rejects the call.',
-         inputSchema: {
-           institutionProfileIds: z
+@@ -440 +440 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -            .array(z.number().int().positive())
 +            .array(z.number().int().min(1))
-             .min(1)
-             .describe(
+@@ -443,2 +443,2 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -              'Child institution-profile ids — the same ids passed to aula.presence.today ' +
 -                'as childIds, i.e. aula.discover children[].id. Must belong to the ' +
 +              'Child institution-profile ids — the same ids passed to aula_presence_today ' +
 +                'as childIds, i.e. aula_discover children[].id. Must belong to the ' +
-                 'logged-in guardian; anything else is rejected. Confirm the child with ' +
-                 'the user before calling.',
-             ),
-@@ -491,7 +491,7 @@
-             error: 'unknown_child',
-             message:
-               'Refusing to write: these institution-profile ids are not children of the ' +
+@@ -481 +481 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -              'logged-in guardian. Call aula.discover and use children[].id.',
 +              'logged-in guardian. Call aula_discover and use children[].id.',
-             unknownIds,
-             knownChildren: [...ownChildren].map(([id, name]) => ({ id, name })),
-           });
-@@ -520,7 +520,7 @@
-               message:
-                 'Refusing to write: taking a sick report back sets the child to ' +
-                 '"ikke kommet" (0), so it is only safe for a child Aula currently reports ' +
+@@ -510 +510 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -                'as sick. These are not. Use aula.presence.today to see the current status.',
 +                'as sick. These are not. Use aula_presence_today to see the current status.',
-               children: notSick.map((id) => ({
-                 id,
-                 name: ownChildren.get(id),
-@@ -538,20 +538,20 @@
-       },
-     );
- 
+@@ -528 +528 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    // --- aula.messages.mark_read (gated, write) ----------------------------
 +    // --- aula_messages_mark_read (gated, write) ----------------------------
-     //
-     // Lives here rather than next to the other aula.messages.* tools so every
-     // write stays behind the one AULA_MCP_WRITE gate. Aula has no "mark as
-     // read" verb; see AulaClient.setLastReadMessage for what actually happens.
- 
-     server.registerTool(
+@@ -535 +535 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -      'aula.messages.mark_read',
 +      'aula_messages_mark_read',
-       {
-         title: 'Mark a message thread as read',
-         description:
-           'Move the read marker in a thread to its newest message, clearing the unread ' +
-           'badge. WRITES to Aula — enabled when AULA_MCP_WRITE=1. Pass `messageId` from ' +
+@@ -541 +541 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          '`aula.messages.list_threads` (thread.latestMessage.id); omit it to mark the ' +
 +          '`aula_messages_list_threads` (thread.latestMessage.id); omit it to mark the ' +
-           'thread read up to whatever its newest message is right now. Marking read is ' +
-           'not reversible through this API — Aula offers no way to set a thread back to ' +
-           'unread, so only call this for threads the user has actually seen.',
-@@ -559,8 +559,8 @@
-           threadId: z
-             .number()
-             .int()
+@@ -546,5 +546 @@ export function registerTools(server: McpServer, context: AulaContext): void {
+-          threadId: z
+-            .number()
+-            .int()
 -            .positive()
 -            .describe('Thread id from aula.messages.list_threads.'),
-+            .min(1)
-+            .describe('Thread id from aula_messages_list_threads.'),
-           messageId: z
-             .string()
-             .min(1)
-@@ -574,7 +574,7 @@
-       async (args) => {
-         const client = await context.getClient();
-         // Messaging endpoints 403 until the guardian profile is activated
++          threadId: z.number().int().min(1).describe('Thread id from aula_messages_list_threads.'),
+@@ -564 +560 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        // server-side — same priming as aula.messages.get_thread.
 +        // server-side — same priming as aula_messages_get_thread.
-         await context.getGuardianUserId();
- 
-         let messageId = args.messageId;
-@@ -602,7 +602,7 @@
-               message:
-                 `Thread ${args.threadId} was not found in the first ${pagesRead} pages ` +
-                 `(~${pagesRead * 20} threads), or carries no latestMessage.id. Pass ` +
+@@ -592 +588 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -                'messageId explicitly — aula.messages.list_threads returns it as ' +
 +                'messageId explicitly — aula_messages_list_threads returns it as ' +
-                 'thread.latestMessage.id.',
-             });
-           }
-@@ -615,30 +615,30 @@
-     );
-   }
- 
+@@ -605 +601 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.calendar.events ------------------------------------------------
 +  // --- aula_calendar_events ------------------------------------------------
- 
-   server.registerTool(
+@@ -608 +604 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.calendar.events',
 +    'aula_calendar_events',
-     {
-       title: 'Calendar events (school schedule)',
-       description:
-         'Lessons + events for the given child institution-profile IDs. ' +
+@@ -613 +609 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        'Call aula.discover first and pass children[].id as profileIds. ' +
 +        'Call aula_discover first and pass children[].id as profileIds. ' +
-         'Pass `range` for a preset window (today/tomorrow/this_week/next_week) ' +
-         'OR `start`+`end` for a specific window. Timestamps are formatted as Aula ' +
-         'expects: "YYYY-MM-DD HH:MM:SS.0000+ZZZZ". Aula uses Europe/Copenhagen.',
-       inputSchema: {
-         profileIds: z
+@@ -619 +615 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -          .array(z.number().int().positive())
 +          .array(z.number().int().min(1))
-           .min(1)
-           .describe(
+@@ -622 +618 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -            'Child institution-profile IDs from aula.discover children[].id. ' +
 +            'Child institution-profile IDs from aula_discover children[].id. ' +
-               'Do not use children[].userId.',
-           ),
-         range: z.enum(['today', 'tomorrow', 'this_week', 'next_week']).optional(),
-         start: z.string().min(1).optional(),
-         end: z.string().min(1).optional(),
+@@ -628 +624 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        resourceIds: z.array(z.number().int().positive()).optional(),
 +        resourceIds: z.array(z.number().int().min(1)).optional(),
-       },
-     },
-     async (args) => {
-@@ -663,10 +663,10 @@
-     },
-   );
- 
+@@ -653 +649 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.notifications.list ---------------------------------------------
 +  // --- aula_notifications_list ---------------------------------------------
- 
-   server.registerTool(
+@@ -656 +652 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.notifications.list',
 +    'aula_notifications_list',
-     {
-       title: 'Aula notifications',
-       description: 'Unread items + activity for the active guardian profile.',
-@@ -674,17 +674,17 @@
-     },
-     async () => {
-       const client = await context.getClient();
+@@ -664 +660 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -      // See aula.messages.get_thread below — guardian profile must be
 +      // See aula_messages_get_thread below — guardian profile must be
-       // primed or Aula's `*ForActiveProfile` endpoints 403.
-       await context.getGuardianUserId();
-       return jsonContent(await client.getNotifications());
-     },
-   );
- 
+@@ -671 +667 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.posts.list -----------------------------------------------------
 +  // --- aula_posts_list -----------------------------------------------------
- 
-   server.registerTool(
+@@ -674 +670 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.posts.list',
 +    'aula_posts_list',
-     {
-       title: 'Aula posts (class news feed)',
-       description:
-@@ -733,11 +733,11 @@
-     },
-   );
- 
+@@ -723 +719 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.raw_request (gated) --------------------------------------------
 +  // --- aula_raw_request (gated) --------------------------------------------
- 
-   if (process.env.AULA_MCP_RAW === '1') {
-     server.registerTool(
+@@ -727 +723 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -      'aula.raw_request',
 +      'aula_raw_request',
-       {
-         title: 'Raw Aula API call (escape hatch)',
-         description:
-@@ -757,10 +757,10 @@
-     );
-   }
- 
+@@ -747 +743 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.messages.list_threads ------------------------------------------
 +  // --- aula_messages_list_threads ------------------------------------------
- 
-   server.registerTool(
+@@ -750 +746 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.messages.list_threads',
 +    'aula_messages_list_threads',
-     {
-       title: 'List Aula message threads',
-       description:
-@@ -783,7 +783,7 @@
-     },
-     async (args) => {
-       const client = await context.getClient();
+@@ -773 +769 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -      // See aula.messages.get_thread below — messaging endpoints 403
 +      // See aula_messages_get_thread below — messaging endpoints 403
-       // until the guardian profile is activated server-side.
-       await context.getGuardianUserId();
-       const page = await client.getThreadsPage({
-@@ -801,7 +801,7 @@
-   // school uses; long term, plumb this into discover).
- 
-   const integrationContextShape = {
+@@ -791 +787 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    childIds: z.array(z.number().int().positive()).min(1),
 +    childIds: z.array(z.number().int().min(1)).min(1),
-     institutionCodes: z.array(z.string().min(1)).min(1),
-     isoWeek: z
-       .string()
-@@ -851,7 +851,7 @@
-   }
- 
-   server.registerTool(
+@@ -841 +837 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.ugeplan.easyiq',
 +    'aula_ugeplan_easyiq',
-     {
-       title: 'EasyIQ weekly plan',
-       description:
-@@ -865,7 +865,7 @@
-   );
- 
-   server.registerTool(
+@@ -855 +851 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.ugeplan.meebook',
 +    'aula_ugeplan_meebook',
-     {
-       title: 'Meebook weekly plan',
-       description:
-@@ -879,12 +879,12 @@
-   );
- 
-   server.registerTool(
+@@ -869 +865 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.ugeplan.easyiq_skoleportal',
 +    'aula_ugeplan_easyiq_skoleportal',
-     {
-       title: 'EasyIQ SkolePortal weekly plan',
-       description:
-         'Weekly plan from EasyIQ SkolePortal (widget 0128) — a different EasyIQ product than ' +
+@@ -874 +870 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        '`aula.ugeplan.easyiq` (widget 0001). Use when discover.detectedWidgets contains "0128".',
 +        '`aula_ugeplan_easyiq` (widget 0001). Use when discover.detectedWidgets contains "0128".',
-       inputSchema: integrationContextShape,
-     },
-     async (args) => {
-@@ -894,12 +894,12 @@
-   );
- 
-   server.registerTool(
+@@ -884 +880 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.lektier.easyiq',
 +    'aula_lektier_easyiq',
-     {
-       title: 'EasyIQ Lektier (homework)',
-       description:
-         'Homework items from EasyIQ Lektier (widget 0142) — same vendor as ' +
+@@ -889 +885 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        '`aula.ugeplan.easyiq_skoleportal` but a separate "Lektier" product. ' +
 +        '`aula_ugeplan_easyiq_skoleportal` but a separate "Lektier" product. ' +
-         'Use when discover.detectedWidgets contains "0142".',
-       inputSchema: integrationContextShape,
-     },
-@@ -910,7 +910,7 @@
-   );
- 
-   server.registerTool(
+@@ -900 +896 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.opgaver.minuddannelse',
 +    'aula_opgaver_minuddannelse',
-     {
-       title: 'Min Uddannelse opgaveliste',
-       description: 'Homework / task list from Min Uddannelse for the given children.',
-@@ -923,7 +923,7 @@
-   );
- 
-   server.registerTool(
+@@ -916 +912 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.ugebrev.minuddannelse',
 +    'aula_ugebrev_minuddannelse',
-     {
-       title: 'Min Uddannelse ugebrev',
-       description: 'Weekly newsletter (ugebrev) from Min Uddannelse.',
-@@ -936,7 +936,7 @@
-   );
- 
-   server.registerTool(
+@@ -929 +925 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.huskelisten.systematic',
 +    'aula_huskelisten_systematic',
-     {
-       title: 'Systematic Huskelisten reminders',
-       description:
-@@ -966,10 +966,10 @@
-     },
-   );
- 
+@@ -959 +955 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.messages.get_thread --------------------------------------------
 +  // --- aula_messages_get_thread --------------------------------------------
- 
-   server.registerTool(
+@@ -962 +958 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.messages.get_thread',
 +    'aula_messages_get_thread',
-     {
-       title: 'Read a single thread',
-       description:
-@@ -977,7 +977,7 @@
-         'this tool returns an error code that means the user must MitID step-up to read it ' +
-         '(currently a fresh `aula login` from the CLI).',
-       inputSchema: {
+@@ -970 +966 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        threadId: z.number().int().positive(),
 +        threadId: z.number().int().min(1),
-         page: z.number().int().min(0).default(0).optional(),
-       },
-     },
-@@ -986,7 +986,7 @@
-       // Prime the guardian profile before fetching. Aula's
-       // messaging.getMessagesForThread returns HTTP 403 if the
-       // guardian profile hasn't been activated on the server side
+@@ -979 +975 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -      // this session, even with a fully step-up'd bearer. aula.discover
 +      // this session, even with a fully step-up'd bearer. aula_discover
-       // implicitly primes via getGuardianUserId() — but if the agent
-       // calls get_thread directly (cached threadId from a prior turn,
-       // skipping discover), no priming has happened. getGuardianUserId
-@@ -1011,7 +1011,7 @@
-     },
-   );
- 
+@@ -1004 +1000 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.messages.get_attachment ----------------------------------------
 +  // --- aula_messages_get_attachment ----------------------------------------
-   //
-   // Download a message attachment server-side and return a local file path.
-   // Necessary because Aula attachment URLs are CloudFront presigned links
-@@ -1022,7 +1022,7 @@
-   // URL out of the model's emit path entirely.
- 
-   server.registerTool(
+@@ -1015 +1011 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.messages.get_attachment',
 +    'aula_messages_get_attachment',
-     {
-       title: 'Download a thread attachment to local disk',
-       description:
-@@ -1033,9 +1033,9 @@
-         'echoing into tool calls (MalformedSignature / AccessDenied 403). ' +
-         '`attachmentIndex` is zero-based across all attachments in the ' +
-         'thread, flattened message-by-message in the order returned by ' +
+@@ -1026 +1022 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        '`aula.messages.get_thread`.',
 +        '`aula_messages_get_thread`.',
-       inputSchema: {
+@@ -1028 +1024 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        threadId: z.number().int().positive(),
 +        threadId: z.number().int().min(1),
-         attachmentIndex: z.number().int().min(0),
-       },
-     },
-@@ -1065,20 +1065,20 @@
-     },
-   );
- 
+@@ -1061 +1057 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.posts.get_attachment -------------------------------------------
 +  // --- aula_posts_get_attachment -------------------------------------------
-   //
+@@ -1063 +1059 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // Same rationale as aula.messages.get_attachment above: keep the presigned
 +  // Same rationale as aula_messages_get_attachment above: keep the presigned
-   // URL out of the model's emit path. Posts differ only in that the caller
+@@ -1065 +1061 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // already holds the URL, from the attachments array in aula.posts.list.
 +  // already holds the URL, from the attachments array in aula_posts_list.
- 
-   server.registerTool(
+@@ -1068 +1064 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.posts.get_attachment',
 +    'aula_posts_get_attachment',
-     {
-       title: 'Download a post attachment to local disk',
-       description:
-         'Download an attachment from a news feed post and write it to a local ' +
-         'temporary file, returning the path. Pass `url` and `name` exactly as ' +
+@@ -1074 +1070 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        'they appear in the attachments array from `aula.posts.list` — the ' +
 +        'they appear in the attachments array from `aula_posts_list` — the ' +
-         'CloudFront signature is part of the URL, so altering a single ' +
-         'character produces a MalformedSignature 403.',
-       inputSchema: {
-@@ -1098,7 +1098,7 @@
-     },
-   );
- 
+@@ -1094 +1090 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -  // --- aula.utils.extract_pdf_text ------------------------------------------
 +  // --- aula_utils_extract_pdf_text ------------------------------------------
-   //
-   // Aula sends a lot of what parents actually need as PDF attachments —
-   // menus, packing lists, trip letters — so downloading one is only half the
-@@ -1106,12 +1106,12 @@
-   // user never opens a PDF should not pay for that at boot.
- 
-   server.registerTool(
+@@ -1102 +1098 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -    'aula.utils.extract_pdf_text',
 +    'aula_utils_extract_pdf_text',
-     {
-       title: 'Extract text from a local PDF file',
-       description:
-         'Read a PDF from a local absolute path — typically one returned by ' +
+@@ -1107 +1103 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        'aula.posts.get_attachment or aula.messages.get_attachment — and ' +
 +        'aula_posts_get_attachment or aula_messages_get_attachment — and ' +
-         'return its text so it can be read or summarised.',
-       inputSchema: {
-         path: z.string().describe('Absolute local path to the PDF.'),

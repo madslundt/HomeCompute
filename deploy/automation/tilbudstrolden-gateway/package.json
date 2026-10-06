@@ -3,6 +3,6 @@
   "private": true,
   "version": "1.0.0",
   "dependencies": {
-    "supergateway": "4.0.0"
+    "supergateway": "4.1.0"
   }
 }
