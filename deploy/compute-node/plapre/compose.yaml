@@ -11,8 +11,8 @@ x-runtime: &runtime
   pids_limit: 256
   tmpfs:
     - "/tmp:rw,noexec,nosuid,nodev,size=1g"
-    - "/var/cache/huggingface:rw,noexec,nosuid,nodev,size=32m"
-    - "/var/cache/vllm:rw,noexec,nosuid,nodev,size=1g"
+    - "/var/cache/huggingface:rw,noexec,nosuid,nodev,size=32m,uid=${PLAPRE_RUNTIME_UID:?Set PLAPRE_RUNTIME_UID},gid=${PLAPRE_RUNTIME_GID:?Set PLAPRE_RUNTIME_GID}"
+    - "/var/cache/vllm:rw,noexec,nosuid,nodev,size=1g,uid=${PLAPRE_RUNTIME_UID:?Set PLAPRE_RUNTIME_UID},gid=${PLAPRE_RUNTIME_GID:?Set PLAPRE_RUNTIME_GID}"
   logging:
     driver: json-file
     options: {max-size: "10m", max-file: "5"}
@@ -71,9 +71,9 @@ services:
     # this container-private, size-bounded tmpfs.
     tmpfs:
       - "/tmp:rw,noexec,nosuid,nodev,size=1g"
-      - "/var/cache/huggingface:rw,noexec,nosuid,nodev,size=32m"
-      - "/var/cache/vllm:rw,noexec,nosuid,nodev,size=1g"
-      - "/var/cache/triton:rw,exec,nosuid,nodev,size=1g"
+      - "/var/cache/huggingface:rw,noexec,nosuid,nodev,size=32m,uid=${PLAPRE_RUNTIME_UID:?Set PLAPRE_RUNTIME_UID},gid=${PLAPRE_RUNTIME_GID:?Set PLAPRE_RUNTIME_GID}"
+      - "/var/cache/vllm:rw,noexec,nosuid,nodev,size=1g,uid=${PLAPRE_RUNTIME_UID:?Set PLAPRE_RUNTIME_UID},gid=${PLAPRE_RUNTIME_GID:?Set PLAPRE_RUNTIME_GID}"
+      - "/var/cache/triton:rw,exec,nosuid,nodev,size=1g,uid=${PLAPRE_RUNTIME_UID:?Set PLAPRE_RUNTIME_UID},gid=${PLAPRE_RUNTIME_GID:?Set PLAPRE_RUNTIME_GID}"
     deploy:
       resources:
         reservations:
