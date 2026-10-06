@@ -58,7 +58,10 @@ class PlapreDeploymentTest(unittest.TestCase):
         self.assertEqual(primary["environment"]["PLAPRE_GB10_HYBRID_DECODE"], "1")
         self.assertEqual(primary["environment"]["OPENBLAS_NUM_THREADS"], "1")
         self.assertEqual(primary["environment"]["OMP_NUM_THREADS"], "2")
-        self.assertIn("/var/cache/triton:rw,exec,nosuid,nodev,size=1g", primary["tmpfs"])
+        self.assertIn(
+            "/var/cache/triton:rw,exec,nosuid,nodev,size=1g,uid=65532,gid=65532",
+            primary["tmpfs"],
+        )
         command = " ".join(primary["command"])
         self.assertIn("/opt/plapre/models/plapre", command)
         self.assertNotIn("syvai/plapre-nano-v2", command)
