@@ -1,0 +1,32 @@
+# Staged private listener fragment for the EXISTING operator-managed Caddy.
+# Not imported or deployed. Reuses Caddy's existing private-bound host ports
+# and the agents VM's 10.77.20.1:443 TLS proxy. DNS, broker connectivity,
+# CA trust and endpoint-bound admission must be reviewed before activation.
+# Upstream is operator configuration, never a request/model-supplied URL.
+https://openclaw-broker.home.arpa {
+	tls internal
+	@mcp {
+		method POST
+		path /mcp
+		expression {http.request.orig_uri} == "/mcp"
+	}
+	handle @mcp {
+		request_body {
+			max_size 128KB
+		}
+		reverse_proxy {$OPENCLAW_MCP_BROKER_UPSTREAM} {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 15s
+			}
+		}
+	}
+	respond 404
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}

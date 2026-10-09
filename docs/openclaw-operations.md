@@ -274,11 +274,12 @@ Use this operational sequence when the event adapter is approved:
    Use `monitor:<episode_key>` as the broker issue key, mapped by the trusted
    event adapter to a reviewed project; this fits the 128-character key budget
    and keeps repeated observations attached to one investigation.
-5. A future recovery executor accepts a finite action ID, exact target and fresh
-   evidence, with maintenance window, cooldown, maximum attempts, postcheck and
-   rollback. The model cannot supply argv, URLs or tokens. Until such a policy
-   is approved and tested, the operator performs recovery. Verify the outcome
-   through the owning system before closing the incident.
+5. The broker's controlled-action lane accepts a finite action ID, exact target
+   and trusted evidence ID. Synthetic recovery/update executors exercise approval,
+   windows, cooldowns, attempt limits, postchecks and rollback. Production
+   executors remain unavailable; their disabled policies reference the existing
+   maintenance mechanisms. The operator performs live recovery until the
+   corresponding executor, artifact and rollback runbook pass qualification.
 
 This separation makes adding a system a registry/adapter change rather than
 an expansion of assistant host access. It also preserves monitoring when the
@@ -292,6 +293,110 @@ placeholders are rejected. This is source-level transport verification: a live
 private HTTPS listener, OpenShell credential injection and endpoint policy are
 still required before connecting the sandbox. Expose only `/mcp`, never the
 operator HTTP routes, and keep the direct standalone plugin disabled in NemoClaw.
+
+## Controlled-action implementation and synthetic evidence
+
+`config/system-actions.json` is an operator-owned registry. It currently enables
+only `synthetic.recover` on `synthetic-core` and `synthetic.update` on
+`synthetic-spark`. Five production policy entries cover reviewed home-core
+deployment, n8n recovery, reviewed Spark application deployment, Plapre recovery
+and vendor DGX OS maintenance. They are disabled **and have no provisioned
+production executor**; changing `enabled` is rejected. No Home Assistant or
+physical-device action exists. The staged Sunday 02:00–03:00 Copenhagen windows
+are templates, not an accepted production schedule.
+
+`deploy/codex-worker/actions.py` uses separate action tables in the existing
+broker SQLite file, with a single execution owner, durable state transitions and
+bounded evidence retention. Existing n8n remains the scheduler and delivery
+owner; this lane adds no polling service or notification transport. Observation
+envelopes reuse the monitoring registry's `system_id`, `check_id`, `stable_key`,
+status, evidence and timezone-bearing freshness fields. Use the monitor episode
+key as the stable incident ID. The collector/operator supplies evidence and
+qualification gates; model output cannot set their values.
+
+The assistant can propose/status/cancel. Its exact proposal fields are
+`action_id`, `target`, `incident_key`, `evidence_id`; it cannot submit commands,
+URLs, credentials or timestamps. Operator review binds the action, registry,
+policy and evidence to an approval digest. Execution rechecks that digest,
+approval expiry, latest observation, evidence expiry, maintenance window,
+target lock, cooldown and attempt budget. Fresh evidence refresh revokes an old
+approval. The same action/target/incident always returns its original request,
+including after completion or restart. Initial policies allow one attempt.
+An uncertain effect blocks the target for operator reconciliation, rather than
+retrying. Synthetic rollback restores the recorded snapshot once and verifies
+it; a failed or interrupted rollback requires reconciliation.
+
+The operator client uses the existing loopback broker and operator token:
+
+```bash
+sudo python3 scripts/assistant-action.py evidence --document /path/to/trusted-observation-envelope.json
+sudo python3 scripts/assistant-action.py list
+sudo python3 scripts/assistant-action.py review ACTION_INSTANCE_UUID
+sudo python3 scripts/assistant-action.py approve ACTION_INSTANCE_UUID --approval-sha256 REVIEWED_DIGEST
+sudo python3 scripts/assistant-action.py execute ACTION_INSTANCE_UUID
+sudo python3 scripts/assistant-action.py refresh ACTION_INSTANCE_UUID --evidence-id FRESH_EVIDENCE_UUID
+```
+
+The evidence envelope has exactly `observation`, `incident_key`, `gates`.
+Select an exact normalized observation from the trusted collector; keep
+qualification/promotion receipts in their existing owning systems. An update
+count or cached apt inventory cannot supply reviewed-change, backup, model
+qualification or promotion approval. Production activation additionally needs
+an immutable reviewed artifact and a qualified executor/runbook; those are not
+inferred from advisory availability. Action state remains in `/actions` and its
+action audit; coding task state remains in `/tasks`. Reporting consumers should
+use stable `action:<UUID>:<state>` receipts in their existing delivery owner,
+and must not interpret chat replies as approval.
+
+When an action registry is loaded, `/mcp` additionally advertises exactly
+`homecompute_action_propose`, `homecompute_action_status`,
+`homecompute_action_cancel`. Without it, the original three-task inventory
+remains unchanged. Official SDK tests cover both inventories. The standalone
+plugin still exposes its original three coding tools. Managed configuration
+explicitly denies both tool sets and remains disconnected.
+
+`deploy/openclaw/nemoclaw/mcp.Caddyfile` stages a virtual host on existing Caddy
+and the existing agents-VM private TLS listener at `10.77.20.1:443`
+that proxies only literal `POST /mcp` and rejects other paths, methods and query
+variants. Native Caddy adaptation passed without reload. It is **not imported
+or deployed**: private DNS, routing, a reviewed fixed broker upstream, firewall
+admission and runtime CA trust remain required. Caddy also needs a reviewed
+private broker transport; its container loopback cannot reach the host-loopback
+operator port. Do not solve that by exposing operator routes to the sandbox.
+For eventual managed registration,
+use the pinned supported `mcp add` flow on gateway 9123 with a distinct
+`HOMECOMPUTE_TASK_MCP_TOKEN`, exact URL
+`https://openclaw-broker.home.arpa/mcp` and
+`--trusted-private-host openclaw-broker.home.arpa`. Load the credential transiently
+from the approved secret manager; OpenShell must own its endpoint-bound provider
+and resolver placeholder. Verify its private address pins and differential
+credential-resolution probe before enabling only the reviewed tools. Private CA
+changes require the supported rebuild/trust workflow, not a TLS-verification
+bypass. No credential was provisioned or managed MCP registration attempted.
+
+[Controlled-action evidence](openclaw-actions-validation.json) records completed
+synthetic update/recovery and durable audits. [Coding-flow evidence](openclaw-action-flow-validation.json)
+retains a synthetic session ID, actual disposable local Git commit, fixed-test
+results, reviewed digest and simulated draft PR payload. Run
+`python3 scripts/verify-openclaw-action-flow.py --report /tmp/synthetic-flow.json`
+to repeat the credential-free coding flow. Its fixed-result backend, local
+checkout and GitHub transport are explicitly simulated: this is **not an
+authenticated Codex fix or a real GitHub PR**. Real publication stays a separate
+digest-bound operator approval; merge and deployment are never performed.
+
+The isolation recheck confirmed Docker's default policy denies user namespace
+creation. The same pinned Codex binary passed native credential-free
+workspace-write under an unused UID with empty groups, no capabilities and
+no-new-privileges; outside writes, protected Git metadata writes, private
+sentinel reads and network sockets were denied. Both worker commands now
+exclude shared `/tmp` while retaining private job `TMPDIR`. This proves kernel
+capability, not a host-direct production replacement. The supported next
+candidate is a dedicated worker VM with normal Bubblewrap and scoped distro
+AppArmor support where required; it remains unprovisioned and unqualified.
+See [worker evidence](openclaw-worker-validation.json). No seccomp relaxation,
+extra container privilege, auth-file reuse or production worker was introduced.
+The existing assistant boot units remain disabled, its model key still expires
+2026-10-16 16:15:04 UTC, and Hermes remains on gateway 8080.
 
 ## Acceptance and honest limitations
 
@@ -373,3 +478,6 @@ option false. Preserve state/images for recovery; do not delete a database to
 force a duplicate investigation. A code rollback cannot reverse OpenClaw state
 migrations, GitHub branches or PRs; reconcile those explicitly. Root disk paths,
 bounded images and existing production databases are never destroyed automatically.
+
+The authenticated conversation console, scoped notification adapter and inactive
+n8n delivery route have separate [communication evidence and an activation/rollback proposal](openclaw-communication.md).

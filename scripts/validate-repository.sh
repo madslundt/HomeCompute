@@ -86,9 +86,15 @@ printf '[validate] OpenClaw task broker and plugin tests\n'
 python3 "$REPO_ROOT/tests/openclaw-worker-test.py"
 python3 "$REPO_ROOT/tests/openclaw-nemoclaw-test.py"
 python3 "$REPO_ROOT/tests/openclaw-mcp-test.py"
+python3 "$REPO_ROOT/tests/openclaw-actions-test.py"
+python3 "$REPO_ROOT/tests/openclaw-action-api-test.py"
+python3 "$REPO_ROOT/tests/openclaw-action-flow-test.py"
 python3 "$REPO_ROOT/tests/system-monitoring-test.py"
+python3 "$REPO_ROOT/tests/openclaw-chat-test.py"
+python3 "$REPO_ROOT/tests/openclaw-communication-test.py"
 if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/openclaw-broker-plugin.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-n8n-communication.test.mjs"
 else
   printf '[validate] Node unavailable; OpenClaw plugin tests require Node on CI\n'
 fi

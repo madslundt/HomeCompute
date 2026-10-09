@@ -37,6 +37,8 @@ class Ledger:
             CREATE TABLE IF NOT EXISTS events (
               seq INTEGER PRIMARY KEY, task_id TEXT, state TEXT, at REAL);
         """)
+        if "policy_sha256" not in {row[1] for row in self.db.execute("PRAGMA table_info(tasks)")}:
+            self.db.execute("ALTER TABLE tasks ADD COLUMN policy_sha256 TEXT")
         # A restart cannot safely infer whether a write already happened.
         with self.lock, self.db:
             for row in self.db.execute("SELECT id FROM tasks WHERE state IN ('running','publishing')").fetchall():
@@ -62,6 +64,11 @@ class Ledger:
                         [state, time.time(), *fields.values(), task_id])
         self.db.execute("INSERT INTO events(task_id,state,at) VALUES (?,?,?)", (task_id, state, time.time()))
 
+    def check_task_policy(self, task: dict[str, Any]) -> None:
+        current = hashlib.sha256(json.dumps(task["policy"], sort_keys=True).encode()).hexdigest()
+        if task.get("policy_sha256") != current:
+            raise ValueError("task policy changed; operator reconciliation required")
+
     def submit(self, body: dict[str, Any]) -> dict[str, Any]:
         if set(body) != {"project", "issue_key", "summary", "context"}:
             raise ValueError("expected project, issue_key, summary, context")
@@ -81,8 +88,9 @@ class Ledger:
             if count >= 32:
                 raise ValueError("pending task budget exhausted")
             task_id, now = str(uuid.uuid4()), time.time()
-            self.db.execute("INSERT INTO tasks(id,project,issue_key,state,created,updated,body) VALUES (?,?,?,?,?,?,?)",
-                            (task_id, body["project"], body["issue_key"], "pending", now, now, json.dumps(body)))
+            policy_digest = hashlib.sha256(json.dumps(self.projects[body["project"]], sort_keys=True).encode()).hexdigest()
+            self.db.execute("INSERT INTO tasks(id,project,issue_key,state,created,updated,body,policy_sha256) VALUES (?,?,?,?,?,?,?,?)",
+                            (task_id, body["project"], body["issue_key"], "pending", now, now, json.dumps(body), policy_digest))
             self.db.execute("INSERT INTO events(task_id,state,at) VALUES (?,?,?)", (task_id, "pending", now))
             return self.get(task_id)
 
@@ -93,6 +101,7 @@ class Ledger:
             if action == "cancel" and state in {"pending", "queued", "running", "review"}:
                 self.transition(task_id, "cancelled")
             elif action == "approve" and state == "pending":
+                self.check_task_policy(task)
                 self.transition(task_id, "queued")
             elif action == "heartbeat" and state == "running":
                 self.transition(task_id, "running")
@@ -120,6 +129,12 @@ class Ledger:
                 return None
             row = self.db.execute("SELECT id FROM tasks WHERE state='queued' ORDER BY created LIMIT 1").fetchone()
             if row:
+                task = self.get(row["id"], private=True)
+                try:
+                    self.check_task_policy(task)
+                except ValueError:
+                    self.transition(row["id"], "failed", error="task policy changed; operator reconciliation required")
+                    return None
                 self.transition(row["id"], "running")
                 return self.get(row["id"], private=True)
             return None
@@ -139,6 +154,7 @@ class Ledger:
             task = self.get(task_id, private=True)
             if task["state"] != "review":
                 raise ValueError("only reviewed worker results can be published")
+            self.check_task_policy(task)
             if not hmac.compare_digest(digest, self.review(task_id)["result_sha256"]):
                 raise ValueError("approval must match reviewed result digest")
             self.transition(task_id, "publishing")
@@ -153,7 +169,11 @@ class Ledger:
         return self.get(task_id)
 
 
-def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address: tuple[str, int]) -> ThreadingHTTPServer:
+def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address: tuple[str, int],
+          actions: Any = None) -> ThreadingHTTPServer:
+    # Action tables use the same durable SQLite file. Their authority remains
+    # separate from coding tasks and is absent unless operator policy is loaded.
+    ledger.actions = actions
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_: Any) -> None:
             pass  # No context, credentials, request bodies or query strings in logs.
@@ -176,7 +196,32 @@ def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address:
                 if not isinstance(body, dict):
                     raise ValueError("JSON object required")
                 parts = self.path.strip("/").split("/")
-                if self.path == "/tasks" and self.command == "POST" and role in {"assistant", "operator"}:
+                if parts[0] == "actions" and actions is not None:
+                    if self.path == "/actions" and self.command == "POST" and role in {"assistant", "operator"}:
+                        result = actions.propose(body)
+                    elif self.path == "/actions" and self.command == "GET" and role in {"assistant", "operator"}:
+                        result = actions.list_actions()
+                    elif self.path == "/actions/evidence" and self.command == "POST" and role == "operator":
+                        result = actions.ingest_evidence(body)
+                    elif len(parts) == 2 and self.command == "GET" and role in {"assistant", "operator"}:
+                        result = actions.get(parts[1])
+                    elif len(parts) == 3 and parts[2] == "review" and self.command == "GET" and role == "operator":
+                        result = actions.review(parts[1])
+                    elif len(parts) == 3 and self.command == "POST":
+                        action = parts[2]
+                        if role == "operator" and action == "approve" and set(body) == {"approval_sha256"}:
+                            result = actions.approve(parts[1], body["approval_sha256"])
+                        elif role == "operator" and action == "refresh" and set(body) == {"evidence_id"}:
+                            result = actions.refresh(parts[1], body["evidence_id"])
+                        elif role == "operator" and action == "execute" and body == {}:
+                            result = actions.execute(parts[1])
+                        elif role in {"assistant", "operator"} and action == "cancel" and body == {}:
+                            result = actions.cancel(parts[1])
+                        else:
+                            return self.respond(403, {"error": "operator approval required"})
+                    else:
+                        return self.respond(404, {"error": "unknown route"})
+                elif self.path == "/tasks" and self.command == "POST" and role in {"assistant", "operator"}:
                     result = ledger.submit(body)
                 elif self.path == "/tasks" and self.command == "GET" and role in {"assistant", "operator"}:
                     result = ledger.list_tasks()
@@ -228,8 +273,15 @@ def main() -> None:
               for name in ("assistant", "worker", "operator")}
     if any(len(v) < 32 for v in tokens.values()) or len(set(tokens.values())) != 3:
         raise ValueError("three distinct tokens of at least 32 characters required")
-    ledger = Ledger(Path("/state/tasks.sqlite3"), load_projects(Path("/config/projects.json")))
-    server = serve(ledger, tokens, Publisher(Path("/run/secrets/github_token")), ("0.0.0.0", 8080))
+    state_path = Path("/state/tasks.sqlite3")
+    actions = None
+    if Path("/config/actions.json").exists():
+        from actions import ActionLedger, load_actions
+        actions = ActionLedger(state_path, load_actions(Path("/config/actions.json")),
+                               json.loads(Path("/config/monitoring.json").read_text()))
+    # Acquire action ownership before any coding-task crash recovery can write.
+    ledger = Ledger(state_path, load_projects(Path("/config/projects.json")))
+    server = serve(ledger, tokens, Publisher(Path("/run/secrets/github_token")), ("0.0.0.0", 8080), actions)
     print(json.dumps({"event": "broker_started", "projects": len(ledger.projects)}), flush=True)
     server.serve_forever()
 

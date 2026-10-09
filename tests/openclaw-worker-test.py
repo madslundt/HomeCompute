@@ -265,8 +265,38 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(cwd.stat().st_mode & 0o777, 0o700)
             self.assertEqual(evidence.name, "sandbox-preflight.log")
             self.assertIn('sandbox_mode="workspace-write"', argv)
+            self.assertIn("sandbox_workspace_write.exclude_slash_tmp=true", argv)
             self.assertNotIn("use_legacy_landlock", " ".join(argv))
             self.assertFalse((root / task_id / "clone").exists())
+
+    def test_codex_execution_preserves_preflight_temp_and_sandbox_boundaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worker = Worker(root, "synthetic-unused", {"demo": PROJECT})
+            task = {"id": "d9f9dfe9-b1b4-42f3-b895-6281189b690b", "project": "demo",
+                    "policy": PROJECT, "body": BODY}
+            def git(directory, *args):
+                if args[0] == "worktree":
+                    Path(args[3]).mkdir()
+                    return b""
+                return b'{"schema_version":1,"classification":"cloud_allowed"}'
+            def run(argv, cwd, evidence, *args, **kwargs):
+                if kwargs.get("codex"):
+                    evidence.write_text('{"type":"thread.started","thread_id":"synthetic-session"}\n')
+                return 0
+            with patch("worker.os.chown"), patch.object(worker, "clone"), patch.object(worker, "git", side_effect=git), \
+                    patch.object(worker, "run", side_effect=run) as calls, patch.object(worker, "running", return_value=True), \
+                    patch.object(worker, "collect", return_value=FILES):
+                self.assertEqual(worker.execute(task)["session_id"], "synthetic-session")
+            invocations = [call for call in calls.call_args_list if call.args[0][0] == "codex"]
+            self.assertEqual(len(invocations), 2)
+            for invocation in invocations:
+                argv = invocation.args[0]
+                self.assertEqual(argv[argv.index("--sandbox") + 1], "workspace-write")
+                self.assertEqual(argv[argv.index("-a") + 1], "never")
+                self.assertIn("sandbox_workspace_write.exclude_slash_tmp=true", argv)
+                self.assertNotIn("dangerously-bypass", " ".join(argv))
+                self.assertNotIn("use_legacy_landlock", " ".join(argv))
 
     def test_default_denies_all_and_placeholder_rejected(self):
         self.assertEqual(load_projects(ROOT / "config/codex-projects.json"), {})

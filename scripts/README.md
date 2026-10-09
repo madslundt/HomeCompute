@@ -365,3 +365,11 @@ D2 is installed.
 clean GitHub commit, rebuilds NixOS, and applies the gateway, n8n, Homepage,
 and prepared Piper projects. See [Git deployment](../docs/git-deployment.md)
 for prerequisites and rollback limits. The books importer remains staged.
+
+## OpenClaw private conversation
+
+`python3 scripts/openclaw-chat.py chat --conversation main` opens the authenticated
+operator console for the synthetic canary; `status` checks its native gateway.
+The scoped adapter and inactive n8n conversation/notification workflows are
+described in [the deployment and rollback proposal](../docs/openclaw-communication.md).
+External delivery requires a selected authorized destination and activation approval.

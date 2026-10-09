@@ -1,0 +1,215 @@
+{
+  "name": "HomeCompute OpenClaw notifications (inactive, destination approval required)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-approved-delivery",
+      "name": "Manual approved delivery",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = {configured:false, adapter_url:'https://openclaw-communication.home.arpa:19443', destination:'replace-selected-authorized-destination', chat_id:'replace-selected-private-chat-id'};\nif (!cfg.configured || !/^-?[0-9]+$/.test(cfg.chat_id) || cfg.destination.startsWith('replace')) throw new Error('Select the approved private destination, TLS origin and dedicated credential before use.');\nreturn [{json:cfg}];"
+      },
+      "id": "approved-delivery-configuration",
+      "name": "Approved delivery configuration",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Approved delivery configuration').first().json.adapter_url + '/claim' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "claim-one-durable-event",
+      "name": "Claim one durable event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "OpenClaw dedicated delivery transport (select after approval)"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const event=$json.event;\nif (event===null) return [];\nconst cfg=$('Approved delivery configuration').first().json;\nif (!event || event.destination!==cfg.destination || !/^[a-z0-9]{32}$/.test(event.claim) || typeof event.delivery_key!=='string' || event.delivery_key.length>300 || typeof event.text!=='string' || event.text.length>4000) throw new Error('Invalid or unauthorized delivery envelope');\nconst safe=event.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');\nreturn [{json:{...event,chat_id:cfg.chat_id,safe_text:safe}}];"
+      },
+      "id": "validate-authorized-envelope",
+      "name": "Validate authorized envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.safe_text }}",
+        "additionalFields": {
+          "parse_mode": "HTML",
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "send-using-existing-telegram-delivery",
+      "name": "Send using existing Telegram delivery",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        0
+      ],
+      "credentials": {
+        "telegramApi": {
+          "name": "Existing private Telegram notification bot (select after approval)"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const event=$('Validate authorized envelope').first().json;\nconst message=$json.result || $json;\nif (!Number.isSafeInteger(message.message_id) || String(message.chat?.id)!==String(event.chat_id)) throw new Error('Unverified Telegram receipt; reconcile, do not retry the send');\nreturn [{json:{delivery_key:event.delivery_key,claim:event.claim,receipt:'telegram:'+message.message_id}}];"
+      },
+      "id": "verify-delivery-receipt",
+      "name": "Verify delivery receipt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Approved delivery configuration').first().json.adapter_url + '/ack' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "acknowledge-durable-receipt",
+      "name": "Acknowledge durable receipt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "OpenClaw dedicated delivery transport (select after approval)"
+        }
+      },
+      "retryOnFail": false
+    }
+  ],
+  "connections": {
+    "Manual approved delivery": {
+      "main": [
+        [
+          {
+            "node": "Approved delivery configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved delivery configuration": {
+      "main": [
+        [
+          {
+            "node": "Claim one durable event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim one durable event": {
+      "main": [
+        [
+          {
+            "node": "Validate authorized envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate authorized envelope": {
+      "main": [
+        [
+          {
+            "node": "Send using existing Telegram delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send using existing Telegram delivery": {
+      "main": [
+        [
+          {
+            "node": "Verify delivery receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify delivery receipt": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge durable receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none"
+  },
+  "pinData": {},
+  "tags": []
+}

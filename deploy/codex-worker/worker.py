@@ -234,7 +234,8 @@ class Worker:
                  "p.write_text('synthetic sandbox readiness'); "
                  "assert p.read_text() == 'synthetic sandbox readiness'; p.unlink()")
         code = self.run(["codex", "-a", "never", "--sandbox", "workspace-write",
-                         "-c", 'sandbox_mode="workspace-write"', "sandbox", "--",
+                         "-c", 'sandbox_mode="workspace-write"',
+                         "-c", "sandbox_workspace_write.exclude_slash_tmp=true", "sandbox", "--",
                          "python3", "-c", probe], directory, evidence / "sandbox-preflight.log",
                         task_id, 30, codex=False)
         if code:
@@ -286,7 +287,8 @@ class Worker:
                   "Run this test argv: " + json.dumps(project["tests"]) + ".\nIssue data:\n"
                   + json.dumps(task["body"]))
         code = self.run(["codex", "-a", "never", "exec", "--ignore-user-config", "--ignore-rules",
-                         "--sandbox", "workspace-write", "--json", "-C", str(worktree), "-"],
+                         "--sandbox", "workspace-write", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+                         "--json", "-C", str(worktree), "-"],
                         worktree, evidence / "codex.jsonl", task_id, 1440, prompt=prompt, codex=True)
         for line in (evidence / "codex.jsonl").read_text(errors="replace").splitlines():
             try:

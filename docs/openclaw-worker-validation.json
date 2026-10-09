@@ -47,5 +47,134 @@
   "paid_api_calls": 0,
   "GitHub_writes": 0,
   "persistent_worker_service_started": false,
-  "production_services_changed": false
+  "production_services_changed": false,
+  "isolation_recheck_20261009": {
+    "kernel": "6.18.48",
+    "docker": {
+      "exit_code": 0,
+      "stdout": "29.7.2",
+      "stderr": ""
+    },
+    "image": {
+      "exit_code": 0,
+      "stdout": "sha256:6c8c176813e15c6eb3f41507b44b43a991d8908a83588f44fc501057ae647d88",
+      "stderr": ""
+    },
+    "user_namespace_limit": 190763,
+    "paid_api_calls": 0,
+    "github_writes": 0,
+    "production_changed": false,
+    "default_docker": {
+      "exit_code": 0,
+      "stderr": "",
+      "probes": [
+        {
+          "user_namespace_probe": {
+            "exit_code": 1,
+            "output": "-1 1"
+          }
+        },
+        {
+          "codex_workspace_write": {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "bwrap: No permissions to create a new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with 'sysctl kernel.unprivileged_userns_clone=1'.\n"
+          }
+        }
+      ]
+    },
+    "native_numeric_uid": {
+      "exit_code": 0,
+      "stdout": "{\"workspace_write\": \"pass\", \"outside_write\": \"denied\", \"protected_git_write\": \"denied\", \"private_sentinel_read\": \"denied\", \"network_socket\": \"denied\"}",
+      "stderr": "",
+      "configuration": {
+        "sandbox_mode": "workspace-write",
+        "exclude_slash_tmp": true,
+        "private_tmpdir": true,
+        "approval_policy": "never"
+      },
+      "outer_isolation_qualified": false,
+      "scope": "disposable synthetic kernel capability proof; not production executor"
+    },
+    "native_tempdir_removed": true,
+    "diagnostic_complete": true,
+    "validated_at": "2026-10-09T17:18:43.627740+00:00",
+    "production_worker_enabled": false,
+    "scope": "credential_free_disposable_namespace_diagnosis_and_native_sandbox_boundary_probe",
+    "native_cli": "0.145.0; extracted only from pinned verified worker image",
+    "default_docker_interpretation": "unprivileged user namespace EPERM; workspace-write fails before model/checkout authentication",
+    "native_interpretation": "normal Bubblewrap succeeds on home-core kernel with numeric UID, empty groups, no capabilities; outer worker isolation remains unqualified",
+    "existing_agents_guest_inspection": {
+      "kernel": "6.8.0-142-generic",
+      "apparmor_restrict_unprivileged_userns": 1,
+      "system_bwrap_present": false,
+      "bwrap_apparmor_profile_present": false,
+      "guest_changed": false
+    },
+    "supported_next_candidate": {
+      "arrangement": "dedicated worker VM with distro bubblewrap and scoped distro AppArmor bwrap profile where required; retain normal Codex workspace-write and private TMPDIR",
+      "status": "not_provisioned_or_qualified",
+      "required_acceptance": [
+        "operator approval for VM provisioning",
+        "separate worker/controller and job identities",
+        "credential-free sandbox and secret/process/proxy boundary acceptance",
+        "task/broker integration and resource/disk limits",
+        "dedicated unattended Codex credentials and reviewed project allowlist",
+        "approved authenticated synthetic fix-to-draft-PR canary"
+      ],
+      "existing_agents_vm_reused_as_worker": false
+    },
+    "seccomp_change_tested": false,
+    "additional_container_caps_granted": false,
+    "global_kernel_or_apparmor_relaxation": false,
+    "worker_hardening": {
+      "exclude_slash_tmp": true,
+      "private_TMPDIR_still_writable": true,
+      "docker_default_profile_preserved": true,
+      "code_sha256": "034021f3c33b69ac57b9591536533d220513035b09e487f6a4a8f93e32bf37f1",
+      "live_validation_image_rebuilt": false,
+      "offline_worker_tests": {
+        "count": 25,
+        "result": "pass"
+      }
+    },
+    "sources": [
+      "https://learn.chatgpt.com/docs/sandboxing",
+      "https://learn.chatgpt.com/docs/config-file/config-reference",
+      "https://github.com/openai/codex/blob/rust-v0.145.0/codex-rs/linux-sandbox/README.md",
+      "https://docs.docker.com/engine/security/seccomp/"
+    ],
+    "no_proc_assessment": "documented skip of fresh /proc mount cannot fix the earlier denied user namespace; not used",
+    "authenticated_Codex_execution": false,
+    "actual_GitHub_PR": false
+  },
+  "controlled_action_image_validation_20261009": {
+    "image": {
+      "tag": "homecompute/codex-worker:actions-validation-20261009",
+      "id": "sha256:a3949b9505f2430473e5f33b8388c1eb3d09bf611e444fdba066e035ab0883d5",
+      "version": "0.145.0",
+      "build": "pass",
+      "smoke": {
+        "broker_startup": "pass",
+        "timezone": "pass",
+        "empty_projects": true,
+        "action_registry_load": "pass",
+        "synthetic_recovery": "pass",
+        "immutable_audit": "pass",
+        "network": "none",
+        "credentials": "synthetic_only"
+      },
+      "validation_fixture_in_image": true,
+      "production_worker_enabled": false
+    },
+    "source_sha256": {
+      "deploy/codex-worker/actions.py": "547c6c7c002be3fb308884bdd6bd8ebbf7368a6ca69508914635b109b9cdb597",
+      "deploy/codex-worker/broker.py": "81dcff6597dbf1e7b9554271b96c56e8c3f707f1f23491a7805857581d5e7043",
+      "deploy/codex-worker/mcp_adapter.py": "fa7163b294aa09cb2b03ab172bbb17ef6c64397ea75de35ce47dec004a833533"
+    },
+    "worker_source_sha256": "034021f3c33b69ac57b9591536533d220513035b09e487f6a4a8f93e32bf37f1",
+    "production_services_changed": false,
+    "paid_model_calls": 0,
+    "GitHub_writes": 0
+  }
 }

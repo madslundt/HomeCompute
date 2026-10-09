@@ -19,6 +19,7 @@ in
     };
     restoreVerified = lib.mkOption { type = lib.types.bool; default = false; };
     projectsFile = lib.mkOption { type = lib.types.path; default = ../../config/codex-projects.json; };
+    actionsFile = lib.mkOption { type = lib.types.path; default = ../../config/system-actions.json; };
     workDiskGiB = lib.mkOption { type = lib.types.ints.between 4 32; default = 12; };
     stateDiskGiB = lib.mkOption { type = lib.types.ints.between 2 8; default = 4; };
   };
@@ -47,6 +48,8 @@ in
       mode = "0440";
     };
     environment.etc."homecompute/openclaw/projects.json" = { source = cfg.projectsFile; mode = "0444"; };
+    environment.etc."homecompute/openclaw/actions.json" = { source = cfg.actionsFile; mode = "0444"; };
+    environment.etc."homecompute/openclaw/monitoring.json" = { source = ../../config/system-monitoring.json; mode = "0444"; };
     environment.etc."homecompute/openclaw.env" = {
       mode = "0600";
       text = lib.replaceStrings [ "OPENCLAW_SECRET_GID=\n" ] [ "OPENCLAW_SECRET_GID=992\n" ]

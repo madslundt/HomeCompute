@@ -1,0 +1,73 @@
+{
+  "passed": true,
+  "recorded_at": "2026-10-09T17:48:04Z",
+  "scope": "synthetic managed conversation and read-only incident analysis; mock outbox delivery acknowledgements",
+  "verified_native_turns": 3,
+  "same_conversation_session": true,
+  "provider": "inference",
+  "model": "automation-moe",
+  "duplicate_request_did_not_rerun": true,
+  "native_observation_analysis_completed": true,
+  "receipts": [
+    {
+      "kind": "reply",
+      "destination": "synthetic-private"
+    },
+    {
+      "kind": "reply",
+      "destination": "synthetic-private"
+    }
+  ],
+  "outbox": {
+    "delivered": 2
+  },
+  "external_messages_sent": 0,
+  "live_configuration_changed": false,
+  "secrets_provisioned": false,
+  "unit_tests": {
+    "console": 11,
+    "communication": 26,
+    "n8n_route_and_receipt": 5
+  },
+  "n8n_engine": {
+    "passed": true,
+    "image": "sha256:4b76b9c5a69dc1c0f26bedd21b4e281ac2c84bd88d33857487b9e63dd0a42e87",
+    "network": "none",
+    "production_credentials": false,
+    "external_sender": "synthetic_surrogate",
+    "adapter_http": "synthetic_surrogate",
+    "claims": 1,
+    "acknowledged": true
+  },
+  "private_relay": {
+    "compose_render_passed": true,
+    "native_Caddy_adapt_passed": true,
+    "listener": "172.28.201.1:19443",
+    "allowed_source": "172.28.201.2",
+    "admin_disabled": true,
+    "network_none_parser_probe": true,
+    "all_capabilities_dropped": true,
+    "no_new_privileges": true,
+    "read_only": true,
+    "dedicated_exec_tmpfs_for_plain_binary_copy": true,
+    "TLS_runtime_and_certificate_provisioning": "not_qualified_not_activated"
+  },
+  "production_delivery": "not_connected_destination_and_activation_pending",
+  "live_postchecks": {
+    "OpenClaw_canary": "healthy_original_container",
+    "Hermes": "original_container_running_gateway_8080",
+    "attempted_supervisor_units": "disabled",
+    "home_core_healthchecked_services": "healthy"
+  },
+  "external_security_scan": "attempted_offline_ENOTCACHED_not_installed",
+  "source_sha256": {
+    "scripts/openclaw-chat.py": "c9d0dbd8d08fc886a0ea7c9fc2fdce609b3a683a874a39f2450147704d6ece06",
+    "scripts/openclaw-communication.py": "76e47668a41905f90b7211fa8de2af43bd21bfc000851a2a2c558ac975323bbd",
+    "scripts/openclaw_notifications.py": "cbfd6c48a0e6f42fd2fb6df418e77233963f9f95a56b49f17a0d94abc1740302",
+    "automations/agent-investigation/n8n-conversation-workflow.json": "dbc48527630d40af14e664d82427e9fcc37e44966fecf97ee4e751582e84ce35",
+    "automations/agent-investigation/n8n-notification-workflow.json": "712c6d1b4e6f4ee9f7f02104eff82232e28fb1daba79a1aa41b276cb73eff920",
+    "deploy/openclaw/communication/Caddyfile": "5e91b6a74b97032a252bf024cf59d9cd580a3694eef3001707ba9fd901d84b74",
+    "deploy/openclaw/communication/compose.yaml": "ec091082a1d196d63fc2248aca850015530ffc635cf1570067611e8f5ae18cb5",
+    "deploy/openclaw/communication/n8n-private-route.yaml": "51f0a07dc32638caacaebab2f7304eec8e097c099f755f9ec63961f1c098e7b6"
+  }
+}

@@ -1,0 +1,1134 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-09T17:34:46.877326Z",
+  "scope": "disposable_synthetic_controlled_actions",
+  "production_services_changed": false,
+  "GitHub_writes": 0,
+  "paid_model_calls": 0,
+  "actions": [
+    {
+      "request": {
+        "id": "f54977a4-286e-4b3e-89e5-125013598549",
+        "action_id": "synthetic.recover",
+        "target": "synthetic-core",
+        "incident_key": "synthetic:synthetic.recover:1",
+        "evidence_id": "6c149437-9297-4715-aba6-65b9320241d9",
+        "state": "completed",
+        "created": 1791567286.877326,
+        "updated": 1791567286.877326,
+        "policy_sha256": "e5eec364fb6813e03c59c691e63586501ec164e075ec255a9852cb829c99698e",
+        "approval_sha256": "e46eb869faced3ed47dc2e62b15141c08ece8a3ac5f204954e25f5a3c2bf550e",
+        "approved_at": 1791567286.877326,
+        "started_at": 1791567286.877326,
+        "error": null
+      },
+      "review_sha256": "e46eb869faced3ed47dc2e62b15141c08ece8a3ac5f204954e25f5a3c2bf550e",
+      "evidence_sha256": "608de511692c8d5d288c5b3247463cf420c0b62196ac0e696a9a595c3266d43e",
+      "audit": [
+        {
+          "seq": 1,
+          "action_id": "f54977a4-286e-4b3e-89e5-125013598549",
+          "state": "pending",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.recover",
+            "target": "synthetic-core",
+            "incident_key": "synthetic:synthetic.recover:1",
+            "evidence_id": "6c149437-9297-4715-aba6-65b9320241d9",
+            "policy_sha256": "e5eec364fb6813e03c59c691e63586501ec164e075ec255a9852cb829c99698e",
+            "approval_sha256": null,
+            "approved_at": null,
+            "started_at": null,
+            "error": null,
+            "evidence_sha256": "608de511692c8d5d288c5b3247463cf420c0b62196ac0e696a9a595c3266d43e"
+          }
+        },
+        {
+          "seq": 2,
+          "action_id": "f54977a4-286e-4b3e-89e5-125013598549",
+          "state": "approved",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.recover",
+            "target": "synthetic-core",
+            "incident_key": "synthetic:synthetic.recover:1",
+            "evidence_id": "6c149437-9297-4715-aba6-65b9320241d9",
+            "policy_sha256": "e5eec364fb6813e03c59c691e63586501ec164e075ec255a9852cb829c99698e",
+            "approval_sha256": "e46eb869faced3ed47dc2e62b15141c08ece8a3ac5f204954e25f5a3c2bf550e",
+            "approved_at": 1791567286.877326,
+            "started_at": null,
+            "error": null,
+            "evidence_sha256": "608de511692c8d5d288c5b3247463cf420c0b62196ac0e696a9a595c3266d43e"
+          }
+        },
+        {
+          "seq": 3,
+          "action_id": "f54977a4-286e-4b3e-89e5-125013598549",
+          "state": "running",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.recover",
+            "target": "synthetic-core",
+            "incident_key": "synthetic:synthetic.recover:1",
+            "evidence_id": "6c149437-9297-4715-aba6-65b9320241d9",
+            "policy_sha256": "e5eec364fb6813e03c59c691e63586501ec164e075ec255a9852cb829c99698e",
+            "approval_sha256": "e46eb869faced3ed47dc2e62b15141c08ece8a3ac5f204954e25f5a3c2bf550e",
+            "approved_at": 1791567286.877326,
+            "started_at": 1791567286.877326,
+            "error": null,
+            "evidence_sha256": "608de511692c8d5d288c5b3247463cf420c0b62196ac0e696a9a595c3266d43e"
+          }
+        },
+        {
+          "seq": 4,
+          "action_id": "f54977a4-286e-4b3e-89e5-125013598549",
+          "state": "postchecking",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.recover",
+            "target": "synthetic-core",
+            "incident_key": "synthetic:synthetic.recover:1",
+            "evidence_id": "6c149437-9297-4715-aba6-65b9320241d9",
+            "policy_sha256": "e5eec364fb6813e03c59c691e63586501ec164e075ec255a9852cb829c99698e",
+            "approval_sha256": "e46eb869faced3ed47dc2e62b15141c08ece8a3ac5f204954e25f5a3c2bf550e",
+            "approved_at": 1791567286.877326,
+            "started_at": 1791567286.877326,
+            "error": null,
+            "evidence_sha256": "608de511692c8d5d288c5b3247463cf420c0b62196ac0e696a9a595c3266d43e"
+          }
+        },
+        {
+          "seq": 5,
+          "action_id": "f54977a4-286e-4b3e-89e5-125013598549",
+          "state": "completed",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.recover",
+            "target": "synthetic-core",
+            "incident_key": "synthetic:synthetic.recover:1",
+            "evidence_id": "6c149437-9297-4715-aba6-65b9320241d9",
+            "policy_sha256": "e5eec364fb6813e03c59c691e63586501ec164e075ec255a9852cb829c99698e",
+            "approval_sha256": "e46eb869faced3ed47dc2e62b15141c08ece8a3ac5f204954e25f5a3c2bf550e",
+            "approved_at": 1791567286.877326,
+            "started_at": 1791567286.877326,
+            "error": null,
+            "evidence_sha256": "608de511692c8d5d288c5b3247463cf420c0b62196ac0e696a9a595c3266d43e"
+          }
+        }
+      ],
+      "postcheck_state": {
+        "healthy": true,
+        "version": 1
+      },
+      "deduplication": "same_incident_returns_original_request"
+    },
+    {
+      "request": {
+        "id": "f6575537-13ed-43c6-88f1-b20aba9d2516",
+        "action_id": "synthetic.update",
+        "target": "synthetic-spark",
+        "incident_key": "synthetic:synthetic.update:1",
+        "evidence_id": "3627ae08-d376-4bff-aaec-f34e6a7bc663",
+        "state": "completed",
+        "created": 1791567286.877326,
+        "updated": 1791567286.877326,
+        "policy_sha256": "201ceae9c5b4e15be1d942011f0897ad1b94c1e8582ee5c9e6faf0a318dd4847",
+        "approval_sha256": "5f6621de56299f9240fbff9083272cad10ba8eb0d13214f846d5d8b4694f55c2",
+        "approved_at": 1791567286.877326,
+        "started_at": 1791567286.877326,
+        "error": null
+      },
+      "review_sha256": "5f6621de56299f9240fbff9083272cad10ba8eb0d13214f846d5d8b4694f55c2",
+      "evidence_sha256": "be940d88af41f82ca0307456e5f8f459730a94810c493958039b0d73120c5e37",
+      "audit": [
+        {
+          "seq": 6,
+          "action_id": "f6575537-13ed-43c6-88f1-b20aba9d2516",
+          "state": "pending",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.update",
+            "target": "synthetic-spark",
+            "incident_key": "synthetic:synthetic.update:1",
+            "evidence_id": "3627ae08-d376-4bff-aaec-f34e6a7bc663",
+            "policy_sha256": "201ceae9c5b4e15be1d942011f0897ad1b94c1e8582ee5c9e6faf0a318dd4847",
+            "approval_sha256": null,
+            "approved_at": null,
+            "started_at": null,
+            "error": null,
+            "evidence_sha256": "be940d88af41f82ca0307456e5f8f459730a94810c493958039b0d73120c5e37"
+          }
+        },
+        {
+          "seq": 7,
+          "action_id": "f6575537-13ed-43c6-88f1-b20aba9d2516",
+          "state": "approved",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.update",
+            "target": "synthetic-spark",
+            "incident_key": "synthetic:synthetic.update:1",
+            "evidence_id": "3627ae08-d376-4bff-aaec-f34e6a7bc663",
+            "policy_sha256": "201ceae9c5b4e15be1d942011f0897ad1b94c1e8582ee5c9e6faf0a318dd4847",
+            "approval_sha256": "5f6621de56299f9240fbff9083272cad10ba8eb0d13214f846d5d8b4694f55c2",
+            "approved_at": 1791567286.877326,
+            "started_at": null,
+            "error": null,
+            "evidence_sha256": "be940d88af41f82ca0307456e5f8f459730a94810c493958039b0d73120c5e37"
+          }
+        },
+        {
+          "seq": 8,
+          "action_id": "f6575537-13ed-43c6-88f1-b20aba9d2516",
+          "state": "running",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.update",
+            "target": "synthetic-spark",
+            "incident_key": "synthetic:synthetic.update:1",
+            "evidence_id": "3627ae08-d376-4bff-aaec-f34e6a7bc663",
+            "policy_sha256": "201ceae9c5b4e15be1d942011f0897ad1b94c1e8582ee5c9e6faf0a318dd4847",
+            "approval_sha256": "5f6621de56299f9240fbff9083272cad10ba8eb0d13214f846d5d8b4694f55c2",
+            "approved_at": 1791567286.877326,
+            "started_at": 1791567286.877326,
+            "error": null,
+            "evidence_sha256": "be940d88af41f82ca0307456e5f8f459730a94810c493958039b0d73120c5e37"
+          }
+        },
+        {
+          "seq": 9,
+          "action_id": "f6575537-13ed-43c6-88f1-b20aba9d2516",
+          "state": "postchecking",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.update",
+            "target": "synthetic-spark",
+            "incident_key": "synthetic:synthetic.update:1",
+            "evidence_id": "3627ae08-d376-4bff-aaec-f34e6a7bc663",
+            "policy_sha256": "201ceae9c5b4e15be1d942011f0897ad1b94c1e8582ee5c9e6faf0a318dd4847",
+            "approval_sha256": "5f6621de56299f9240fbff9083272cad10ba8eb0d13214f846d5d8b4694f55c2",
+            "approved_at": 1791567286.877326,
+            "started_at": 1791567286.877326,
+            "error": null,
+            "evidence_sha256": "be940d88af41f82ca0307456e5f8f459730a94810c493958039b0d73120c5e37"
+          }
+        },
+        {
+          "seq": 10,
+          "action_id": "f6575537-13ed-43c6-88f1-b20aba9d2516",
+          "state": "completed",
+          "at": 1791567286.877326,
+          "metadata": {
+            "action_id": "synthetic.update",
+            "target": "synthetic-spark",
+            "incident_key": "synthetic:synthetic.update:1",
+            "evidence_id": "3627ae08-d376-4bff-aaec-f34e6a7bc663",
+            "policy_sha256": "201ceae9c5b4e15be1d942011f0897ad1b94c1e8582ee5c9e6faf0a318dd4847",
+            "approval_sha256": "5f6621de56299f9240fbff9083272cad10ba8eb0d13214f846d5d8b4694f55c2",
+            "approved_at": 1791567286.877326,
+            "started_at": 1791567286.877326,
+            "error": null,
+            "evidence_sha256": "be940d88af41f82ca0307456e5f8f459730a94810c493958039b0d73120c5e37"
+          }
+        }
+      ],
+      "postcheck_state": {
+        "healthy": true,
+        "version": 2
+      },
+      "deduplication": "same_incident_returns_original_request"
+    }
+  ],
+  "restart_preserves_terminal_actions": true,
+  "policy_sha256": "abcdf99da2eb03055ec0c3ac19643455625199e9df54e2c75322d4738f22c22f",
+  "source_sha256": {
+    "deploy/codex-worker/actions.py": "547c6c7c002be3fb308884bdd6bd8ebbf7368a6ca69508914635b109b9cdb597",
+    "deploy/codex-worker/broker.py": "81dcff6597dbf1e7b9554271b96c56e8c3f707f1f23491a7805857581d5e7043",
+    "deploy/codex-worker/mcp_adapter.py": "fa7163b294aa09cb2b03ab172bbb17ef6c64397ea75de35ce47dec004a833533"
+  },
+  "live_read_only_snapshot": {
+    "approval_required_for_actions": true,
+    "automatic_actions": false,
+    "changes": [
+      {
+        "episode_key": "a35d2d1f925215a953489acfb7af7adf9300a8d8e28bfca428bcd5252321d96a",
+        "stable_key": "home-core:model-update-report.changed",
+        "transition": "opened"
+      },
+      {
+        "episode_key": "bab99f1722c80de6196d6a1d57c24438798e10af6356e694e7413dc42fb8a0c9",
+        "stable_key": "home-spark:container.homecompute-plapre-plapre-primary-1",
+        "transition": "opened"
+      },
+      {
+        "episode_key": "ba9319286eeeaf65ceeb0e2413b33b58cae53e1585e3670cfd1f07e65eae9df9",
+        "stable_key": "home-spark:cached-apt-candidates",
+        "transition": "opened"
+      },
+      {
+        "episode_key": "b9be740ae6f4acc9a578a2296de73bbb6ad39d31cc47cb6b3478c604ac889ffa",
+        "stable_key": "home-assistant:collection",
+        "transition": "opened"
+      }
+    ],
+    "document_type": "system_observation_report",
+    "findings": [
+      {
+        "category": "health",
+        "check_id": "collection",
+        "episode_key": "b9be740ae6f4acc9a578a2296de73bbb6ad39d31cc47cb6b3478c604ac889ffa",
+        "episode_started_at": "2026-10-09T17:13:39.755158Z",
+        "evidence": {
+          "reason": "not_provisioned"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "severity": "info",
+        "stable_key": "home-assistant:collection",
+        "status": "unknown",
+        "system_id": "home-assistant"
+      },
+      {
+        "category": "updates",
+        "check_id": "model-update-report.changed",
+        "episode_key": "a35d2d1f925215a953489acfb7af7adf9300a8d8e28bfca428bcd5252321d96a",
+        "episode_started_at": "2026-10-09T17:13:39.755158Z",
+        "evidence": {
+          "count": 7,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "severity": "warning",
+        "stable_key": "home-core:model-update-report.changed",
+        "status": "degraded",
+        "system_id": "home-core"
+      },
+      {
+        "category": "updates",
+        "check_id": "cached-apt-candidates",
+        "episode_key": "ba9319286eeeaf65ceeb0e2413b33b58cae53e1585e3670cfd1f07e65eae9df9",
+        "episode_started_at": "2026-10-09T17:13:39.755158Z",
+        "evidence": {
+          "candidate_count": 149,
+          "reason": "cached_inventory_only"
+        },
+        "expires_at": "2026-10-10T17:13:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "severity": "warning",
+        "stable_key": "home-spark:cached-apt-candidates",
+        "status": "degraded",
+        "system_id": "home-spark"
+      },
+      {
+        "category": "health",
+        "check_id": "container.homecompute-plapre-plapre-primary-1",
+        "episode_key": "bab99f1722c80de6196d6a1d57c24438798e10af6356e694e7413dc42fb8a0c9",
+        "episode_started_at": "2026-10-09T17:13:39.755158Z",
+        "evidence": {
+          "state": "unhealthy"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "severity": "warning",
+        "stable_key": "home-spark:container.homecompute-plapre-plapre-primary-1",
+        "status": "degraded",
+        "system_id": "home-spark"
+      }
+    ],
+    "generated_at": "2026-10-09T17:13:39.755158Z",
+    "mode": "observe-only",
+    "notification_policy": "meaningful_changes_only",
+    "observations": [
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "collection",
+        "evidence": {
+          "available": true
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:collection",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-control-plane-caddy-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-control-plane-caddy-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-control-plane-litellm-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-control-plane-litellm-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-control-plane-postgres-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-control-plane-postgres-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-automation-n8n-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-automation-n8n-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "unit.homecompute-platform-health.service",
+        "evidence": {
+          "failed": false
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:unit.homecompute-platform-health.service",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "unit.homecompute-model-update-monitor.service",
+        "evidence": {
+          "failed": false
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:unit.homecompute-model-update-monitor.service",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "unit.homecompute-agents-vm.service",
+        "evidence": {
+          "state": "running"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:unit.homecompute-agents-vm.service",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.changed",
+        "evidence": {
+          "count": 7,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "warning",
+        "stable_key": "home-core:model-update-report.changed",
+        "status": "degraded",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.pin_drift",
+        "evidence": {
+          "count": 0,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:model-update-report.pin_drift",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.source_errors",
+        "evidence": {
+          "count": 0,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:model-update-report.source_errors",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.outperforms_active",
+        "evidence": {
+          "count": 0,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:model-update-report.outperforms_active",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "collection",
+        "evidence": {
+          "available": true
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-spark:collection",
+        "status": "healthy",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.qwen38-flash-ultrafast",
+        "evidence": {
+          "state": "running"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-spark:container.qwen38-flash-ultrafast",
+        "status": "healthy",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.gb10-hviske-primary",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-spark:container.gb10-hviske-primary",
+        "status": "healthy",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-plapre-plapre-primary-1",
+        "evidence": {
+          "state": "unhealthy"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "warning",
+        "stable_key": "home-spark:container.homecompute-plapre-plapre-primary-1",
+        "status": "degraded",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "cached-apt-candidates",
+        "evidence": {
+          "candidate_count": 149,
+          "reason": "cached_inventory_only"
+        },
+        "expires_at": "2026-10-10T17:13:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "warning",
+        "stable_key": "home-spark:cached-apt-candidates",
+        "status": "degraded",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "collection",
+        "evidence": {
+          "reason": "not_provisioned"
+        },
+        "expires_at": "2026-10-09T17:28:39.755158Z",
+        "observed_at": "2026-10-09T17:13:39.755158Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-assistant:collection",
+        "status": "unknown",
+        "system_id": "home-assistant"
+      }
+    ],
+    "physical_device_actions": false,
+    "schema_version": 1
+  },
+  "private_https_listener": {
+    "status": "staged_not_deployed",
+    "native_caddy_adaptation": "pass",
+    "exact_path": "/mcp",
+    "method": "POST",
+    "bind": "existing_10.77.20.1:443_TLS_proxy_to_existing_Caddy",
+    "hostname": "openclaw-broker.home.arpa",
+    "live_endpoint_or_OpenShell_provider_qualified": false
+  },
+  "production_actions": [
+    {
+      "id": "home-core.reviewed-update",
+      "target": "home-core",
+      "enabled": false,
+      "execution": "not_provisioned"
+    },
+    {
+      "id": "home-core.recover-n8n",
+      "target": "home-core",
+      "enabled": false,
+      "execution": "not_provisioned"
+    },
+    {
+      "id": "home-spark.reviewed-compose-update",
+      "target": "home-spark",
+      "enabled": false,
+      "execution": "not_provisioned"
+    },
+    {
+      "id": "home-spark.reviewed-dgx-os-maintenance",
+      "target": "home-spark",
+      "enabled": false,
+      "execution": "not_provisioned"
+    },
+    {
+      "id": "home-spark.recover-plapre",
+      "target": "home-spark",
+      "enabled": false,
+      "execution": "not_provisioned"
+    }
+  ],
+  "credential_scope": "no_new_credentials_or_authentication_files",
+  "remaining_gates": [
+    "private_HTTPS_MCP_listener_DNS_route_firewall_and_runtime_CA_trust",
+    "distinct_endpoint_bound_OpenShell_assistant_credential_provider",
+    "dedicated_worker_VM_outer_isolation_provisioning_and_acceptance",
+    "approved_unattended_Codex_auth_and_repository_allowlist",
+    "real_authenticated_synthetic_fix_to_reviewed_draft_PR",
+    "supported_assistant_boot_supervision_and_restore",
+    "production_maintenance_artifacts_backup_postcheck_and_rollback_runbooks"
+  ],
+  "verification": {
+    "action_tests": 27,
+    "action_HTTP_and_official_SDK_tests": 6,
+    "coding_flow_tests": 4,
+    "worker_tests": 25,
+    "task_MCP_official_SDK_tests": 10,
+    "managed_config_preparation_tests": 5,
+    "monitoring_tests": 17,
+    "plugin_tests": 7,
+    "all_targeted_tests_passed": 101,
+    "repository_validation": "tests_configurations_Compose_diagrams_pass_then_Mac_Docker_Nix_stage_unavailable; final_audit_changes_rechecked_in_action_API_and_Linux_smoke",
+    "Nix_fallback": "final_source_read_only_home_core_flake_check_no_build_all_systems_and_disabled_enabled_toplevel_evaluation_pass",
+    "Nix_activation": false,
+    "security_scan": "required_parent_AGENTS_command_npx_@Codex-flow/cli@latest_security_scan_failed_E404_invalid_uppercase_package_no_substitute_installed"
+  },
+  "linux_image": {
+    "tag": "homecompute/codex-worker:actions-validation-20261009",
+    "id": "sha256:a3949b9505f2430473e5f33b8388c1eb3d09bf611e444fdba066e035ab0883d5",
+    "version": "0.145.0",
+    "build": "pass",
+    "smoke": {
+      "broker_startup": "pass",
+      "timezone": "pass",
+      "empty_projects": true,
+      "action_registry_load": "pass",
+      "synthetic_recovery": "pass",
+      "immutable_audit": "pass",
+      "network": "none",
+      "credentials": "synthetic_only"
+    },
+    "validation_fixture_in_image": true,
+    "production_worker_enabled": false
+  },
+  "live_read_only_snapshot_after": {
+    "approval_required_for_actions": true,
+    "automatic_actions": false,
+    "changes": [
+      {
+        "episode_key": "3859b4b412805bc0dca4f9bd4635865e0773778087b1918ae413ac7629b0e6fc",
+        "stable_key": "home-core:model-update-report.changed",
+        "transition": "opened"
+      },
+      {
+        "episode_key": "3e40fdf36bb66e2f98b0819adb13558802fb660605e98f6679fcf43ac66b031f",
+        "stable_key": "home-spark:container.homecompute-plapre-plapre-primary-1",
+        "transition": "opened"
+      },
+      {
+        "episode_key": "bc86de5c4a2778256147d4d92b9f926f02b83232439972b69c56d87165000a4e",
+        "stable_key": "home-spark:cached-apt-candidates",
+        "transition": "opened"
+      },
+      {
+        "episode_key": "b3fb89b2fa654d11c7303384934fc18fedc71c9f1b776186520e2bd974d9836f",
+        "stable_key": "home-assistant:collection",
+        "transition": "opened"
+      }
+    ],
+    "document_type": "system_observation_report",
+    "findings": [
+      {
+        "category": "health",
+        "check_id": "collection",
+        "episode_key": "b3fb89b2fa654d11c7303384934fc18fedc71c9f1b776186520e2bd974d9836f",
+        "episode_started_at": "2026-10-09T17:36:05.910434Z",
+        "evidence": {
+          "reason": "not_provisioned"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "severity": "info",
+        "stable_key": "home-assistant:collection",
+        "status": "unknown",
+        "system_id": "home-assistant"
+      },
+      {
+        "category": "updates",
+        "check_id": "model-update-report.changed",
+        "episode_key": "3859b4b412805bc0dca4f9bd4635865e0773778087b1918ae413ac7629b0e6fc",
+        "episode_started_at": "2026-10-09T17:36:05.910434Z",
+        "evidence": {
+          "count": 7,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "severity": "warning",
+        "stable_key": "home-core:model-update-report.changed",
+        "status": "degraded",
+        "system_id": "home-core"
+      },
+      {
+        "category": "updates",
+        "check_id": "cached-apt-candidates",
+        "episode_key": "bc86de5c4a2778256147d4d92b9f926f02b83232439972b69c56d87165000a4e",
+        "episode_started_at": "2026-10-09T17:36:05.910434Z",
+        "evidence": {
+          "candidate_count": 149,
+          "reason": "cached_inventory_only"
+        },
+        "expires_at": "2026-10-10T17:36:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "severity": "warning",
+        "stable_key": "home-spark:cached-apt-candidates",
+        "status": "degraded",
+        "system_id": "home-spark"
+      },
+      {
+        "category": "health",
+        "check_id": "container.homecompute-plapre-plapre-primary-1",
+        "episode_key": "3e40fdf36bb66e2f98b0819adb13558802fb660605e98f6679fcf43ac66b031f",
+        "episode_started_at": "2026-10-09T17:36:05.910434Z",
+        "evidence": {
+          "state": "unhealthy"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "severity": "warning",
+        "stable_key": "home-spark:container.homecompute-plapre-plapre-primary-1",
+        "status": "degraded",
+        "system_id": "home-spark"
+      }
+    ],
+    "generated_at": "2026-10-09T17:36:05.910434Z",
+    "mode": "observe-only",
+    "notification_policy": "meaningful_changes_only",
+    "observations": [
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "collection",
+        "evidence": {
+          "available": true
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:collection",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-control-plane-caddy-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-control-plane-caddy-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-control-plane-litellm-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-control-plane-litellm-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-control-plane-postgres-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-control-plane-postgres-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-automation-n8n-1",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:container.homecompute-automation-n8n-1",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "unit.homecompute-platform-health.service",
+        "evidence": {
+          "failed": false
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:unit.homecompute-platform-health.service",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "unit.homecompute-model-update-monitor.service",
+        "evidence": {
+          "failed": false
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:unit.homecompute-model-update-monitor.service",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "unit.homecompute-agents-vm.service",
+        "evidence": {
+          "state": "running"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:unit.homecompute-agents-vm.service",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.changed",
+        "evidence": {
+          "count": 7,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "warning",
+        "stable_key": "home-core:model-update-report.changed",
+        "status": "degraded",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.pin_drift",
+        "evidence": {
+          "count": 0,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:model-update-report.pin_drift",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.source_errors",
+        "evidence": {
+          "count": 0,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:model-update-report.source_errors",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "model-update-report.outperforms_active",
+        "evidence": {
+          "count": 0,
+          "source_report_generated_at": "2026-10-05T07:07:22.039153Z"
+        },
+        "expires_at": "2026-10-13T07:07:22.039153Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-core:model-update-report.outperforms_active",
+        "status": "healthy",
+        "system_id": "home-core"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "collection",
+        "evidence": {
+          "available": true
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-spark:collection",
+        "status": "healthy",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.qwen38-flash-ultrafast",
+        "evidence": {
+          "state": "running"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-spark:container.qwen38-flash-ultrafast",
+        "status": "healthy",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.gb10-hviske-primary",
+        "evidence": {
+          "state": "healthy"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-spark:container.gb10-hviske-primary",
+        "status": "healthy",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "container.homecompute-plapre-plapre-primary-1",
+        "evidence": {
+          "state": "unhealthy"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "warning",
+        "stable_key": "home-spark:container.homecompute-plapre-plapre-primary-1",
+        "status": "degraded",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "updates",
+        "check_id": "cached-apt-candidates",
+        "evidence": {
+          "candidate_count": 149,
+          "reason": "cached_inventory_only"
+        },
+        "expires_at": "2026-10-10T17:36:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "warning",
+        "stable_key": "home-spark:cached-apt-candidates",
+        "status": "degraded",
+        "system_id": "home-spark"
+      },
+      {
+        "action": "review_only",
+        "approval_required": true,
+        "category": "health",
+        "check_id": "collection",
+        "evidence": {
+          "reason": "not_provisioned"
+        },
+        "expires_at": "2026-10-09T17:51:05.910434Z",
+        "observed_at": "2026-10-09T17:36:05.910434Z",
+        "physical_device_actions": false,
+        "severity": "info",
+        "stable_key": "home-assistant:collection",
+        "status": "unknown",
+        "system_id": "home-assistant"
+      }
+    ],
+    "physical_device_actions": false,
+    "schema_version": 1
+  },
+  "canary_metadata_after": [
+    "disabled",
+    "disabled",
+    "openshell-default--agent-openclaw-3dc5732e-8cff-47fc-8c34-d7a86f3693bd Up 51 minutes (healthy)",
+    "openshell-default--agent-owner-e4006fe7-88d1-451f-b65f-b7dad8c23880 Up 19 hours",
+    "State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess",
+    "LISTEN 0      128        127.0.0.1:8080       0.0.0.0:*          ",
+    "LISTEN 0      5         10.77.20.2:18789      0.0.0.0:*          ",
+    "LISTEN 0      4096       127.0.0.1:46097      0.0.0.0:*          ",
+    "LISTEN 0      4096      127.0.0.54:53         0.0.0.0:*          ",
+    "LISTEN 0      128       172.18.0.1:8080       0.0.0.0:*          ",
+    "LISTEN 0      4096   127.0.0.53%lo:53         0.0.0.0:*          ",
+    "LISTEN 0      128       172.18.0.1:9123       0.0.0.0:*          ",
+    "LISTEN 0      128        127.0.0.1:18791      0.0.0.0:*          ",
+    "LISTEN 0      4096         0.0.0.0:22         0.0.0.0:*          ",
+    "LISTEN 0      128        127.0.0.1:9123       0.0.0.0:*          ",
+    "LISTEN 0      4096            [::]:22            [::]:*          "
+  ],
+  "autonomy_preference": "optional_operator_question_pending; initial_per_action_approval_preserved"
+}

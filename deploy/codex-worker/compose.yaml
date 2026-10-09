@@ -19,6 +19,8 @@ services:
     secrets: [assistant_token, worker_token, operator_token, github_token]
     volumes:
       - ${CODEX_PROJECTS_FILE:?Set reviewed immutable project policy}:/config/projects.json:ro
+      - ${HOMECOMPUTE_ACTIONS_FILE:-../../config/system-actions.json}:/config/actions.json:ro
+      - ${HOMECOMPUTE_MONITORING_FILE:-../../config/system-monitoring.json}:/config/monitoring.json:ro
       - ${OPENCLAW_STATE_ROOT:?Set dedicated state directory}/broker:/state
     tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000,mode=0700]
     cpus: 0.5

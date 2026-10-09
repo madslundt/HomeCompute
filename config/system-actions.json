@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "mode": "synthetic-only",
+  "actions": [
+    {
+      "id": "synthetic.recover",
+      "target": "synthetic-core",
+      "environment": "synthetic",
+      "enabled": true,
+      "executor": "synthetic-recover",
+      "check_id": "synthetic.health",
+      "category": "health",
+      "status": "degraded",
+      "gates": [],
+      "approval": "operator",
+      "evidence_ttl_seconds": 300,
+      "approval_ttl_seconds": 300,
+      "maintenance_window": {
+        "timezone": "Europe/Copenhagen",
+        "weekdays": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "start": "00:00",
+        "end": "24:00"
+      },
+      "cooldown_seconds": 60,
+      "max_attempts": 1,
+      "postcheck": "synthetic-healthy",
+      "rollback": "synthetic-snapshot-once",
+      "mechanism_refs": []
+    },
+    {
+      "id": "synthetic.update",
+      "target": "synthetic-spark",
+      "environment": "synthetic",
+      "enabled": true,
+      "executor": "synthetic-update",
+      "check_id": "synthetic.updates",
+      "category": "updates",
+      "status": "degraded",
+      "gates": [
+        "reviewed-change",
+        "backup",
+        "model-qualification",
+        "promotion-approval"
+      ],
+      "approval": "operator",
+      "evidence_ttl_seconds": 300,
+      "approval_ttl_seconds": 300,
+      "maintenance_window": {
+        "timezone": "Europe/Copenhagen",
+        "weekdays": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "start": "00:00",
+        "end": "24:00"
+      },
+      "cooldown_seconds": 60,
+      "max_attempts": 1,
+      "postcheck": "synthetic-next-version-healthy",
+      "rollback": "synthetic-snapshot-once",
+      "mechanism_refs": []
+    },
+    {
+      "id": "home-core.reviewed-update",
+      "target": "home-core",
+      "environment": "production",
+      "enabled": false,
+      "executor": "guarded-home-core-deploy",
+      "check_id": "model-update-report.changed",
+      "category": "updates",
+      "status": "degraded",
+      "gates": [
+        "reviewed-change",
+        "backup",
+        "model-qualification",
+        "promotion-approval"
+      ],
+      "approval": "operator",
+      "evidence_ttl_seconds": 900,
+      "approval_ttl_seconds": 300,
+      "maintenance_window": {
+        "timezone": "Europe/Copenhagen",
+        "weekdays": [
+          6
+        ],
+        "start": "02:00",
+        "end": "03:00"
+      },
+      "cooldown_seconds": 86400,
+      "max_attempts": 1,
+      "postcheck": "registered-health-and-revision",
+      "rollback": "operator-reconcile",
+      "mechanism_refs": [
+        "scripts/homecompute.py",
+        "scripts/deploy-home-core.sh",
+        "docs/git-deployment.md",
+        "docs/adr/024-model-artifact-deployment-capability-separation.md"
+      ]
+    },
+    {
+      "id": "home-core.recover-n8n",
+      "target": "home-core",
+      "environment": "production",
+      "enabled": false,
+      "executor": "approved-compose-recovery",
+      "check_id": "container.homecompute-automation-n8n-1",
+      "category": "health",
+      "status": "degraded",
+      "gates": [
+        "backup",
+        "recovery-runbook-reviewed"
+      ],
+      "approval": "operator",
+      "evidence_ttl_seconds": 120,
+      "approval_ttl_seconds": 120,
+      "maintenance_window": {
+        "timezone": "Europe/Copenhagen",
+        "weekdays": [
+          6
+        ],
+        "start": "02:00",
+        "end": "03:00"
+      },
+      "cooldown_seconds": 3600,
+      "max_attempts": 1,
+      "postcheck": "registered-health",
+      "rollback": "operator-reconcile",
+      "mechanism_refs": [
+        "deploy/automation/compose.yaml",
+        "deploy/automation/production.yaml",
+        "scripts/deploy-home-core.sh"
+      ]
+    },
+    {
+      "id": "home-spark.reviewed-compose-update",
+      "target": "home-spark",
+      "environment": "production",
+      "enabled": false,
+      "executor": "guarded-home-spark-deploy",
+      "check_id": "cached-apt-candidates",
+      "category": "updates",
+      "status": "degraded",
+      "gates": [
+        "reviewed-change",
+        "backup",
+        "model-qualification",
+        "promotion-approval"
+      ],
+      "approval": "operator",
+      "evidence_ttl_seconds": 900,
+      "approval_ttl_seconds": 300,
+      "maintenance_window": {
+        "timezone": "Europe/Copenhagen",
+        "weekdays": [
+          6
+        ],
+        "start": "02:00",
+        "end": "03:00"
+      },
+      "cooldown_seconds": 86400,
+      "max_attempts": 1,
+      "postcheck": "registered-health-and-revision",
+      "rollback": "operator-reconcile",
+      "mechanism_refs": [
+        "scripts/homecompute.py",
+        "scripts/deploy-home-spark.sh",
+        "docs/git-deployment.md",
+        "docs/adr/024-model-artifact-deployment-capability-separation.md"
+      ]
+    },
+    {
+      "id": "home-spark.reviewed-dgx-os-maintenance",
+      "target": "home-spark",
+      "environment": "production",
+      "enabled": false,
+      "executor": "dgx-os-maintenance",
+      "check_id": "cached-apt-candidates",
+      "category": "updates",
+      "status": "degraded",
+      "gates": [
+        "reviewed-change",
+        "backup",
+        "vendor-maintenance-reviewed",
+        "model-qualification",
+        "promotion-approval"
+      ],
+      "approval": "operator",
+      "evidence_ttl_seconds": 900,
+      "approval_ttl_seconds": 300,
+      "maintenance_window": {
+        "timezone": "Europe/Copenhagen",
+        "weekdays": [
+          6
+        ],
+        "start": "02:00",
+        "end": "03:00"
+      },
+      "cooldown_seconds": 86400,
+      "max_attempts": 1,
+      "postcheck": "registered-health-and-driver-qualification",
+      "rollback": "operator-reconcile",
+      "mechanism_refs": [
+        "docs/ai-compute-node-plan.md",
+        "docs/adr/024-model-artifact-deployment-capability-separation.md"
+      ]
+    },
+    {
+      "id": "home-spark.recover-plapre",
+      "target": "home-spark",
+      "environment": "production",
+      "enabled": false,
+      "executor": "approved-spark-compose-recovery",
+      "check_id": "container.homecompute-plapre-plapre-primary-1",
+      "category": "health",
+      "status": "degraded",
+      "gates": [
+        "backup",
+        "recovery-runbook-reviewed",
+        "model-qualification",
+        "promotion-approval"
+      ],
+      "approval": "operator",
+      "evidence_ttl_seconds": 120,
+      "approval_ttl_seconds": 120,
+      "maintenance_window": {
+        "timezone": "Europe/Copenhagen",
+        "weekdays": [
+          6
+        ],
+        "start": "02:00",
+        "end": "03:00"
+      },
+      "cooldown_seconds": 3600,
+      "max_attempts": 1,
+      "postcheck": "registered-health",
+      "rollback": "operator-reconcile",
+      "mechanism_refs": [
+        "deploy/compute-node/plapre/compose.yaml",
+        "scripts/deploy-home-spark.sh",
+        "docs/research/plapre-nano-v2-gb10-home-assistant-deployment-2026-09-26.md"
+      ]
+    }
+  ]
+}

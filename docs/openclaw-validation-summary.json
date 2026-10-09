@@ -70,5 +70,19 @@
   "approved_changes": [
     "separate_synthetic_NemoClaw_sandbox",
     "dedicated_seven_day_automation_moe_virtual_key"
-  ]
+  ],
+  "controlled_actions": {
+    "source_implemented": true,
+    "production_executors": "not_provisioned_and_forced_disabled",
+    "evidence": "openclaw-actions-validation.json",
+    "synthetic_coding_flow": "credential_free_surrogate_not_authenticated_Codex_or_real_PR",
+    "coding_evidence": "openclaw-action-flow-validation.json",
+    "managed_MCP": "still_disabled_private_transport_and_endpoint_credential_required",
+    "worker_isolation": "default_Docker_namespace_denial_confirmed_native_secret_free_sandbox_probe_pass_outer_VM_candidate_unqualified",
+    "worker_command_hardening": "shared_tmp_excluded_private_TMPDIR_preserved",
+    "unattended_auth_or_GitHub_credentials": "not_provisioned",
+    "production_project_allowlist": "empty",
+    "initial_approval_policy": "per_action_operator_approval",
+    "merge_or_deploy": "never_automatic"
+  }
 }

@@ -46,6 +46,24 @@ TOOLS = [
     {"name": "homecompute_task_cancel", "description": "Cancel a pending, queued, running or review task. This never authorizes execution or publication.",
      "inputSchema": TASK_ID, "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False}},
 ]
+ACTION_TOOLS = [
+    {"name": "homecompute_action_propose", "description": "Propose one operator-defined maintenance or recovery action using a trusted evidence ID. A person reviews the exact proposal and separately approves execution.",
+     "inputSchema": {"type": "object", "additionalProperties": False,
+                     "properties": {"action_id": string(1, 128, ISSUE), "target": string(1, 128, ISSUE),
+                                    "incident_key": string(1, 128, ISSUE), "evidence_id": string(1, 128, ISSUE)},
+                     "required": ["action_id", "target", "incident_key", "evidence_id"]},
+     "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}},
+    {"name": "homecompute_action_status", "description": "Read bounded action metadata by optional task_id. Evidence ingestion, review, approval and execution are operator-only.",
+     "inputSchema": STATUS, "annotations": {"readOnlyHint": True, "openWorldHint": False}},
+    {"name": "homecompute_action_cancel", "description": "Cancel a maintenance proposal before execution. This cannot undo or retry an action.",
+     "inputSchema": TASK_ID, "annotations": {"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False}},
+]
+ACTION_PUBLIC = {"id", "action_id", "target", "incident_key", "evidence_id", "state", "created", "updated",
+                 "attempts", "error", "policy_sha256"}
+
+
+def tool_inventory(ledger: Tasks) -> list[dict[str, Any]]:
+    return TOOLS + (ACTION_TOOLS if getattr(ledger, "actions", None) is not None else [])
 
 
 class RpcError(ValueError):
@@ -91,12 +109,24 @@ def recent_tasks(ledger: Tasks) -> dict[str, Any]:
 def call_tool(params: dict[str, Any], ledger: Tasks) -> dict[str, Any]:
     if set(params) - {"name", "arguments", "_meta"} or not isinstance(params.get("name"), str):
         raise RpcError(-32602, "Invalid tool call")
-    tool = next((item for item in TOOLS if item["name"] == params["name"]), None)
+    tool = next((item for item in tool_inventory(ledger) if item["name"] == params["name"]), None)
     if tool is None:
         raise RpcError(-32602, "Unknown tool")
     arguments = validate_arguments(params.get("arguments", {}), tool["inputSchema"])
     try:
-        if tool["name"] == "homecompute_task_submit":
+        if tool["name"].startswith("homecompute_action_"):
+            actions = ledger.actions
+            if tool["name"] == "homecompute_action_propose":
+                value = actions.propose(arguments)
+            elif tool["name"] == "homecompute_action_cancel":
+                value = actions.cancel(arguments["task_id"])
+            else:
+                value = actions.get(arguments["task_id"]) if "task_id" in arguments else actions.list_actions()[:100]
+            rows = value if isinstance(value, list) else [value]
+            public = [{k: v for k, v in row.items() if k in ACTION_PUBLIC and
+                       (v is None or isinstance(v, (str, bool, int, float)))} for row in rows]
+            return {"content": [{"type": "text", "text": json.dumps({"actions": public})}], "isError": False}
+        elif tool["name"] == "homecompute_task_submit":
             task = ledger.submit(arguments)
         elif tool["name"] == "homecompute_task_status":
             if "task_id" not in arguments:
@@ -144,7 +174,7 @@ def dispatch(message: object, ledger: Tasks) -> tuple[int, dict[str, Any] | None
         elif method == "tools/list":
             if set(params) - {"_meta"}:
                 raise RpcError(-32602, "No pagination cursor is supported")
-            result = {"tools": TOOLS}
+            result = {"tools": tool_inventory(ledger)}
         elif method == "tools/call":
             result = call_tool(params, ledger)
         else:

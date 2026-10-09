@@ -1,0 +1,38 @@
+name: homecompute-openclaw-communication
+
+# Disabled source proposal. Requires separately approved private TLS provisioning.
+services:
+  private-relay:
+    profiles: [approved-synthetic-communication]
+    image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    pull_policy: never
+    restart: "no"
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # The upstream binary carries cap_net_bind_service and otherwise refuses
+    # exec with an empty capability bounding set. A plain unprivileged copy
+    # drops its file xattrs; the fixed high port requires no capability.
+    entrypoint: [/bin/sh, -ec]
+    command: ["cp /usr/bin/caddy /runtime/caddy; exec /runtime/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]
+    # The fixed private bridge bind is in the Caddyfile. No LAN/public listener.
+    # Host networking allows only the configured Caddy upstream to reach the
+    # loopback SSH reverse-forward; this is a trusted relay, outside the sandbox.
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${COMMUNICATION_TLS_CERT:?Select approved dedicated communication certificate}:/run/tls/communication.crt:ro
+      - ${COMMUNICATION_TLS_KEY:?Select approved dedicated communication key}:/run/tls/communication.key:ro
+    tmpfs:
+      - /runtime:rw,nosuid,nodev,exec,size=96m,uid=1000,gid=1000,mode=0700
+      - /data:rw,nosuid,nodev,size=8m,uid=1000,gid=1000,mode=0700
+      - /config:rw,nosuid,nodev,size=8m,uid=1000,gid=1000,mode=0700
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 32
+    logging:
+      driver: local
+      options:
+        max-size: 1m
+        max-file: "2"
