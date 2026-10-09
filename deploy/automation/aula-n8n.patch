@@ -558,3 +558,70 @@ index 572405d..cc5f61b 100644
 @@ -1107 +1103 @@ export function registerTools(server: McpServer, context: AulaContext): void {
 -        'aula.posts.get_attachment or aula.messages.get_attachment — and ' +
 +        'aula_posts_get_attachment or aula_messages_get_attachment — and ' +
+--- a/packages/aula-client/src/aula-client.ts
++++ b/packages/aula-client/src/aula-client.ts
+@@ -179,6 +179,11 @@
+    */
+   async getPresenceTemplates(args: GetPresenceTemplatesArgs): Promise<PresenceTemplatesData> {
+     if (args.institutionProfileIds.length === 0) return {};
++    // Presence reads need the guardian profile activated in this HTTP session.
++    // Establish the login cookies before selecting the profile; discovery may
++    // run these calls concurrently and its optional context call can fail.
++    await this.getProfilesByLogin();
++    await this.getProfileContext('guardian');
+     const params = new URLSearchParams();
+     params.set('method', 'presence.getPresenceTemplates');
+     // Array params take the `[]` suffix, same as childIds[] above.
+--- a/packages/aula-client/src/aula-client.test.ts
++++ b/packages/aula-client/src/aula-client.test.ts
+@@ -375,6 +375,8 @@
+     const http = new FakeHttp();
+     http.enqueue(
+       { status: 200, body: envelope({ presenceWeekTemplates: [] }) }, // probe
++      { status: 200, body: envelope({ profiles: [] }) }, // login cookies
++      { status: 200, body: envelope({}) }, // guardian profile context
+       {
+         status: 200,
+         body: envelope({ presenceWeekTemplates: [{ institutionProfile: { id: 10 } }] }),
+@@ -387,12 +389,40 @@
+       toDate: '2026-05-24',
+     });
+     expect(data.presenceWeekTemplates?.[0]?.institutionProfile.id).toBe(10);
+-    const url = http.requested[1]?.url ?? '';
++    expect(new URL(http.requested[1]!.url).searchParams.get('method')).toBe(
++      'profiles.getProfilesByLogin',
++    );
++    expect(new URL(http.requested[2]!.url).searchParams.get('method')).toBe(
++      'profiles.getProfileContext',
++    );
++    expect(new URL(http.requested[2]!.url).searchParams.get('portalrole')).toBe('guardian');
++    const url = http.requested[3]?.url ?? '';
+     expect(url).toContain('method=presence.getPresenceTemplates');
+     expect(url).toContain('filterInstitutionProfileIds%5B%5D=10');
+     expect(url).toContain('filterInstitutionProfileIds%5B%5D=20');
+     expect(url).toContain('fromDate=2026-05-18');
+     expect(url).toContain('toDate=2026-05-24');
++  });
++
++  test('getPresenceTemplates stops when guardian profile activation fails', async () => {
++    const http = new FakeHttp();
++    http.enqueue(
++      { status: 200, body: envelope({ profiles: [] }) }, // API version probe
++      { status: 200, body: envelope({ profiles: [] }) }, // login cookies
++      { status: 403, body: 'Profile activation rejected' },
++    );
++    const c = makeClient(http);
++    await expect(
++      c.getPresenceTemplates({
++        institutionProfileIds: [10],
++        fromDate: '2026-10-09',
++        toDate: '2027-01-17',
++      }),
++    ).rejects.toThrow('API returned status 403');
++    expect(http.requested.length).toBe(3);
++    expect(http.requested.some(request => request.url.includes('presence.getPresenceTemplates'))).toBe(
++      false,
++    );
+   });
+
+   test('getPresenceTemplates returns {} for empty ids without hitting the network', async () => {
