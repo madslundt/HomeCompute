@@ -33,6 +33,7 @@ ALLOWED_KINDS = {
     "huggingface_search",
     "github_file",
     "github_release",
+    "github_pull_requests",
 }
 ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 REVISION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+@/-]{0,511}$")
@@ -108,7 +109,7 @@ def load_watchlist(path: Path, resolver: Callable[[str], list[str]]) -> dict[str
             source,
             f"watchlist.sources[{index}]",
             {"id", "kind", "label", "role", "request_url", "project_url"},
-            {"benchmark_candidate_ids", "benchmark_artifact_source"},
+            {"benchmark_candidate_ids", "benchmark_artifact_source", "installed_revision"},
         )
         source_id = _require_string(source["id"], f"source {index} id", 128)
         if not ID_PATTERN.fullmatch(source_id) or source_id in seen_ids:
@@ -116,6 +117,12 @@ def load_watchlist(path: Path, resolver: Callable[[str], list[str]]) -> dict[str
         seen_ids.add(source_id)
         if source["kind"] not in ALLOWED_KINDS:
             raise ValidationError(f"source {source_id} has an unsupported kind")
+        if "installed_revision" in source:
+            revision = source["installed_revision"]
+            pattern = REVISION_PATTERN if source["kind"] == "github_release" else HASH_PATTERN
+            if (source["kind"] not in {"huggingface_model", "github_file", "github_release"}
+                    or not isinstance(revision, str) or not pattern.fullmatch(revision)):
+                raise ValidationError(f"source {source_id} has invalid installed_revision metadata")
         _require_string(source["label"], f"source {source_id} label", 256)
         _require_string(source["role"], f"source {source_id} role", 512)
         request_url = _require_string(source["request_url"], f"source {source_id} request_url", 2000)
@@ -230,6 +237,39 @@ def normalize(source: dict[str, Any], payload: Any) -> tuple[str, str]:
         if not isinstance(marker, str) or not HASH_PATTERN.fullmatch(marker):
             raise SourceError("invalid_response", "GitHub commit response has no valid revision")
         return marker, marker
+    if kind == "github_pull_requests":
+        if not isinstance(payload, list) or len(payload) > 100:
+            raise SourceError("invalid_response", "GitHub PR response must be a bounded array")
+        entries = []
+        seen = set()
+        for item in payload:
+            if not isinstance(item, dict):
+                raise SourceError("invalid_response", "GitHub PR entry is invalid")
+            user, head, number = item.get("user"), item.get("head"), item.get("number")
+            if (type(number) is not int or not 1 <= number <= 1000000000 or number in seen
+                    or item.get("state") not in ("open", "closed")
+                    or not isinstance(user, dict) or not isinstance(user.get("login"), str)
+                    or not 1 <= len(user["login"]) <= 100
+                    or not isinstance(head, dict) or not isinstance(head.get("ref"), str)
+                    or not 1 <= len(head["ref"]) <= 512):
+                raise SourceError("invalid_response", "GitHub PR identity metadata is invalid")
+            seen.add(number)
+            if item["state"] != "open" or (user.get("login") != "dependabot[bot]"
+                                               and head.get("ref") != "automation/nix-flake-update"):
+                continue
+            title, updated = item.get("title"), item.get("updated_at")
+            if (not isinstance(title, str) or len(title) > 512
+                    or not isinstance(updated, str) or len(updated) > 64 or not updated.endswith("Z")):
+                raise SourceError("invalid_response", "GitHub dependency PR metadata is invalid")
+            try:
+                parsed_time = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+                if parsed_time.tzinfo is None: raise ValueError()
+            except ValueError as error:
+                raise SourceError("invalid_response", "GitHub dependency PR timestamp is invalid") from error
+            # Preserve the n8n number/title/updated marker contract without storing untrusted text.
+            entries.append([number, title, parsed_time.astimezone(timezone.utc).isoformat()])
+        marker = hashlib.sha256(json.dumps(sorted(entries), separators=(",", ":")).encode()).hexdigest()
+        return marker, marker
     item = _require_object(payload, "GitHub release response")
     marker = item.get("tag_name")
     if not isinstance(marker, str) or not REVISION_PATTERN.fullmatch(marker):
@@ -271,6 +311,9 @@ def execute(watchlist_path: Path, state_path: Path, report_path: Path, pins_path
     sources = watchlist["sources"]
     source_ids = {source["id"] for source in sources}
     pins = load_pins(pins_path, source_ids)
+    # Repository-declared installed artifact revisions are defaults; operator pins win.
+    defaults = {source["id"]: source["installed_revision"] for source in sources if "installed_revision" in source}
+    pins["pins"] = {**defaults, **pins["pins"]}
     if pins["active_source_id"] is not None:
         active = next(source for source in sources if source["id"] == pins["active_source_id"])
         if active["kind"] != "huggingface_model" or pins["active_source_id"] not in pins["pins"]:

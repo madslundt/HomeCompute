@@ -1,0 +1,75 @@
+name: homecompute-openclaw
+
+include:
+  - ../codex-worker/compose.yaml
+
+services:
+  openclaw:
+    profiles: [assistant]
+    # Official 2026.9.9 OCI index; contains linux/amd64 and linux/arm64.
+    image: ghcr.io/openclaw/openclaw@sha256:7f10d5cc975a90b65192eaa099454fe33ce8ce2390806c61c65cd868e9ef730d
+    platform: linux/amd64
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    group_add: ["${OPENCLAW_SECRET_GID:?Set the restricted secret-reader GID}"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    entrypoint: [/bin/sh, /opt/homecompute/entrypoint.sh]
+    environment:
+      HOME: /home/node
+      OPENCLAW_HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /etc/openclaw/openclaw.json
+      OPENCLAW_CONFIG_READONLY: "1"
+      OPENCLAW_GATEWAY_PORT: "18789"
+      OPENCLAW_CONFIG_DIR: /etc/openclaw
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_DISABLE_BONJOUR: "1"
+      NODE_OPTIONS: --max-old-space-size=1024
+      HTTP_PROXY: http://egress:3128
+      HTTPS_PROXY: http://egress:3128
+      NO_PROXY: broker,model-relay,localhost,127.0.0.1
+      TZ: Europe/Copenhagen
+    ports: ["127.0.0.1:18791:18789/tcp"]
+    secrets: [openclaw_gateway_token, openclaw_model_key, openclaw_broker_token]
+    volumes:
+      - ${OPENCLAW_CONFIG_FILE:?Set the deployed private read-only config file}:/etc/openclaw/openclaw.json:ro
+      - ./entrypoint.sh:/opt/homecompute/entrypoint.sh:ro
+      - ./broker-plugin:/opt/homecompute/broker-plugin:ro
+      - ${OPENCLAW_STATE_ROOT:?Set a dedicated state directory}/openclaw:/home/node/.openclaw
+      - ./workspace-policy.md:/home/node/.openclaw/workspace/AGENTS.md:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=0700
+    healthcheck:
+      test: [CMD, node, /app/dist/docker-healthcheck.js]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    cpus: 1.0
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    pids_limit: 128
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+    depends_on:
+      broker: {condition: service_healthy}
+      model-relay: {condition: service_healthy}
+    networks: [assistant]
+
+networks:
+  # Egress and broker are attached explicitly; no production service network.
+  assistant:
+    internal: true
+    enable_ipv6: false
+
+secrets:
+  openclaw_gateway_token:
+    file: ${OPENCLAW_GATEWAY_TOKEN_FILE:?Set a dedicated sops-nix secret file}
+  openclaw_model_key:
+    file: ${OPENCLAW_MODEL_KEY_FILE:?Set an automation-moe-only LiteLLM virtual key file}
+  openclaw_broker_token:
+    file: ${OPENCLAW_BROKER_TOKEN_FILE:?Set the submit/status/cancel-only broker secret file}

@@ -1,5 +1,13 @@
 # HomeCompute documentation guide
 
+> **Live discovery 2026-10-09:** `automation-moe` now routes to Qwen3.8
+> Flash-Next. `home-core` is the K15, and Hermes is running in the agents VM.
+> An approved synthetic [OpenClaw sandbox](openclaw-nemoclaw.md) now exists in
+> that VM. See [discovery](openclaw-discovery.md) and the
+> [OpenClaw/Codex pilot](openclaw-operations.md) for verified versus staged scope.
+> Older dated snapshots below
+> describe history and are not today's deployment state.
+
 > **Current model handoff (2026-09-29):** production n8n remains on pinned
 > Unsloth Qwen3.6 through `automation-moe`. Blazux/NVIDIA Flash-Next is the
 > quality baseline candidate; dime UltraFast is a performance challenger.
@@ -50,6 +58,7 @@ and other personal-agent services remain deferred.
 | Choose and benchmark models | [Benchmark harness](../benchmarks/README.md), [installation recommendation](research/llm-installation-recommendation.md), then the role-specific evaluations under [research](#research-and-model-evidence) |
 | Run the explicit Codex local trial | [Codex GB10 Local trial](codex-local-trial.md), [Codex compatibility](research/codex-compatibility.md), and verification tests V-CODEX-TRIAL-001/V-CODEX-E2E-001 |
 | Integrate other developer harnesses | [Agent harness operations](agent-harness-operations.md), [ADR-018](adr/018-multiple-developer-harnesses.md), and their verification tests |
+| Review OpenClaw and unattended Codex | [Discovery/workflow assessment](openclaw-discovery.md), [operations and architecture](openclaw-operations.md), [runtime evidence](openclaw-runtime-research.md), and [NemoClaw target](openclaw-nemoclaw.md) |
 | Integrate Home Assistant voice and tools | [Home Assistant model evaluation](research/home-assistant-model-evaluation.md), [ADR-008](adr/008-home-assistant-model-role.md), and verification tests V-HA-001/V-HA-002 |
 | Extend Meeting Assistant or process Plaud recordings | [ADR-012](adr/012-reuse-meeting-assistant.md), the meeting sections in [architecture](architecture.md) and [verification](verification-strategy.md) |
 | Add the Hermes personal assistant layer | [NemoClaw placement and Hermes setup](research/nemoclaw-machine-placement.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [ADR-013](adr/013-hermes-personal-agent-layer.md), and Phases I/J in the [implementation plan](implementation-plan.md) |

@@ -35,16 +35,18 @@ must already exist:
 ```bash
 python3 scripts/check-model-updates.py \
   --watchlist automations/update-check/watchlist.json \
-  --state /var/lib/homecompute/model-update-check/state.json \
-  --report /var/lib/homecompute/model-update-check/report.json \
+  --state /var/lib/homecompute-model-update-check/state.json \
+  --report /var/lib/homecompute-model-update-check/report.json \
   --pins /etc/homecompute/model-update-pins.json \
   --selection /var/lib/homecompute/benchmarks/selection.json
 ```
 
 On `home-core`, `homecompute-model-update-monitor.timer` invokes the same
 interface weekly from immutable Nix store inputs. The corresponding oneshot is
-`homecompute-model-update-monitor.service`; it creates the state directory and
-writes the paths shown above. Its `OnSuccess` consumer deduplicates attention
+`homecompute-model-update-monitor.service`; its systemd `StateDirectory`
+creates `/var/lib/homecompute-model-update-check` (a DynamicUser-managed
+symlink into `/var/lib/private`), and it writes the paths shown above.
+The CLI and notifier read that same directory. Its `OnSuccess` consumer deduplicates attention
 reports by digest. Without additional configuration it records a warning in the
 system journal. To deliver the report to an HTTPS webhook, create root-owned,
 mode-0600 `/etc/homecompute/model-update-notification.env` containing:
@@ -74,6 +76,25 @@ cannot report `outperforms_active`. The pins document is metadata only:
 Legacy string pin values remain supported because the string is the exact
 installed artifact revision used for the active-artifact comparison. A pin that
 does not provide that revision cannot support an outperforming classification.
+
+The headless checker also accepts the watchlist's `installed_revision`
+metadata as default pins. Commit/checkpoint sources require a hexadecimal
+revision; release sources require a bounded tag. Explicit entries in `--pins`
+override those defaults. Inventory/discovery sources cannot declare an installed
+artifact revision. This keeps the repository's pinned Aula and TilbudsTrolden
+MCP commits covered even when no separate host pins file is supplied.
+
+The headless and n8n paths both support `github_pull_requests`. The HTTP adapter
+permits only GitHub's repository `/pulls` endpoint with exactly
+`state=open&per_page=100&sort=updated&direction=desc`; it does not paginate.
+GitHub's list response includes PR bodies; normalization discards those fields
+before recording state or exposing a report. It selects open PRs authored by `dependabot[bot]`
+or whose head branch is `automation/nix-flake-update`, matching the existing
+n8n review filter. Its state marker hashes sorted PR number/title/update-time
+metadata; raw titles, bodies and URLs are not retained in the headless report.
+An unchanged queue stays quiet; changes to selected PRs prompt review. This
+finite most-recent 100-PR page is not a complete inventory of all open PRs,
+and the filter is a review heuristic, not authorization to merge a PR.
 
 `--selection` consumes the schema-versioned output from
 `python3 benchmarks/harness.py select --run RUN --output PATH`. For every
@@ -112,7 +133,7 @@ success as model-selection success.
 
 ```bash
 systemctl status homecompute-model-update-monitor.service --no-pager
-sudo cat /var/lib/homecompute/model-update-check/report.json
+sudo cat /var/lib/homecompute-model-update-check/report.json
 ```
 
 ## Install in n8n

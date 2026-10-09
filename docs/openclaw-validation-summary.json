@@ -1,0 +1,74 @@
+{
+  "validated_at": "2026-10-09",
+  "implemented_in_source": true,
+  "deployed": "synthetic_NemoClaw_canary_only",
+  "unit_tests": {
+    "python_broker_policy_relay": 24,
+    "node_plugin": 7,
+    "python_nemoclaw_candidate": 5,
+    "python_mcp": 10,
+    "python_system_monitoring": 17,
+    "python_existing_host_cli": 11,
+    "python_existing_update_check": 15
+  },
+  "nix": {
+    "parse": "pass",
+    "flake_check_no_build_all_systems": "pass_in_isolated_home_core_temporary_source",
+    "disabled_default_toplevel_evaluation": "pass",
+    "enabled_fallback_toplevel_evaluation": "pass_without_activation",
+    "build": "not_run"
+  },
+  "repository_validation": {
+    "shell_json_yaml_compose_diagrams_and_tests": "passed_before_local_nix_stage",
+    "complete_command": "blocked_at_containerized_nix_stage_by_unavailable_mac_docker_daemon",
+    "nix_stage_fallback": "equivalent_read_only_flake_check_passed_on_home_core"
+  },
+  "live_model": {
+    "primary_alias": "automation-moe",
+    "backend": "Qwen3.8 Flash-Next UltraFast",
+    "advertised_context": 262144,
+    "required_tool_call": "pass",
+    "tool_result_followup": "pass",
+    "strict_json_schema": "pass",
+    "native_openclaw_pending_task": "pass_6176ms"
+  },
+  "not_verified": [
+    "Compose_fallback_model_relay_network",
+    "managed_NemoClaw_broker_adapter",
+    "unattended_Codex_execution",
+    "real_GitHub_draft_PR",
+    "production_n8n_observation_event_notification",
+    "live_Home_Assistant_metadata_and_recovery",
+    "supported_boot_supervision_reboot_and_off_host_restore",
+    "long_context_and_sustained_reasoning",
+    "Codex_workspace_write_sandbox_compatibility",
+    "strict_fail_closed_managed_filesystem_policy"
+  ],
+  "post_probe_home_core_containers": "existing_n8n_Caddy_LiteLLM_database_and_other_healthchecked_services_healthy",
+  "managed_nemoclaw": {
+    "tuple": "NemoClaw0.0.129_OpenShell0.0.116_OpenClaw2026.9.1",
+    "native_config_overlay": "deployed_native_validation_pass_zero_warnings",
+    "broker_plugin_api": "installed_but_disabled_and_tools_denied; local_MCP_transport_verified; live_HTTPS_and_credential_provider_unqualified",
+    "deployed": true,
+    "active_owner": "nemoclaw-managed detached",
+    "actual_memory_recall": "pass_native_memory_get_exit_0_after_gateway_restart_and_rollback",
+    "boot_supervision": "blocked_by_pinned_external_lifecycle_Docker_storage_compatibility; proposed_units_disabled",
+    "gateway_machine_auth": "rotated_by_native_fresh_onboarding; working_auth_verified",
+    "scoped_key_expires_at": "2026-10-16T16:15:04Z",
+    "receipt": "openclaw-nemoclaw-validation.json"
+  },
+  "worker_linux": "image_build_and_UID_process_proxy_checks_pass; credential_free_workspace_write_preflight_blocked_by_namespace_policy; see_openclaw-worker-validation.json",
+  "monitoring": {
+    "implemented": "operator_read_only_registry_collector_and_dedup",
+    "observed": "registered_core_containers_healthy_Plapre_restarting_7_upstream_changes_149_cached_apt_candidates",
+    "Home_Assistant": "not_provisioned",
+    "production_schedule": "not_enabled",
+    "source_update_report_path_fix": "staged_not_deployed",
+    "source_watchlist_parity_fix": "all_18_sources_validated_offline; staged_not_deployed"
+  },
+  "production_services_changed": false,
+  "approved_changes": [
+    "separate_synthetic_NemoClaw_sandbox",
+    "dedicated_seven_day_automation_moe_virtual_key"
+  ]
+}

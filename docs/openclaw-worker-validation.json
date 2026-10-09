@@ -1,0 +1,51 @@
+{
+  "validated_at": "2026-10-09",
+  "scope": "disposable_secret_free_Linux_tests",
+  "image": {
+    "tag": "homecompute/codex-worker:validation-20261009",
+    "id": "sha256:6c8c176813e15c6eb3f41507b44b43a991d8908a83588f44fc501057ae647d88",
+    "platform": "linux/amd64",
+    "bytes": 402431911,
+    "codex_cli": "0.145.0",
+    "build_limits": {
+      "cpu": 1,
+      "memory_bytes": 2147483648,
+      "swap_bytes": 0
+    },
+    "public_python_modules_mode": "0444"
+  },
+  "checks": {
+    "per_job_uid": 20000,
+    "empty_supplementary_groups": "pass",
+    "protected_secret_and_evidence_reads_denied": "pass",
+    "job_cannot_signal_controller": "pass",
+    "private_tempfile": "pass",
+    "detached_non_dumpable_child_cleanup": "pass",
+    "unprivileged_proxy_startup": "pass",
+    "proxy_unknown_host_private_address_non443_and_direct_http_denied": "pass",
+    "credential_free_native_sandbox_preflight": "fails_closed_before_checkout_or_model_authentication",
+    "deprecated_legacy_Landlock_read_only": "filesystem_and_network_denials_pass",
+    "deprecated_legacy_Landlock_workspace_write": "incompatible_permission_profile; not_enabled"
+  },
+  "source_sha256": {
+    "model_relay.py": "a406484797c0586d9d22a622d61a0d693a20765761fbd8b2a3e6e66b0dd152d9",
+    "worker.py": "e5fb5e609bacc13030349dad42a53c184adb71d030fb756142b706f3a6b7d6cd",
+    "mcp_adapter.py": "2b4783849d6e6d0b456284955a4ca184ea28ff3c7d2fc6857c0c19c0b72faae3",
+    "policy.py": "b87658df0f28dd5851d3e171bc45e2abb369a3d903679e60a93a653737148bb5",
+    "publisher.py": "b75baa9b8c37ba3ebcf35a69e57d02b8c65bbd7918f8785110c82fede0c073aa",
+    "broker.py": "10e08353001d090344b624574249d265c3b19da607c00c9a816f968d0b1093c7"
+  },
+  "not_verified": [
+    "authenticated_Codex_execution",
+    "Codex_workspace_write_under_Docker_seccomp",
+    "production_network_firewall",
+    "actual_GitHub_PR",
+    "worker_container_restart_after_job",
+    "worker_disk_filesystem_limit"
+  ],
+  "known_native_sandbox_blocker": "bwrap namespace creation denied under default Docker seccomp; investigate supported alternative without expanding container privileges",
+  "paid_api_calls": 0,
+  "GitHub_writes": 0,
+  "persistent_worker_service_started": false,
+  "production_services_changed": false
+}

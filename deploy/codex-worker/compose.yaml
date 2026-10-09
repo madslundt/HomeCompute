@@ -1,0 +1,146 @@
+# Included by deploy/openclaw/compose.yaml; all services opt-in together.
+services:
+  broker:
+    profiles: [assistant]
+    build: {context: ../codex-worker}
+    image: homecompute/codex-worker:0.145.0
+    command: [python3, /opt/worker/broker.py]
+    init: true
+    restart: unless-stopped
+    user: "1000:1000"
+    group_add: ["${OPENCLAW_SECRET_GID:?Set restricted secret group}"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      HTTPS_PROXY: http://egress:3128
+      NO_PROXY: localhost,127.0.0.1
+    ports: ["127.0.0.1:18792:8080/tcp"]
+    secrets: [assistant_token, worker_token, operator_token, github_token]
+    volumes:
+      - ${CODEX_PROJECTS_FILE:?Set reviewed immutable project policy}:/config/projects.json:ro
+      - ${OPENCLAW_STATE_ROOT:?Set dedicated state directory}/broker:/state
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000,mode=0700]
+    cpus: 0.5
+    mem_limit: 256m
+    memswap_limit: 256m
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+    networks: [assistant, worker]
+
+  codex-worker:
+    profiles: [assistant]
+    image: homecompute/codex-worker:0.145.0
+    build: {context: ../codex-worker}
+    init: true
+    restart: unless-stopped
+    # Trusted controller only; repository processes drop to a per-task UID,
+    # empty supplementary groups and cannot read root-only secret mounts.
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, DAC_OVERRIDE, KILL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      HTTP_PROXY: http://egress:3128
+      HTTPS_PROXY: http://egress:3128
+      NO_PROXY: broker,localhost,127.0.0.1
+      http_proxy: http://egress:3128
+      https_proxy: http://egress:3128
+      no_proxy: broker,localhost,127.0.0.1
+    # Sources are root-owned, with worker_token readable only by the broker's
+    # restricted group. Job children have empty groups and distinct UIDs.
+    # Compose bind secrets do not implement uid/gid/mode remapping.
+    secrets: [worker_token, codex_api_key, github_checkout_token]
+    volumes:
+      - ${CODEX_PROJECTS_FILE:?Set reviewed immutable project policy}:/config/projects.json:ro
+      - ${OPENCLAW_WORK_ROOT:?Set a disk-bounded worker filesystem}:/work
+    # Fresh container per job; standard tools need a writable sticky /tmp.
+    tmpfs: [/tmp:rw,nosuid,nodev,size=256m,uid=0,gid=0,mode=1777]
+    cpus: 2.0
+    mem_limit: 4g
+    memswap_limit: 4g
+    pids_limit: 512
+    depends_on: {broker: {condition: service_healthy}}
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://broker:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+    networks: [worker]
+
+  egress:
+    profiles: [assistant]
+    image: homecompute/codex-worker:0.145.0
+    build: {context: ../codex-worker}
+    command: [squid, -N, -f, /etc/squid/homecompute.conf]
+    init: true
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: ["./squid.conf:/etc/squid/homecompute.conf:ro"]
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000,mode=0700]
+    cpus: 0.25
+    mem_limit: 128m
+    memswap_limit: 128m
+    pids_limit: 64
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+    networks:
+      assistant: {}
+      worker: {}
+      uplink: {ipv4_address: 172.29.210.3, gw_priority: 1}
+
+  model-relay:
+    profiles: [assistant]
+    image: homecompute/codex-worker:0.145.0
+    build: {context: ../codex-worker}
+    command: [python3, /opt/worker/model_relay.py]
+    init: true
+    restart: unless-stopped
+    user: "1000:1000"
+    group_add: ["${OPENCLAW_SECRET_GID:?Set restricted secret group}"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    extra_hosts: ["ai.home.arpa:192.168.30.122"]
+    secrets: [relay_model_key]
+    volumes:
+      - ${OPENCLAW_MODEL_CA_FILE:?Set existing private CA}:/etc/model-ca.crt:ro
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000,mode=0700]
+    cpus: 0.25
+    mem_limit: 128m
+    memswap_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: {driver: local, options: {max-size: 10m, max-file: "3"}}
+    networks:
+      assistant: {}
+      uplink: {ipv4_address: 172.29.210.2, gw_priority: 1}
+
+networks:
+  worker: {internal: true, enable_ipv6: false}
+  uplink:
+    enable_ipv6: false
+    driver_opts: {com.docker.network.bridge.name: br-hc-assist}
+    ipam: {config: [{subnet: 172.29.210.0/29}]}
+
+secrets:
+  assistant_token: {file: "${OPENCLAW_BROKER_TOKEN_FILE:?Set assistant broker secret}"}
+  worker_token: {file: "${CODEX_WORKER_TOKEN_FILE:?Set worker-only token}"}
+  operator_token: {file: "${CODEX_OPERATOR_TOKEN_FILE:?Set operator-only token}"}
+  github_token: {file: "${CODEX_GITHUB_TOKEN_FILE:?Set repository-scoped publisher token}"}
+  codex_api_key: {file: "${CODEX_API_KEY_FILE:?Set dedicated unattended Codex credential}"}
+  github_checkout_token: {file: "${CODEX_GITHUB_CHECKOUT_TOKEN_FILE:?Set dedicated read-only GitHub checkout credential}"}
+  relay_model_key: {file: "${OPENCLAW_MODEL_KEY_FILE:?Set scoped model key}"}

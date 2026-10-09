@@ -1,0 +1,30 @@
+{
+  "agents": [],
+  "main": {
+    "tools": {
+      "allow": [
+        "session_status",
+        "memory_search",
+        "memory_get",
+        "write"
+      ],
+      "deny": [
+        "homecompute_task_submit",
+        "homecompute_task_status",
+        "homecompute_task_cancel",
+        "group:runtime",
+        "edit",
+        "apply_patch",
+        "group:ui",
+        "group:nodes",
+        "group:automation",
+        "group:web",
+        "group:messaging",
+        "sessions_spawn",
+        "sessions_send",
+        "subagents",
+        "github_publish"
+      ]
+    }
+  }
+}

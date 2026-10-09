@@ -30,6 +30,10 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-compute-sparkrun-manager.sh` | Root-run forced-command SSH boundary for the sparkrun model manager | `validate`, `install` |
 | `verify_client_model_access.py` | Live `/v1/models` visibility audit for supplied client keys | Exact expected aliases per environment-variable credential; never prints key values |
 | `codex_session.py` | Policy-aware Codex session entry point | Cloud default for committed `cloud_allowed` repositories; explicit whole-session GB10 Local mode |
+| `assistant-task.py` | Approved local task broker operator interface | Per-task execution approval, cancellation, private proposal export and digest-bound draft PR publication |
+| `verify-openclaw-runtime.py` | Isolated synthetic local-model probe | One native OpenClaw tool loop against a temporary pending-only broker; never invokes Codex or GitHub |
+| `prepare-openclaw-nemoclaw.py` | Local private managed-config preparation | Preserves NemoClaw gateway/proxy ownership; never installs, uploads, provisions credentials or deploys |
+| `observe-homecompute.py` | Operator read-only monitoring projection | Fixed host metadata reads and fixture-only Home Assistant metadata; reports changes without notifications, updates or recovery actions |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
 The compute scripts default to safe, staged operation. Run `help`, `validate`,

@@ -55,6 +55,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
+  "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/immich-db-backup.sh"
   "$REPO_ROOT/scripts/set-synology-immich-secret.sh"
@@ -81,6 +82,16 @@ printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
+printf '[validate] OpenClaw task broker and plugin tests\n'
+python3 "$REPO_ROOT/tests/openclaw-worker-test.py"
+python3 "$REPO_ROOT/tests/openclaw-nemoclaw-test.py"
+python3 "$REPO_ROOT/tests/openclaw-mcp-test.py"
+python3 "$REPO_ROOT/tests/system-monitoring-test.py"
+if command -v node >/dev/null 2>&1; then
+  node --test "$REPO_ROOT/tests/openclaw-broker-plugin.test.mjs"
+else
+  printf '[validate] Node unavailable; OpenClaw plugin tests require Node on CI\n'
+fi
 printf '[validate] compute configuration migration tests\n'
 python3 "$REPO_ROOT/tests/migrate-compute-config-test.py"
 printf '[validate] bounded model-cache acquisition tests\n'
@@ -152,6 +163,8 @@ if command -v ruby >/dev/null 2>&1; then
   printf '[validate] YAML syntax\n'
   ruby -e 'require "yaml"; ARGV.each { |path| YAML.safe_load(File.read(path), permitted_classes: [], permitted_symbols: [], aliases: true) }' \
     "$REPO_ROOT/deploy/control-plane/compose.yaml" \
+    "$REPO_ROOT/deploy/openclaw/compose.yaml" \
+    "$REPO_ROOT/deploy/codex-worker/compose.yaml" \
     "$REPO_ROOT/deploy/control-plane/litellm-config.yaml" \
     "$REPO_ROOT/deploy/compute-node/compose.yaml" \
     "$REPO_ROOT/deploy/compute-node/plapre/compose.yaml" \
@@ -289,6 +302,36 @@ VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS='{"enable_thinking":false}'
 EOF
 
 printf '[validate] Compose rendering\n'
+assistant_env="$temporary_root/openclaw.env"
+cat >"$assistant_env" <<EOF
+OPENCLAW_SECRET_GID=992
+OPENCLAW_STATE_ROOT=$temporary_root/assistant-state
+OPENCLAW_WORK_ROOT=$temporary_root/assistant-work
+OPENCLAW_CONFIG_FILE=$REPO_ROOT/config/openclaw.json
+OPENCLAW_GATEWAY_TOKEN_FILE=$secret_file
+OPENCLAW_MODEL_KEY_FILE=$secret_file
+OPENCLAW_BROKER_TOKEN_FILE=$secret_file
+OPENCLAW_MODEL_CA_FILE=$secret_file
+CODEX_PROJECTS_FILE=$REPO_ROOT/config/codex-projects.json
+CODEX_WORKER_TOKEN_FILE=$secret_file
+CODEX_OPERATOR_TOKEN_FILE=$secret_file
+CODEX_GITHUB_TOKEN_FILE=$secret_file
+CODEX_GITHUB_CHECKOUT_TOKEN_FILE=$secret_file
+CODEX_API_KEY_FILE=$secret_file
+EOF
+docker compose --env-file "$assistant_env" --profile assistant \
+  -f "$REPO_ROOT/deploy/openclaw/compose.yaml" config --format json >"$temporary_root/assistant.json"
+jq -e '
+  ((.services | keys) == ["broker", "codex-worker", "egress", "model-relay", "openclaw"]) and
+  all(.services[]; .read_only == true and (.cap_drop | index("ALL") != null) and
+    (.security_opt | index("no-new-privileges:true") != null) and
+    (.privileged // false) == false and (.network_mode // "") != "host") and
+  (.networks.assistant.internal == true) and (.networks.worker.internal == true) and
+  ((.services.openclaw.networks | keys) == ["assistant"]) and
+  ((.services["codex-worker"].networks | keys) == ["worker"]) and
+  ([.services[].ports[]?.host_ip] | unique == ["127.0.0.1"]) and
+  (.services["codex-worker"].secrets | map(.source) | sort == ["codex_api_key", "github_checkout_token", "worker_token"])
+' "$temporary_root/assistant.json" >/dev/null
 docker compose --env-file "$compose_env" \
   -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
 docker compose --env-file "$compose_env" --profile prepare \
@@ -812,7 +855,7 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hermes hviske-stt homepage immich model-manager open-webui piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker compute-node control-plane hermes hviske-stt homepage immich model-manager open-webui openclaw piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
@@ -840,6 +883,9 @@ if command -v nix >/dev/null 2>&1; then
   nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
     "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
+  nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
+    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
+    >/dev/null
 else
   printf '[validate] Nix flake evaluation (containerized)\n'
   docker run --rm \
@@ -848,7 +894,8 @@ else
     nixos/nix:2.34.1@sha256:1d59121e0c361076b4f23c158d236702f2f045b3b477b51075b81ceb6188d34a \
     sh -ec \
       'nix --extra-experimental-features "nix-command flakes" flake check path:/src --no-build --all-systems
-       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
 fi
 
 printf '[validate] PASS\n'

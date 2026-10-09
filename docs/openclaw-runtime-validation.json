@@ -1,0 +1,56 @@
+{
+  "exit_code": 0,
+  "duration_ms": 6176,
+  "payloads": [
+    {
+      "text": "Task id: `3b7c18b1-35e5-49b0-a986-10a620a119aa`\nState: pending",
+      "mediaUrl": null
+    }
+  ],
+  "provider": "homecompute",
+  "model": "automation-moe",
+  "runtime": "openclaw",
+  "assistant_turns": 2,
+  "receipt": {
+    "runId": "42b3d37e-d369-47b3-b44e-8485870681e3",
+    "sessionId": "dce3e345-39eb-4457-bbed-207a57513e6d",
+    "turnId": "42b3d37e-d369-47b3-b44e-8485870681e3",
+    "requested": {
+      "provider": "homecompute",
+      "model": "automation-moe"
+    },
+    "effective": {
+      "provider": "homecompute",
+      "model": "automation-moe",
+      "responseModel": "automation-moe"
+    },
+    "successfulToolNames": [
+      "homecompute_task_submit"
+    ],
+    "rerouted": false,
+    "terminalDisposition": "visible"
+  },
+  "tools": [
+    "homecompute_task_submit"
+  ],
+  "error": null,
+  "broker_tasks": [
+    {
+      "id": "3b7c18b1-35e5-49b0-a986-10a620a119aa",
+      "project": "synthetic-demo",
+      "issue_key": "openclaw-live-probe-2026-10-09",
+      "state": "pending",
+      "created": 1791560558.860335,
+      "updated": 1791560558.860335,
+      "session_id": null,
+      "pr_url": null,
+      "error": null,
+      "commit": null
+    }
+  ],
+  "passed": true,
+  "scope": "Synthetic broker pending submission only; direct verified local inference endpoint; container relay/network not exercised",
+  "validated_at": "2026-10-09",
+  "openclaw_version": "2026.9.9",
+  "output_token_cap": 1024
+}

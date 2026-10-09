@@ -17,6 +17,7 @@
     ../../modules/nixos/platform-monitoring.nix
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix
+    ../../modules/nixos/openclaw.nix
     ../../modules/nixos/agents-vm.nix
     ../../modules/nixos/agents-vm-backup.nix
     ../../modules/nixos/docker.nix

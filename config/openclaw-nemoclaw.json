@@ -1,0 +1,223 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "/sandbox/.openclaw/workspace",
+      "model": {
+        "primary": "inference/automation-moe",
+        "fallbacks": []
+      },
+      "modelPolicy": {
+        "allow": [
+          "inference/automation-moe"
+        ]
+      },
+      "maxConcurrent": 1,
+      "timeoutSeconds": 660,
+      "skills": [],
+      "heartbeat": {
+        "every": "0m"
+      },
+      "thinkingDefault": "off",
+      "userTimezone": "Europe/Copenhagen"
+    },
+    "entries": {
+      "main": {
+        "name": "HomeCompute assistant"
+      }
+    }
+  },
+  "models": {
+    "catalogRefresh": {
+      "enabled": false
+    },
+    "providers": {
+      "inference": {
+        "baseUrl": "https://inference.local/v1",
+        "apiKey": "unused",
+        "api": "openai-completions",
+        "agentRuntime": {
+          "id": "openclaw"
+        },
+        "timeoutSeconds": 600,
+        "models": [
+          {
+            "id": "automation-moe",
+            "name": "HomeCompute automation-moe",
+            "input": [
+              "text"
+            ],
+            "contextWindow": 262144,
+            "contextTokens": 32768,
+            "maxTokens": 4096,
+            "compat": {
+              "supportsDeveloperRole": false,
+              "supportsReasoningEffort": false,
+              "maxTokensField": "max_tokens"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "memory": {
+    "search": {
+      "enabled": true,
+      "provider": "none",
+      "sources": [
+        "memory"
+      ],
+      "store": {
+        "vector": {
+          "enabled": false
+        }
+      }
+    }
+  },
+  "tools": {
+    "allow": [
+      "session_status",
+      "memory_search",
+      "memory_get",
+      "write"
+    ],
+    "deny": [
+      "homecompute_task_submit",
+      "homecompute_task_status",
+      "homecompute_task_cancel",
+      "group:runtime",
+      "edit",
+      "apply_patch",
+      "group:ui",
+      "group:nodes",
+      "group:automation",
+      "group:web",
+      "group:messaging",
+      "sessions_spawn",
+      "sessions_send",
+      "subagents",
+      "github_publish"
+    ],
+    "fs": {
+      "workspaceOnly": true
+    },
+    "exec": {
+      "mode": "deny"
+    },
+    "elevated": {
+      "enabled": false
+    },
+    "codeMode": {
+      "enabled": false
+    },
+    "toolSearch": false,
+    "loopDetection": {
+      "enabled": true
+    }
+  },
+  "plugins": {
+    "allow": [
+      "nemoclaw",
+      "memory-core",
+      "homecompute-broker"
+    ],
+    "slots": {
+      "memory": "memory-core"
+    },
+    "entries": {
+      "nemoclaw": {
+        "enabled": true
+      },
+      "memory-core": {
+        "enabled": true,
+        "config": {
+          "dreaming": {
+            "enabled": false
+          }
+        }
+      },
+      "homecompute-broker": {
+        "enabled": false,
+        "hooks": {
+          "allowPromptInjection": false,
+          "allowConversationAccess": false
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {}
+  },
+  "gateway": {
+    "terminal": {
+      "enabled": false
+    },
+    "cliAgents": {
+      "enabled": false
+    },
+    "nodes": {
+      "pairing": {
+        "autoApproveLocal": false,
+        "sshVerify": false
+      },
+      "commands": {
+        "deny": [
+          "system.run",
+          "system.run.prepare",
+          "system.which"
+        ]
+      }
+    },
+    "reload": {
+      "mode": "off"
+    }
+  },
+  "browser": {
+    "enabled": false
+  },
+  "hooks": {
+    "enabled": false
+  },
+  "cron": {
+    "enabled": false
+  },
+  "acp": {
+    "enabled": false,
+    "dispatch": {
+      "enabled": false
+    }
+  },
+  "discovery": {
+    "mdns": {
+      "mode": "off"
+    }
+  },
+  "commands": {
+    "config": false,
+    "restart": false,
+    "bash": false
+  },
+  "logging": {
+    "level": "warn",
+    "consoleLevel": "warn",
+    "consoleStyle": "json",
+    "audit": {
+      "enabled": true,
+      "executionIdentity": false,
+      "messages": "off"
+    }
+  },
+  "update": {
+    "checkOnStart": false,
+    "auto": {
+      "enabled": false
+    }
+  },
+  "telemetry": {
+    "enabled": false
+  },
+  "env": {
+    "shellEnv": {
+      "enabled": false
+    }
+  }
+}

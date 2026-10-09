@@ -1,0 +1,14 @@
+{
+  "id": "homecompute-broker",
+  "name": "HomeCompute task broker",
+  "description": "Scoped submit/status/cancel tools over the isolated broker API.",
+  "version": "0.1.0",
+  "activation": {"onStartup": true},
+  "contracts": {"tools": ["homecompute_task_submit", "homecompute_task_status", "homecompute_task_cancel"]},
+  "toolMetadata": {
+    "homecompute_task_submit": {"optional": true},
+    "homecompute_task_status": {"optional": true},
+    "homecompute_task_cancel": {"optional": true}
+  },
+  "configSchema": {"type": "object", "additionalProperties": false, "properties": {}}
+}

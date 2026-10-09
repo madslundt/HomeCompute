@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "mode": "observe-only",
+  "automatic_actions": false,
+  "physical_device_actions": false,
+  "systems": [
+    {
+      "id": "home-core",
+      "collector": "homecompute-status",
+      "enabled": true,
+      "target": "home-core",
+      "health_ttl_seconds": 900,
+      "update_ttl_seconds": 691200,
+      "containers": [
+        {"name": "homecompute-control-plane-caddy-1", "require_health": true},
+        {"name": "homecompute-control-plane-litellm-1", "require_health": true},
+        {"name": "homecompute-control-plane-postgres-1", "require_health": true},
+        {"name": "homecompute-automation-n8n-1", "require_health": true}
+      ],
+      "units": [
+        {"name": "homecompute-platform-health.service", "kind": "oneshot"},
+        {"name": "homecompute-model-update-monitor.service", "kind": "oneshot"},
+        {"name": "homecompute-agents-vm.service", "kind": "persistent"}
+      ],
+      "updates": ["model-update-report"]
+    },
+    {
+      "id": "home-spark",
+      "collector": "homecompute-status",
+      "enabled": true,
+      "target": "home-spark",
+      "health_ttl_seconds": 900,
+      "update_ttl_seconds": 86400,
+      "containers": [
+        {"name": "qwen38-flash-ultrafast", "require_health": false},
+        {"name": "gb10-hviske-primary", "require_health": true},
+        {"name": "homecompute-plapre-plapre-primary-1", "require_health": true}
+      ],
+      "units": [],
+      "updates": ["cached-apt-candidates"]
+    },
+    {
+      "id": "home-assistant",
+      "collector": "homeassistant-metadata",
+      "enabled": false,
+      "target": "home-assistant",
+      "health_ttl_seconds": 900,
+      "update_ttl_seconds": 86400,
+      "containers": [],
+      "units": [],
+      "updates": ["approved-update-metadata"]
+    }
+  ]
+}

@@ -1,6 +1,25 @@
 # Current-state analysis
 
-> **Model-current snapshot:** use the `Model replacement qualification` section at the end of this file for the 2026-09-29 model handoff. Earlier dated model statements document previous snapshots and are retained as history.
+## OpenClaw discovery addendum (2026-10-09)
+
+Read-only live inspection found `home-core` is the GMKtec K15 with Intel
+Core Ultra 5 125U, not the older Ryzen/M7 description. `automation-moe` now
+routes through LiteLLM and the existing SSH tunnel to Flash-Next UltraFast's
+`automation-qualification` endpoint on Spark loopback port 18300, advertising 262144
+context tokens. Small synthetic tool/result/schema probes passed. Hermes is
+running in the agents VM. After explicit approval, a separate synthetic
+`agent-openclaw` sandbox was created on NemoClaw gateway 9123 using
+`automation-moe`; Hermes retains its original route. The Codex worker and
+production monitoring/action integrations remain disabled. Managed qualification
+and remaining gates are in [OpenClaw in NemoClaw](openclaw-nemoclaw.md).
+Discovery details and evidence limits are in
+[OpenClaw discovery](openclaw-discovery.md) and
+[OpenClaw runtime validation](openclaw-runtime-validation.json).
+
+The September snapshots below remain historical records. Source model catalog
+and qualification procedures were not promoted or deployed during discovery.
+
+> **Model-current snapshot:** the 2026-10-09 addendum above is the newest live observation. `Model replacement qualification` below retains the 2026-09-29 handoff; earlier dated statements remain historical snapshots.
 
 ## Immich and photo backup status (2026-09-29)
 
