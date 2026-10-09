@@ -46,6 +46,11 @@ services:
       PGID: "0"
       TZ: Europe/Copenhagen
       INGEST_DIR: /downloads
+      # Use the host's NextDNS policy; external DoH endpoints are blocked.
+      CUSTOM_DNS: system
+      USE_DOH: "false"
+      # Catalogue searches remain usable when the download source is unavailable.
+      SEARCH_MODE: universal
     volumes:
       - /srv/state/books_importer/shelfmark_config:/config
       - /srv/state/books_importer/import:/downloads
