@@ -60,7 +60,9 @@ class CoreCommunicationTest(unittest.TestCase):
         self.assertIn('Restart=on-failure\n', units['telegram'])
         for name in ('adapter', 'task-feed'):
             self.assertIn('Restart=always\n', units[name])
-        for unit in units.values():
+        for name, unit in units.items():
+            if name == 'machine-status':
+                continue
             for field in ('User=homecompute-openclaw', 'Group=homecompute-openclaw',
                           'NoNewPrivileges=yes', 'CapabilityBoundingSet=\n',
                           'ProtectSystem=strict', 'PrivateDevices=yes', 'MemoryMax=256M',
@@ -68,8 +70,11 @@ class CoreCommunicationTest(unittest.TestCase):
                           'Environment=HOMECOMPUTE_OPENCLAW_TRANSPORT=home-core'):
                 self.assertIn(field, unit)
             self.assertNotIn('sudo ', unit)
-            self.assertNotIn('--infrastructure-registry', unit)
             self.assertNotIn('/Users/', unit)
+        self.assertIn('--infrastructure-registry ' + str(setup.DEST / 'config/system-monitoring.json'), units['adapter'])
+        self.assertIn('--core-host-mode', units['adapter'])
+        self.assertIn('Wants=network-online.target homecompute-openclaw-machine-status.service', units['adapter'])
+        self.assertIn('After=network-online.target homecompute-agents-vm.service homecompute-openclaw-machine-status.service', units['adapter'])
         update = units['update-feed']
         self.assertIn('Type=oneshot\n', update)
         self.assertNotIn('--follow', update)
@@ -80,6 +85,26 @@ class CoreCommunicationTest(unittest.TestCase):
         self.assertIn('OnBootSec=30s', setup.timer())
         self.assertIn('OnUnitActiveSec=300s', setup.timer())
         self.assertIn('Persistent=true', setup.timer())
+
+    def test_root_snapshot_is_finite_and_has_only_public_report_write_access(self):
+        unit = setup.service('machine-status')
+        for field in ('Type=oneshot', 'User=root', 'Group=root', 'TimeoutStartSec=12s',
+                      'NoNewPrivileges=yes', 'CapabilityBoundingSet=\n', 'AmbientCapabilities=\n',
+                      'ProtectSystem=strict', 'ProtectHome=yes', 'PrivateDevices=yes',
+                      'RestrictAddressFamilies=AF_UNIX', 'MemoryMax=128M', 'TasksMax=32',
+                      'ReadWritePaths=' + str(setup.REPORTS)):
+            self.assertIn(field, unit)
+        self.assertIn('openclaw-machine-snapshot.py --publish-core\n', unit)
+        self.assertNotIn('--tokens', unit)
+        self.assertNotIn('--task-transport', unit)
+        self.assertNotIn('Restart=always', unit)
+        self.assertNotIn(str(self.home), unit)
+        timer = setup.timer('machine-status')
+        self.assertIn('OnBootSec=5s', timer)
+        self.assertIn('OnUnitActiveSec=30s', timer)
+        self.assertIn('Unit=homecompute-openclaw-machine-status.service', timer)
+        self.assertIn('WantedBy=timers.target', timer)
+        self.assertIn('scripts/openclaw-machine-snapshot.py', setup.FILES)
 
     def test_receiver_activation_requires_unpaused_retained_cursor_and_no_guard(self):
         setup.validate_ready(self.uid, telegram=True)
@@ -142,9 +167,34 @@ class CoreCommunicationTest(unittest.TestCase):
         self.assertTrue((wants / 'homecompute-openclaw-task-feed.service').is_symlink())
         self.assertFalse((wants / 'homecompute-openclaw-telegram.service').exists())
         self.assertFalse((wants / 'homecompute-openclaw-update-feed.service').exists())
+        self.assertFalse((wants / 'homecompute-openclaw-machine-status.service').exists())
         self.assertTrue((setup.UNIT_DIR / 'timers.target.wants/homecompute-openclaw-update-feed.timer').is_symlink())
+        self.assertTrue((setup.UNIT_DIR / 'timers.target.wants/homecompute-openclaw-machine-status.timer').is_symlink())
         self.assertEqual(setup.TMPFILES.read_text(), f'd {setup.REPORTS} 0755 root root -\n')
         self.assertEqual(json.loads((self.state / 'telegram/telegram-cursor.json').read_text())['offset'], 37)
+
+    def test_machine_snapshot_precedes_adapter_activation_and_receiver_is_untouched(self):
+        with patch.object(setup, 'account', return_value=SimpleNamespace(pw_uid=self.uid)), \
+             patch.object(setup, 'validate_units') as validate, \
+             patch.object(setup, 'enable') as enable, patch.object(setup, 'call') as call:
+            setup.activate()
+        starts = [c.args[2] for c in call.call_args_list if c.args[:2] == ('systemctl', 'start')]
+        self.assertEqual(starts, [
+            'homecompute-openclaw-machine-status.service', 'homecompute-openclaw-adapter.service',
+            'homecompute-openclaw-task-feed.service', 'homecompute-openclaw-update-feed.service',
+            'homecompute-openclaw-machine-status.timer', 'homecompute-openclaw-update-feed.timer'])
+        self.assertNotIn('homecompute-openclaw-telegram.service', starts)
+        self.assertFalse(any(c.args[0] == 'telegram' for c in enable.call_args_list))
+        self.assertIn('machine-status.timer', validate.call_args.args[0])
+        self.assertEqual(json.loads((self.state / 'telegram/telegram-cursor.json').read_text())['offset'], 37)
+
+    def test_active_timer_prevents_code_replacement(self):
+        def active(*args, **kwargs):
+            return SimpleNamespace(stdout='active' if args[-1].endswith('machine-status.timer') else 'inactive')
+        with patch.object(setup, 'call', side_effect=active), patch.object(setup, 'write') as write:
+            with self.assertRaises(ValueError):
+                setup.install({})
+        write.assert_not_called()
 
     def test_bad_receiver_guard_cannot_enable_or_start_unit(self):
         self.private(self.state / 'telegram/telegram-admission.json', {'update_id': 37})

@@ -242,6 +242,39 @@ class TransportTests(unittest.TestCase):
         self.assertTrue(status["tasks_truncated"])
         self.assertLess(len(result["reply"]), 4000)
 
+    def test_normal_chat_receives_machine_context_once_without_changing_replay_identity(self):
+        from types import SimpleNamespace
+        reads, turns = [], []
+        def context(text):
+            reads.append(text)
+            return "Trusted machine evidence: home-spark has 163 updates. User question: " + text
+        reader = SimpleNamespace(respond=lambda *_: None, contextual_prompt=context)
+        def turn(name, text):
+            turns.append((name, text))
+            return "home-spark: 163 available updates."
+        body = {"conversation": "operator", "destination": "operator-private",
+                "request_id": "machines:normal", "text": "What is the status and pending updates on my machines?"}
+        first = communication.conversation(body, self.store, turn, NOW, reader)
+        second = communication.conversation(body, self.store, turn, NOW + 1, reader)
+        self.assertEqual(first, second)
+        self.assertEqual(reads, [body["text"]])
+        self.assertEqual(len(turns), 1)
+        self.assertIn("Trusted machine evidence", turns[0][1])
+        self.assertEqual(first["state"], "completed")
+
+    def test_context_budget_failure_is_completed_without_dispatch_or_uncertain_pause(self):
+        from types import SimpleNamespace
+        def context(_):
+            raise ValueError("context budget")
+        def forbidden(*_):
+            self.fail("unprepared context must not dispatch a native turn")
+        reader = SimpleNamespace(respond=lambda *_: None, contextual_prompt=context)
+        body = {"conversation": "operator", "destination": "operator-private",
+                "request_id": "machines:budget", "text": "status"}
+        result = communication.conversation(body, self.store, forbidden, NOW, reader)
+        self.assertEqual(result["state"], "completed")
+        self.assertIn("no model turn", result["reply"])
+
     def test_equivalent_timestamp_formats_cannot_conflict(self):
         self.observe(report())
         value = report("healthy")

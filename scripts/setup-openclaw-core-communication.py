@@ -3,8 +3,8 @@
 
 --install copies only trusted code and enables adapter/feeds for boot, without
 starting processes. Private configuration, SSH identity and retained transport
-state must be migrated separately. --activate-services starts the three trusted
-services. --activate-telegram additionally requires an unpaused retained cursor
+state must be migrated separately. --activate-services publishes machine status
+before starting the adapter/feeds and timers. --activate-telegram additionally requires an unpaused retained cursor
 and no admission guard. No cursor, token, receipt or native session is reset.
 """
 from __future__ import annotations
@@ -40,8 +40,10 @@ FILES = (
     'scripts/openclaw_infrastructure.py', 'scripts/openclaw-observation-feed.py',
     'scripts/observe-homecompute.py', 'scripts/homecompute.py',
     'scripts/maintenance_observations.py', 'config/system-monitoring.json',
+    'scripts/openclaw-machine-snapshot.py',
 )
-NAMES = ('adapter', 'telegram', 'task-feed', 'update-feed')
+NAMES = ('adapter', 'telegram', 'task-feed', 'update-feed', 'machine-status')
+TIMERS = ('machine-status', 'update-feed')
 
 
 def call(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -55,7 +57,9 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                     '--config', str(CONFIG / 'communication.json'),
                     '--tokens', str(CONFIG / 'transport-tokens.json'),
                     '--state', str(STATE / 'adapter'),
-                    '--task-transport', str(CONFIG / 'codex-task-transport.json')],
+                    '--task-transport', str(CONFIG / 'codex-task-transport.json'),
+                    '--infrastructure-registry', str(DEST / 'config/system-monitoring.json'),
+                    '--core-host-mode'],
         'telegram': [str(python), str(scripts / 'openclaw-telegram.py'), 'run',
                      '--config', str(CONFIG / 'telegram.json'),
                      '--tokens', str(CONFIG / 'telegram-tokens.json'),
@@ -69,13 +73,17 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                         '--registry', str(DEST / 'config/system-monitoring.json'),
                         '--tokens', str(CONFIG / 'transport-tokens.json'),
                         '--state', str(STATE / 'update-feed'), '--core-host-mode'],
+        'machine-status': [str(python), str(scripts / 'openclaw-machine-snapshot.py'), '--publish-core'],
     }
 
 
 def service(name: str, python: Path = PYTHON) -> str:
+    if name == 'machine-status':
+        return machine_service(python)
     command = commands(python)[name]
-    after = ('network-online.target homecompute-agents-vm.service' if name == 'adapter'
+    after = ('network-online.target homecompute-agents-vm.service ' + PREFIX + 'machine-status.service' if name == 'adapter'
              else PREFIX + 'adapter.service network-online.target')
+    wants = 'network-online.target' + (' ' + PREFIX + 'machine-status.service' if name == 'adapter' else '')
     restart = 'on-failure' if name in {'telegram', 'update-feed'} else 'always'
     kind = 'oneshot' if name == 'update-feed' else 'simple'
     pre = (f'ExecStartPre=+{python} {DEST}/scripts/openclaw-observation-feed.py --project-core-model\n'
@@ -84,7 +92,7 @@ def service(name: str, python: Path = PYTHON) -> str:
     return f'''[Unit]
 Description=HomeCompute OpenClaw {name}
 After={after}
-Wants=network-online.target
+Wants={wants}
 StartLimitIntervalSec=0
 [Service]
 Type={kind}
@@ -125,14 +133,51 @@ WantedBy=multi-user.target
 '''
 
 
-def timer() -> str:
+def machine_service(python: Path = PYTHON) -> str:
     return f'''[Unit]
-Description=HomeCompute OpenClaw update observations
+Description=HomeCompute finite public machine status projection
+After=docker.service
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory={DEST}
+Environment=PATH=/run/current-system/sw/bin
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart={' '.join(commands(python)['machine-status'])}
+TimeoutStartSec=12s
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictSUIDSGID=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths={REPORTS}
+MemoryMax=128M
+TasksMax=32
+LimitCORE=0
+StandardOutput=journal
+StandardError=journal
+'''
+
+
+def timer(name: str = 'update-feed') -> str:
+    boot, interval = ('5s', '30s') if name == 'machine-status' else ('30s', '300s')
+    return f'''[Unit]
+Description=HomeCompute OpenClaw {name} observations
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=300s
+OnBootSec={boot}
+OnUnitActiveSec={interval}
 Persistent=true
-Unit={PREFIX}update-feed.service
+Unit={PREFIX}{name}.service
 [Install]
 WantedBy=timers.target
 '''
@@ -262,8 +307,9 @@ def enable(name: str, enabled: bool, *, timer_unit: bool = False) -> None:
 
 
 def install(files: dict[str, bytes]) -> None:
-    for name in NAMES:
-        if call('systemctl', 'is-active', PREFIX + name + '.service', check=False).stdout.strip() in {
+    unit_names = [PREFIX + name + '.service' for name in NAMES] + [PREFIX + name + '.timer' for name in TIMERS]
+    for unit in unit_names:
+        if call('systemctl', 'is-active', unit, check=False).stdout.strip() in {
                 'active', 'activating', 'reloading'}:
             raise ValueError('stop existing communication units before replacing code')
     info = account(create=True)
@@ -277,34 +323,40 @@ def install(files: dict[str, bytes]) -> None:
     for name in NAMES:
         write(UNIT_DIR / (PREFIX + name + '.service'), service(name).encode())
         enable(name, name in {'adapter', 'task-feed'})
-    write(UNIT_DIR / (PREFIX + 'update-feed.timer'), timer().encode())
-    enable('update-feed', True, timer_unit=True)
+    for name in TIMERS:
+        write(UNIT_DIR / (PREFIX + name + '.timer'), timer(name).encode())
+        enable(name, True, timer_unit=True)
     protected_directory(TMPFILES.parent, 0, False)
     write(TMPFILES, f'd {REPORTS} 0755 root root -\n'.encode())
     call('systemd-tmpfiles', '--create', str(TMPFILES))
     protected_directory(REPORTS, 0, False)
     call('systemd-analyze', 'verify', *(str(UNIT_DIR / (PREFIX + name + '.service')) for name in NAMES),
-         str(UNIT_DIR / (PREFIX + 'update-feed.timer')))
+         *(str(UNIT_DIR / (PREFIX + name + '.timer')) for name in TIMERS))
     call('systemctl', 'daemon-reload')
+
+
+def validate_units(unit_names: list[str]) -> None:
+    for name in unit_names:
+        path = UNIT_DIR / (PREFIX + name)
+        if path.is_symlink() or not path.is_file() or path.stat().st_uid != 0 or path.stat().st_mode & 0o022:
+            raise ValueError('install trusted units before activation')
 
 
 def activate(telegram: bool = False) -> None:
     validate_ready(account().pw_uid, telegram)
-    selected = ('telegram',) if telegram else ('adapter', 'task-feed', 'update-feed')
+    selected = ('telegram',) if telegram else ('machine-status', 'adapter', 'task-feed', 'update-feed')
+    timers = () if telegram else TIMERS
+    validate_units([name + '.service' for name in selected] + [name + '.timer' for name in timers])
     for name in selected:
-        path = UNIT_DIR / (PREFIX + name + '.service')
-        if path.is_symlink() or not path.is_file() or path.stat().st_uid != 0 or path.stat().st_mode & 0o022:
-            raise ValueError('install trusted units before activation')
-    for name in selected:
-        if name != 'update-feed':
+        if name not in {'update-feed', 'machine-status'}:
             enable(name, True)
-    if not telegram:
-        enable('update-feed', True, timer_unit=True)
+    for name in timers:
+        enable(name, True, timer_unit=True)
     call('systemctl', 'daemon-reload')
     for name in selected:
-        call('systemctl', 'start', PREFIX + name + '.service')
-    if not telegram:
-        call('systemctl', 'start', PREFIX + 'update-feed.timer')
+        call('systemctl', 'start', PREFIX + name + '.service', check=name != 'machine-status')
+    for name in timers:
+        call('systemctl', 'start', PREFIX + name + '.timer')
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -317,7 +369,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if not any((args.install, args.activate_services, args.activate_telegram)):
-            print(json.dumps({**{name: service(name) for name in NAMES}, 'update-feed.timer': timer()}, indent=2))
+            print(json.dumps({**{name: service(name) for name in NAMES},
+                              **{name + '.timer': timer(name) for name in TIMERS}}, indent=2))
             return 0
         if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-core':
             raise ValueError('requires root on home-core')
@@ -331,7 +384,8 @@ def main(argv: list[str] | None = None) -> int:
             result = {'installed': True, 'started': [], 'telegram_enabled': False, 'source_sha256': digest}
         else:
             activate(args.activate_telegram)
-            result = {'started': ['telegram'] if args.activate_telegram else ['adapter', 'task-feed', 'update-feed']}
+            result = {'started': ['telegram'] if args.activate_telegram else
+                      ['machine-status', 'adapter', 'task-feed', 'update-feed', 'machine-status.timer', 'update-feed.timer']}
         print(json.dumps(result))
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):

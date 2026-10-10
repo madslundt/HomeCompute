@@ -207,7 +207,14 @@ def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str],
             else:
                 reply = infrastructure.respond(body["text"], turn, body["conversation"]) if infrastructure else None
                 if reply is None:
-                    reply = turn(body["conversation"], body["text"])
+                    prompt = body["text"]
+                    if infrastructure:
+                        try:
+                            prompt = infrastructure.contextual_prompt(prompt)
+                        except ValueError:
+                            reply = "Machine evidence is unavailable or the request exceeds the bounded context budget. Use /health all for a fresh read; no model turn or action ran."
+                    if reply is None:
+                        reply = turn(body["conversation"], prompt)
         if not isinstance(reply, str) or len(reply) > 4000:
             raise ValueError("invalid assistant reply")
     except Exception:
@@ -222,13 +229,17 @@ def main() -> None:
     parser.add_argument("--state", type=Path, required=True, help="private local state directory")
     parser.add_argument("--registry", type=Path, default=ROOT / "config/system-monitoring.json")
     parser.add_argument("--infrastructure-registry", type=Path, help="explicit opt-in to on-demand trusted reads; no observation schedule")
+    parser.add_argument("--core-host-mode", action="store_true", help="use the fixed server machine snapshots for infrastructure reads")
     parser.add_argument("--ha-transport", type=Path, help="private metadata-only transport; requires infrastructure registry")
     parser.add_argument("--task-transport", type=Path, help="private fixed-origin broker handoff; separate execution approval required")
     args = parser.parse_args()
     if args.ha_transport and not args.infrastructure_registry:
         parser.error("HA metadata transport requires the infrastructure registry")
+    if args.core_host_mode and not args.infrastructure_registry:
+        parser.error("core machine reads require the infrastructure registry")
     from openclaw_infrastructure import Reader
-    infrastructure = Reader(args.infrastructure_registry, ha_transport=args.ha_transport) if args.infrastructure_registry else None
+    infrastructure = Reader(args.infrastructure_registry, ha_transport=args.ha_transport,
+                            core_host_mode=args.core_host_mode) if args.infrastructure_registry else None
     os.umask(0o077)
     args.state.mkdir(mode=0o700, parents=True, exist_ok=True)
     if args.tokens.is_symlink() or args.tokens.stat().st_mode & 0o077:

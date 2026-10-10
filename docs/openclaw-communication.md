@@ -133,8 +133,8 @@ restarts it; an uncertain admission intentionally pauses until reconciliation.
 ## Activated placement and reconciliation
 
 `scripts/setup-openclaw-core-communication.py --install` stages boot-persistent
-services without starting them. `--activate-services` starts the adapter, task
-feed and update timer; `--activate-telegram` verifies the retained unpaused cursor
+services without starting them. `--activate-services` starts the status snapshot,
+adapter, feeds and timers; `--activate-telegram` verifies the retained unpaused cursor
 and absent admission guard before starting reception. Preserve state and inspect
 failures before clearing a pause; never reset native sessions or polling offsets.
 The update timer runs every five minutes using local core metadata and a fixed
@@ -231,21 +231,22 @@ analysis passed with an explicitly synthetic fixture and a safe receipt.
 
 ## Delivery behavior and ownership
 
-### Prepared on-demand infrastructure reads
+### Connected machine reads
 
-`scripts/openclaw_infrastructure.py` reuses the observation registry and collector.
-The trusted Mac adapter can opt in with `--infrastructure-registry PATH`; its
-default remains disconnected. `/systems` lists configured capabilities, `/health
-home-core` returns fresh metadata without a model call, and `/investigate
-home-spark` supplies fresh bounded evidence to the existing native conversation.
+The core adapter enables `--infrastructure-registry PATH --core-host-mode`.
+Ordinary chat receives bounded host evidence; broker tools are unnecessary for
+these reads. A root snapshot runs every 30 seconds; cached health older than 60
+seconds is unknown. Spark uses the fixed restricted snapshot command. `/systems`
+lists capabilities, `/health all` gives a direct report, and `/investigate SYSTEM`
+interprets evidence. Metrics describe the hosts; update reports retain source times.
 The finite targets are `home-core`, `home-spark`, `home-assistant`, and `all`.
 Queries never populate the proactive observation outbox. Reply delivery retains
 the existing n8n owner, selected private audience and durable request receipts.
 The operator-only projection can be checked without Telegram:
 
 ```bash
-python3 scripts/openclaw_infrastructure.py home-core
-python3 scripts/openclaw_infrastructure.py home-spark --prompt
+python3 scripts/openclaw_infrastructure.py home-core --core-host-mode
+python3 scripts/openclaw_infrastructure.py home-spark --core-host-mode --prompt
 ```
 
 The sandbox gains no SSH key, HA token, shell, Docker, n8n admin or native tool.
