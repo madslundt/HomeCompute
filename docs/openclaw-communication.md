@@ -2,19 +2,24 @@
 
 Verified 2026-10-09. The operator approved and activated a supervised connection
 to [@plantagevej_openclaw_bot](https://t.me/plantagevej_openclaw_bot). The phone
-receiver, Mac adapter/tunnel, bridge-only TLS relay and dedicated n8n delivery
+receiver, trusted adapter, bridge-only TLS relay and dedicated n8n delivery
 workflow are running. Telegram receipts verify delivery to the selected private
 chat, and the operator confirmed receipt on the phone. All 37 existing workflow
-records retained their original versions/activation. Hermes and existing core
-healthchecked services remained healthy; no Docker daemon or supervisor change
-was made. Production observation/task/action feeds remain disconnected.
+records retained their original versions/activation. This paragraph records the
+initial activation; the current host placement and update/task feeds are below.
 
-This is a supervised canary connection: keep the operator Mac awake. There is no
-boot/reconnect supervision, and the temporary firewall exception disappears on
-firewall reload/reboot. Unattended household use remains gated by the canary boot
-and backup/restore acceptance below. The supervised canary currently answers
-from conversation context with tool use temporarily denied, as explained below.
-
+On 2026-10-10, the operator requested server-only operation and automatic restart.
+Telegram reception, the adapter/outbox, task feed and update collector run as
+`homecompute-openclaw` systemd services on home-core. The Mac LaunchAgents are
+disabled. Configuration lives in `/var/lib/homecompute-openclaw/config` and
+retained cursor, receipts and sessions in `/var/lib/homecompute-openclaw/communication`.
+Directories are 0700 and files 0600. No Mac login or awake session is needed.
+Native OpenClaw remains in the 24 GiB agents VM with an 8 GiB
+limit, `Restart=always` VM supervision and its existing native watchdog.
+The dedicated host SSH key permits only fixed native chat/health commands in
+the guest and reading Spark's maintenance report. It grants no arbitrary shell
+or forwarding; the Mac operator key was not copied. n8n remains the sole sender.
+Off-host backup/restore remains a separate household rollout requirement.
 ## Use the working console
 
 On the existing operator Mac, from the HomeCompute checkout:
@@ -71,8 +76,8 @@ python3 scripts/openclaw-telegram.py store-token \
   --tokens ~/.config/homecompute/openclaw/telegram-tokens.json
 ```
 
-`scripts/openclaw-telegram.py` is the trusted receiver on the same operator Mac as
-the adapter. It uses fixed HTTPS Telegram long polling and fixed Mac loopback
+`scripts/openclaw-telegram.py` is the trusted receiver on home-core alongside
+the adapter. It uses fixed HTTPS Telegram long polling and fixed host loopback
 `http://127.0.0.1:18793/conversation`; it opens no public port. It verifies `getMe`
 against the pinned bot ID and refuses any existing webhook. It has no send,
 webhook-removal or action API. n8n continues to own outgoing messages. The old
@@ -117,22 +122,24 @@ state to retry. Read-only polling retries transient network/429/server errors
 up to five attempts with a fixed cursor and bounded backoff; authentication or
 competing-poller errors stop immediately. Adapter submissions are not retried
 automatically. Telegram retains undelivered updates for at most 24 hours, so this
-manually supervised path does not guarantee recovery after a longer outage.
+path does not guarantee recovery after a longer outage.
 [Telegram polling semantics](https://core.telegram.org/bots/api#getupdates).
 
 The receiver is boundary-tested and connected for the approved supervised test.
-Actual phone updates and Telegram delivery receipts have been verified. Mac
-sleep and the existing canary boot blocker still limit availability.
+Actual phone updates and Telegram delivery receipts have been verified. The
+receiver has systemd supervision with a durable admission guard. A normal crash
+restarts it; an uncertain admission intentionally pauses until reconciliation.
 
 ## Activated placement and reconciliation
 
-Private configuration and credentials are under
-`/Users/madslundt/.config/homecompute/openclaw/` (directory 0700, files 0600).
-Transport state, receiver cursor, PID records and private logs are under
-`/Users/madslundt/.local/state/homecompute/openclaw-communication/`. The three
-Mac processes are manually started, detached processes, not login/boot services.
-Preserve state and investigate a dead process before restarting or clearing a
-pause; do not reset native sessions or polling offsets.
+`scripts/setup-openclaw-core-communication.py --install` stages boot-persistent
+services without starting them. `--activate-services` starts the adapter, task
+feed and update timer; `--activate-telegram` verifies the retained unpaused cursor
+and absent admission guard before starting reception. Preserve state and inspect
+failures before clearing a pause; never reset native sessions or polling offsets.
+The update timer runs every five minutes using local core metadata and a fixed
+read-only Spark report fetch. A privileged pre-step projects only the finite model
+summary from its existing private source; the adapter remains unprivileged.
 
 The core relay sources and seven-day certificate/key are under
 `/srv/state/openclaw-communication/`. The certificate chains to the existing
@@ -152,12 +159,8 @@ online SQLite backup, original workflow metadata, import/publish diagnostics and
 the exact temporary firewall rule are private under
 `/srv/backups/openclaw-communication-activation/`.
 
-One native phone turn completed with two successful `memory_search` calls, but
-OpenClaw marked them `replaySafe:false`. The console correctly paused instead of
-retrying. Operator reconciliation verified native success/stop, no write,
-messaging or cron effects, and empty pending-input/delivery queues. The existing
-final answer was recovered once into its original outbox request; the model turn
-was not rerun. Its private provenance receipt is retained beside transport state.
+A prior non-replayable `memory_search` receipt was reconciled without a model
+retry; its final answer and provenance remain in transport state.
 
 For this supervised canary, the original native deny list was preserved and
 `session_status`, `memory_search`, `memory_get` and `write` were additionally denied.
@@ -172,14 +175,13 @@ after stopping this supervised connection and reviewing the native replay issue.
 ## Trusted communication adapter
 
 `scripts/openclaw-communication.py` is a stdlib, loopback-only service on 18793.
-It runs outside the assistant and reuses the console transport. Its current
-qualified SSH placement is the operator Mac. Running unattended on home-core
-would require a separately reviewed operator identity and transport qualification;
-the Mac key must not be copied into a sandbox or silently reused on another host.
+It runs outside the assistant on home-core and reuses the console transport.
+`HOMECOMPUTE_OPENCLAW_TRANSPORT=home-core` selects direct, pinned guest SSH using
+its dedicated host identity and the root-owned restricted command helper.
 
 Prepare a private directory and a copy of
 `config/openclaw-communication.example.json` after selecting the destination.
-The placeholder intentionally fails validation. `destination` is one fixed
+The placeholder fails validation. `destination` is one fixed
 logical audience, `conversations` is a finite principal list, and `projects` and
 `actions` default to empty. Action entries map a reviewed finite action ID to its
 exact target. Empty allowlists deny task/action notification admission.
@@ -287,8 +289,7 @@ neither a successful read nor chat text supplies execution approval. This adds
 no automatic monitoring, boot supervision or repair authority. Rollback removes
 the adapter's two opt-in arguments and unpublishes only the new HA workflow,
 revoking its dedicated reader credential. Preserve existing workflow state,
-native sessions and outbox receipts. The Mac-awake, reboot and backup gates remain.
-
+native sessions and outbox receipts. Off-host backup qualification remains separate.
 Existing n8n retains Telegram sending and workflow execution ownership. The
 small private SQLite transport outbox owns admission/replay receipts and pending
 transport envelopes; it is not another personal-memory or task ledger. Native
@@ -304,6 +305,16 @@ changed pending evidence is coalesced. An undelivered incident that recovers
 stays quiet. A recurrence supersedes a deferred old recovery. Recovery delivery
 requires a current fresh healthy observation. Equal-time conflicting snapshots
 are rejected and older snapshots cannot move state backward.
+
+Eligible monitoring checks are combined into one readable summary per machine
+when the delivery owner claims them. Package/image updates, coverage gaps,
+reboot requirements and individual recoveries share one approval reminder.
+Each member keeps its original topic, episode, freshness and cooldown. One
+durable shared claim binds the members; one verified Telegram receipt
+acknowledges exactly that set, including after process loss. Later arrivals
+remain pending. Conversation replies and task/action messages retain their
+existing delivery behavior. Summaries fit the 4,000-character transport budget;
+any excess checks remain pending for a subsequent summary.
 
 Model requests have durable request IDs. Completed responses and their pending
 reply envelopes commit together. There is one in-flight model turn and one
@@ -336,7 +347,7 @@ needs an operator-owned backup/retention procedure before household use.
    n8n's source address **172.28.201.2**; the listener admits that source only,
    and only the finite POST routes. The Caddy relay is a separate trusted
    container with host networking, dropped capabilities, a read-only filesystem,
-   0.25 CPU/128 MiB, and no restart policy. It mounts only its dedicated cert/key
+   0.25 CPU/128 MiB, and `restart=always`. It mounts only its dedicated cert/key
    and has no model/broker/admin secrets. Its optional Compose profile is off.
    The pinned Caddy binary's unused low-port file capability prevents execution
    under an empty capability bounding set; startup copies it into private tmpfs
@@ -378,10 +389,10 @@ needs an operator-owned backup/retention procedure before household use.
    Then review and enable the one prepared n8n-owned 10-second delivery schedule
    for this supervised phone qualification. It is disabled by default; collection
    scheduling remains separate. Neither template opens a public webhook.
-6. Production observation schedules and household conversation remain gated by
-   supported boot supervision/reboot acceptance and off-host backup/restore.
-   The pinned external-onboarding Docker storage blocker is unresolved, both
-   attempted units stay disabled, and Hermes stays independent. The canary model
+6. Production observation schedules and wider household rollout still require
+   off-host backup/restore qualification. Supported native supervision and reboot
+   recovery were accepted on 2026-10-10. The failed external-owner path remains
+   retired with its two units disabled, and Hermes stays independent. The canary model
    key expires 2026-10-16 at 16:15:04 UTC (18:15:04 Copenhagen); renewal is an
    operator action outside the assistant.
 
@@ -391,7 +402,7 @@ recreate only n8n with its original two Compose files and
 `/etc/homecompute/automation-tunnel.env` to restore the prior hostname mappings.
 The original files are under
 `/srv/homecompute/releases/automation-tunnel-20260926/deploy/automation/`.
-Stop the Mac receiver/adapter/tunnel and the separate communication relay, remove
+Stop the home-core receiver/adapter/feeds and the separate communication relay, remove
 only the exact temporary INPUT rule recorded in the private backup, and revoke
 only the new communication credentials/bot as appropriate. Restore the original
 native deny list from the private operator backup after stopping communication.
@@ -402,20 +413,8 @@ Preserve the private polling cursor, outbox and native sessions; reconcile
 `sending`/`uncertain` receipts. The rollback does not change Hermes gateway 8080,
 shared Docker, the shared Telegram credential or household workflow state.
 
-The fixed tunnel command on the adapter workstation is:
-
-```bash
-ssh -N -o BatchMode=yes -o StrictHostKeyChecking=yes -o ExitOnForwardFailure=yes \
-  -o ServerAliveInterval=20 -o ServerAliveCountMax=3 \
-  -R 127.0.0.1:18793:127.0.0.1:18793 home-core
-```
-
-The relay profile can then be started with reviewed `COMMUNICATION_TLS_CERT` and
-`COMMUNICATION_TLS_KEY` paths, without pulling or changing Docker's daemon.
-Stopping that profile and tunnel is sufficient to remove its private listener;
-restore n8n's prior hostname mappings with the original Compose files if needed.
-This proposal remains manually supervised and synthetic-only: operator Mac sleep,
-SSH loss and the existing canary boot blocker are explicit availability limits.
+The relay reaches host loopback 18793 directly; both Mac tunnels are disabled.
+The private TLS relay, restricted n8n listener, credentials and destination are unchanged.
 
 ## Evidence
 
@@ -467,7 +466,7 @@ tokens on the trusted operator side, never in OpenClaw. Copy
 `config/openclaw-task-transport.example.json` into the operator's private config
 directory, substitute absolute private paths and set mode0600. Its role-token
 file has exactly `assistant` and `snapshot`; its fixed broker origin is loopback
-18792, reached through an approved operator SSH tunnel if the broker is on core.
+18792, reached directly on home-core without a workstation tunnel.
 Validate communication `projects` against the authoritative broker policy, then
 add `--task-transport PRIVATE_CONFIG` to the existing adapter command, preserving
 all infrastructure options. This task transport is active for `homecompute`.

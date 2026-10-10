@@ -59,7 +59,7 @@ def install(directory: Path, image: str):
     docker('start', EGRESS)
     docker('volume', 'create', PROFILE)
     docker('create', '--name', BROWSER, *common, '--network', BROWSER,
-        '--cpus', '1', '--memory', '1g', '--memory-swap', '1g', '--pids-limit', '256',
+        '--cpus', '1', '--memory', '4g', '--memory-swap', '4g', '--pids-limit', '256',
         '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=1777',
         '--mount', 'type=bind,src=' + str(token) + ',dst=/run/browser-token,readonly',
         '--mount', 'type=volume,src=' + PROFILE + ',dst=/home/browser/profile',

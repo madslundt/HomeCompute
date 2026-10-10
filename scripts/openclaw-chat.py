@@ -29,11 +29,24 @@ class ChatError(Exception):
 
 
 def ssh_command(arguments: list[str]) -> list[str]:
-    return ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+    transport = os.environ.get("HOMECOMPUTE_OPENCLAW_TRANSPORT", "mac")
+    options = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
             "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=10", "-o", "ConnectionAttempts=1",
-            "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=2",
-            "-J", "home-core", "-i", str(Path.home() / ".ssh/id_ed25519_ai-services-01"),
-            "hermes-operator@10.77.20.2", shlex.join(PREFIX + arguments)]
+            "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=2"]
+    if transport == "home-core":
+        root = "/var/lib/homecompute-openclaw/.ssh/"
+        command = ["/run/current-system/sw/bin/ssh", "-F", "/dev/null", *options,
+                   "-o", "UserKnownHostsFile=" + root + "known_hosts",
+                   "-o", "GlobalKnownHostsFile=/dev/null", "-o", "ProxyCommand=none",
+                   "-o", "IdentityAgent=none", "-o", "ForwardAgent=no",
+                   "-o", "ClearAllForwardings=yes", "-T",
+                   "-i", root + "id_ed25519"]
+    elif transport == "mac":
+        command = ["ssh", *options, "-J", "home-core", "-i",
+                   str(Path.home() / ".ssh/id_ed25519_ai-services-01")]
+    else:
+        raise ChatError("Unknown OpenClaw transport; no remote command was sent.")
+    return [*command, "hermes-operator@10.77.20.2", shlex.join(PREFIX + arguments)]
 
 
 def run_native(arguments: list[str], runner: Callable[..., Any] = subprocess.run, *,

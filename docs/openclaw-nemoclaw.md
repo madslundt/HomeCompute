@@ -9,11 +9,69 @@ policy; it does not replace the broker's approval authority.
 The operator approved a **synthetic-only live canary** on 2026-10-09.
 The canary was created on the separate gateway 9123; its scoped
 `automation-moe` inference smoke passed. The attempted external supervisor was
-rolled back; both new systemd units are disabled. The active owner is the
+rolled back; its two external-owner systemd units are disabled. The active owner is the
 supported NemoClaw-managed detached lifecycle. Hermes remains on gateway 8080 with
 its unchanged `assistant-canary` route. Broker tools remain denied and
 no household data or publishing credentials are enabled. The
 [standalone evidence](openclaw-runtime-validation.json) is separate evidence.
+
+On 2026-10-10, the operator approved recovery and automatic restart. The agents
+VM now has 24 GiB; OpenClaw and Hermes each have an 8 GiB hard memory limit,
+and Chromium has 4 GiB. These containers have no additional swap allowance.
+The restored OpenClaw workspace and conversation database retain the existing
+tool restrictions and the replacement's newly issued native authentication.
+`homecompute-openclaw-supervisor.service` supervises the supported native CLI
+with an exact sandbox UUID and lifecycle-generation fence. It retains the
+NemoClaw-managed gateway owner; the failed external-owner units stay disabled.
+Graceful stops recover through native `start`. The pinned runtime turns a main
+process crash into terminal `Error`; its supervisor captures and verifies a
+complete private backup before supported native replacement. It restores the
+workspace, canonical conversation database and disabled broker, retaining fresh
+native authentication and the 8 GiB limit. Recovery checks offline file hashes
+and then stable conversation IDs and transcript hashes after startup. A failed
+transaction blocks further automatic replacement for operator reconciliation;
+successful replacements are limited to one per hour. No agent turn is replayed.
+Fresh local CLI pairing is qualified through a read-only native admin RPC. Only
+the initiating pending request may be approved, and its local identity must
+match the native identity store and an already paired CLI device. Other pending
+devices and scopes are refused. During recovery only `session_status` is
+callable; memory, writes and external tools remain denied.
+The system shutdown hook stops the watchdog and then records native `Stopped`
+before Docker, the user manager, SSH and login sessions are torn down. On boot,
+the watchdog uses the supported native credential-provider query to recover the
+named managed host gateway, then starts an exact retained Stopped sandbox.
+This path avoids creating an onboarding inference-route reservation. Readiness
+prefers the dashboard's `/readyz`; when its optional host forward is absent, an
+authenticated read-only native admin RPC proves the canonical CLI is ready.
+The managed host gateway runs in the watchdog user-service cgroup; ordinary
+watchdog restarts preserve it.
+
+The second reboot qualification retained an incomplete native onboarding route
+reservation. Canonical CLI model turns and Telegram replies were verified with
+that marker present; the optional dashboard forward is absent. Native
+`connect`/`recover` and administrative rebuild finalization refuse the marker.
+Native stop/start still change the exact sandbox phase, so supervision accepts
+positive `Stopped`/authenticated `Ready` even when optional CLI finalization
+returns nonzero. The pinned native destroy cleanup authority was qualified
+read-only against this exact pending entry; its supported cleanup removes the
+owning registry row before future Error replacement onboarding. The supervisor
+preserves the reservation and never fabricates native checkpoint ownership.
+
+The 2026-10-10 boot qualification exposed an unfinished native onboarding
+checkpoint and inference-route reservation after a stopped-sandbox onboarding
+attempt. They remain intact; no ownership markers or native phases were edited.
+Canonical chat and Telegram work, but optional dashboard forwarding and native
+connect/recover finalization remain limited by that checkpoint. Boot recovery
+now uses the supported credentials query rather than onboarding. Exact observed
+native `Stopped`/`Ready` plus authenticated readiness take precedence over a
+nonzero CLI exit caused solely by finalization. The scoped native destroy path
+removes the owning registry row before a future verified-backup replacement.
+
+The VM allocation is also saved in `hosts/home-core/default.nix`. Its narrow
+live change uses `/etc/homecompute/agents-vm-start-24g` and the persistent
+`/etc/systemd/system.control/homecompute-agents-vm.service.d/90-openclaw-memory.conf`
+override. After deploying the matching NixOS configuration, remove that live
+override so subsequent VM unit changes come from NixOS.
 
 ## Verified tuple and artifacts
 
@@ -78,7 +136,7 @@ they remain disabled after the qualification attempt described below.
 - `config/openclaw-nemoclaw.env.example`: secret-free supported onboarding
   inputs, distinct ports, native immutable image selection, Restricted policy,
   `skip` optional presets, direct tools, no GPU/search/channels, one CPU and
-  2 GiB RAM. A fresh pinned CLI run rejects a blank custom preset list;
+  8 GiB RAM. A fresh pinned CLI run rejects a blank custom preset list;
   narrow the live base network policy separately to `managed_inference` only.
 - `config/openclaw-nemoclaw-agents.json`: JSON accepted as a YAML `--agents`
   manifest. It restricts the primary agent **at image generation**, before any

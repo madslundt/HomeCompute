@@ -119,13 +119,29 @@ def envelope(update: Any, cfg: dict[str, Any]) -> dict[str, Any] | None:
             "request_id": f"telegram:{cfg['bot_id']}:{update['update_id']}", "text": text}
 
 
+def sync_directory(directory: Path) -> None:
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def reconnect_safe(error: Exception) -> bool:
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code == 429 or 500 <= error.code <= 599
+    return isinstance(error, (urllib.error.URLError, TimeoutError, ConnectionError))
+
+
 class Cursor:
-    def __init__(self, directory: Path, cfg: dict[str, Any]):
+    def __init__(self, directory: Path, cfg: dict[str, Any], supervised: bool = False):
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         mode = directory.lstat()
         if not stat.S_ISDIR(mode.st_mode) or mode.st_uid != os.getuid() or mode.st_mode & 0o077:
             raise ValueError("cursor directory must be private and operator-owned")
         self.path, self.identity = directory / "telegram-cursor.json", cfg
+        self.admission = directory / "telegram-admission.json"
+        self.supervised = supervised
         self.lock = private_open(directory / "telegram.lock", "a", True)
         try:
             fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -140,9 +156,29 @@ class Cursor:
                 self.offset, self.paused = value["offset"], value["paused"]
             if self.paused:
                 raise ValueError("reconcile the adapter turn before resuming the paused cursor")
+            if supervised and self.admission.exists():
+                with private_open(self.admission, "r") as handle:
+                    pending = json.load(handle)
+                if (set(pending) != {"update_id"} or type(pending["update_id"]) is not int
+                        or not 0 <= pending["update_id"] < 2**53
+                        or self.offset <= pending["update_id"]):
+                    raise ValueError("reconcile the interrupted adapter admission before restart")
+                self.admission.unlink()
+                sync_directory(directory)
         except Exception:
             self.lock.close()
             raise
+
+    def begin_admission(self, update_id: int) -> None:
+        if not self.supervised:
+            return
+        descriptor = os.open(self.admission, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                             | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        with os.fdopen(descriptor, "w") as handle:
+            json.dump({"update_id": update_id}, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        sync_directory(self.path.parent)
 
     def advance(self, update_id: int, paused: bool = False) -> None:
         value = {"identity": self.identity, "offset": update_id + 1, "paused": paused}
@@ -152,12 +188,11 @@ class Cursor:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, self.path)
-        descriptor = os.open(self.path.parent, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+        sync_directory(self.path.parent)
         self.offset, self.paused = value["offset"], paused
+        if self.supervised and not paused and self.admission.exists():
+            self.admission.unlink()
+            sync_directory(self.path.parent)
 
 
 def poll(call: Callable[[str, dict[str, Any]], Any], body: dict[str, Any],
@@ -187,6 +222,7 @@ def receive_once(cursor: Cursor, cfg: dict[str, Any], call: Callable[[str, dict[
             raise ValueError("Telegram returned an older update")
         paused = False
         if body is not None:
+            cursor.begin_admission(update["update_id"])
             receipt = submit(body)
             if not isinstance(receipt, dict) or receipt.get("state") not in {"completed", "running", "uncertain"}:
                 raise ValueError("unconfirmed adapter admission; preserve cursor")
@@ -202,6 +238,8 @@ def main() -> None:
     parser.add_argument("--tokens", type=Path, required=True)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--state", type=Path)
+    parser.add_argument("--supervised", action="store_true",
+                        help="allow safe reconnects; durably stop interrupted admissions for reconciliation")
     args = parser.parse_args()
     os.umask(0o077)
     try:
@@ -242,14 +280,19 @@ def main() -> None:
             print(json.dumps({"bot_id": str(me["id"]), "username": me.get("username"),
                               "start_candidates": [{"chat_id": c, "user_id": u} for c, u in sorted(candidates)]}))
             return
-        cursor = Cursor(args.state, cfg)
+        cursor = Cursor(args.state, cfg, args.supervised)
         submit = lambda body: post("http://127.0.0.1:18793/conversation", body, tokens["conversation_token"], 75)
         while True:
             receive_once(cursor, cfg, call, submit)
-    except Exception:
+    except Exception as error:
         # urllib exceptions contain the secret-bearing URL; never print exceptions or traces.
         print("Telegram receiver stopped safely. Check private configuration, bot ingress ownership and adapter/cursor reconciliation.", file=sys.stderr)
-        raise SystemExit(1) from None
+        # launchd restarts nonzero exits. An admission may have reached the model;
+        # leave its durable guard and stop automatic retries even after SIGKILL.
+        admission = args.state / "telegram-admission.json" if args.state else None
+        restart = (args.supervised and reconnect_safe(error)
+                   and admission is not None and not admission.exists())
+        raise SystemExit(1 if not args.supervised or restart else 0) from None
 
 
 if __name__ == "__main__":

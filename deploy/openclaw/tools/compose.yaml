@@ -19,8 +19,8 @@ services:
       - browser-profile:/home/browser/profile
     tmpfs: [/tmp:rw,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=1777]
     cpus: 1.0
-    mem_limit: 1g
-    memswap_limit: 1g
+    mem_limit: 4g
+    memswap_limit: 4g
     pids_limit: 256
     logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
     networks:

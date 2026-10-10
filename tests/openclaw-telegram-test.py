@@ -96,6 +96,61 @@ class TelegramTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             receiver.Cursor(self.path / "state", CFG)
 
+    def test_supervised_lost_receipt_blocks_automatic_readmission(self):
+        self.cursor.lock.close()
+        self.cursor = receiver.Cursor(self.path / "state", CFG, supervised=True)
+        def lost(_):
+            raise TimeoutError("synthetic response loss")
+        with self.assertRaises(TimeoutError):
+            receiver.receive_once(self.cursor, CFG, lambda *_: [update()], lost)
+        self.assertEqual(self.cursor.offset, 0)
+        self.assertTrue(self.cursor.admission.exists())
+        self.assertEqual(self.cursor.admission.stat().st_mode & 0o777, 0o600)
+        self.cursor.lock.close()
+        with self.assertRaises(ValueError):
+            receiver.Cursor(self.path / "state", CFG, supervised=True)
+
+    def test_supervised_completed_admission_clears_guard_after_cursor_commit(self):
+        self.cursor.lock.close()
+        self.cursor = receiver.Cursor(self.path / "state", CFG, supervised=True)
+        receiver.receive_once(self.cursor, CFG, lambda *_: [update()], lambda _: {"state": "completed"})
+        self.assertEqual(self.cursor.offset, 43)
+        self.assertFalse(self.cursor.admission.exists())
+        # A crash between cursor commit and guard unlink is also safe to recover.
+        self.cursor.admission.write_text(json.dumps({"update_id": 42}))
+        os.chmod(self.cursor.admission, 0o600)
+        self.cursor.lock.close()
+        self.cursor = receiver.Cursor(self.path / "state", CFG, supervised=True)
+        self.assertFalse(self.cursor.admission.exists())
+        self.assertEqual(self.cursor.offset, 43)
+
+    def test_supervised_reconnects_only_read_only_transient_errors(self):
+        for error in (TimeoutError(), urllib.error.URLError("offline"), ConnectionError()):
+            self.assertTrue(receiver.reconnect_safe(error))
+        for code in (401, 403, 409, 429, 503):
+            error = urllib.error.HTTPError("synthetic", code, "synthetic", {}, None)
+            self.assertEqual(receiver.reconnect_safe(error), code in (429, 503))
+            error.close()
+        self.assertFalse(receiver.reconnect_safe(ValueError("pinned identity changed")))
+
+    def test_supervised_exit_code_restarts_poll_failure_but_stops_lost_admission(self):
+        directory = self.path / "supervised"
+        directory.mkdir(mode=0o700)
+        for interrupted in (False, True):
+            if interrupted:
+                (directory / "telegram-admission.json").write_text('{"update_id": 42}')
+            argv = ["receiver", "run", "--tokens", "unused", "--config", "unused",
+                    "--state", str(directory), "--supervised"]
+            with patch.object(sys, "argv", argv), \
+                 patch.object(receiver, "load_tokens", return_value={"bot_token": "synthetic", "conversation_token": "synthetic"}), \
+                 patch.object(receiver, "load_config", return_value=CFG), \
+                 patch.object(receiver, "qualify", return_value={"id": 9876}), \
+                 patch.object(receiver, "Cursor", return_value=self.cursor), \
+                 patch.object(receiver, "receive_once", side_effect=TimeoutError()), \
+                 patch.object(sys, "stderr", io.StringIO()), self.assertRaises(SystemExit) as caught:
+                receiver.main()
+            self.assertEqual(caught.exception.code, 0 if interrupted else 1)
+
     def test_bad_receipt_and_old_update_do_not_move_cursor(self):
         with self.assertRaises(ValueError):
             receiver.receive_once(self.cursor, CFG, lambda *_: [update()], lambda _: {"ok": True})

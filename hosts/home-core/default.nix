@@ -44,6 +44,26 @@
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 18789 ];
   networking.firewall.interfaces."br-hc-ctrl".allowedTCPPorts = [ 18790 ];
 
+  # The dedicated Telegram delivery relay accepts only the existing n8n
+  # container on its private bridge. Restore this exact rule at boot/reload.
+  networking.firewall.extraCommands = lib.mkAfter ''
+    iptables -w -C INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
+      -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
+      -m comment --comment hc-openclaw-communication-supervised -j ACCEPT 2>/dev/null || \
+      iptables -w -I INPUT 1 -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
+        -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
+        -m comment --comment hc-openclaw-communication-supervised -j ACCEPT
+  '';
+  networking.firewall.extraStopCommands = lib.mkAfter ''
+    while iptables -w -C INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
+      -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
+      -m comment --comment hc-openclaw-communication-supervised -j ACCEPT 2>/dev/null; do
+      iptables -w -D INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
+        -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
+        -m comment --comment hc-openclaw-communication-supervised -j ACCEPT
+    done
+  '';
+
   # Publish the authenticated Hermes dashboard only on the home LAN and
   # Tailscale addresses. The dashboard itself remains inside the agents VM.
   systemd.services.homecompute-hermes-dashboard-proxy-lan = {
@@ -170,6 +190,9 @@
   homecompute.agentsVm = {
     enable = true;
     dataClassification = "synthetic-only";
+    # Budget 8 GiB each for OpenClaw and Hermes, 4 GiB for Chromium,
+    # and the remaining guest memory for services and browser proxies.
+    resources.memoryMiB = 24576;
     sshAuthorizedKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILT+ES2e5sbGFzBMLOWKZMawBm/kyadBthAldjAmK8Uc mads@home-core-admin"
     ];

@@ -321,6 +321,28 @@ class TransportTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); thread.join()
 
+    def test_http_machine_claim_and_ack_deliver_every_member(self):
+        allowed = dict(ALLOWED, **{"home-core:container.caddy": {"category": "health", "ttl": 900}})
+        server = communication.serve(self.store, TOKENS, allowed, lambda *_: "unused", ("127.0.0.1", 0), lambda: NOW)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        def post(path, role, body):
+            request = urllib.request.Request(f"http://127.0.0.1:{server.server_port}{path}", data=json.dumps(body).encode(),
+                headers={"Authorization": "Bearer " + TOKENS[role], "Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=3) as response: return json.load(response)
+        try:
+            data = report()
+            data["observations"].append(dict(data["observations"][0], check_id="container.caddy", stable_key="home-core:container.caddy"))
+            post("/observations", "collector", data)
+            event = post("/claim", "delivery", {})["event"]
+            self.assertIn("Container n8n", event["text"])
+            self.assertIn("Container caddy", event["text"])
+            self.assertEqual(set(event), {"delivery_key", "claim", "destination", "kind", "text"})
+            post("/ack", "delivery", {"delivery_key": event["delivery_key"], "claim": event["claim"], "receipt": "synthetic:machine"})
+            self.assertIsNone(post("/claim", "delivery", {})["event"])
+            self.assertEqual(self.store.status(NOW)["outbox"], {"delivered": 2})
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+
     def test_phone_welcome_is_deterministic_and_queued_without_model(self):
         def forbidden(*_):
             self.fail("welcome must not call the model")

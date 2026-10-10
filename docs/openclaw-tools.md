@@ -2,15 +2,21 @@
 
 The headless browser is installed on the agents guest. A bounded CLI helper and
 the bundled `browser-automation` skill are also installed in the OpenClaw
-workspace. Activation is **unfinished**: a native skill-management command
-exceeded the sandbox's existing 2 GiB memory limit, and OpenShell 0.0.116 left
-`agent-openclaw` in `Error`. The live tool allowlist, disabled browser and denied
-exec configuration were still unchanged in the saved configuration.
+workspace. Tool activation is **unfinished**: a native skill-management command
+exceeded the former 2 GiB limit and left OpenShell 0.0.116 in `Error`.
+The operator approved replacement and recovery on 2026-10-10. The native runtime
+has been restored with an 8 GiB hard limit in the 24 GiB agents VM, preserving
+workspace and conversation state and newly issued native authentication.
+The disabled browser and denied exec configuration are retained until native
+tool receipt qualification is completed. Only the built-in read-only
+`session_status` tool is callable during recovery. Denying every member of an
+explicit allowlist makes the native runtime reject turns before inference;
+memory, write and external tools remain denied.
 
-Phone receiver and communication adapter are paused with their cursors and
-receipts retained. A private copy of OpenClaw state and an online, consistent
-SQLite gateway backup passed `integrity_check`. Replacement and restoration of
-the failed sandbox require operator approval. Hermes remains on gateway 8080.
+Private OpenClaw state and consistent SQLite gateway backups are retained.
+The communication adapter is supervised on home-core; the Telegram receiver's
+cursor and admission safeguards survive process restarts. Hermes remains on
+gateway 8080 with an 8 GiB limit.
 
 ## Installed components
 
@@ -38,8 +44,15 @@ repositories. Rebuilding that Dockerfile can produce newer package versions;
 record and qualify the resulting image before deploying it.
 
 The browser container runs as UID 10001 with a read-only root, dropped
-capabilities, no new privileges, a dedicated profile volume, one CPU and 1 GiB
-RAM. Chromium uses `--no-sandbox`; container and network restrictions provide
+capabilities, no new privileges, a dedicated profile volume, one CPU and 4 GiB
+RAM, with no additional swap allowance. The approved guest allocation is 24 GiB,
+with 8 GiB limits for each of OpenClaw and Hermes. The browser's separate egress
+proxy and ingress relay retain their 128 MiB and 64 MiB limits. Browser containers
+use `unless-stopped` restart policies, and Docker preserves an updated memory
+limit across their restarts. Compose and the standalone installer both specify
+the same 4 GiB browser limit for future recreation.
+
+Chromium uses `--no-sandbox`; container and network restrictions provide
 the isolation here. Its only external path is the separate proxy. The proxy
 denies private, loopback, link-local, metadata and reserved destination ranges.
 The browser has no OpenClaw/model credentials or host workspace mounts.

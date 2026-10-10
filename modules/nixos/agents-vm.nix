@@ -438,7 +438,7 @@ in
       script = ''
         if docker inspect --format '{{.State.Running}}' \
           homecompute-control-plane-automation-backup-1 2>/dev/null | grep -qx true; then
-          echo "automation-backup is running; refusing to start the 16 GiB agents VM" >&2
+          echo "automation-backup is running; refusing to start the ${toString cfg.resources.memoryMiB} MiB agents VM" >&2
           exit 1
         fi
       '';
@@ -515,7 +515,9 @@ in
         User = "homecompute-agents-vm";
         Group = "homecompute-agents-vm";
         SupplementaryGroups = [ "kvm" ];
-        Restart = "on-failure";
+        # A guest shutdown or reboot can make QEMU exit successfully. Explicit
+        # operator stops (including backups) still suppress automatic restart.
+        Restart = "always";
         RestartSec = "10s";
         TimeoutStopSec = "2m";
         # Only used after the bounded ACPI/QMP shutdown wait above expires.

@@ -1,0 +1,24 @@
+[Unit]
+Description=Supervise the native NemoClaw OpenClaw runtime on gateway 9123
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=1800
+StartLimitBurst=3
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/homecompute-openclaw/agent-openclaw.env
+EnvironmentFile=/etc/homecompute-openclaw/supervisor-identity.env
+Environment=PATH=/home/hermes-operator/.local/bin:/home/hermes-operator/.nvm/versions/node/v22.23.3/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /etc/homecompute-openclaw/supervise-openclaw-nemoclaw.py
+Restart=always
+RestartSec=60
+# The supported CLI owns detached gateway/forward processes. Stopping this
+# health supervisor must preserve them; never adopt a second gateway owner.
+KillMode=process
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

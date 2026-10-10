@@ -54,6 +54,7 @@ def task_projection(task: dict[str, Any]) -> dict[str, Any]:
         row["pr_url"] = link
     return row
 from maintenance_observations import semantic_evidence
+from openclaw_machine_notifications import machine, render
 EVIDENCE = {"count", "candidate_count", "security_count", "update_scope", "available", "failed", "state", "reason", "source_digest",
             "source_report_generated_at", "installed_version"}
 
@@ -282,8 +283,24 @@ class Outbox:
                              {"task": task, "text": f"HomeCompute task {tid} ({task['project']}): {advice} Chat replies do not approve actions."}, now)
                 self.db.execute("INSERT OR REPLACE INTO baseline VALUES(?,?)", (key, canonical(task)))
 
+    def eligible(self, row: sqlite3.Row, now: float) -> bool:
+        if row["kind"] != "reply" and quiet(now, self.settings):
+            return False
+        body = json.loads(row["body"])
+        if row["kind"] == "recovery":
+            current = self.db.execute("SELECT body FROM baseline WHERE key=?", (row["topic"],)).fetchone()
+            current = json.loads(current[0]) if current else {}
+            if current.get("status") != "healthy" or instant(current["expires_at"]) <= now:
+                return False
+        if row["kind"] == "incident":
+            if instant(body["observation"]["expires_at"]) <= now:
+                return False
+            last = self.db.execute("SELECT max(created) FROM events WHERE topic=? AND state='delivered'", (row["topic"],)).fetchone()[0]
+            if last is not None and now - last < self.settings["cooldown_seconds"]:
+                return False
+        return True
+
     def claim(self, now: float) -> dict[str, Any] | None:
-        import uuid
         with self.lock, self.db:
             # An expired sending lease requires reconciliation, never automatic resend.
             self.db.execute("UPDATE events SET state='uncertain' WHERE state='sending' AND created<?", (now - 300,))
@@ -291,24 +308,32 @@ class Outbox:
                 return None
             candidates = self.db.execute("SELECT * FROM events WHERE state='pending' ORDER BY CASE WHEN kind='reply' THEN 0 ELSE 1 END,seq").fetchall()
             for row in candidates:
-                if row["kind"] != "reply" and quiet(now, self.settings):
+                if not self.eligible(row, now):
                     continue
                 body = json.loads(row["body"])
-                if row["kind"] == "recovery":
-                    current = self.db.execute("SELECT body FROM baseline WHERE key=?", (row["topic"],)).fetchone()
-                    current = json.loads(current[0]) if current else {}
-                    if current.get("status") != "healthy" or instant(current["expires_at"]) <= now:
-                        continue
-                if row["kind"] == "incident":
-                    if instant(body["observation"]["expires_at"]) <= now:
-                        continue  # Keep pending until fresh matching observation arrives.
-                    last = self.db.execute("SELECT max(created) FROM events WHERE topic=? AND state='delivered'", (row["topic"],)).fetchone()[0]
-                    if last is not None and now - last < self.settings["cooldown_seconds"]:
-                        continue
+                selected, text = [row], body["text"]
+                system = machine(body) if row["kind"] in {"incident", "recovery"} else None
+                if system is not None:
+                    members = [(row["kind"], body)]
+                    text = render(system, members)
+                    for other in candidates:
+                        if other["key"] == row["key"] or other["kind"] not in {"incident", "recovery"}:
+                            continue
+                        member = json.loads(other["body"])
+                        if machine(member) != system or not self.eligible(other, now):
+                            continue
+                        candidate = render(system, members + [(other["kind"], member)])
+                        if len(candidate) <= 4000:
+                            selected.append(other)
+                            members.append((other["kind"], member))
+                            text = candidate
+                if len(text) > 4000:
+                    raise ValueError("notification exceeds delivery text budget")
                 claim = uuid.uuid4().hex
-                self.db.execute("UPDATE events SET state='sending',claim=?,created=? WHERE seq=?", (claim, now, row["seq"]))
+                self.db.executemany("UPDATE events SET state='sending',claim=?,created=? WHERE seq=?",
+                                    [(claim, now, member["seq"]) for member in selected])
                 return {"delivery_key": row["key"], "claim": claim, "destination": self.settings["destination"],
-                        "kind": row["kind"], "text": body["text"]}
+                        "kind": row["kind"], "text": text}
             return None
 
     def actions(self, actions: list[dict[str, Any]], now: float) -> None:
@@ -357,11 +382,13 @@ class Outbox:
             row = self.db.execute("SELECT * FROM events WHERE key=?", (key,)).fetchone()
             if not row or row["claim"] != claim or row["state"] not in {"sending", "uncertain", "delivered"}:
                 raise ValueError("invalid delivery acknowledgement")
-            if row["state"] == "delivered":
-                if row["receipt"] != receipt:
-                    raise ValueError("receipt conflict")
-                return
-            self.db.execute("UPDATE events SET state='delivered',receipt=?,created=? WHERE key=?", (receipt, now, key))
+            # Shared claim is immutable batch membership, also after restart.
+            members = self.db.execute("SELECT state,receipt FROM events WHERE claim=?", (claim,)).fetchall()
+            if any(member["state"] not in {"sending", "uncertain", "delivered"} or
+                   member["state"] == "delivered" and member["receipt"] != receipt for member in members):
+                raise ValueError("receipt conflict or invalid batch state")
+            self.db.execute("UPDATE events SET state='delivered',receipt=?,created=? WHERE claim=? AND state!='delivered'",
+                            (receipt, now, claim))
 
     def status(self, now: float) -> dict[str, Any]:
         with self.lock:

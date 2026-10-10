@@ -9,6 +9,7 @@ import shlex
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("openclaw_chat", ROOT / "scripts/openclaw-chat.py")
@@ -64,6 +65,27 @@ class ChatTest(unittest.TestCase):
         remote = shlex.split(self.calls[0][0][-1])
         self.assertEqual(remote[remote.index("--message") + 1], message)
         self.assertEqual(remote.count("--message"), 1)
+
+    def test_home_core_transport_is_direct_with_fixed_private_identity(self):
+        with patch.dict(os.environ, {"HOMECOMPUTE_OPENCLAW_TRANSPORT": "home-core"}):
+            CHAT.send("42?", "core", directory=self.directory, runner=self.runner)
+        argv = self.calls[0][0]
+        self.assertEqual(argv[0], "/run/current-system/sw/bin/ssh")
+        self.assertEqual(argv[argv.index("-F") + 1], "/dev/null")
+        self.assertNotIn("-J", argv)
+        self.assertEqual(argv[argv.index("-i") + 1], "/var/lib/homecompute-openclaw/.ssh/id_ed25519")
+        for option in ("UserKnownHostsFile=/var/lib/homecompute-openclaw/.ssh/known_hosts",
+                       "GlobalKnownHostsFile=/dev/null", "ProxyCommand=none", "IdentityAgent=none",
+                       "ForwardAgent=no"):
+            self.assertIn(option, argv)
+        self.assertEqual(argv[-2], "hermes-operator@10.77.20.2")
+
+    def test_unknown_transport_fails_before_dispatch_and_preserves_uncertainty(self):
+        with patch.dict(os.environ, {"HOMECOMPUTE_OPENCLAW_TRANSPORT": "unexpected"}):
+            with self.assertRaises(CHAT.ChatError):
+                CHAT.send("42?", "wrong-transport", directory=self.directory, runner=self.runner)
+        self.assertEqual(self.calls, [])
+        self.assertTrue(json.loads((self.directory / "wrong-transport.json").read_text())["uncertain"])
 
     def test_session_persists_privately_and_conversations_are_separate(self):
         a = CHAT.send("first", "one", directory=self.directory, runner=self.runner)
