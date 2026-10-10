@@ -18,9 +18,12 @@ test('delivery defaults closed, workflows inactive and no competing bot trigger'
   for (const flow of [delivery, conversation]) {
     assert.equal(flow.active, false);
     assert.equal(flow.settings.saveDataSuccessExecution, 'none');
-    assert.ok(flow.nodes.every(n => !['n8n-nodes-base.telegramTrigger', 'n8n-nodes-base.scheduleTrigger'].includes(n.type)));
+    assert.ok(flow.nodes.every(n => n.type !== 'n8n-nodes-base.telegramTrigger'));
+    assert.ok(flow.nodes.filter(n => n.type === 'n8n-nodes-base.scheduleTrigger').every(n => n.disabled === true));
     assert.ok(flow.nodes.filter(n => ['n8n-nodes-base.telegram', 'n8n-nodes-base.httpRequest'].includes(n.type)).every(n => n.retryOnFail === false));
   }
+  const schedule = delivery.nodes.find(n => n.type === 'n8n-nodes-base.scheduleTrigger');
+  assert.equal(schedule.parameters.rule.interval[0].expression, '*/10 * * * * *');
 });
 
 test('notification envelope pins selected destination and HTML escapes assistant output', () => {

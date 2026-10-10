@@ -14,6 +14,21 @@ test('runtime registers exactly the three optional manifest tools', () => {
   assert(registered.every(x => x.options.optional && x.tool.parameters.additionalProperties === false));
 });
 
+test('public status preserves bounded progress/results and only verified PR artifacts', async () => {
+  const task = await requestTask('status', { task_id: id }, { token: 'synthetic', fetchImpl: async () => response({
+    id, state: 'review', status: 'completed', approval_required: true, approval_kind: 'publication', progress: null,
+    result: { ok: true, tests_passed: true, changed_files: 1, session_id: 'synthetic-session', files: [{ content: 'private' }], prompt: 'private' },
+    artifacts: [{ kind: 'pull_request', url: 'https://github.com/example/project/pull/2', token: 'private' },
+      { kind: 'pull_request', url: 'https://github.com/example/project/pull/2?secret=private' },
+      { kind: 'evidence', url: '/private/evidence' }],
+  }) });
+  assert.equal(task.status, 'completed');
+  assert.equal(task.approval_kind, 'publication');
+  assert.deepEqual(task.result, { ok: true, tests_passed: true, changed_files: 1, session_id: 'synthetic-session' });
+  assert.deepEqual(task.artifacts, [{ kind: 'pull_request', url: 'https://github.com/example/project/pull/2' }]);
+  assert(!JSON.stringify(task).includes('private'));
+});
+
 test('submission fixes the origin, auth, route and rejects redirects; strips private data', async () => {
   const task = await requestTask('submit', submit, { token: 'synthetic-token', fetchImpl: async (url, opts) => {
     assert.equal(url, 'http://broker:8080/tasks');

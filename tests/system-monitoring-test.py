@@ -4,9 +4,11 @@ import copy
 from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -30,6 +32,10 @@ def snapshot(system, *, failing=False):
             "containers": [{"name": s["name"], "status": "Restarting (1) 3 seconds ago" if failing else "Up 8 days (healthy)"}
                            for s in system["containers"]],
             "platform_updates": None,
+            "maintenance_report": {"schema_version": 1, "mode": "observe-only", "host": system["target"],
+                "generated_at": MONITOR.iso(NOW),
+                "package_updates": {"status": "current", "candidate_count": 0},
+                "docker_image_updates": {"images": [{"container": "fixture", "state": "current"}]}},
             "model_update_report": {"schema_version": 1, "mode": "review-only", "generated_at": MONITOR.iso(NOW),
                                     "summary": {"changed": 0, "pin_drift": 0, "source_errors": 0, "outperforms_active": 0}}}
 
@@ -44,7 +50,7 @@ class MonitoringTest(unittest.TestCase):
                          lambda r: r["systems"][0].update(target="-oProxyCommand=bad"),
                          lambda r: r.update(automatic_actions=True),
                          lambda r: r.update(physical_device_actions=True),
-                         lambda r: r["systems"][2].update(enabled=True)):
+                         lambda r: r["systems"][2].update(target="http://evil")):
             reg = registry(); mutation(reg)
             with self.assertRaises(ValueError): MONITOR.validate_registry(reg)
 
@@ -106,8 +112,9 @@ class MonitoringTest(unittest.TestCase):
         data["home-core"]["schema_version"] = 77
         report = MONITOR.make_report(reg, data, NOW)
         core = [x for x in report["observations"] if x["system_id"] == "home-core"]
-        self.assertEqual(len(core), 1)
-        self.assertEqual(core[0]["status"], "unknown")
+        self.assertFalse(any(x["status"] == "healthy" for x in core))
+        self.assertEqual(next(x for x in core if x["check_id"] == "collection")["status"], "unknown")
+        self.assertTrue(all(x["status"] == "degraded" for x in core if x["check_id"].endswith(".coverage")))
 
     def test_update_health_separate_and_no_latest_tag_comparison(self):
         reg = registry(); data = fixtures(reg)
@@ -122,7 +129,10 @@ class MonitoringTest(unittest.TestCase):
         self.assertNotIn("latest", json.dumps(report))
 
     def test_empty_cached_apt_inventory_remains_unknown(self):
-        reg = registry(); report = MONITOR.make_report(reg, fixtures(reg), NOW)
+        # Legacy cached source remains advisory; deployed monitoring uses fresh reports.
+        reg = registry()
+        reg["systems"][1]["updates"].append("cached-apt-candidates")
+        report = MONITOR.make_report(reg, fixtures(reg), NOW)
         check = next(x for x in report["observations"] if x["check_id"] == "cached-apt-candidates")
         self.assertEqual(check["status"], "unknown")
         self.assertEqual(check["evidence"]["reason"], "cached_inventory_only")
@@ -130,6 +140,7 @@ class MonitoringTest(unittest.TestCase):
     def test_ha_projection_only_version_update_and_unavailable_counters(self):
         reg = registry(); data = fixtures(reg)
         data["home-assistant"] = {"schema_version": 1, "host": "home-assistant", "installed_version": "2026.10.1",
+                                  "generated_at": MONITOR.iso(NOW),
                                   "update_available_count": 2, "unavailable_count": 3,
                                   "states": [{"state": "OCCUPANCY", "attributes": {"token": "SECRET"}}]}
         report = MONITOR.make_report(reg, data, NOW)
@@ -159,6 +170,7 @@ class MonitoringTest(unittest.TestCase):
         self.assertIn("StrictHostKeyChecking=yes", calls[0][0])
         self.assertIn("homecompute-agents-vm.service", calls[0][1]["input_text"])
         self.assertIn("systemctl','show'", calls[0][1]["input_text"])
+        self.assertIn("homecompute-maintenance/report.json", calls[0][1]["input_text"])
         self.assertNotIn("SECRET", json.dumps(raw))
 
     def test_disabled_ha_never_uses_transport(self):
@@ -169,6 +181,66 @@ class MonitoringTest(unittest.TestCase):
         report = MONITOR.make_report(registry(), {}, NOW)
         row = next(x for x in report["observations"] if x["system_id"] == "home-assistant")
         self.assertEqual(row["evidence"], {"reason": "not_provisioned"})
+
+    def test_ha_metadata_requires_fresh_source_time_and_cannot_recover_from_stale(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-assistant"] = {"schema_version": 1, "host": "home-assistant", "generated_at": MONITOR.iso(NOW),
+                                  "installed_version": "2026.10.1", "update_available_count": 2, "unavailable_count": 3}
+        first = MONITOR.make_report(reg, data, NOW)
+        data["home-assistant"]["unavailable_count"] = 0
+        for generated in (MONITOR.iso(NOW - timedelta(hours=1)), MONITOR.iso(NOW + timedelta(minutes=2)), "invalid"):
+            data["home-assistant"]["generated_at"] = generated
+            second = MONITOR.make_report(reg, data, NOW, first)
+            rows = [r for r in second["observations"] if r["system_id"] == "home-assistant"]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["evidence"], {"reason": "stale"})
+            self.assertFalse(any(r["transition"] == "resolved" and r["stable_key"].startswith("home-assistant:") for r in second["changes"]))
+
+    def test_ha_private_transport_is_fixed_bounded_and_drops_unexpected_fields(self):
+        system = registry()["systems"][2]; system["enabled"] = True
+        raw = {"schema_version": 1, "host": "home-assistant", "generated_at": MONITOR.iso(NOW),
+               "installed_version": "2026.10.1", "update_available_count": 2, "unavailable_count": 3}
+        with tempfile.TemporaryDirectory() as directory:
+            token = Path(directory) / "token"; token.write_text("a" * 32 + "FIELDSTOKEN"); token.chmod(0o600)
+            calls = []
+            def runner(argv, **kwargs):
+                calls.append((argv, kwargs))
+                return subprocess.CompletedProcess(argv, 0, json.dumps(raw), "PRIVATE_ERROR")
+            cfg = {"schema_version": 1, "token_file": str(token)}
+            self.assertEqual(MONITOR.collect(system, runner, ha_transport=cfg), raw)
+            self.assertEqual(calls[0][0][-2:], ["home-core", "python3 -"])
+            self.assertIn("StrictHostKeyChecking=yes", calls[0][0])
+            source = calls[0][1]["input_text"]
+            self.assertIn('token="' + "a" * 32 + 'FIELDSTOKEN"', source)
+            self.assertIn("http://127.0.0.1:15678/webhook/homecompute-openclaw-ha-metadata", source)
+            self.assertIn("method='GET'", source); self.assertIn("NoRedirect", source)
+            self.assertIn("response.read(1025)", source)
+            self.assertEqual(calls[0][1]["timeout"], 4)
+            for change in ({"states": "PRIVATE"}, {"installed_version": "PRIVATE"}, {"unavailable_count": True}, {"generated_at": None}):
+                old = dict(raw); raw.update(change)
+                self.assertIsNone(MONITOR.collect(system, runner, ha_transport=cfg))
+                raw.clear(); raw.update(old)
+            with self.assertRaises(ValueError): MONITOR.collect(system, runner, ha_transport={**cfg, "url": "http://evil"})
+            self.assertIsNone(MONITOR.collect(system, runner))
+            token.chmod(0o644)
+            with self.assertRaises(ValueError): MONITOR.collect(system, runner, ha_transport=cfg)
+            token.chmod(0o600)
+            alias = Path(directory) / "alias"; alias.symlink_to(token)
+            with self.assertRaises(OSError): MONITOR.collect(system, runner, ha_transport={**cfg, "token_file": str(alias)})
+            fifo = Path(directory) / "fifo"; os.mkfifo(fifo, 0o600)
+            with self.assertRaises(ValueError): MONITOR.collect(system, runner, ha_transport={**cfg, "token_file": str(fifo)})
+
+    def test_ha_config_rejects_external_endpoint_fields_and_nonprivate_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            cfg = {"schema_version": 1, "token_file": "/private/token"}
+            path.write_text(json.dumps(cfg)); path.chmod(0o600)
+            self.assertEqual(MONITOR.load_ha_transport(path), cfg)
+            for mutation in ({"url": "http://evil"}, {"token_file": "relative"}, {"schema_version": 2}):
+                path.write_text(json.dumps({**cfg, **mutation}))
+                with self.assertRaises(ValueError): MONITOR.load_ha_transport(path)
+            path.write_text(json.dumps(cfg)); path.chmod(0o644)
+            with self.assertRaises(ValueError): MONITOR.load_ha_transport(path)
 
     def test_no_failed_units_does_not_prove_stopped_vm_is_healthy(self):
         reg = registry(); data = fixtures(reg)

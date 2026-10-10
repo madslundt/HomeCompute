@@ -311,3 +311,186 @@ Broader native multi-step/context qualification, real worker authentication/exec
 GitHub draft-PR publication, and notification delivery are separate acceptance
 gates. No deployment, secret provisioning or autonomous production writes
 were performed by this runtime subtask.
+
+## Coding integration recheck and dedicated worker candidate
+
+The 2026-10-09 integration recheck confirms home-core kernel 6.18.48,
+Docker 29.7.2 and the pinned validation image's Codex 0.145.0. No native Codex
+installation, dedicated worker service identity, intended worker secrets or
+deployed project policy exists. The checked-in project policy is still empty.
+Default Docker returns EPERM on user namespaces; normal Bubblewrap fails
+workspace-write before checkout or authentication. The deprecated Landlock
+route is not enabled. An isolated numeric-UID native probe passes filesystem
+and network denials, but does not qualify a host-direct production worker.
+[Updated worker receipt](openclaw-worker-validation.json) preserves both findings.
+
+The broker now projects five requested statuses while preserving its exact
+approval states: pending has status queued and execution approval required;
+review has status completed and publication approval required; publishing has
+status running. Completion of a coding proposal therefore does not mean that
+it was published, merged or deployed. Safe results expose test outcome, changed
+file count and session ID; public PR artifacts use bounded GitHub links.
+Stable `(project, issue_key)` submissions reject conflicting content. Unchanged
+heartbeats update only the private lease, producing no progress notification.
+
+`GET /task-events?after=SEQ&limit=100` uses the existing ledger's event sequence
+and stored public snapshots. The optional dedicated snapshot role can only read
+task/action metadata; it cannot submit, cancel, claim, approve or publish. Old
+events predating the snapshot migration explicitly report a missing snapshot.
+Consumers must reconcile such a gap rather than pretend that current metadata
+reconstructs historical events. The recent 100-task list is still bounded.
+
+Ordinary custom tools in the pinned managed runtime cannot satisfy its native
+replay-safe receipt check. Broker tools stay denied and the managed plugin stays
+disabled. The existing standalone plugin was tested through an actual isolated
+OpenClaw 2026.9.9 turn: one synthetic pending submission in 6.395 seconds, no
+approval, worker execution or PR. This is not managed replay-safety evidence.
+[Broker validation](openclaw-runtime-validation.json) records this distinction.
+The trusted phone adapter provides explicit `/code`, `/task` and `/cancel-task`
+commands without a model turn; autonomous native delegation remains gated.
+
+### Guest installation design before approved provisioning
+
+The new `deploy/codex-worker/homecompute-codex-worker.service` and
+`qualify_native.py` prepare the same worker for a **separate** Ubuntu worker VM
+on home-core. This design preceded the approved deployment recorded below.
+Do not install them on the shared host or existing agents/Hermes guest. The
+unit requires separately qualified VM provisioning, broker TLS, proxy and
+firewall boundaries. Use the immutable Ubuntu image
+URL/hash already selected by `modules/nixos/agents-vm.nix`, with separate state,
+identity and network. Keep the current Docker and Hermes settings intact.
+
+After reviewing and provisioning that separate guest, its operator must:
+
+1. Install distro Bubblewrap and its scoped AppArmor profile where required,
+   Python, Git, CA certificates and Node/npm. Do not relax global AppArmor or
+   user-namespace policy. Install root-owned worker/policy/qualification sources
+   and both locked package files in `/opt/worker`; run `npm ci --ignore-scripts`.
+   The qualification helper requires exactly `codex-cli 0.145.0`.
+2. Create the locked `codex-controller` system account without a home/login;
+   reserve numeric job UIDs 10000–59999. Mount a distinct 4–12 GiB work filesystem
+   at `/srv/codex-work`, controller-owned mode0711. A same-device bind mount is
+   rejected. Review the VM's CPU/RAM, total disk and network limits separately.
+3. Install reviewed `/etc/homecompute-codex/projects.json` and root0600
+   `worker.env`. The environment fixes the private HTTPS broker origin, trusted
+   CA, and CONNECT proxy. Enforce outbound access only to that broker and proxy;
+   jobs must not reach production services, SSH, Docker or physical devices.
+4. Provision separate worker, Codex-auth and read-only checkout credentials in
+   the guest's protected secret manager. The unit uses `LoadCredential`; child
+   environments drop credential-directory/control tokens and all capabilities.
+   Operator/publisher/snapshot credentials stay in their own trusted services.
+   Codex's scoped API key remains visible to its own process and must be budgeted
+   and revocable. No Mac authentication is copied and no secret enters Git.
+5. Verify the installed unit with `systemd-analyze verify` and keep its `ENABLED`
+   marker absent. The checked unit has no `[Install]` section. Run credential-free
+   qualification in its exact service context and test VM egress, process cleanup,
+   protected secrets, broker permissions and bounded storage before enabling it.
+6. After execution approval, qualify one allowlisted authenticated job, duplicate
+   suppression, cancellation, tests/results and phone status. Publication requires
+   its separate reviewed digest; merge/deployment remain separate approvals.
+
+Unit syntax was verified in a temporary Ubuntu file. Current worker code passed
+disposable Linux identity/secret/temp/cleanup checks and explicit capability
+clearing under a nonroot controller. Neither test provisions or qualifies the
+new VM. Stop the candidate unit and remove its `ENABLED` marker to disable it;
+retain work/evidence and reconcile the existing ledger before any new incident.
+Do not restart an uncertain task or delete receipts to obtain a retry.
+
+### Approved dedicated VM provisioning, 2026-10-09
+
+The user approved provisioning and selected HomeCompute with a new dedicated
+API key. `scripts/setup-codex-vm.py` installed a separate native KVM guest,
+`codex-worker`, from the exact Ubuntu image hash above. Its kernel is
+6.8.0-139-generic, with two vCPUs, 8 GiB RAM, a 32 GiB root disk and a distinct
+12 GiB `/dev/vdb` disk whose virtio serial is `hc-codex-work`. The guest carries
+the root-owned, mode0444 `/etc/homecompute-codex-vm.json` identity marker required
+by the guest installer. No host directory or Docker socket is mounted inside
+the guest; it receives virtual disks, networking and entropy devices only.
+The administrative private SSH key stays on the Mac.
+
+Host units live in the writable `/etc/systemd/system.attached/` search path,
+with dedicated `multi-user.target.wants` links, because NixOS's ordinary
+`/etc/systemd/system` is an immutable generated symlink. Systemd verified those
+units and the running target includes them. Their pinned Nix dependencies have
+dedicated GC roots. This installation did not switch the shared NixOS system
+or change the existing agents VM. Host QEMU runs as `homecompute-codex-vm`, with
+KVM/TUN access only, no new privileges, protected host filesystems, a 10 GiB host
+memory ceiling and a 200% CPU ceiling. The loaded unit reports disabled because
+`systemctl enable` does not manage the attached directory; the explicit target
+links provide persistence. A host reboot has not yet been qualified.
+
+The separate `br-hc-codex` bridge is `10.77.21.1/30`, with guest
+`10.77.21.2` and `tap-hc-codex`. Dedicated INPUT/FORWARD guards precede the
+existing Docker, Tailscale and NixOS chains. Bootstrap temporarily allows guest
+public HTTP(S) and its dedicated host DNS. Public DNS upstreams did not respond
+from this host; CoreDNS instead forwards to the host's trusted resolver.
+`sudo python3 /etc/homecompute/codex-vm/setup.py --lock-egress` removes the
+maintenance marker and closes guest DNS and every forwarded destination,
+leaving only bridge-local broker TLS19444 and CONNECT3129. The guard rejects
+IPv6; the guest also disables IPv6.
+
+Actual bootstrap probes denied guest access to host SSH, production host SSH,
+the agents guest, the control plane, Tailscale DNS and link-local metadata,
+while public Ubuntu HTTPS returned200. After the worker installer completed,
+maintenance egress was closed with the firewall's `ExecReload`, preserving the
+QEMU PID. Actual closed-policy probes deny direct public HTTP(S), DNS over both
+TCP and UDP, host/production/agents SSH, control-plane, Tailscale and metadata
+destinations. The broker's exact CA and IP name verify; wrong names and missing
+CA fail certificate verification. Official API/GitHub CONNECT tunnels return200
+without sending authenticated requests; unknown/private targets return403.
+Unauthenticated broker routes return403. Authenticated Codex execution and
+independent proposal validation are recorded below; original failure states
+remain terminal. HomeClaw is saved outside Git and installed root0400 in the guest.
+
+The guest SSH ED25519 fingerprint was recovered from QEMU's host-controlled
+serial output and pinned before the first SSH connection:
+`SHA256:WLTBMi7vQb6pML+biFtl67Wk+6p/BrVPAZjmXXcDr5g`.
+The Mac pin is `~/.config/homecompute/openclaw/codex-worker-known-hosts`.
+Connect with the existing admin identity, `ProxyJump=home-core`,
+`StrictHostKeyChecking=yes`, and that `UserKnownHostsFile` to
+`codex-operator@10.77.21.2`. Do not replace this with unverified `ssh-keyscan`.
+To stop the VM while retaining evidence and closing maintenance egress, run
+`sudo python3 /etc/homecompute/codex-vm/setup.py --stop`. Its disks stay under
+`/srv/state/codex-vm`; stopping does not clear the existing broker ledger.
+
+The initial installation's firewall service restart also restarted its
+dependent guest and interrupted package unpacking. Guest-only APT/dpkg recovery
+restored the affected package/cache files before installation and qualification
+completed. Live firewall changes now use `ExecReload`; an actual reload kept the
+same QEMU PID and boot timestamp. No coding job was launched or retried during
+that recovery.
+
+The approved VM-only restart drill then exercised graceful QMP powerdown and
+guest startup at 2026-10-09 20:07:17–18UTC (22:07:17–18Europe/Copenhagen).
+The new guest boot ID is `e77e10f2-35dc-4cb5-8d5a-9b12ef4fb75f`; the pinned
+SSH identity matched, `/srv/codex-work` mounted automatically from `/dev/vdb`
+with `rw,nosuid,nodev`, and the scoped `bwrap` AppArmor profile loaded in enforce
+mode. The `ENABLED` marker and Codex API key were absent, and the worker remained
+inactive. The complete closed-network denial/allowed-proxy/TLS checks passed
+again after guest boot. Existing agents QEMU PID3019518 and its start timestamp
+were unchanged. This proves guest restart persistence; a home-core reboot was
+not performed or qualified.
+
+The worker's exact-unit credential-free qualification passed again after that
+boot at 20:09:12UTC. It observed Codex0.145 invoking `/usr/bin/bwrap`, the
+child `bwrap//&unpriv_bwrap` AppArmor label in enforce mode, denied nested
+privileged namespaces, and successful descendant cleanup under the closed
+network policy. This qualifies the sandbox and guest restart; it does not
+authenticate a model request or execute a broker coding task.
+
+### Authenticated canary and reconciled validation, 2026-10-09
+
+The approved HomeClaw key authenticated one Codex run on task
+`822cf264-85c6-4d1a-ad5a-292fa30f582b`. It produced the requested publish-denial
+regression. The immutable baseline's sparse-file fixture exceeded the old10MiB
+file ceiling, so the broker accurately retains `failed`; no task is replayed.
+Only trusted baseline/postcheck children now use a257MiB ceiling. Codex/preflight
+and stored evidence remain10MiB, with unchanged scan/output,12GiB disk and VM
+boundaries. Native baseline25/25 and saved proposal26/26 pass; independent
+mutation proves the regression catches incorrect publication authority. No
+additional model run or PR occurred. The worker is stopped, `ENABLED` absent.
+The authenticated `/task` reply reached Telegram; terminal alerts await existing
+quiet hours. The root-owned operator client is installed at
+`/opt/homecompute/codex-broker/assistant-task.py`; use its explicit private
+`--token-file` for approval/review. Exact receipts are in the existing worker
+and communication validation JSON files. The supervised Mac must stay awake.

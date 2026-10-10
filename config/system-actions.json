@@ -150,7 +150,7 @@
       "environment": "production",
       "enabled": false,
       "executor": "guarded-home-spark-deploy",
-      "check_id": "cached-apt-candidates",
+      "check_id": "docker-image-report",
       "category": "updates",
       "status": "degraded",
       "gates": [
@@ -187,7 +187,7 @@
       "environment": "production",
       "enabled": false,
       "executor": "dgx-os-maintenance",
-      "check_id": "cached-apt-candidates",
+      "check_id": "package-update-report",
       "category": "updates",
       "status": "degraded",
       "gates": [

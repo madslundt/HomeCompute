@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "hosts": {
+    "home-core": {
+      "schema_version": 1,
+      "containers": {
+        "homecompute-codex-egress": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        },
+        "homecompute-automation-n8n-1": {
+          "tracked_tag": "latest",
+          "source_lane": "registry"
+        },
+        "homecompute-openclaw-communication-private-relay-1": {
+          "tracked_tag": "2-alpine",
+          "source_lane": "registry"
+        },
+        "homecompute-books_importer-shelfmark-1": {
+          "tracked_tag": null,
+          "source_lane": "registry"
+        },
+        "homecompute-automation-aula-mcp-1": {
+          "tracked_tag": "f1360000eaccf7cae528bed1cab6b0d0b2a32cfc-n8n1",
+          "source_lane": "source_pin"
+        },
+        "homecompute-immich-immich-server-1": {
+          "tracked_tag": "release",
+          "source_lane": "registry"
+        },
+        "home-core-wyoming-stt": {
+          "tracked_tag": "3.7.0",
+          "source_lane": "registry"
+        },
+        "homecompute-model-manager-model-manager-1": {
+          "tracked_tag": "c2534fe0ad87a0f9659b23273bbe0e806459a127",
+          "source_lane": "source_pin"
+        },
+        "homecompute-open-webui-open-webui-1": {
+          "tracked_tag": "0.11",
+          "source_lane": "registry"
+        },
+        "homecompute-homepage-homepage-1": {
+          "tracked_tag": "latest",
+          "source_lane": "registry"
+        },
+        "homecompute-automation-tilbudstrolden-mcp-1": {
+          "tracked_tag": "1749d507faadda5c8bd699e190828da172889448",
+          "source_lane": "source_pin"
+        },
+        "homecompute-control-plane-caddy-1": {
+          "tracked_tag": "2-alpine",
+          "source_lane": "registry"
+        },
+        "homecompute-control-plane-litellm-1": {
+          "tracked_tag": "main-stable",
+          "source_lane": "registry"
+        },
+        "homecompute-control-plane-postgres-1": {
+          "tracked_tag": "16-alpine",
+          "source_lane": "registry"
+        },
+        "homecompute-control-plane-hviske-wyoming-proxy-1": {
+          "tracked_tag": "3.12-slim-bookworm",
+          "source_lane": "registry"
+        },
+        "homecompute-control-plane-plapre-wyoming-proxy-1": {
+          "tracked_tag": "3.12-slim-bookworm",
+          "source_lane": "registry"
+        },
+        "homecompute-immich-redis-1": {
+          "tracked_tag": "9",
+          "source_lane": "registry"
+        },
+        "homecompute-immich-database-1": {
+          "tracked_tag": "14-vectorchord0.4.3-pgvectors0.2.0",
+          "source_lane": "registry"
+        },
+        "homecompute-immich-immich-machine-learning-1": {
+          "tracked_tag": "release",
+          "source_lane": "registry"
+        },
+        "homecompute-control-plane-automation-backup-1": {
+          "tracked_tag": "server",
+          "source_lane": "registry"
+        },
+        "homecompute-ttlock-webhook-gateway-1": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        },
+        "home-core-moss-tts": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        },
+        "home-core-piper-tts": {
+          "tracked_tag": "2.5.2",
+          "source_lane": "registry"
+        },
+        "homecompute-books_importer-shelfmark-automated-1": {
+          "tracked_tag": null,
+          "source_lane": "registry"
+        },
+        "homecompute-books_importer-cwa-1": {
+          "tracked_tag": null,
+          "source_lane": "registry"
+        }
+      }
+    },
+    "home-spark": {
+      "schema_version": 1,
+      "containers": {
+        "qwen38-flash-blazux": {
+          "tracked_tag": "v0.30",
+          "source_lane": "source_pin"
+        },
+        "qwen38-flash-ultrafast": {
+          "tracked_tag": "iter6d-20260910",
+          "source_lane": "source_pin"
+        },
+        "gb10-hviske-wyoming": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        },
+        "gb10-hviske-primary": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        },
+        "homecompute-plapre-plapre-edge-1": {
+          "tracked_tag": "b111239d-007e0b47-vllm0151-ta211src1",
+          "source_lane": "source_pin"
+        },
+        "homecompute-plapre-plapre-wyoming-1": {
+          "tracked_tag": "b111239d-007e0b47-vllm0151-ta211src1",
+          "source_lane": "source_pin"
+        },
+        "homecompute-plapre-plapre-primary-1": {
+          "tracked_tag": "b111239d-007e0b47-vllm0151-ta211src1",
+          "source_lane": "source_pin"
+        }
+      }
+    },
+    "agents-guest": {
+      "schema_version": 1,
+      "containers": {
+        "openshell-default--agent-openclaw-3dc5732e-8cff-47fc-8c34-d7a86f3693bd": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        },
+        "openshell-default--agent-owner-e4006fe7-88d1-451f-b65f-b7dad8c23880": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        }
+      }
+    }
+  }
+}

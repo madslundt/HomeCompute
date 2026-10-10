@@ -16,7 +16,7 @@ services:
       HTTPS_PROXY: http://egress:3128
       NO_PROXY: localhost,127.0.0.1
     ports: ["127.0.0.1:18792:8080/tcp"]
-    secrets: [assistant_token, worker_token, operator_token, github_token]
+    secrets: [assistant_token, worker_token, operator_token, github_token, snapshot_token]
     volumes:
       - ${CODEX_PROJECTS_FILE:?Set reviewed immutable project policy}:/config/projects.json:ro
       - ${HOMECOMPUTE_ACTIONS_FILE:-../../config/system-actions.json}:/config/actions.json:ro
@@ -142,6 +142,7 @@ secrets:
   assistant_token: {file: "${OPENCLAW_BROKER_TOKEN_FILE:?Set assistant broker secret}"}
   worker_token: {file: "${CODEX_WORKER_TOKEN_FILE:?Set worker-only token}"}
   operator_token: {file: "${CODEX_OPERATOR_TOKEN_FILE:?Set operator-only token}"}
+  snapshot_token: {file: "${CODEX_SNAPSHOT_TOKEN_FILE:?Set dedicated read-only snapshot token}"}
   github_token: {file: "${CODEX_GITHUB_TOKEN_FILE:?Set repository-scoped publisher token}"}
   codex_api_key: {file: "${CODEX_API_KEY_FILE:?Set dedicated unattended Codex credential}"}
   github_checkout_token: {file: "${CODEX_GITHUB_CHECKOUT_TOKEN_FILE:?Set dedicated read-only GitHub checkout credential}"}

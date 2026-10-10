@@ -12,17 +12,42 @@
       "health_ttl_seconds": 900,
       "update_ttl_seconds": 691200,
       "containers": [
-        {"name": "homecompute-control-plane-caddy-1", "require_health": true},
-        {"name": "homecompute-control-plane-litellm-1", "require_health": true},
-        {"name": "homecompute-control-plane-postgres-1", "require_health": true},
-        {"name": "homecompute-automation-n8n-1", "require_health": true}
+        {
+          "name": "homecompute-control-plane-caddy-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-litellm-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-postgres-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-automation-n8n-1",
+          "require_health": true
+        }
       ],
       "units": [
-        {"name": "homecompute-platform-health.service", "kind": "oneshot"},
-        {"name": "homecompute-model-update-monitor.service", "kind": "oneshot"},
-        {"name": "homecompute-agents-vm.service", "kind": "persistent"}
+        {
+          "name": "homecompute-platform-health.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-model-update-monitor.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-agents-vm.service",
+          "kind": "persistent"
+        }
       ],
-      "updates": ["model-update-report"]
+      "updates": [
+        "model-update-report",
+        "package-update-report",
+        "docker-image-report"
+      ]
     },
     {
       "id": "home-spark",
@@ -32,12 +57,24 @@
       "health_ttl_seconds": 900,
       "update_ttl_seconds": 86400,
       "containers": [
-        {"name": "qwen38-flash-ultrafast", "require_health": false},
-        {"name": "gb10-hviske-primary", "require_health": true},
-        {"name": "homecompute-plapre-plapre-primary-1", "require_health": true}
+        {
+          "name": "qwen38-flash-ultrafast",
+          "require_health": false
+        },
+        {
+          "name": "gb10-hviske-primary",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-plapre-plapre-primary-1",
+          "require_health": true
+        }
       ],
       "units": [],
-      "updates": ["cached-apt-candidates"]
+      "updates": [
+        "package-update-report",
+        "docker-image-report"
+      ]
     },
     {
       "id": "home-assistant",
@@ -48,7 +85,9 @@
       "update_ttl_seconds": 86400,
       "containers": [],
       "units": [],
-      "updates": ["approved-update-metadata"]
+      "updates": [
+        "approved-update-metadata"
+      ]
     }
   ]
 }

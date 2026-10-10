@@ -16,7 +16,9 @@ VERSIONS = {"2025-03-26", "2025-06-18"}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", re.I)
 PROJECT = r"[a-z0-9][a-z0-9-]{0,63}"
 ISSUE = r"[A-Za-z0-9_.:-]{1,128}"
-PUBLIC = {"id", "project", "issue_key", "state", "created", "updated", "session_id", "commit", "pr_url", "error"}
+PUBLIC = {"id", "project", "issue_key", "state", "status", "phase", "progress", "approval_required", "approval_kind",
+          "created", "updated", "session_id", "commit", "pr_url", "error", "error_code"}
+PR_URL = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*")
 
 
 class Tasks(Protocol):
@@ -88,9 +90,29 @@ def validate_arguments(arguments: object, schema: dict[str, Any]) -> dict[str, A
 
 def metadata(task: dict[str, Any]) -> dict[str, Any]:
     # Never let future backend fields expand the agent-facing information scope.
-    return {key: (value[:2048] if isinstance(value, str) else value)
+    public = {key: (value[:2048] if isinstance(value, str) else value)
             for key, value in task.items() if key in PUBLIC
             and (value is None or isinstance(value, (str, bool, int, float)))}
+    result = task.get("result")
+    if isinstance(result, dict):
+        safe = {}
+        for key in ("ok", "tests_passed"):
+            if type(result.get(key)) is bool:
+                safe[key] = result[key]
+        if type(result.get("changed_files")) is int and 0 <= result["changed_files"] <= 1000:
+            safe["changed_files"] = result["changed_files"]
+        if result.get("session_id") is None:
+            if "session_id" in result:
+                safe["session_id"] = None
+        elif isinstance(result["session_id"], str) and re.fullmatch(r"[a-zA-Z0-9-]{1,80}", result["session_id"]):
+            safe["session_id"] = result["session_id"]
+        public["result"] = safe
+    artifacts = task.get("artifacts")
+    if isinstance(artifacts, list):
+        public["artifacts"] = [{"kind": "pull_request", "url": item["url"]} for item in artifacts[:10]
+                               if isinstance(item, dict) and item.get("kind") == "pull_request"
+                               and isinstance(item.get("url"), str) and PR_URL.fullmatch(item["url"])]
+    return public
 
 
 def recent_tasks(ledger: Tasks) -> dict[str, Any]:

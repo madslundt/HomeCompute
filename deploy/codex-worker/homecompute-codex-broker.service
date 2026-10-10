@@ -1,0 +1,39 @@
+[Unit]
+Description=HomeCompute trusted Codex task ledger
+After=network.target
+
+[Service]
+Type=simple
+User=homecompute-codex-broker
+Group=homecompute-codex-broker
+WorkingDirectory=/opt/homecompute/codex-broker
+ExecStart=/run/current-system/sw/bin/python3 /opt/homecompute/codex-broker/broker.py
+Environment=CODEX_BROKER_SECRETS=/opt/homecompute/codex-broker/secrets
+Environment=CODEX_BROKER_CONFIG=/opt/homecompute/codex-broker/config
+Environment=CODEX_BROKER_STATE=/srv/state/codex-broker
+Environment=CODEX_BROKER_BIND=127.0.0.1
+Environment=CODEX_BROKER_PORT=18792
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/state/codex-broker
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+CapabilityBoundingSet=
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+MemoryMax=256M
+CPUQuota=50%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

@@ -135,7 +135,10 @@ class TransportTests(unittest.TestCase):
         task["updated"] += 1
         self.store.tasks([task], NOW + 1)
         self.store.tasks([task], NOW + 1)
-        self.assertIsNone(self.store.claim(NOW))
+        progress = self.store.claim(NOW)
+        self.assertEqual(progress["kind"], "progress")
+        self.store.acknowledge(progress["delivery_key"], progress["claim"], "test:2", NOW)
+        self.assertIsNone(self.store.claim(NOW + 1))
 
     def test_sensitive_fields_and_unregistered_check_rejected(self):
         data = report()
@@ -168,7 +171,7 @@ class TransportTests(unittest.TestCase):
         self.store.tasks([task], NOW)
         task["state"] = "queued"; task["updated"] += 1
         self.store.tasks([task], NOW + 1)
-        self.assertIsNone(self.store.claim(NOW + 1))
+        self.assertEqual(self.store.claim(NOW + 1)["kind"], "progress")
 
     def test_stale_report_and_old_recovery(self):
         with self.assertRaises(ValueError): self.store.observations(report(), ALLOWED, NOW + 1000)
@@ -318,6 +321,16 @@ class TransportTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); thread.join()
 
+    def test_phone_welcome_is_deterministic_and_queued_without_model(self):
+        def forbidden(*_):
+            self.fail("welcome must not call the model")
+        body = {"conversation": "operator", "destination": "operator-private",
+                "request_id": "telegram:9876:42", "text": "/start"}
+        result = communication.conversation(body, self.store, forbidden, NOW)
+        self.assertEqual(result["state"], "completed")
+        self.assertIn("Write a message", result["reply"])
+        self.assertEqual(self.store.claim(NOW)["kind"], "reply")
+
     def test_fail_closed_configuration(self):
         path = Path(self.temp.name) / "config.json"
         path.write_text(json.dumps(SETTINGS))
@@ -328,6 +341,41 @@ class TransportTests(unittest.TestCase):
         with self.assertRaises(ValueError): communication.serve(self.store, tokens, ALLOWED, lambda *_: "")
         self.assertIn("home-core:container.homecompute-automation-n8n-1", communication.registry_keys(ROOT / "config/system-monitoring.json"))
         self.assertFalse(any(x.startswith("home-assistant:") for x in communication.registry_keys(ROOT / "config/system-monitoring.json")))
+
+
+    def test_task_progress_results_and_deterministic_phone_read(self):
+        task = {"id": "11111111-1111-4111-8111-111111111111", "project": "synthetic-demo",
+                "state": "running", "progress": "coding", "updated": NOW, "context": "private"}
+        self.store.tasks([task], NOW)
+        first = self.store.claim(NOW)
+        self.store.acknowledge(first["delivery_key"], first["claim"], "test:progress", NOW)
+        task["updated"] += 1
+        self.store.tasks([task], NOW + 1)
+        self.assertIsNone(self.store.claim(NOW + 1))
+        task.update(state="review", updated=NOW + 2, result={"ok": True, "tests_passed": True,
+                    "changed_files": 1, "session_id": "synthetic-session"})
+        task.pop("progress")
+        self.store.tasks([task], NOW + 2)
+        row = self.store.status(NOW + 2)["tasks"][0]
+        self.assertEqual(row["status"], "completed")
+        self.assertTrue(row["approval_required"])
+        self.assertEqual(row["approval_kind"], "publication")
+        self.assertNotIn("context", row)
+        def forbidden(*_): self.fail("status must not run a model")
+        body = {"conversation": "operator", "destination": "operator-private",
+                "request_id": "telegram:task:1", "text": "/task " + task["id"]}
+        reply = communication.conversation(body, self.store, forbidden, NOW + 2)
+        self.assertIn("changed_files", reply["reply"])
+
+    def test_task_projection_rejects_private_result_and_hostile_link(self):
+        task = {"id": "11111111-1111-4111-8111-111111111111", "project": "synthetic-demo",
+                "state": "completed", "updated": NOW, "pr_url": "https://evil.invalid/pull/1"}
+        with self.assertRaises(ValueError): self.store.tasks([task], NOW)
+        task.pop("pr_url")
+        task["result"] = {"ok": True, "changed_files": 1, "files": [{"content": "private"}]}
+        with self.assertRaises(ValueError): self.store.tasks([task], NOW)
+        task["result"] = {"ok": True, "changed_files": 1, "session_id": 123}
+        with self.assertRaises(ValueError): self.store.tasks([task], NOW)
 
 
 def instant_report(value):

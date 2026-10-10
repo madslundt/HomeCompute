@@ -52,5 +52,301 @@
   "scope": "Synthetic broker pending submission only; direct verified local inference endpoint; container relay/network not exercised",
   "validated_at": "2026-10-09",
   "openclaw_version": "2026.9.9",
-  "output_token_cap": 1024
+  "output_token_cap": 1024,
+  "broker_projection_integration_20261009": {
+    "isolated_actual_OpenClaw": {
+      "passed": true,
+      "exit_code": 0,
+      "duration_ms": 6395,
+      "provider": "homecompute",
+      "model": "automation-moe",
+      "runtime": "openclaw",
+      "assistant_turns": 2,
+      "receipt": {
+        "runId": "e889953f-8af6-4253-948d-0df0434fdd1e",
+        "sessionId": "bf457721-273e-4857-bbaa-3f67aa09d643",
+        "turnId": "e889953f-8af6-4253-948d-0df0434fdd1e",
+        "requested": {
+          "provider": "homecompute",
+          "model": "automation-moe"
+        },
+        "effective": {
+          "provider": "homecompute",
+          "model": "automation-moe",
+          "responseModel": "automation-moe"
+        },
+        "successfulToolNames": [
+          "homecompute_task_submit"
+        ],
+        "rerouted": false,
+        "terminalDisposition": "visible"
+      },
+      "payloads": [
+        {
+          "text": "Task id: `9ddbbc97-25de-4cc6-8d88-b0d93fe9633b`\nState: `pending` (status: queued)",
+          "mediaUrl": null
+        }
+      ],
+      "broker_tasks": [
+        {
+          "id": "9ddbbc97-25de-4cc6-8d88-b0d93fe9633b",
+          "project": "synthetic-demo",
+          "issue_key": "synthetic-runtime-probe-655174748c834b96b3201424467e296a",
+          "state": "pending",
+          "created": 1791573997.374034,
+          "updated": 1791573997.374034,
+          "session_id": null,
+          "pr_url": null,
+          "error": null,
+          "phase": "pending",
+          "commit": null,
+          "status": "queued",
+          "progress": null,
+          "approval_required": true,
+          "approval_kind": "execution",
+          "error_code": null,
+          "result": {},
+          "artifacts": []
+        }
+      ],
+      "error": null,
+      "scope": "synthetic broker; direct local inference only"
+    },
+    "native_NemoClaw_enabled": false,
+    "authenticated_Codex_job": false,
+    "real_PR": false,
+    "ordinary_native_custom_tool_replay_safe": false,
+    "status_projection": {
+      "pending": "queued",
+      "queued": "queued",
+      "running": "running",
+      "review": "completed",
+      "publishing": "running",
+      "completed": "completed",
+      "failed": "failed",
+      "cancelled": "cancelled"
+    },
+    "approval_boundary": "authoritative state and approval_required/approval_kind remain public; queued projection includes pending execution approval; completed projection includes unpublished review results",
+    "event_feed": "existing SQLite events snapshots with durable seq cursor; migrated historical events report snapshot_available:false and task:null; no lossless history claim across such gaps",
+    "heartbeat_notifications": "same phase or lease-only heartbeat changes private lease timestamp without public updated timestamp or event",
+    "synthetic_tests": {
+      "worker": 34,
+      "MCP": 10,
+      "MCP_official_SDK_skipped": 1,
+      "action_API": 6,
+      "action_API_official_SDK_skipped": 1,
+      "bounded_plugin": 8
+    },
+    "required_security_scan": "offline npx @Codex-flow/cli@latest security scan unavailable: ENOTCACHED; no package installed",
+    "validated_at": "2026-10-09"
+  },
+  "dedicated_worker_host_broker_20261009": {
+    "host": "home-core",
+    "kernel": "6.18.48",
+    "identity": {
+      "name": "homecompute-codex-broker",
+      "uid": 987,
+      "gid": 987
+    },
+    "authoritative_ledger": "/srv/state/codex-broker/tasks.sqlite3",
+    "task_count_at_role_qualification": 0,
+    "approved_project": {
+      "repository": "madslundt/HomeCompute",
+      "base_sha": "31402d4c1b2cc536f393acc6aefcf43837ce6a20",
+      "base_branch": "master",
+      "classification": "cloud_allowed",
+      "tests": [
+        "python3",
+        "tests/openclaw-worker-test.py"
+      ],
+      "write_prefixes": [
+        "scripts/",
+        "tests/"
+      ]
+    },
+    "publisher_credential_provisioned": false,
+    "publisher_missing_credential_behavior": "403 before task state mutation",
+    "listeners": {
+      "broker": "127.0.0.1:18792",
+      "worker_TLS": "10.77.21.1:19444",
+      "CONNECT_proxy": "10.77.21.1:3129"
+    },
+    "role_qualification": {
+      "health": true,
+      "unauthorized_tasks_denied": true,
+      "snapshot_list": true,
+      "snapshot_submit_denied": true,
+      "assistant_claim_denied": true,
+      "assistant_approve_denied": true,
+      "assistant_publish_denied": true,
+      "publisher_not_provisioned": true,
+      "snapshot_cursor": true,
+      "worker_claim_empty": true
+    },
+    "TLS_facade": "guest 10.77.21.2 and dedicated worker bearer only; finite claim, public task status, heartbeat and result routes; approval/publication/submit/MCP denied",
+    "proxy": {
+      "source": "10.77.21.2/32",
+      "method": "CONNECT",
+      "destination_port": 443,
+      "exact_domains": [
+        "api.openai.com",
+        "chatgpt.com",
+        "auth.openai.com",
+        "github.com",
+        "registry.npmjs.org"
+      ],
+      "private_destinations_denied": true,
+      "image": "sha256:a3949b9505f2430473e5f33b8388c1eb3d09bf611e444fdba066e035ab0883d5",
+      "dedicated_container": "homecompute-codex-egress",
+      "shared_Docker_daemon_modified": false,
+      "literal_domain_checked_before_DNS": true,
+      "IP_reverse_DNS_disabled": true,
+      "IPv4_special_use_denied": "includes CGNAT/Tailscale, metadata/link-local, protocol assignments, benchmark/documentation, multicast and reserved ranges",
+      "IPv6_special_use_denied": "outside 2000::/3 plus Teredo, benchmark, ORCHID, documentation and 6to4 ranges",
+      "actual_guest_CONNECT_checks": {
+        "api.openai.com:443": 200,
+        "github.com:443": 200,
+        "example.com:443": 403,
+        "192.168.30.122:443": 403,
+        "10.77.21.1:443": 403,
+        "github.com:80": 403,
+        "100.64.0.1:443": 403,
+        "169.254.169.254:443": 403,
+        "192.0.0.1:443": 403,
+        "198.18.0.1:443": 403,
+        "239.1.2.3:443": 403,
+        "[::1]:443": 403,
+        "[fc00::1]:443": 403,
+        "[ff02::1]:443": 403,
+        "[2001:db8::1]:443": 403
+      },
+      "direct_HTTP_GET_denied": true,
+      "qualification_sent_API_payload_or_credentials": false
+    },
+    "unit_ownership": "root-owned dedicated units under /etc/systemd/system.attached with multi-user.target.wants links; actual FragmentPath and dependency membership verified",
+    "unit_runtime_active": [
+      "homecompute-codex-broker",
+      "homecompute-codex-worker-api",
+      "homecompute-codex-egress"
+    ],
+    "systemd_analyze_verify": "passed",
+    "reboot_acceptance": false,
+    "guest_TLS_network_acceptance": "owned by worker and VM agents, pending at this receipt",
+    "public_repository_access": {
+      "unauthenticated_smart_HTTP_status": 200,
+      "content_type": "application/x-git-upload-pack-advertisement",
+      "Mac_GitHub_credentials_used": false
+    },
+    "tests": {
+      "worker": 34,
+      "MCP": 10,
+      "MCP_official_SDK_skipped": 1,
+      "worker_facade": 3
+    },
+    "rollback": "Stop three dedicated units, remove only their attached wants links, revoke dedicated role credentials; retain SQLite ledger for reconciliation. Do not reset task states or remove shared Docker/Hermes.",
+    "source_sha256": {
+      "deploy/codex-worker/broker.py": "a2b4d7ef497d2fdfb349eb7630637d317801a0e1dbb81c290cee13e8e35b7f09",
+      "deploy/codex-worker/worker_api.py": "4de7a01f2c7d0d356ddee18a06029e2dc58386ad4c681d96beaf7e0c066186c8",
+      "deploy/codex-worker/host-squid.conf": "a2490384527ea4f1d4d3c32abd4c90c1193d3bfe50a8b5cce29513ee8b4797c8"
+    },
+    "validated_at": "2026-10-09",
+    "operator_client": {
+      "installed_path": "/opt/homecompute/codex-broker/assistant-task.py",
+      "source": "scripts/assistant-task.py",
+      "sha256": "76ade46f05cee8e3f446a2ffe7737c39c3a9095feb71717e2da92ce794b970af",
+      "owner": "root",
+      "list_verified": true,
+      "operator_token_exported_to_Mac": false,
+      "model_authority_added": false
+    }
+  },
+  "approved_maintenance_rollout_20261010": {
+    "validated_at": "2026-10-09T22:28:54.399821+00:00",
+    "authorization": "User: Updates approved; this reviewed batch only",
+    "automatic_future_updates": false,
+    "spark_packages": {
+      "installed": 134,
+      "exact_version_mismatches": 0,
+      "dpkg_audit_empty": true,
+      "ubuntu_phased_updates_retained": 15,
+      "nvidia_preference_exclusions": 14,
+      "native_eligible_after_install": 0,
+      "reboot_required": true,
+      "reboot_performed": false,
+      "restart_gate_restored": true,
+      "five_healthy_running_workloads_preserved": true,
+      "preexisting_plapre_primary_restart_fault_persists": true,
+      "backup_directory": "/var/lib/homecompute-maintenance/updates/20261009-approved-spark",
+      "plan_sha256": "5b1c96e7ab533a159c9538d31e7d4dead2d5283db661fa0c94b4d3a8b013f821"
+    },
+    "core_docker": {
+      "approved_images_applied": 11,
+      "running_healthy": 10,
+      "backup_model_remains_stopped": true,
+      "unrelated_image_identities_preserved": 14,
+      "postgres_litellm_immich_upgrade_and_original_backup_restore_rehearsals_passed": true,
+      "n8n_isolated_upgrade_and_original_backup_restore_rehearsals_passed": true,
+      "n8n_final_cold_archive_restore_passed": true,
+      "n8n_workflows_credentials_active_flags_preserved": true,
+      "n8n_historical_execution_rows_preserved": 1356,
+      "historical_execution_replay_requested": false,
+      "gateway_models_speech_immich_n8n_health_passed": true,
+      "backup_directory": "/srv/state/maintenance-updates/20261009",
+      "digest_platform_verified": true,
+      "independent_cosign_signature_verification": false,
+      "production_database_rollback_requires_original_backup_restore": true,
+      "notification_private_relay_resumed": true
+    },
+    "core_nixos": {
+      "nixpkgs_revision": "7c8764b7c7b09b34f632464276218ef9090eaa11",
+      "staged_generation": 72,
+      "activation": "boot-only",
+      "running_generation": 70,
+      "live_switch_performed": false,
+      "host_reboot_performed": false,
+      "new_system": "/nix/store/pi525bhvhw7xa2n14gfrh816mnhf134c-nixos-system-home-core-26.05.20261008.7c8764b",
+      "approved_image_pins_preserved_in_staged_declarative_env": true,
+      "all_nonimage_production_fields_preserved": true,
+      "superseded_never_activated_generation71_removed": true,
+      "generation70_fallback_retained": true,
+      "VM_broker_API_PIDs_unchanged_at_staging": true,
+      "attached_units_firewall_unchanged_at_staging": true,
+      "release_pointer_unchanged": true,
+      "rollback_caveat": "Preserve approved application image pins before a subsequent Compose start on generation70; old application images require original database/configuration backups."
+    },
+    "monitoring": {
+      "bundle_sha256": "c1f1a9b4001f2ff0d8db4f58cf837a124a53fcb876ac81946257f637a6a23c71",
+      "both_host_timers_active": true,
+      "schedule": "daily 05:30 Europe/Copenhagen plus up to 15 minutes jitter; persistent",
+      "core_report_at": "2026-10-09T22:21:17.160756Z",
+      "spark_report_at": "2026-10-09T22:21:21.942545Z",
+      "core_tracked_image_updates": 0,
+      "core_current_images": 16,
+      "core_unknown_images": 2,
+      "core_untracked_images": 7,
+      "core_catalog_update_candidates_pending_boot_and_release_promotion": 1,
+      "spark_package_candidates": 15,
+      "spark_security_candidates_in_public_repositories": 0,
+      "spark_untracked_images": 7,
+      "spark_public_source_count": 13,
+      "spark_authenticated_esm_sources_excluded": 4,
+      "spark_native_preference_file_count": 7,
+      "isolated_monitor_phasing_eligibility": "unknown; native installer independently selected zero and deferred 15",
+      "daily_collection_does_not_execute_updates": true,
+      "notification_feed_interval_seconds": 300,
+      "refreshed_notification_admission": "pending: local adapter deliberately paused by active Find OpenClaw skills and tools chat; automatic retry retained",
+      "outbox_cursors_and_delivery_receipts_preserved": true
+    },
+    "validation": {
+      "focused_maintenance_tests_passed": 105,
+      "disabled_action_registry_check_ids_aligned": true,
+      "action_tests": 27,
+      "action_api_tests": 6,
+      "action_api_official_sdk_skipped": 1,
+      "action_flow_tests": 4,
+      "full_repository_validation": "Passed checks through diagrams; stopped at containerized Nix evaluation because local Docker daemon/socket unavailable. Approved staged Nix candidate separately built and evaluated on home-core.",
+      "required_security_scanner": "offline npx @Codex-flow/cli@latest unavailable ENOTCACHED; not passed",
+      "git_diff_check_passed": true
+    }
+  }
 }

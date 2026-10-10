@@ -1,0 +1,188 @@
+{
+  "name": "HomeCompute OpenClaw HA metadata (inactive read-only route)",
+  "active": false,
+  "nodes": [
+    {
+      "name": "HA metadata webhook",
+      "id": "ha-metadata-webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "homecompute-openclaw-ha-metadata",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "homecompute-openclaw-ha-metadata",
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "OpenClaw HA metadata reader (select dedicated credential after approval)"
+        }
+      }
+    },
+    {
+      "name": "Approved input-free metadata request",
+      "id": "approved-input-free-metadata-request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const configured=false;\nif (!configured) throw new Error('HA metadata route activation approval required');\nif ($input.all().length!==1 || Object.keys($json.query||{}).length || Object.keys($json.params||{}).length || Object.keys($json.body||{}).length) throw new Error('Metadata request takes no input');\nreturn [{json:{}}];"
+      }
+    },
+    {
+      "name": "Read HA configuration",
+      "id": "read-ha-configuration",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "resource": "config",
+        "operation": "get"
+      },
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "name": "Read HA state inventory",
+      "id": "read-ha-state-inventory",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "resource": "state",
+        "operation": "getAll",
+        "returnAll": true
+      },
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "name": "Project finite HA metadata",
+      "id": "project-finite-ha-metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const version=$('Read HA configuration').first().json.version;\nconst rows=$input.all();\nif (typeof version!=='string' || !/^v?[0-9]+(?:[.][0-9A-Za-z_-]+){1,5}$/.test(version) || !rows.length || rows.length>100000) throw new Error('Invalid HA metadata');\nlet updates=0,unavailable=0;\nconst seen=new Set();\nfor (const item of rows) {\n const e=item.json;\n if (!e || typeof e.entity_id!=='string' || !/^[a-z_]+[.][a-z0-9_]+$/.test(e.entity_id) || seen.has(e.entity_id) || typeof e.state!=='string' || e.state.length>1024) throw new Error('Invalid HA state inventory');\n seen.add(e.entity_id);\n if (e.entity_id.startsWith('update.') && e.state==='on') updates++;\n if (e.state==='unavailable' || e.state==='unknown') unavailable++;\n}\nreturn [{json:{schema_version:1,host:'home-assistant',generated_at:new Date().toISOString(),installed_version:version,update_available_count:updates,unavailable_count:unavailable}}];"
+      }
+    },
+    {
+      "name": "Return finite metadata",
+      "id": "return-finite-metadata",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "HA metadata webhook": {
+      "main": [
+        [
+          {
+            "node": "Approved input-free metadata request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved input-free metadata request": {
+      "main": [
+        [
+          {
+            "node": "Read HA configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read HA configuration": {
+      "main": [
+        [
+          {
+            "node": "Read HA state inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read HA state inventory": {
+      "main": [
+        [
+          {
+            "node": "Project finite HA metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Project finite HA metadata": {
+      "main": [
+        [
+          {
+            "node": "Return finite metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 30,
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "availableInMCP": false
+  }
+}

@@ -1,4 +1,29 @@
 {
   "schema_version": 1,
-  "projects": {}
+  "projects": {
+    "homecompute": {
+      "repository": "madslundt/HomeCompute",
+      "base_sha": "31402d4c1b2cc536f393acc6aefcf43837ce6a20",
+      "base_branch": "master",
+      "classification": "cloud_allowed",
+      "tests": ["python3", "tests/openclaw-worker-test.py"],
+      "write_prefixes": ["scripts/", "tests/"]
+    },
+    "house-battery": {
+      "repository": "madslundt/House-battery",
+      "base_sha": "ccca5ca345c6c8b3262e41a3358c0b317fee478f",
+      "base_branch": "main",
+      "classification": "cloud_allowed",
+      "tests": ["/opt/codex-runtimes/house-battery/venv/bin/python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"],
+      "write_prefixes": ["custom_components/house_battery/", "tests/", "docs/"]
+    },
+    "ha-automations": {
+      "repository": "madslundt/HA-automations",
+      "base_sha": "ff5571cb0de5f38f471643e3a0ea4319ba3b4e79",
+      "base_branch": "master",
+      "classification": "cloud_allowed",
+      "tests": ["/usr/bin/env", "TZ=Europe/Copenhagen", "/opt/codex-runtimes/node/bin/node", "--test", "--test-reporter=tap", "tests"],
+      "write_prefixes": ["packages/", "blueprints/", "Dashboard/", "custom_components/", "n8n/", "tests/", "themes/", "www/", "docs/"]
+    }
+  }
 }

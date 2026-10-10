@@ -134,6 +134,96 @@ class ChatTest(unittest.TestCase):
             with self.assertRaises(CHAT.ChatError) as failure: CHAT.run_native(["gateway", "health"], runner)
             self.assertNotIn("PRIVATE", str(failure.exception))
 
+    def test_plugin_replay_claim_does_not_override_native_guard(self):
+        session = "683dfe77-bdc2-4db7-a544-a9a213b98292"
+        candidate = receipt(session)
+        meta = candidate["result"]["meta"]
+        meta["toolMetas"] = [{"toolName": "homecompute_infrastructure_read", "replaySafe": True}]
+        meta["agentMeta"]["terminalReceipt"]["successfulToolNames"] = ["homecompute_infrastructure_read"]
+        # A manifest/result assertion is not qualification of this pinned runtime.
+        with self.assertRaises(CHAT.ChatError):
+            CHAT.parse_turn(candidate, session)
+        meta["agentMeta"]["terminalReceipt"]["successfulToolNames"] = []
+        meta["replayInvalid"] = True
+        with self.assertRaises(CHAT.ChatError):
+            CHAT.parse_turn(candidate, session)
+
+    def test_core_file_read_completed_receipt_is_accepted(self):
+        session = "683dfe77-bdc2-4db7-a544-a9a213b98292"
+        candidate = receipt(session, "Skill instructions read")
+        candidate["result"]["meta"]["agentMeta"]["terminalReceipt"]["successfulToolNames"] = ["read"]
+        self.assertEqual(CHAT.parse_turn(candidate, session)["text"], "Skill instructions read")
+
+    def test_completed_browser_or_cli_turn_is_not_replayed(self):
+        session = "683dfe77-bdc2-4db7-a544-a9a213b98292"
+        for tool in ("browser", "exec"):
+            candidate = receipt(session, "Completed authorized tool operation")
+            candidate["runId"] = "qualification-run"
+            candidate["result"]["meta"]["replayInvalid"] = True
+            terminal = candidate["result"]["meta"]["agentMeta"]["terminalReceipt"]
+            terminal.update(runId="qualification-run", turnId="qualification-turn",
+                            terminalDisposition="visible", successfulToolNames=["read", tool])
+            self.assertFalse(CHAT.parse_turn(candidate, session)["replay_safe"])
+            for key, value in [("runId", "different-run"), ("turnId", ""),
+                               ("terminalDisposition", "not-visible")]:
+                bad = copy.deepcopy(candidate)
+                bad["result"]["meta"]["agentMeta"]["terminalReceipt"][key] = value
+                with self.assertRaises(CHAT.ChatError):CHAT.parse_turn(bad, session)
+
+    def test_cli_exit_one_requires_completion_and_clears_uncertainty_once(self):
+        calls = []
+        def completed(argv, **kwargs):
+            calls.append(argv)
+            remote = shlex.split(argv[-1])
+            session = remote[remote.index("--session-id") + 1]
+            candidate = receipt(session)
+            candidate["runId"] = "confirmed-run"
+            candidate["result"]["meta"]["replayInvalid"] = True
+            candidate["result"]["meta"]["agentMeta"]["terminalReceipt"].update(
+                runId="confirmed-run", turnId="confirmed-turn", terminalDisposition="visible",
+                successfulToolNames=["exec"])
+            return subprocess.CompletedProcess(argv, 1, json.dumps(candidate), "PRIVATE")
+        answer = CHAT.send("Calculate six times seven", "completed-cli",
+                           directory=self.directory, runner=completed)
+        self.assertEqual(answer["text"], "42")
+        self.assertFalse(answer["replay_safe"])
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(json.loads((self.directory / "completed-cli.json").read_text())["uncertain"])
+
+    def test_cli_exit_one_without_completion_pauses_without_retry(self):
+        calls = []
+        def incomplete(argv, **kwargs):
+            calls.append(argv)
+            remote = shlex.split(argv[-1])
+            session = remote[remote.index("--session-id") + 1]
+            candidate = receipt(session)
+            return subprocess.CompletedProcess(argv, 1, json.dumps(candidate), "PRIVATE")
+        for _ in range(2):
+            with self.assertRaises(CHAT.ChatError):
+                CHAT.send("Calculate six times seven", "incomplete-cli",
+                          directory=self.directory, runner=incomplete)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(json.loads((self.directory / "incomplete-cli.json").read_text())["uncertain"])
+
+    def test_unsafe_memory_receipt_pauses_without_retrying_same_session(self):
+        calls = []
+        def unsafe(argv, **kwargs):
+            calls.append(argv)
+            remote = shlex.split(argv[-1])
+            session = remote[remote.index("--session-id") + 1]
+            value = receipt(session, "Already completed native answer")
+            meta = value["result"]["meta"]
+            meta["replayInvalid"] = True
+            meta["toolMetas"] = [{"toolName": "memory_search", "replaySafe": False}]
+            meta["agentMeta"]["terminalReceipt"]["successfulToolNames"] = ["memory_search"]
+            return subprocess.CompletedProcess(argv, 0, json.dumps(value), "PRIVATE")
+        with self.assertRaises(CHAT.ChatError):
+            CHAT.send("Read current health", "unsafe-memory", directory=self.directory, runner=unsafe)
+        with self.assertRaises(CHAT.ChatError):
+            CHAT.send("Read current health again", "unsafe-memory", directory=self.directory, runner=unsafe)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(json.loads((self.directory / "unsafe-memory.json").read_text())["uncertain"])
+
     def test_status_projects_only_health_and_local_session(self):
         def health(argv, **kw):
             remote = shlex.split(argv[-1])

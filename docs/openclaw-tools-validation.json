@@ -1,0 +1,65 @@
+{
+  "scope": "OpenClaw tool installation; activation unfinished",
+  "target": "agent-openclaw",
+  "gateway_port": 9123,
+  "runtime": {
+    "nemoclaw": "0.0.129",
+    "openshell": "0.0.116",
+    "openclaw": "2026.9.1"
+  },
+  "browser": {
+    "installed": true,
+    "image_id": "sha256:2328d604f0956fd20475549b3cd000900a9c39ac3671e850ba7b61b8c8e14f41",
+    "version": "Chrome/154.0.8037.92",
+    "mode": "headless",
+    "unauthenticated_cdp_status": 403,
+    "authenticated_discovery": "pass",
+    "authenticated_websocket": "pass",
+    "navigation_url": "https://example.com/",
+    "navigation_title": "Example Domain",
+    "temporary_tab_closed": true,
+    "private_address_status": 403,
+    "metadata_address_status": 403,
+    "native_network_policy": "applied and retained across guest reboot"
+  },
+  "cli": {
+    "installed": true,
+    "path": "/sandbox/.openclaw/workspace/bin/homecompute-cli",
+    "sha256": "8aff9985c562a707e66f32c124da242cfbff96c08f241322eaca2f877b2204e0",
+    "direct_native_calculation": 42,
+    "direct_native_versions": "pass",
+    "exec_approval_applied": false
+  },
+  "activation": {
+    "candidate_schema_dry_run": "pass",
+    "tool_config_applied": false,
+    "browser_skill_file_installed": true,
+    "model_skill_read_probe": "pending",
+    "model_browser_probe": "pending",
+    "model_exec_probe": "pending",
+    "native_terminal_receipt_qualification": "pending",
+    "blocker": "native management command OOM-killed the 2 GiB sandbox; OpenShell Error phase rejects start, stop and rebuild inspection",
+    "management_heap_limit_added_mib": 384,
+    "replacement_approval": "requested"
+  },
+  "retained_state": {
+    "private_openclaw_backup": true,
+    "consistent_gateway_sqlite_backup": true,
+    "backup_integrity_check": "ok",
+    "phone_adapter": "paused",
+    "phone_receiver": "paused",
+    "phone_turns_in_flight_at_pause": 0,
+    "phone_turns_completed_at_pause": 8,
+    "phone_cursors_reset": false,
+    "hermes_modified": false
+  },
+  "local_validation": {
+    "chat_tests": 17,
+    "tool_tests": 3,
+    "communication_tests": 29,
+    "managed_config_tests": 5,
+    "result": "pass"
+  },
+  "test_messages_sent": false,
+  "unattended_reboot_supervision_qualified": false
+}

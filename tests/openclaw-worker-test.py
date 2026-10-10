@@ -15,6 +15,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,15 +23,10 @@ sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
 from broker import Ledger, serve
 from policy import load_projects, validate_files
 from publisher import MAX_API_RESPONSE_BYTES, Publisher
-from worker import Worker
+from worker import MAX_BROKER_RESPONSE_BYTES, Worker, broker_origin
 import model_relay
+from openclaw_worker_security import BODY, FILES, PROJECT, PolicyTests, WorkerTransportTests
 
-PROJECT = {"repository": "example/synthetic", "base_sha": "a" * 40,
-           "base_branch": "main", "classification": "cloud_allowed",
-           "tests": ["python3", "-m", "unittest", "discover", "-s", "tests"],
-           "write_prefixes": ["src/", "tests/"]}
-BODY = {"project": "demo", "issue_key": "synthetic:arithmetic:1", "summary": "simulated defect", "context": "2+3 must be 5"}
-FILES = [{"path": "src/calc.py", "content": base64.b64encode(b"def add(a,b): return a+b\n").decode()}]
 
 
 class FakeGitHub(Publisher):
@@ -76,6 +72,63 @@ class LedgerTests(unittest.TestCase):
     def test_deduplication_survives_restart(self):
         task = self.task()
         self.assertEqual(self.task()["id"], task["id"])
+
+    def test_idempotency_key_cannot_hide_changed_content(self):
+        task = self.task()
+        with self.assertRaises(ValueError):
+            self.ledger.submit({**BODY, "context": "different request"})
+        self.assertEqual(self.task()["id"], task["id"])
+        self.assertEqual(len(self.ledger.list_tasks()), 1)
+
+    def test_public_progress_results_events_and_unchanged_heartbeat(self):
+        task = self.task()
+        self.assertEqual((task["status"], task["approval_required"], task["approval_kind"]), ("queued", True, "execution"))
+        self.ledger.action(task["id"], "approve", {})
+        self.ledger.claim()
+        self.ledger.action(task["id"], "heartbeat", {"phase": "codex"})
+        before = self.ledger.get(task["id"])
+        self.assertEqual((before["status"], before["progress"]), ("running", "coding"))
+        events = self.ledger.task_events(0, 100)
+        self.ledger.action(task["id"], "heartbeat", {})
+        self.ledger.action(task["id"], "heartbeat", {"phase": "codex"})
+        self.assertEqual(self.ledger.get(task["id"]), before)
+        self.assertEqual(self.ledger.task_events(0, 100), events)
+        self.ledger.action(task["id"], "result", {"ok": True, "session_id": "synthetic-session", "files": FILES, "tests_passed": True})
+        public = self.ledger.get(task["id"])
+        self.assertEqual((public["state"], public["status"], public["approval_kind"]), ("review", "completed", "publication"))
+        self.assertEqual(public["result"], {"ok": True, "session_id": "synthetic-session", "tests_passed": True, "changed_files": 1})
+        self.assertNotIn("content", json.dumps(public))
+        first = self.ledger.task_events(0, 2)
+        self.assertTrue(first["has_more"])
+        rest = self.ledger.task_events(first["next_cursor"], 100)
+        self.assertEqual(rest["events"][-1]["task"], public)
+        self.assertFalse(rest["has_more"])
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE events SET snapshot=NULL WHERE seq=1")
+        legacy = self.ledger.task_events(0, 1)["events"][0]
+        self.assertFalse(legacy["snapshot_available"])
+        self.assertIsNone(legacy["task"])
+
+    def test_snapshot_role_cannot_mutate_or_read_private_evidence(self):
+        server = serve(self.ledger, {"assistant": "a" * 32, "worker": "w" * 32, "operator": "o" * 32,
+                                    "snapshot": "s" * 32}, FakeGitHub(), ("127.0.0.1", 0))
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        task = self.task()
+        def request(path, value=None):
+            req = urllib.request.Request("http://127.0.0.1:" + str(server.server_port) + path,
+                data=None if value is None else json.dumps(value).encode(), headers={"Authorization": "Bearer " + "s" * 32})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                return json.load(response)
+        try:
+            self.assertEqual(request("/task-events?after=0&limit=1")["events"][0]["task"]["id"], task["id"])
+            self.assertEqual(request("/tasks/" + task["id"])["id"], task["id"])
+            for path, body in (("/tasks", BODY), ("/worker/claim", {}), ("/tasks/" + task["id"] + "/approve", {}),
+                               ("/tasks/" + task["id"] + "/review", None), ("/mcp", {})):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    request(path, body)
+                self.assertEqual(error.exception.code, 403); error.exception.close()
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
         self.ledger.db.close()
         self.ledger = Ledger(self.path, {"demo": PROJECT})
         self.assertEqual(self.task()["id"], task["id"])
@@ -242,164 +295,8 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(response.size, MAX_API_RESPONSE_BYTES + 1)
 
 
-class PolicyTests(unittest.TestCase):
-    def test_failed_sandbox_preflight_cannot_checkout_or_access_model_credentials(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            worker = Worker(root, "synthetic-unused", {"demo": PROJECT})
-            task_id = "d9f9dfe9-b1b4-42f3-b895-6281189b690b"
-            task = {"id": task_id, "project": "demo", "policy": PROJECT, "body": BODY}
-            with patch("worker.os.chown"), patch.object(worker, "run", return_value=1) as run, \
-                    patch.object(worker, "clone") as clone, patch.object(worker, "git") as git, \
-                    patch.object(Path, "read_text", side_effect=AssertionError("credential or repository read attempted")):
-                with self.assertRaisesRegex(RuntimeError, "before checkout or model authentication"):
-                    worker.execute(task)
-            clone.assert_not_called()
-            git.assert_not_called()
-            run.assert_called_once()
-            self.assertEqual(run.call_args.kwargs, {"codex": False})
-            argv, cwd, evidence, observed_id, budget = run.call_args.args
-            self.assertEqual(observed_id, task_id)
-            self.assertEqual(budget, 30)
-            self.assertEqual(cwd, root / task_id / "preflight")
-            self.assertEqual(cwd.stat().st_mode & 0o777, 0o700)
-            self.assertEqual(evidence.name, "sandbox-preflight.log")
-            self.assertIn('sandbox_mode="workspace-write"', argv)
-            self.assertIn("sandbox_workspace_write.exclude_slash_tmp=true", argv)
-            self.assertNotIn("use_legacy_landlock", " ".join(argv))
-            self.assertFalse((root / task_id / "clone").exists())
 
-    def test_codex_execution_preserves_preflight_temp_and_sandbox_boundaries(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            worker = Worker(root, "synthetic-unused", {"demo": PROJECT})
-            task = {"id": "d9f9dfe9-b1b4-42f3-b895-6281189b690b", "project": "demo",
-                    "policy": PROJECT, "body": BODY}
-            def git(directory, *args):
-                if args[0] == "worktree":
-                    Path(args[3]).mkdir()
-                    return b""
-                return b'{"schema_version":1,"classification":"cloud_allowed"}'
-            def run(argv, cwd, evidence, *args, **kwargs):
-                if kwargs.get("codex"):
-                    evidence.write_text('{"type":"thread.started","thread_id":"synthetic-session"}\n')
-                return 0
-            with patch("worker.os.chown"), patch.object(worker, "clone"), patch.object(worker, "git", side_effect=git), \
-                    patch.object(worker, "run", side_effect=run) as calls, patch.object(worker, "running", return_value=True), \
-                    patch.object(worker, "collect", return_value=FILES):
-                self.assertEqual(worker.execute(task)["session_id"], "synthetic-session")
-            invocations = [call for call in calls.call_args_list if call.args[0][0] == "codex"]
-            self.assertEqual(len(invocations), 2)
-            for invocation in invocations:
-                argv = invocation.args[0]
-                self.assertEqual(argv[argv.index("--sandbox") + 1], "workspace-write")
-                self.assertEqual(argv[argv.index("-a") + 1], "never")
-                self.assertIn("sandbox_workspace_write.exclude_slash_tmp=true", argv)
-                self.assertNotIn("dangerously-bypass", " ".join(argv))
-                self.assertNotIn("use_legacy_landlock", " ".join(argv))
 
-    def test_default_denies_all_and_placeholder_rejected(self):
-        self.assertEqual(load_projects(ROOT / "config/codex-projects.json"), {})
-        with self.assertRaises(ValueError):
-            load_projects(ROOT / "config/codex-projects.example.json")
-
-    def test_patch_security(self):
-        for name in ("../outside", "/tmp/file", "src/../evil", "src/.env", ".github/workflows/deploy.yml", "deploy/compose.yaml", "src/a\\b", "src//file"):
-            with self.subTest(name=name), self.assertRaises(ValueError):
-                validate_files([{**FILES[0], "path": name}], PROJECT)
-        with self.assertRaises(ValueError):
-            validate_files(FILES * 2, PROJECT)
-
-    def test_collector_never_executes_git_clean_filter(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            subprocess.run(["git", "init", "-q", str(root)], check=True)
-            (root / "src").mkdir()
-            (root / "src/calc.py").write_text("broken\n")
-            (root / ".gitattributes").write_text("src/* filter=unsafe\n")
-            marker = root / "executed"
-            subprocess.run(["git", "-C", str(root), "config", "filter.unsafe.clean", "touch " + str(marker) + "; cat"], check=True)
-            worker = Worker(root, "unused", {})
-            worker.baseline = worker.manifest(root)
-            (root / "src/calc.py").write_text("fixed\n")
-            files = worker.collect(root, PROJECT)
-            self.assertEqual(files[0]["path"], "src/calc.py")
-            self.assertFalse(marker.exists())
-
-    def test_read_only_checkout_credential_never_persists_or_enters_job_argv(self):
-        with tempfile.TemporaryDirectory() as directory:
-            worker = Worker(Path(directory), "unused", {})
-            with patch.object(Path, "read_text", return_value="synthetic-read-token"), patch.object(subprocess, "run") as run:
-                worker.clone("example/synthetic", Path(directory) / "clone", Path(directory) / "clone.log")
-            argv = run.call_args.args[0]
-            environment = run.call_args.kwargs["env"]
-            self.assertFalse(any("synthetic-read-token" in arg for arg in argv))
-            self.assertEqual(environment["GIT_CONFIG_KEY_0"], "http.https://github.com/.extraheader")
-            self.assertNotIn("CODEX_API_KEY", environment)
-            self.assertIn("--no-checkout", argv)
-
-    def test_collector_rejects_symlinks_deletions_and_policy_changes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "src").mkdir()
-            (root / "src/a").write_text("a")
-            worker = Worker(root, "unused", {})
-            worker.baseline = worker.manifest(root)
-            (root / "src/a").unlink()
-            with self.assertRaises(ValueError):
-                worker.collect(root, PROJECT)
-            (root / "src/a").symlink_to("/etc/passwd")
-            with self.assertRaises(ValueError):
-                worker.collect(root, PROJECT)
-
-    def test_collector_rejects_fifo_without_blocking(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "src").mkdir()
-            os.mkfifo(root / "src/fifo")
-            with self.assertRaises(ValueError):
-                Worker(root, "unused", {}).collect(root, PROJECT)
-
-    def test_scan_rejects_replaced_root_and_sparse_byte_exhaustion(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            tree = root / "tree"
-            tree.mkdir()
-            (root / "alias").symlink_to(tree, target_is_directory=True)
-            with self.assertRaises(ValueError):
-                Worker.manifest(root / "alias")
-            with (tree / "large").open("wb") as output:
-                output.truncate(268435457)
-            with self.assertRaises(ValueError):
-                Worker.manifest(tree)
-
-    def test_scan_renews_lease_and_honors_cancel_and_deadline(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            (root / "a").write_bytes(b"x" * 150000)
-            worker = Worker(root, "unused", {})
-            worker.deadline = time.monotonic() + 30
-            with patch.object(worker, "running", return_value=True) as heartbeat:
-                Worker.manifest(root, worker.scan_checkpoint("synthetic"))
-                heartbeat.assert_called_once_with("synthetic")
-            with patch.object(worker, "running", return_value=False):
-                with self.assertRaises(RuntimeError):
-                    Worker.manifest(root, worker.scan_checkpoint("synthetic"))
-            worker.deadline = time.monotonic() - 1
-            with self.assertRaises(TimeoutError):
-                Worker.manifest(root, worker.scan_checkpoint("synthetic"))
-
-    def test_job_directory_never_chowns_a_symlink_target(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            target = root / "private"
-            target.mkdir()
-            alias = root / "home"
-            alias.symlink_to(target, target_is_directory=True)
-            with patch("worker.os.chown") as chown:
-                with self.assertRaises(ValueError):
-                    Worker(root, "unused", {}).private_job_directory(alias)
-                chown.assert_not_called()
 
 
 class ModelRelayTests(unittest.TestCase):

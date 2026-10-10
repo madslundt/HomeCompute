@@ -16,9 +16,14 @@ from typing import Any
 
 from policy import load_projects, validate_files
 from publisher import Publisher
-from mcp_adapter import handle_http as handle_mcp
+from mcp_adapter import handle_http as handle_mcp, metadata
+from urllib.parse import parse_qs, urlsplit
 
-PUBLIC = {"id", "project", "issue_key", "state", "created", "updated", "session_id", "commit", "pr_url", "error"}
+PHASES = {"checkout", "baseline", "codex", "postcheck", "collect"}
+ERROR_CODES = {"sandbox_unavailable", "checkout_failed", "codex_failed", "tests_failed", "output_rejected",
+               "budget_exhausted", "worker_failed"}
+STATUS = {"pending": "queued", "queued": "queued", "running": "running", "review": "completed",
+          "publishing": "running", "completed": "completed", "failed": "failed", "cancelled": "cancelled"}
 
 
 class Ledger:
@@ -39,6 +44,12 @@ class Ledger:
         """)
         if "policy_sha256" not in {row[1] for row in self.db.execute("PRAGMA table_info(tasks)")}:
             self.db.execute("ALTER TABLE tasks ADD COLUMN policy_sha256 TEXT")
+        for column, kind in (("phase", "TEXT"), ("public_updated", "REAL")):
+            if column not in {row[1] for row in self.db.execute("PRAGMA table_info(tasks)")}:
+                self.db.execute("ALTER TABLE tasks ADD COLUMN " + column + " " + kind)
+        if "snapshot" not in {row[1] for row in self.db.execute("PRAGMA table_info(events)")}:
+            self.db.execute("ALTER TABLE events ADD COLUMN snapshot TEXT")
+        self.db.execute("UPDATE tasks SET public_updated=updated WHERE public_updated IS NULL")
         # A restart cannot safely infer whether a write already happened.
         with self.lock, self.db:
             for row in self.db.execute("SELECT id FROM tasks WHERE state IN ('running','publishing')").fetchall():
@@ -56,13 +67,29 @@ class Ledger:
                 value["result"] = json.loads(value["result"])
                 value["policy"] = self.projects[value["project"]]
                 return value
-            return {key: v for key, v in value.items() if key in PUBLIC}
+            value["updated"] = value["public_updated"]
+            state = value["state"]
+            value["status"] = STATUS[state]
+            value["phase"] = value["phase"] if state == "running" and value["phase"] else state
+            value["progress"] = {"checkout": "checkout", "baseline": "testing", "codex": "coding", "postcheck": "testing",
+                                 "collect": "collecting", "running": "sandbox"}.get(value["phase"])
+            value["approval_required"] = state in {"pending", "review"}
+            value["approval_kind"] = {"pending": "execution", "review": "publication"}.get(state)
+            result = json.loads(value["result"])
+            value["error_code"] = result.get("error_code")
+            value["result"] = {key: result[key] for key in ("ok", "tests_passed", "session_id") if key in result}
+            if "files" in result:
+                value["result"]["changed_files"] = len(result["files"])
+            value["artifacts"] = [{"kind": "pull_request", "url": value["pr_url"]}] if value["pr_url"] else []
+            return metadata(value)
 
     def transition(self, task_id: str, state: str, **fields: Any) -> None:
-        assignments = ["state=?", "updated=?"] + [key + "=?" for key in fields]
+        now = time.time()
+        assignments = ["state=?", "updated=?", "public_updated=?"] + [key + "=?" for key in fields]
         self.db.execute("UPDATE tasks SET " + ",".join(assignments) + " WHERE id=?",
-                        [state, time.time(), *fields.values(), task_id])
-        self.db.execute("INSERT INTO events(task_id,state,at) VALUES (?,?,?)", (task_id, state, time.time()))
+                        [state, now, now, *fields.values(), task_id])
+        self.db.execute("INSERT INTO events(task_id,state,at,snapshot) VALUES (?,?,?,?)",
+                        (task_id, state, now, json.dumps(self.get(task_id))))
 
     def check_task_policy(self, task: dict[str, Any]) -> None:
         current = hashlib.sha256(json.dumps(task["policy"], sort_keys=True).encode()).hexdigest()
@@ -72,47 +99,65 @@ class Ledger:
     def submit(self, body: dict[str, Any]) -> dict[str, Any]:
         if set(body) != {"project", "issue_key", "summary", "context"}:
             raise ValueError("expected project, issue_key, summary, context")
-        if body["project"] not in self.projects:
+        if not isinstance(body["project"], str) or body["project"] not in self.projects:
             raise ValueError("project not approved")
         if not isinstance(body["issue_key"], str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", body["issue_key"]):
             raise ValueError("invalid stable issue key")
         if any(not isinstance(body[key], str) or len(body[key]) > limit
                for key, limit in (("summary", 1000), ("context", 16000))):
             raise ValueError("context/summary exceeds budget")
+        if not body["summary"]:
+            raise ValueError("task summary required")
         with self.lock, self.db:
-            existing = self.db.execute("SELECT id FROM tasks WHERE project=? AND issue_key=?",
+            existing = self.db.execute("SELECT id,body FROM tasks WHERE project=? AND issue_key=?",
                                        (body["project"], body["issue_key"])).fetchone()
             if existing:
+                if json.loads(existing["body"]) != body:
+                    raise ValueError("stable issue key reused with different task content")
                 return self.get(existing["id"])
             count = self.db.execute("SELECT count(*) FROM tasks WHERE state IN ('pending','queued','running','publishing')").fetchone()[0]
             if count >= 32:
                 raise ValueError("pending task budget exhausted")
             task_id, now = str(uuid.uuid4()), time.time()
             policy_digest = hashlib.sha256(json.dumps(self.projects[body["project"]], sort_keys=True).encode()).hexdigest()
-            self.db.execute("INSERT INTO tasks(id,project,issue_key,state,created,updated,body,policy_sha256) VALUES (?,?,?,?,?,?,?,?)",
-                            (task_id, body["project"], body["issue_key"], "pending", now, now, json.dumps(body), policy_digest))
-            self.db.execute("INSERT INTO events(task_id,state,at) VALUES (?,?,?)", (task_id, "pending", now))
+            self.db.execute("INSERT INTO tasks(id,project,issue_key,state,created,updated,public_updated,body,policy_sha256) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (task_id, body["project"], body["issue_key"], "pending", now, now, now, json.dumps(body), policy_digest))
+            self.db.execute("INSERT INTO events(task_id,state,at,snapshot) VALUES (?,?,?,?)", (task_id, "pending", now, json.dumps(self.get(task_id))))
             return self.get(task_id)
 
     def action(self, task_id: str, action: str, body: dict[str, Any]) -> dict[str, Any]:
         with self.lock, self.db:
             task = self.get(task_id, private=True)
             state = task["state"]
+            if action in {"cancel", "approve"} and body != {}:
+                raise ValueError("empty action body required")
             if action == "cancel" and state in {"pending", "queued", "running", "review"}:
                 self.transition(task_id, "cancelled")
+            elif action == "cancel" and state == "cancelled":
+                pass
             elif action == "approve" and state == "pending":
                 self.check_task_policy(task)
                 self.transition(task_id, "queued")
             elif action == "heartbeat" and state == "running":
-                self.transition(task_id, "running")
+                if set(body) - {"phase"} or ("phase" in body and body["phase"] not in PHASES):
+                    raise ValueError("invalid worker progress")
+                if body.get("phase") and body["phase"] != task["phase"]:
+                    self.transition(task_id, "running", phase=body["phase"])
+                else:
+                    self.db.execute("UPDATE tasks SET updated=? WHERE id=?", (time.time(), task_id))
             elif action == "result" and state == "running":
-                if set(body) != {"ok", "session_id", "files"} or type(body["ok"]) is not bool:
+                if (set(body) - {"ok", "session_id", "files", "tests_passed", "error_code"}
+                        or not {"ok", "session_id", "files"} <= set(body) or type(body["ok"]) is not bool
+                        or ("tests_passed" in body and type(body["tests_passed"]) is not bool)
+                        or ("error_code" in body and body["error_code"] not in ERROR_CODES)):
                     raise ValueError("invalid worker result")
                 session = body["session_id"]
                 if session is not None and (not isinstance(session, str) or not re.fullmatch(r"[a-zA-Z0-9-]{1,80}", session)):
                     raise ValueError("invalid session id")
                 if body["ok"]:
                     validate_files(body["files"], task["policy"])
+                elif body["files"] != []:
+                    raise ValueError("failed worker cannot return files")
                 self.transition(task_id, "review" if body["ok"] else "failed",
                                 result=json.dumps(body), session_id=session,
                                 error=None if body["ok"] else "worker failed; inspect private evidence")
@@ -148,6 +193,17 @@ class Ledger:
         task = self.get(task_id, private=True)
         digest = hashlib.sha256(json.dumps(task["result"], sort_keys=True).encode()).hexdigest()
         return {"task": self.get(task_id), "result": task["result"], "result_sha256": digest}
+
+    def task_events(self, after: int, limit: int) -> dict[str, Any]:
+        """Ordered durable projections; historical pre-migration events are explicit gaps."""
+        with self.lock:
+            rows = self.db.execute("SELECT seq,task_id,state,at,snapshot FROM events WHERE seq>? ORDER BY seq LIMIT ?",
+                                   (after, limit + 1)).fetchall()
+            selected = rows[:limit]
+            return {"events": [{"seq": row["seq"], "task_id": row["task_id"], "state": row["state"], "at": row["at"],
+                                "task": json.loads(row["snapshot"]) if row["snapshot"] else None,
+                                "snapshot_available": bool(row["snapshot"])} for row in selected],
+                    "next_cursor": selected[-1]["seq"] if selected else after, "has_more": len(rows) > limit}
 
     def publish(self, task_id: str, publisher: Publisher, digest: str) -> dict[str, Any]:
         with self.lock, self.db:
@@ -189,6 +245,18 @@ def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address:
                     return self.respond(401, {"error": "unauthorized"})
                 if self.path == "/mcp":
                     return handle_mcp(self, ledger, role)
+                parsed = urlsplit(self.path)
+                if parsed.path == "/task-events" and self.command == "GET" and role in {"snapshot", "operator"}:
+                    query = parse_qs(parsed.query, strict_parsing=True)
+                    if set(query) - {"after", "limit"} or any(len(values) != 1 for values in query.values()):
+                        raise ValueError("invalid cursor")
+                    after, limit = int(query.get("after", ["0"])[0]), int(query.get("limit", ["100"])[0])
+                    if not 0 <= after <= 9223372036854775807 or not 1 <= limit <= 100:
+                        raise ValueError("invalid cursor")
+                    return self.respond(200, ledger.task_events(after, limit))
+                if role == "snapshot" and not (self.command == "GET" and
+                        (self.path in {"/tasks", "/actions"} or re.fullmatch(r"/(tasks|actions)/[a-fA-F0-9-]{36}", self.path))):
+                    return self.respond(403, {"error": "read-only snapshot credential"})
                 size = int(self.headers.get("Content-Length", "0"))
                 if size < 0 or size > 1500000:
                     return self.respond(413, {"error": "body budget exceeded"})
@@ -199,11 +267,11 @@ def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address:
                 if parts[0] == "actions" and actions is not None:
                     if self.path == "/actions" and self.command == "POST" and role in {"assistant", "operator"}:
                         result = actions.propose(body)
-                    elif self.path == "/actions" and self.command == "GET" and role in {"assistant", "operator"}:
+                    elif self.path == "/actions" and self.command == "GET" and role in {"assistant", "operator", "snapshot"}:
                         result = actions.list_actions()
                     elif self.path == "/actions/evidence" and self.command == "POST" and role == "operator":
                         result = actions.ingest_evidence(body)
-                    elif len(parts) == 2 and self.command == "GET" and role in {"assistant", "operator"}:
+                    elif len(parts) == 2 and self.command == "GET" and role in {"assistant", "operator", "snapshot"}:
                         result = actions.get(parts[1])
                     elif len(parts) == 3 and parts[2] == "review" and self.command == "GET" and role == "operator":
                         result = actions.review(parts[1])
@@ -223,7 +291,7 @@ def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address:
                         return self.respond(404, {"error": "unknown route"})
                 elif self.path == "/tasks" and self.command == "POST" and role in {"assistant", "operator"}:
                     result = ledger.submit(body)
-                elif self.path == "/tasks" and self.command == "GET" and role in {"assistant", "operator"}:
+                elif self.path == "/tasks" and self.command == "GET" and role in {"assistant", "operator", "snapshot"}:
                     result = ledger.list_tasks()
                 elif self.path == "/worker/claim" and self.command == "POST" and role == "worker":
                     result = ledger.claim()
@@ -237,6 +305,8 @@ def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address:
                                "operator": {"cancel", "approve", "publish"}}
                     if action not in allowed[role]:
                         return self.respond(403, {"error": "operator approval required"})
+                    if action == "publish" and publisher is None:
+                        return self.respond(403, {"error": "publisher credential not provisioned"})
                     result = ledger.publish(parts[1], publisher, body.get("result_sha256", "")) if action == "publish" else ledger.action(parts[1], action, body)
                 else:
                     return self.respond(404, {"error": "unknown route"})
@@ -269,19 +339,25 @@ def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address:
 
 def main() -> None:
     os.umask(0o077)
-    tokens = {name: Path("/run/secrets/" + name + "_token").read_text().strip()
+    secrets = Path(os.environ.get("CODEX_BROKER_SECRETS", "/run/secrets"))
+    config = Path(os.environ.get("CODEX_BROKER_CONFIG", "/config"))
+    tokens = {name: (secrets / (name + "_token")).read_text().strip()
               for name in ("assistant", "worker", "operator")}
-    if any(len(v) < 32 for v in tokens.values()) or len(set(tokens.values())) != 3:
-        raise ValueError("three distinct tokens of at least 32 characters required")
-    state_path = Path("/state/tasks.sqlite3")
+    if (secrets / "snapshot_token").exists():
+        tokens["snapshot"] = (secrets / "snapshot_token").read_text().strip()
+    if any(len(v) < 32 for v in tokens.values()) or len(set(tokens.values())) != len(tokens):
+        raise ValueError("distinct tokens of at least 32 characters required")
+    state_path = Path(os.environ.get("CODEX_BROKER_STATE", "/state")) / "tasks.sqlite3"
     actions = None
-    if Path("/config/actions.json").exists():
+    if (config / "actions.json").exists():
         from actions import ActionLedger, load_actions
-        actions = ActionLedger(state_path, load_actions(Path("/config/actions.json")),
-                               json.loads(Path("/config/monitoring.json").read_text()))
+        actions = ActionLedger(state_path, load_actions(config / "actions.json"),
+                               json.loads((config / "monitoring.json").read_text()))
     # Acquire action ownership before any coding-task crash recovery can write.
-    ledger = Ledger(state_path, load_projects(Path("/config/projects.json")))
-    server = serve(ledger, tokens, Publisher(Path("/run/secrets/github_token")), ("0.0.0.0", 8080), actions)
+    ledger = Ledger(state_path, load_projects(config / "projects.json"))
+    publisher = Publisher(secrets / "github_token") if (secrets / "github_token").exists() else None
+    server = serve(ledger, tokens, publisher,
+                   (os.environ.get("CODEX_BROKER_BIND", "0.0.0.0"), int(os.environ.get("CODEX_BROKER_PORT", "8080"))), actions)
     print(json.dumps({"event": "broker_started", "projects": len(ledger.projects)}), flush=True)
     server.serve_forever()
 

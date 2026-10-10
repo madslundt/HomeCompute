@@ -1,8 +1,9 @@
 const BROKER = 'http://broker:8080';
-const MAX_RESPONSE_BYTES = 32768;
+const MAX_RESPONSE_BYTES = 262144;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const ISSUE = /^[A-Za-z0-9_.:-]{1,128}$/;
+const PR_URL = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9][0-9]*$/;
 const string = (minLength, maxLength, pattern) => ({ type: 'string', minLength, maxLength, ...(pattern ? { pattern: pattern.source } : {}) });
 export const submitSchema = {
   type: 'object', additionalProperties: false,
@@ -35,19 +36,24 @@ function metadata(response) {
   const row = response.task ?? response;
   if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error('Invalid task broker response');
   const out = {};
-  for (const key of ['id', 'task_id', 'project', 'issue_key', 'state', 'status', 'created', 'updated', 'created_at', 'updated_at', 'started_at', 'finished_at', 'attempts', 'cancel_requested', 'approval_required', 'execution_approved', 'publish_approved', 'session_id', 'commit', 'pr_url', 'error_code', 'error']) {
+  for (const key of ['id', 'task_id', 'project', 'issue_key', 'state', 'status', 'phase', 'progress', 'approval_required', 'approval_kind', 'created', 'updated', 'session_id', 'commit', 'pr_url', 'error_code', 'error']) {
     const value = row[key];
     if (typeof value === 'string') out[key] = value.slice(0, 2048);
     else if (typeof value === 'number' && Number.isFinite(value)) out[key] = value;
     else if (typeof value === 'boolean') out[key] = value;
+    else if (value === null) out[key] = null;
   }
   if (row.result && typeof row.result === 'object') {
     out.result = {};
-    for (const key of ['session_id', 'commit', 'pr_url', 'tests_passed', 'exit_code']) {
+    for (const key of ['session_id', 'commit', 'pr_url', 'ok', 'tests_passed', 'exit_code', 'changed_files']) {
       const value = row.result[key];
       if (typeof value === 'string') out.result[key] = value.slice(0, 2048);
       else if (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) out.result[key] = value;
     }
+  }
+  if (Array.isArray(row.artifacts)) {
+    out.artifacts = row.artifacts.slice(0, 10).filter(item => item?.kind === 'pull_request' && typeof item.url === 'string' && PR_URL.test(item.url))
+      .map(item => ({ kind: 'pull_request', url: item.url }));
   }
   if (!UUID.test(out.id ?? out.task_id ?? '')) throw new Error('Invalid task broker response');
   return out;

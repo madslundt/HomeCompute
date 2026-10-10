@@ -31,9 +31,16 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `verify_client_model_access.py` | Live `/v1/models` visibility audit for supplied client keys | Exact expected aliases per environment-variable credential; never prints key values |
 | `codex_session.py` | Policy-aware Codex session entry point | Cloud default for committed `cloud_allowed` repositories; explicit whole-session GB10 Local mode |
 | `assistant-task.py` | Approved local task broker operator interface | Per-task execution approval, cancellation, private proposal export and digest-bound draft PR publication |
+| `openclaw_tasks.py` | Trusted coding handoff and status feed | Fixed loopback broker submission/cancellation, durable public event cursor to existing communication outbox; no execution or publication approval |
 | `verify-openclaw-runtime.py` | Isolated synthetic local-model probe | One native OpenClaw tool loop against a temporary pending-only broker; never invokes Codex or GitHub |
 | `prepare-openclaw-nemoclaw.py` | Local private managed-config preparation | Preserves NemoClaw gateway/proxy ownership; never installs, uploads, provisions credentials or deploys |
-| `observe-homecompute.py` | Operator read-only monitoring projection | Fixed host metadata reads and fixture-only Home Assistant metadata; reports changes without notifications, updates or recovery actions |
+| `setup-openclaw-browser.py` | Dedicated guest headless browser | Immutable image, private CDP token and bounded containers; refuses existing container replacement |
+| `enable-openclaw-tools.py` | In-sandbox browser/CLI activation | Native schema dry-run by default; explicit apply backs up config and scopes exec to one helper; current activation blocked, see `docs/openclaw-tools.md` |
+| `check-maintenance.py` | Daily host-local package and Docker registry reports | Fresh isolated signed APT indexes, deployed NixOS catalog revision and public manifest metadata; never apply updates |
+| `setup-maintenance-monitor.py` | Install the dedicated metadata timer | Digest-bound dry-run/install/rollback; only the monitor is activated |
+| `openclaw-observation-feed.py` | Update report admission | Existing fixed SSH reads, finite summary to private outbox, meaningful notifications through its n8n owner |
+| `observe-homecompute.py` | Operator read-only monitoring projection | Fixed host reads and optional private n8n HA metadata projection; default HA disabled; no notifications or recovery actions |
+| `openclaw_infrastructure.py` | On-demand infrastructure metadata | Fixed system selection, fresh health/update evidence and prepared native investigation context; no control or outbound delivery |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
 The compute scripts default to safe, staged operation. Run `help`, `validate`,
@@ -373,3 +380,15 @@ operator console for the synthetic canary; `status` checks its native gateway.
 The scoped adapter and inactive n8n conversation/notification workflows are
 described in [the deployment and rollback proposal](../docs/openclaw-communication.md).
 External delivery requires a selected authorized destination and activation approval.
+
+`openclaw-telegram.py` prepares the selected dedicated Telegram phone chat.
+It polls outside the assistant with pinned bot/chat/human identities, uses a
+durable update cursor and queues replies through the same n8n outbox. `inspect`
+shows sender candidates without enrolling them; `run` requires approved private
+credentials and configuration. See the phone setup in the same deployment proposal.
+
+`setup-codex-vm.py` provisions only the approved dedicated Codex KVM guest on
+home-core, from the pinned Ubuntu image with separate root/work disks and host
+identity. It refuses existing disk/config replacement. `--lock-egress` closes
+bootstrap public HTTP(S)/DNS; `--stop` retains disks and evidence. See the
+[actual VM installation and rollback](../docs/openclaw-runtime-research.md#approved-dedicated-vm-provisioning-2026-10-09).

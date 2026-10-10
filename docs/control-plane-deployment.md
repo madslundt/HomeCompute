@@ -1,23 +1,25 @@
 # K15 gateway deployment
 
 Deployed 2026-09-04 on `home-core` (`192.168.30.122`, Tailscale
-`100.110.248.102`). This supersedes the earlier scaffold-only gateway status.
+`100.110.248.102`). Approved package/image maintenance on 2026-10-10 updated
+the services below; database restores and migration rollback startup were rehearsed.
 
 | Service | Version | Status |
 | --- | --- | --- |
-| Caddy | 2.11.4 Alpine | Private TLS gateway |
-| LiteLLM | 1.99.1 non-root | Authenticated API and virtual-key database |
+| Caddy | 2.11.7 Alpine | Private TLS gateway |
+| LiteLLM | 1.104.2 non-root | Authenticated API and virtual-key database |
 | PostgreSQL | 16.15 Alpine | Dedicated LiteLLM database, no host port |
-| n8n | 2.38.3 | Existing migrated instance remains running |
-| Plapre relay | Python 3.12.12 | Healthy; Home Assistant-only LAN ingress on 10201 |
-| Hviske relay | Python 3.12.12 | Healthy; Home Assistant-only LAN ingress on 10301 |
-| Automation standby | llama.cpp b11176 | Qwen3.6 Q4 cached, normally stopped |
+| n8n | 2.42.6 | Database migrated; workflow/credential counts and active flags preserved |
+| Plapre relay | Python 3.12.15 | Healthy; Home Assistant-only LAN ingress on 10201 |
+| Hviske relay | Python 3.12.15 | Healthy; Home Assistant-only LAN ingress on 10301 |
+| Automation standby | Approved server digest | Qwen3.6 Q4 cached, normally stopped |
 
 Immutable image digests are recorded in `config/control-plane.env.example`.
-LiteLLM's digest was verified with cosign using the upstream public key pinned
-at commit `0112e53046018d726492c814b3644b7d376029d0`.
-Release references: [LiteLLM](https://github.com/BerriAI/litellm/releases/tag/v1.99.1),
-[Caddy](https://github.com/caddyserver/caddy/releases/tag/v2.11.4),
+The update verified immutable public registry digests and platform identities;
+independent cosign verification was not performed for these new pins. The original
+LiteLLM 1.99.1 deployment had its separate cosign receipt.
+Release references: [LiteLLM](https://github.com/BerriAI/litellm/releases),
+[Caddy](https://github.com/caddyserver/caddy/releases),
 [PostgreSQL image](https://hub.docker.com/_/postgres).
 
 ## Access

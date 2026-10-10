@@ -13,7 +13,11 @@
       },
       "maxConcurrent": 1,
       "timeoutSeconds": 660,
-      "skills": [],
+      "skills": [
+        "homecompute-operations",
+        "household-summary",
+        "incident-triage"
+      ],
       "heartbeat": {
         "every": "0m"
       },

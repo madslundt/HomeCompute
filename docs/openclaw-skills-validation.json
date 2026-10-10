@@ -1,0 +1,65 @@
+{
+  "runtime": "OpenClaw 2026.9.1",
+  "gateway_port": 9123,
+  "agent": "main",
+  "workspace": "/sandbox/.openclaw/workspace",
+  "managed_restart_passed": true,
+  "skills": [
+    {
+      "name": "homecompute-operations",
+      "source": "openclaw-workspace",
+      "eligible": true,
+      "disabled": false,
+      "blockedByAgentFilter": false,
+      "modelVisible": true,
+      "userInvocable": true,
+      "commandVisible": true,
+      "missing": {
+        "bins": [],
+        "anyBins": [],
+        "env": [],
+        "config": [],
+        "os": []
+      }
+    },
+    {
+      "name": "household-summary",
+      "source": "openclaw-workspace",
+      "eligible": true,
+      "disabled": false,
+      "blockedByAgentFilter": false,
+      "modelVisible": true,
+      "userInvocable": true,
+      "commandVisible": true,
+      "missing": {
+        "bins": [],
+        "anyBins": [],
+        "env": [],
+        "config": [],
+        "os": []
+      }
+    },
+    {
+      "name": "incident-triage",
+      "source": "openclaw-workspace",
+      "eligible": true,
+      "disabled": false,
+      "blockedByAgentFilter": false,
+      "modelVisible": true,
+      "userInvocable": true,
+      "commandVisible": true,
+      "missing": {
+        "bins": [],
+        "anyBins": [],
+        "env": [],
+        "config": [],
+        "os": []
+      }
+    }
+  ],
+  "automatic_skill_loading": "unavailable: no read tool or code mode",
+  "browser_enabled": false,
+  "exec_mode": "deny",
+  "previously_allowed_tools_remain_denied": true,
+  "verification_date": "2026-10-09"
+}

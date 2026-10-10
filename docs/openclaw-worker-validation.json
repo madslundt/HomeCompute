@@ -176,5 +176,311 @@
     "production_services_changed": false,
     "paid_model_calls": 0,
     "GitHub_writes": 0
+  },
+  "coding_integration_recheck_20261009": {
+    "kernel": "6.18.48",
+    "docker": {
+      "exit_code": 0,
+      "stdout": "29.7.2",
+      "stderr": ""
+    },
+    "image": {
+      "exit_code": 0,
+      "stdout": "sha256:6c8c176813e15c6eb3f41507b44b43a991d8908a83588f44fc501057ae647d88",
+      "stderr": ""
+    },
+    "user_namespace_limit": 190763,
+    "paid_api_calls": 0,
+    "github_writes": 0,
+    "production_changed": false,
+    "default_docker": {
+      "exit_code": 0,
+      "stderr": "",
+      "probes": [
+        {
+          "user_namespace_probe": {
+            "exit_code": 1,
+            "output": "-1 1"
+          }
+        },
+        {
+          "codex_workspace_write": {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "bwrap: No permissions to create a new namespace, likely because the kernel does not allow non-privileged user namespaces. On e.g. debian this can be enabled with 'sysctl kernel.unprivileged_userns_clone=1'.\n"
+          }
+        }
+      ]
+    },
+    "native_numeric_uid": {
+      "exit_code": 0,
+      "stdout": "{\"workspace_write\": \"pass\", \"outside_write\": \"denied\", \"protected_git_write\": \"denied\", \"private_sentinel_read\": \"denied\", \"network_socket\": \"denied\"}",
+      "stderr": "",
+      "configuration": {
+        "sandbox_mode": "workspace-write",
+        "exclude_slash_tmp": true,
+        "private_tmpdir": true,
+        "approval_policy": "never"
+      },
+      "outer_isolation_qualified": false,
+      "scope": "disposable synthetic kernel capability proof; not production executor"
+    },
+    "native_tempdir_removed": true,
+    "diagnostic_complete": true,
+    "validated_at": "2026-10-09T19:21:32.180845+00:00",
+    "production_worker_enabled": false,
+    "preparation": {
+      "worker_sources_sha256": {
+        "deploy/codex-worker/worker.py": "81916013279361d65735dc36d0d09742807c0b6447e27138b336b51bb4e5d3bd",
+        "deploy/codex-worker/homecompute-codex-worker.service": "97a93927446cfe86927562569e128ce5a57376a2e22407db78c127586ec75f93",
+        "deploy/codex-worker/qualify_native.py": "36528f017c77eb3fc52f56b3706a7333a129959b390a8b2682c606d42b1b2d2e",
+        "scripts/verify-codex-isolation.py": "4bbe37387e2ba12383a145b96d9ad2fbe005a27108b543efbf9a4ca1ee8bc25f"
+      },
+      "offline_worker_tests": {
+        "count": 34,
+        "result": "pass"
+      },
+      "current_worker_disposable_linux": {
+        "identity_secret_temp_detached_cleanup": "pass",
+        "job_capabilities_cleared": "pass",
+        "native_workspace_write": "fails_closed_before_authentication"
+      },
+      "ambient_controller_capability_probe": {
+        "controller_uid": 1000,
+        "job_uid": 20000,
+        "capabilities": "all_cleared",
+        "result": "pass"
+      },
+      "candidate_unit_systemd_syntax": "pass_on_Ubuntu24_guest_tempfile_only",
+      "dedicated_vm_provisioned": false,
+      "candidate_worker_service_installed": false,
+      "candidate_worker_service_started": false,
+      "credential_files_at_intended_homecore_paths": "absent_metadata_only",
+      "production_project_policy": "empty",
+      "authenticated_codex_job": "not_run",
+      "broker_transport_checks": {
+        "only_fixed_http_or_https_root_origin": "pass",
+        "actual_http_301_302_303_307_308_never_followed": "pass",
+        "response_cap_bytes": 1500000,
+        "oversized_response_rejected_before_json": "pass"
+      }
+    }
+  },
+  "dedicated_vm_validation_20261009": {
+    "scope": "Approved dedicated Codex VM only; no host reboot or existing agents VM restart",
+    "receipt": {
+      "installation.json": {
+        "schema_version": 1,
+        "at": "2026-10-09T20:02:36.472001+00:00",
+        "event": "codex_guest_installed",
+        "instance_id": "homecompute-codex-v1",
+        "source_sha256": {
+          "worker.py": "fcbd65c02766859d4a923a69d9169c53c04de78eae7a9ca81ccf0c1062d0d181",
+          "policy.py": "b87658df0f28dd5851d3e171bc45e2abb369a3d903679e60a93a653737148bb5",
+          "qualify_native.py": "1aed377f290c945e2fa69d4022741d6caee50266d30829c84554d29ba9ee0243",
+          "homecompute-codex-worker.service": "10ef56087fb741416613bcd5c881cbebe1ed2c1b78e69c892400d63b71a46b1a",
+          "package.json": "cb1c24220022d021ea8f73f9eaa4424831fe75ff2ecf59b23c4cd3821fcac1be",
+          "package-lock.json": "ce0488fdd9b421ca105ed36e169cf1fde633a0859e54f41aab9bc59780a9c4ed",
+          "bwrap-userns-restrict": "1cf6ed7a3b4e61fb8e3077db7e5ab7842d993d4f05562248868f78b245672dbd"
+        },
+        "codex": "codex-cli 0.145.0",
+        "distro_packages": [
+          "apparmor=4.0.1really4.0.1-0ubuntu0.24.04.8",
+          "apparmor-utils=4.0.1really4.0.1-0ubuntu0.24.04.8",
+          "bubblewrap=0.9.0-1ubuntu0.3",
+          "ca-certificates=20260601~24.04.1",
+          "e2fsprogs=1.47.0-2.4~exp1ubuntu4.1",
+          "git=1:2.43.0-1ubuntu7.3",
+          "nodejs=18.19.1+dfsg-6ubuntu5",
+          "npm=9.2.0~ds1-2",
+          "python3=3.12.3-0ubuntu2.1",
+          "strace=6.8-0ubuntu2"
+        ],
+        "work_disk_gib": 12,
+        "distro_bwrap_profile_sha256": "1cf6ed7a3b4e61fb8e3077db7e5ab7842d993d4f05562248868f78b245672dbd",
+        "apparmor_userns_restriction": 1,
+        "bwrap_apparmor_profile": "/etc/apparmor.d/homecompute-codex-bwrap",
+        "worker_enabled": false,
+        "credential_files_created": false,
+        "paid_api_calls": 0,
+        "distro_bwrap_profile_present": false,
+        "scoped_upstream_profile_source": {
+          "commit": "b0eb95457bc2de401920308869d016e696c73664",
+          "url": "https://gitlab.com/apparmor/apparmor/-/raw/b0eb95457bc2de401920308869d016e696c73664/profiles/apparmor/profiles/extras/bwrap-userns-restrict",
+          "upstream_sha256": "11d39094f044f0cda0febb3ad517b830301da6b2ce929664af09ee9e4dd264f9",
+          "normalized_rules_sha256": "c8e86a653f8dcde1a6a28d210f4002bbf60e5b765acb62200108f447c96cd9ab"
+        },
+        "qualification_helper_updated_before_activation": true
+      },
+      "qualification.json": {
+        "schema_version": 1,
+        "at": "2026-10-09T20:54:05.473038+00:00",
+        "instance_id": "homecompute-codex-v1",
+        "qualification": {
+          "event": "native_worker_synthetic_qualification",
+          "sandbox": "workspace-write",
+          "job_uid": 20000,
+          "capabilities": "cleared",
+          "credentials_accessed": false,
+          "codex_bwrap_executable": "/usr/bin/bwrap",
+          "bwrap_selection": "observed_execve",
+          "apparmor_child_profile": "bwrap//&unpriv_bwrap (enforce)",
+          "nested_privileged_namespace": "denied",
+          "detached_nondumpable_cleanup": "pass",
+          "trusted_checkout_and_job_git_reads": "pass",
+          "trusted_git_metadata_write_chmod": "denied",
+          "production_exec_argv_help": "pass",
+          "shell_environment_config": "exact_git_trust_and_api_key_exclusions",
+          "file_size_budget_bytes": {
+            "default": 10485760,
+            "tests": 269484032
+          },
+          "stored_evidence_budget_bytes": 10485760,
+          "file_size_and_oversized_evidence_probes": "pass",
+          "production_network_qualified": false,
+          "authenticated_codex_execution": false
+        },
+        "worker_enabled": false,
+        "production_network_qualified": false,
+        "paid_api_calls": 0
+      },
+      "runtime": {
+        "worker_active": false,
+        "activation_marker_present": false,
+        "restart": "no",
+        "boot_id": "e77e10f2-35dc-4cb5-8d5a-9b12ef4fb75f",
+        "work_mode": "0o711",
+        "work_uid": 999,
+        "installed_source_sha256": {
+          "worker.py": "fcbd65c02766859d4a923a69d9169c53c04de78eae7a9ca81ccf0c1062d0d181",
+          "qualify_native.py": "1aed377f290c945e2fa69d4022741d6caee50266d30829c84554d29ba9ee0243"
+        }
+      }
+    },
+    "vm": {
+      "qemu_pid": 707605,
+      "vcpus": 2,
+      "memory_gib": 8,
+      "root_disk_gib": 32,
+      "work_disk_gib": 12,
+      "memory_max_gib": 10,
+      "cpu_quota_percent": 200,
+      "boot_id": "e77e10f2-35dc-4cb5-8d5a-9b12ef4fb75f",
+      "restart_at_utc": "2026-10-09T20:07:17Z",
+      "qualification_at_utc": "2026-10-09T20:09:12Z",
+      "setup_sha256": "58574a82019776ac9650919a879f191e57308743ad59c3e4a80210f6d3be2f95"
+    },
+    "existing_agents_vm_pid_unchanged": 3019518,
+    "worker_active": false,
+    "activation_marker_present": false,
+    "api_key_present": false,
+    "authenticated_model_calls": 0,
+    "remaining_gate": "OpenAI Developers account reauthentication and secure dedicated API key setup before the approved single coding canary"
+  },
+  "approved_authenticated_canary_20261009": {
+    "task_id": "59e3a0be-d5f3-4af8-a1af-75fa1866976d",
+    "issue_key": "codex-integration-canary-20261009",
+    "state": "failed",
+    "error_code": "checkout_failed",
+    "failure_stage": "trusted Git checkout cannot access job-owned directory",
+    "sandbox_preflight": "passed",
+    "model_execution_started": false,
+    "authenticated_model_calls": 0,
+    "worker_restart": "no",
+    "worker_active_after_attempt": false,
+    "activation_marker_removed": true,
+    "failed_task_and_private_evidence_preserved": true,
+    "secure_key": {
+      "name": "HomeClaw",
+      "organization": "Personal",
+      "project": "Default project",
+      "local_env_file": "/Users/madslundt/.config/homecompute/openclaw/codex-worker.env",
+      "env_name": "OPENAI_API_KEY",
+      "plaintext_output": false,
+      "guest_mode": "0400",
+      "guest_owner": "root",
+      "creation_retries": 0
+    },
+    "reconciliation": "Checkout and test-budget compatibility corrected; saved authenticated proposal independently verified; both original terminal task records retained without retry",
+    "fresh_task_id": "822cf264-85c6-4d1a-ad5a-292fa30f582b",
+    "final_worker_sha256": "fcbd65c02766859d4a923a69d9169c53c04de78eae7a9ca81ccf0c1062d0d181",
+    "final_qualifier_sha256": "1aed377f290c945e2fa69d4022741d6caee50266d30829c84554d29ba9ee0243",
+    "authenticated_attempt": {
+      "task_id": "822cf264-85c6-4d1a-ad5a-292fa30f582b",
+      "state": "failed",
+      "error_code": "tests_failed",
+      "session_id": "01a1226a-7011-7ea0-87d4-0ad82b829215",
+      "codex_turn_completed": true,
+      "model_jobs": 1,
+      "cause": "Immutable baseline sparse-file fixture exceeded old 10MiB limit; requested regression passed",
+      "output_proposal_sha256": "fa4785064e12d59c08ded05d08b7a1bbdf95a13057728713e4d69eae29d6f9e4",
+      "changed_paths": [
+        "tests/openclaw-worker-test.py"
+      ],
+      "independent_suite_passed": true,
+      "independent_suite_tests": 26,
+      "authorization_mutation_caught": true,
+      "new_model_job_after_failure": false
+    },
+    "test_budget_fix": {
+      "test_process_file_limit_mib": 257,
+      "codex_preflight_file_limit_mib": 10,
+      "stored_evidence_limit_mib": 10,
+      "workspace_disk_gib": 12,
+      "output_and_scan_policy_unchanged": true,
+      "local_worker_tests_passed": 36
+    },
+    "independent_native_tests": {
+      "event": "saved_proposal_independent_test_recheck",
+      "base_sha": "31402d4c1b2cc536f393acc6aefcf43837ce6a20",
+      "task_id": "822cf264-85c6-4d1a-ad5a-292fa30f582b",
+      "reviewed_artifact_sha256": "fa4785064e12d59c08ded05d08b7a1bbdf95a13057728713e4d69eae29d6f9e4",
+      "proposal_test_sha256": "fa4785064e12d59c08ded05d08b7a1bbdf95a13057728713e4d69eae29d6f9e4",
+      "changed_paths": [
+        "tests/openclaw-worker-test.py"
+      ],
+      "file_size_budget_bytes": {
+        "default": 10485760,
+        "tests": 269484032
+      },
+      "stored_evidence_budget_bytes": 10485760,
+      "model_calls": 0,
+      "broker_mutations": 0,
+      "trusted_git_invocations": 0,
+      "results": {
+        "baseline": {
+          "exit": 0,
+          "uid": 20000,
+          "argv": [
+            "python3",
+            "tests/openclaw-worker-test.py"
+          ],
+          "log": "..............{\"event\": \"sandbox_unavailable\", \"id\": \"d9f9dfe9-b1b4-42f3-b895-6281189b690b\", \"stage\": \"preflight\", \"paid_api_calls\": 0}\n...........\n----------------------------------------------------------------------\nRan 25 tests in 1.762s\n\nOK\n"
+        },
+        "proposal": {
+          "exit": 0,
+          "uid": 23995,
+          "argv": [
+            "python3",
+            "tests/openclaw-worker-test.py"
+          ],
+          "log": "...............{\"event\": \"sandbox_unavailable\", \"id\": \"d9f9dfe9-b1b4-42f3-b895-6281189b690b\", \"stage\": \"preflight\", \"paid_api_calls\": 0}\n...........\n----------------------------------------------------------------------\nRan 26 tests in 2.586s\n\nOK\n"
+        }
+      },
+      "evidence_directory": "/srv/codex-work/independent-review-bz2km4b5/evidence"
+    },
+    "recorded_at": "2026-10-09T20:58:46.030579+00:00",
+    "final_checks": {
+      "worker_tests": 36,
+      "task_feed_tests": 5,
+      "communication_tests": 29,
+      "diff_check": "passed",
+      "installed_source_hashes_match": true,
+      "worker_active": false,
+      "enabled_marker": false,
+      "automatic_restart": "no",
+      "reserved_job_processes_remaining": 0,
+      "external_security_scan": "attempted offline; unavailable ENOTCACHED; not passed"
+    }
   }
 }

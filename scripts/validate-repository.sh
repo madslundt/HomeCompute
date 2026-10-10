@@ -92,9 +92,15 @@ python3 "$REPO_ROOT/tests/openclaw-action-flow-test.py"
 python3 "$REPO_ROOT/tests/system-monitoring-test.py"
 python3 "$REPO_ROOT/tests/openclaw-chat-test.py"
 python3 "$REPO_ROOT/tests/openclaw-communication-test.py"
+python3 "$REPO_ROOT/tests/openclaw-task-feed-test.py"
+python3 "$REPO_ROOT/tests/openclaw-worker-api-test.py"
+python3 "$REPO_ROOT/tests/codex-guest-bootstrap-test.py"
+python3 "$REPO_ROOT/tests/openclaw-infrastructure-test.py"
+python3 "$REPO_ROOT/tests/openclaw-telegram-test.py"
 if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/openclaw-broker-plugin.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-n8n-communication.test.mjs"
+  node --test "$REPO_ROOT/tests/system-monitoring-ha-workflow.test.mjs"
 else
   printf '[validate] Node unavailable; OpenClaw plugin tests require Node on CI\n'
 fi
@@ -321,6 +327,7 @@ OPENCLAW_MODEL_CA_FILE=$secret_file
 CODEX_PROJECTS_FILE=$REPO_ROOT/config/codex-projects.json
 CODEX_WORKER_TOKEN_FILE=$secret_file
 CODEX_OPERATOR_TOKEN_FILE=$secret_file
+CODEX_SNAPSHOT_TOKEN_FILE=$secret_file
 CODEX_GITHUB_TOKEN_FILE=$secret_file
 CODEX_GITHUB_CHECKOUT_TOKEN_FILE=$secret_file
 CODEX_API_KEY_FILE=$secret_file
@@ -841,15 +848,57 @@ jq -e '
   (.networks["artifact-fetch"].internal != true)
 ' "$hviske_json" >/dev/null
 
+printf '[validate] approved trusted communication relay boundary\n'
+communication_json="$temporary_root/openclaw-communication.json"
+COMMUNICATION_TLS_CERT=/validation/communication.crt COMMUNICATION_TLS_KEY=/validation/communication.key \
+  docker compose -f "$REPO_ROOT/deploy/openclaw/communication/compose.yaml" \
+  --profile approved-synthetic-communication config --format json >"$communication_json"
+jq -e --arg relay_config "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" '
+  (.services | keys == ["private-relay"]) and
+  (.services["private-relay"] |
+    (.profiles == ["approved-synthetic-communication"]) and
+    (.image == "caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f") and
+    (.pull_policy == "never" and .restart == "no") and
+    (.user == "1000:1000" and .read_only == true) and
+    (.cap_drop == ["ALL"] and .cap_add == null) and
+    (.security_opt == ["no-new-privileges:true"]) and
+    ((.privileged // false) == false) and
+    (.network_mode == "host" and .ports == null and .pid == null and .ipc == null) and
+    (.cpus == 0.25 and .mem_limit == "134217728" and .pids_limit == 32) and
+    (.environment == null) and
+    (.entrypoint == ["/bin/sh", "-ec"]) and
+    (.command == ["cp /usr/bin/caddy /runtime/caddy; exec /runtime/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]) and
+    (.volumes | length == 3) and
+    ([.volumes[].target] | sort == ["/etc/caddy/Caddyfile", "/run/tls/communication.crt", "/run/tls/communication.key"]) and
+    (any(.volumes[]; .target == "/etc/caddy/Caddyfile" and .source == $relay_config)) and
+    (any(.volumes[]; .target == "/run/tls/communication.crt" and .source == "/validation/communication.crt")) and
+    (any(.volumes[]; .target == "/run/tls/communication.key" and .source == "/validation/communication.key")) and
+    (all(.volumes[]; .type == "bind" and .read_only == true)))
+' "$communication_json" >/dev/null
+# Pin the exact already-reviewed listener/source/path contract for this narrow
+# host-network exception; changing it requires reviewing this gate too.
+python3 - "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" <<'PY'
+import hashlib, pathlib, sys
+assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "5e91b6a74b97032a252bf024cf59d9cd580a3694eef3001707ba9fd901d84b74"
+PY
+
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
 # per-project container controls are the only boundary left between them. Each
 # pattern below removes that boundary outright rather than weakening it, so the
 # scan covers every deployment directory instead of only the gateway. It is
 # restricted to Compose files so prose describing these risks does not trip it.
 if rg -n -g '*.yaml' \
-  'docker\.sock|privileged:[[:space:]]*true|network_mode:[[:space:]]*host|pid:[[:space:]]*host|ipc:[[:space:]]*host' \
+  'docker\.sock|privileged:[[:space:]]*true|pid:[[:space:]]*host|ipc:[[:space:]]*host' \
   "$REPO_ROOT/deploy"; then
   printf '[validate] forbidden capability, namespace, or socket reference under deploy/\n' >&2
+  exit 1
+fi
+# This already approved relay is outside the assistant and needs host loopback
+# for the fixed SSH reverse-forward. Its exact service is constrained above;
+# all other deployment files retain the host-network denial.
+if rg -n -g '*.yaml' -g '!**/openclaw/communication/compose.yaml' \
+  'network_mode:[[:space:]]*host' "$REPO_ROOT/deploy"; then
+  printf '[validate] unapproved host networking under deploy/\n' >&2
   exit 1
 fi
 

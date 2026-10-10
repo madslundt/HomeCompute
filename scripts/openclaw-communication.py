@@ -53,19 +53,28 @@ def registry_keys(path: Path) -> dict[str, Any]:
         if not system["enabled"]:
             continue
         keys = {"collection"}
+        if system["collector"] == "homeassistant-metadata":
+            keys.update({"installed-version", "unavailable_count"})
         keys.update("container." + x["name"] for x in system["containers"])
         keys.update("unit." + x["name"] for x in system["units"])
         updates = set(system["updates"])
+        from maintenance_observations import SOURCES, TTL
+        updates.update(x + ".coverage" for x in SOURCES.intersection(updates))
+        if "package-update-report" in updates:
+            updates.add("package-update-report.reboot-required")
+        if system["collector"] == "homeassistant-metadata":
+            updates.add("update_available_count")
         updates.update("model-update-report." + x for x in ("changed", "pin_drift", "source_errors", "outperforms_active") if "model-update-report" in updates)
         for key in keys | updates:
             category = "updates" if key in updates else "health"
             allowed[system["id"] + ":" + key] = {"category": category,
-                "ttl": system["update_ttl_seconds" if category == "updates" else "health_ttl_seconds"]}
+                "ttl": TTL if key.split(".")[0] in SOURCES else system["update_ttl_seconds" if category == "updates" else "health_ttl_seconds"]}
     return allowed
 
 
 def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: Callable[[str, str], str],
-          address: tuple[str, int] = ("127.0.0.1", 18793), clock: Callable[[], float] = time.time) -> ThreadingHTTPServer:
+          address: tuple[str, int] = ("127.0.0.1", 18793), clock: Callable[[], float] = time.time,
+          infrastructure: Any = None, tasks: Any = None) -> ThreadingHTTPServer:
     if address[0] != "127.0.0.1":
         raise ValueError("private adapter must bind loopback; use an approved SSH forward")
     if (set(tokens) != {"collector", "conversation", "delivery"} or len(set(tokens.values())) != 3
@@ -145,7 +154,7 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
                     store.acknowledge(body["delivery_key"], body["claim"], body["receipt"], now)
                     result = {"acknowledged": True}
                 else:
-                    result = conversation(body, store, turn, now)
+                    result = conversation(body, store, turn, now, infrastructure, tasks)
                 self.send_json(200, result)
             except (ValueError, TypeError, KeyError, OverflowError):
                 self.send_json(400, {"error": "invalid or conflicting bounded request"})
@@ -155,7 +164,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
     return ThreadingHTTPServer(address, Handler)
 
 
-def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str], str], now: float) -> dict[str, Any]:
+def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str], str], now: float,
+                 infrastructure: Any = None, tasks: Any = None) -> dict[str, Any]:
     if (set(body) != {"conversation", "request_id", "destination", "text"}
             or body["conversation"] not in store.settings["conversations"]
             or body["destination"] != store.settings["destination"]
@@ -167,7 +177,21 @@ def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str],
     if old:
         return old
     try:
-        if body["text"].strip() == "/status":
+        if body["text"].strip() in {"/start", "/help"}:
+            reply = "OpenClaw chat connected. Write a message here to talk to it. Use /status for current status. Use /systems, /health SYSTEM or /investigate SYSTEM for configured bounded infrastructure reads. Production actions require the trusted operator approval path."
+        elif (body["text"].strip().split() or [""])[0] in {"/code", "/cancel-task"}:
+            reply = tasks.respond(body["text"]) if tasks else "Coding submission is not configured. No task or model turn ran."
+        elif (body["text"].strip().split() or [""])[0] == "/task":
+            import uuid
+            task_id = body["text"].strip()[5:].strip()
+            try:
+                valid = str(uuid.UUID(task_id)) == task_id
+            except ValueError:
+                valid = False
+            selected = store.task_snapshot(task_id) if valid else None
+            reply = ("Latest collected broker snapshot: " + canonical(selected)
+                     if selected else "No collected snapshot for that task. Check the owning broker; this does not mean the task is absent.")
+        elif body["text"].strip() == "/status":
             status = store.status(now)
             for field in ("incidents", "tasks", "actions"):
                 status[field + "_shown"] = min(len(status[field]), 5)
@@ -177,7 +201,13 @@ def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str],
         elif body["text"].strip().lower().startswith(("/approve", "/publish", "/execute")):
             reply = "Approval requires the trusted operator client and exact reviewed request. Chat replies cannot approve production actions or publication."
         else:
-            reply = turn(body["conversation"], body["text"])
+            words = body["text"].strip().split()
+            if words and words[0] in {"/systems", "/health", "/investigate"} and infrastructure is None:
+                reply = "Infrastructure reads are not configured on this adapter. No infrastructure access or model turn ran."
+            else:
+                reply = infrastructure.respond(body["text"], turn, body["conversation"]) if infrastructure else None
+                if reply is None:
+                    reply = turn(body["conversation"], body["text"])
         if not isinstance(reply, str) or len(reply) > 4000:
             raise ValueError("invalid assistant reply")
     except Exception:
@@ -191,7 +221,14 @@ def main() -> None:
     parser.add_argument("--tokens", type=Path, required=True, help="private JSON role tokens, outside sandbox")
     parser.add_argument("--state", type=Path, required=True, help="private local state directory")
     parser.add_argument("--registry", type=Path, default=ROOT / "config/system-monitoring.json")
+    parser.add_argument("--infrastructure-registry", type=Path, help="explicit opt-in to on-demand trusted reads; no observation schedule")
+    parser.add_argument("--ha-transport", type=Path, help="private metadata-only transport; requires infrastructure registry")
+    parser.add_argument("--task-transport", type=Path, help="private fixed-origin broker handoff; separate execution approval required")
     args = parser.parse_args()
+    if args.ha_transport and not args.infrastructure_registry:
+        parser.error("HA metadata transport requires the infrastructure registry")
+    from openclaw_infrastructure import Reader
+    infrastructure = Reader(args.infrastructure_registry, ha_transport=args.ha_transport) if args.infrastructure_registry else None
     os.umask(0o077)
     args.state.mkdir(mode=0o700, parents=True, exist_ok=True)
     if args.tokens.is_symlink() or args.tokens.stat().st_mode & 0o077:
@@ -201,6 +238,8 @@ def main() -> None:
     lock = (args.state / "adapter.lock").open("a")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     store = Outbox(args.state / "transport.sqlite3", load_config(args.config))
+    from openclaw_tasks import Tasks
+    tasks = Tasks(args.task_transport, store.settings["projects"]) if args.task_transport else None
     tokens = json.loads(args.tokens.read_text())
     spec = importlib.util.spec_from_file_location("hc_chat", ROOT / "scripts/openclaw-chat.py")
     module = importlib.util.module_from_spec(spec)
@@ -210,7 +249,7 @@ def main() -> None:
         # Native console owns SSH destination, machine authentication, and session identity.
         return module.send(text, name, directory=args.state / "sessions")["text"]
 
-    server = serve(store, tokens, registry_keys(args.registry), native_turn)
+    server = serve(store, tokens, registry_keys(args.registry), native_turn, infrastructure=infrastructure, tasks=tasks)
     try:
         server.serve_forever()
     finally:

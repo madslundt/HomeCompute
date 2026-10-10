@@ -36,13 +36,15 @@ def ssh_command(arguments: list[str]) -> list[str]:
             "hermes-operator@10.77.20.2", shlex.join(PREFIX + arguments)]
 
 
-def run_native(arguments: list[str], runner: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
+def run_native(arguments: list[str], runner: Callable[..., Any] = subprocess.run, *,
+               allow_completed_tools: bool = False) -> dict[str, Any]:
     try:
         result = runner(ssh_command(arguments), capture_output=True, text=True, timeout=65,
                         stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         raise ChatError("Connection ended without a verified receipt. No retry was attempted.") from None
-    if result.returncode != 0:
+    if result.returncode != 0 and not (allow_completed_tools and result.returncode == 1
+                                      and arguments[0] == "agent" and "--session-id" in arguments):
         raise ChatError("Native command failed; outcome may be uncertain. No retry was attempted.")
     if len(result.stdout.encode()) > MAX_RECEIPT:
         raise ChatError("Native receipt exceeded its budget; no retry was attempted.")
@@ -52,6 +54,12 @@ def run_native(arguments: list[str], runner: Callable[..., Any] = subprocess.run
         raise ChatError("Native receipt was invalid; no retry was attempted.") from None
     if not isinstance(value, dict):
         raise ChatError("Native receipt must be an object.")
+    if result.returncode != 0:
+        # This pinned CLI returns 1 for completed non-replayable tool turns.
+        # Only a verified terminal receipt can distinguish that from failure.
+        projected = parse_turn(value, arguments[arguments.index("--session-id") + 1])
+        if projected["replay_safe"] is not False:
+            raise ChatError("Native command failed without a completed tool receipt. No retry was attempted.")
     return value
 
 
@@ -118,29 +126,42 @@ def parse_turn(value: dict[str, Any], session_id: str) -> dict[str, Any]:
         meta = result["meta"]
         agent = meta["agentMeta"]
         receipt = agent["terminalReceipt"]
-        if (value["status"] != "ok" or meta["replayInvalid"] is not False
+        if (value["status"] != "ok" or type(meta["replayInvalid"]) is not bool
                 or meta["aborted"] is not False or receipt["rerouted"] is not False
                 or agent["sessionId"] != session_id or receipt["sessionId"] != session_id
                 or agent["provider"] != "inference" or agent["model"] != "automation-moe"
                 or receipt["effective"]["provider"] != "inference"
-                or receipt["effective"]["model"] != "automation-moe"):
+                or receipt["effective"]["model"] != "automation-moe"
+                or meta.get("error") is not None or meta.get("stopReason") == "error"):
             raise ValueError()
         tools = receipt["successfulToolNames"]
-        if not isinstance(tools, list) or any(t not in {"session_status", "memory_search", "memory_get"} for t in tools):
+        if not isinstance(tools, list) or any(t not in {"read", "browser", "exec", "session_status", "memory_search", "memory_get"} for t in tools):
+            raise ValueError()
+        effect_tools = bool(set(tools).intersection({"browser", "exec"}))
+        if effect_tools:
+            if (receipt.get("terminalDisposition") != "visible"
+                    or not isinstance(value.get("runId"), str) or not value["runId"]
+                    or receipt.get("runId") != value["runId"]
+                    or not isinstance(receipt.get("turnId"), str) or not receipt["turnId"]
+                    or not set(tools).issubset({"read", "browser", "exec"})):
+                raise ValueError()
+        elif meta["replayInvalid"]:
             raise ValueError()
         payloads = result["payloads"]
         if not isinstance(payloads, list) or not 1 <= len(payloads) <= 16:
             raise ValueError()
         texts = []
         for payload in payloads:
-            if not isinstance(payload, dict) or not isinstance(payload.get("text"), str):
+            if (not isinstance(payload, dict) or not isinstance(payload.get("text"), str)
+                    or payload.get("isError") is True):
                 raise ValueError()
             texts.append(payload["text"])
         text = "\n".join(texts)
         if not text.strip() or len(text.encode()) > 65536:
             raise ValueError()
         return {"text": text, "provider": "inference", "model": "automation-moe",
-                "session_id": session_id, "verified": True}
+                "session_id": session_id, "verified": True,
+                "replay_safe": not meta["replayInvalid"], "successful_tools": tools}
     except (KeyError, TypeError, ValueError):
         raise ChatError("Turn lacked a safe completed receipt or had possible side effects. No retry was attempted; this conversation is paused for operator reconciliation.") from None
 
@@ -156,7 +177,8 @@ def send(message: str, name: str, *, directory: Path = STATE,
         state["uncertain"] = True
         save()
         value = run_native(["agent", "--agent", "main", "--session-id", state["session_id"],
-                            "--message", message, "--timeout", "45", "--thinking", "off", "--json"], runner)
+                            "--message", message, "--timeout", "45", "--thinking", "off", "--json"], runner,
+                           allow_completed_tools=True)
         answer = parse_turn(value, state["session_id"])
         state["uncertain"] = False
         save()

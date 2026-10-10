@@ -3,6 +3,19 @@
   "active": false,
   "nodes": [
     {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "cronExpression", "expression": "*/10 * * * * *"}]
+        }
+      },
+      "id": "approved-phone-reply-schedule",
+      "name": "Phone reply delivery schedule (disabled until activation)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "disabled": true,
+      "position": [0, -180]
+    },
+    {
       "parameters": {},
       "id": "manual-approved-delivery",
       "name": "Manual approved delivery",
@@ -89,7 +102,7 @@
       ],
       "credentials": {
         "telegramApi": {
-          "name": "Existing private Telegram notification bot (select after approval)"
+          "name": "Dedicated OpenClaw Telegram bot (select after approval)"
         }
       },
       "retryOnFail": false
@@ -137,6 +150,9 @@
     }
   ],
   "connections": {
+    "Phone reply delivery schedule (disabled until activation)": {
+      "main": [[{"node": "Approved delivery configuration", "type": "main", "index": 0}]]
+    },
     "Manual approved delivery": {
       "main": [
         [

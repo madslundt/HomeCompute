@@ -16,7 +16,45 @@ from zoneinfo import ZoneInfo
 ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
 HEX = re.compile(r"[0-9a-f]{64}")
 STATES = {"pending", "queued", "running", "review", "publishing", "completed", "failed", "cancelled"}
-EVIDENCE = {"count", "candidate_count", "available", "failed", "state", "reason",
+PROGRESS = {"sandbox", "checkout", "coding", "testing", "collecting"}
+
+
+def task_projection(task: dict[str, Any]) -> dict[str, Any]:
+    """Only categorical broker metadata crosses into the transport outbox."""
+    state = task["state"]
+    row = {key: task[key] for key in ("id", "project", "state", "updated")}
+    row["status"] = {"pending": "queued", "review": "completed", "publishing": "running"}.get(state, state)
+    row["approval_required"] = state in {"pending", "review"}
+    row["approval_kind"] = {"pending": "execution", "review": "publication"}.get(state)
+    phase = task.get("phase", state)
+    if phase not in STATES | {"checkout", "baseline", "codex", "postcheck", "collect"}:
+        raise ValueError("invalid public phase")
+    row["phase"] = phase
+    progress = task.get("progress")
+    if progress is not None:
+        if progress not in PROGRESS or state != "running":
+            raise ValueError("invalid task progress")
+        row["progress"] = progress
+    result = task.get("result")
+    if result is not None and not isinstance(result, dict):
+        raise ValueError("invalid public result")
+    if result:
+        if (not isinstance(result, dict) or not result.keys() <= {"ok", "tests_passed", "changed_files", "session_id"}
+                or type(result.get("ok")) is not bool
+                or result.get("tests_passed") is not None and type(result["tests_passed"]) is not bool
+                or type(result.get("changed_files")) is not int or not 0 <= result["changed_files"] <= 1000
+                or result.get("session_id") is not None and (not isinstance(result["session_id"], str)
+                    or not re.fullmatch(r"[A-Za-z0-9-]{1,80}", result["session_id"]))):
+            raise ValueError("invalid public result")
+        row["result"] = result
+    link = task.get("pr_url")
+    if link is not None:
+        if not isinstance(link, str) or not re.fullmatch(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pull/[1-9][0-9]*", link):
+            raise ValueError("invalid PR link")
+        row["pr_url"] = link
+    return row
+from maintenance_observations import semantic_evidence
+EVIDENCE = {"count", "candidate_count", "security_count", "update_scope", "available", "failed", "state", "reason", "source_digest",
             "source_report_generated_at", "installed_version"}
 
 
@@ -60,7 +98,7 @@ def observation(row: dict[str, Any], allowed: dict[str, Any], now: float) -> dic
             and set(evidence) != {"count", "source_report_generated_at"}):
         raise ValueError("model report counters require source provenance")
     for key, val in evidence.items():
-        if key in {"count", "candidate_count"}:
+        if key in {"count", "candidate_count", "security_count"}:
             valid = type(val) is int and 0 <= val <= 10000000
         elif key in {"available", "failed"}:
             valid = type(val) is bool
@@ -72,6 +110,10 @@ def observation(row: dict[str, Any], allowed: dict[str, Any], now: float) -> dic
         elif key == "source_report_generated_at":
             valid = (isinstance(val, str) and observed - ttl <= instant(val) <= observed + 30
                      and expiry <= instant(val) + ttl)
+        elif key == "source_digest":
+            valid = isinstance(val, str) and bool(re.fullmatch(r"[a-f0-9]{64}", val))
+        elif key == "update_scope":
+            valid = val in {"installed_packages", "package_catalog"}
         else:
             valid = isinstance(val, str) and bool(re.fullmatch(r"[A-Za-z0-9_.+-]{1,80}", val))
         if not valid:
@@ -160,12 +202,14 @@ class Outbox:
                     self.db.execute("UPDATE events SET state='superseded' WHERE topic=? AND kind='recovery' AND state='pending'", (key,))
                     row["episode_started_at"] = old.get("episode_started_at", row["observed_at"]) if old and old["status"] == "degraded" else row["observed_at"]
                     row["episode_key"] = hashlib.sha256((key + ":" + row["episode_started_at"]).encode()).hexdigest()
-                    if not old or old["status"] != "degraded" or old["evidence"] != row["evidence"]:
+                    if not old or old["status"] != "degraded" or semantic_evidence(old["evidence"]) != semantic_evidence(row["evidence"]):
                         marker = hashlib.sha256((canonical(row["evidence"]) + row["observed_at"]).encode()).hexdigest()[:24]
                         self.db.execute("UPDATE events SET state='superseded' WHERE topic=? AND kind='incident' AND state='pending'", (key,))
+                        readable = {k: v for k, v in row["evidence"].items() if k not in {"source_digest", "source_report_generated_at"}}
+                        label = "Update review" if row["category"] == "updates" else "HomeCompute incident"
                         self.add("observation:" + row["episode_key"] + ":" + marker, key, "incident",
                                  {"observation": row, "issue_key": "monitor:" + row["episode_key"],
-                                  "text": f"HomeCompute incident: {key}. Evidence: {canonical(row['evidence'])}. Review only; actions require operator approval."}, now)
+                                  "text": f"{label}: {key}. Evidence: {canonical(readable)}. Review only; actions require operator approval."}, now)
                     else:
                         # Fresh unchanged collection extends the pending envelope, without creating a notification.
                         for event in self.db.execute("SELECT key,body FROM events WHERE topic=? AND kind='incident' AND state='pending'", (key,)).fetchall():
@@ -194,8 +238,7 @@ class Outbox:
                     or str(uuid.UUID(tid)) != tid or project not in self.settings["projects"] or state not in STATES
                     or type(updated) not in {float, int} or not 0 <= updated <= now + 30):
                 raise ValueError("task outside reviewed contract")
-            # Error/context/URLs are untrusted, never forwarded as notification text.
-            selected.append({"id": tid, "project": project, "state": state, "updated": updated})
+            selected.append(task_projection(task))
         with self.lock, self.db:
             for task in selected:
                 tid, state = task["id"], task["state"]
@@ -207,24 +250,35 @@ class Outbox:
                         raise ValueError("task project cannot change")
                     if prior["updated"] > task["updated"]:
                         continue
-                    if prior["updated"] == task["updated"] and prior["state"] != state:
+                    comparable = lambda value: {k: v for k, v in value.items() if k != "updated"}
+                    if prior["updated"] == task["updated"] and comparable(prior) != comparable(task):
                         raise ValueError("conflicting equal-time task")
-                    if prior["state"] == state:
+                    if comparable(prior) == comparable(task):
                         self.db.execute("INSERT OR REPLACE INTO baseline VALUES(?,?)", (key, canonical(task)))
                         continue
-                    if prior["state"] in {"completed", "failed", "cancelled"}:
+                    if prior["state"] != state and prior["state"] in {"completed", "failed", "cancelled"}:
                         raise ValueError("terminal task cannot regress")
                     order = {name: rank for rank, name in enumerate(("pending", "queued", "running", "review", "publishing", "completed"))}
                     if state in order and prior["state"] in order and order[state] < order[prior["state"]]:
                         raise ValueError("task state cannot regress")
                 self.db.execute("UPDATE events SET state='superseded' WHERE topic=? AND state='pending' AND kind='approval'", (key,))
-                if state in {"pending", "review", "completed", "failed", "cancelled"}:
+                self.db.execute("UPDATE events SET state='superseded' WHERE topic=? AND state='pending' AND kind='progress'", (key,))
+                if state in STATES:
                     advice = {"pending": f"Execution approval required: assistant-task.py approve {tid}",
+                              "queued": "Queued after execution approval.",
+                              "running": "Running" + (": " + task["progress"] if task.get("progress") else "") + ".",
+                              "publishing": "Publishing the approved proposal.",
                               "review": f"Proposal review required: assistant-task.py review {tid}; publication requires its reviewed digest.",
                               "completed": "Completed; check the owning broker for the PR and independent CI.",
                               "failed": "Failed; inspect private evidence and reconcile before any retry.",
                               "cancelled": "Cancelled."}[state]
-                    self.add(key + ":" + state, key, "approval" if state in {"pending", "review"} else "terminal",
+                    if task.get("result"):
+                        advice += f" Proposed files: {task['result']['changed_files']}."
+                    if task.get("pr_url"):
+                        advice += " PR: " + task["pr_url"]
+                    marker = ":" + task["phase"] if task.get("progress") else ""
+                    kind = "approval" if state in {"pending", "review"} else "terminal" if state in {"completed", "failed", "cancelled"} else "progress"
+                    self.add(key + ":" + state + marker, key, kind,
                              {"task": task, "text": f"HomeCompute task {tid} ({task['project']}): {advice} Chat replies do not approve actions."}, now)
                 self.db.execute("INSERT OR REPLACE INTO baseline VALUES(?,?)", (key, canonical(task)))
 
@@ -320,6 +374,15 @@ class Outbox:
         return {"outbox": counts, "incidents": incidents, "quiet": quiet(now, self.settings),
                 "tasks": tasks, "actions": actions, "actions_enabled": False,
                 "model_health": "not_probed", "destination": self.settings["destination"]}
+
+    def task_snapshot(self, task_id: str) -> dict[str, Any] | None:
+        """Exact previously collected ID; recent-list limits cannot hide its result."""
+        if str(uuid.UUID(task_id)) != task_id:
+            raise ValueError("invalid task identifier")
+        with self.lock:
+            row = self.db.execute("SELECT body FROM baseline WHERE key=?", ("task:" + task_id,)).fetchone()
+            task = json.loads(row[0]) if row else None
+        return task if task and task["project"] in self.settings["projects"] else None
 
     def reserve_turn(self, key: str, digest: str) -> dict[str, Any] | None:
         with self.lock, self.db:

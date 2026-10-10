@@ -122,7 +122,8 @@ def verify(native: bool) -> dict[str, object]:
     payload = base64.b64encode(("NATIVE=" + repr(native) + "\n" + REMOTE).encode()).decode()
     command = "sudo -n python3 -c " + shlex.quote(
         "import base64;exec(base64.b64decode(" + repr(payload) + "))")
-    result = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "home-core", command],
+    result = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+                             "-o", "ConnectTimeout=10", "home-core", command],
                             capture_output=True, text=True, timeout=100)
     if result.returncode:
         raise RuntimeError("credential-free isolation diagnostic failed: " + result.stderr.strip())

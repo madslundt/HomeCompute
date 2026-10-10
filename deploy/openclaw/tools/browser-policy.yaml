@@ -1,0 +1,16 @@
+preset:
+  name: homecompute-browser
+  description: Authenticated CDP access to the isolated guest browser worker
+network_policies:
+  browser_cdp:
+    name: browser_cdp
+    endpoints:
+      - host: 172.18.0.1
+        port: 18800
+        protocol: websocket
+        enforcement: enforce
+        rules:
+          - allow: {method: GET, path: "/json/**"}
+          - allow: {method: "*", path: "/devtools/**"}
+    binaries:
+      - {path: /usr/local/bin/node}

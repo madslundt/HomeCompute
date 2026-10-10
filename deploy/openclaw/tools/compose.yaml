@@ -1,0 +1,73 @@
+name: homecompute-openclaw-tools
+services:
+  browser:
+    image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      HOME: /tmp
+      XDG_CONFIG_HOME: /tmp/config
+      XDG_CACHE_HOME: /tmp/cache
+      BROWSER_TOKEN_FILE: /run/browser-token
+      BROWSER_PUBLIC_ORIGIN: http://172.18.0.1:18800
+    volumes:
+      - ${HOMECOMPUTE_BROWSER_TOKEN_FILE:?Set the dedicated private token file}:/run/browser-token:ro
+      - browser-profile:/home/browser/profile
+    tmpfs: [/tmp:rw,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=1777]
+    cpus: 1.0
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 256
+    logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
+    networks:
+      browser: {aliases: [homecompute-openclaw-browser]}
+    depends_on: [browser-egress]
+  browser-ingress:
+    image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
+    command: [python3, /opt/homecompute/tcp_relay.py]
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment: {BROWSER_UPSTREAM: "homecompute-openclaw-browser:18800"}
+    volumes: ["./tcp_relay.py:/opt/homecompute/tcp_relay.py:ro"]
+    ports: ["172.18.0.1:18800:18800"]
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
+    pids_limit: 64
+    logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
+    networks: [browser, egress]
+  browser-egress:
+    image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
+    command: [squid, -N, -f, /etc/homecompute/browser-squid.conf]
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: ["./browser-squid.conf:/etc/homecompute/browser-squid.conf:ro"]
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=1777]
+    cpus: 0.25
+    mem_limit: 128m
+    memswap_limit: 128m
+    pids_limit: 64
+    logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
+    networks: [browser, egress]
+networks:
+  browser:
+    name: homecompute-openclaw-browser
+    internal: true
+    ipam: {config: [{subnet: 172.30.188.0/24}]}
+  egress:
+    name: homecompute-openclaw-browser-egress
+volumes:
+  browser-profile:
+    name: homecompute-openclaw-browser-profile

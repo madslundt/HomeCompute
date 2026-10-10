@@ -52,7 +52,7 @@
     "dedicated_exec_tmpfs_for_plain_binary_copy": true,
     "TLS_runtime_and_certificate_provisioning": "not_qualified_not_activated"
   },
-  "production_delivery": "not_connected_destination_and_activation_pending",
+  "production_delivery": "connected_approved_supervised_Telegram_test",
   "live_postchecks": {
     "OpenClaw_canary": "healthy_original_container",
     "Hermes": "original_container_running_gateway_8080",
@@ -69,5 +69,388 @@
     "deploy/openclaw/communication/Caddyfile": "5e91b6a74b97032a252bf024cf59d9cd580a3694eef3001707ba9fd901d84b74",
     "deploy/openclaw/communication/compose.yaml": "ec091082a1d196d63fc2248aca850015530ffc635cf1570067611e8f5ae18cb5",
     "deploy/openclaw/communication/n8n-private-route.yaml": "51f0a07dc32638caacaebab2f7304eec8e097c099f755f9ec63961f1c098e7b6"
+  },
+  "dedicated_phone_extension": {
+    "recorded_at": "2026-10-09T18:17:06.345236Z",
+    "channel_selected_by_operator": "dedicated_OpenClaw_Telegram_bot",
+    "state": "active_supervised_test",
+    "receiver": "operator_Mac_trusted_long_polling_outside_assistant",
+    "pairing": "explicit_bot_private_chat_and_human_ID_pins_no_first_sender_enrollment",
+    "private_token_setup": "user_Terminal_hidden_prompt_offline_exclusive_mode_0600",
+    "cursor": "identity_scoped_private_durable_offset",
+    "uncertain_turn": "durable_pause_manual_reconciliation",
+    "read_only_polling_retry": "five_attempts_fixed_offset_bounded_backoff",
+    "outbound_owner": "n8n_dedicated_bot_credential",
+    "delivery_schedule": "ten_seconds_disabled_in_inactive_template",
+    "synthetic_HTTP_phone_replay": "one_model_turn_one_outbox_reply_after_lost_receipt",
+    "unit_tests": {
+      "telegram_receiver": 18,
+      "communication": 27,
+      "console": 11,
+      "n8n_route_and_receipt": 5,
+      "total": 61
+    },
+    "updated_n8n_template_engine_test": {
+      "passed": true,
+      "image": "sha256:4b76b9c5a69dc1c0f26bedd21b4e281ac2c84bd88d33857487b9e63dd0a42e87",
+      "network": "none",
+      "claims": 1,
+      "acknowledged": true,
+      "external_messages": 0,
+      "external_sender_and_adapter": "synthetic_surrogates"
+    },
+    "real_Telegram_calls": 0,
+    "real_messages_sent": 0,
+    "live_configuration_changed": false,
+    "secrets_provisioned": false,
+    "external_security_scan": "attempted_offline_ENOTCACHED_not_installed",
+    "source_sha256": {
+      "scripts/openclaw-telegram.py": "ea6d86ab5b42983ba126d0a578059b50598834e65987e2a46d819a9516001a3a",
+      "scripts/openclaw-communication.py": "35d4100c2d465b541a75a87b01e9c93ed2dc79b346c1b34663285145f028bccc",
+      "config/openclaw-telegram.example.json": "b6910cd50427bfac6bd36008b636f0952b023aa6cac7e1a9614152d76774ac02",
+      "automations/agent-investigation/n8n-notification-workflow.json": "bca93adc6484486b13cdd05dd187c1166b0ce23cff93be0ba708d53985ffaae3"
+    },
+    "bot_pairing_qualification": {
+      "recorded_at": "2026-10-09T18:38:44.839395Z",
+      "bot_username_matches_operator_selection": true,
+      "bot_has_no_webhook": true,
+      "private_start_received": true,
+      "sender_matches_existing_private_notification_chat_fingerprint": true,
+      "private_configuration_staged": true,
+      "transport_credentials_created": false,
+      "production_workflow_imported": false,
+      "receiver_or_relay_started": false,
+      "native_gateway_healthy": true,
+      "scope": "prepared_supervised_synthetic_test_awaiting_production_activation_approval"
+    }
+  },
+  "approved_activation": {
+    "recorded_at": "2026-10-09T19:02:49.616446Z",
+    "operator_explicitly_approved": true,
+    "bot_username": "plantagevej_openclaw_bot",
+    "native_model_route": "inference/automation-moe",
+    "selected_private_human_and_chat_pinned": true,
+    "dedicated_transport_credentials_provisioned": 3,
+    "dedicated_n8n_credentials_encrypted_at_rest": 2,
+    "workflow_id": "hcOpenClawTelegram20261009",
+    "delivery_interval_seconds": 10,
+    "existing_37_workflow_metadata_unchanged": true,
+    "n8n_original_image_environment_policy_and_HA_mapping_preserved": true,
+    "private_TLS_existing_CA_verified": true,
+    "role_and_path_and_non_n8n_source_denials_passed": true,
+    "temporary_firewall_rule": "exact br-hc-n8n 172.28.201.2 -> 172.28.201.1 TCP19443 only",
+    "runtime_processes": {
+      "adapter": true,
+      "tunnel": true,
+      "telegram": true
+    },
+    "receiver_paused": false,
+    "native_conversation_uncertain": false,
+    "real_outbox_counts": {
+      "delivered": 5
+    },
+    "completed_phone_updates": 3,
+    "operator_confirmed_phone_receipt": true,
+    "native_memory_search_replay_issue": {
+      "detected": true,
+      "native_turn_completed_read_only": true,
+      "existing_answer_recovered_once": true,
+      "model_turn_retried": false,
+      "replay_guard_relaxed": false,
+      "tools_temporarily_denied_for_supervised_canary": true,
+      "new_tool_free_native_turn_and_delivery_passed": true
+    },
+    "original_OpenClaw_and_Hermes_containers_preserved": true,
+    "home_core_healthchecked_services_healthy": true,
+    "Mac_awake_required": true,
+    "unattended_or_boot_supervision_qualified": false,
+    "production_observation_and_task_and_action_feeds_connected": false,
+    "private_pre_activation_online_n8n_backup_created": true,
+    "secrets_printed_or_committed": false
+  },
+  "on_demand_infrastructure": {
+    "recorded_at": "2026-10-09T19:32:55.123232+00:00",
+    "status": "prepared_pending_supervised_read_only_activation_approval",
+    "systems": [
+      "home-core",
+      "home-spark",
+      "home-assistant"
+    ],
+    "commands": [
+      "/systems",
+      "/health SYSTEM",
+      "/investigate SYSTEM"
+    ],
+    "live_operator_reads": {
+      "home-core": {
+        "checks": 12,
+        "health": "healthy",
+        "existing_upstream_change_count": 7
+      },
+      "home-spark": {
+        "checks": 5,
+        "Plapre": "restarting_projected_as_unhealthy",
+        "cached_apt_candidates": 149
+      },
+      "home-assistant": "pending_new_authenticated_n8n_route"
+    },
+    "native_verified_investigations": {
+      "home-core": "live_metadata",
+      "home-spark": "live_metadata",
+      "home-assistant": "synthetic_metadata_only"
+    },
+    "native_provider": "inference",
+    "native_model": "automation-moe",
+    "native_custom_tool_replay_safe": "unsupported_for_ordinary_custom_tools_in_pinned_2026.9.1",
+    "native_tool_scope": "all_current_allowed_tools_remain_denied",
+    "replay_guard_relaxed": false,
+    "model_advice": "untrusted_advisory_facts_available_from_deterministic_health_command",
+    "HA_projection_fields": [
+      "schema_version",
+      "host",
+      "generated_at",
+      "installed_version",
+      "update_available_count",
+      "unavailable_count"
+    ],
+    "HA_live_credential_values_accessed": false,
+    "HA_n8n_route": "fixed_authenticated_input_free_GET_core_loopback_15678",
+    "HA_workflow_state": "new_inactive_template_gate_closed_no_production_import",
+    "n8n_engine": {
+      "passed": true,
+      "image": "sha256:4b76b9c5a69dc1c0f26bedd21b4e281ac2c84bd88d33857487b9e63dd0a42e87",
+      "network": "none",
+      "native_HA_GETs": [
+        "/api/config",
+        "/api/states"
+      ],
+      "credentials": "synthetic_only",
+      "external_requests": 0
+    },
+    "unit_tests": {
+      "infrastructure": 12,
+      "console": 13,
+      "communication": 29,
+      "system_monitoring": 20,
+      "HA_workflow": 4,
+      "telegram": 18,
+      "n8n_communication": 5,
+      "host_CLI": 11
+    },
+    "denial_checks": [
+      "unsupported_systems",
+      "extra_command_arguments",
+      "shell_URL_service_input",
+      "unconfigured_reader",
+      "enabled_HA_without_transport",
+      "extra_HA_payload_fields",
+      "stale_future_HA_source",
+      "private_token_permissions_symlink_FIFO",
+      "chat_approval_execution_publication",
+      "unsafe_native_receipt_no_retry",
+      "duplicate_request_no_recollection_or_model_rerun"
+    ],
+    "production_control_enabled": false,
+    "proactive_monitoring_enabled": false,
+    "external_messages_sent_by_qualification": 0,
+    "existing_outbox_after_checks": {
+      "delivered": 5
+    },
+    "existing_adapter_receiver_tunnel": "running_original_processes",
+    "production_mutations": false,
+    "new_credentials_provisioned": false,
+    "supported_boot_supervision": "still_blocked",
+    "source_checks": {
+      "diff_check": "pass",
+      "python_compile": "pass",
+      "shell_syntax": "pass",
+      "full_repository_validation": "all_tests_shell_JSON_YAML_Compose_D2_passed; final_containerized_Nix_stage_blocked_by_unavailable_Mac_Docker_daemon",
+      "external_security_scan": "offline_ENOTCACHED_unavailable",
+      "initial_full_repository_attempt": "transient_shared_checkout_synthetic_action_flow_failure; focused_rerun_passed_all_4",
+      "approved_relay_boundary": "exact_service_pinned_Caddyfile_pass; seven_privilege_mount_network_image_mutations_rejected"
+    },
+    "source_sha256": {
+      "scripts/openclaw_infrastructure.py": "38ce61f569619476f43db5b8aed6d3971c84f621596d12a5dd75108633bb5338",
+      "scripts/observe-homecompute.py": "6cd4af4bf639e019d5493a8a6f8aa6d7d9d0ee3646779fe102350c0cc9fcffc3",
+      "scripts/openclaw-communication.py": "3f99373188aad809daa4d7d2dce9e8af61b16cb04afbb07878eb1f6b00d1dc92",
+      "automations/agent-investigation/n8n-ha-metadata-workflow.json": "cb2d0491c31964f2f8646e2887a4344ad161cd713aef806ced54cdfc27d76659",
+      "tests/openclaw-infrastructure-test.py": "031ba5b3c5b8e70c669d53734ca46f9eabf8caf62d39591ef89709b6c0bb988d",
+      "tests/system-monitoring-ha-workflow.test.mjs": "e0880c61843692c71a630b5a400db85cef91562c13ba6974111728697dc538d0",
+      "tests/system-monitoring-ha-engine-test.py": "052d1ea87ebb735a2c4d9b645a58ab96f0befdc4a0a282008f36e8e31bafa317",
+      "tests/openclaw-chat-test.py": "19fb2a00f4ba68ae32bea65b57450915ff1ae5fbad7a2d88ddc3ce6924d6377f",
+      "scripts/validate-repository.sh": "85d8df1353782c93ad29bebf1ec9a10b7aad21e8350f7313e1b51b2e32cac08c",
+      "docs/openclaw-communication.md": "4b27ee180e109cac79926cc87b4f1278be027324d0b8c74f92f8efec1a322558"
+    }
+  },
+  "coding_task_feed_preparation_20261009": {
+    "scope": "synthetic local HTTP broker and transport adapter; prepared disconnected phone commands",
+    "tests": {
+      "task_feed": 5,
+      "communication": 29,
+      "console": 13
+    },
+    "duplicate_submission_suppressed": true,
+    "changed_content_same_key_rejected": true,
+    "lost_admission_receipt_replayed_without_duplicate_notification": true,
+    "historical_event_gap_fails_closed": true,
+    "unchanged_heartbeats_quiet": true,
+    "safe_proposal_result_retrieved": true,
+    "snapshot_and_assistant_permission_denials": true,
+    "native_broker_tools_enabled": false,
+    "native_replay_guard_changed": false,
+    "production_task_feed_connected": false,
+    "authenticated_codex_job": false,
+    "real_PR": false,
+    "external_messages_sent": 0,
+    "required_credentials": "separate broker assistant/snapshot and worker auth are not provisioned",
+    "required_project_policy": "awaiting reviewed project selection; current broker projects empty",
+    "validation": {
+      "repository_tests_syntax_compose_isolation": "pass",
+      "local_Nix_phase": "unavailable_Mac_Docker_daemon",
+      "temporary_homecore_Nix_flake_check_and_enabled_OpenClaw_evaluation": "pass_no_deployment",
+      "optional_SDK_and_LiteLLM_integration_checks": "skipped_unavailable_runtime",
+      "code_security_review": "pass",
+      "external_security_scanner": "unavailable_not_a_pass"
+    },
+    "source_sha256": {
+      "scripts/openclaw_tasks.py": "fc55bfef6b0dcc96a261307652f1725c6b8ddda09bcd4ec41d48f6060ed90753",
+      "scripts/openclaw_notifications.py": "d3661010ebd049d2223bfa1741046206117c4427798a853c42d551589065133b",
+      "scripts/openclaw-communication.py": "80ea55cc7fad4d3ecac26b5ec147371bec0f5ff9e2ac7a12755aed2b832eecf7",
+      "tests/openclaw-task-feed-test.py": "366c2dddfd1d148281a85a9cb05c273ad01c1cc1b66b25036db6c6ebd14047fd",
+      "config/openclaw-task-transport.example.json": "5bc9793ae0690bde173138414e2a9b0de0be0fd9d32f6d20c5e01f60fc8c270e"
+    }
+  },
+  "approved_coding_handoff_activation_20261009": {
+    "recorded_at": "2026-10-09T20:01:03.036098+00:00",
+    "operator_approved_VM_and_integration": true,
+    "operator_selected_project": "homecompute",
+    "operator_selected_authentication": "new_dedicated_API_key",
+    "secure_key_picker": "Reconnected; HomeClaw dedicated key created and confirmed private destination saved",
+    "broker_placement": "dedicated_host_identity_loopback18792",
+    "broker_transport": "separate_strict_SSH_forward_on_Mac_loopback18792",
+    "transport_credentials": "private_assistant_and_readonly_snapshot_roles_outside_OpenClaw",
+    "communication_projects_match_owner_policy": true,
+    "adapter_restart": "receiver_paused_no_running_turn_or_sending_delivery_private_backup_retained",
+    "native_tools_enabled": false,
+    "native_replay_guard_changed": false,
+    "task_event_feed": "private_durable_cursor_existing_outbox",
+    "canary": {
+      "task_id": "59e3a0be-d5f3-4af8-a1af-75fa1866976d",
+      "project": "homecompute",
+      "state": "pending",
+      "status": "queued",
+      "approval_kind": "execution",
+      "duplicate_conversation_suppressed": true,
+      "duplicate_broker_submission_suppressed": true,
+      "authenticated_codex_job_started": false,
+      "native_tools_used": false
+    },
+    "verified_reply_delivery": true,
+    "verified_approval_notification_delivery": true,
+    "new_delivered_events": 2,
+    "unchanged_project_task_feed_does_not_repeat_notifications": true,
+    "worker_activation": "Single supervised canary; stopped after completion; marker absent; automatic restart disabled",
+    "real_PR": false,
+    "Mac_awake_required": true,
+    "authenticated_canary": {
+      "task_id": "822cf264-85c6-4d1a-ad5a-292fa30f582b",
+      "state": "failed",
+      "session_id": "01a1226a-7011-7ea0-87d4-0ad82b829215",
+      "codex_turn_completed": true,
+      "duplicate_submission_suppressed": true,
+      "tests_failed_due_to_preexisting_sparse_fixture_budget": true,
+      "worker_budget_compatibility_fixed": true,
+      "independent_saved_proposal_suite": "26/26 passed in exact native constraints and separate checkout",
+      "new_model_call_for_independent_recheck": false,
+      "status_reply_matches_authoritative_failed_snapshot": true,
+      "status_reply_duplicate_suppressed": true,
+      "PR_published": false,
+      "terminal_notifications": "queued during existing22-07 quiet hours",
+      "status_reply_verified_Telegram_delivery": true,
+      "status_reply_delivery_receipt_recorded": true
+    },
+    "final_outbox": {
+      "delivered": 9,
+      "pending_quiet_hour_terminal_alerts": 2,
+      "superseded": 10
+    }
+  },
+  "approved_package_image_monitoring_20261009": {
+    "recorded_at": "2026-10-09T21:55:50.436573+00:00",
+    "mode": "observe-only",
+    "activated_hosts": [
+      "home-core",
+      "home-spark"
+    ],
+    "schedule": "Daily 05:30 Europe/Copenhagen; random delay up to 15 minutes; persistent",
+    "installed_bundle_sha256": "77d3ad5f6757b1d4a7b9b1dc7b22da4da12544c0433b61393e860b2216250209",
+    "core_baseline": {
+      "generated_at": "2026-10-09T21:41:48.288531Z",
+      "package_scope": "package_catalog",
+      "nixpkgs_revision_candidates": 1,
+      "docker_update_candidates": 11,
+      "docker_current": 5,
+      "docker_unknown": 2,
+      "docker_untracked": 7,
+      "baseline_preserved_on_final_source_reload": true
+    },
+    "spark_baseline": {
+      "generated_at": "2026-10-09T21:51:49.035860Z",
+      "package_scope": "installed_packages",
+      "package_candidates": 163,
+      "security_pocket_candidates": 123,
+      "security_classification_unknown": 15,
+      "accepted_public_sources": 13,
+      "excluded_authenticated_esm_suites": 4,
+      "docker_untracked": 7,
+      "actual_service_result": "success",
+      "exit_status": 0
+    },
+    "runtime_protection": {
+      "no_new_privileges": true,
+      "memory_limit_mib": 512,
+      "task_limit": 128,
+      "spark_ambient": "CAP_SETUID only, already bounded; permits restricted APT child identity",
+      "apt_child_uid": 42,
+      "apt_child_capabilities": "inheritable, permitted, effective and ambient all zero",
+      "private_temporary_indexes": true,
+      "root_files_and_backups": true
+    },
+    "notifications": {
+      "feed_launch_agent": "dk.homecompute.openclaw-update-feed",
+      "interval_seconds": 300,
+      "admitted_observations": 14,
+      "update_only_feed": true,
+      "new_pending_update_events": 7,
+      "repeated_collection_created_no_duplicate_events": true,
+      "quiet_hours": "22:00-07:00 Europe/Copenhagen",
+      "existing_n8n_workflow": "hcOpenClawTelegram20261009",
+      "workflow_active": true,
+      "mac_relay_required_for_admission_and_delivery": true
+    },
+    "coverage_gaps": [
+      "authenticated Ubuntu Pro ESM suites",
+      "source-pinned and locally built images",
+      "agents and Codex guest package/image lanes not provisioned"
+    ],
+    "actions_applied": {
+      "package_installs": false,
+      "docker_pulls": false,
+      "application_restarts": false,
+      "host_reboots": false,
+      "vm_reboots": false,
+      "production_monitor_timers_activated": true
+    },
+    "focused_tests": {
+      "package": 14,
+      "docker": 12,
+      "deployment": 8,
+      "projection_feed": 8,
+      "system_monitoring": 20,
+      "communication": 29,
+      "infrastructure": 12,
+      "total_passed": 103
+    },
+    "external_security_scan": "Unavailable offline: ENOTCACHED; not claimed passed"
   }
 }

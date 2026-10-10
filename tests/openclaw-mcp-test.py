@@ -108,8 +108,9 @@ class McpTests(unittest.TestCase):
         task = self.ledger.submit(SUBMIT)
         result = self.tool("homecompute_task_status", {"task_id": task["id"]})[1]["result"]
         public = json.loads(result["content"][0]["text"])["task"]
-        for forbidden in ("body", "context", "summary", "policy", "files", "result"):
+        for forbidden in ("body", "context", "summary", "policy", "files"):
             self.assertNotIn(forbidden, public)
+        self.assertEqual(public["result"], {})
         self.request({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": task["id"]}})
         self.assertEqual(self.ledger.get(task["id"])["state"], "pending")
         self.assertFalse(self.tool("homecompute_task_cancel", {"task_id": task["id"]})[1]["result"]["isError"])

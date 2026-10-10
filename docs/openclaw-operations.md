@@ -1,17 +1,26 @@
 # OpenClaw and home-core Codex pilot
 
-Status: the approved synthetic OpenClaw sandbox has been created in the existing
+Status: the approved dedicated Codex VM and trusted broker are installed, and
+the supervised phone coding handoff/status feed is connected. HomeCompute is
+allowlisted at its immutable reviewed base. HomeClaw authentication is verified:
+one coding run produced a regression that passes 26 independent native tests.
+The broker retains its failed pre-fix test-budget check; checkout and test-budget
+compatibility are corrected. The worker is stopped. Guest sandbox qualification
+and a VM-only reboot passed; shared Docker and sandbox requirements remain intact.
+See [deployment and remaining gates](openclaw-runtime-research.md#coding-integration-recheck-and-dedicated-worker-candidate).
+The approved synthetic OpenClaw sandbox has been created in the existing
 agents VM; qualification is recorded in [managed evidence](openclaw-nemoclaw.md).
-The standalone Compose fallback and Codex worker remain **disabled and not deployed**.
-Unattended Codex authentication, real GitHub publishing, reboot and restore
+The standalone Compose fallback remains disabled; the dedicated worker is stopped
+after the bounded test; its saved proposal is held for review.
+Unattended worker activation, real GitHub publishing, host reboot and restore
 acceptance remain release gates. The model route is Qwen3.8 Flash-Next
 behind `automation-moe`; no model cutover is part of this change. See
 [discovery](openclaw-discovery.md) for dated live evidence and every n8n workflow.
 
 ## Architecture and choice
 
-Target architecture: the synthetic managed assistant is live; broker, worker,
-scheduled observation delivery and Home Assistant integration remain staged.
+Target architecture: the managed assistant and native broker are live; the manual
+worker is qualified. Scheduled observations and Home Assistant integration remain staged.
 
 ```mermaid
 flowchart LR
@@ -162,9 +171,9 @@ results are untrusted worker output; publishing still requires independent CI.
    billing. Supported device authorization is another option, but requires a
    separate owner-maintained worker login lifecycle. This implementation uses
    `CODEX_API_KEY` for `codex exec`; no key was read/created for this pilot.
-3. Provision eight dedicated values in the existing encrypted SOPS document:
+3. Provision nine dedicated values in the existing encrypted SOPS document:
    `openclaw/gateway_token`, `model_key`, `broker_token`, `worker_token`,
-   `operator_token`, `github_token`, `github_checkout_token`, `codex_api_key`. The three broker role
+   `operator_token`, `snapshot_token`, `github_token`, `github_checkout_token`, `codex_api_key`. The broker role
    tokens must be distinct random values of at least 32 characters. The model
    key must permit only `automation-moe`; never use the LiteLLM master key.
    Codex/checkout keys are root0400; worker token is root0440 in the broker-reader group;
@@ -229,23 +238,28 @@ as connected.
 ## Extensible system observation and maintenance
 
 OpenClaw investigates observations and proposes repairs. Existing deterministic
-collectors and n8n schedules own detection and delivery. The initial maintenance
-policy is observation and proposals: no automatic package/image pulls, NixOS
-switches, firmware updates, service restarts or Home Assistant actions. The
-approved synthetic NemoClaw creation does not activate production monitoring.
+collectors and n8n schedules own detection and delivery. Maintenance remains
+observation and proposals: applying packages/images, NixOS switches, firmware,
+service restarts and Home Assistant actions require their existing approval paths.
 
 The operator-owned `config/system-monitoring.json` registers each system and
 its supported checks. `scripts/observe-homecompute.py` collects host metadata
 through the existing fixed SSH status implementation; no assistant can supply
 a shell command, arbitrary URL or credential. Its normalized findings and change
-keys are suitable for a future scoped event adapter. The collector runs outside
-the sandbox. The committed Home Assistant entry is disabled for live collection;
-fixture support exercises the adapter without collecting household data.
+keys enter the existing private outbox through `openclaw-observation-feed.py` for
+update checks only. Collection runs outside the sandbox. The committed Home
+Assistant entry remains disabled for live collection.
+
+Daily server timers run at 05:30 Europe/Copenhagen with up to 15 minutes of jitter.
+They write `/var/lib/homecompute-maintenance/report.json` without installing or
+pulling anything. The Mac feed admits summaries every five minutes; the existing
+n8n owner delivers meaningful changes after quiet hours. Collection survives Mac
+sleep; notification admission needs the Mac relay. Guest lanes remain unprovisioned.
 
 | System | Observation and update evidence | Consequential action |
 | --- | --- | --- |
-| home-core | Approved container health, failed systemd units, existing weekly update report; Dependabot and Nix flake PRs remain their own update lanes | Reviewed pinned change, backups/migrations as applicable, guarded NixOS/Compose deployment and rollback |
-| home-spark | Approved container health and failed units; available packages from the existing apt cache are advisory and may be stale | Vendor-supported DGX OS maintenance; model/runtime/parser changes require the existing qualification and promotion gates |
+| home-core | Approved health, weekly model report, daily deployed nixpkgs catalog drift and public Docker channel manifests; local/source pins are explicit coverage gaps | Reviewed pinned change, backups/migrations as applicable, guarded NixOS/Compose deployment and rollback |
+| home-spark | Approved health, daily fresh isolated signed APT indexes and Docker metadata; public vendor sources are covered, four authenticated ESM suites and local images are explicit gaps | Vendor-supported DGX OS maintenance; model/runtime/parser changes require the existing qualification and promotion gates |
 | Home Assistant | Selected unavailable entities and update availability; reuse existing battery/device analysis findings | Software/integration recovery needs approval; battery, heating, locks and other physical-device behavior always needs explicit approval |
 | Future systems | Register a reviewed check using an existing adapter, or implement a new bounded read-only adapter | Define a separate action policy and executor only when that capability is approved |
 

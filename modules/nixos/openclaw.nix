@@ -7,7 +7,7 @@ let
     cp -R ${../../deploy/codex-worker} $out/deploy/codex-worker
   '';
   compose = "${pkgs.docker}/bin/docker compose --env-file /etc/homecompute/openclaw.env --file ${composeTree}/deploy/openclaw/compose.yaml --profile assistant";
-  secretNames = [ "gateway_token" "model_key" "broker_token" "worker_token" "operator_token" "github_token" "github_checkout_token" "codex_api_key" ];
+  secretNames = [ "gateway_token" "model_key" "broker_token" "worker_token" "operator_token" "github_token" "github_checkout_token" "codex_api_key" "snapshot_token" ];
 in
 {
   options.homecompute.openclaw = {

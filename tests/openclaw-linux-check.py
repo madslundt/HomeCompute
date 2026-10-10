@@ -84,6 +84,9 @@ def main() -> None:
 import ctypes,json,os,pathlib,subprocess,tempfile,time
 assert os.getuid()==20000 and os.getgroups()==[]
 assert 'CODEX_API_KEY' not in os.environ
+status = pathlib.Path('/proc/self/status').read_text().splitlines()
+for field in ('CapInh:', 'CapPrm:', 'CapEff:', 'CapAmb:'):
+ assert int(next(line for line in status if line.startswith(field)).split()[1], 16) == 0
 for path in ['/run/secrets/operator-test',os.environ['EVIDENCE_TEST']]:
  try: pathlib.Path(path).read_text()
  except PermissionError: pass
