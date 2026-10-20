@@ -67,6 +67,16 @@ model_list:
       response_format: json
     model_info:
       mode: audio_transcription
+  - model_name: "plapre"
+    litellm_params:
+      model: "openai/plapre"
+      order: 1
+      api_base: "os.environ/PLAPRE_TTS_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 300
+      stream_timeout: 300
+    model_info:
+      mode: audio_speech
 litellm_settings:
   request_timeout: 600
   num_retries: 0

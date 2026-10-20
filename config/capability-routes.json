@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "route_version": "2026-09-30-qwen38-alias-trial",
+  "route_version": "2026-10-21-plapre-openai-tts-candidate",
   "timeout_profiles": {
     "home": {
       "seconds": 20
@@ -16,6 +16,9 @@
     },
     "transcription": {
       "seconds": 120
+    },
+    "tts": {
+      "seconds": 300
     }
   },
   "routes": {
@@ -196,6 +199,16 @@
       "timeout_profile": "transcription",
       "deployments": [
         "whisper-turbo-spark-primary"
+      ]
+    }
+  },
+  "tts_routes": {
+    "plapre": {
+      "state": "candidate",
+      "privacy": "local_only",
+      "timeout_profile": "tts",
+      "deployments": [
+        "plapre-nano-v2"
       ]
     }
   }

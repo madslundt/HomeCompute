@@ -83,6 +83,7 @@ services:
       COMPUTE_AUTOMATION_CANDIDATE_BASE_URL: ${COMPUTE_AUTOMATION_CANDIDATE_BASE_URL:?Set COMPUTE_AUTOMATION_CANDIDATE_BASE_URL}
       COMPUTE_STT_MULTILINGUAL_BASE_URL: ${COMPUTE_STT_MULTILINGUAL_BASE_URL:-http://172.28.200.1:18007/v1}
       COMPUTE_STT_DANISH_BASE_URL: ${COMPUTE_STT_DANISH_BASE_URL:-http://172.28.200.1:18003/v1}
+      PLAPRE_TTS_BASE_URL: ${PLAPRE_TTS_BASE_URL:-http://plapre-openai-tts:8004/v1}
       COMPUTE_HOME_BASE_URL: ${COMPUTE_HOME_BASE_URL:?Set COMPUTE_HOME_BASE_URL}
       LITELLM_CONFIG: /etc/litellm/config.yaml
       LITELLM_MIGRATION_DIR: /app/migrations
@@ -239,6 +240,52 @@ services:
     networks:
       edge:
         ipv4_address: ${PLAPRE_PROXY_EDGE_IP:?Set PLAPRE_PROXY_EDGE_IP}
+
+  plapre-openai-tts:
+    profiles: [speech-proxies]
+    image: ${PLAPRE_OPENAI_TTS_IMAGE:?Set PLAPRE_OPENAI_TTS_IMAGE to a release-pinned local image tag}
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.plapre-tts
+      args:
+        BASE_IMAGE: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to a pinned Python image}
+    restart: unless-stopped
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      GB10_BIND_ADDRESS: 0.0.0.0
+      TTS_HOST_PORT: "8004"
+      WYOMING_URI: tcp://plapre-wyoming-proxy:10201
+      TTS_API_KEY_FILE: /run/secrets/compute_api_key
+      TTS_MODEL_ALIAS: plapre
+      TTS_VOICE_ALIAS: danish-default
+      PIPER_VOICE_ID: danish-default
+      TTS_MAX_INPUT_CHARS: "2000"
+      TTS_SYNTHESIS_TIMEOUT_SECONDS: "300"
+      TTS_MAX_CONCURRENT_REQUESTS: "1"
+    secrets: [compute_api_key]
+    expose: ["8004"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532,mode=0700
+    depends_on:
+      plapre-wyoming-proxy:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/openai-wyoming-tts.py, --probe-ready]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    cpus: 0.5
+    mem_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: local
+      options: {max-size: 5m, max-file: "2"}
+    networks: [edge]
 
   hviske-wyoming-proxy:
     profiles: [speech-proxies]

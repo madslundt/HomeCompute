@@ -51,6 +51,15 @@ behavior against the pinned LiteLLM 1.99.1 image with synthetic refused,
 non-responsive, error, and streaming upstreams before promoting the generated
 config. Model generation does not create, broaden, or revoke any virtual key.
 
+The candidate `plapre` model is exposed through OpenAI-compatible
+`POST /v1/audio/speech` with `model: "plapre"`, `voice: "danish-default"`,
+and `response_format: "wav"`. The `plapre-openai-tts` shim translates that
+request to the private Wyoming relay; clients use the gateway base URL
+(`https://ai.home.arpa/v1`) and do not connect to the raw Wyoming port. Start
+the speech profile with `--build` so Compose builds the local adapter image.
+The alias remains a candidate pending the voice, latency, and pronunciation
+qualification gates.
+
 Caddy remains in this project while it fronts only this gateway. The official
 image starts as root, but it listens on unprivileged container port 8443, has
 only its binary-required `NET_BIND_SERVICE` capability, has a read-only root filesystem, and can write
@@ -272,7 +281,7 @@ healthy:
 sudo docker compose --profile speech-proxies \
   --env-file /etc/homecompute/control-plane.env \
   -f /srv/homecompute/current/deploy/control-plane/compose.yaml \
-  up -d --wait plapre-wyoming-proxy hviske-wyoming-proxy
+  up -d --build --wait plapre-wyoming-proxy plapre-openai-tts hviske-wyoming-proxy
 ```
 
 The intended Home Assistant endpoints are `192.168.30.122:10201` for Plapre

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026-09-30-flash-next-quality-and-ultrafast-challenger",
+  "catalog_version": "2026-10-21-plapre-openai-tts-candidate",
   "runtime_profiles": {
     "vllm-qwen": {
       "family": "vllm",
@@ -509,6 +509,23 @@
       "concurrency": 1,
       "lifecycle": "resident",
       "availability": "active",
+      "priority": 1
+    }
+  },
+  "tts_deployments": {
+    "plapre-nano-v2": {
+      "upstream_model_id": "syvai/plapre-nano-v2",
+      "revision": "007e0b471e377dd5061786f7df6ad659d15c4d5f",
+      "code_revision": "b111239d3b099cfafcb54b3471a8e9e9ba71ae8b",
+      "license_id": "cc-by-4.0",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "endpoint_env": "PLAPRE_TTS_BASE_URL",
+      "served_model_name": "plapre",
+      "voice_alias": "danish-default",
+      "concurrency": 1,
+      "lifecycle": "operator-on-demand",
+      "availability": "candidate",
       "priority": 1
     }
   }

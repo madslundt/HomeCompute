@@ -11,7 +11,8 @@ expiry. Verify connectivity at
 
 Use `https://ai.home.arpa/v1` without an API key from approved LAN or Tailscale
 clients. The gateway supplies an internal credential limited to `automation`,
-`home`, `automation-moe`, `stt-danish`, and `whisper-turbo`. Explicit LiteLLM keys remain optional and retain
+`home`, `automation-moe`, `stt-danish`, and `whisper-turbo`; Plapre is added to
+that scope only after the explicit `--enable-plapre` migration. Explicit LiteLLM keys remain optional and retain
 their own model scopes when valid. Empty, placeholder, expired, or unrecognized
 credentials fall back to the common network aliases rather than preventing
 keyless access. For SDKs that require a nonempty key, use the placeholder
@@ -74,6 +75,17 @@ LLM context/concurrency or accuracy on the owner's recordings.
 
 `whisper-1` and `stt-english` are not aliases. Requests never silently fall back
 to home-core's CPU Faster Whisper service.
+
+## Speech synthesis
+
+The candidate Plapre alias uses the same OpenAI-compatible base URL. Send
+`POST /v1/audio/speech` with `model: "plapre"`, `voice: "danish-default"`,
+`input`, and `response_format: "wav"`. The gateway's private adapter translates
+this request to Plapre's Wyoming service. It is available after the
+`speech-proxies` profile is built and started, the Plapre upstream is healthy,
+and the network key has been migrated with
+`sudo python3 scripts/setup-network-inference.py --enable-plapre`. Plapre is
+still a candidate pending its voice, latency, and pronunciation qualification.
 
 ## Credentials
 

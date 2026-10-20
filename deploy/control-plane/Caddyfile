@@ -48,7 +48,7 @@ http://:8080 {
 	encode zstd gzip
 
 	# Accept SDK/checker trailing slashes without a redirect during preflight.
-	@api_slash path /v1/ /v1/models/ /v1/responses/ /v1/chat/completions/ /v1/audio/transcriptions/
+	@api_slash path /v1/ /v1/models/ /v1/responses/ /v1/chat/completions/ /v1/audio/transcriptions/ /v1/audio/speech/
 	uri @api_slash strip_suffix /
 
 	# Network admission controls keyless inference. Check optional credentials
@@ -56,7 +56,7 @@ http://:8080 {
 	# or stale key must not prevent access to the already-public network models.
 	@credentialed {
 		method GET POST
-		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions
+		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
 		not {
 			header !Authorization
 			header !X-Litellm-Api-Key
@@ -75,13 +75,13 @@ http://:8080 {
 		}
 	}
 	@keyless {
-		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions
+		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
 		header !Authorization
 		header !X-Litellm-Api-Key
 	}
 	request_header @keyless Authorization "Bearer {env.LITELLM_NETWORK_KEY}"
 
-	@api path /v1/audio/transcriptions /v1 /v1/ /v1/models /v1/models/ /v1/responses /v1/responses/ /v1/chat/completions /v1/chat/completions/ /v1/audio/transcriptions/
+	@api path /v1/audio/transcriptions /v1/audio/speech /v1 /v1/ /v1/models /v1/models/ /v1/responses /v1/responses/ /v1/chat/completions /v1/chat/completions/ /v1/audio/transcriptions/ /v1/audio/speech/
 	header @api {
 		Access-Control-Allow-Origin "*"
 		-Access-Control-Allow-Credentials
@@ -89,7 +89,7 @@ http://:8080 {
 	}
 	@api_preflight {
 		method OPTIONS
-		path /v1 /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions
+		path /v1 /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
 	}
 	handle @api_preflight {
 		header Access-Control-Allow-Methods "GET, POST, OPTIONS"
@@ -118,7 +118,7 @@ http://:8080 {
 
 	@standard {
 		method POST
-		path /v1/responses /v1/chat/completions /v1/audio/transcriptions
+		path /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
 	}
 	handle @standard {
 		request_body {

@@ -62,6 +62,8 @@ not exposed through Caddy. An administrator can call `/key/generate` or
 master key from `/run/secrets/litellm_master_key`. A persistent n8n consumer
 credential is now stored encrypted in n8n for the OpenAI-compatible local
 endpoint. The administrative master key is still not a client credential.
+The candidate Plapre speech alias is excluded from that key until an operator
+explicitly runs `scripts/setup-network-inference.py --enable-plapre`.
 
 ## Secrets and operations
 

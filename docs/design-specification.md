@@ -221,7 +221,7 @@ inputs. Consumers never use an IP or container port.
 | `POST /v1/embeddings` | Approved local retrieval and document clients | `embedding` | Private data remains local; no cloud fallback |
 | `POST /v1/audio/transcriptions` | Meeting Assistant; approved adapters | STT by route/config | Size and duration bounded; no cloud fallback |
 | Wyoming STT/TTS | Home Assistant | qualified speech services | Supported Home Assistant boundary |
-| `POST /v1/audio/speech` | Approved clients | TTS by route/config | Qualified Danish voice allow-list |
+| `POST /v1/audio/speech` | Approved clients | TTS by route/config | Plapre candidate through an authenticated OpenAI-to-Wyoming shim; voice and quality gates remain |
 | `POST /v1/audio/diarizations` | Meeting Assistant | diarization by route | Private versioned schema; no cloud fallback |
 | `GET /health/live` | monitoring | none | Edge/process availability |
 | `GET /health/ready` | monitoring | none | Qualified backend/model readiness |

@@ -494,6 +494,7 @@ CADDY_IMAGE=example.invalid/caddy@sha256:000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
 SPEECH_PROXY_IMAGE=example.invalid/python@sha256:0000000000000000000000000000000000000000000000000000000000000000
+PLAPRE_OPENAI_TTS_IMAGE=homecompute/plapre-openai-tts:validate
 AUTOMATION_BACKUP_IMAGE=ghcr.io/ggml-org/llama.cpp:server@sha256:b74a168a10b13129ce8973582a5c699fadecde45945a8b8b004b79e34f4ff1ab
 AUTOMATION_BACKUP_STATE_ROOT=/srv/state/automation-backup
 AUTOMATION_BACKUP_THREADS=8
@@ -555,9 +556,16 @@ control_plane_speech_json="$temporary_root/control-plane-speech.json"
 docker compose --profile speech-proxies --env-file "$control_plane_env" \
   -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --format json >"$control_plane_speech_json"
 jq -e '
-  ((.services | keys) == ["caddy", "hviske-wyoming-proxy", "litellm", "plapre-wyoming-proxy", "postgres"]) and
+  ((.services | keys) == ["caddy", "hviske-wyoming-proxy", "litellm", "plapre-openai-tts", "plapre-wyoming-proxy", "postgres"]) and
   (.services["plapre-wyoming-proxy"].profiles == ["speech-proxies"]) and
   (.services["hviske-wyoming-proxy"].profiles == ["speech-proxies"]) and
+  (.services["plapre-openai-tts"].profiles == ["speech-proxies"]) and
+  (.services["plapre-openai-tts"].ports == null) and
+  (.services["plapre-openai-tts"].expose == ["8004"]) and
+  (.services["plapre-openai-tts"].networks.edge != null) and
+  (.services["plapre-openai-tts"].secrets == ["compute_api_key"]) and
+  (.services["plapre-openai-tts"].environment.TTS_MODEL_ALIAS == "plapre") and
+  (.services["plapre-openai-tts"].environment.WYOMING_URI == "tcp://plapre-wyoming-proxy:10201") and
   (.services["plapre-wyoming-proxy"].ports[0].host_ip == "127.0.0.2") and
   (.services["plapre-wyoming-proxy"].ports[0].published == "10201") and
   (.services["plapre-wyoming-proxy"].ports[0].target == 10201) and
