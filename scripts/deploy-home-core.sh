@@ -163,8 +163,8 @@ if [[ -f /etc/homecompute/immich.env ]]; then
       printf 'Immich NAS library could not be mounted: %s\n' "$immich_library_path" >&2
       exit 1
     }
-    mounted_source="$(findmnt --noheadings --output SOURCE --target "$immich_library_path")"
-    mounted_type="$(findmnt --noheadings --output FSTYPE --target "$immich_library_path")"
+    mounted_source="$(findmnt --noheadings --output SOURCE --types cifs --submounts --target "$immich_library_path")"
+    mounted_type="$(findmnt --noheadings --output FSTYPE --types cifs --submounts --target "$immich_library_path")"
     [[ $mounted_source == "$immich_library_mount_source" && $mounted_type == cifs ]] || {
       printf 'Immich library mount mismatch at %s (expected %s, found %s %s).\n' \
         "$immich_library_path" "$immich_library_mount_source" "$mounted_source" "$mounted_type" >&2

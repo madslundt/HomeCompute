@@ -252,6 +252,8 @@ services:
     restart: unless-stopped
     init: true
     user: "65532:65532"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
