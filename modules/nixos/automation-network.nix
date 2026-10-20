@@ -47,12 +47,14 @@
       iptables -w -A HC-CADDY-LAN -i enp44s0 -s 192.168.10.0/24 -j RETURN
       iptables -w -A HC-CADDY-LAN -i enp44s0 -s 192.168.30.30/32 -j RETURN
       iptables -w -A HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN
+      iptables -w -A HC-CADDY-LAN -i br-chessmate -d 172.28.200.2/32 -p tcp --dport 8443 -j RETURN
       iptables -w -A HC-CADDY-LAN -i tailscale0 -j RETURN
       iptables -w -A HC-CADDY-LAN -j REJECT
       iptables -w -I DOCKER-USER 1 -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j HC-CADDY-LAN
       iptables -w -C HC-CADDY-LAN -i enp44s0 -s 192.168.10.0/24 -j RETURN
       iptables -w -C HC-CADDY-LAN -i enp44s0 -s 192.168.30.30/32 -j RETURN
       iptables -w -C HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN
+      iptables -w -C HC-CADDY-LAN -i br-chessmate -d 172.28.200.2/32 -p tcp --dport 8443 -j RETURN
       iptables -w -C HC-CADDY-LAN -i tailscale0 -j RETURN
       iptables -w -C HC-CADDY-LAN -j REJECT
       while iptables -w -C DOCKER-USER -p tcp -m conntrack --ctdir ORIGINAL --ctorigdst 192.168.30.122 --ctorigdstport 443 -j REJECT 2>/dev/null; do
