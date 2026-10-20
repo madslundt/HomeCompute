@@ -163,9 +163,11 @@ class WyomingGateway:
         self,
         uri: str,
         client_factory: Callable[..., Any] = AsyncClient.from_uri,
+        synthesis_timeout_seconds: int = DEFAULT_SYNTHESIS_TIMEOUT_SECONDS,
     ) -> None:
         self.uri = uri
         self.client_factory = client_factory
+        self.synthesis_timeout_seconds = synthesis_timeout_seconds
 
     def _client(self) -> Any:
         # Wyoming 1.8, the image's declared floor, has no timeout parameters.
@@ -220,7 +222,7 @@ class WyomingGateway:
             return asyncio.run(
                 asyncio.wait_for(
                     self._synthesize(text, voice_id),
-                    timeout=self.config.synthesis_timeout_seconds,
+                    timeout=self.synthesis_timeout_seconds,
                 )
             )
         except (OSError, TimeoutError, asyncio.TimeoutError, ValueError, AssertionError) as error:
@@ -438,7 +440,10 @@ def build_server(config: Config, gateway: WyomingGateway | None = None) -> Adapt
     return AdapterHTTPServer(
         (config.bind_address, config.port),
         config,
-        gateway or WyomingGateway(config.wyoming_uri),
+        gateway or WyomingGateway(
+            config.wyoming_uri,
+            synthesis_timeout_seconds=config.synthesis_timeout_seconds,
+        ),
     )
 
 
