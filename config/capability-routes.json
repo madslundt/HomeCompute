@@ -13,6 +13,9 @@
     },
     "long_running": {
       "seconds": 600
+    },
+    "transcription": {
+      "seconds": 120
     }
   },
   "routes": {
@@ -175,6 +178,24 @@
       "timeout_profile": "automation",
       "deployments": [
         "automation-flash-next-candidate"
+      ]
+    }
+  },
+  "transcription_routes": {
+    "stt-danish": {
+      "state": "active",
+      "privacy": "local_only",
+      "timeout_profile": "transcription",
+      "deployments": [
+        "hviske-spark-primary"
+      ]
+    },
+    "whisper-turbo": {
+      "state": "active",
+      "privacy": "local_only",
+      "timeout_profile": "transcription",
+      "deployments": [
+        "whisper-turbo-spark-primary"
       ]
     }
   }

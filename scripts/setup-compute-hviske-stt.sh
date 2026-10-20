@@ -37,6 +37,7 @@ Commands:
   preflight  Run read-only host, GPU, disk, and runtime checks
   prepare    Fetch and atomically accept the pinned model cache
   install    Pull, prepare, start, smoke-test, and record a staged release
+  http-up    Build/start only the loopback HTTP relay for the running model
   up         Start only the opt-in Hviske and Wyoming services
   smoke      Exercise Wyoming Describe and a bounded silent transcription
   status     Show only the Hviske project state
@@ -315,6 +316,11 @@ case "$COMMAND" in
   up) start ;;
   smoke) smoke ;;
   install) require_root; preflight; docker pull "$HVISKE_IMAGE"; prepare; start; smoke; write_release_record ;;
+  http-up)
+    require_root; validate_config; license_allows_activation
+    [[ "$(docker inspect -f '{{.State.Health.Status}}' gb10-hviske-primary)" == healthy ]] || die "Start the existing Hviske model before its HTTP relay"
+    compose --profile hviske-http up -d --build --no-deps --wait --wait-timeout 60 hviske-http
+    ;;
   status) validate_config; compose --profile hviske ps hviske-primary hviske-wyoming ;;
   logs) validate_config; compose --profile hviske logs --tail 200 hviske-primary hviske-wyoming ;;
   down) require_root; validate_config; compose --profile hviske down --remove-orphans ;;

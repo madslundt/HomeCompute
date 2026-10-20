@@ -12,18 +12,22 @@ HomeCompute is private infrastructure. Interactive access is allowed only from
 approved local networks or the household tailnet. No AI, automation, agent,
 speech, database, SSH, or management listener is published to the
 internet. Tailscale is an encrypted transport and device/user admission layer;
-it does not replace application authentication or authorization.
+it controls admission to the keyless inference gateway along with the LAN
+firewall. Other applications retain their own authentication and authorization.
 
 The stable application URL is `https://ai.home.arpa`. Local DNS resolves it to
 the gateway's LAN address. Tailscale uses a restricted (split-DNS) resolver for
 `home.arpa` that returns a reachable private address. Keep the same TLS name and
-local CA trust on LAN and tailnet clients.
+local CA trust on clients using this hostname. Browser/phone clients may instead
+use `https://home-core.tail479ad.ts.net:8443/v1`, with a publicly trusted
+Tailscale/Let's Encrypt certificate. Public certificate issuance does not
+publish the service to the internet; the existing tailnet ingress policy applies.
 
 ## Required traffic policy
 
 | Source | Destination | Allowed | Denied by default |
 | --- | --- | --- | --- |
-| Approved household LAN/tailnet clients | `home-core` | TCP 443 only; per-consumer application credential still required | Direct compute, database, container, and management access |
+| Approved household LAN/tailnet clients | `home-core` | Gateway HTTPS (LAN 443, direct Tailscale 8443); model inference is keyless, other applications require credentials | Direct compute, database, container, and management access |
 | Approved administrator devices/users | `home-core` management | SSH through the declared Tailscale policy with device posture and reauthentication where available | All non-admin identities and shared household devices |
 | `home-core` | `home-spark` private link | Only qualified inference and audio ports | General internet forwarding and compute management |
 | Automation hosts | Gateway and approved integrations | TCP 443 plus explicitly documented service endpoints | Direct compute, agent state, admin LAN, and broad RFC1918 access |
@@ -41,7 +45,8 @@ Assistant paths that have passed voice verification.
 1. Use current Tailscale **grants** with deny-by-default rules. Give server
    devices non-human tags such as `tag:ai-gateway`, `tag:ai-admin`, and
    `tag:home-assistant`; restrict who may assign each tag.
-2. Grant ordinary household identities only TCP 443 to the gateway. Create a
+2. Grant ordinary household identities only the gateway HTTPS port (443 through
+   the LAN subnet route, 8443 on its direct Tailscale address). Create a
    separate administrator group for SSH access. Do not grant
    `autogroup:member` broad subnet or wildcard-port access. Each adult uses an
    individual identity; do not share an owner login.
@@ -77,9 +82,16 @@ much access.
 - Use a private CA whose root is installed only on managed household devices.
   Issue a gateway certificate for `ai.home.arpa`, automate renewal, protect the
   CA signing key offline, and test expiry alerts and rotation.
-- Require a distinct revocable gateway credential for each person, application,
-  and agent profile. Never infer authorization from a source IP, Tailscale
-  hostname, forwarded consumer header, or model prompt.
+- The public inference routes accept requests without credentials after network
+  admission. Caddy supplies a restricted non-admin virtual key for `automation`,
+  `home`, `automation-moe`, `stt-danish`, and `whisper-turbo`; existing explicit credentials keep their scopes.
+  Unrecognized, expired, or revoked credentials fall back to these same public
+  network models. Revocation removes additional key permissions; it cannot
+  remove the keyless access already granted by network admission.
+  This exception does not grant access to management, agent state, or other apps.
+  CORS permits any origin on the supported API paths, without cookie credentials.
+  Source admission relies on the firewall and Tailscale grants, never on forwarded
+  headers or model prompts.
 - Preserve only metadata needed for abuse and reliability: request ID,
   authenticated principal, route alias, outcome, latency, and token/byte counts.
   Do not log prompts, responses, audio, transcripts, tool arguments/results, or
@@ -95,8 +107,11 @@ one unapproved tailnet identity/device, and each restricted VM network:
 
 1. `ai.home.arpa` resolves to the intended private endpoint and presents the
    trusted certificate on LAN and Tailscale.
-2. TCP 443 succeeds only for approved clients; an absent/revoked application
-   credential receives an authorization failure.
+2. Gateway HTTPS succeeds only for approved clients; keyless model listing and
+   inference succeed, valid explicit credentials retain their model restrictions,
+   invalid credentials receive only common network model access, and
+   administrative API routes remain unavailable. Other applications still
+   require credentials.
 3. Direct compute and management ports fail from every non-admin client and
    from automation, agents, and toolbox.
 4. Cross-principal agent state, credentials, and tools are inaccessible.

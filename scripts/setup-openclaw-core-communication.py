@@ -37,10 +37,16 @@ FILES = (
     'scripts/openclaw-communication.py', 'scripts/openclaw-telegram.py',
     'scripts/openclaw-chat.py', 'scripts/openclaw_notifications.py',
     'scripts/openclaw_machine_notifications.py', 'scripts/openclaw_tasks.py',
+    'scripts/openclaw_maintenance.py',
+    'scripts/openclaw_capabilities.py', 'scripts/homeassistant_actions.py',
+    'scripts/infrastructure_maintenance.py', 'scripts/infrastructure_update_policy.py',
+    'scripts/maintenance_plan_preparation.py',
+    'deploy/codex-worker/mcp_adapter.py', 'deploy/codex-worker/policy.py',
     'scripts/openclaw_infrastructure.py', 'scripts/openclaw-observation-feed.py',
     'scripts/observe-homecompute.py', 'scripts/homecompute.py',
     'scripts/maintenance_observations.py', 'config/system-monitoring.json',
-    'scripts/openclaw-machine-snapshot.py',
+    'scripts/openclaw-machine-snapshot.py', 'scripts/homeassistant_observations.py',
+    'scripts/setup-openclaw-core-communication.py', 'scripts/setup-openclaw-home-assistant.py',
 )
 NAMES = ('adapter', 'telegram', 'task-feed', 'update-feed', 'machine-status')
 TIMERS = ('machine-status', 'update-feed')
@@ -52,14 +58,20 @@ def call(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 def commands(python: Path = PYTHON) -> dict[str, list[str]]:
     scripts = DEST / 'scripts'
+    registry = CONFIG / 'system-monitoring.json' if (CONFIG / 'system-monitoring.json').exists() else DEST / 'config/system-monitoring.json'
+    ha_args = ['--ha-transport', str(CONFIG / 'home-assistant.json')] if (CONFIG / 'home-assistant.json').exists() else []
+    maintenance_args = ['--homepage-maintenance'] if Path('/opt/homecompute/homepage-maintenance/homepage_update_check.py').is_file() else []
+    mcp_args = ['--mcp-tokens', str(CONFIG / 'native-mcp-tokens.json')] if (CONFIG / 'native-mcp-tokens.json').exists() else []
+    ha_action_args = ['--ha-actions'] if mcp_args and Path('/etc/systemd/system.attached/homecompute-ha-actions.service').is_file() else []
     return {
         'adapter': [str(python), str(scripts / 'openclaw-communication.py'),
                     '--config', str(CONFIG / 'communication.json'),
                     '--tokens', str(CONFIG / 'transport-tokens.json'),
                     '--state', str(STATE / 'adapter'),
                     '--task-transport', str(CONFIG / 'codex-task-transport.json'),
-                    '--infrastructure-registry', str(DEST / 'config/system-monitoring.json'),
-                    '--core-host-mode'],
+                    '--registry', str(registry),
+                    '--infrastructure-registry', str(registry),
+                    '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args],
         'telegram': [str(python), str(scripts / 'openclaw-telegram.py'), 'run',
                      '--config', str(CONFIG / 'telegram.json'),
                      '--tokens', str(CONFIG / 'telegram-tokens.json'),
@@ -70,9 +82,9 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                       '--transport-tokens', str(CONFIG / 'transport-tokens.json'),
                       '--cursor', str(STATE / 'task-feed.cursor.json'), '--follow'],
         'update-feed': [str(python), str(scripts / 'openclaw-observation-feed.py'),
-                        '--registry', str(DEST / 'config/system-monitoring.json'),
+                        '--registry', str(registry),
                         '--tokens', str(CONFIG / 'transport-tokens.json'),
-                        '--state', str(STATE / 'update-feed'), '--core-host-mode'],
+                        '--state', str(STATE / 'update-feed'), '--core-host-mode', *ha_args],
         'machine-status': [str(python), str(scripts / 'openclaw-machine-snapshot.py'), '--publish-core'],
     }
 
@@ -236,6 +248,15 @@ def validate_ready(uid: int, telegram: bool = False) -> None:
         protected_directory(path, uid, True)
     for name in ('communication.json', 'transport-tokens.json', 'codex-task-transport.json'):
         private_file(CONFIG / name, uid)
+    if (CONFIG / 'native-mcp-tokens.json').exists():
+        private_file(CONFIG / 'native-mcp-tokens.json', uid)
+    if (CONFIG / 'home-assistant.json').exists():
+        ha = private_file(CONFIG / 'home-assistant.json', uid)
+        token_path = Path(ha.get('token_file', ''))
+        if token_path != CONFIG / 'ha-metadata-reader-token':
+            raise ValueError('fixed private HA transport required')
+        private_file(token_path, uid, json_object=False)
+        private_file(CONFIG / 'system-monitoring.json', uid)
     transport = private_file(CONFIG / 'codex-task-transport.json', uid)
     for name in ('tokens_file', 'project_policy'):
         path = Path(transport.get(name, ''))
@@ -316,6 +337,7 @@ def install(files: dict[str, bytes]) -> None:
     for path in (HOME, CONFIG, STATE, STATE / 'adapter', STATE / 'telegram', STATE / 'update-feed'):
         protected_directory(path, info.pw_uid, True, True, info.pw_gid)
     for path in (DEST.parent.parent, DEST.parent, DEST, DEST / 'scripts', DEST / 'config',
+                 DEST / 'deploy', DEST / 'deploy/codex-worker',
                  UNIT_DIR, UNIT_DIR / 'multi-user.target.wants', UNIT_DIR / 'timers.target.wants'):
         protected_directory(path, 0, False, True, 0)
     for name, content in files.items():

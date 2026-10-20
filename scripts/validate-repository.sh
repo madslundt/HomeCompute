@@ -70,6 +70,7 @@ shell_files=(
 printf '[validate] Bash syntax\n'
 bash -n "${shell_files[@]}"
 sh -n \
+  "$REPO_ROOT/deploy/control-plane/caddy-entrypoint.sh" \
   "$REPO_ROOT/deploy/control-plane/litellm-entrypoint.sh" \
   "$REPO_ROOT/deploy/control-plane/postgres-init.sh"
 
@@ -80,18 +81,39 @@ printf '[validate] configuration-loader tests\n'
 bash "$REPO_ROOT/tests/config-loader-test.sh"
 printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
+python3 "$REPO_ROOT/tests/tailscale-module-test.py"
+python3 "$REPO_ROOT/tests/nas-recovery-backup-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
 printf '[validate] OpenClaw task broker and plugin tests\n'
 python3 "$REPO_ROOT/tests/openclaw-worker-test.py"
 python3 "$REPO_ROOT/tests/openclaw-nemoclaw-test.py"
+python3 "$REPO_ROOT/tests/openclaw-tools-test.py"
 python3 "$REPO_ROOT/tests/openclaw-mcp-test.py"
 python3 "$REPO_ROOT/tests/openclaw-actions-test.py"
 python3 "$REPO_ROOT/tests/openclaw-action-api-test.py"
 python3 "$REPO_ROOT/tests/openclaw-action-flow-test.py"
 python3 "$REPO_ROOT/tests/system-monitoring-test.py"
+python3 "$REPO_ROOT/tests/homeassistant-observations-test.py"
+python3 "$REPO_ROOT/tests/homeassistant-actions-test.py"
+python3 "$REPO_ROOT/tests/native-capabilities-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-public-dns-launcher-test.py"
+python3 "$REPO_ROOT/tests/openclaw-public-dns-wire-test.py"
 python3 "$REPO_ROOT/tests/openclaw-chat-test.py"
 python3 "$REPO_ROOT/tests/openclaw-communication-test.py"
+python3 "$REPO_ROOT/tests/homepage-maintenance-test.py"
+python3 "$REPO_ROOT/tests/homepage-update-check-test.py"
+python3 "$REPO_ROOT/tests/openclaw-maintenance-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-update-policy-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-maintenance-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-maintenance-integration-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-maintenance-operator-test.py"
+python3 "$REPO_ROOT/tests/spark-maintenance-preparation-test.py"
+python3 "$REPO_ROOT/tests/docker-maintenance-preparation-test.py"
+python3 "$REPO_ROOT/tests/homeassistant-maintenance-test.py"
+python3 "$REPO_ROOT/tests/core-maintenance-preparation-test.py"
+python3 "$REPO_ROOT/tests/maintenance-plan-preparation-test.py"
+python3 "$REPO_ROOT/tests/container-maintenance-test.py"
 python3 "$REPO_ROOT/tests/openclaw-task-feed-test.py"
 python3 "$REPO_ROOT/tests/openclaw-worker-api-test.py"
 python3 "$REPO_ROOT/tests/codex-guest-bootstrap-test.py"
@@ -101,6 +123,10 @@ if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/openclaw-broker-plugin.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-n8n-communication.test.mjs"
   node --test "$REPO_ROOT/tests/system-monitoring-ha-workflow.test.mjs"
+  node --test "$REPO_ROOT/tests/homeassistant-action-workflow.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-safety-plugin.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-public-dns.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-native-loader.test.mjs"
 else
   printf '[validate] Node unavailable; OpenClaw plugin tests require Node on CI\n'
 fi
@@ -110,6 +136,7 @@ printf '[validate] bounded model-cache acquisition tests\n'
 python3 "$REPO_ROOT/tests/model-cache-integrity-test.py"
 printf '[validate] compute edge relay tests\n'
 python3 "$REPO_ROOT/tests/tcp-edge-proxy-test.py"
+python3 "$REPO_ROOT/tests/openai-stt-relay-test.py"
 printf '[validate] Hviske Wyoming adapter tests\n'
 python3 "$REPO_ROOT/tests/wyoming-openai-stt-test.py"
 printf '[validate] Plapre deployment and Wyoming adapter tests\n'
@@ -181,6 +208,7 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/compute-node/compose.yaml" \
     "$REPO_ROOT/deploy/compute-node/plapre/compose.yaml" \
     "$REPO_ROOT/deploy/hviske-stt/compose.yaml" \
+    "$REPO_ROOT/deploy/whisper-stt/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
     "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" \
@@ -506,9 +534,10 @@ jq -e '
   ([.services[].volumes[]? | select(.type == "bind" and .read_only != true) | .target] | sort) ==
     ["/config", "/data", "/var/lib/postgresql/data"] and
   ([.services[].volumes[]? | select(.type == "bind") | .target] | sort) ==
-    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/litellm-entrypoint.sh", "/var/lib/postgresql/data"] and
-  (.services.caddy.ports | length == 2) and
-  ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2"]) and
+    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/var/lib/postgresql/data"] and
+  (.services.caddy.ports | length == 3) and
+  ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2", "127.0.0.2"]) and
+  ([.services.caddy.ports[] | select(.host_ip == "127.0.0.2" and .published == "80" and .target == 8080)] | length == 1) and
   (all(.services.caddy.ports[]; .protocol == "tcp")) and
   (.services.litellm.ports == null) and
   (.services.postgres.ports == null) and
@@ -589,7 +618,7 @@ rg -F -- '-L "$bind_address:18201:127.0.0.1:10201"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 rg -F -- '-L "$bind_address:18301:127.0.0.1:10301"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-[[ $(rg -c '^[[:space:]]+-L ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix") == 4 ]]
+[[ $(rg -c '^[[:space:]]+-L ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix") == 6 ]]
 if rg -n '^[[:space:]]+-(D|R) ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix"; then
   printf '[validate] compute SSH fallback contains an unapproved dynamic or remote forward\n' >&2
   exit 1
@@ -627,8 +656,8 @@ jq -e '
   (.services.homepage.read_only == true) and
   (.services.homepage.cap_drop | index("ALL") != null) and
   (.services.homepage.security_opt | index("no-new-privileges:true") != null) and
-  (.services.homepage.ports | length == 3) and
-  ([.services.homepage.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"]) and
+  (.services.homepage.ports | length == 2) and
+  ([.services.homepage.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1"]) and
   all(.services.homepage.ports[]; .published == "80" and .target == 3000 and .protocol == "tcp") and
   all(.services.homepage.volumes[]; .type == "bind" and .read_only == true) and
   (.services.homepage.mem_limit > 0 and .services.homepage.cpus > 0 and .services.homepage.pids_limit > 0)
@@ -848,6 +877,38 @@ jq -e '
   (.networks["artifact-fetch"].internal != true)
 ' "$hviske_json" >/dev/null
 
+hviske_http_json="$temporary_root/hviske-http.json"
+docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  --profile hviske-http -f "$REPO_ROOT/deploy/hviske-stt/compose.yaml" \
+  config --format json >"$hviske_http_json"
+jq -e '
+  ((.services | keys) == ["hviske-http"]) and
+  (.services["hviske-http"].ports[0].host_ip == "127.0.0.1") and
+  (.services["hviske-http"].ports[0].published == "8003") and
+  (.services["hviske-http"].read_only == true) and
+  (.services["hviske-http"].cap_drop | index("ALL") != null) and
+  (.services["hviske-http"].environment.STT_MAX_UPLOAD_BYTES == "10000000") and
+  (.services["hviske-http"].environment.STT_MAX_AUDIO_SECONDS == "60") and
+  (.services["hviske-http"].deploy.resources.reservations.devices == null) and
+  (.networks.inference.internal == true)
+' "$hviske_http_json" >/dev/null
+
+whisper_json="$temporary_root/whisper-stt.json"
+docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  -f "$REPO_ROOT/deploy/whisper-stt/compose.yaml" config --format json >"$whisper_json"
+jq -e '
+  (.services["whisper-primary"].ports == null) and
+  (.services["whisper-primary"].read_only == true) and
+  (.services["whisper-primary"].cap_drop | index("ALL") != null) and
+  (.services["whisper-primary"].environment.HF_HUB_OFFLINE == "1") and
+  (.services["whisper-primary"].command | join(" ") | contains("--gpu-memory-utilization 0.04") and contains("--max-num-seqs 1")) and
+  (.services["whisper-http"].ports[0].host_ip == "127.0.0.1") and
+  (.services["whisper-http"].ports[0].published == "8007") and
+  (.services["whisper-http"].read_only == true) and
+  (.services["whisper-http"].environment.STT_MAX_CONNECTIONS == "1") and
+  (.networks.inference.internal == true)
+' "$whisper_json" >/dev/null
+
 printf '[validate] approved trusted communication relay boundary\n'
 communication_json="$temporary_root/openclaw-communication.json"
 COMMUNICATION_TLS_CERT=/validation/communication.crt COMMUNICATION_TLS_KEY=/validation/communication.key \
@@ -858,7 +919,7 @@ jq -e --arg relay_config "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" '
   (.services["private-relay"] |
     (.profiles == ["approved-synthetic-communication"]) and
     (.image == "caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f") and
-    (.pull_policy == "never" and .restart == "no") and
+    (.pull_policy == "never" and .restart == "always") and
     (.user == "1000:1000" and .read_only == true) and
     (.cap_drop == ["ALL"] and .cap_add == null) and
     (.security_opt == ["no-new-privileges:true"]) and
@@ -910,7 +971,7 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker compute-node control-plane hermes hviske-stt homepage immich model-manager open-webui openclaw piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker compute-node control-plane hermes hviske-stt homepage immich model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

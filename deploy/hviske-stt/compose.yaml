@@ -160,6 +160,37 @@ services:
       hviske-primary: {condition: service_healthy}
     networks: [edge, inference]
 
+
+  hviske-http:
+    <<: *runtime
+    profiles: [hviske-http]
+    image: homecompute/hviske-http:1.0.0
+    build:
+      context: ../../scripts
+      dockerfile: ../deploy/hviske-stt/Dockerfile.http-relay
+    container_name: gb10-hviske-http
+    user: "65532:65532"
+    cpus: 2
+    mem_limit: 512m
+    pids_limit: 64
+    # Only the dedicated home-core SSH forward carries this outside Spark.
+    ports: ["127.0.0.1:8003:8003"]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      STT_RELAY_PORT: "8003"
+      STT_UPSTREAM_BASE_URL: http://hviske-primary:8000
+      STT_MAX_UPLOAD_BYTES: "10000000"
+      STT_MAX_AUDIO_SECONDS: "60"
+      STT_UPSTREAM_TIMEOUT_SECONDS: "120"
+      STT_MAX_CONNECTIONS: "4"
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=128m"]
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/openai-stt-relay.py, --probe-upstream]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks: [edge, inference]
+
 networks:
   edge:
     name: gb10-hviske-edge

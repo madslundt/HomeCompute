@@ -18,6 +18,75 @@ ROUTES = REGISTRY.load_json(ROOT / "config/capability-routes.json")
 
 
 class ModelRegistryTests(unittest.TestCase):
+    def test_multilingual_whisper_route_is_pinned_separate_and_uses_json_default(self) -> None:
+        deployment = CATALOG["transcription_deployments"]["whisper-turbo-spark-primary"]
+        self.assertEqual("openai/whisper-large-v3-turbo", deployment["upstream_model_id"])
+        self.assertEqual("41f01f3fe87f28c78e2fbf8b568835947dd65ed9", deployment["revision"])
+        self.assertEqual("COMPUTE_STT_MULTILINGUAL_BASE_URL", deployment["endpoint_env"])
+        self.assertEqual(1, deployment["concurrency"])
+        self.assertEqual("mit", deployment["license_id"])
+        self.assertNotIn("context_tokens", deployment)
+        self.assertEqual(["whisper-turbo-spark-primary"], ROUTES["transcription_routes"]["whisper-turbo"]["deployments"])
+        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
+        whisper = rendered.split('model_name: "whisper-turbo"', 1)[1]
+        self.assertIn('model: "openai/whisper-turbo"', whisper)
+        self.assertIn('COMPUTE_STT_MULTILINGUAL_BASE_URL', whisper)
+        self.assertIn('timeout: 120', whisper)
+        self.assertIn('response_format: json', whisper)
+        self.assertIn('mode: audio_transcription', whisper)
+
+    def test_transcription_is_pinned_and_has_no_text_context_contract(self) -> None:
+        deployment = CATALOG["transcription_deployments"]["hviske-spark-primary"]
+        self.assertEqual("syvai/hviske-v5.3", deployment["upstream_model_id"])
+        self.assertEqual("5d1a09822018702dc51d763e3a867b62d26b3501", deployment["revision"])
+        self.assertEqual("COMPUTE_STT_DANISH_BASE_URL", deployment["endpoint_env"])
+        self.assertNotIn("context_tokens", deployment)
+        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
+        self.assertRegex(rendered, r'(?s)model_name: "stt-danish".*?model: "openai/stt-danish".*?timeout: 120.*?mode: audio_transcription')
+
+    def test_transcription_validation_rejects_unpinned_nonlocal_and_stopped_backends(self) -> None:
+        for field, value, error in (("revision", "main", "immutable"),
+                                    ("network_scope", "cloud", "non-local"),
+                                    ("availability", "intentionally-stopped", "not active"),
+                                    ("lifecycle", "cold-standby", "non-resident"),
+                                    ("endpoint_env", "https://example.com/v1", "environment variable"),
+                                    ("context_tokens", 4096, "text context")):
+            with self.subTest(field=field):
+                catalog = copy.deepcopy(CATALOG)
+                catalog["transcription_deployments"]["hviske-spark-primary"][field] = value
+                with self.assertRaisesRegex(REGISTRY.RegistryError, error):
+                    REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
+
+    def test_transcription_routes_cannot_reuse_text_aliases_or_select_text_deployments(self) -> None:
+        routes = copy.deepcopy(ROUTES)
+        routes["transcription_routes"]["home"] = routes["transcription_routes"].pop("stt-danish")
+        with self.assertRaisesRegex(REGISTRY.RegistryError, "already used"):
+            REGISTRY.validate(copy.deepcopy(CATALOG), routes)
+        routes = copy.deepcopy(ROUTES)
+        routes["transcription_routes"]["stt-danish"]["deployments"] = ["home-spark-primary"]
+        with self.assertRaisesRegex(REGISTRY.RegistryError, "unknown transcription deployment"):
+            REGISTRY.validate(copy.deepcopy(CATALOG), routes)
+
+    def test_transcription_runtime_must_support_audio_protocol(self) -> None:
+        catalog = copy.deepcopy(CATALOG)
+        catalog["transcription_deployments"]["hviske-spark-primary"]["runtime_profile"] = "vllm-qwen"
+        with self.assertRaisesRegex(REGISTRY.RegistryError, "transcription protocol"):
+            REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
+
+    def test_optional_transcription_sections_preserve_text_only_registries(self) -> None:
+        catalog, routes = copy.deepcopy(CATALOG), copy.deepcopy(ROUTES)
+        catalog.pop("transcription_deployments")
+        routes.pop("transcription_routes")
+        REGISTRY.validate(catalog, routes)
+        self.assertNotIn('model_name: "stt-danish"', REGISTRY.render_model_list(catalog, routes))
+
+    def test_disabled_transcription_route_is_omitted(self) -> None:
+        routes = copy.deepcopy(ROUTES)
+        routes["transcription_routes"]["stt-danish"]["state"] = "disabled"
+        routes["transcription_routes"]["stt-danish"]["deployments"] = []
+        REGISTRY.validate(copy.deepcopy(CATALOG), routes)
+        self.assertNotIn('model_name: "stt-danish"', REGISTRY.render_model_list(copy.deepcopy(CATALOG), routes))
+
     def test_checked_in_registry_validates(self) -> None:
         REGISTRY.validate(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
 
@@ -179,6 +248,12 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertIn("turn_off_message_logging: true", generated)
         self.assertIn("disable_error_logs: true", generated)
         self.assertEqual(generated, original)
+
+    def test_transcription_defaults_to_json_without_changing_text_defaults(self) -> None:
+        rendered = REGISTRY.render_model_list(CATALOG, ROUTES)
+        audio = rendered.split('model_name: "stt-danish"', 1)[1]
+        self.assertIn('response_format: json', audio)
+        self.assertNotIn('response_format:', rendered.split('model_name: "stt-danish"', 1)[0])
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 import homecompute
 from maintenance_observations import SOURCES, TTL, project, semantic_evidence
+import homeassistant_observations as ha
 
 ROOT = Path(__file__).resolve().parents[1]
 ID = re.compile(r"^[a-z0-9][a-z0-9_.@-]{0,120}$")
@@ -119,8 +120,8 @@ def check(system: dict[str, Any], check_id: str, status: str, evidence: dict[str
 
 def normalize(system: dict[str, Any], raw: dict[str, Any] | None, now: datetime) -> list[dict[str, Any]]:
     add = lambda key, status, evidence, **kw: check(system, key, status, evidence, now, **kw)
-    if not isinstance(raw, dict) or raw.get("schema_version") != 1 or raw.get("host") != system["target"]:
-        return [add("collection", "unknown", {"reason": "collection_failed" if system["enabled"] else "not_provisioned"})] + [
+    if not isinstance(raw, dict) or raw.get("schema_version") not in (1, 2) or raw.get("host") != system["target"]:
+        return [add("collection", "degraded" if system["enabled"] and system["collector"] == "homeassistant-metadata" else "unknown", {"reason": "collection_failed" if system["enabled"] else "not_provisioned"})] + [
             row for source in SOURCES.intersection(system["updates"]) for row in project(system, {}, source, now, check)]
     checks = [add("collection", "healthy", {"available": True})]
     if system["collector"] == "homeassistant-metadata":
@@ -130,7 +131,20 @@ def normalize(system: dict[str, Any], raw: dict[str, Any] | None, now: datetime)
         except (ValueError, KeyError, TypeError):
             fresh = False
         if not fresh:
-            return [add("collection", "unknown", {"reason": "stale"})]
+            return [add("collection", "degraded" if raw.get("schema_version") == 2 else "unknown", {"reason": "stale"})]
+        if raw.get("schema_version") == 2:
+            try:
+                ha.validate(raw)
+            except (ValueError, KeyError, TypeError):
+                return [add("collection", "degraded", {"reason": "unsupported_schema"})]
+            checks.append(add("installed-version", "healthy", {"installed_version": raw["installed_version"]}))
+            for item in raw["checks"]:
+                checks.append(check(system, item["check_id"], item["status"], item["evidence"],
+                                    timestamp(item["observed_at"]), updates=ha.CHECKS[item["check_id"]] == "updates"))
+            for row in checks[:2]:
+                row["observed_at"] = iso(generated)
+                row["expires_at"] = iso(generated + timedelta(seconds=system["health_ttl_seconds"]))
+            return checks
         # n8n owns the HA credential and returns only this finite projection.
         version = raw.get("installed_version")
         checks.append(add("installed-version", "healthy" if isinstance(version, str) and VERSION.fullmatch(version) else "unknown",
@@ -246,10 +260,10 @@ try:
  request=urllib.request.Request('http://127.0.0.1:15678/webhook/homecompute-openclaw-ha-metadata',headers={'Authorization':'Bearer '+token},method='GET')
  with urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect()).open(request,timeout=3) as response:
   if response.status!=200: raise ValueError('unavailable')
-  raw=response.read(1025)
-  if len(raw)>1024: raise ValueError('oversized')
+  raw=response.read(65537)
+  if len(raw)>65536: raise ValueError('oversized')
   data=json.loads(raw)
- if not isinstance(data,dict) or set(data)!=FIELDS: raise ValueError('schema')
+ if not isinstance(data,dict) or set(data) not in (FIELDS,EXTENDED_FIELDS): raise ValueError('schema')
  print(json.dumps(data))
 except Exception:
  sys.exit(2)
@@ -282,7 +296,7 @@ def load_ha_transport(path: Path) -> dict[str, Any]:
 
 
 def collect(system: dict[str, Any], runner: Callable[..., Any] = homecompute.default_runner,
-            *, ha_transport: dict[str, Any] | None = None) -> dict[str, Any] | None:
+            *, ha_transport: dict[str, Any] | None = None, core_host_mode: bool = False) -> dict[str, Any] | None:
     if not system["enabled"]:
         return None
     if system["collector"] == "homeassistant-metadata":
@@ -295,12 +309,16 @@ def collect(system: dict[str, Any], runner: Callable[..., Any] = homecompute.def
         token = private_text(Path(ha_transport["token_file"])).strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token):
             raise ValueError("invalid HA metadata transport token")
-        script = HA_PROJECTION.replace("FIELDS", repr(HA_FIELDS)).replace("TOKEN", json.dumps(token))
+        if core_host_mode:
+            return ha.local_read(token)
+        script = HA_PROJECTION.replace("EXTENDED_FIELDS", repr(ha.FIELDS)).replace("FIELDS", repr(HA_FIELDS)).replace("TOKEN", json.dumps(token))
         result = runner(homecompute.ssh_argv("home-core", "python3 -"), input_text=script, timeout=4)
-        if result.returncode != 0 or len(result.stdout) > 1024:
+        if result.returncode != 0 or len(result.stdout) > ha.MAX_BYTES:
             return None
         try:
             raw = json.loads(result.stdout)
+            if isinstance(raw, dict) and raw.get("schema_version") == 2:
+                return ha.validate(raw)
             if not isinstance(raw, dict) or set(raw) != HA_FIELDS:
                 return None
             if type(raw["schema_version"]) is not int or raw["schema_version"] != 1 or raw["host"] != "home-assistant":
@@ -359,7 +377,7 @@ def valid_previous(previous: dict[str, Any], keys: set[str]) -> dict[str, dict[s
                      or (key == "source_report_generated_at" and isinstance(value, str) and iso(timestamp(value)) == value)
                      or (key == "source_digest" and isinstance(value, str) and bool(re.fullmatch(r"[a-f0-9]{64}", value)))
                      or (key == "update_scope" and value in {"installed_packages", "package_catalog"})
-                     or (key == "installed_version" and isinstance(value, str) and VERSION.fullmatch(value)))
+                     or (key in {"installed_version", "latest_version"} and isinstance(value, str) and VERSION.fullmatch(value)))
             if not valid: raise ValueError("previous evidence is not normalized")
         result[row["stable_key"]] = row
     return result
@@ -378,6 +396,8 @@ def make_report(registry: dict[str, Any], snapshots: dict[str, Any], now: dateti
         if "package-update-report" in system["updates"]:
             base.add("package-update-report.reboot-required")
         base.update("model-update-report." + x for x in ("changed", "pin_drift", "source_errors", "outperforms_active"))
+        if system["collector"] == "homeassistant-metadata":
+            base.update(ha.CHECKS)
         allowed.update(system["id"] + ":" + x for x in base)
         observations.extend(normalize(system, snapshots.get(system["id"]), now))
     prior = valid_previous(previous, allowed) if previous else {}

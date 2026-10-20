@@ -20,7 +20,7 @@ PROGRESS = {"sandbox", "checkout", "coding", "testing", "collecting"}
 
 
 def task_projection(task: dict[str, Any]) -> dict[str, Any]:
-    """Only categorical broker metadata crosses into the transport outbox."""
+    """Bounded broker metadata and advisory proposal; no files or transcripts."""
     state = task["state"]
     row = {key: task[key] for key in ("id", "project", "state", "updated")}
     row["status"] = {"pending": "queued", "review": "completed", "publishing": "running"}.get(state, state)
@@ -39,13 +39,22 @@ def task_projection(task: dict[str, Any]) -> dict[str, Any]:
     if result is not None and not isinstance(result, dict):
         raise ValueError("invalid public result")
     if result:
-        if (not isinstance(result, dict) or not result.keys() <= {"ok", "tests_passed", "changed_files", "session_id"}
+        if (not isinstance(result, dict) or not result.keys() <= {"ok", "tests_passed", "changed_files", "session_id", "proposal"}
                 or type(result.get("ok")) is not bool
                 or result.get("tests_passed") is not None and type(result["tests_passed"]) is not bool
                 or type(result.get("changed_files")) is not int or not 0 <= result["changed_files"] <= 1000
                 or result.get("session_id") is not None and (not isinstance(result["session_id"], str)
                     or not re.fullmatch(r"[A-Za-z0-9-]{1,80}", result["session_id"]))):
             raise ValueError("invalid public result")
+        if "proposal" in result:
+            proposal = result["proposal"]
+            if (result["ok"] is not True or not isinstance(proposal, dict)
+                    or set(proposal) != {"problem", "change", "validation", "risk"}
+                    or any(not isinstance(text, str) or not text.strip() or len(text) > 400
+                           or any(ord(c) < 32 and c != "\n" for c in text)
+                           or re.search(r"sk-[A-Za-z0-9_-]{16,}|Bearer\s+\S{16,}", text)
+                           for text in proposal.values())):
+                raise ValueError("invalid bounded proposal")
         row["result"] = result
     link = task.get("pr_url")
     if link is not None:
@@ -56,7 +65,7 @@ def task_projection(task: dict[str, Any]) -> dict[str, Any]:
 from maintenance_observations import semantic_evidence
 from openclaw_machine_notifications import machine, render
 EVIDENCE = {"count", "candidate_count", "security_count", "update_scope", "available", "failed", "state", "reason", "source_digest",
-            "source_report_generated_at", "installed_version"}
+            "source_report_generated_at", "installed_version", "latest_version"}
 
 
 def instant(value: str) -> float:
@@ -266,7 +275,7 @@ class Outbox:
                 self.db.execute("UPDATE events SET state='superseded' WHERE topic=? AND state='pending' AND kind='progress'", (key,))
                 if state in STATES:
                     advice = {"pending": f"Execution approval required: assistant-task.py approve {tid}",
-                              "queued": "Queued after execution approval.",
+                              "queued": "Queued for isolated preparation.",
                               "running": "Running" + (": " + task["progress"] if task.get("progress") else "") + ".",
                               "publishing": "Publishing the approved proposal.",
                               "review": f"Proposal review required: assistant-task.py review {tid}; publication requires its reviewed digest.",
@@ -275,6 +284,8 @@ class Outbox:
                               "cancelled": "Cancelled."}[state]
                     if task.get("result"):
                         advice += f" Proposed files: {task['result']['changed_files']}."
+                        if task["result"].get("proposal"):
+                            advice += " Codex feedback (untrusted): " + json.dumps(task["result"]["proposal"], ensure_ascii=False)
                     if task.get("pr_url"):
                         advice += " PR: " + task["pr_url"]
                     marker = ":" + task["phase"] if task.get("progress") else ""

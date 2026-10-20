@@ -23,9 +23,11 @@
     ../../modules/nixos/docker.nix
     ../../modules/nixos/ssh.nix
     ../../modules/nixos/tailscale.nix
+    ../../modules/nixos/gateway-certificate.nix
     ../../modules/nixos/ttlock-webhook.nix
     ../../modules/nixos/storage.nix
     ../../modules/nixos/backups.nix
+    ../../modules/nixos/nas-recovery-backup.nix
     ../../modules/nixos/immich.nix
     ../../modules/nixos/secrets.nix
   ];

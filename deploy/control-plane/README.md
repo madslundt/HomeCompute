@@ -80,6 +80,28 @@ forbidden.
 - LiteLLM listens on `0.0.0.0:4000` only inside its container namespace. This
   narrow exception is necessary for Caddy to reach it and is not a host bind.
 
+The approved LAN/Tailscale inference API is keyless. Caddy supplies a restricted
+virtual key when a client sends no credentials or an unrecognized/expired key;
+valid explicit client keys retain their scopes. Credential checks use a GET
+probe so inference bodies remain untouched. Provision the key with
+`sudo python3 scripts/setup-network-inference.py` after LiteLLM is healthy and
+before starting the new Caddy entrypoint. Full host deployment does this in that
+order. The root-owned 0600 key lives at
+`/srv/state/control-plane/caddy-data/network-inference-key`; back it up with the
+LiteLLM database. Missing/empty state prevents Caddy from starting. Browser CORS
+allows all origins without cookies and handles OPTIONS on the API base and
+exposed model-listing/inference paths, including bare checks and trailing
+slashes. It includes private-network approval for clients that request it.
+Actual request methods remain restricted; management routes remain unexposed.
+
+`https://home-core.tail479ad.ts.net:8443/v1` uses a public Let's Encrypt
+certificate for phone/browser clients. `ai.home.arpa` retains the private CA.
+Before Caddy startup, run `sudo python3 scripts/renew-gateway-certificate.py --no-restart`;
+normal host deployment does this automatically. The Nix-owned
+`homecompute-gateway-certificate.timer` renews the certificate daily as needed
+and restarts Caddy only for a changed certificate or a pending retry. Certificate
+files stay in the existing `/data` mount; the host Tailscale socket is not mounted.
+
 These networks are coarse membership controls, not per-port or egress policy.
 The installer requires Docker Engine 28+ and Compose 2.33.1+. It also sets the
 daemon-wide default bind for future user-defined bridge publications to
@@ -112,7 +134,9 @@ It forwards only these `home-spark` loopback listeners:
 
 | Edge client | Host-side tunnel endpoint | Remote loopback destination |
 | --- | --- | --- |
+| LiteLLM `172.28.200.3` | `172.28.200.1:18003` | `127.0.0.1:8003` (Hviske HTTP transcription relay) |
 | LiteLLM `172.28.200.3` | `172.28.200.1:18005` | `127.0.0.1:18300` (Flash-Next behind the `automation-moe` alias) |
+| LiteLLM `172.28.200.3` | `172.28.200.1:18007` | `127.0.0.1:8007` (Whisper Turbo transcription relay) |
 | LiteLLM `172.28.200.3` | `172.28.200.1:18006` | `127.0.0.1:8006` (Home Assistant fast model) |
 | Plapre relay `172.28.200.4` | `172.28.200.1:18201` | `127.0.0.1:10201` |
 | Hviske relay `172.28.200.5` | `172.28.200.1:18301` | `127.0.0.1:10301` |
@@ -300,7 +324,7 @@ TCP 22 to `192.168.30.126`; other outbound traffic and non-established return
 traffic are rejected. The deployment script also requires operator-provisioned
 model-manager credentials, the pinned host key, and an explicit forced-command
 readiness flag before it builds or starts the UI.
-Embedding, vision, STT, and TTS candidates are also absent from the production
+Embedding, vision, English STT, and TTS candidates are also absent from the production
 LiteLLM model list and Caddy route allow-list while staged. Qualify one modality
 at a time against its direct private listener; add a gateway alias only through
 an explicit promotion change with route, quota, monitoring, and rollback tests.
@@ -311,3 +335,30 @@ virtual keys exist. The NixOS backup module remains disabled until its real
 off-host repository and runtime password path are configured. Image updates
 are manual and require backup plus release-note and vulnerability review; no
 automatic container updater is installed.
+
+### Spark transcription over the HTTPS gateway
+
+The network model `stt-danish` routes `/v1/audio/transcriptions` to the running
+Spark Hviske v5.3 GPU service. Run `scripts/setup-compute-hviske-stt.sh http-up` to build/start only the
+logging-free `hviske-http` profile; it publishes `127.0.0.1:8003` and needs no
+primary model restart. Its isolated Python/FFmpeg image converts phone audio
+to PCM WAV, with 10 MB/60 second/4 concurrent request bounds. The dedicated forwarding-only SSH account must allow
+`127.0.0.1:8003`. Home-core maps it to `172.28.200.1:18003`, admitting only
+LiteLLM at `172.28.200.3`. Set `COMPUTE_STT_DANISH_BASE_URL` to that `/v1` URL.
+When migrating an existing reviewed text-only network key, run
+`scripts/setup-network-inference.py --enable-stt` on home-core after adding the
+model; ordinary provisioning verifies scope without widening existing keys.
+The common HTTPS base works without client credentials and permits browser
+preflight. The `whisper-turbo` alias serves the separate pinned Spark Whisper Large-v3
+Turbo container through `172.28.200.1:18007` to `127.0.0.1:8007`, admitting
+only LiteLLM. Use `COMPUTE_STT_MULTILINGUAL_BASE_URL` for that `/v1` URL.
+Migrate an existing reviewed Danish+text network key with
+`scripts/setup-network-inference.py --enable-whisper`.
+
+The isolated `deploy/whisper-stt/compose.yaml` uses the existing compute runtime
+identity and shared upstream key paths from `/etc/gb10-ai/hviske.env`. Run its
+`whisper-fetch` and `whisper-accept` services with the `prepare` profile before
+starting `whisper-primary` and `whisper-http` with `up -d --build --wait`.
+Acceptance verifies the pinned upstream weight SHA-256 and records a private
+manifest; startup verifies it offline. Only the relay publishes a loopback port.
+The forwarding-only Spark account must permit `127.0.0.1:8007`.

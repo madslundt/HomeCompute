@@ -19,8 +19,35 @@ behind `automation-moe`; no model cutover is part of this change. See
 
 ## Architecture and choice
 
-Target architecture: the managed assistant and native broker are live; the manual
-worker is qualified. Scheduled observations and Home Assistant integration remain staged.
+The live infrastructure lane exposes scoped reads for Home Assistant, home-core,
+and home-spark, with health and update observations every five minutes. OpenClaw
+can prepare, list, inspect and run exact maintenance plans through the separate
+root controller. Verified minor/patch updates use standing authorization. Every
+fix, major upgrade, uncertain version, stateful image change and protected Spark
+driver/kernel update requires human approval. Home Assistant monthly releases
+count as major changes; update entities need exact-version and backup support.
+
+Use `homecompute_maintenance_prepare` with home-core `nixos`, a reviewed Docker
+component (`homepage`, `n8n`, `caddy`, `litellm`, `postgres`, `open-webui`, `immich`,
+`piper`, `stt`), or `restart-` plus that component. Spark supports `packages`,
+`restart-plapre`, `restart-hviske`, and `restart-qwen`. Home Assistant uses a
+reviewed `update.*` entity ID. Preparation installs no update or repair; Docker
+preparation downloads an immutable candidate. Read preparation status, then
+inspect the plan's versions, digest, expiry and approval requirement.
+
+The root-only CLI is `/opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py`.
+An operator runs `review PLAN_ID`, then `approve PLAN_ID DIGEST` over the trusted
+SSH path; the native agent has neither operation. Spark approval is forwarded to
+the exact remote plan. Execution binds snapshots and source hashes, shares host
+deployment locks, records one attempt before effects, and never retries an
+uncertain result. Review running state and source pins before root-only
+`reconcile PLAN_ID`; full core deployment refuses unresolved image overrides.
+NixOS preparation uses already-built immutable systems. Other image/model
+layouts require a separately reviewed root plan rather than arbitrary commands.
+
+The managed assistant, native broker, scheduled observations and scoped Home
+Assistant integration are live; the manual worker is qualified. The broader
+broker controlled-action executors described below remain staged.
 
 ```mermaid
 flowchart LR

@@ -20,7 +20,17 @@ validation.
 The local operator links derive their hostname from the URL used to open
 Homepage. `config/custom.js` supplies this behavior because a normal relative
 URL cannot replace the current URL's port. Caddy serves n8n, Hermes, the AI
-gateway, Open WebUI, and the model manager at their HTTPS `home.arpa` names.
+gateway, Daythread, Open WebUI, and the model manager at their HTTPS `home.arpa` names.
+Daythread uses `https://daythread.home.arpa/` and the existing
+`omi-local-backend-1:8787` container on the private control-plane clients network.
+Its private Tailscale URL is `https://home-core.tail479ad.ts.net:18787/`.
+Tailscale Serve terminates HTTPS with a publicly trusted certificate and
+proxies to the backend's explicit home-core LAN listener. This follows the
+existing private n8n/Calibre/Shelfmark listener pattern; it does not use Funnel.
+Serve's background mode stores the listener in persistent tailscaled state.
+The `homecompute-daythread-tailscale` systemd unit in
+`modules/nixos/tailscale.nix` declaratively restores this listener on subsequent
+NixOS activations and boots after that configuration has been deployed.
 
 Calibre Web Automated and Shelfmark bind to loopback plus the same explicit LAN
 and Tailscale addresses as Homepage. Their dynamically resolved links therefore

@@ -14,6 +14,22 @@ install -d -m 0755 /srv/homecompute/releases
 install -d -m 0700 /var/lib/homecompute
 exec 9>/var/lib/homecompute/deploy.lock
 flock -n 9 || { printf 'Another deployment is running.\n' >&2; exit 1; }
+[[ ! -e /var/lib/homecompute/homepage-maintenance/active-image.json ]] || {
+  printf 'Reconcile the human-approved Homepage image override before full deployment.\n' >&2; exit 1;
+}
+# Prepared image overrides preserve the selected digest until source pins are
+# reconciled. A full deployment must not silently replace those running images.
+if [[ -f /var/lib/homecompute-infrastructure-maintenance/plans.sqlite ]]; then
+  python3 - /var/lib/homecompute-infrastructure-maintenance/plans.sqlite <<'PY'
+import json, sqlite3, sys
+with sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True) as db:
+    for (raw,) in db.execute("SELECT plan FROM plans WHERE status IN ('succeeded','executing','uncertain')"):
+        plan = json.loads(raw)
+        if any(arg.startswith('/var/lib/homecompute-infrastructure-maintenance/prepared/') and arg.endswith('.image.json')
+               for command in plan['steps'] for arg in command):
+            raise SystemExit('Reconcile infrastructure image overrides before full deployment.')
+PY
+fi
 # Restoring state and the identity is a separate operation; never initialize an
 # empty replacement for the migrated n8n instance as a side effect of deployment.
 for required_file in /var/lib/sops-nix/key.txt /srv/state/automation/n8n/database.sqlite /srv/state/automation/n8n/config; do
@@ -33,6 +49,14 @@ git -C "$release" checkout --detach "$revision"
 [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]]
 (cd /var/lib/homecompute && nixos-rebuild build --flake "$release#home-core")
 nixos-rebuild switch --flake "$release#home-core"
+# The temporary live probe override is superseded by this release's Nix unit.
+rm -f -- /etc/systemd/system.control/homecompute-platform-health.service.d/90-public-gateway.conf \
+  /etc/systemd/system.control/homecompute-compute-ssh-tunnel.service.d/90-spark-stt.conf \
+  /etc/systemd/system.control/homecompute-compute-ssh-tunnel-firewall.service.d/90-spark-stt.conf
+rm -f -- /usr/local/lib/systemd/system/homecompute-gateway-certificate.service \
+  /usr/local/lib/systemd/system/homecompute-gateway-certificate.timer \
+  /usr/local/lib/systemd/system/timers.target.wants/homecompute-gateway-certificate.timer
+systemctl daemon-reload
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
@@ -91,12 +115,17 @@ if docker network inspect "$edge_network" >/dev/null 2>&1; then
     "${speech_gateway[@]}" down
   fi
 fi
+# Bootstrap authenticated internal services before provisioning the keyless edge.
+"${gateway[@]}" up -d --wait --wait-timeout 180 postgres litellm
+python3 "$release/scripts/setup-network-inference.py"
+python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
+# Release Homepage's former LAN port 80 before the gateway claims it.
+"${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
 if [[ ${#speech_proxies_to_restore[@]} -gt 0 ]]; then
   "${speech_gateway[@]}" up -d --wait --wait-timeout 180 "${speech_proxies_to_restore[@]}"
 fi
 "${automation[@]}" up -d --wait --wait-timeout 180
-"${homepage[@]}" up -d --wait --wait-timeout 180
 if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" up -d --wait --wait-timeout 180
 else

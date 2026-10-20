@@ -39,8 +39,8 @@ let
       gx10_wyoming_ready=0
       # This is deliberately only a process/edge probe. The route is the
       # documented unauthenticated Caddy health endpoint; model health is
-      # measured separately below. The repository CA, hostname, and destination
-      # address are all pinned for this local check.
+      # measured separately below. The Tailscale hostname uses public system
+      # roots; its hostname and destination remain pinned for this local check.
       if curl \
         --silent \
         --fail \
@@ -48,7 +48,6 @@ let
         --connect-timeout 2 \
         --max-time 5 \
         --proto '=https' \
-        --cacert '${edgeCA}' \
         --resolve 'home-core.tail479ad.ts.net:8443:100.110.248.102' \
         'https://home-core.tail479ad.ts.net:8443/healthz'; then
         edge_healthy=1

@@ -7,6 +7,10 @@ LABELS = {"package-update-report": "Packages", "docker-image-report": "Container
           "package-update-report.coverage": "Package update coverage",
           "docker-image-report.coverage": "Container image coverage",
           "package-update-report.reboot-required": "Reboot required",
+          "ha.battery_optimizer": "Battery optimizer", "ha.battery_telemetry": "Battery telemetry",
+          "ha.grid_meter": "Whole-house grid meter", "ha.tariff": "Electricity tariff",
+          "ha.operation_plan": "Battery operation plan", "ha.grid_availability": "Grid availability",
+          "collection": "Monitoring connection",
           "model-update-report.changed": "Model changes",
           "model-update-report.pin_drift": "Model version mismatches",
           "model-update-report.source_errors": "Model source errors",
@@ -21,6 +25,8 @@ def machine(body: dict[str, Any]) -> str | None:
 def check_label(check: str) -> str:
     if check in LABELS:
         return LABELS[check]
+    if check.startswith("ha.update."):
+        return "HA update: " + check[len("ha.update."):].replace("_", " ")
     if check.startswith("container."):
         return "Container " + check[10:]
     if check.startswith("unit."):
@@ -52,7 +58,7 @@ def summary_line(kind: str, observation: dict[str, Any]) -> str:
         detail = "yes" if evidence.get("available") is True else "unknown"
     else:
         fields = []
-        for key in ("state", "reason", "installed_version", "count", "candidate_count", "security_count"):
+        for key in ("state", "reason", "installed_version", "latest_version", "count", "candidate_count", "security_count"):
             if key in evidence:
                 value = str(evidence[key]).replace("_", " ")
                 fields.append(value if key in {"state", "reason", "count"} else key.replace("_", " ") + ": " + value)

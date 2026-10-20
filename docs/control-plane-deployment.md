@@ -12,6 +12,8 @@ the services below; database restores and migration rollback startup were rehear
 | n8n | 2.42.6 | Database migrated; workflow/credential counts and active flags preserved |
 | Plapre relay | Python 3.12.15 | Healthy; Home Assistant-only LAN ingress on 10201 |
 | Hviske relay | Python 3.12.15 | Healthy; Home Assistant-only LAN ingress on 10301 |
+| Spark Whisper HTTP | Whisper Large-v3 Turbo + bounded relay | `whisper-turbo` through home-core HTTPS; one transcription at a time |
+| Spark Hviske HTTP | Hviske v5.3 + Python/FFmpeg relay | `stt-danish` through home-core HTTPS; keyless audio transcription |
 | Automation standby | Approved server digest | Qwen3.6 Q4 cached, normally stopped |
 
 Immutable image digests are recorded in `config/control-plane.env.example`.
@@ -24,13 +26,18 @@ Release references: [LiteLLM](https://github.com/BerriAI/litellm/releases),
 
 ## Access
 
-API base: `https://home-core.tail479ad.ts.net/v1` over Tailscale.
-Health endpoint: `https://home-core.tail479ad.ts.net/healthz`.
-Only Caddy publishes a port, on `100.110.248.102:8443`; Tailscale Funnel owns
-port 443 for the TTLock webhook.
-The host NixOS firewall already permits TCP 443 on `tailscale0`.
+Phone/browser API base: `https://home-core.tail479ad.ts.net:8443/v1`, with a
+publicly trusted Let's Encrypt certificate provisioned by Tailscale. No local
+CA installation is needed for this hostname. The gateway remains private.
 
-The certificate uses Caddy's private CA. The public root certificate is available
+LAN API base: `https://ai.home.arpa/v1` over the approved LAN or Tailscale subnet
+route. Health endpoint: `https://ai.home.arpa/healthz`. The direct Tailscale
+listener is `https://ai.home.arpa:8443/v1` when the hostname resolves to
+`100.110.248.102`. Caddy publishes only the exact LAN 443 and Tailscale 8443
+addresses, with source restrictions in `HC-CADDY-LAN` and `HC-CADDY-INGRESS`.
+Tailscale Funnel owns port 443 for the separate TTLock webhook.
+
+The `ai.home.arpa` certificate uses Caddy's private CA. Its public root is available
 on the host at `/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt`.
 A local copy is in `artifacts/home-core-root.crt` (ignored by Git).
 Configure individual clients with that CA; system-wide client trust has not
@@ -38,10 +45,17 @@ been installed. For example, from this checkout:
 
 ```bash
 curl --cacert artifacts/home-core-root.crt \
-  https://home-core.tail479ad.ts.net/healthz
+  https://ai.home.arpa/healthz
 ```
 
-Normal API clients need scoped LiteLLM virtual keys. The administrative master
+Since 2026-10-13, approved LAN/Tailscale API clients can omit credentials.
+Caddy supplies a non-admin network key scoped to `automation`, `home`,
+`automation-moe`, `stt-danish`, and `whisper-turbo`, stored root-owned 0600 in
+`/srv/state/control-plane/caddy-data/network-inference-key`. Explicit client keys
+retain their scopes when valid. Unrecognized credentials fall back to the same
+restricted network access; SDKs can use `local` as a placeholder. CORS allows any
+origin with successful preflight on the exposed model-listing and inference
+paths, without cookie credentials. The administrative master
 key is not a client credential. Key-management endpoints and the admin UI are
 not exposed through Caddy. An administrator can call `/key/generate` or
 `/key/delete` at `http://127.0.0.1:4000` inside the LiteLLM container, reading its
@@ -51,6 +65,13 @@ endpoint. The administrative master key is still not a client credential.
 
 ## Secrets and operations
 
+- The public Tailscale certificate pair lives under
+  `/srv/state/control-plane/caddy-data/tailscale-tls`, with a root-only private
+  key and an atomic `current` version pointer. The daily
+  `homecompute-gateway-certificate.timer` checks validity using
+  `scripts/renew-gateway-certificate.py`, requests at least 30 days from Tailscale,
+  and restarts Caddy when the certificate changes. Bootstrap deployment
+  provisions the pair before starting Caddy. The daemon socket stays on the host.
 - Encrypted source: `secrets/home-core.sops.yaml`.
 - Host-only age identity: `/var/lib/sops-nix/key.txt`, root-owned, mode 0600.
 - sops-nix materializes five gateway secrets under `/run/secrets/control-plane`,
@@ -85,9 +106,11 @@ NixOS. See [Git deployment](git-deployment.md) for the single-command workflow.
 
 - Three service health checks pass; PostgreSQL migrations completed.
 - Real TLS validation from the Mac succeeds using the exported CA.
-- Health returns 200; unauthenticated `/v1/models` returns 401.
+- Health returns 200; keyless `/v1/models` and `automation-moe` chat return 200.
+- Browser preflight returns 204 with wildcard origin on supported API routes.
 - Temporary virtual key creation succeeds; the key sees only `automation`.
-- Revocation succeeds and the revoked key is rejected.
+- Revocation succeeds and the revoked key is rejected by internal LiteLLM;
+  the public gateway falls back to the common network aliases.
 - Public `/ui` and `/key/generate` return 404.
 - LAN host ports 443, 4000, and 5432 are closed/unreachable.
 - A disposable, network-isolated PostgreSQL instance initialized from empty

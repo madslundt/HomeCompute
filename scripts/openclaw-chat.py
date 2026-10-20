@@ -19,6 +19,15 @@ import uuid
 CONVERSATION = re.compile(r"[a-z0-9][a-z0-9_-]{0,47}")
 MAX_MESSAGE = 16384
 MAX_RECEIPT = 2 * 1024 * 1024
+WORKSPACE_TOOLS = {"read", "write", "edit", "apply_patch", "memory_search", "memory_get", "session_status"}
+MCP_TOOLS = {"homecompute__homecompute_" + name for name in
+             ("systems", "system_read", "task_submit", "task_status", "task_cancel", "ha_propose", "ha_status", "ha_cancel",
+              "maintenance_prepare", "maintenance_preparation", "maintenance_list", "maintenance_status", "maintenance_run")}
+QUALIFIED_TOOLS = WORKSPACE_TOOLS | {"browser", "exec"} | MCP_TOOLS
+EFFECT_TOOLS = {"write", "edit", "apply_patch", "browser", "exec",
+                "homecompute__homecompute_task_submit", "homecompute__homecompute_task_cancel",
+                "homecompute__homecompute_ha_propose", "homecompute__homecompute_ha_cancel",
+                "homecompute__homecompute_maintenance_prepare", "homecompute__homecompute_maintenance_run"}
 STATE = Path.home() / ".local/state/homecompute/openclaw-chat"
 PREFIX = ["env", "PATH=/home/hermes-operator/.local/bin:/home/hermes-operator/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
           "NEMOCLAW_GATEWAY_PORT=9123", "nemoclaw", "agent-openclaw", "exec", "--", "openclaw"]
@@ -148,15 +157,15 @@ def parse_turn(value: dict[str, Any], session_id: str) -> dict[str, Any]:
                 or meta.get("error") is not None or meta.get("stopReason") == "error"):
             raise ValueError()
         tools = receipt["successfulToolNames"]
-        if not isinstance(tools, list) or any(t not in {"read", "browser", "exec", "session_status", "memory_search", "memory_get"} for t in tools):
+        if not isinstance(tools, list) or any(not isinstance(t, str) or t not in QUALIFIED_TOOLS for t in tools):
             raise ValueError()
-        effect_tools = bool(set(tools).intersection({"browser", "exec"}))
-        if effect_tools:
-            if (receipt.get("terminalDisposition") != "visible"
-                    or not isinstance(value.get("runId"), str) or not value["runId"]
+        # A completed, visible receipt permits returning a result once. It
+        # never permits replaying a write or treating an unknown outcome as done.
+        completed_tools = bool(set(tools).intersection(EFFECT_TOOLS) or (tools and meta["replayInvalid"]))
+        if completed_tools:
+            if (not isinstance(value.get("runId"), str) or not value["runId"]
                     or receipt.get("runId") != value["runId"]
-                    or not isinstance(receipt.get("turnId"), str) or not receipt["turnId"]
-                    or not set(tools).issubset({"read", "browser", "exec"})):
+                    or not isinstance(receipt.get("turnId"), str) or not receipt["turnId"]):
                 raise ValueError()
         elif meta["replayInvalid"]:
             raise ValueError()
@@ -172,9 +181,33 @@ def parse_turn(value: dict[str, Any], session_id: str) -> dict[str, Any]:
         text = "\n".join(texts)
         if not text.strip() or len(text.encode()) > 65536:
             raise ValueError()
+        if completed_tools:
+            disposition = receipt.get("terminalDisposition")
+            if disposition is None:
+                # The pinned raw CLI emits visible text/completion separately;
+                # only its public snapshot adds terminalDisposition. Require
+                # all native completion evidence instead of inventing that field.
+                completion, summary = meta.get("completion", {}), meta.get("toolSummary", {})
+                if (meta.get("stopReason") != "stop" or completion.get("stopReason") != "stop"
+                        or completion.get("finishReason") != "stop"
+                        or meta.get("finalAssistantVisibleText") != text
+                        or summary.get("failures") != 0 or type(summary.get("calls")) is not int
+                        or not 1 <= summary["calls"] <= 128
+                        or not isinstance(summary.get("tools"), list)
+                        or any(not isinstance(t, str) for t in summary["tools"])
+                        or set(summary["tools"]) != set(tools)):
+                    raise ValueError()
+                for state in (value, result, meta, completion):
+                    if (state.get('yielded') is True or state.get('continuationPending') is True
+                            or state.get('pendingToolCalls')
+                            or state.get('failureSignal') or state.get('terminalToolFailure')):
+                        raise ValueError()
+            elif disposition != "visible":
+                raise ValueError()
         return {"text": text, "provider": "inference", "model": "automation-moe",
                 "session_id": session_id, "verified": True,
-                "replay_safe": not meta["replayInvalid"], "successful_tools": tools}
+                "replay_safe": not meta["replayInvalid"] and not bool(set(tools) & EFFECT_TOOLS),
+                "successful_tools": tools}
     except (KeyError, TypeError, ValueError):
         raise ChatError("Turn lacked a safe completed receipt or had possible side effects. No retry was attempted; this conversation is paused for operator reconciliation.") from None
 

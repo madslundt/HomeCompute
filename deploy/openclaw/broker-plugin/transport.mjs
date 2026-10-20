@@ -15,9 +15,14 @@ export const taskIdSchema = {
   properties: { task_id: string(36, 36, UUID) }, required: ['task_id'],
 };
 export const statusSchema = { ...taskIdSchema, required: [] };
+export const actionSchema = {
+  type: 'object', additionalProperties: false,
+  properties: Object.fromEntries(['action_id', 'target', 'incident_key', 'evidence_id'].map(key => [key, string(1, 128, ISSUE)])),
+  required: ['action_id', 'target', 'incident_key', 'evidence_id'],
+};
 
 function validate(operation, params) {
-  const schema = operation === 'submit' ? submitSchema : operation === 'status' ? statusSchema : taskIdSchema;
+  const schema = operation === 'submit' ? submitSchema : operation === 'propose' ? actionSchema : operation === 'status' ? statusSchema : taskIdSchema;
   if (!params || typeof params !== 'object' || Array.isArray(params) || Object.keys(params).some(key => !Object.hasOwn(schema.properties, key))) {
     throw new Error('Invalid task arguments');
   }
@@ -29,6 +34,13 @@ function validate(operation, params) {
       throw new Error('Invalid task arguments');
     }
   }
+}
+
+function actionMetadata(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row) || !UUID.test(row.id ?? '')) throw new Error('Invalid action broker response');
+  return Object.fromEntries(['id', 'action_id', 'target', 'incident_key', 'evidence_id', 'state', 'created', 'updated', 'attempts', 'error', 'policy_sha256']
+    .filter(key => row[key] === null || ['string', 'boolean'].includes(typeof row[key]) || typeof row[key] === 'number' && Number.isFinite(row[key]))
+    .map(key => [key, typeof row[key] === 'string' ? row[key].slice(0, 2048) : row[key]]));
 }
 
 // Never expose the broker's request context, prompts, worker logs or credentials.
@@ -50,6 +62,17 @@ function metadata(response) {
       if (typeof value === 'string') out.result[key] = value.slice(0, 2048);
       else if (typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) out.result[key] = value;
     }
+    if (Object.hasOwn(row.result, 'proposal')) {
+      const proposal = row.result.proposal;
+      const fields = ['problem', 'change', 'validation', 'risk'];
+      if (row.result.ok !== true || !proposal || typeof proposal !== 'object' || Array.isArray(proposal)
+          || Object.keys(proposal).length !== fields.length || fields.some(key => {
+            const text = proposal[key];
+            return typeof text !== 'string' || !text.trim() || Array.from(text).length > 400
+              || /[\x00-\x09\x0b-\x1f]/.test(text) || /sk-[A-Za-z0-9_-]{16,}|Bearer\s+\S{16,}/.test(text);
+          })) throw new Error('Invalid bounded proposal');
+      out.result.proposal = Object.fromEntries(fields.map(key => [key, proposal[key]]));
+    }
   }
   if (Array.isArray(row.artifacts)) {
     out.artifacts = row.artifacts.slice(0, 10).filter(item => item?.kind === 'pull_request' && typeof item.url === 'string' && PR_URL.test(item.url))
@@ -60,18 +83,19 @@ function metadata(response) {
 }
 
 /** Fixed-origin, bounded HTTP transport; dependency injection is for isolated tests only. */
-export async function requestTask(operation, params, { signal, fetchImpl = globalThis.fetch, token = process.env.OPENCLAW_BROKER_TOKEN } = {}) {
-  if (!['submit', 'status', 'cancel'].includes(operation)) throw new Error('Invalid task operation');
+async function requestResource(resource, operation, params, { signal, fetchImpl = globalThis.fetch, token = process.env.OPENCLAW_BROKER_TOKEN } = {}) {
+  if (!(resource === 'tasks' ? ['submit', 'status', 'cancel'] : ['propose', 'status', 'cancel']).includes(operation)) throw new Error('Invalid task operation');
   validate(operation, params);
   if (!token || /[\r\n]/.test(token)) throw new Error('Task broker authentication is unavailable');
   signal?.throwIfAborted();
-  const path = operation === 'submit' || (operation === 'status' && !params.task_id) ? '/tasks' : `/tasks/${params.task_id}${operation === 'cancel' ? '/cancel' : ''}`;
+  const writesBody = operation === 'submit' || operation === 'propose';
+  const path = writesBody || (operation === 'status' && !params.task_id) ? `/${resource}` : `/${resource}/${params.task_id}${operation === 'cancel' ? '/cancel' : ''}`;
   let response;
   try {
     response = await fetchImpl(BROKER + path, {
       method: operation === 'status' ? 'GET' : 'POST',
-      headers: { Authorization: `Bearer ${token}`, ...(operation === 'submit' ? { 'Content-Type': 'application/json' } : {}) },
-      ...(operation === 'submit' ? { body: JSON.stringify(params) } : {}),
+      headers: { Authorization: `Bearer ${token}`, ...(writesBody ? { 'Content-Type': 'application/json' } : {}) },
+      ...(writesBody ? { body: JSON.stringify(params) } : {}),
       redirect: 'error',
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10000)]) : AbortSignal.timeout(10000),
     });
@@ -91,13 +115,17 @@ export async function requestTask(operation, params, { signal, fetchImpl = globa
       chunks.push(chunk);
     }
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const projectMetadata = resource === 'tasks' ? metadata : actionMetadata;
     if (operation === 'status' && !params.task_id) {
-      const rows = Array.isArray(body) ? body : body.tasks;
+      const rows = Array.isArray(body) ? body : body[resource];
       if (!Array.isArray(rows) || rows.length > 100) throw new Error('Invalid task list');
-      return rows.map(metadata);
+      return rows.map(projectMetadata);
     }
-    return metadata(body);
+    return projectMetadata(body);
   } catch {
     throw new Error('Invalid or oversized task broker response');
   }
 }
+
+export const requestTask = (operation, params, options) => requestResource('tasks', operation, params, options);
+export const requestAction = (operation, params, options) => requestResource('actions', operation, params, options);

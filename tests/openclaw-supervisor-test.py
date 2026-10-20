@@ -3,6 +3,7 @@
 import importlib.util
 from contextlib import closing
 import json
+import hashlib
 import sqlite3
 from pathlib import Path
 import tempfile
@@ -33,6 +34,9 @@ class SupervisionTests(unittest.TestCase):
         self.supervisor.check_registry = Mock()
         self.supervisor.check_container = Mock()
         self.supervisor.check_native_database = Mock()
+        self.supervisor.host_gateway_recovery_argv = Mock(return_value=[
+            "node", "-e", MOD.GATEWAY_RECOVERY_JS,
+            str(self.supervisor.home / ".nemoclaw/source/dist/lib/gateway-runtime-action.js")])
         self.supervisor.observe = Mock(return_value="Ready")
         self.supervisor.ready = Mock(return_value=True)
 
@@ -129,11 +133,31 @@ class SupervisionTests(unittest.TestCase):
             self.assertEqual(s.run.call_args.args[0], [s.cli, MOD.NAME, command])
         s.recover("host-gateway-down")
         argv = s.run.call_args.args[0]
-        self.assertEqual(argv, [s.cli, "credentials", "list"])
+        self.assertEqual(argv, s.host_gateway_recovery_argv.return_value)
+        self.assertIn("authorizeExactTargetTransportRecovery:true", argv[2])
+        self.assertIn("runtimeSelection:{gatewayName:'nemoclaw-9123',workspace:'default'}", argv[2])
         self.assertNotIn("--fresh", argv)
         self.assertNotIn("--recreate-sandbox", argv)
         self.assertNotIn("--yes", argv)
         self.assertNotIn("onboarding", s.run.call_args.kwargs)
+
+    def test_host_recovery_requires_pinned_native_module(self):
+        s = self.supervisor
+        del s.host_gateway_recovery_argv
+        module = s.home / ".nemoclaw/source/dist/lib/gateway-runtime-action.js"
+        with self.assertRaises(MOD.Refused):
+            s.host_gateway_recovery_argv()
+        module.parent.mkdir(parents=True)
+        module.write_bytes(b"pinned native module")
+        with patch.object(MOD, "GATEWAY_RUNTIME_SHA256", hashlib.sha256(module.read_bytes()).hexdigest()):
+            self.assertEqual(s.host_gateway_recovery_argv(), ["node", "-e", MOD.GATEWAY_RECOVERY_JS, str(module)])
+            module.write_bytes(b"unexpected upgrade")
+            with self.assertRaises(MOD.Refused):
+                s.host_gateway_recovery_argv()
+        module.unlink()
+        module.symlink_to(Path(self.tmp.name) / "elsewhere")
+        with self.assertRaises(MOD.Refused):
+            s.host_gateway_recovery_argv()
 
     def test_recover_falls_back_to_native_gateway_restart_under_same_identity(self):
         s = self.supervisor

@@ -11,11 +11,22 @@
         href: https://n8n.home.arpa/
         description: Automations and workflows
 
+    - Daythread:
+        id: homecore-daythread
+        icon: https://daythread.home.arpa/icons/daythread-192.png?v=c383e773
+        href: https://daythread.home.arpa/
+
     - Chessmate:
         id: homecore-chessmate
         icon: mdi-chess-knight
         href: https://chessmate.home.arpa/
         description: Chess practice and coaching
+
+    - Home HTTPS certificate:
+        id: homecore-https-certificate
+        icon: mdi-certificate-outline
+        href: http://daythread.home.arpa/.well-known/home-core-root-ca.crt
+        description: Install on phones, then enable full trust in Settings
 
     - AI gateway:
         id: homecore-ai-gateway

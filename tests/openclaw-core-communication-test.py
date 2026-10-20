@@ -72,6 +72,7 @@ class CoreCommunicationTest(unittest.TestCase):
             self.assertNotIn('sudo ', unit)
             self.assertNotIn('/Users/', unit)
         self.assertIn('--infrastructure-registry ' + str(setup.DEST / 'config/system-monitoring.json'), units['adapter'])
+        self.assertIn('--registry ' + str(setup.DEST / 'config/system-monitoring.json'), units['adapter'])
         self.assertIn('--core-host-mode', units['adapter'])
         self.assertIn('Wants=network-online.target homecompute-openclaw-machine-status.service', units['adapter'])
         self.assertIn('After=network-online.target homecompute-agents-vm.service homecompute-openclaw-machine-status.service', units['adapter'])
@@ -85,6 +86,24 @@ class CoreCommunicationTest(unittest.TestCase):
         self.assertIn('OnBootSec=30s', setup.timer())
         self.assertIn('OnUnitActiveSec=300s', setup.timer())
         self.assertIn('Persistent=true', setup.timer())
+
+    def test_provisioned_ha_uses_one_private_registry_for_chat_and_admission(self):
+        self.private(self.config / 'home-assistant.json', {'schema_version': 1,
+                     'token_file': str(self.config / 'ha-metadata-reader-token')})
+        self.private(self.config / 'ha-metadata-reader-token', {})
+        self.private(self.config / 'system-monitoring.json', {})
+        adapter = setup.commands()['adapter']
+        registry = str(self.config / 'system-monitoring.json')
+        self.assertEqual(adapter[adapter.index('--registry') + 1], registry)
+        self.assertEqual(adapter[adapter.index('--infrastructure-registry') + 1], registry)
+        self.assertEqual(setup.commands()['update-feed'][setup.commands()['update-feed'].index('--registry') + 1], registry)
+        for name in ('adapter', 'update-feed'):
+            self.assertEqual(setup.commands()[name][setup.commands()[name].index('--ha-transport') + 1],
+                             str(self.config / 'home-assistant.json'))
+        setup.validate_ready(self.uid)
+        (self.config / 'ha-metadata-reader-token').chmod(0o644)
+        with self.assertRaises(ValueError):
+            setup.validate_ready(self.uid)
 
     def test_root_snapshot_is_finite_and_has_only_public_report_write_access(self):
         unit = setup.service('machine-status')
@@ -210,7 +229,7 @@ class CoreCommunicationTest(unittest.TestCase):
         source.mkdir(mode=0o700)
         for name in setup.FILES:
             path = source / name
-            path.parent.mkdir(exist_ok=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('{}' if name.endswith('.json') else 'VALUE = 1\n')
             path.chmod(0o644)
         _, before = setup.source_bundle(source)

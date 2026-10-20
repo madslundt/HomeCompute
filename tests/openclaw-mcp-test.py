@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import http.client
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -14,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
 from broker import Ledger, serve
-from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS
+from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS, call_tool
 
 PROJECT = {"repository": "example/synthetic", "base_sha": "a" * 40,
            "base_branch": "main", "classification": "cloud_allowed",
@@ -29,6 +30,18 @@ class NoPublisher:
 
 
 class McpTests(unittest.TestCase):
+    def test_action_metadata_lists_are_bounded_and_never_contain_approval_or_evidence(self):
+        from types import SimpleNamespace
+        private = {'id': '0aa529dc-8933-4116-852e-7871f01cbe07', 'state': 'pending',
+                   'error': '\\' * 4000, 'target': '\\' * 4000, 'evidence': 'PRIVATE',
+                   'snapshot': 'PRIVATE', 'approval_sha256': 'PRIVATE', 'policy_json': 'PRIVATE'}
+        self.ledger.actions = SimpleNamespace(list_actions=lambda: [private] * 101)
+        result = call_tool({'name': 'homecompute_action_status'}, self.ledger)
+        self.assertLessEqual(len(json.dumps(result).encode()), MAX_RESPONSE_BYTES)
+        value = json.loads(result['content'][0]['text'])
+        self.assertTrue(value['truncated'])
+        self.assertNotIn('PRIVATE', json.dumps(result))
+        self.assertLessEqual(len(value['actions']), 100)
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.ledger = Ledger(Path(self.temp.name) / "tasks.sqlite3", {"demo": PROJECT})
@@ -83,6 +96,24 @@ class McpTests(unittest.TestCase):
             self.assertEqual(self.rpc("tools/list", headers={"Authorization": credential})[0], 401)
         for role in ("operator", "worker"):
             self.assertEqual(self.rpc("tools/list", role=role)[0], 403)
+
+    def test_newer_sdk_initial_header_negotiates_then_requires_supported_version(self):
+        offer = {"protocolVersion": "2025-11-25", "capabilities": {},
+                 "clientInfo": {"name": "sdk2", "version": "2"}}
+        header = {"MCP-Protocol-Version": "2025-11-25"}
+        status, response, _ = self.rpc("initialize", offer, headers=header)
+        self.assertEqual(status, 200)
+        self.assertEqual(response["result"]["protocolVersion"], "2025-06-18")
+        self.assertEqual(self.rpc("tools/list", headers=header)[0], 400)
+        self.assertEqual(self.request({"jsonrpc": "2.0", "method": "notifications/initialized"}, headers=header)[0], 400)
+        for invalid in ("arbitrary", "2026-07-28;unsafe"):
+            self.assertEqual(self.rpc("initialize", {**offer, "protocolVersion": invalid},
+                                     headers={"MCP-Protocol-Version": invalid})[0], 400)
+        self.assertEqual(self.rpc("initialize", offer, headers={**header, "MCP-Session-Id": "unknown"})[0], 400)
+        self.assertEqual(self.rpc("initialize", offer, role="operator", headers=header)[0], 403)
+        self.assertEqual(self.rpc("initialize", offer, headers={**header, "Origin": "null"})[0], 403)
+        self.assertEqual(self.rpc("initialize", {**offer, "protocolVersion": "2025-06-18"}, headers=header)[0], 400)
+        self.assertEqual(self.rpc("tools/list")[0], 200)
 
     def test_tool_inventory_has_exactly_three_finite_schemas(self):
         status, response, _ = self.rpc("tools/list")
@@ -150,6 +181,9 @@ class McpTests(unittest.TestCase):
         self.assertEqual(self.rpc("tools/list", headers={"Accept": "application/json"})[0], 406)
         self.assertEqual(self.request(raw="x" * (MAX_BODY_BYTES + 1))[0], 413)
         self.assertEqual(self.request(raw="{invalid")[1]["error"]["code"], -32700)
+        status, nested, _ = self.request(raw="[" * 1500 + "0" + "]" * 1500)
+        self.assertEqual(status, 400)
+        self.assertIn(nested["error"]["code"], {-32600, -32700})
         self.assertEqual(self.request(raw=json.dumps({"jsonrpc": "2.0", "id": 7, "method": "ping"}).encode("utf-16"))[1]["error"]["code"], -32700)
         self.assertEqual(self.request([])[1]["error"]["code"], -32600)
         self.assertEqual(self.request({"jsonrpc": "2.0", "id": True, "method": "ping"})[1]["error"]["code"], -32600)
@@ -190,6 +224,32 @@ class McpTests(unittest.TestCase):
                                                  "MCP_TEST_TOKEN": TOKENS["assistant"]})
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Official SDK", result.stdout)
+
+    def test_native_python_sdk2_negotiates_new_offer_with_seeded_http_header(self):
+        if os.environ.get("MCP_PYTHON_SDK2") != "1":
+            self.skipTest("MCP_PYTHON_SDK2 not set; run in the reviewed native SDK2 runtime")
+        import httpx2
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+
+        async def exercise():
+            headers = {"Authorization": "Bearer " + TOKENS["assistant"],
+                       "MCP-Protocol-Version": "2025-11-25"}
+            async with httpx2.AsyncClient(headers=headers, timeout=5, trust_env=False) as client:
+                async with streamable_http_client(f"http://127.0.0.1:{self.port}/mcp", http_client=client) as streams:
+                    async with ClientSession(*streams) as session:
+                        result = await session.initialize()
+                        self.assertEqual(result.protocol_version, "2025-06-18")
+                        inventory = await session.list_tools()
+                        self.assertEqual([tool.name for tool in inventory.tools], [tool["name"] for tool in TOOLS])
+                        result = await session.call_tool("homecompute_task_submit", SUBMIT)
+                        task = json.loads(result.content[0].text)["task"]
+                        self.assertEqual(task["state"], "pending")
+                        result = await session.call_tool("homecompute_task_status", {"task_id": task["id"]})
+                        self.assertEqual(json.loads(result.content[0].text)["task"]["state"], "pending")
+                        result = await session.call_tool("homecompute_task_cancel", {"task_id": task["id"]})
+                        self.assertEqual(json.loads(result.content[0].text)["task"]["state"], "cancelled")
+        asyncio.run(exercise())
 
 
 if __name__ == "__main__":

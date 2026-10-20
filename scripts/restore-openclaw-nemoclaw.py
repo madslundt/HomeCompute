@@ -60,19 +60,26 @@ def fsync_directory(path: Path) -> None:
 def validate_safe_config(config: dict[str, Any]) -> None:
     tools = config.get("tools", {})
     allow, deny = set(tools.get("allow", [])), set(tools.get("deny", []))
-    if "session_status" not in allow or not allow <= TOOLS or not BLOCKED_TOOLS | DENIES <= deny or "session_status" in deny:
-        raise RecoveryRefused("tool-quarantine-required")
-    if tools.get("alsoAllow"):
-        raise RecoveryRefused("extra-tools-refused")
     agents = config.get("agents", {}).get("entries", {})
     if set(agents) != {"main"}:
         raise RecoveryRefused("agent-roster-refused")
     agent_tools = agents["main"].get("tools", {})
-    if ("session_status" not in set(agent_tools.get("allow", [])) or
-            not set(agent_tools.get("allow", [])) <= TOOLS or
-            "session_status" in set(agent_tools.get("deny", [])) or
-            not DENIES <= set(agent_tools.get("deny", []))):
-        raise RecoveryRefused("agent-tools-refused")
+    agent_allow, agent_deny = set(agent_tools.get("allow", [])), set(agent_tools.get("deny", []))
+    if "*" in deny or "*" in agent_deny:
+        # Empty allow is unrestricted in pinned OpenClaw; both wildcard denies
+        # are mandatory. No explicit allow source remains to break compaction.
+        for policy in (tools, agent_tools):
+            if (policy.get("allow") != [] or "*" not in policy.get("deny", [])
+                    or not DENIES <= set(policy.get("deny", [])) or "alsoAllow" in policy):
+                raise RecoveryRefused("tool-free-quarantine-required")
+    else:
+        if "session_status" not in allow or not allow <= TOOLS or not BLOCKED_TOOLS | DENIES <= deny or "session_status" in deny:
+            raise RecoveryRefused("tool-quarantine-required")
+        if ("session_status" not in agent_allow or not agent_allow <= TOOLS
+                or "session_status" in agent_deny or not DENIES <= agent_deny):
+            raise RecoveryRefused("agent-tools-refused")
+    if tools.get("alsoAllow") or agent_tools.get("alsoAllow"):
+        raise RecoveryRefused("extra-tools-refused")
     for section in ("hooks", "cron", "browser"):
         if config.get(section, {}).get("enabled") is not False:
             raise RecoveryRefused("optional-runtime-must-be-disabled")
@@ -86,6 +93,19 @@ def validate_safe_config(config: dict[str, Any]) -> None:
     if (set(provider) != {"inference"} or provider["inference"].get("apiKey") != "unused" or
             provider["inference"].get("baseUrl") != "https://inference.local/v1"):
         raise RecoveryRefused("managed-inference-refused")
+
+
+def tool_free_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Prepare a stricter existing canary policy; no files or runtime changes."""
+    validate_safe_config(config)
+    candidate = copy.deepcopy(config)
+    for policy in (candidate["tools"], candidate["agents"]["entries"]["main"]["tools"]):
+        policy["allow"] = []
+        if "*" not in policy["deny"]:
+            policy["deny"] = [*policy["deny"], "*"]
+        policy.pop("alsoAllow", None)
+    validate_safe_config(candidate)
+    return candidate
 
 
 def merge_managed_config(old: dict[str, Any], native: dict[str, Any]) -> dict[str, Any]:

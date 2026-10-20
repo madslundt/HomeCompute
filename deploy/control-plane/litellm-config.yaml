@@ -47,6 +47,26 @@ model_list:
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 600
       stream_timeout: 600
+  - model_name: "stt-danish"
+    litellm_params:
+      model: "openai/stt-danish"
+      order: 1
+      api_base: "os.environ/COMPUTE_STT_DANISH_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 120
+      response_format: json
+    model_info:
+      mode: audio_transcription
+  - model_name: "whisper-turbo"
+    litellm_params:
+      model: "openai/whisper-turbo"
+      order: 1
+      api_base: "os.environ/COMPUTE_STT_MULTILINGUAL_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 120
+      response_format: json
+    model_info:
+      mode: audio_transcription
 litellm_settings:
   request_timeout: 600
   num_retries: 0

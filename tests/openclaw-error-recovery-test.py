@@ -73,6 +73,83 @@ class RecoveryTests(unittest.TestCase):
             with self.assertRaises(MOD.RecoveryRefused):
                 MOD.validate_safe_config(value)
 
+    def test_tool_free_candidate_changes_only_policy_and_is_idempotent(self):
+        original = config()
+        original['tools']['exec'] = {'mode': 'allowlist', 'safeBins': []}
+        original['agents']['entries']['main']['identity'] = {'name': 'synthetic retained identity'}
+        before = copy.deepcopy(original)
+        candidate = MOD.tool_free_config(original)
+        MOD.validate_safe_config(candidate)
+        self.assertEqual(original, before)
+        for policy in (candidate['tools'], candidate['agents']['entries']['main']['tools']):
+            self.assertEqual(policy['allow'], [])
+            self.assertIn('*', policy['deny'])
+            self.assertTrue(MOD.DENIES <= set(policy['deny']))
+            self.assertNotIn('alsoAllow', policy)
+        self.assertEqual(candidate['tools']['deny'][:-1], before['tools']['deny'])
+        self.assertEqual(candidate['agents']['entries']['main']['tools']['deny'][:-1], before['agents']['entries']['main']['tools']['deny'])
+        restored = copy.deepcopy(candidate)
+        for current, old in ((restored['tools'], before['tools']),
+                             (restored['agents']['entries']['main']['tools'], before['agents']['entries']['main']['tools'])):
+            current['allow'], current['deny'] = old['allow'], old['deny']
+        self.assertEqual(restored, before)
+        self.assertEqual(MOD.tool_free_config(candidate), candidate)
+
+    def test_tool_free_incomplete_mixed_or_extra_allow_scopes_refused(self):
+        def agent(value):
+            return value['agents']['entries']['main']['tools']
+        for mutate in (lambda value: value['tools']['deny'].remove('*'),
+                       lambda value: agent(value)['deny'].remove('*'),
+                       lambda value: value['tools'].pop('allow'),
+                       lambda value: agent(value).pop('allow'),
+                       lambda value: value['tools']['allow'].append('session_status'),
+                       lambda value: agent(value)['allow'].append('read'),
+                       lambda value: value['tools']['deny'].remove('group:runtime'),
+                       lambda value: agent(value)['deny'].remove('group:runtime'),
+                       lambda value: value['tools'].update(alsoAllow=['read']),
+                       lambda value: agent(value).update(alsoAllow=['read']),
+                       lambda value: value['tools'].update(alsoAllow=[]),
+                       lambda value: agent(value).update(alsoAllow=[]),
+                       lambda value: value['agents']['entries'].update(other={})):
+            value = MOD.tool_free_config(config())
+            mutate(value)
+            with self.subTest(mutate=mutate), self.assertRaises(MOD.RecoveryRefused):
+                MOD.validate_safe_config(value)
+
+    def test_legacy_agent_extra_allow_and_wildcard_ambiguity_refused(self):
+        for mutate in (lambda value: value['agents']['entries']['main']['tools'].update(alsoAllow=['exec']),
+                       lambda value: value['tools']['deny'].append('*'),
+                       lambda value: value['agents']['entries']['main']['tools']['deny'].append('*')):
+            value = config()
+            mutate(value)
+            with self.assertRaises(MOD.RecoveryRefused):
+                MOD.validate_safe_config(value)
+
+    def test_tool_free_helper_refuses_unqualified_input_and_preserves_native_merge(self):
+        unsafe = config()
+        unsafe['tools']['allow'].append('exec')
+        with self.assertRaises(MOD.RecoveryRefused):
+            MOD.tool_free_config(unsafe)
+        old = MOD.tool_free_config(config())
+        native = config()
+        native['gateway']['auth']['token'] = 'new-synthetic'
+        native['plugins']['installs'] = {'nemoclaw': {'source': 'native-new'}}
+        merged = MOD.merge_managed_config(old, native)
+        self.assertEqual(merged['tools'], old['tools'])
+        self.assertEqual(merged['agents'], old['agents'])
+        self.assertEqual(merged['gateway']['auth'], native['gateway']['auth'])
+        self.assertEqual(merged['models'], native['models'])
+        self.assertEqual(merged['proxy'], native['proxy'])
+        self.assertEqual(merged['plugins']['installs'], native['plugins']['installs'])
+
+    def test_tool_free_backup_keeps_conversation_hashes_and_validation(self):
+        path = self.backup()
+        original = MOD.verify_backup(path)
+        (path / 'openclaw.json').write_text(json.dumps(MOD.tool_free_config(config())))
+        current = MOD.verify_backup(path)
+        for name in ('agents/main/sessions.db', 'workspace/memory.md'):
+            self.assertEqual(original[name], current[name])
+
     def test_backup_verifies_conversation_and_workspace_hashes(self):
         hashes = MOD.verify_backup(self.backup())
         self.assertIn("agents/main/sessions.db", hashes)

@@ -1,6 +1,7 @@
 name: homecompute-openclaw-tools
 services:
   browser:
+    hostname: homecompute-openclaw-browser
     image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
     init: true
     restart: unless-stopped
@@ -13,7 +14,7 @@ services:
       XDG_CONFIG_HOME: /tmp/config
       XDG_CACHE_HOME: /tmp/cache
       BROWSER_TOKEN_FILE: /run/browser-token
-      BROWSER_PUBLIC_ORIGIN: http://172.18.0.1:18800
+      BROWSER_PUBLIC_ORIGIN: http://127.0.0.1:18800
     volumes:
       - ${HOMECOMPUTE_BROWSER_TOKEN_FILE:?Set the dedicated private token file}:/run/browser-token:ro
       - browser-profile:/home/browser/profile
@@ -25,7 +26,28 @@ services:
     logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
     networks:
       browser: {aliases: [homecompute-openclaw-browser]}
-    depends_on: [browser-egress]
+    depends_on: [browser-egress, browser-dns]
+  browser-dns:
+    image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
+    command: [python3, /opt/homecompute/browser_worker.py, --dns-only]
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      BROWSER_TOKEN_FILE: /run/browser-token
+    volumes:
+      - ${HOMECOMPUTE_BROWSER_TOKEN_FILE:?Set the dedicated private token file}:/run/browser-token:ro
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
+    pids_limit: 64
+    logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
+    networks:
+      browser: {aliases: [browser-dns], ipv4_address: 172.30.188.5}
+      egress: {}
   browser-ingress:
     image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
     command: [python3, /opt/homecompute/tcp_relay.py]

@@ -7,8 +7,33 @@
 	}
 }
 
+# LAN HTTP shares the standard port with Homepage. Match Daythread before
+# forwarding the remaining hosts to Homepage's existing private publication.
+http://:8080 {
+	encode zstd gzip
+	@daythread host {$DAYTHREAD_FQDN:daythread.home.arpa}
+	handle @daythread {
+		# Bootstrap client trust through HTTP; only the public root is served.
+		handle /.well-known/home-core-root-ca.crt {
+			root * /data/caddy/pki/authorities/local
+			rewrite * /root.crt
+			header Content-Type application/x-x509-ca-cert
+			file_server
+		}
+		handle {
+			reverse_proxy {$DAYTHREAD_UPSTREAM:omi-local-backend-1:8787}
+		}
+	}
+	handle {
+		reverse_proxy {$HOMEPAGE_HTTP_UPSTREAM}
+	}
+}
+
 (litellm_proxy) {
 	reverse_proxy litellm:4000 {
+		# The edge owns CORS; avoid duplicate or credentialed upstream headers.
+		header_down -Access-Control-Allow-Origin
+		header_down -Access-Control-Allow-Credentials
 		health_uri /health/liveliness
 		health_interval 30s
 		lb_try_duration 5s
@@ -19,9 +44,61 @@
 	}
 }
 
-{$AI_FQDN}, {$AI_LEGACY_FQDN} {
-	tls internal
+(ai_api) {
 	encode zstd gzip
+
+	# Accept SDK/checker trailing slashes without a redirect during preflight.
+	@api_slash path /v1/ /v1/models/ /v1/responses/ /v1/chat/completions/ /v1/audio/transcriptions/
+	uri @api_slash strip_suffix /
+
+	# Network admission controls keyless inference. Check optional credentials
+	# with a GET so the original inference body remains untouched. A placeholder
+	# or stale key must not prevent access to the already-public network models.
+	@credentialed {
+		method GET POST
+		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions
+		not {
+			header !Authorization
+			header !X-Litellm-Api-Key
+		}
+	}
+	forward_auth @credentialed litellm:4000 {
+		uri /v1/models
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10s
+		}
+		@unrecognized status 401
+		handle_response @unrecognized {
+			request_header Authorization "Bearer {env.LITELLM_NETWORK_KEY}"
+			request_header -X-Litellm-Api-Key
+		}
+	}
+	@keyless {
+		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions
+		header !Authorization
+		header !X-Litellm-Api-Key
+	}
+	request_header @keyless Authorization "Bearer {env.LITELLM_NETWORK_KEY}"
+
+	@api path /v1/audio/transcriptions /v1 /v1/ /v1/models /v1/models/ /v1/responses /v1/responses/ /v1/chat/completions /v1/chat/completions/ /v1/audio/transcriptions/
+	header @api {
+		Access-Control-Allow-Origin "*"
+		-Access-Control-Allow-Credentials
+		defer
+	}
+	@api_preflight {
+		method OPTIONS
+		path /v1 /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions
+	}
+	handle @api_preflight {
+		header Access-Control-Allow-Methods "GET, POST, OPTIONS"
+		header Access-Control-Allow-Headers "{http.request.header.Access-Control-Request-Headers}"
+		header Access-Control-Allow-Private-Network "true"
+		header Access-Control-Max-Age "600"
+		header Vary "Access-Control-Request-Headers"
+		respond "" 204
+	}
 
 	@health path /healthz
 	handle @health {
@@ -41,7 +118,7 @@
 
 	@standard {
 		method POST
-		path /v1/responses /v1/chat/completions
+		path /v1/responses /v1/chat/completions /v1/audio/transcriptions
 	}
 	handle @standard {
 		request_body {
@@ -61,6 +138,16 @@
 	}
 }
 
+{$AI_FQDN} {
+	tls internal
+	import ai_api
+}
+
+{$AI_LEGACY_FQDN} {
+	tls /data/tailscale-tls/current/cert.pem /data/tailscale-tls/current/key.pem
+	import ai_api
+}
+
 {$N8N_FQDN} {
 	tls internal
 	encode zstd gzip
@@ -72,6 +159,49 @@
 		}
 	}
 
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
+{$DAYTHREAD_FQDN:daythread.home.arpa} {
+	tls internal
+	encode zstd gzip
+
+	# Daythread joins the existing private clients network on home-core.
+	reverse_proxy {$DAYTHREAD_UPSTREAM:omi-local-backend-1:8787} {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
+http://chessmate.home.arpa:8080 {
+	redir https://chessmate.home.arpa{uri} 308
+}
+
+chessmate.home.arpa {
+	tls internal
+	encode zstd gzip
+	reverse_proxy {$CHESSMATE_UPSTREAM:192.168.30.122:8080} {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
 	log {
 		output stdout
 		format filter {
@@ -134,28 +264,6 @@
 		}
 	}
 
-	log {
-		output stdout
-		format filter {
-			request>uri delete
-			request>headers delete
-		}
-	}
-}
-
-http://chessmate.home.arpa:8080 {
-	redir https://chessmate.home.arpa{uri} 308
-}
-
-chessmate.home.arpa {
-	tls internal
-	encode zstd gzip
-	reverse_proxy {$CHESSMATE_UPSTREAM:192.168.30.122:8080} {
-		transport http {
-			dial_timeout 3s
-			response_header_timeout 10m
-		}
-	}
 	log {
 		output stdout
 		format filter {

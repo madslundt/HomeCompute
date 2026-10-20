@@ -1,4 +1,8 @@
-"""Small durable task ledger. Assistant tokens cannot approve execution/publishing."""
+"""Durable coding preparation ledger; only operator policy can authorize it automatically.
+
+Assistant tokens cannot approve execution or publication. Automatic preparation
+is a per-project policy opt-in; publication always needs exact operator approval.
+"""
 from __future__ import annotations
 
 import hmac
@@ -14,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from policy import load_projects, validate_files
+from policy import load_projects, validate_files, validate_proposal
 from publisher import Publisher
 from mcp_adapter import handle_http as handle_mcp, metadata
 from urllib.parse import parse_qs, urlsplit
@@ -77,7 +81,7 @@ class Ledger:
             value["approval_kind"] = {"pending": "execution", "review": "publication"}.get(state)
             result = json.loads(value["result"])
             value["error_code"] = result.get("error_code")
-            value["result"] = {key: result[key] for key in ("ok", "tests_passed", "session_id") if key in result}
+            value["result"] = {key: result[key] for key in ("ok", "tests_passed", "session_id", "proposal") if key in result}
             if "files" in result:
                 value["result"]["changed_files"] = len(result["files"])
             value["artifacts"] = [{"kind": "pull_request", "url": value["pr_url"]}] if value["pr_url"] else []
@@ -120,9 +124,13 @@ class Ledger:
                 raise ValueError("pending task budget exhausted")
             task_id, now = str(uuid.uuid4()), time.time()
             policy_digest = hashlib.sha256(json.dumps(self.projects[body["project"]], sort_keys=True).encode()).hexdigest()
+            # Only newly admitted requests may consume this trusted standing
+            # preparation permission. Policy changes or duplicate submissions
+            # never activate historical pending/cancelled/failed tasks.
+            state = "queued" if self.projects[body["project"]].get("auto_prepare") is True else "pending"
             self.db.execute("INSERT INTO tasks(id,project,issue_key,state,created,updated,public_updated,body,policy_sha256) VALUES (?,?,?,?,?,?,?,?,?)",
-                            (task_id, body["project"], body["issue_key"], "pending", now, now, now, json.dumps(body), policy_digest))
-            self.db.execute("INSERT INTO events(task_id,state,at,snapshot) VALUES (?,?,?,?)", (task_id, "pending", now, json.dumps(self.get(task_id))))
+                            (task_id, body["project"], body["issue_key"], state, now, now, now, json.dumps(body), policy_digest))
+            self.db.execute("INSERT INTO events(task_id,state,at,snapshot) VALUES (?,?,?,?)", (task_id, state, now, json.dumps(self.get(task_id))))
             return self.get(task_id)
 
     def action(self, task_id: str, action: str, body: dict[str, Any]) -> dict[str, Any]:
@@ -146,7 +154,7 @@ class Ledger:
                 else:
                     self.db.execute("UPDATE tasks SET updated=? WHERE id=?", (time.time(), task_id))
             elif action == "result" and state == "running":
-                if (set(body) - {"ok", "session_id", "files", "tests_passed", "error_code"}
+                if (set(body) - {"ok", "session_id", "files", "tests_passed", "error_code", "proposal"}
                         or not {"ok", "session_id", "files"} <= set(body) or type(body["ok"]) is not bool
                         or ("tests_passed" in body and type(body["tests_passed"]) is not bool)
                         or ("error_code" in body and body["error_code"] not in ERROR_CODES)):
@@ -156,8 +164,12 @@ class Ledger:
                     raise ValueError("invalid session id")
                 if body["ok"]:
                     validate_files(body["files"], task["policy"])
+                    if "proposal" in body:
+                        validate_proposal(body["proposal"])
                 elif body["files"] != []:
                     raise ValueError("failed worker cannot return files")
+                elif "proposal" in body:
+                    raise ValueError("failed worker cannot return a proposal")
                 self.transition(task_id, "review" if body["ok"] else "failed",
                                 result=json.dumps(body), session_id=session,
                                 error=None if body["ok"] else "worker failed; inspect private evidence")
@@ -186,24 +198,41 @@ class Ledger:
 
     def list_tasks(self) -> list[dict[str, Any]]:
         with self.lock:
-            return [self.get(row["id"]) for row in self.db.execute(
-                "SELECT id FROM tasks ORDER BY created DESC LIMIT 100").fetchall()]
+            selected, size = [], 2
+            for row in self.db.execute("SELECT id FROM tasks ORDER BY created DESC LIMIT 100").fetchall():
+                task = self.get(row["id"])
+                item_size = len(json.dumps(task, ensure_ascii=False).encode()) + 2
+                if size + item_size > 250000:
+                    break
+                selected.append(task)
+                size += item_size
+            return selected
 
     def review(self, task_id: str) -> dict[str, Any]:
         task = self.get(task_id, private=True)
         digest = hashlib.sha256(json.dumps(task["result"], sort_keys=True).encode()).hexdigest()
-        return {"task": self.get(task_id), "result": task["result"], "result_sha256": digest}
+        return {"task": self.get(task_id), "request": task["body"], "policy": task["policy"],
+                "result": task["result"], "result_sha256": digest}
 
     def task_events(self, after: int, limit: int) -> dict[str, Any]:
         """Ordered durable projections; historical pre-migration events are explicit gaps."""
         with self.lock:
             rows = self.db.execute("SELECT seq,task_id,state,at,snapshot FROM events WHERE seq>? ORDER BY seq LIMIT ?",
                                    (after, limit + 1)).fetchall()
-            selected = rows[:limit]
-            return {"events": [{"seq": row["seq"], "task_id": row["task_id"], "state": row["state"], "at": row["at"],
-                                "task": json.loads(row["snapshot"]) if row["snapshot"] else None,
-                                "snapshot_available": bool(row["snapshot"])} for row in selected],
-                    "next_cursor": selected[-1]["seq"] if selected else after, "has_more": len(rows) > limit}
+            selected, size = [], 1024
+            for row in rows[:limit]:
+                event = {"seq": row["seq"], "task_id": row["task_id"], "state": row["state"], "at": row["at"],
+                         "task": json.loads(row["snapshot"]) if row["snapshot"] else None,
+                         "snapshot_available": bool(row["snapshot"])}
+                item_size = len(json.dumps(event, ensure_ascii=False).encode()) + 2
+                if size + item_size > 250000:
+                    if not selected:
+                        raise ValueError("individual task snapshot exceeds response budget")
+                    break
+                selected.append(event)
+                size += item_size
+            return {"events": selected, "next_cursor": selected[-1]["seq"] if selected else after,
+                    "has_more": len(rows) > len(selected)}
 
     def publish(self, task_id: str, publisher: Publisher, digest: str) -> dict[str, Any]:
         with self.lock, self.db:
@@ -323,7 +352,7 @@ def serve(ledger: Ledger, tokens: dict[str, str], publisher: Publisher, address:
             self.connection.settimeout(15)
 
         def respond(self, status: int, value: Any) -> None:
-            encoded = json.dumps(value).encode()
+            encoded = json.dumps(value, ensure_ascii=False).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(encoded)))

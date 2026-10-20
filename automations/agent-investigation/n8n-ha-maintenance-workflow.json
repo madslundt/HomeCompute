@@ -1,0 +1,282 @@
+{
+  "name": "HomeCompute exact Home Assistant maintenance",
+  "active": false,
+  "nodes": [
+    {
+      "name": "HA maintenance webhook",
+      "id": "ha-maintenance-0",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "homecompute-approved-ha-maintenance",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "homecompute-approved-ha-maintenance",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hcHAMaintenanceExecutor20261013",
+          "name": "HA maintenance root executor only"
+        }
+      }
+    },
+    {
+      "name": "Validate maintenance request",
+      "id": "ha-maintenance-1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const configured=false;\nif(!configured)throw Error('Trusted maintenance setup required');\nconst object=x=>x&&typeof x==='object'&&!Array.isArray(x), exact=(x,ks)=>object(x)&&Object.keys(x).sort().join(',')===ks.slice().sort().join(','), version=x=>typeof x==='string'&&/^v?(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*))?$/.test(x);\nif($input.all().length!==1||Object.keys($json.query||{}).length||Object.keys($json.params||{}).length)throw Error('Input selectors prohibited');\nconst r=$json.body, allowed=[\"update.home_assistant_core_update\", \"update.home_assistant_supervisor_update\", \"update.home_assistant_operating_system_update\", \"update.house_battery_update\", \"update.stromligning_update\", \"update.watts_live_update\"];\nif(!object(r)||!['snapshot','execute'].includes(r.operation)||!exact(r,r.operation==='snapshot'?['operation','entity_id']:['operation','entity_id','version','expected_installed','backup'])||!allowed.includes(r.entity_id))throw Error('Exact finite update request required');\nif(r.operation==='execute'&&(!version(r.version)||!version(r.expected_installed)||r.version===r.expected_installed||r.backup!==true))throw Error('Exact candidate, baseline and backup required');\nreturn [{json:{request:r}}];"
+      }
+    },
+    {
+      "name": "Read selected update",
+      "id": "ha-maintenance-2",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ],
+      "parameters": {
+        "resource": "state",
+        "operation": "get",
+        "entityId": "={{ $json.request.entity_id }}"
+      },
+      "retryOnFail": false,
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "name": "Verify update baseline",
+      "id": "ha-maintenance-3",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const r=$('Validate maintenance request').first().json.request, rows=$input.all();\nif(rows.length!==1)throw Error('Exactly one selected update required');\nconst e=rows[0].json,a=e.attributes||{},version=x=>typeof x==='string'&&/^v?(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*))?$/.test(x);\nif(e.entity_id!==r.entity_id||!['on','off'].includes(e.state)||!version(a.installed_version)||!version(a.latest_version)||!Number.isInteger(a.supported_features)||a.supported_features<0||a.supported_features>65535||typeof a.in_progress!=='boolean')throw Error('Update metadata unavailable');\nconst snapshot={schema_version:1,entity_id:e.entity_id,state:e.state,installed_version:a.installed_version,latest_version:a.latest_version,supported_features:a.supported_features,in_progress:a.in_progress,observed_at:Date.now()/1000};\nif(r.operation==='execute'&&(snapshot.installed_version!==r.expected_installed||snapshot.latest_version!==r.version||snapshot.state!=='on'||snapshot.in_progress||(snapshot.supported_features&11)!==11||r.backup!==true))throw Error('Update candidate or capability changed; review required');\nreturn [{json:{request:r,snapshot}}];"
+      }
+    },
+    {
+      "name": "Install requested",
+      "id": "ha-maintenance-4",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "install",
+              "leftValue": "={{ $json.request.operation }}",
+              "rightValue": "execute",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Call update install",
+      "id": "ha-maintenance-5",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "resource": "service",
+        "operation": "call",
+        "domain": "update",
+        "service": "install",
+        "serviceAttributes": "={{ {attributes:[{name:'entity_id',value:$json.request.entity_id},{name:'version',value:$json.request.version},{name:'backup',value:true}]} }}"
+      },
+      "retryOnFail": false,
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "name": "Accepted install receipt",
+      "id": "ha-maintenance-6",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const r=$('Verify update baseline').first().json.request; return [{json:{accepted:true,entity_id:r.entity_id,version:r.version,backup:true}}];"
+      }
+    },
+    {
+      "name": "Snapshot response",
+      "id": "ha-maintenance-7",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return [{json:$json.snapshot}];"
+      }
+    },
+    {
+      "name": "Respond to maintenance controller",
+      "id": "ha-maintenance-8",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "HA maintenance webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate maintenance request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate maintenance request": {
+      "main": [
+        [
+          {
+            "node": "Read selected update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read selected update": {
+      "main": [
+        [
+          {
+            "node": "Verify update baseline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify update baseline": {
+      "main": [
+        [
+          {
+            "node": "Install requested",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call update install": {
+      "main": [
+        [
+          {
+            "node": "Accepted install receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Accepted install receipt": {
+      "main": [
+        [
+          {
+            "node": "Respond to maintenance controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snapshot response": {
+      "main": [
+        [
+          {
+            "node": "Respond to maintenance controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Install requested": {
+      "main": [
+        [
+          {
+            "node": "Call update install",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Snapshot response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false,
+    "availableInMCP": false,
+    "executionTimeout": 360
+  }
+}

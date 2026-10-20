@@ -214,7 +214,7 @@ class MonitoringTest(unittest.TestCase):
             self.assertIn('token="' + "a" * 32 + 'FIELDSTOKEN"', source)
             self.assertIn("http://127.0.0.1:15678/webhook/homecompute-openclaw-ha-metadata", source)
             self.assertIn("method='GET'", source); self.assertIn("NoRedirect", source)
-            self.assertIn("response.read(1025)", source)
+            self.assertIn("response.read(65537)", source)
             self.assertEqual(calls[0][1]["timeout"], 4)
             for change in ({"states": "PRIVATE"}, {"installed_version": "PRIVATE"}, {"unavailable_count": True}, {"generated_at": None}):
                 old = dict(raw); raw.update(change)

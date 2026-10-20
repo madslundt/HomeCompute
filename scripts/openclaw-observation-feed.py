@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 import importlib.util
 import json
@@ -153,10 +153,26 @@ def core_snapshot(system: dict[str, Any]) -> dict[str, Any] | None:
     if (not system["enabled"] or system["collector"] != "homecompute-status"
             or system["id"] != system["target"] or system["id"] not in {"home-core", "home-spark"}):
         return None
-    raw = {"schema_version": 1, "host": system["id"]}
+    # Reuse the same finite, root-published/fixed-SSH snapshots as explicit
+    # /health reads. No assistant-selected command or inventory is admitted.
+    from openclaw_infrastructure import root_snapshot
+    snapshot = (root_snapshot() if system["id"] == "home-core" else
+                parse_report(bounded_command([*SPARK_COMMAND[:-1], "homecompute-machine-snapshot"], timeout=5)))
+    if (type(snapshot.get("schema_version")) is not int or snapshot["schema_version"] != 1
+            or snapshot.get("host") != system["id"]):
+        raise ValueError("snapshot host/schema mismatch")
+    if not isinstance(snapshot.get("generated_at"), str):
+        raise ValueError("snapshot timestamp missing")
+    generated = datetime.fromisoformat(snapshot["generated_at"].replace("Z", "+00:00"))
+    if generated.tzinfo is None or not -5 <= (datetime.now(timezone.utc) - generated).total_seconds() <= 60:
+        raise ValueError("snapshot is stale or future dated")
+    if (not isinstance(snapshot.get("containers"), list) or len(snapshot["containers"]) > 1000
+            or not isinstance(snapshot.get("unit_states"), dict) or len(snapshot["unit_states"]) > 1000):
+        raise ValueError("snapshot metadata is unbounded")
+    raw = {key: snapshot[key] for key in ("schema_version", "host", "generated_at", "containers", "unit_states")}
     try:
         raw["maintenance_report"] = (read_report(MAINTENANCE_REPORT) if system["id"] == "home-core"
-                                     else parse_report(bounded_command(SPARK_COMMAND)))
+                                     else snapshot.get("maintenance_report"))
     except (OSError, ValueError, subprocess.TimeoutExpired):
         raw["maintenance_report"] = None
     if system["id"] == "home-core" and "model-update-report" in system["updates"]:
@@ -174,19 +190,37 @@ def load_observer() -> Any:
     return module
 
 
-def feed(registry_path: Path, tokens_path: Path, destination: Path, *, core_host_mode: bool = False) -> dict:
+def feed(registry_path: Path, tokens_path: Path, destination: Path, *, core_host_mode: bool = False, ha_transport: Path | None = None) -> dict:
     module = load_observer()
     registry = module.validate_registry(module.read_json(registry_path))
+    ha_config = module.load_ha_transport(ha_transport) if ha_transport else None
     snapshots = {}
     for system in registry["systems"]:
         try:
-            snapshots[system["id"]] = core_snapshot(system) if core_host_mode else module.collect(system)
+            snapshots[system["id"]] = (module.collect(system, ha_transport=ha_config, core_host_mode=core_host_mode)
+                if system["enabled"] and system["collector"] == "homeassistant-metadata" else
+                core_snapshot(system) if core_host_mode else module.collect(system))
         except (OSError, ValueError, module.subprocess.TimeoutExpired, module.homecompute.OperatorError):
             snapshots[system["id"]] = None
-    report = module.make_report(registry, snapshots, datetime.now(timezone.utc))
-    # This feed covers only the authorized update extension. Health and HA
-    # retain their separately configured collection/activation paths.
-    report["observations"] = [x for x in report["observations"] if x["category"] == "updates"]
+    observed = datetime.now(timezone.utc)
+    if core_host_mode:
+        for system, raw in snapshots.items():
+            if raw and system in {"home-core", "home-spark"} and not -5 <= (
+                    observed - module.timestamp(raw["generated_at"])).total_seconds() <= 60:
+                snapshots[system] = None
+    report = module.make_report(registry, snapshots, observed)
+    if core_host_mode:
+        for row in report["observations"]:
+            raw = snapshots.get(row["system_id"])
+            if raw and row["system_id"] in {"home-core", "home-spark"} and row["category"] == "health":
+                generated = module.timestamp(raw["generated_at"])
+                system = next(s for s in registry["systems"] if s["id"] == row["system_id"])
+                row["observed_at"] = module.iso(generated)
+                row["expires_at"] = module.iso(generated + timedelta(seconds=system["health_ttl_seconds"]))
+    # Admit the enabled machines' finite health and update checks together.
+    # Numeric energy fluctuations never enter incident state.
+    enabled = {s["id"] for s in registry["systems"] if s["enabled"]}
+    report["observations"] = [x for x in report["observations"] if x["system_id"] in enabled]
     report["findings"] = []
     report["changes"] = []
     token = private_json(tokens_path)["collector"]
@@ -207,6 +241,7 @@ def main() -> int:
     parser.add_argument("--registry", type=Path)
     parser.add_argument("--tokens", type=Path)
     parser.add_argument("--state", type=Path)
+    parser.add_argument("--ha-transport", type=Path)
     parser.add_argument("--follow", action="store_true")
     parser.add_argument("--core-host-mode", action="store_true",
                         help="fixed core report reads and dedicated forced-command Spark SSH reader")
@@ -230,7 +265,7 @@ def main() -> int:
         while True:
             try:
                 print(json.dumps(feed(args.registry, args.tokens, args.state / "latest.json",
-                                      core_host_mode=args.core_host_mode)), flush=True)
+                                      core_host_mode=args.core_host_mode, ha_transport=args.ha_transport)), flush=True)
             except Exception:
                 print(json.dumps({"accepted": False, "reason": "collection_or_admission_failed"}), flush=True)
                 if not args.follow:

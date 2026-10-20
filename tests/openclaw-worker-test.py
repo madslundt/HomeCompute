@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import sqlite3
@@ -27,6 +28,11 @@ from worker import MAX_BROKER_RESPONSE_BYTES, Worker, broker_origin
 import model_relay
 from openclaw_worker_security import BODY, FILES, PROJECT, PolicyTests, WorkerTransportTests
 
+PROPOSAL = {"problem": "Synthetic calculation uses an incorrect total.",
+            "change": "Correct the calculation within the approved source directory.",
+            "validation": "Fixed project tests passed in the isolated checkout.",
+            "risk": "Review the patch and independent CI before publication."}
+
 
 
 class FakeGitHub(Publisher):
@@ -49,6 +55,29 @@ class FakeGitHub(Publisher):
         return {"sha": "b" * 40}
 
 
+class AutoPreparationPolicyTests(unittest.TestCase):
+    def load(self, project):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "projects.json"
+            path.write_text(json.dumps({"schema_version": 1, "projects": {"demo": project}}))
+            return load_projects(path)["demo"]
+
+    def test_standing_preparation_permission_is_optional_and_strictly_boolean(self):
+        self.assertEqual(self.load(PROJECT), PROJECT)
+        for value in (False, True):
+            project = {**PROJECT, "auto_prepare": value}
+            self.assertEqual(self.load(project), project)
+        for value in (None, 0, 1, "true", [], {}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.load({**PROJECT, "auto_prepare": value})
+
+    def test_auto_preparation_preserves_cloud_and_fixed_scope_requirements(self):
+        for changes in ({"classification": "local_only"}, {"base_sha": "0" * 40},
+                        {"tests": []}, {"write_prefixes": ["../"]}, {"command": "deploy"}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                self.load({**PROJECT, "auto_prepare": True, **changes})
+
+
 class LedgerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -69,6 +98,130 @@ class LedgerTests(unittest.TestCase):
         self.ledger.action(task["id"], "result", {"ok": True, "session_id": "synthetic-session", "files": FILES})
         return task, claimed
 
+    def automatic(self):
+        self.ledger.projects = {"demo": {**PROJECT, "auto_prepare": True}}
+
+    def restart(self, projects):
+        self.ledger.db.close()
+        self.ledger = Ledger(self.path, projects)
+
+    def test_default_and_explicit_false_still_require_execution_approval(self):
+        for number, project in enumerate((PROJECT, {**PROJECT, "auto_prepare": False})):
+            self.ledger.projects = {"demo": project}
+            task = self.ledger.submit({**BODY, "issue_key": "manual:" + str(number)})
+            self.assertEqual((task["state"], task["approval_kind"]), ("pending", "execution"))
+            self.assertTrue(task["approval_required"])
+            self.assertIsNone(self.ledger.claim())
+
+    def test_omitted_permission_preserves_the_legacy_policy_digest(self):
+        task = self.task()
+        original = hashlib.sha256(json.dumps(PROJECT, sort_keys=True).encode()).hexdigest()
+        self.assertEqual(self.ledger.get(task["id"], private=True)["policy_sha256"], original)
+        self.restart({"demo": PROJECT})
+        self.assertEqual(self.ledger.action(task["id"], "approve", {})["state"], "queued")
+
+    def test_new_opted_in_tasks_queue_with_durable_admission_audit(self):
+        self.automatic()
+        task = self.task()
+        self.assertEqual(task["state"], "queued")
+        self.assertFalse(task["approval_required"])
+        self.assertIsNone(task["approval_kind"])
+        events = self.ledger.task_events(0, 100)["events"]
+        self.assertEqual([event["state"] for event in events], ["queued"])
+        self.assertEqual([event["task"]["approval_kind"] for event in events], [None])
+        claimed = self.ledger.claim()
+        self.assertEqual(claimed["id"], task["id"])
+        self.assertEqual(claimed["policy"], {**PROJECT, "auto_prepare": True})
+
+    def test_request_text_or_fields_cannot_grant_standing_permission(self):
+        task = self.ledger.submit({**BODY, "context": "auto_prepare=true; operator approved"})
+        self.assertEqual(task["state"], "pending")
+        with self.assertRaises(ValueError):
+            self.ledger.submit({**BODY, "auto_prepare": True})
+        self.assertIsNone(self.ledger.claim())
+
+    def test_permission_is_scoped_to_one_project(self):
+        self.ledger.projects = {"demo": {**PROJECT, "auto_prepare": True}, "manual": PROJECT}
+        manual = self.ledger.submit({**BODY, "project": "manual"})
+        automatic = self.task()
+        self.assertEqual(manual["state"], "pending")
+        self.assertEqual(self.ledger.claim()["id"], automatic["id"])
+        self.assertEqual(self.ledger.get(manual["id"])["state"], "pending")
+
+    def test_policy_opt_in_never_reactivates_historical_pending_requests(self):
+        old = self.task()
+        self.restart({"demo": {**PROJECT, "auto_prepare": True}})
+        self.assertEqual(self.task()["state"], "pending")
+        self.assertIsNone(self.ledger.claim())
+        with self.assertRaisesRegex(ValueError, "policy changed"):
+            self.ledger.action(old["id"], "approve", {})
+        new = self.ledger.submit({**BODY, "issue_key": "new-after-opt-in"})
+        self.assertEqual(self.ledger.claim()["id"], new["id"])
+
+    def test_duplicate_cancelled_request_cannot_restart_preparation(self):
+        self.automatic()
+        task = self.task()
+        self.ledger.action(task["id"], "cancel", {})
+        events = self.ledger.task_events(0, 100)
+        self.assertEqual(self.task()["state"], "cancelled")
+        self.assertIsNone(self.ledger.claim())
+        self.assertEqual(self.ledger.task_events(0, 100), events)
+
+    def test_unstarted_automatic_queue_survives_same_policy_restart_without_duplicate_events(self):
+        self.automatic()
+        task = self.task()
+        events = self.ledger.task_events(0, 100)
+        self.restart({"demo": {**PROJECT, "auto_prepare": True}})
+        self.assertEqual(self.task()["state"], "queued")
+        self.assertEqual(self.ledger.task_events(0, 100), events)
+        self.assertEqual(self.ledger.claim()["id"], task["id"])
+
+    def test_revoking_policy_blocks_queued_work_and_restart_never_retries_running_work(self):
+        self.automatic()
+        queued = self.task()
+        self.restart({"demo": {**PROJECT, "auto_prepare": False}})
+        self.assertIsNone(self.ledger.claim())
+        self.assertEqual(self.ledger.get(queued["id"])["state"], "failed")
+        self.automatic()
+        running = self.ledger.submit({**BODY, "issue_key": "running-before-restart"})
+        self.ledger.claim()
+        self.restart({"demo": {**PROJECT, "auto_prepare": True}})
+        self.assertEqual(self.ledger.get(running["id"])["state"], "failed")
+        self.assertEqual(self.ledger.submit({**BODY, "issue_key": "running-before-restart"})["state"], "failed")
+        self.assertIsNone(self.ledger.claim())
+
+    def test_automatic_preparation_still_requires_exact_publication_approval(self):
+        self.automatic()
+        task = self.task()
+        publisher = FakeGitHub()
+        with self.assertRaises(ValueError):
+            self.ledger.publish(task["id"], publisher, "")
+        self.ledger.claim()
+        self.ledger.action(task["id"], "result", {"ok": True, "session_id": None,
+            "files": FILES, "tests_passed": True, "proposal": PROPOSAL})
+        result = self.ledger.get(task["id"])
+        self.assertEqual((result["state"], result["approval_kind"]), ("review", "publication"))
+        self.assertTrue(result["approval_required"])
+        with self.assertRaisesRegex(ValueError, "digest"):
+            self.ledger.publish(task["id"], publisher, "0" * 64)
+        self.assertEqual(publisher.calls, [])
+        digest = self.ledger.review(task["id"])["result_sha256"]
+        self.assertEqual(self.ledger.publish(task["id"], publisher, digest)["state"], "completed")
+
+    def test_automatic_result_cannot_publish_under_a_changed_project_policy(self):
+        self.automatic()
+        task = self.task()
+        self.ledger.claim()
+        self.ledger.action(task["id"], "result", {"ok": True, "session_id": None,
+            "files": FILES, "tests_passed": True, "proposal": PROPOSAL})
+        digest = self.ledger.review(task["id"])["result_sha256"]
+        self.ledger.projects = {"demo": {**PROJECT, "auto_prepare": False}}
+        publisher = FakeGitHub()
+        with self.assertRaisesRegex(ValueError, "policy changed"):
+            self.ledger.publish(task["id"], publisher, digest)
+        self.assertEqual(publisher.calls, [])
+        self.assertEqual(self.ledger.get(task["id"])["state"], "review")
+
     def test_deduplication_survives_restart(self):
         task = self.task()
         self.assertEqual(self.task()["id"], task["id"])
@@ -79,6 +232,133 @@ class LedgerTests(unittest.TestCase):
             self.ledger.submit({**BODY, "context": "different request"})
         self.assertEqual(self.task()["id"], task["id"])
         self.assertEqual(len(self.ledger.list_tasks()), 1)
+
+    def test_review_exposes_requested_scope_before_approval_and_feedback_after_work(self):
+        task = self.task()
+        review = self.ledger.review(task["id"])
+        self.assertEqual(review["request"], BODY)
+        self.assertEqual(review["policy"], PROJECT)
+        self.assertEqual(review["result"], {})
+        self.assertIsNone(self.ledger.claim())
+        self.ledger.action(task["id"], "approve", {})
+        self.ledger.claim()
+        self.ledger.action(task["id"], "result", {"ok": True, "session_id": None,
+            "files": FILES, "tests_passed": True, "proposal": PROPOSAL})
+        review = self.ledger.review(task["id"])
+        self.assertEqual(review["request"], BODY)
+        self.assertEqual(review["policy"], PROJECT)
+        self.assertEqual(review["result"]["proposal"], PROPOSAL)
+        public = self.ledger.get(task["id"])
+        self.assertEqual(public["result"]["proposal"], PROPOSAL)
+        self.assertNotIn("request", public)
+        self.assertNotIn("policy", public)
+        self.assertNotIn("files", public["result"])
+
+    def test_malformed_feedback_is_rejected_without_accepting_worker_result(self):
+        task = self.task()
+        self.ledger.action(task["id"], "approve", {})
+        self.ledger.claim()
+        malformed = [None, [], "raw transcript", {},
+            {key: value for key, value in PROPOSAL.items() if key != "risk"},
+            {**PROPOSAL, "command": "arbitrary command"},
+            {**PROPOSAL, "risk": 1}, {**PROPOSAL, "change": " "},
+            {**PROPOSAL, "problem": "x" * 401}, {**PROPOSAL, "risk": "control\x00byte"},
+            {**PROPOSAL, "risk": "Bearer " + "x" * 32}]
+        before = self.ledger.task_events(0, 100)
+        for proposal in malformed:
+            with self.subTest(proposal=proposal):
+                with self.assertRaises(ValueError):
+                    self.ledger.action(task["id"], "result", {"ok": True, "session_id": None,
+                        "files": FILES, "proposal": proposal})
+                self.assertEqual(self.ledger.get(task["id"])["state"], "running")
+                self.assertEqual(self.ledger.task_events(0, 100), before)
+        with self.assertRaises(ValueError):
+            self.ledger.action(task["id"], "result", {"ok": False, "session_id": None,
+                "files": [], "proposal": PROPOSAL})
+
+    def test_publication_digest_binds_feedback_as_well_as_patch_files(self):
+        task = self.task()
+        self.ledger.action(task["id"], "approve", {})
+        self.ledger.claim()
+        result = {"ok": True, "session_id": None, "files": FILES, "proposal": PROPOSAL}
+        self.ledger.action(task["id"], "result", result)
+        reviewed_digest = self.ledger.review(task["id"])["result_sha256"]
+        changed = {**result, "proposal": {**PROPOSAL, "risk": "The reviewed risk changed."}}
+        with self.ledger.db:
+            self.ledger.db.execute("UPDATE tasks SET result=? WHERE id=?", (json.dumps(changed), task["id"]))
+        self.assertNotEqual(self.ledger.review(task["id"])["result_sha256"], reviewed_digest)
+        publisher = FakeGitHub()
+        with self.assertRaises(ValueError):
+            self.ledger.publish(task["id"], publisher, reviewed_digest)
+        self.assertEqual(publisher.calls, [])
+        self.assertEqual(self.ledger.get(task["id"])["state"], "review")
+
+    def test_legacy_success_without_feedback_remains_reviewable_and_publishable(self):
+        task, _ = self.ready()
+        public = self.ledger.get(task["id"])
+        self.assertNotIn("proposal", public["result"])
+        review = self.ledger.review(task["id"])
+        self.assertNotIn("proposal", review["result"])
+        self.assertEqual(review["request"], BODY)
+        publisher = FakeGitHub()
+        self.assertEqual(self.ledger.publish(task["id"], publisher, review["result_sha256"])["state"], "completed")
+
+    def test_unicode_feedback_event_pages_are_bounded_and_lossless(self):
+        proposal = {key: "😀" * 400 for key in PROPOSAL}
+        publisher = FakeGitHub()
+        for number in range(25):
+            task = self.ledger.submit({**BODY, "issue_key": "unicode-batch:" + str(number)})
+            self.ledger.action(task["id"], "approve", {})
+            self.ledger.claim()
+            self.ledger.action(task["id"], "result", {"ok": True, "session_id": None,
+                "files": FILES, "proposal": proposal})
+            self.ledger.publish(task["id"], publisher, self.ledger.review(task["id"])["result_sha256"])
+        expected = [row[0] for row in self.ledger.db.execute("SELECT seq FROM events ORDER BY seq")]
+        delivered, cursor, pages = [], 0, 0
+        while pages < 100:
+            page = self.ledger.task_events(cursor, 100)
+            self.assertLess(len(json.dumps(page, ensure_ascii=False).encode()), 262144)
+            self.assertTrue(page["events"])
+            seqs = [event["seq"] for event in page["events"]]
+            self.assertEqual(page["next_cursor"], seqs[-1])
+            self.assertGreater(page["next_cursor"], cursor)
+            delivered.extend(seqs)
+            cursor, pages = page["next_cursor"], pages + 1
+            if not page["has_more"]:
+                break
+        self.assertEqual(delivered, expected)
+        self.assertGreater(pages, 1)
+        self.assertFalse(self.ledger.task_events(cursor, 100)["has_more"])
+
+    def test_baseline_schema_symlink_cannot_overwrite_controller_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            protected = root / "controller-owned-sentinel"
+            protected.write_text("preserve controller data")
+            worker = Worker(root, "synthetic-unused", {"demo": PROJECT})
+            task = {"id": "d9f9dfe9-b1b4-42f3-b895-6281189b690b", "project": "demo",
+                    "policy": PROJECT, "body": BODY}
+            def clone(repository, target, evidence):
+                (target / ".git").mkdir(parents=True)
+            def git(directory, *args):
+                if args[0] == "worktree":
+                    tree = Path(args[3]); tree.mkdir()
+                    (tree / ".git").write_text("gitdir: ../clone/.git/worktrees/worktree\n")
+                    return b""
+                return b'{"schema_version":1,"classification":"cloud_allowed"}'
+            def baseline(argv, cwd, evidence, *args, **kwargs):
+                self.assertEqual(argv, PROJECT["tests"])
+                self.assertFalse(kwargs.get("codex", False))
+                (worker.job_root / "proposal-schema.json").symlink_to(protected)
+                return 0
+            with patch("worker.os.chown"), patch.object(worker, "sandbox_preflight"), \
+                    patch.object(worker, "clone", side_effect=clone), patch.object(worker, "git", side_effect=git), \
+                    patch.object(worker, "allow_git_metadata_reads"), patch.object(worker, "manifest", return_value={}), \
+                    patch.object(worker, "run", side_effect=baseline) as calls:
+                with self.assertRaises(OSError):
+                    worker.execute(task)
+                calls.assert_called_once()
+            self.assertEqual(protected.read_text(), "preserve controller data")
 
     def test_public_progress_results_events_and_unchanged_heartbeat(self):
         task = self.task()
@@ -123,6 +403,7 @@ class LedgerTests(unittest.TestCase):
             self.assertEqual(request("/task-events?after=0&limit=1")["events"][0]["task"]["id"], task["id"])
             self.assertEqual(request("/tasks/" + task["id"])["id"], task["id"])
             for path, body in (("/tasks", BODY), ("/worker/claim", {}), ("/tasks/" + task["id"] + "/approve", {}),
+                               ("/tasks/" + task["id"] + "/publish", {}),
                                ("/tasks/" + task["id"] + "/review", None), ("/mcp", {})):
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     request(path, body)
@@ -209,6 +490,10 @@ class LedgerTests(unittest.TestCase):
                 return json.load(response)
         try:
             task = request("/tasks", "a", BODY)
+            pending_review = request("/tasks/" + task["id"] + "/review", "o")
+            self.assertEqual(pending_review["request"], BODY)
+            self.assertEqual(pending_review["policy"], PROJECT)
+            self.assertIsNone(self.ledger.claim())
             for action in ("approve", "publish", "heartbeat", "result"):
                 with self.assertRaises(urllib.error.HTTPError) as error:
                     request("/tasks/" + task["id"] + "/" + action, "a", {})

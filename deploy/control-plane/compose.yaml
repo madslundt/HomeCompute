@@ -3,6 +3,8 @@ name: homecompute-control-plane
 services:
   caddy:
     image: ${CADDY_IMAGE:?Set CADDY_IMAGE to an immutable image digest}
+    entrypoint: [/bin/sh, /opt/homecompute/caddy-entrypoint.sh]
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
     restart: unless-stopped
     init: true
     read_only: true
@@ -19,16 +21,21 @@ services:
       AI_LEGACY_FQDN: ${AI_LEGACY_FQDN:?Set AI_LEGACY_FQDN}
       N8N_FQDN: ${N8N_FQDN:?Set N8N_FQDN}
       N8N_UPSTREAM: ${N8N_UPSTREAM:?Set N8N_UPSTREAM}
+      DAYTHREAD_FQDN: ${DAYTHREAD_FQDN:-daythread.home.arpa}
+      DAYTHREAD_UPSTREAM: ${DAYTHREAD_UPSTREAM:-omi-local-backend-1:8787}
       HERMES_FQDN: ${HERMES_FQDN:?Set HERMES_FQDN}
       HERMES_UPSTREAM: ${HERMES_UPSTREAM:?Set HERMES_UPSTREAM}
       CHAT_FQDN: ${CHAT_FQDN:?Set CHAT_FQDN}
       MODELS_FQDN: ${MODELS_FQDN:?Set MODELS_FQDN}
       CADDY_HTTPS_PORT: "8443"
+      HOMEPAGE_HTTP_UPSTREAM: ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:80
     ports:
+      - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:80:8080/tcp
       - ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:${CONTROL_PLANE_TAILSCALE_HTTPS_PORT:-443}:8443/tcp
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${CONTROL_PLANE_LAN_HTTPS_PORT:-443}:8443/tcp
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-entrypoint.sh:/opt/homecompute/caddy-entrypoint.sh:ro
       - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/caddy-data:/data
       - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/caddy-config:/config
     tmpfs:
@@ -74,6 +81,8 @@ services:
       COMPUTE_OPENAI_BASE_URL: ${COMPUTE_OPENAI_BASE_URL:?Set COMPUTE_OPENAI_BASE_URL}
       COMPUTE_AUTOMATION_BASE_URL: ${COMPUTE_AUTOMATION_BASE_URL:?Set COMPUTE_AUTOMATION_BASE_URL}
       COMPUTE_AUTOMATION_CANDIDATE_BASE_URL: ${COMPUTE_AUTOMATION_CANDIDATE_BASE_URL:?Set COMPUTE_AUTOMATION_CANDIDATE_BASE_URL}
+      COMPUTE_STT_MULTILINGUAL_BASE_URL: ${COMPUTE_STT_MULTILINGUAL_BASE_URL:-http://172.28.200.1:18007/v1}
+      COMPUTE_STT_DANISH_BASE_URL: ${COMPUTE_STT_DANISH_BASE_URL:-http://172.28.200.1:18003/v1}
       COMPUTE_HOME_BASE_URL: ${COMPUTE_HOME_BASE_URL:?Set COMPUTE_HOME_BASE_URL}
       LITELLM_CONFIG: /etc/litellm/config.yaml
       LITELLM_MIGRATION_DIR: /app/migrations

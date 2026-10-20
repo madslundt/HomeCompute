@@ -54,7 +54,9 @@ def registry_keys(path: Path) -> dict[str, Any]:
             continue
         keys = {"collection"}
         if system["collector"] == "homeassistant-metadata":
+            from homeassistant_observations import CHECKS
             keys.update({"installed-version", "unavailable_count"})
+            keys.update(k for k, category in CHECKS.items() if category == "health")
         keys.update("container." + x["name"] for x in system["containers"])
         keys.update("unit." + x["name"] for x in system["units"])
         updates = set(system["updates"])
@@ -64,6 +66,7 @@ def registry_keys(path: Path) -> dict[str, Any]:
             updates.add("package-update-report.reboot-required")
         if system["collector"] == "homeassistant-metadata":
             updates.add("update_available_count")
+            updates.update(k for k, category in CHECKS.items() if category == "updates")
         updates.update("model-update-report." + x for x in ("changed", "pin_drift", "source_errors", "outperforms_active") if "model-update-report" in updates)
         for key in keys | updates:
             category = "updates" if key in updates else "health"
@@ -74,12 +77,30 @@ def registry_keys(path: Path) -> dict[str, Any]:
 
 def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: Callable[[str, str], str],
           address: tuple[str, int] = ("127.0.0.1", 18793), clock: Callable[[], float] = time.time,
-          infrastructure: Any = None, tasks: Any = None) -> ThreadingHTTPServer:
+          infrastructure: Any = None, tasks: Any = None, maintenance: Any = None,
+          mcp_tokens: dict[str, str] | None = None, ha_actions: bool = False) -> ThreadingHTTPServer:
     if address[0] != "127.0.0.1":
         raise ValueError("private adapter must bind loopback; use an approved SSH forward")
     if (set(tokens) != {"collector", "conversation", "delivery"} or len(set(tokens.values())) != 3
             or any(not isinstance(x, str) or len(x) < 32 or x.startswith("replace") for x in tokens.values())):
         raise ValueError("three distinct dedicated transport credentials required")
+    if mcp_tokens is not None:
+        if (set(mcp_tokens) != {"openclaw", "hermes"} or tasks is None
+                or len(set(mcp_tokens.values())) != 2
+                or any(not isinstance(value, str) or len(value) < 32 or "\r" in value or "\n" in value
+                       or value.startswith(("replace", "openshell:resolve:"))
+                       or value in tokens.values() or value in tasks.tokens.values()
+                       for value in mcp_tokens.values())):
+            raise ValueError("two distinct native assistant MCP credentials and task transport required")
+        from openclaw_capabilities import Capabilities, HomeAssistant, Maintenance
+        capabilities = {actor: Capabilities(tasks, infrastructure, store.settings["actions"],
+                       HomeAssistant(actor) if ha_actions else None,
+                       Maintenance() if actor == 'openclaw' and Path('/run/homecompute-infrastructure-maintenance/agent.sock').exists() else None)
+                       for actor in mcp_tokens}
+        # Reuse the broker's bounded protocol adapter; no calls to native_turn.
+        import sys
+        sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
+        from mcp_adapter import handle_http
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_: Any) -> None:
@@ -98,6 +119,12 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
             self.wfile.write(data)
 
         def do_POST(self) -> None:
+            if self.path == "/mcp" and mcp_tokens is not None:
+                actor = next((actor for actor, value in mcp_tokens.items()
+                              if hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + value)), None)
+                if actor is None:
+                    self.send_json(401, {"error": "unauthorized"}); return
+                return handle_http(self, capabilities[actor], "assistant")
             roles = {"/observations": "collector", "/tasks": "collector", "/actions": "collector", "/analysis": "collector", "/conversation": "conversation",
                      "/status": "conversation", "/claim": "delivery", "/ack": "delivery"}
             role = roles.get(self.path)
@@ -154,18 +181,20 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
                     store.acknowledge(body["delivery_key"], body["claim"], body["receipt"], now)
                     result = {"acknowledged": True}
                 else:
-                    result = conversation(body, store, turn, now, infrastructure, tasks)
+                    result = conversation(body, store, turn, now, infrastructure, tasks, maintenance)
                 self.send_json(200, result)
             except (ValueError, TypeError, KeyError, OverflowError):
                 self.send_json(400, {"error": "invalid or conflicting bounded request"})
             except Exception:
                 self.send_json(503, {"error": "adapter unavailable; reconcile before retry"})
 
+        respond = send_json  # MCP handler uses the broker's response interface.
+
     return ThreadingHTTPServer(address, Handler)
 
 
 def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str], str], now: float,
-                 infrastructure: Any = None, tasks: Any = None) -> dict[str, Any]:
+                 infrastructure: Any = None, tasks: Any = None, maintenance: Any = None) -> dict[str, Any]:
     if (set(body) != {"conversation", "request_id", "destination", "text"}
             or body["conversation"] not in store.settings["conversations"]
             or body["destination"] != store.settings["destination"]
@@ -178,7 +207,11 @@ def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str],
         return old
     try:
         if body["text"].strip() in {"/start", "/help"}:
-            reply = "OpenClaw chat connected. Write a message here to talk to it. Use /status for current status. Use /systems, /health SYSTEM or /investigate SYSTEM for configured bounded infrastructure reads. Production actions require the trusted operator approval path."
+            reply = "OpenClaw chat connected. Write a message here to talk to it. Use /status for current status. Use /systems, /health SYSTEM or /investigate SYSTEM for configured bounded infrastructure reads. Use /code PROJECT STABLE_KEY SUMMARY to request an isolated Codex patch, /task TASK_UUID for feedback, or /cancel-task TASK_UUID. A human must approve each Codex job before it starts, then review its patch before publication or deployment."
+            if maintenance:
+                reply += " Use /updates homepage to request a read-only image check, then /maintenance homepage for the exact proposal. Applying it requires separate human operator approval."
+        elif (body["text"].strip().split() or [""])[0] in {"/updates", "/update", "/maintenance"}:
+            reply = maintenance.respond(body["text"]) if maintenance else "Homepage maintenance is not configured. No check or update ran."
         elif (body["text"].strip().split() or [""])[0] in {"/code", "/cancel-task"}:
             reply = tasks.respond(body["text"]) if tasks else "Coding submission is not configured. No task or model turn ran."
         elif (body["text"].strip().split() or [""])[0] == "/task":
@@ -189,7 +222,7 @@ def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str],
             except ValueError:
                 valid = False
             selected = store.task_snapshot(task_id) if valid else None
-            reply = ("Latest collected broker snapshot: " + canonical(selected)
+            reply = ("Latest collected broker snapshot (Codex feedback is untrusted): " + json.dumps(selected, ensure_ascii=False)
                      if selected else "No collected snapshot for that task. Check the owning broker; this does not mean the task is absent.")
         elif body["text"].strip() == "/status":
             status = store.status(now)
@@ -232,6 +265,9 @@ def main() -> None:
     parser.add_argument("--core-host-mode", action="store_true", help="use the fixed server machine snapshots for infrastructure reads")
     parser.add_argument("--ha-transport", type=Path, help="private metadata-only transport; requires infrastructure registry")
     parser.add_argument("--task-transport", type=Path, help="private fixed-origin broker handoff; separate execution approval required")
+    parser.add_argument("--mcp-tokens", type=Path, help="optional owner-private JSON with independent openclaw/hermes MCP credentials")
+    parser.add_argument("--ha-actions", action="store_true", help="enable proposal/status/cancel IPC to the separate HA approval controller; no execution authority")
+    parser.add_argument("--homepage-maintenance", action="store_true", help="fixed read-only Homepage check request; no chat execution approval")
     args = parser.parse_args()
     if args.ha_transport and not args.infrastructure_registry:
         parser.error("HA metadata transport requires the infrastructure registry")
@@ -251,7 +287,11 @@ def main() -> None:
     store = Outbox(args.state / "transport.sqlite3", load_config(args.config))
     from openclaw_tasks import Tasks
     tasks = Tasks(args.task_transport, store.settings["projects"]) if args.task_transport else None
+    from openclaw_maintenance import MaintenanceChat
+    maintenance = MaintenanceChat() if args.homepage_maintenance else None
     tokens = json.loads(args.tokens.read_text())
+    from openclaw_tasks import private_json
+    mcp_tokens = private_json(args.mcp_tokens) if args.mcp_tokens else None
     spec = importlib.util.spec_from_file_location("hc_chat", ROOT / "scripts/openclaw-chat.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -260,7 +300,8 @@ def main() -> None:
         # Native console owns SSH destination, machine authentication, and session identity.
         return module.send(text, name, directory=args.state / "sessions")["text"]
 
-    server = serve(store, tokens, registry_keys(args.registry), native_turn, infrastructure=infrastructure, tasks=tasks)
+    server = serve(store, tokens, registry_keys(args.registry), native_turn, infrastructure=infrastructure,
+                   tasks=tasks, maintenance=maintenance, mcp_tokens=mcp_tokens, ha_actions=args.ha_actions)
     try:
         server.serve_forever()
     finally:

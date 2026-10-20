@@ -96,6 +96,26 @@
       "tool_call_parser": "qwen3_xml",
       "reasoning_parser": "qwen3",
       "default_thinking_mode": "enabled"
+    },
+    "vllm-hviske": {
+      "family": "vllm",
+      "image": "nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d",
+      "supported_protocols": [
+        "audio_transcriptions"
+      ],
+      "capabilities": [
+        "audio_transcription"
+      ]
+    },
+    "vllm-whisper": {
+      "family": "vllm",
+      "image": "nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d",
+      "supported_protocols": [
+        "audio_transcriptions"
+      ],
+      "capabilities": [
+        "audio_transcription"
+      ]
     }
   },
   "artifacts": {
@@ -456,6 +476,40 @@
           "enable_thinking": true
         }
       }
+    }
+  },
+  "transcription_deployments": {
+    "hviske-spark-primary": {
+      "upstream_model_id": "syvai/hviske-v5.3",
+      "revision": "5d1a09822018702dc51d763e3a867b62d26b3501",
+      "tokenizer_revision": "5d1a09822018702dc51d763e3a867b62d26b3501",
+      "code_revision": "5d1a09822018702dc51d763e3a867b62d26b3501",
+      "license_id": "cc-by-nc-4.0",
+      "runtime_profile": "vllm-hviske",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "endpoint_env": "COMPUTE_STT_DANISH_BASE_URL",
+      "served_model_name": "stt-danish",
+      "concurrency": 4,
+      "lifecycle": "resident",
+      "availability": "active",
+      "priority": 1
+    },
+    "whisper-turbo-spark-primary": {
+      "upstream_model_id": "openai/whisper-large-v3-turbo",
+      "revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "tokenizer_revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "code_revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
+      "license_id": "mit",
+      "runtime_profile": "vllm-whisper",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "endpoint_env": "COMPUTE_STT_MULTILINGUAL_BASE_URL",
+      "served_model_name": "whisper-turbo",
+      "concurrency": 1,
+      "lifecycle": "resident",
+      "availability": "active",
+      "priority": 1
     }
   }
 }

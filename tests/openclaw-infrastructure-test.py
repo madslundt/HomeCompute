@@ -335,7 +335,9 @@ class CoreInfrastructureTests(unittest.TestCase):
         machine = Reader.compact(report)["machines"]["home-spark"]
         self.assertEqual(machine["monitored_health"]["status"], "degraded")
         prompt = self.reader.contextual_prompt("Machine status?")
-        self.assertIn("Do not offer unavailable broker tools", prompt)
+        self.assertIn("Use monitored_health for the monitored service status", prompt)
+        self.assertIn("publication, deployment and live changes require the trusted operator approval path", prompt)
+        self.assertNotIn("Do not write memory, call tools, submit tasks", prompt)
 
     def test_package_coverage_flag_never_becomes_a_source_count_in_model_context(self):
         self.raw_spark["maintenance_report"]["package_updates"]["provenance"]["skipped_sources"] = 3
