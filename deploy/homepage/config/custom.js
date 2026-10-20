@@ -5,6 +5,16 @@
   const marker = "/__homecore_service__/";
 
   function resolveServiceLinks() {
+    // Use the publicly trusted, private Serve listener when Homepage is opened
+    // over Tailscale; LAN clients keep the local chessmate.home.arpa name.
+    const tailnetAccess = window.location.hostname.endsWith(".ts.net") ||
+      /^100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(window.location.hostname);
+    if (tailnetAccess) {
+      for (const link of document.querySelectorAll('a[href^="https://chessmate.home.arpa/"]')) {
+        const url = new URL(link.href);
+        link.href = `https://home-core.tail479ad.ts.net:18080${url.pathname}${url.search}${url.hash}`;
+      }
+    }
     for (const link of document.querySelectorAll(`a[href*="${marker}"]`)) {
       const markerUrl = new URL(link.href, window.location.href);
       const parts = markerUrl.pathname.slice(marker.length).split("/");

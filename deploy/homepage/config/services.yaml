@@ -11,6 +11,12 @@
         href: https://n8n.home.arpa/
         description: Automations and workflows
 
+    - Chessmate:
+        id: homecore-chessmate
+        icon: mdi-chess-knight
+        href: https://chessmate.home.arpa/
+        description: Chess practice and coaching
+
     - AI gateway:
         id: homecore-ai-gateway
         icon: mdi-creation-outline

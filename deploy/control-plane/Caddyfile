@@ -142,3 +142,25 @@
 		}
 	}
 }
+
+http://chessmate.home.arpa:8080 {
+	redir https://chessmate.home.arpa{uri} 308
+}
+
+chessmate.home.arpa {
+	tls internal
+	encode zstd gzip
+	reverse_proxy {$CHESSMATE_UPSTREAM:192.168.30.122:8080} {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
