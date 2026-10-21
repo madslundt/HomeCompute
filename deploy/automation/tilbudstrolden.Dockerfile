@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS build
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
@@ -11,12 +11,12 @@ RUN git apply --check /tmp/tilbudstrolden-security.patch \
     && git apply /tmp/tilbudstrolden-security.patch
 RUN npm ci && npm run build && npm prune --omit=dev
 
-FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e AS gateway
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS gateway
 WORKDIR /gateway
 COPY tilbudstrolden-gateway/package.json tilbudstrolden-gateway/package-lock.json ./
 RUN npm ci --omit=dev
 
-FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
+FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 WORKDIR /app
 COPY --from=build --chown=1000:1000 /app/dist ./dist
 COPY --from=build --chown=1000:1000 /app/node_modules ./node_modules
