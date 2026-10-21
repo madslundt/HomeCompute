@@ -6,6 +6,26 @@ const compact = value => new Intl.NumberFormat('en-GB', { notation: 'compact', m
 const dateLabel = day => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`));
 let data = null, period = 'day', initialized = false, fetching = false;
 
+const themeKey = 'homecompute.usage.theme';
+function applyTheme(preference) {
+  if (preference === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = preference;
+}
+let savedTheme;
+try { savedTheme = localStorage.getItem(themeKey); } catch { /* Device theme still works without storage. */ }
+const theme = ['light', 'dark'].includes(savedTheme) ? savedTheme : 'system';
+const themeControl = $('theme');
+if (themeControl) themeControl.value = theme;
+applyTheme(theme);
+themeControl?.addEventListener('change', () => {
+  const preference = themeControl.value;
+  applyTheme(preference);
+  try {
+    if (preference === 'system') localStorage.removeItem(themeKey);
+    else localStorage.setItem(themeKey, preference);
+  } catch { /* Keep the selected theme for this page when storage is unavailable. */ }
+});
+
 function svgNode(tag, attributes = {}, text) {
   const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
   for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
