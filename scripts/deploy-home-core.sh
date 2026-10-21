@@ -55,7 +55,10 @@ rm -f -- /etc/systemd/system.control/homecompute-platform-health.service.d/90-pu
   /etc/systemd/system.control/homecompute-compute-ssh-tunnel-firewall.service.d/90-spark-stt.conf
 rm -f -- /usr/local/lib/systemd/system/homecompute-gateway-certificate.service \
   /usr/local/lib/systemd/system/homecompute-gateway-certificate.timer \
-  /usr/local/lib/systemd/system/timers.target.wants/homecompute-gateway-certificate.timer
+  /usr/local/lib/systemd/system/timers.target.wants/homecompute-gateway-certificate.timer \
+  /usr/local/lib/systemd/system/homecompute-token-usage.service \
+  /usr/local/lib/systemd/system/homecompute-token-usage.timer \
+  /usr/local/lib/systemd/system/timers.target.wants/homecompute-token-usage.timer
 systemctl daemon-reload
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
@@ -116,7 +119,21 @@ if docker network inspect "$edge_network" >/dev/null 2>&1; then
   fi
 fi
 # Bootstrap authenticated internal services before provisioning the keyless edge.
+"${gateway[@]}" up -d --wait --wait-timeout 180 postgres
+# Existing databases must be guarded before the updated proxy accepts traffic.
+docker exec -i homecompute-control-plane-postgres-1 \
+  psql -X -v ON_ERROR_STOP=1 -U postgres -d litellm < "$release/deploy/control-plane/token-usage.sql"
 "${gateway[@]}" up -d --wait --wait-timeout 180 postgres litellm
+# On first installation, LiteLLM creates its tables during the step above.
+docker exec -i homecompute-control-plane-postgres-1 \
+  psql -X -v ON_ERROR_STOP=1 -U postgres -d litellm < "$release/deploy/control-plane/token-usage.sql"
+install -D -m 0755 "$release/scripts/token-usage.py" /usr/local/bin/homecompute-token-usage
+usage_directory=/srv/state/control-plane/caddy-data/token-usage
+install -d -m 0755 "$usage_directory"
+for asset in index.html styles.css dashboard.js metrics.mjs icon.svg; do
+  install -m 0644 "$release/deploy/control-plane/token-usage/$asset" "$usage_directory/$asset"
+done
+systemctl start homecompute-token-usage.service
 python3 "$release/scripts/setup-network-inference.py"
 python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.

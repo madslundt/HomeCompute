@@ -34,6 +34,12 @@
         href: https://ai.home.arpa/healthz
         description: LiteLLM API gateway health
 
+    - Token usage:
+        id: homecore-token-usage
+        icon: mdi-chart-bar
+        href: https://ai.home.arpa/usage/
+        description: Daily, weekly, and monthly model usage
+
     - Open WebUI:
         id: homecore-open-webui
         icon: mdi-chat-processing-outline

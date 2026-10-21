@@ -24,6 +24,55 @@ Release references: [LiteLLM](https://github.com/BerriAI/litellm/releases),
 [Caddy](https://github.com/caddyserver/caddy/releases),
 [PostgreSQL image](https://hub.docker.com/_/postgres).
 
+Metadata-only token tracking was enabled on 2026-10-21. PostgreSQL's
+`homecompute_metadata_only_usage` trigger strips content and free-form metadata
+before usage inserts/updates. Synthetic streaming and non-streaming requests
+both recorded 95 input / 32 output tokens; all usage rows had empty content
+fields. Query daily/weekly/monthly totals on home-core with
+`sudo /usr/local/bin/homecompute-token-usage --period day|week|month`, optionally
+adding `--by-model`, `--since`, `--until`, or `--json`. See the
+[reporting details](../deploy/control-plane/README.md#metadata-only-token-usage).
+The initial targeted rollout used
+`/var/lib/homecompute/token-usage/compose.override.json` and a copy of the
+existing config with only spend logging enabled; the immutable release checkout
+was preserved. Docker retains this mount across restarts. A full deployment of
+the updated source installs the same database guard and reporter and returns
+LiteLLM to the release-owned config. Redeploying an older source revision can
+disable collection again; history remains in PostgreSQL.
+
+The token dashboard is live at `https://ai.home.arpa/usage/` and
+`https://home-core.tail479ad.ts.net:8443/usage/`, with a **Token usage** entry on
+Homepage. The exact static route and atomic JSON snapshot add no listening
+port or database-facing web service. The Nix-built
+`homecompute-token-usage.timer` refreshes the aggregate snapshot every minute.
+For the initial targeted rollout, its GC-rooted units were linked under
+`/usr/local/lib/systemd/system`; the source Nix module owns subsequent full
+deployments, and the deployment script removes these temporary unit links.
+Gateway and Homepage configuration overrides and rollback files are recorded
+in `/var/lib/homecompute/token-usage/dashboard-deployment.json`. The immutable
+release files and existing image versions were preserved.
+
+Verification passed six Python usage/publication tests, four browser-aggregation
+tests, the Nix service/timer build, and live browser checks for model filters,
+weekly/monthly boundaries, empty ranges, exact period tables, and refresh.
+Both HTTPS addresses return 200; unsupported paths and writes return 404.
+The refresh timestamp advances and all stored usage content fields remain empty.
+The gateway, Homepage, and LiteLLM are healthy.
+
+Visual QA compared the full generated concept and the final browser screenshot
+with `view_image`. Layout, typography, white/navy
+palette, blue/teal token encoding, filter controls, numeric hierarchy, and table
+structure follow the concept. Intentional additions are the snapshot freshness
+status, exact period breakdown, and collection-coverage note; no unknown history
+is plotted as zero. The title, subtitle, labels, and action copy match. A chart
+resize jump and a missing Homepage log mount directory were corrected.
+IAB checked the initial screen; Playwright checked desktop 1505×1045 and mobile
+390×844 because IAB has no viewport resize API. Final browser checks used an SSH
+loopback bridge that fetches the actual HTTPS assets with certificate validation,
+because this workstation could not reach the tailnet HTTPS listener directly.
+The final layout was visually verified against the concept with no remaining
+material visual mismatch; mobile tables retain horizontal scrolling for detail.
+
 ## Access
 
 Phone/browser API base: `https://home-core.tail479ad.ts.net:8443/v1`, with a

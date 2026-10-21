@@ -42,6 +42,12 @@ no container-engine API access and joins no other application's Docker network.
 Add user-facing links explicitly to `config/services.yaml`. This keeps the
 dashboard useful without giving it control of every container on `home-core`.
 
+The **Token usage** link opens the aggregate-only dashboard at
+`https://ai.home.arpa/usage/` on the LAN. On Tailscale, `custom.js` rewrites it
+to `https://home-core.tail479ad.ts.net:8443/usage/`, using the gateway's existing
+publicly trusted certificate. It supports day/week/month views, date and model
+filters, and refreshes once per minute without storing conversation content.
+
 ## Validate and run
 
 From the repository checkout on `home-core`:

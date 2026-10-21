@@ -10,6 +10,10 @@
     const tailnetAccess = window.location.hostname.endsWith(".ts.net") ||
       /^100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(window.location.hostname);
     if (tailnetAccess) {
+      for (const link of document.querySelectorAll('a[href^="https://ai.home.arpa/usage/"]')) {
+        const url = new URL(link.href);
+        link.href = `https://home-core.tail479ad.ts.net:8443${url.pathname}${url.search}${url.hash}`;
+      }
       for (const link of document.querySelectorAll('a[href^="https://chessmate.home.arpa/"]')) {
         const url = new URL(link.href);
         link.href = `https://home-core.tail479ad.ts.net:18080${url.pathname}${url.search}${url.hash}`;

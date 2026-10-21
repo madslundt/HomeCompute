@@ -97,6 +97,9 @@ much access.
   authenticated principal, route alias, outcome, latency, and token/byte counts.
   Do not log prompts, responses, audio, transcripts, tool arguments/results, or
   memory content by default.
+- The read-only `/usage/` dashboard exposes aggregate model/date token counts
+  on the existing admitted LAN/Tailscale gateway. It receives no raw request
+  rows, client identities, credentials, prompts, or responses.
 - Administrative access does not silently grant application data access. Audit
   privileged access and follow the administrator threat model in the personal
   data contract.

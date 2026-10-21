@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Token usage · HomeCompute</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./dashboard.js"></script>
+</head>
+<body>
+  <header><nav class="page"><a class="brand" href="http://home-core.tail479ad.ts.net/">HomeCompute</a><a href="http://home-core.tail479ad.ts.net/">Front page</a></nav></header>
+  <main class="page">
+    <div class="heading"><div><h1>Token usage</h1><p>Local model activity, without conversation content.</p></div><button id="refresh" class="primary">Refresh</button></div>
+    <p id="status" class="status" role="status" aria-live="polite">Loading usage…</p>
+    <form id="filters" class="filters">
+      <fieldset><legend>Period</legend><div class="segments"><button type="button" data-period="day" aria-pressed="true">Daily</button><button type="button" data-period="week" aria-pressed="false">Weekly</button><button type="button" data-period="month" aria-pressed="false">Monthly</button></div></fieldset>
+      <label>Model<select id="model"><option value="all">All models</option></select></label>
+      <label>Start date<input id="from" type="date" required></label>
+      <label>End date<input id="to" type="date" required></label>
+    </form>
+    <div id="metrics" class="metrics" aria-label="Selected range totals">
+      <div><span>Total tokens</span><strong id="total">—</strong></div>
+      <div><span>Input tokens</span><strong id="input" class="input-color">—</strong></div>
+      <div><span>Output tokens</span><strong id="output" class="output-color">—</strong></div>
+      <div><span>Requests</span><strong id="requests">—</strong></div>
+    </div>
+    <section aria-labelledby="chart-title"><div class="section-heading"><h2 id="chart-title">Tokens over time</h2><span id="range-label"></span></div>
+      <div class="chart-scroll"><svg id="chart" viewBox="0 0 1200 275" role="img" aria-label="Token usage over time"></svg></div>
+      <div class="chart-footer"><div class="legend"><span><i class="input-swatch"></i>Input tokens</span><span><i class="output-swatch"></i>Output tokens</span></div><output id="chart-detail" aria-live="polite"></output></div>
+      <p id="empty" hidden>No usage in this range.</p>
+    </section>
+    <section aria-labelledby="model-title"><h2 id="model-title">Usage by model</h2><div class="table-scroll"><table><thead><tr><th scope="col">Model</th><th scope="col">Requests</th><th scope="col">Input</th><th scope="col">Output</th><th scope="col">Total</th></tr></thead><tbody id="models"></tbody></table></div></section>
+    <details id="period-details"><summary>Period breakdown</summary><div class="table-scroll"><table><thead><tr><th scope="col">Period starting</th><th scope="col">Requests</th><th scope="col">Input</th><th scope="col">Output</th><th scope="col">Total</th></tr></thead><tbody id="periods"></tbody></table></div></details>
+    <footer><span>Europe/Copenhagen · Weeks start Monday</span><span id="history">Updates every minute.</span></footer>
+    <p class="note">Only gateway requests are counted. Recent requests can take a minute to appear. Date ranges include both dates; boundary weeks and months may be partial.</p>
+  </main>
+</body>
+</html>

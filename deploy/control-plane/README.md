@@ -304,13 +304,60 @@ container image IDs.
 
 ## TLS, keys, and state
 
+### Metadata-only token usage
+
+The dashboard is at `https://ai.home.arpa/usage/` on the LAN and
+`https://home-core.tail479ad.ts.net:8443/usage/` over Tailscale. Homepage's
+**Token usage** link selects the appropriate address. Daily, weekly, and
+monthly charts support model and date filters, exact period tables, and
+shareable filter URLs. The page refreshes every minute and identifies stale
+snapshots. Before tracking began, dates are unknown rather than zero usage.
+
+`homecompute-token-usage.timer` publishes an aggregate-only JSON snapshot once
+per minute. The existing Caddy container serves the assets and snapshot from
+`/srv/state/control-plane/caddy-data/token-usage`, under an exact read-only
+route allowlist. The browser receives only dates, aliases, and counts, with no
+database access, credentials, raw usage rows, or client identifiers. No new
+port or application container is introduced. The Nix module owns the refresh
+unit and timer; the deployment script installs the static assets.
+
+LiteLLM records input, output, and total tokens in PostgreSQL. Prompt/response
+storage and error logging remain disabled. Apply `token-usage.sql` before
+enabling spend logs on an existing installation; `deploy-home-core.sh` does
+this automatically. A database trigger also empties message, response,
+request-body, free-form metadata, tags, and client-content fields on every
+insert/update. It retains timestamps, model identifiers, numeric usage,
+status/timing, and hashed key identifiers. No external telemetry service is used.
+
+On home-core, query completed requests with:
+
+```bash
+sudo /usr/local/bin/homecompute-token-usage --period day
+sudo /usr/local/bin/homecompute-token-usage --period week --by-model
+sudo /usr/local/bin/homecompute-token-usage --period month --since 2026-10-01
+sudo /usr/local/bin/homecompute-token-usage --since 2026-10-21 --until 2026-10-22 --json
+```
+
+Reports default to the last 30 calendar days in `Europe/Copenhagen`, handling
+daylight-saving changes. Weeks start Monday. `--since` is inclusive and
+`--until` exclusive; boundary weeks/months include only the selected date
+range. Use an earlier `--since` for longer history. No usage rows are aged out
+by this configuration. Recent requests may take about a minute to flush.
+History starts when tracking is installed; earlier usage cannot be recovered.
+Only calls through LiteLLM are covered. Requests without reported token usage
+(for example some speech backends) can have zero tokens. Tokens measure usage,
+not electricity costs, and cached input is included in the backend's input
+count. Shared keyless clients remain one identity. Administration stays private;
+this does not expose LiteLLM's admin UI or PostgreSQL to the network.
+
 `ai.home.arpa` uses Caddy's internal CA. The smoke test reads that CA and uses
 normal certificate validation; it never uses `curl --insecure`. Install the
 root only on approved clients. The online CA private key is in `caddy-data`, so
 compromise can mint trusted certificates; encrypt its off-host backup and
 limit client trust to devices that need this service.
 
-Caddy exposes only `/v1/*` and `/healthz`. It intentionally returns 404 for the
+Caddy exposes approved `/v1/*` inference routes, `/healthz`, and the read-only
+`/usage/` dashboard. It intentionally returns 404 for the
 LiteLLM admin UI and key-management API on the AI gateway host. It also serves
 the separately named `chat.home.arpa` and `models.home.arpa` virtual hosts to
 Open WebUI and the model manager on `clients`, and `hermes.home.arpa` to the

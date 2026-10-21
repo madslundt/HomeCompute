@@ -101,6 +101,23 @@ http://:8080 {
 	}
 
 	@health path /healthz
+	@usage_redirect path /usage
+	redir @usage_redirect /usage/ 308
+	@usage {
+		method GET HEAD
+		path /usage/ /usage/index.html /usage/styles.css /usage/dashboard.js /usage/metrics.mjs /usage/icon.svg /usage/usage.json
+	}
+	handle @usage {
+		uri strip_prefix /usage
+		root * /data/token-usage
+		header {
+			Cache-Control "no-store"
+			X-Content-Type-Options "nosniff"
+			Referrer-Policy "no-referrer"
+			Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+		}
+		file_server
+	}
 	handle @health {
 		respond "ok" 200
 	}

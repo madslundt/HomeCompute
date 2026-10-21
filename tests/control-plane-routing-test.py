@@ -277,7 +277,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "assistant-canary", "stt-danish", "whisper-turbo"}, names)
+        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "assistant-canary", "stt-danish", "whisper-turbo", "plapre"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 
@@ -297,7 +297,8 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
         text = LITELLM.read_text(encoding="utf-8")
         self.assertIn("turn_off_message_logging: true", text)
         self.assertIn("redact_user_api_key_info: true", text)
-        self.assertIn("disable_spend_logs: true", text)
+        self.assertIn("disable_spend_logs: false", text)
+        self.assertIn("store_prompts_in_spend_logs: false", text)
         self.assertIn("disable_error_logs: true", text)
         self.assertIn("master_key: os.environ/LITELLM_MASTER_KEY", text)
         self.assertIn("database_url: os.environ/DATABASE_URL", text)

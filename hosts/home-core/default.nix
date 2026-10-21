@@ -15,6 +15,7 @@
     ../../modules/nixos/compute-ssh-tunnel.nix
     ../../modules/nixos/wyoming-stt-network.nix
     ../../modules/nixos/platform-monitoring.nix
+    ../../modules/nixos/token-usage-dashboard.nix
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix
     ../../modules/nixos/openclaw.nix

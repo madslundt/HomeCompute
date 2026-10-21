@@ -127,6 +127,7 @@ if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/openclaw-safety-plugin.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-public-dns.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-native-loader.test.mjs"
+  node --test "$REPO_ROOT/tests/token-usage-dashboard.test.mjs"
 else
   printf '[validate] Node unavailable; OpenClaw plugin tests require Node on CI\n'
 fi
@@ -162,6 +163,7 @@ python3 "$REPO_ROOT/tests/homecompute-cli-test.py"
 python3 "$REPO_ROOT/tests/client-model-access-test.py"
 python3 "$REPO_ROOT/tests/litellm-routing-integration-test.py"
 python3 "$REPO_ROOT/tests/control-plane-routing-test.py"
+python3 "$REPO_ROOT/tests/token-usage-test.py"
 python3 "$REPO_ROOT/scripts/gb10_model_roster.py" \
   --roster "$REPO_ROOT/config/gb10-model-roster.json"
 python3 "$REPO_ROOT/scripts/model_registry.py" validate
@@ -562,8 +564,8 @@ jq -e '
   (.services["plapre-openai-tts"].profiles == ["speech-proxies"]) and
   (.services["plapre-openai-tts"].ports == null) and
   (.services["plapre-openai-tts"].expose == ["8004"]) and
-  (.services["plapre-openai-tts"].networks.edge != null) and
-  (.services["plapre-openai-tts"].secrets == ["compute_api_key"]) and
+  (.services["plapre-openai-tts"].networks | has("edge")) and
+  ([.services["plapre-openai-tts"].secrets[].source] == ["compute_api_key"]) and
   (.services["plapre-openai-tts"].environment.TTS_MODEL_ALIAS == "plapre") and
   (.services["plapre-openai-tts"].environment.WYOMING_URI == "tcp://plapre-wyoming-proxy:10201") and
   (.services["plapre-wyoming-proxy"].ports[0].host_ip == "127.0.0.2") and
