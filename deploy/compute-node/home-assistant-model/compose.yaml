@@ -120,7 +120,7 @@ services:
           --language-model-only --kv-cache-dtype fp8 --gpu-memory-utilization "${HOME_GPU_MEMORY_UTILIZATION}" \
           --generation-config vllm --max-model-len "${HOME_MAX_MODEL_LEN}" --max-num-seqs "${HOME_MAX_NUM_SEQS}" \
           --max-num-batched-tokens "${HOME_MAX_BATCHED_TOKENS}" --enable-chunked-prefill --async-scheduling \
-          --enable-prefix-caching --load-format fastsafetensors --reasoning-parser gemma4 --tool-call-parser gemma4 \
+          --enable-prefix-caching --enable-prompt-tokens-details --load-format fastsafetensors --reasoning-parser gemma4 --tool-call-parser gemma4 \
           --default-chat-template-kwargs "$${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS}" --enable-auto-tool-choice \
           --allowed-media-domains invalid.homecompute.invalid --no-enable-log-requests --disable-uvicorn-access-log
     secrets: [vllm_api_key]

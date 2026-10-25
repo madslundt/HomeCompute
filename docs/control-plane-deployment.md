@@ -52,6 +52,17 @@ Gateway and Homepage configuration overrides and rollback files are recorded
 in `/var/lib/homecompute/token-usage/dashboard-deployment.json`. The immutable
 release files and existing image versions were preserved.
 
+The cache/pricing dashboard update uses the same targeted rollout: install
+the updated database guard, reporter, and static assets under the shared
+deployment lock, preserving the current gateway configuration. A persistent
+`homecompute-token-usage.service.d/90-cache-pricing.conf` drop-in runs the
+reporter from its pushed immutable release checkout. The full deployment
+script removes that drop-in when returning to the Nix-owned reporter.
+Deployment receipts and rollback files are kept under
+`/var/lib/homecompute/token-usage`. Inference runtime cache-reporting flags
+are source-controlled separately; deploying this dashboard on home-core does
+not restart home-spark models or backfill missing historical cache counts.
+
 Verification passed six Python usage/publication tests, four browser-aggregation
 tests, the Nix service/timer build, and live browser checks for model filters,
 weekly/monthly boundaries, empty ranges, exact period tables, and refresh.

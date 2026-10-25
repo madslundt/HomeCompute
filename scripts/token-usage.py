@@ -27,7 +27,10 @@ WITH buckets AS (
            count(*) AS requests,
            sum(prompt_tokens)::bigint AS input_tokens,
            sum(completion_tokens)::bigint AS output_tokens,
-           sum(total_tokens)::bigint AS total_tokens
+           sum(total_tokens)::bigint AS total_tokens,
+           COALESCE(sum((metadata->>'homecompute_cached_input_tokens')::bigint), 0)::bigint AS cached_input_tokens,
+           COALESCE(sum(prompt_tokens) FILTER (WHERE metadata ? 'homecompute_cached_input_tokens'), 0)::bigint AS cache_tracked_input_tokens,
+           count(*) FILTER (WHERE metadata ? 'homecompute_cached_input_tokens') AS cache_reported_requests
     FROM "LiteLLM_SpendLogs"
     WHERE "startTime" >= (:'since'::date::timestamp AT TIME ZONE :'timezone') AT TIME ZONE 'UTC'
       AND "startTime" < (:'until'::date::timestamp AT TIME ZONE :'timezone') AT TIME ZONE 'UTC'
@@ -67,7 +70,8 @@ def publish_report(report: dict, destination: Path) -> None:
     rows = []
     for row in report["rows"]:
         rows.append({"period_start": row["period_start"], "model": row["model"],
-                     **{key: int(row[key]) for key in ("requests", "input_tokens", "output_tokens", "total_tokens")}})
+                     **{key: int(row[key]) for key in ("requests", "input_tokens", "output_tokens", "total_tokens")},
+                     **{key: int(row.get(key, 0)) for key in ("cached_input_tokens", "cache_tracked_input_tokens", "cache_reported_requests")}})
     payload = {"schema_version": 1, "generated_at": datetime.now(timezone.utc).isoformat(),
                "tracking_since": report["tracking_since"], "timezone": report["timezone"], "rows": rows}
     temporary = None

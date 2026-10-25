@@ -1,10 +1,50 @@
-import { localDate, shiftDate, summarize, validateData } from './metrics.mjs';
+import { localDate, shiftDate, summarize, validateData, validatePricing, priceUsage } from './metrics.mjs';
 
 const $ = id => document.getElementById(id);
 const full = value => new Intl.NumberFormat('en-GB').format(value);
 const compact = value => new Intl.NumberFormat('en-GB', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 const dateLabel = day => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${day}T12:00:00Z`));
 let data = null, period = 'day', initialized = false, fetching = false;
+const pricingKey = 'homecompute.usage.pricing.v1';
+let pricing = { currency: 'USD', models: {} }, pricingModels = '';
+try {
+  const saved = localStorage.getItem(pricingKey);
+  if (saved) pricing = validatePricing(JSON.parse(saved));
+} catch { $('pricing-status').textContent = 'Saved pricing unavailable. Enter rates to start again.'; }
+$('currency').value = pricing.currency;
+const money = value => new Intl.NumberFormat('en-GB', { style: 'currency', currency: pricing.currency, maximumFractionDigits: 4 }).format(value);
+const cachedLabel = row => !row.requests ? '0' : !row.cache_reported_requests ? 'Unknown'
+  : `${full(row.cached_input_tokens)}${row.cache_reported_requests < row.requests ? ' (partial)' : ''}`;
+const costLabel = row => row.unpriced_requests && !row.priced_requests ? 'Set rates'
+  : `${money(row.estimated_cost)}${row.unpriced_requests ? ' (partial)' : ''}`;
+
+function pricingEditor() {
+  const names = [...new Set([...data.rows.map(row => row.model), ...Object.keys(pricing.models)])].sort();
+  const signature = JSON.stringify(names);
+  if (signature === pricingModels) return;
+  // Preserve edits when a background refresh discovers another model.
+  const drafts = Object.fromEntries([...$('pricing-models').children].map(tr => [tr.dataset.model,
+    Object.fromEntries([...tr.querySelectorAll('input')].map(input => [input.dataset.rate, input.value]))]));
+  pricingModels = signature;
+  $('pricing-models').replaceChildren();
+  for (const model of names) {
+    const tr = document.createElement('tr'); tr.dataset.model = model;
+    const label = document.createElement('td'); label.textContent = model; tr.append(label);
+    for (const key of ['input', 'cached', 'output']) {
+      const td = document.createElement('td'), input = document.createElement('input');
+      input.type = 'number'; input.min = '0'; input.max = '1000000000'; input.step = 'any';
+      input.dataset.rate = key; input.setAttribute('aria-label', `${model} ${key} rate per million tokens`);
+      input.placeholder = key === 'cached' ? 'Same as input' : 'Not set';
+      input.value = drafts[model]?.[key] ?? (Object.hasOwn(pricing.models, model) ? pricing.models[model][key] : null) ?? '';
+      td.append(input); tr.append(td);
+    }
+    tr.append(document.createElement('td')); $('pricing-models').append(tr);
+  }
+}
+function readPricing() {
+  return validatePricing({ currency: $('currency').value, models: Object.fromEntries([...$('pricing-models').children].map(tr => [tr.dataset.model,
+    Object.fromEntries([...tr.querySelectorAll('input')].map(input => [input.dataset.rate, input.value === '' ? null : Number(input.value)]))])) });
+}
 
 const themeKey = 'homecompute.usage.theme';
 function applyTheme(preference) {
@@ -36,7 +76,7 @@ function rowsInto(id, rows, label) {
   $(id).replaceChildren();
   for (const row of rows) {
     const tr = document.createElement('tr');
-    for (const value of [label(row), ...['requests', 'input_tokens', 'output_tokens', 'total_tokens'].map(key => full(row[key]))]) {
+    for (const value of [label(row), full(row.requests), full(row.input_tokens), cachedLabel(row), full(row.output_tokens), full(row.total_tokens), costLabel(row)]) {
       const td = document.createElement('td'); td.textContent = value; tr.append(td);
     }
     $(id).append(tr);
@@ -79,8 +119,23 @@ function render() {
   }
   const end = [$('to').value, localDate(data.generated_at)].sort()[0];
   const state = { from: $('from').value, to: end, model: $('model').value, period, trackingDate: localDate(data.tracking_since) };
-  const result = summarize(data.rows, state);
+  const result = summarize(data.rows, state, pricing.models);
   for (const [id, key] of Object.entries({ total: 'total_tokens', input: 'input_tokens', output: 'output_tokens', requests: 'requests' })) $(id).textContent = full(result.totals[key]);
+  const totals = result.totals;
+  $('cached').textContent = cachedLabel(totals);
+  const reuse = totals.cache_tracked_input_tokens ? totals.cached_input_tokens / totals.cache_tracked_input_tokens : null;
+  $('cache-rate').textContent = reuse === null ? '—' : `${new Intl.NumberFormat('en-GB', { style: 'percent', maximumFractionDigits: 1 }).format(reuse)}${totals.cache_reported_requests < totals.requests ? ' (partial)' : ''}`;
+  $('cost').textContent = costLabel(totals);
+  const notes = [`Cache details reported for ${full(totals.cache_reported_requests)} of ${full(totals.requests)} requests. Reuse is measured against reported input; cached tokens are part of input, not additional tokens.`];
+  if (totals.unpriced_requests) notes.push(`${full(totals.unpriced_requests)} requests excluded from cost until their model rates are set.`);
+  if (totals.assumed_cache_input_tokens) notes.push(`${full(totals.assumed_cache_input_tokens)} input tokens have unknown cache status and are priced at the uncached rate.`);
+  $('estimate-note').textContent = notes.join(' ');
+  pricingEditor();
+  for (const tr of $('pricing-models').children) {
+    const estimate = priceUsage(totals, Object.hasOwn(pricing.models, tr.dataset.model) ? pricing.models[tr.dataset.model] : null);
+    tr.lastElementChild.textContent = estimate ? `${money(estimate.estimated_cost)}${estimate.assumed_cache_input_tokens ? ' *' : ''}` : 'Set rates';
+    tr.lastElementChild.title = estimate?.assumed_cache_input_tokens ? 'Unknown cache usage priced at the uncached input rate.' : '';
+  }
   for (const button of document.querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
   chart(result.periods); $('chart-detail').textContent = '';
   $('empty').hidden = result.totals.requests !== 0;
@@ -127,6 +182,28 @@ async function refresh() {
   } finally { fetching = false; $('refresh').disabled = false; }
 }
 $('refresh').addEventListener('click', refresh);
+$('pricing-form').addEventListener('submit', event => {
+  event.preventDefault();
+  try {
+    pricing = readPricing();
+    try {
+      localStorage.setItem(pricingKey, JSON.stringify(pricing));
+      $('pricing-status').textContent = 'Pricing saved in this browser for this address.';
+    } catch { $('pricing-status').textContent = 'Applied for this page. Browser storage unavailable; rates will not survive reload.'; }
+    render();
+  } catch { $('pricing-status').textContent = 'Use non-negative rates up to 1,000,000,000, or leave a rate blank.'; }
+});
+$('pricing-form').addEventListener('input', () => { $('pricing-status').textContent = 'Unsaved changes. Save pricing to update estimates.'; });
+$('comparison-form').addEventListener('submit', event => {
+  event.preventDefault();
+  const name = $('comparison-model').value.trim();
+  if (!name || !data) return;
+  // Adding a comparison must not discard unsaved rates for existing models.
+  try { pricing = readPricing(); } catch { $('pricing-status').textContent = 'Check rates before adding a comparison model.'; return; }
+  if (!Object.hasOwn(pricing.models, name)) pricing.models = { ...pricing.models, [name]: { input: null, cached: null, output: null } };
+  pricingEditor(); render(); $('comparison-model').value = '';
+  $('pricing-status').textContent = 'Comparison model added. Save pricing to keep it.';
+});
 $('filters').addEventListener('submit', event => event.preventDefault());
 for (const id of ['from', 'to', 'model']) $(id).addEventListener('change', render);
 for (const button of document.querySelectorAll('[data-period]')) button.addEventListener('click', () => { period = button.dataset.period; render(); });

@@ -123,7 +123,8 @@ class DatabaseTests(unittest.TestCase):
                    ('after', 'automation', '2026-10-25 23:00:00', 1000, 2000, 3000);''')
         rows = self.report(since="2026-10-25", until="2026-10-26")["rows"]
         self.assertEqual([dict(period_start="2026-10-25", model="all", requests=2,
-                               input_tokens=110, output_tokens=220, total_tokens=330)], rows)
+                               input_tokens=110, output_tokens=220, total_tokens=330,
+                               cached_input_tokens=0, cache_tracked_input_tokens=0, cache_reported_requests=0)], rows)
 
     def test_week_starts_monday_and_monthly_models_sum_independently(self):
         self.sql('''INSERT INTO "LiteLLM_SpendLogs"
@@ -140,6 +141,32 @@ class DatabaseTests(unittest.TestCase):
 
     def test_empty_range_is_valid(self):
         self.assertEqual([], self.report()["rows"])
+
+    def test_cache_allowlist_keeps_only_valid_counts_and_distinguishes_unknown_from_zero(self):
+        values = [
+            ({"usage_object": {"prompt_tokens_details": {"cached_tokens": 8}}}, 8),
+            ({"additional_usage_values": {"prompt_tokens_details": {"cached_tokens": 0}}}, 0),
+            ({"additional_usage_values": {"cache_read_input_tokens": 4}}, 4),
+            ({"usage_object": {"prompt_tokens_details": {"cached_tokens": None}},
+              "additional_usage_values": {"prompt_tokens_details": {"cached_tokens": 2}}}, 2),
+            ({}, None),
+        ]
+        for invalid in [-1, 11, "8", True, 1.5, 1e30, {"private": "PRIVATE_CONTENT"}]:
+            values.append(({"usage_object": {"prompt_tokens_details": {"cached_tokens": invalid}}}, None))
+        for index, (metadata, expected) in enumerate(values):
+            metadata["private"] = "PRIVATE_CONTENT"
+            encoded = json.dumps(metadata).replace("'", "''")
+            self.sql(f'''INSERT INTO "LiteLLM_SpendLogs"
+                (request_id, model_group, "startTime", prompt_tokens, completion_tokens, total_tokens, metadata)
+                VALUES ('cache-{index}', 'home', '2026-10-21 12:00', 10, 2, 12, '{encoded}');''')
+            stored = json.loads(self.sql(f'''SELECT metadata FROM "LiteLLM_SpendLogs" WHERE request_id='cache-{index}';'''))
+            self.assertEqual({} if expected is None else {"homecompute_cached_input_tokens": expected}, stored)
+        self.sql('''UPDATE "LiteLLM_SpendLogs" SET response='{"private":"PRIVATE_CONTENT"}' WHERE request_id='cache-0';''')
+        result = self.report()["rows"][0]
+        self.assertEqual(14, result["cached_input_tokens"])
+        self.assertEqual(40, result["cache_tracked_input_tokens"])
+        self.assertEqual(4, result["cache_reported_requests"])
+        self.assertNotIn("PRIVATE_", self.sql('SELECT json_agg(s) FROM "LiteLLM_SpendLogs" s;'))
 
 
 if __name__ == "__main__":

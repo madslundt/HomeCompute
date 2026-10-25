@@ -8,11 +8,28 @@ CREATE TABLE IF NOT EXISTS homecompute_token_usage_state (
 
 CREATE OR REPLACE FUNCTION homecompute_metadata_only_usage()
 RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+    cached jsonb;
 BEGIN
+    -- LiteLLM stores provider cache counts inside otherwise private metadata.
+    -- Preserve only a validated numeric count, including an explicit zero.
+    cached := COALESCE(
+        NULLIF(NEW.metadata #> '{usage_object,prompt_tokens_details,cached_tokens}', 'null'::jsonb),
+        NULLIF(NEW.metadata #> '{additional_usage_values,prompt_tokens_details,cached_tokens}', 'null'::jsonb),
+        NULLIF(NEW.metadata #> '{additional_usage_values,cache_read_input_tokens}', 'null'::jsonb),
+        NULLIF(NEW.metadata -> 'homecompute_cached_input_tokens', 'null'::jsonb)
+    );
+    NEW.metadata := '{}'::jsonb;
+    IF jsonb_typeof(cached) = 'number' THEN
+        IF cached::text ~ '^[0-9]{1,10}$' THEN
+            IF cached::text::bigint <= NEW.prompt_tokens THEN
+                NEW.metadata := jsonb_build_object('homecompute_cached_input_tokens', cached::text::bigint);
+            END IF;
+        END IF;
+    END IF;
     NEW.messages := '{}'::jsonb;
     NEW.response := '{}'::jsonb;
     NEW.proxy_server_request := '{}'::jsonb;
-    NEW.metadata := '{}'::jsonb;
     NEW.request_tags := '[]'::jsonb;
     NEW.cache_key := '';
     NEW.api_base := '';

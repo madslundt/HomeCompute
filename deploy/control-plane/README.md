@@ -327,7 +327,28 @@ enabling spend logs on an existing installation; `deploy-home-core.sh` does
 this automatically. A database trigger also empties message, response,
 request-body, free-form metadata, tags, and client-content fields on every
 insert/update. It retains timestamps, model identifiers, numeric usage,
-status/timing, and hashed key identifiers. No external telemetry service is used.
+status/timing, hashed key identifiers, and one validated numeric cached-input
+count extracted from LiteLLM's usage metadata. All other metadata is removed.
+No external telemetry service is used.
+
+The dashboard reports cached input, cache reuse, and coverage separately.
+Missing cache counts (including historical requests) are unknown, not zero.
+vLLM text servers enable `--enable-prompt-tokens-details`; the database trigger
+keeps only `homecompute_cached_input_tokens` from the provider usage details.
+Zero is retained when explicitly reported. Other runtimes or older versions
+that omit these details continue to contribute usage with unknown cache status.
+
+Expand **Model pricing and comparison** to enter input, cached-input, and
+output rates per million tokens. Rates and currency are saved in local browser
+storage for the current origin; LAN and Tailscale addresses have separate
+settings. Blank cached rates use the input rate; blank input/output rates leave
+that model unpriced, and incomplete cost totals are labeled partial. Unknown
+cache usage is estimated at the uncached input rate. Cached tokens are already
+part of input, so they are not charged twice. Rates apply to the entire selected
+range and estimate equivalent token cost, not actual invoices or electricity.
+The comparison column applies each model's rates to the same selected token
+volume; additional comparison models need not have gateway usage. Changing
+currency only changes the label and does not convert entered rates.
 
 On home-core, query completed requests with:
 
