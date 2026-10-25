@@ -59,7 +59,7 @@ rm -f -- /usr/local/lib/systemd/system/homecompute-gateway-certificate.service \
   /usr/local/lib/systemd/system/homecompute-token-usage.service \
   /usr/local/lib/systemd/system/homecompute-token-usage.timer \
   /usr/local/lib/systemd/system/timers.target.wants/homecompute-token-usage.timer
-rm -f -- /etc/systemd/system/homecompute-token-usage.service.d/90-cache-pricing.conf
+rm -f -- /etc/systemd/system.control/homecompute-token-usage.service.d/90-cache-pricing.conf
 systemctl daemon-reload
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")

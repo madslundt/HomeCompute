@@ -55,7 +55,7 @@ release files and existing image versions were preserved.
 The cache/pricing dashboard update uses the same targeted rollout: install
 the updated database guard, reporter, and static assets under the shared
 deployment lock, preserving the current gateway configuration. A persistent
-`homecompute-token-usage.service.d/90-cache-pricing.conf` drop-in runs the
+`/etc/systemd/system.control/homecompute-token-usage.service.d/90-cache-pricing.conf` drop-in runs the
 reporter from its pushed immutable release checkout. The full deployment
 script removes that drop-in when returning to the Nix-owned reporter.
 Deployment receipts and rollback files are kept under
