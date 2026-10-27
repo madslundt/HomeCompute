@@ -44,6 +44,7 @@ fi
 
 shell_files=(
   "$REPO_ROOT/scripts/setup-compute-flash-next.sh"
+  "$REPO_ROOT/scripts/prepare-qwen-image-comfyui-spark.sh"
   "$REPO_ROOT/scripts/lib/config.sh"
   "$REPO_ROOT/scripts/configure-compute-firewall.sh"
   "$REPO_ROOT/scripts/setup-compute-node.sh"
@@ -101,6 +102,20 @@ python3 "$REPO_ROOT/tests/openclaw-public-dns-launcher-test.py"
 python3 "$REPO_ROOT/tests/openclaw-public-dns-wire-test.py"
 python3 "$REPO_ROOT/tests/openclaw-chat-test.py"
 python3 "$REPO_ROOT/tests/openclaw-communication-test.py"
+python3 "$REPO_ROOT/tests/openclaw-services-test.py"
+python3 "$REPO_ROOT/tests/openclaw-services-wiring-test.py"
+python3 "$REPO_ROOT/tests/openclaw-household-test.py"
+python3 "$REPO_ROOT/tests/openclaw-ha-websocket-test.py"
+python3 "$REPO_ROOT/tests/openclaw-household-shopping-test.py"
+python3 "$REPO_ROOT/tests/openclaw-household-storage-test.py"
+python3 "$REPO_ROOT/tests/openclaw-calendar-test.py"
+python3 "$REPO_ROOT/tests/openclaw-calendar-workflow-test.py"
+python3 "$REPO_ROOT/tests/openclaw-calendar-setup-test.py"
+python3 "$REPO_ROOT/tests/workflow-retrieval-test.py"
+python3 "$REPO_ROOT/tests/workflow-calendar-semantic-test.py"
+python3 "$REPO_ROOT/tests/workflow-school-embeddings-test.py"
+python3 "$REPO_ROOT/tests/workflow-research-embeddings-test.py"
+python3 "$REPO_ROOT/tests/workflow-battery-embeddings-test.py"
 python3 "$REPO_ROOT/tests/homepage-maintenance-test.py"
 python3 "$REPO_ROOT/tests/homepage-update-check-test.py"
 python3 "$REPO_ROOT/tests/openclaw-maintenance-test.py"
@@ -113,12 +128,29 @@ python3 "$REPO_ROOT/tests/docker-maintenance-preparation-test.py"
 python3 "$REPO_ROOT/tests/homeassistant-maintenance-test.py"
 python3 "$REPO_ROOT/tests/core-maintenance-preparation-test.py"
 python3 "$REPO_ROOT/tests/maintenance-plan-preparation-test.py"
+python3 "$REPO_ROOT/tests/mcp-maintenance-test.py"
+python3 "$REPO_ROOT/tests/mcp-maintenance-setup-test.py"
+python3 "$REPO_ROOT/tests/docker-maintenance-test.py"
+python3 "$REPO_ROOT/tests/host-maintenance-test.py"
+python3 "$REPO_ROOT/tests/host-maintenance-setup-test.py"
+python3 "$REPO_ROOT/tests/core-update-build-test.py"
 python3 "$REPO_ROOT/tests/container-maintenance-test.py"
 python3 "$REPO_ROOT/tests/openclaw-task-feed-test.py"
 python3 "$REPO_ROOT/tests/openclaw-worker-api-test.py"
 python3 "$REPO_ROOT/tests/codex-guest-bootstrap-test.py"
 python3 "$REPO_ROOT/tests/openclaw-infrastructure-test.py"
 python3 "$REPO_ROOT/tests/openclaw-telegram-test.py"
+python3 "$REPO_ROOT/tests/mattermost-service-test.py"
+python3 "$REPO_ROOT/tests/mattermost-bootstrap-test.py"
+python3 "$REPO_ROOT/tests/mattermost-organization-test.py"
+python3 "$REPO_ROOT/tests/mattermost-agent-accounts-test.py"
+python3 "$REPO_ROOT/tests/mattermost-atlas-membership-test.py"
+python3 "$REPO_ROOT/tests/mattermost-team-verification-test.py"
+python3 "$REPO_ROOT/tests/mattermost-n8n-test.py"
+python3 "$REPO_ROOT/tests/openclaw-team-test.py"
+python3 "$REPO_ROOT/tests/openclaw-team-calendar-test.py"
+python3 "$REPO_ROOT/tests/openclaw-mattermost-test.py"
+python3 "$REPO_ROOT/tests/agent-roster-test.py"
 if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/openclaw-broker-plugin.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-n8n-communication.test.mjs"
@@ -126,7 +158,12 @@ if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/homeassistant-action-workflow.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-safety-plugin.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-public-dns.test.mjs"
+  node --test "$REPO_ROOT/tests/native-llm-queue.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-native-loader.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-shopping-semantic.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-calendar-caller.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-research-embeddings.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-battery-embeddings.test.mjs"
   node --test "$REPO_ROOT/tests/token-usage-dashboard.test.mjs"
 else
   printf '[validate] Node unavailable; OpenClaw plugin tests require Node on CI\n'
@@ -158,6 +195,29 @@ python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/speech-routing-policy-test.py"
 python3 "$REPO_ROOT/tests/model-registry-test.py"
 python3 "$REPO_ROOT/tests/flash-next-lifecycle-test.py"
+python3 "$REPO_ROOT/tests/comfyui-lifecycle-test.py"
+python3 "$REPO_ROOT/tests/comfyui-media-lifecycle-test.py"
+python3 "$REPO_ROOT/tests/comfyui-model-controls-setup-test.py"
+python3 "$REPO_ROOT/tests/qwen-image21-prepare-test.py"
+python3 "$REPO_ROOT/tests/ltx25-prepare-test.py"
+python3 "$REPO_ROOT/tests/ltx25-comfyui-stage-test.py"
+python3 "$REPO_ROOT/tests/ltx25-workflow-test.py"
+python3 "$REPO_ROOT/tests/ltx25-generation-test.py"
+python3 "$REPO_ROOT/tests/comfyui-progress-test.py"
+node "$REPO_ROOT/tests/comfyui-controls-test.mjs"
+node "$REPO_ROOT/tests/homepage-model-controls-test.mjs"
+python3 "$REPO_ROOT/tests/comfyui-access-test.py"
+python3 "$REPO_ROOT/tests/llm-admission-test.py"
+python3 "$REPO_ROOT/tests/llm-workflow-activity-test.py"
+python3 "$REPO_ROOT/tests/llm-workflow-queue-test.py"
+python3 "$REPO_ROOT/tests/llm-queue-budget-repair-test.py"
+python3 "$REPO_ROOT/tests/image-chat-test.py"
+python3 "$REPO_ROOT/tests/open-webui-videos-test.py"
+python3 "$REPO_ROOT/tests/open-webui-video-images-test.py"
+python3 "$REPO_ROOT/tests/open-webui-videos-setup-test.py"
+python3 "$REPO_ROOT/tests/video-api-service-test.py"
+python3 "$REPO_ROOT/tests/video-api-setup-test.py"
+python3 "$REPO_ROOT/tests/native-llm-activity-test.py"
 python3 "$REPO_ROOT/tests/modelctl-test.py"
 python3 "$REPO_ROOT/tests/homecompute-cli-test.py"
 python3 "$REPO_ROOT/tests/client-model-access-test.py"
@@ -964,10 +1024,35 @@ if rg -n -g '*.yaml' \
   printf '[validate] forbidden capability, namespace, or socket reference under deploy/\n' >&2
   exit 1
 fi
-# This already approved relay is outside the assistant and needs host loopback
-# for the fixed SSH reverse-forward. Its exact service is constrained above;
-# all other deployment files retain the host-network denial.
-if rg -n -g '*.yaml' -g '!**/openclaw/communication/compose.yaml' \
+# The fixed Mattermost TLS proxy needs host loopback to the dedicated app.
+# Its only external listener is the exact tailnet address. Pin its routes and
+# validate its services before allowing this additional host-network exception.
+mattermost_json="$temporary_root/mattermost.json"
+docker compose --env-file "$REPO_ROOT/config/mattermost.env.example" \
+  -f "$REPO_ROOT/deploy/mattermost/compose.yaml" config --format json >"$mattermost_json"
+jq -e '
+  (.services | keys) == ["mattermost", "postgres", "proxy"] and
+  .services.proxy.network_mode == "host" and
+  (.services.proxy.ports // [] | length) == 0 and
+  .services.proxy.read_only == true and
+  .services.proxy.cap_drop == ["ALL"] and
+  .services.proxy.cap_add == ["NET_BIND_SERVICE"] and
+  (.services.proxy.security_opt | index("no-new-privileges:true")) != null and
+  (.services.proxy.volumes | all(.read_only == true)) and
+  .services.proxy.environment.MATTERMOST_TAILSCALE_ADDRESS == "100.110.248.102" and
+  .services.mattermost.ports[0].host_ip == "127.0.0.1" and
+  .services.mattermost.ports[0].published == "18065" and
+  (.services.mattermost.ports | length) == 1 and
+  (.services.postgres.ports // [] | length) == 0 and
+  .networks.database.internal == true
+' "$mattermost_json" >/dev/null
+python3 - "$REPO_ROOT/deploy/mattermost/Caddyfile" <<'PY'
+import hashlib, pathlib, sys
+assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "884808911be3ee856aa9defe88d61be9ada5994a7c286b0c13508685ea7f4863"
+PY
+# The communication relay is separately constrained above. Every other
+# deployment retains the host-network denial.
+if rg -n -g '*.yaml' -g '!**/openclaw/communication/compose.yaml' -g '!**/mattermost/compose.yaml' \
   'network_mode:[[:space:]]*host' "$REPO_ROOT/deploy"; then
   printf '[validate] unapproved host networking under deploy/\n' >&2
   exit 1
@@ -981,7 +1066,7 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker compute-node control-plane hermes hviske-stt homepage immich model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker compute-node control-plane hermes hviske-stt homepage immich mattermost model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

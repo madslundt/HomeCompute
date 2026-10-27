@@ -9,6 +9,8 @@ from pathlib import Path
 import tempfile
 import threading
 import socket
+import shutil
+import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
 from unittest.mock import patch
@@ -26,6 +28,7 @@ def load(name, path):
 
 
 BROWSER = load('hc_browser', ROOT / 'deploy/openclaw/tools/browser_worker.py')
+BROWSER_INSTALL = load('hc_browser_install', ROOT / 'scripts/setup-openclaw-browser.py')
 CLI = load('hc_cli', ROOT / 'deploy/openclaw/tools/homecompute-cli')
 # Load the pure preflight functions without running the in-sandbox CLI installer.
 source=ast.parse((ROOT/'scripts/enable-openclaw-tools.py').read_text())
@@ -36,6 +39,71 @@ exec(compile(ast.Module(body=definitions,type_ignores=[]),'activation-preflight'
 
 
 class ToolsTest(unittest.TestCase):
+    def test_authenticated_tab_cleanup_forwards_native_plain_text_response(self):
+        calls=[]
+        class Upstream(BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def do_GET(self):
+                calls.append(self.path)
+                self.send_response(200);self.end_headers();self.wfile.write(b'Target is closing')
+        upstream=ThreadingHTTPServer(('127.0.0.1',0),Upstream)
+        original=BROWSER.CDP;BROWSER.CDP=('127.0.0.1',upstream.server_port)
+        token='x'*48
+        proxy=BROWSER.serve(token,'http://127.0.0.1:18800',('127.0.0.1',0))
+        for server in (upstream,proxy):threading.Thread(target=server.serve_forever,daemon=True).start()
+        base='http://127.0.0.1:'+str(proxy.server_port)
+        try:
+            for action in ('close','activate'):
+                with urllib.request.urlopen(base+'/json/'+action+'/public-tab?token='+token,timeout=2) as response:
+                    self.assertEqual(response.read(),b'Target is closing')
+            self.assertEqual(calls,['/json/close/public-tab','/json/activate/public-tab'])
+            for suffix in ['/json/close/public-tab?token=wrong','/json/new?token='+token,
+                           '/json/close/../../version?token='+token,'/json/close/?token='+token]:
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(base+suffix,timeout=2)
+                self.assertEqual(error.exception.code,403);error.exception.close()
+            self.assertEqual(len(calls),2)
+        finally:
+            for server in (proxy,upstream):server.shutdown();server.server_close()
+            BROWSER.CDP=original
+
+    def test_browser_internal_addresses_cannot_collide_after_restart(self):
+        calls=[]
+        def docker(*args):
+            calls.append(args)
+            if args[:2] == ('inspect',BROWSER_INSTALL.BROWSER):
+                return json.dumps([{'Config':{'Hostname':BROWSER_INSTALL.BROWSER}}])
+            return ''
+        with tempfile.TemporaryDirectory() as folder:
+            directory=Path(folder);(directory/'tools').mkdir()
+            (directory/'tools/browser-squid.conf').write_text('reviewed fixture')
+            with patch.object(BROWSER_INSTALL,'docker',side_effect=docker), \
+                 patch.object(BROWSER_INSTALL.subprocess,'run',return_value=types.SimpleNamespace(returncode=1)), \
+                 patch('builtins.print'):
+                BROWSER_INSTALL.install(directory,'sha256:'+'a'*64)
+        internal={}
+        for command in calls:
+            if command[0]=='create' and command[command.index('--network')+1]==BROWSER_INSTALL.BROWSER:
+                name=command[command.index('--name')+1]
+            elif command[:2]==('network','connect') and command[-2]==BROWSER_INSTALL.BROWSER:
+                name=command[-1]
+            else:
+                continue
+            self.assertIn('--ip',command, f'{name} would race reserved addresses on restart')
+            internal[name]=command[command.index('--ip')+1]
+        self.assertEqual(internal,{
+            BROWSER_INSTALL.BROWSER:'172.30.188.2', BROWSER_INSTALL.EGRESS:'172.30.188.3',
+            BROWSER_INSTALL.INGRESS:'172.30.188.4', BROWSER_INSTALL.DNS:'172.30.188.5'})
+        self.assertEqual(len(set(internal.values())),4)
+
+    @unittest.skipUnless(shutil.which('ruby'),'Ruby YAML parser unavailable')
+    def test_compose_reserves_the_same_four_internal_addresses(self):
+        result=subprocess.run(['ruby','-ryaml','-rjson','-e',
+            'c=YAML.safe_load(File.read(ARGV[0])); puts JSON.generate(c.fetch("services").transform_values { |s| s.fetch("networks").fetch("browser").fetch("ipv4_address") })',
+            str(ROOT/'deploy/openclaw/tools/compose.yaml')],capture_output=True,text=True,check=True)
+        self.assertEqual(json.loads(result.stdout),{'browser':'172.30.188.2',
+            'browser-egress':'172.30.188.3','browser-ingress':'172.30.188.4','browser-dns':'172.30.188.5'})
+
     def test_browser_hostname_exceptions_are_finite_and_keep_private_network_denied(self):
         policy=activation['browser_ssrf_policy']()
         self.assertIs(policy['dangerouslyAllowPrivateNetwork'],False)
@@ -46,6 +114,11 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual(len(hosts),len(set(hosts)))
         self.assertTrue(all('*' not in host for host in hosts))
         self.assertEqual(set(hosts)-{'127.0.0.1'},BROWSER.PUBLIC_RESEARCH_HOSTS)
+        if shutil.which('node'):
+            result=subprocess.run(['node','--input-type=module','-e',
+                'import {RESEARCH_HOSTS} from "./deploy/openclaw/safety-plugin/public-dns.mjs"; console.log(JSON.stringify(RESEARCH_HOSTS));'],
+                cwd=ROOT,capture_output=True,text=True,check=True)
+            self.assertEqual(set(json.loads(result.stdout)),BROWSER.PUBLIC_RESEARCH_HOSTS)
         self.assertFalse(any(host in hosts for host in ['home-core','169.254.169.254','10.77.20.1']))
         policy['allowedHostnames'].append('unsafe.example')
         self.assertNotIn('unsafe.example',activation['browser_ssrf_policy']()['allowedHostnames'])

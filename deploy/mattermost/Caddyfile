@@ -1,0 +1,23 @@
+{
+	# Private container tmpfs: host users cannot reconfigure this host-network proxy.
+	admin unix//tmp/caddy-admin.sock
+	auto_https off
+}
+
+https://{$MATTERMOST_FQDN}:9443 {
+	bind {$MATTERMOST_TAILSCALE_ADDRESS}
+	tls /certificates/current/cert.pem /certificates/current/key.pem
+	encode zstd gzip
+	@llm_status {
+		method GET
+		path /llm/status
+	}
+	handle @llm_status {
+		rewrite * /control/api/llm-status
+		header Cache-Control no-store
+		reverse_proxy 172.28.200.2:8188
+	}
+	handle {
+		reverse_proxy 127.0.0.1:18065
+	}
+}

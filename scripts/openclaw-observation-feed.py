@@ -20,6 +20,8 @@ from openclaw_tasks import ADAPTER, private_json, request
 
 MAX_REPORT = 1024 * 1024
 MAINTENANCE_REPORT = Path("/var/lib/homecompute-maintenance/report.json")
+MCP_REPORT = Path("/var/lib/homecompute-mcp-maintenance-public/report.json")
+HOST_REPORT = Path("/var/lib/homecompute-host-maintenance-public/report.json")
 PRIVATE_MODEL_REPORT = Path("/var/lib/homecompute-model-update-check/report.json")
 MODEL_REPORT = Path("/run/homecompute-openclaw-reports/model-update-report.json")
 SPARK_COMMAND = ["/run/current-system/sw/bin/ssh", "-F", "/dev/null",
@@ -175,6 +177,17 @@ def core_snapshot(system: dict[str, Any]) -> dict[str, Any] | None:
                                      else snapshot.get("maintenance_report"))
     except (OSError, ValueError, subprocess.TimeoutExpired):
         raw["maintenance_report"] = None
+    if "host-update-report" in system["updates"]:
+        try:
+            raw["host_update_report"] = (read_report(HOST_REPORT) if system["id"] == "home-core"
+                                         else snapshot.get("host_update_report"))
+        except (OSError, ValueError):
+            raw["host_update_report"] = None
+    if system["id"] == "home-core" and "mcp-update-report" in system["updates"]:
+        try:
+            raw["mcp_update_report"] = read_report(MCP_REPORT)
+        except (OSError, ValueError):
+            raw["mcp_update_report"] = None
     if system["id"] == "home-core" and "model-update-report" in system["updates"]:
         try:
             raw["model_update_report"] = model_projection(read_report(MODEL_REPORT))

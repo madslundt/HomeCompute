@@ -10,6 +10,9 @@ export const RESEARCH_HOSTS = Object.freeze([
   'docs.n8n.io', 'www.home-assistant.io', 'developers.home-assistant.io',
   'nixos.org', 'wiki.nixos.org', 'nix.dev', 'search.nixos.org', 'github.com',
   'raw.githubusercontent.com', 'duckduckgo.com',
+  'marginalia-search.com',
+  'www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
+  'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk',
 ]);
 const HOSTS = new Set(RESEARCH_HOSTS);
 const privateIPv4 = new net.BlockList();
@@ -197,8 +200,8 @@ async function main() {
   const url = new URL(config.browser.profiles.homecompute.cdpUrl);
   if (url.origin !== 'http://127.0.0.1:18800' || url.pathname !== '/' || [...url.searchParams.keys()].join() !== 'token'
       || config.browser.ssrfPolicy.dangerouslyAllowPrivateNetwork !== false
-      || config.browser.ssrfPolicy.allowedHostnames.length !== 15
-      || new Set(config.browser.ssrfPolicy.allowedHostnames).size !== 15
+      || config.browser.ssrfPolicy.allowedHostnames.length !== RESEARCH_HOSTS.length + 1
+      || new Set(config.browser.ssrfPolicy.allowedHostnames).size !== RESEARCH_HOSTS.length + 1
       || !config.browser.ssrfPolicy.allowedHostnames.every(host => host === '127.0.0.1' || HOSTS.has(host))) throw new Error('Reviewed browser configuration required');
   const stop = await startInheritedDns(createDnsEngine(createWorkerLookup(url.searchParams.get('token'))));
   for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => { stop().finally(() => process.exit(0)); });

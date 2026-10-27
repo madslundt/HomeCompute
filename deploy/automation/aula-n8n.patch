@@ -625,3 +625,65 @@ index 572405d..cc5f61b 100644
    });
 
    test('getPresenceTemplates returns {} for empty ids without hitting the network', async () => {
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index f62b251..b34109c 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -390,2 +390,2 @@ packages:
+-  body-parser@2.3.0:
+-    resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
++  body-parser@2.4.0:
++    resolution: {integrity: sha512-Ifk1KcLrxaGt1occQagQNFNNOqRt1LFuehEnHHzB8Z6cRgIxRU1TBaiIsUiCdA+gy5PL7Y1IX31DNKkRmxtXjQ==}
+@@ -570,2 +570,2 @@ packages:
+-  fast-uri@3.1.8:
+-    resolution: {integrity: sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==}
++  fast-uri@3.1.9:
++    resolution: {integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==}
+@@ -638,2 +638,2 @@ packages:
+-  ip-address@10.7.3:
+-    resolution: {integrity: sha512-A1kdq/tSb5QjvKvAMgIoEvDBIgL7qaqVP/jkvSwYYRZ9iEzvPpopxp2wQfu3SuZRHtpHNxMn8Fs0bS+gf5Xmwg==}
++  ip-address@10.7.4:
++    resolution: {integrity: sha512-DWBMKyeM25D70nrIiTkgQth59/G+naKOTep6huF9j+GmeK3DMD60Zvxg5d5qQnz+38AHgou6ean2LECX+lrKDg==}
+@@ -783,0 +784,4 @@ packages:
++  qs@6.16.1:
++    resolution: {integrity: sha512-5Px6J7rfHBAGUhNQ3es4YzcOdBBw0SDcVtThJml4RdnKw4tKs2epA0kPZ+K8X+WiHktT93RHVcQ/3ym5aTCgtg==}
++    engines: {node: '>=0.6'}
++
+@@ -890,2 +894,2 @@ packages:
+-  undici@7.30.0:
+-    resolution: {integrity: sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==}
++  undici@7.30.1:
++    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
+@@ -1137 +1141 @@ snapshots:
+-      fast-uri: 3.1.8
++      fast-uri: 3.1.9
+@@ -1147 +1151 @@ snapshots:
+-  body-parser@2.3.0:
++  body-parser@2.4.0:
+@@ -1155 +1159 @@ snapshots:
+-      qs: 6.16.0
++      qs: 6.16.1
+@@ -1202 +1206 @@ snapshots:
+-      undici: 7.30.0
++      undici: 7.30.1
+@@ -1321 +1325 @@ snapshots:
+-      ip-address: 10.7.3
++      ip-address: 10.7.4
+@@ -1328 +1332 @@ snapshots:
+-      body-parser: 2.3.0
++      body-parser: 2.4.0
+@@ -1360 +1364 @@ snapshots:
+-  fast-uri@3.1.8: {}
++  fast-uri@3.1.9: {}
+@@ -1439 +1443 @@ snapshots:
+-  ip-address@10.7.3: {}
++  ip-address@10.7.4: {}
+@@ -1554,0 +1559,5 @@ snapshots:
++  qs@6.16.1:
++    dependencies:
++      es-define-property: 1.0.1
++      side-channel: 1.1.1
++
+@@ -1702 +1711 @@ snapshots:
+-  undici@7.30.0: {}
++  undici@7.30.1: {}

@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Spark models · HomeCompute</title>
+  <style>
+    :root { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e2e8f0; background: #0f172a; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 28px 18px; }
+    main { width: min(100%, 600px); padding: 32px; border: 1px solid #334155; border-radius: 20px; background: #182235; box-shadow: 0 18px 70px #02061750; }
+    .eyebrow { margin: 0 0 10px; color: #94a3b8; font-size: 12px; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 0 0 10px; font-size: clamp(26px, 6vw, 34px); letter-spacing: -.035em; }
+    .intro, .note { color: #aebed2; font-size: 14px; line-height: 1.6; }
+    .intro { margin: 0 0 24px; }
+    .status { display: flex; align-items: center; gap: 9px; font-size: 15px; font-weight: 600; }
+    .dot { flex: 0 0 8px; height: 8px; border-radius: 100%; background: #94a3b8; }
+    .dot[data-state="text"], .dot[data-state="image"], .dot[data-state="video"] { background: #6ee7b7; }
+    .dot[data-state="starting"], .dot[data-state="stopping"] { background: #fbbf24; }
+    .dot[data-state="error"] { background: #fda4af; }
+    #detail { margin: 8px 0 20px 17px; color: #aebed2; line-height: 1.5; font-size: 13px; min-height: 20px; }
+    #elapsed { margin: -10px 0 20px 17px; color: #94a3b8; font-size: 12px; line-height: 1.4; }
+    #elapsed:empty { display: none; }
+    #compatibility { color: #fcd34d; font-size: 12px; line-height: 1.5; }
+    #compatibility:empty { display: none; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    button, .open { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 10px 15px; border-radius: 9px; border: 1px solid #475569; background: #25344b; color: #f1f5f9; font: inherit; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; }
+    .model { padding: 17px 0; border-top: 1px solid #334155; }
+    .model:last-of-type { padding-bottom: 0; }
+    .model-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 7px; margin-bottom: 11px; }
+    h2 { margin: 0; font-size: 14px; font-weight: 600; }
+    .model-kind, .model-state { color: #94a3b8; font-size: 12px; }
+    .model-kind { display: block; margin-bottom: 4px; }
+    .model-state[data-active="true"] { color: #6ee7b7; }
+    .startup { margin: 0 0 10px; color: #94a3b8; font-size: 12px; line-height: 1.5; }
+    #requests { color: #aebed2; font-size: 12px; line-height: 1.5; margin: 0 0 20px 17px; }
+    .start { background: #a7f3d0; color: #052e25; border-color: #a7f3d0; }
+    button:disabled, .open[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+    button:not(:disabled):hover, .open:not([aria-disabled="true"]):hover { filter: brightness(1.12); }
+    :focus-visible { outline: 3px solid #93c5fd; outline-offset: 3px; }
+    .note { margin: 23px 0 0; padding-top: 19px; border-top: 1px solid #334155; font-size: 12px; }
+    #error { margin: 15px 0 0; color: #fecdd3; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+    #error:empty { display: none; }
+    body.compact { display: block; padding: 6px 8px 10px; min-height: 0; background: transparent; }
+    .compact main { width: 100%; padding: 5px 4px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+    .compact .eyebrow, .compact h1, .compact .intro { display: none; }
+    .compact .status { font-size: 12px; }
+    .compact #detail { margin: 5px 0 9px 17px; font-size: 11px; min-height: 16px; }
+    .compact #elapsed { margin: -3px 0 8px 17px; font-size: 10px; }
+    .compact .model { padding: 10px 0; }
+    .compact .model-heading { margin-bottom: 7px; }
+    .compact h2 { font-size: 12px; }
+    .compact .model-kind, .compact .model-state, .compact #requests { font-size: 10px; }
+    .compact .startup { margin-bottom: 7px; font-size: 10px; }
+    .compact #requests { margin-bottom: 10px; }
+    .compact .actions { flex-wrap: wrap; gap: 6px; }
+    .compact .actions > * { flex: 0 1 auto; }
+    .compact button, .compact .open { min-height: 34px; padding: 7px 10px; font-size: 11px; }
+    .compact .note { margin-top: 10px; padding-top: 8px; font-size: 10px; line-height: 1.45; }
+    .compact #error { margin-top: 8px; font-size: 11px; }
+    @media (max-width: 420px) { main { padding: 23px; } .actions > * { flex: 1 1 auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">HomeCompute · DGX Spark</p>
+    <h1>Spark models</h1>
+    <p class="intro">Choose text, images or video. One model runs at a time; switching safely finishes current work first.</p>
+    <div class="status" role="status" aria-live="polite"><span class="dot" id="dot"></span><span id="status">Checking Spark…</span></div>
+    <p id="detail" aria-live="polite">Waiting for the current model state.</p>
+    <p id="elapsed" aria-live="off"></p>
+    <p id="requests" aria-live="polite">Checking current requests.</p>
+    <p id="compatibility" role="status"></p>
+    <section class="model" aria-label="Text model">
+      <div class="model-heading"><h2><span class="model-kind">Text</span><span id="text-name">Qwen3.8 Flash Next</span></h2><span class="model-state" id="text-state">Checking…</span></div>
+      <p class="startup" id="text-startup">Expected start: Not measured yet</p>
+      <div class="actions"><button id="start-text" class="start" type="button" disabled>Start LLM</button></div>
+    </section>
+    <section class="model" aria-label="Image model">
+      <div class="model-heading"><h2><span class="model-kind">Images</span><span id="image-name">Qwen Image 2.1</span></h2><span class="model-state" id="image-state">Checking…</span></div>
+      <p class="startup" id="image-startup">Expected start: Not measured yet</p>
+      <div class="actions">
+        <button id="start-image" class="start" type="button" disabled>Start images</button>
+        <button id="stop-image" type="button" disabled>Stop images</button>
+        <a id="open-image" class="open" href="https://chat.home.arpa/?models=homecompute-images" target="_blank" rel="noopener" aria-label="Open image chat in a new tab" aria-disabled="true">Open image chat ↗</a>
+      </div>
+    </section>
+    <section class="model" aria-label="Video model">
+      <div class="model-heading"><h2><span class="model-kind">Video</span><span id="video-name">LTX-2.5</span></h2><span class="model-state" id="video-state">Checking…</span></div>
+      <p class="startup" id="video-startup">Expected start: Not measured yet</p>
+      <div class="actions">
+        <button id="start-video" class="start" type="button" disabled>Start video</button>
+        <button id="stop-video" type="button" disabled>Stop video</button>
+        <a id="open-video-chat" class="open" href="https://chat.home.arpa/?models=homecompute_videos" target="_blank" rel="noopener" aria-label="Open video chat in a new tab" aria-disabled="true">Open video chat ↗</a>
+        <a id="open-video" class="open" href="https://comfyui.home.arpa/" target="_blank" rel="noopener" aria-label="Open ComfyUI for video in a new tab" aria-disabled="true">Open ComfyUI ↗</a>
+      </div>
+    </section>
+    <p id="error" role="alert"></p>
+    <p id="note" class="note">Images and video pause text generation. Stop either to restore the LLM, or it returns automatically after 30 minutes idle. Queued and running jobs finish before switching; expected start times exclude that wait. The first image or video can take longer while its model loads. For video, use chat or choose LTX-2.5-Text-to-Video or LTX-2.5-Image-to-Video in ComfyUI.</p>
+  </main>
+  <script>
+    (() => {
+      "use strict";
+      const compact = new URLSearchParams(location.search).get("compact") === "1";
+      if (compact) document.body.classList.add("compact");
+      const modes = ["text", "image", "video"];
+      const names = { text: "Qwen3.8 Flash Next", image: "Qwen Image 2.1", video: "LTX-2.5" };
+      const elements = Object.fromEntries(["status", "detail", "elapsed", "requests", "compatibility", "dot", "error", "note", ...modes.flatMap(mode => [`${mode}-name`, `${mode}-state`, `${mode}-startup`, `start-${mode}`]), "stop-image", "stop-video", "open-image", "open-video", "open-video-chat"].map(id => [id, document.getElementById(id)]));
+      const standardNote = elements.note.textContent;
+      const actions = { "start-text": "text", "start-image": "image", "start-video": "video", "stop-image": "text", "stop-video": "text" };
+      if (location.hostname.endsWith(".ts.net")) elements["open-video"].href = `${location.origin}/`;
+      let state = null;
+      let receivedAt = null;
+      let mutating = false;
+      let confirmingAction = false;
+      let connectionError = "";
+      let actionError = "";
+      let connectionInterrupted = false;
+      let recoveredUntil = 0;
+      let wasStale = false;
+      let pollController = null;
+      let generation = 0;
+      let timer = null;
+      const labels = { text: "Text model is active", image: "Images are ready", video: "Video is ready", starting: "Switching models…", stopping: "Switching models…", error: "Spark needs attention" };
+      const targetMode = () => modes.includes(state?.target_mode) ? state.target_mode : state?.mode === "stopping" ? "text" : "image";
+      const mediaKind = mode => mode === "video" ? "video" : "image";
+      const displayName = mode => {
+        const name = state?.[`${mode}_display_name`];
+        return !name || (mode === "text" && name === "Text model") ? names[mode] : name;
+      };
+      const count = value => Number.isInteger(value) && value >= 0 ? value : null;
+      const text = (element, value) => { if (element.textContent !== value) element.textContent = value; };
+      const isTransitioning = () => !!state?.transition || state?.mode === "starting" || state?.mode === "stopping";
+      const age = () => receivedAt === null ? 0 : Math.max(0, (performance.now() - receivedAt) / 1000);
+      const stale = () => receivedAt !== null && age() >= 12;
+      const duration = seconds => {
+        seconds = Math.max(0, Math.floor(seconds));
+        if (seconds < 60) return `${seconds}s`;
+        const minutes = Math.floor(seconds / 60);
+        return minutes < 60 ? `${minutes}m${seconds % 60 ? ` ${seconds % 60}s` : ""}` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+      };
+      function progress() {
+        const transition = state?.transition;
+        if (!transition) return null;
+        const workflows = count(transition.workflows);
+        const turns = count(transition.agent_turns);
+        const running = count(transition.text_requests?.running);
+        const waiting = count(transition.text_requests?.waiting);
+        const connections = count(state?.llm?.active_requests);
+        const target = targetMode();
+        const kind = mediaKind(target);
+        let heading, detail;
+        switch (transition.phase) {
+          case "waiting_workflows":
+            heading = "Waiting for text work…";
+            if (workflows === null || turns === null) detail = compact ? "Checking running workflows and agent turns before switching." : "Checking running workflows and agent turns before stopping text generation. New text work stays queued.";
+            else if (workflows || turns) detail = `${workflows} workflow${workflows === 1 ? "" : "s"} · ${turns} agent turn${turns === 1 ? "" : "s"} active. ${compact ? "New work stays queued." : "Waiting for them to finish; new text work stays queued."}`;
+            else detail = compact ? "No active workflows or agent turns. Confirming they have finished." : "No workflows or agent turns are active. Confirming completion before moving on.";
+            break;
+          case "draining_text": {
+            heading = "Finishing text responses…";
+            const model = running === null || waiting === null ? "Cannot read model activity yet; retrying before stopping." : `Model: ${running} running · ${waiting} queued.`;
+            const leases = connections === null ? "" : ` ${connections} response connection${connections === 1 ? "" : "s"} open.`;
+            detail = model + leases + (compact ? "" : " Waiting for generation and response connections to finish before stopping the model.");
+            break;
+          }
+          case "stopping_text":
+            heading = "Stopping the text model…";
+            detail = `Text work has finished. Releasing model memory for ${target === "video" ? "video" : "images"}.`;
+            break;
+          case "starting_comfyui":
+            heading = `Starting ${kind} mode…`;
+            detail = `Loading ${displayName(target)}. Waiting for it to be ready.`;
+            break;
+          case "waiting_comfyui":
+            heading = `Checking ${kind} readiness…`;
+            detail = `Waiting for ${displayName(target)} to answer its readiness check.`;
+            break;
+          case "stopping_comfyui":
+            heading = "Stopping the current media model…";
+            detail = `The media queue is empty. Releasing memory for ${displayName(target)}.`;
+            break;
+          case "starting_text":
+            heading = "Starting the text model…";
+            detail = `Starting ${displayName("text")}. Text work resumes when the model is ready.`;
+            break;
+          case "waiting_text":
+            heading = "Loading the text model…";
+            detail = compact ? "Loading model weights. Text work stays queued until it is ready." : "Loading model weights and waiting for the text model to answer its readiness check. Queued text work resumes after that check passes.";
+            break;
+          default:
+            heading = "Checking switch progress…";
+            detail = "Waiting for the next progress update from Spark.";
+        }
+        if (["image_start_failed", "video_start_failed", "media_start_failed"].includes(transition.reason)) {
+          const failed = transition.reason === "video_start_failed" ? "Video" : transition.reason === "image_start_failed" ? "Image" : "Media";
+          heading = `Restoring text after ${failed.toLowerCase()} error…`;
+          detail = `${failed} startup failed. ${detail}`;
+        }
+        return { heading, detail };
+      }
+      function renderElapsed() {
+        const interrupted = !!connectionError || stale();
+        const transition = state?.transition;
+        let value = "";
+        if (interrupted && receivedAt !== null) value = `Last update ${duration(age())} ago · retrying`;
+        else if (transition) {
+          const seconds = value => Number.isFinite(value) && value >= 0 ? value + age() : null;
+          const total = seconds(transition.elapsed_seconds), phase = seconds(transition.phase_elapsed_seconds);
+          const label = {
+            waiting_workflows: "Waiting for active work", draining_text: "Finishing text responses",
+            stopping_text: "Stopping text model", stopping_comfyui: "Stopping media model",
+            starting_comfyui: `Starting ${mediaKind(targetMode())} model`,
+            waiting_comfyui: `Loading ${mediaKind(targetMode())} model`,
+            starting_text: "Starting text model", waiting_text: "Loading text model",
+          }[transition.phase] || "Switching models";
+          if (phase !== null) {
+            value = `${label} · ${duration(phase)}`;
+            if (total !== null && total - phase >= 5) value += ` (${duration(total)} total)`;
+          } else if (total !== null) value = `Switching models · ${duration(total)} elapsed`;
+        }
+        if (!interrupted && performance.now() < recoveredUntil) value += value ? " · reconnected" : "Connection restored.";
+        text(elements.elapsed, value);
+      }
+      function render() {
+        const mode = state?.mode;
+        const current = progress();
+        const interrupted = !!connectionError || stale();
+        if (interrupted) connectionInterrupted = true;
+        const transitioning = mutating || confirmingAction || isTransitioning();
+        const media = mode === "image" || mode === "video";
+        const ready = !interrupted && !transitioning && media && state?.comfy_ready === true;
+        const textReady = mode === "text" && state?.text_running === true && state?.text_ready !== false;
+        const queueKnown = count(state?.queue_running) !== null && count(state?.queue_pending) !== null;
+        const queued = queueKnown ? state.queue_running + state.queue_pending : 0;
+        const queueProtected = !!state?.comfy_running && (!queueKnown || queued > 0);
+        const compatible = modes.includes(state?.target_mode);
+        const blocked = !state || !compatible || interrupted || transitioning || queueProtected;
+        text(elements.compatibility, state && !compatible ? "Controls update is waiting for active work; the 30-minute idle policy will apply after deployment." : "");
+        text(elements.note, state && !compatible ? "The current controller still uses its existing idle policy. Queued and running jobs remain protected during the update." : standardNote);
+        const queueHelp = queueProtected ? "Wait for the media queue to be empty before switching." : "";
+        let heading = (mode === "text" ? displayName("text") + (textReady ? " is active" : " is loading…") : labels[mode]) || "Checking Spark…";
+        let detail = "Waiting for the current model state.";
+        if (current) { heading = current.heading; detail = current.detail; }
+        else if (mode === "text") detail = "Start images or video when you need them. The LLM returns when media mode stops.";
+        else if (mode === "starting" || mode === "stopping") {
+          heading = `Switching to ${displayName(targetMode())}…`;
+          detail = state.text_running ? "Waiting for text work to finish before switching safely." : "Loading the selected model and checking readiness.";
+        } else if (media) {
+          if (!ready) heading = `${displayName(mode)} is loading…`;
+          if (!queueKnown) detail = "Checking the media queue. Jobs are protected until its status is known.";
+          else if (queued) detail = `${state.queue_running} running · ${state.queue_pending} queued. Finish these jobs before switching models.`;
+          else if (state.idle_seconds !== null && Number.isFinite(state.idle_seconds)) {
+            const timeout = Number.isFinite(state.idle_timeout_seconds) ? state.idle_timeout_seconds : 1800;
+            const remaining = Math.max(0, timeout - state.idle_seconds);
+            detail = `Media queue is empty. LLM returns in about ${Math.ceil(remaining / 60)} min.`;
+          } else detail = ready ? "Ready. LLM returns after 30 minutes idle." : "Waiting for the selected model to be ready.";
+        } else if (mode === "error") detail = state.text_running ? "The LLM is running. You can retry images or video." : "Start LLM to restore text generation.";
+        if (confirmingAction) { heading = "Checking whether the switch started…"; detail = "Waiting for a fresh status update from Spark."; }
+        if (mutating) { heading = "Sending your request…"; detail = "Waiting for Spark to accept the switch."; }
+        if (interrupted) {
+          heading = "Progress updates interrupted";
+          detail = current ? `Last known step: ${current.heading.replace(/…$/, ".")} Retrying automatically.` : "Controls are paused until a fresh status update arrives. Retrying automatically.";
+        }
+        for (const item of modes) {
+          text(elements[`${item}-name`], displayName(item));
+          const measured = state?.startup_timings?.[item];
+          const samples = count(measured?.samples);
+          const expected = samples > 0 && Number.isFinite(measured?.seconds) && measured.seconds >= 0
+            ? `~${duration(Math.max(1, Math.round(measured.seconds)))}`
+            : "Not measured yet";
+          text(elements[`${item}-startup`], `Expected start: ${expected}`);
+          const active = item === "text" ? textReady : item === mode && ready;
+          const loading = item === mode || (isTransitioning() && item === targetMode());
+          const finishingText = transitioning && item === "text" && state?.text_running && targetMode() !== "text";
+          const switchingMedia = transitioning && item !== "text" && state?.comfy_running;
+          text(elements[`${item}-state`], !state ? "Checking…" : interrupted ? "Status unavailable" : active && !transitioning ? "Running · ready" : finishingText ? "Running · finishing work" : loading || switchingMedia ? "Switching / loading…" : "Stopped");
+          elements[`${item}-state`].dataset.active = String(active && !transitioning && !interrupted);
+          elements[`start-${item}`].disabled = blocked || (item === "text" ? textReady : item === mode && !!state?.comfy_running);
+          elements[`start-${item}`].title = queueHelp || `Switch to ${displayName(item)}.`;
+          if (item !== "text") {
+            elements[`stop-${item}`].disabled = blocked || mode !== item || !state?.comfy_running;
+            elements[`stop-${item}`].title = queueHelp || "Stop this model and restore the LLM.";
+            elements[`stop-${item}`].setAttribute("aria-label", `Stop ${item} and restore ${displayName("text")}`);
+            elements[`open-${item}`].setAttribute("aria-disabled", String(!(ready && mode === item)));
+          }
+        }
+        elements["open-video-chat"].setAttribute("aria-disabled", String(!(ready && mode === "video")));
+        const requests = state?.text_requests || state?.transition?.text_requests;
+        const running = count(requests?.running), waiting = count(requests?.waiting);
+        const connections = count(state?.llm?.active_requests);
+        let activity = running !== null && waiting !== null ? `Text requests: ${running} running · ${waiting} queued.` : state?.text_running ? "LLM is running." : "Text generation is paused.";
+        if (connections !== null) activity += ` ${connections} response connection${connections === 1 ? "" : "s"} open.`;
+        if (state?.comfy_running) activity += queueKnown ? ` Media queue: ${state.queue_running} running · ${state.queue_pending} queued.` : " Media queue: checking.";
+        text(elements.requests, state ? activity : "Checking current requests.");
+        text(elements.status, heading);
+        text(elements.detail, detail);
+        elements.status.setAttribute("aria-busy", String(transitioning));
+        elements.dot.dataset.state = interrupted ? "error" : transitioning ? "starting" : mode || "text";
+        text(elements.error, connectionError || (stale() ? "The last status is out of date. Waiting for Spark to reconnect." : "") || actionError || (typeof state?.error === "string" ? state.error : ""));
+        renderElapsed();
+      }
+      function applyStatus(data) {
+        if (!data || !Object.hasOwn(labels, data.mode)) throw new Error("The controls returned an unknown model state.");
+        if (connectionInterrupted || connectionError || stale()) recoveredUntil = performance.now() + 8000;
+        state = data;
+        receivedAt = performance.now();
+        connectionInterrupted = false;
+        connectionError = "";
+        confirmingAction = false;
+        wasStale = false;
+      }
+      async function jsonResponse(response) {
+        let data;
+        try { data = await response.json(); } catch { throw new Error("The controls returned an unreadable response."); }
+        if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : `Request failed (${response.status}).`);
+        return data;
+      }
+      async function refresh() {
+        if (mutating) return;
+        const requestGeneration = ++generation;
+        if (pollController) pollController.abort();
+        const controller = new AbortController();
+        pollController = controller;
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        try {
+          const data = await fetch("/control/api/status", { cache: "no-store", signal: controller.signal }).then(jsonResponse);
+          if (requestGeneration !== generation) return;
+          applyStatus(data);
+        } catch (error) {
+          if (requestGeneration !== generation) return;
+          connectionError = error.name === "AbortError" ? "The status request timed out. Retrying automatically." : error.message;
+        } finally {
+          clearTimeout(timeout);
+          if (requestGeneration === generation) {
+            pollController = null;
+            render();
+            clearTimeout(timer);
+            timer = setTimeout(refresh, 3000);
+          }
+        }
+      }
+      async function act(action) {
+        if (mutating || elements[action].disabled) return;
+        mutating = true;
+        confirmingAction = true;
+        actionError = "";
+        ++generation;
+        clearTimeout(timer);
+        if (pollController) pollController.abort();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        render();
+        try {
+          const response = await fetch(`/control/api/start/${actions[action]}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", signal: controller.signal });
+          const data = await jsonResponse(response);
+          applyStatus(data.status || data);
+        } catch (error) {
+          actionError = error.name === "AbortError" ? "The request timed out. Checking whether the switch started." : error.message;
+        } finally {
+          clearTimeout(timeout);
+          mutating = false;
+          render();
+          refresh();
+        }
+      }
+      for (const action of Object.keys(actions)) elements[action].addEventListener("click", () => act(action));
+      for (const id of ["open-image", "open-video", "open-video-chat"]) {
+        const link = elements[id];
+        link.addEventListener("click", event => { if (link.getAttribute("aria-disabled") === "true") event.preventDefault(); });
+      }
+      setInterval(() => {
+        const currentlyStale = stale();
+        if (currentlyStale !== wasStale || (recoveredUntil && performance.now() >= recoveredUntil)) {
+          wasStale = currentlyStale;
+          if (performance.now() >= recoveredUntil) recoveredUntil = 0;
+          render();
+        } else renderElapsed();
+      }, 1000);
+      render();
+      refresh();
+    })();
+  </script>
+</body>
+</html>

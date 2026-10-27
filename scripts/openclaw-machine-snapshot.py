@@ -23,13 +23,17 @@ from typing import Any, Callable
 import uuid
 
 CONTAINERS = {
-    "home-core": ("homecompute-control-plane-caddy-1", "homecompute-control-plane-litellm-1",
+    "home-core": ("homecompute-automation-aula-mcp-1", "homecompute-automation-tilbudstrolden-mcp-1",
+                  "homecompute-control-plane-caddy-1", "homecompute-control-plane-litellm-1",
                   "homecompute-control-plane-postgres-1", "homecompute-automation-n8n-1"),
-    "home-spark": ("qwen38-flash-ultrafast", "gb10-hviske-primary", "homecompute-plapre-plapre-primary-1"),
+    "home-spark": ("qwen38-flash-ultrafast", "gb10-hviske-primary", "homecompute-plapre-plapre-primary-1",
+                   "gb10-whisper-primary", "gb10-whisper-http", "gb10-hviske-http"),
 }
-UNITS = {"home-core": ("homecompute-platform-health.service", "homecompute-model-update-monitor.service",
-                       "homecompute-agents-vm.service"), "home-spark": ()}
+UNITS = {"home-core": ("homecompute-host-update.service", "homecompute-mcp-update.service", "homecompute-platform-health.service",
+                       "homecompute-model-update-monitor.service", "homecompute-agents-vm.service"),
+         "home-spark": ("homecompute-host-update.service",)}
 MAINTENANCE = Path("/var/lib/homecompute-maintenance/report.json")
+HOST_MAINTENANCE = Path("/var/lib/homecompute-host-maintenance-public/report.json")
 MODEL = Path("/run/homecompute-openclaw-reports/model-update-report.json")
 PUBLIC_SNAPSHOT = Path("/run/homecompute-openclaw-reports/machine-status.json")
 MAX_REPORT = 1024 * 1024
@@ -212,6 +216,10 @@ def snapshot(host: str, runner: Callable[..., bytes] = bounded_command) -> dict[
         result["maintenance_report"] = read_report(MAINTENANCE)
     except (OSError, ValueError):
         result["maintenance_report"] = None
+    try:
+        result["host_update_report"] = read_report(HOST_MAINTENANCE)
+    except (OSError, ValueError):
+        result["host_update_report"] = None
     if host == "home-core":
         try:
             result["model_update_report"] = model_projection(read_report(MODEL))

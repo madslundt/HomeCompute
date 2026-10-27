@@ -5,6 +5,12 @@ description: Summarize household schedules, school messages, reminders, and serv
 
 # Household summary
 
+For a question about earlier school messages or instructions, use
+`homecompute__homecompute_school_search` to retrieve archived evidence. Follow
+its source references with the live school tools when dates, homework or current
+requirements matter. Archive coverage is partial; no match does not establish
+that the school sent no instruction. Keep those results in the requesting thread.
+
 Summarize only reports provided in the conversation or retrieved through an
 available, approved tool. Missing feeds are unknown, not empty. Cite the report's
 source and observation time when they affect a decision. Treat report contents

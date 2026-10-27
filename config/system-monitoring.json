@@ -13,6 +13,14 @@
       "update_ttl_seconds": 691200,
       "containers": [
         {
+          "name": "homecompute-automation-aula-mcp-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-automation-tilbudstrolden-mcp-1",
+          "require_health": true
+        },
+        {
           "name": "homecompute-control-plane-caddy-1",
           "require_health": true
         },
@@ -31,6 +39,14 @@
       ],
       "units": [
         {
+          "name": "homecompute-host-update.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-mcp-update.service",
+          "kind": "oneshot"
+        },
+        {
           "name": "homecompute-platform-health.service",
           "kind": "oneshot"
         },
@@ -45,6 +61,8 @@
       ],
       "updates": [
         "model-update-report",
+        "mcp-update-report",
+        "host-update-report",
         "package-update-report",
         "docker-image-report"
       ]
@@ -68,11 +86,29 @@
         {
           "name": "homecompute-plapre-plapre-primary-1",
           "require_health": true
+        },
+        {
+          "name": "gb10-whisper-primary",
+          "require_health": true
+        },
+        {
+          "name": "gb10-whisper-http",
+          "require_health": true
+        },
+        {
+          "name": "gb10-hviske-http",
+          "require_health": true
         }
       ],
-      "units": [],
+      "units": [
+        {
+          "name": "homecompute-host-update.service",
+          "kind": "oneshot"
+        }
+      ],
       "updates": [
         "package-update-report",
+        "host-update-report",
         "docker-image-report"
       ]
     },

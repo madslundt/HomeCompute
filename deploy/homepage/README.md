@@ -48,6 +48,42 @@ to `https://home-core.tail479ad.ts.net:8443/usage/`, using the gateway's existin
 publicly trusted certificate. It supports day/week/month views, date and model
 filters, and refreshes once per minute without storing conversation content.
 
+The **ComfyUI** card includes image-mode status and Start/Stop controls. Open
+`https://comfyui.home.arpa/control/` on the LAN, or
+`https://home-core.tail479ad.ts.net:18188/control/` through Tailscale. The
+existing `home.arpa` split DNS also resolves the LAN name over the advertised
+subnet route; clients using it need the HomeCompute CA as usual. UniFi has an
+A record for `comfyui.home.arpa` pointing to `192.168.30.122`.
+
+Start advertises text unavailability, waits for protected workflows, Mattermost
+turns, and text requests to finish, stops the configured text container, and
+starts the image-only Qwen Image Edit workflow. Stop restores the text model after
+checking the image queue. An hour without an accepted, queued, running, or
+completed image job triggers the same return; opening the controls does not
+extend the timer. Neither manual Stop nor idle expiry interrupts image jobs.
+While starting, the controls show active workflow, agent-turn and LLM-request
+counts so a protected-work wait is distinguishable from image-service startup.
+Daythread's new background requests wait immediately when Start is requested;
+set `DAYTHREAD_CLIENT_IP` to its control-plane clients-network address. Existing
+protected workflow turns can finish their remaining model calls first.
+Use **Open ComfyUI** to load the prepared Qwen Image Edit workflow, upload a
+photo, enter an edit instruction, and click Run. The optional NSFW adapter is
+off by default. Images, workflows, and settings persist on the Spark.
+
+The text service is selected in root-owned `/etc/homecompute/image-mode.json`;
+workflows use `/llm/status` and the stable model alias rather than a specific
+checkpoint name. n8n holds original execution inputs in durable two-minute
+Wait loops, then continues once readiness returns. Mattermost leaves incoming
+messages in its native durable queue until the same readiness check succeeds.
+Already-started work is drained rather than replayed.
+
+The lifecycle controller binds only to Spark loopback. The two fixed image
+ports reach Caddy through a dedicated restricted SSH forward; Homepage gets
+an embedded controls page rather than Docker access. Prepare the Spark with
+`scripts/prepare-qwen-image-comfyui-spark.sh`, and install the home-core
+forwards and private Serve listener with `sudo python3 scripts/setup-comfyui-access.py`.
+The regular home-core deployment also reinstalls these persistent services.
+
 ## Validate and run
 
 From the repository checkout on `home-core`:

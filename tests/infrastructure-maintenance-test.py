@@ -209,6 +209,19 @@ class MaintenanceTests(unittest.TestCase):
             self.controller.run(receipt['plan_id'])
         self.assertEqual([], self.calls)
 
+    def test_mcp_wrapper_only_allows_exact_local_candidate_operations(self):
+        command = maintenance.MCP_COMMAND
+        for verb in ('snapshot', 'apply', 'verify'):
+            maintenance.argv_scope([command, verb, 'a' * 32], 'home-core')
+        for argv in ([command, 'apply', '../candidate'], [command, 'prepare', 'aula-mcp'],
+                     [command, 'apply', 'a' * 32, '--shell'], [command, 'apply', 'A' * 32]):
+            with self.assertRaises(ValueError):
+                maintenance.argv_scope(argv, 'home-core')
+        for target, local in (('home-spark', 'home-core'), ('home-assistant', 'home-core'),
+                              ('home-core', 'home-spark')):
+            with self.assertRaises(ValueError):
+                maintenance.argv_scope([command, 'apply', 'a' * 32], target, local)
+
     def test_invalid_schema_scope_argv_and_remote_targets(self):
         for mutation in (
                 lambda p: p.update(steps=[['/bin/sh', '-c', 'id']]),

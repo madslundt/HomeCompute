@@ -15,7 +15,7 @@ import sys
 from typing import Any, Callable
 
 import homecompute
-from maintenance_observations import SOURCES, TTL, project, semantic_evidence
+from maintenance_observations import SOURCES, TTL, project, semantic_evidence, ttl as source_ttl
 import homeassistant_observations as ha
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -109,7 +109,7 @@ def check(system: dict[str, Any], check_id: str, status: str, evidence: dict[str
           now: datetime, *, updates: bool = False) -> dict[str, Any]:
     ttl = system["update_ttl_seconds" if updates else "health_ttl_seconds"]
     if check_id.split(".")[0] in SOURCES:
-        ttl = TTL
+        ttl = source_ttl(check_id.split(".")[0])
     return {"system_id": system["id"], "check_id": check_id,
             "stable_key": system["id"] + ":" + check_id,
             "category": "updates" if updates else "health", "status": status,
@@ -247,6 +247,22 @@ if MAINTENANCE:
    payload['maintenance_report']=json.loads(os.read(fd,1048577))
   finally: os.close(fd)
  except (OSError,ValueError): pass
+ try:
+  fd=os.open('/var/lib/homecompute-mcp-maintenance-public/report.json',os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022 or info.st_size>65536: raise ValueError('report budget')
+   payload['mcp_update_report']=json.loads(os.read(fd,65537))
+  finally: os.close(fd)
+ except (OSError,ValueError): pass
+ try:
+  fd=os.open('/var/lib/homecompute-host-maintenance-public/report.json',os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022 or info.st_size>131072: raise ValueError('report budget')
+   payload['host_update_report']=json.loads(os.read(fd,131073))
+  finally: os.close(fd)
+ except (OSError,ValueError): pass
 print(json.dumps(payload))
 '''
 
@@ -342,6 +358,8 @@ def collect(system: dict[str, Any], runner: Callable[..., Any] = homecompute.def
                 if isinstance(payload, dict):
                     raw["unit_states"] = payload.get("unit_states")
                     raw["maintenance_report"] = payload.get("maintenance_report")
+                    raw["mcp_update_report"] = payload.get("mcp_update_report")
+                    raw["host_update_report"] = payload.get("host_update_report")
             except json.JSONDecodeError: pass
     return raw
 

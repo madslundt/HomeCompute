@@ -77,6 +77,117 @@ class GatewayCertificateTests(unittest.TestCase):
 
 
 class NetworkCredentialTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def video_credential(self, snapshots):
+        with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
+            target = Path(directory) / 'key'
+            target.write_text('sk-synthetic-network\n')
+            stack.enter_context(patch.object(NETWORK, 'KEY_FILE', target))
+            stack.enter_context(patch.object(NETWORK.os, 'geteuid', return_value=0))
+            stack.enter_context(patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=0o100600, st_uid=0)))
+            stack.enter_context(patch.object(NETWORK, 'inspect_existing_key', side_effect=snapshots))
+            internal = stack.enter_context(patch.object(NETWORK.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, '', '')))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            yield target, internal
+
+    def test_video_migration_appends_only_video_and_is_idempotent(self):
+        for base in (NETWORK.MODELS, NETWORK.TTS_MODELS, [*NETWORK.MODELS, 'embedding'], [*NETWORK.TTS_MODELS, 'embedding']):
+            old = {'models': base, 'expires': None, 'user_id': 'network-inference'}
+            new = {**old, 'models': [*base, 'video']}
+            with self.subTest(base=base), self.video_credential([old, new, new, new]) as (target, internal):
+                NETWORK.provision(enable_video=True)
+                NETWORK.provision(enable_video=True)
+                NETWORK.provision()
+                self.assertEqual(internal.call_count, 1)
+                self.assertIn(repr(new['models']), internal.call_args.kwargs['input'])
+                self.assertNotIn('sk-synthetic-network', ' '.join(internal.call_args.args[0]))
+                self.assertEqual(target.read_text(), 'sk-synthetic-network\n')
+
+    def test_later_embedding_and_tts_migrations_preserve_video(self):
+        for base, changes, options in (([*NETWORK.MODELS, 'video'], ['embedding', 'video'], {'enable_embedding': True}),
+                                      ([*NETWORK.MODELS, 'embedding', 'video'], ['plapre', 'embedding', 'video'], {'enable_plapre': True})):
+            old = {'models': base, 'expires': None, 'user_id': 'network-inference'}
+            new = {**old, 'models': [*NETWORK.MODELS, *changes]}
+            with self.subTest(options=options), self.video_credential([old, new, new]) as (_, internal):
+                NETWORK.provision(**options)
+                NETWORK.provision(**options)
+                self.assertEqual(internal.call_count, 1)
+                self.assertIn(repr(new['models']), internal.call_args.kwargs['input'])
+
+    def test_video_migration_rejects_foreign_malformed_or_legacy_scope(self):
+        changes = [{'models': value} for value in (['*'], NETWORK.TEXT_MODELS, NETWORK.STT_MODELS,
+                   [*NETWORK.MODELS, 'assistant-canary'], [*NETWORK.STT_MODELS, 'video'],
+                   [*NETWORK.MODELS, 'video', 'video'], None, 'video', [[]])]
+        changes += [{'user_id': 'foreign'}, {'expires': '2027-01-01'}]
+        for change in changes:
+            old = {'models': NETWORK.MODELS, 'expires': None, 'user_id': 'network-inference', **change}
+            with self.subTest(change=change), self.video_credential([old]) as (_, internal):
+                with self.assertRaises(SystemExit):
+                    NETWORK.provision(enable_video=True)
+                internal.assert_not_called()
+        with patch.object(NETWORK.os, 'geteuid', return_value=0), self.assertRaisesRegex(SystemExit, 'one model-scope'):
+            NETWORK.provision(enable_video=True, enable_embedding=True)
+
+    def test_video_migration_verifies_backend_scope_owner_and_expiry(self):
+        old = {'models': [*NETWORK.TTS_MODELS, 'embedding'], 'expires': None, 'user_id': 'network-inference'}
+        for changes in ({'models': old['models']}, {'models': ['*']}, {'user_id': 'foreign'}, {'expires': '2027-01-01'}):
+            wrong = {**old, 'models': [*old['models'], 'video'], **changes}
+            with self.subTest(changes=changes), self.video_credential([old, wrong]) as (target, internal):
+                with self.assertRaises(SystemExit):
+                    NETWORK.provision(enable_video=True)
+                self.assertEqual(internal.call_count, 1)
+                self.assertEqual(target.read_text(), 'sk-synthetic-network\n')
+
+    def test_video_bootstrap_is_explicit_and_private(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'key'
+            result = subprocess.CompletedProcess([], 0, json.dumps({'key': 'sk-new-video', 'models': [*NETWORK.MODELS, 'video'], 'expires': None}), '')
+            with patch.object(NETWORK, 'KEY_FILE', target), patch.object(NETWORK.os, 'geteuid', return_value=0), \
+                    patch.object(NETWORK.subprocess, 'run', return_value=result), contextlib.redirect_stdout(io.StringIO()) as output:
+                NETWORK.provision(enable_video=True)
+            self.assertEqual(target.read_text(), 'sk-new-video\n')
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+            self.assertNotIn('sk-new-video', output.getvalue())
+
+    def test_embedding_migration_preserves_existing_scope_and_is_idempotent(self):
+        for baseline in (NETWORK.MODELS, NETWORK.TTS_MODELS):
+            with self.subTest(baseline=baseline), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / 'key'
+                target.write_text('sk-synthetic-network\n')
+                old = {'models': baseline, 'expires': None, 'user_id': 'network-inference'}
+                new = {**old, 'models': [*baseline, 'embedding']}
+                with patch.object(NETWORK, 'KEY_FILE', target), \
+                     patch.object(NETWORK.os, 'geteuid', return_value=0), \
+                     patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=0o100600, st_uid=0)), \
+                     patch.object(NETWORK, 'inspect_existing_key', side_effect=[old, old, new, new]), \
+                     patch.object(NETWORK.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, '', '')) as internal, \
+                     contextlib.redirect_stdout(io.StringIO()) as output:
+                    NETWORK.provision()
+                    internal.assert_not_called()
+                    NETWORK.provision(enable_embedding=True)
+                    NETWORK.provision(enable_embedding=True)
+                    self.assertEqual(internal.call_count, 1)
+                    source = internal.call_args.kwargs['input']
+                    self.assertIn(repr([*baseline, 'embedding']), source)
+                    self.assertNotIn('sk-synthetic-network', ' '.join(internal.call_args.args[0]))
+                    self.assertNotIn('sk-synthetic-network', output.getvalue())
+
+    def test_embedding_migration_rejects_unexpected_credentials(self):
+        for changes in ({'models': ['*']}, {'models': [*NETWORK.MODELS, 'assistant-canary']},
+                        {'user_id': 'another-owner'}, {'expires': '2026-12-01'}):
+            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / 'key'
+                target.write_text('sk-synthetic-network\n')
+                info = {'models': NETWORK.MODELS, 'expires': None, 'user_id': 'network-inference', **changes}
+                with patch.object(NETWORK, 'KEY_FILE', target), \
+                     patch.object(NETWORK.os, 'geteuid', return_value=0), \
+                     patch.object(Path, 'lstat', return_value=SimpleNamespace(st_mode=0o100600, st_uid=0)), \
+                     patch.object(NETWORK, 'inspect_existing_key', return_value=info), \
+                     patch.object(NETWORK.subprocess, 'run') as internal:
+                    with self.assertRaises(SystemExit):
+                        NETWORK.provision(enable_embedding=True)
+                    internal.assert_not_called()
+
     def test_whisper_migration_is_explicit_scoped_and_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / 'key'
@@ -277,7 +388,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "assistant-canary", "stt-danish", "whisper-turbo", "plapre"}, names)
+        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "assistant-canary", "stt-danish", "whisper-turbo", "plapre", "embedding", "video"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 

@@ -32,6 +32,10 @@ def snapshot(system, *, failing=False):
             "containers": [{"name": s["name"], "status": "Restarting (1) 3 seconds ago" if failing else "Up 8 days (healthy)"}
                            for s in system["containers"]],
             "platform_updates": None,
+            "host_update_report": {"schema_version": 1, "host": system["target"], "generated_at": MONITOR.iso(NOW),
+                "items": [{"component": "fixture", "kind": "packages", "status": "current"}], "summary": {"current": 1}},
+            "mcp_update_report": {"schema_version": 1, "host": "home-core", "generated_at": MONITOR.iso(NOW),
+                "components": [{"component": c, "status": "current"} for c in ("aula-mcp", "tilbudstrolden-mcp")]},
             "maintenance_report": {"schema_version": 1, "mode": "observe-only", "host": system["target"],
                 "generated_at": MONITOR.iso(NOW),
                 "package_updates": {"status": "current", "candidate_count": 0},

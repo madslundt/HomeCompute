@@ -19,6 +19,7 @@
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix
     ../../modules/nixos/openclaw.nix
+    ../../modules/nixos/mattermost.nix
     ../../modules/nixos/agents-vm.nix
     ../../modules/nixos/agents-vm-backup.nix
     ../../modules/nixos/docker.nix
@@ -34,6 +35,7 @@
   ];
 
   networking.hostName = "home-core";
+  homecompute.mattermost.enable = true;
 
   # Preserve the installed DHCP connection while bootstrapping over LAN SSH.
   # enp44s0 (84:47:09:79:58:b1) is cabled; enp45s0 is reserved for GB10.

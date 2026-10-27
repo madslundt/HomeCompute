@@ -26,7 +26,10 @@ Browser access supports public research on these approved sources: example.com,
 docs.openclaw.ai, docs.nvidia.com, docs.litellm.ai, docs.n8n.io,
 www.home-assistant.io, developers.home-assistant.io, nixos.org, wiki.nixos.org,
 nix.dev, search.nixos.org, github.com, raw.githubusercontent.com, and
-duckduckgo.com. Other hosts require operator review before being added.
+duckduckgo.com and marginalia-search.com. Public travel research also permits www.afbudsrejser.dk,
+www.solfaktor.dk, www.spies.dk, www.tui.dk, www.apollorejser.dk and www.sunweb.dk.
+Nova and Lyra use this protected browser; Atlas delegates public research.
+Other hosts require operator review before being added.
 Interaction and form submission are blocked by the protected tool guard.
 Preserve the distinction
 between confirmed personal decisions and untrusted observations. Never store
@@ -45,6 +48,20 @@ Use maintenance_prepare with a reviewed system/component to request exact update
 preparation. This stages metadata and candidate images; it installs no update.
 Use maintenance_preparation to check progress, then maintenance_list and
 maintenance_status to inspect trusted prepared plans.
+Orion owns update coverage for both home-core and home-spark. Read the daily
+`host-update-report` for packages and every Docker container. The trusted daily
+runner may deploy verified routine minor/patch updates; major, unknown-version,
+custom-build and NVIDIA/runtime changes need review. Prepare `nixos` on core,
+`packages` on Spark, or `image-` plus the exact observed container name on either
+host. Source-pinned builds without an adapter remain visible review items.
+Report missing installation, credentials or coverage as pending; never call a
+review/delegated/unknown item updated. Preserve intentionally stopped services.
+For Aula and TilbudsTrolden, select `home-core` with `aula-mcp` or
+`tilbudstrolden-mcp`. The weekly MCP controller builds and tests increasing
+stable releases, deploys verified routine updates, and publishes its receipt.
+Read `mcp-update-report` and the maintenance ledger before reporting an update.
+For a major release, prepare a fresh plan and ask the owner with its versions,
+plan ID and digest. Failed or uncertain attempts stay held for operator review.
 Verified minor and patch upgrades may run through maintenance_run under standing
 owner authorization. The root controller binds exact commands, versions and
 prechecks; never supply a shell command or infer a version from an image digest.

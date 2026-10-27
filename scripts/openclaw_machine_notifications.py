@@ -4,6 +4,8 @@ from __future__ import annotations
 from typing import Any
 
 LABELS = {"package-update-report": "Packages", "docker-image-report": "Container images",
+          "mcp-update-report": "MCP update review", "mcp-update-report.coverage": "MCP update coverage",
+          "host-update-report": "Host software updates", "host-update-report.coverage": "Host update coverage",
           "package-update-report.coverage": "Package update coverage",
           "docker-image-report.coverage": "Container image coverage",
           "package-update-report.reboot-required": "Reboot required",
@@ -48,6 +50,19 @@ def summary_line(kind: str, observation: dict[str, Any]) -> str:
             detail += "; package catalog, installed status unverified"
     elif check == "docker-image-report" and "candidate_count" in evidence:
         detail = f"{evidence['candidate_count']} image updates available"
+    elif check == "mcp-update-report" and "candidate_count" in evidence:
+        details = []
+        if evidence["candidate_count"]:
+            details.append(f"{evidence['candidate_count']} major updates require approval; inspect maintenance_list, "
+                           "then maintenance_prepare a fresh exact plan before requesting approval")
+        if evidence.get("count"):
+            details.append(f"{evidence['count']} updates held for review after failures or incomplete checks")
+        detail = "; ".join(details) or "updates current"
+    elif check == "host-update-report" and "candidate_count" in evidence:
+        detail = (f"{evidence['candidate_count']} candidates need review or approval; "
+                  f"{evidence.get('count', 0)} updates blocked or uncertain. "
+                  "Inspect maintenance_list, then maintenance_prepare a fresh exact plan for "
+                  "image-<container>, nixos, or packages before requesting approval")
     elif check.endswith(".coverage") and "count" in evidence:
         # Package coverage is a flag; empty Docker inventory also uses a
         # sentinel. Do not imply these are exact missing-source/image totals.
@@ -73,5 +88,12 @@ def summary_line(kind: str, observation: dict[str, Any]) -> str:
 def render(system: str, members: list[tuple[str, dict[str, Any]]]) -> str:
     lines = [system + " — machine summary"]
     lines.extend(summary_line(kind, body["observation"]) for kind, body in members)
-    lines.extend(("", "Review only; actions require operator approval."))
+    checks = [body["observation"]["check_id"] for _, body in members]
+    footer = ("Routine patch/minor updates deploy automatically after checks; major changes, uncertain results, "
+              "and build gaps stay held for review and approval."
+              if any(check.startswith("host-update-report") for check in checks)
+              else "MCP patch/minor updates deploy automatically after checks; major updates require approval."
+              if any(check.startswith("mcp-update-report") for check in checks)
+              else "Review only; actions require operator approval.")
+    lines.extend(("", footer))
     return "\n".join(lines)

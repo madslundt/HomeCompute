@@ -31,6 +31,18 @@
         description: Find books and request downloads
 
 - AI assistants:
+    - Spark models:
+        id: homecore-comfyui
+        icon: mdi-auto-fix
+        href: https://models.home.arpa/control/
+        description: Text, images and video · LLM returns after 30 minutes idle
+
+    - Mattermost:
+        id: homecore-mattermost
+        icon: mattermost.png
+        href: https://mattermost.home.arpa/
+        description: Chat with your agent team and collaborate on projects
+
     - Open WebUI:
         id: homecore-open-webui
         icon: open-webui.png

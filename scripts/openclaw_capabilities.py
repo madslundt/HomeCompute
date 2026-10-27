@@ -139,11 +139,14 @@ class Capabilities:
     """Protocol-compatible finite task ledger backed by existing fixed-origin transport."""
 
     def __init__(self, tasks: Tasks, infrastructure: Any = None, actions: dict[str, str] | None = None,
-                 home_assistant: HomeAssistant | None = None, maintenance: Maintenance | None = None):
+                 home_assistant: HomeAssistant | None = None, maintenance: Maintenance | None = None,
+                 services: Any = None, operations_search: Any = None):
         self.tasks, self.infrastructure = tasks, infrastructure
         self.actions = Actions(tasks, actions) if actions else None
         self.home_assistant = home_assistant
         self.maintenance = maintenance
+        self.services = services
+        self.operations_search = operations_search
 
     def admitted(self, row: dict[str, Any]) -> bool:
         return isinstance(row, dict) and row.get("project") in self.tasks.projects

@@ -34,11 +34,21 @@ USER = 'homecompute-openclaw'
 PREFIX = 'homecompute-openclaw-'
 PYTHON = Path('/run/current-system/sw/bin/python3')
 FILES = (
+    'scripts/embedding_client.py', 'scripts/semantic_retrieval.py',
+    'scripts/semantic_sources.py', 'scripts/semantic_operations.py',
+    'scripts/semantic-index.py',
+    'docs/openclaw-operations.md', 'docs/openclaw-tools.md',
+    'docs/homecompute-operations.md', 'docs/local-model-access.md',
+    'docs/operations/shelfmark-direct-download-repair.md',
     'scripts/openclaw-communication.py', 'scripts/openclaw-telegram.py',
     'scripts/openclaw-chat.py', 'scripts/openclaw_notifications.py',
     'scripts/openclaw_machine_notifications.py', 'scripts/openclaw_tasks.py',
     'scripts/openclaw_maintenance.py',
-    'scripts/openclaw_capabilities.py', 'scripts/homeassistant_actions.py',
+    'scripts/openclaw_capabilities.py', 'scripts/openclaw_services.py', 'scripts/homeassistant_actions.py',
+    'scripts/openclaw_household.py', 'scripts/openclaw_household_requests.py',
+    'scripts/openclaw_household_shopping.py', 'scripts/openclaw_household_storage.py',
+    'scripts/openclaw_calendar.py', 'scripts/openclaw_calendar_events.py',
+    'scripts/openclaw_ha_websocket.py',
     'scripts/infrastructure_maintenance.py', 'scripts/infrastructure_update_policy.py',
     'scripts/maintenance_plan_preparation.py',
     'deploy/codex-worker/mcp_adapter.py', 'deploy/codex-worker/policy.py',
@@ -63,6 +73,9 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
     maintenance_args = ['--homepage-maintenance'] if Path('/opt/homecompute/homepage-maintenance/homepage_update_check.py').is_file() else []
     mcp_args = ['--mcp-tokens', str(CONFIG / 'native-mcp-tokens.json')] if (CONFIG / 'native-mcp-tokens.json').exists() else []
     ha_action_args = ['--ha-actions'] if mcp_args and Path('/etc/systemd/system.attached/homecompute-ha-actions.service').is_file() else []
+    service_args = ['--services', str(CONFIG / 'services.json')] if mcp_args and (CONFIG / 'services.json').exists() else []
+    household_args = ['--household', str(CONFIG / 'household.json')] if service_args and (CONFIG / 'household.json').exists() else []
+    calendar_args = ['--calendar', str(CONFIG / 'calendar.json')] if service_args and (CONFIG / 'calendar.json').exists() else []
     return {
         'adapter': [str(python), str(scripts / 'openclaw-communication.py'),
                     '--config', str(CONFIG / 'communication.json'),
@@ -71,7 +84,7 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                     '--task-transport', str(CONFIG / 'codex-task-transport.json'),
                     '--registry', str(registry),
                     '--infrastructure-registry', str(registry),
-                    '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args],
+                    '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args, *service_args, *household_args, *calendar_args],
         'telegram': [str(python), str(scripts / 'openclaw-telegram.py'), 'run',
                      '--config', str(CONFIG / 'telegram.json'),
                      '--tokens', str(CONFIG / 'telegram-tokens.json'),
@@ -250,6 +263,23 @@ def validate_ready(uid: int, telegram: bool = False) -> None:
         private_file(CONFIG / name, uid)
     if (CONFIG / 'native-mcp-tokens.json').exists():
         private_file(CONFIG / 'native-mcp-tokens.json', uid)
+    if (CONFIG / 'services.json').exists():
+        services = private_file(CONFIG / 'services.json', uid)
+        if services != {'schema_version': 1, 'tavily_token_file': str(CONFIG / 'tavily-search-token')}:
+            raise ValueError('fixed private service configuration required')
+        private_file(CONFIG / 'tavily-search-token', uid, json_object=False)
+    if (CONFIG / 'household.json').exists():
+        household = private_file(CONFIG / 'household.json', uid)
+        if household != {'schema_version': 1, 'ha_token_file': str(CONFIG / 'household-ha-token')}:
+            raise ValueError('fixed private household configuration required')
+        private_file(CONFIG / 'household-ha-token', uid, json_object=False)
+    if (CONFIG / 'calendar.json').exists():
+        calendar = private_file(CONFIG / 'calendar.json', uid)
+        if calendar != {'schema_version': 1, 'bridge_token_file': str(CONFIG / 'calendar-route-token')}:
+            raise ValueError('fixed private calendar configuration required')
+        if not (CONFIG / 'services.json').exists() or not (CONFIG / 'native-mcp-tokens.json').exists():
+            raise ValueError('calendar tools require authenticated native service transport')
+        private_file(CONFIG / 'calendar-route-token', uid, json_object=False)
     if (CONFIG / 'home-assistant.json').exists():
         ha = private_file(CONFIG / 'home-assistant.json', uid)
         token_path = Path(ha.get('token_file', ''))
@@ -289,6 +319,8 @@ def source_bundle(source: Path) -> tuple[dict[str, bytes], str]:
         content = path.read_bytes()
         if name.endswith('.py'):
             compile(content, name, 'exec')
+        elif name.endswith('.md'):
+            content.decode('utf-8')
         elif not isinstance(json.loads(content), dict):
             raise ValueError('registry object required')
         files[name] = content
@@ -337,11 +369,18 @@ def install(files: dict[str, bytes]) -> None:
     for path in (HOME, CONFIG, STATE, STATE / 'adapter', STATE / 'telegram', STATE / 'update-feed'):
         protected_directory(path, info.pw_uid, True, True, info.pw_gid)
     for path in (DEST.parent.parent, DEST.parent, DEST, DEST / 'scripts', DEST / 'config',
+                 DEST / 'docs', DEST / 'docs/operations',
                  DEST / 'deploy', DEST / 'deploy/codex-worker',
                  UNIT_DIR, UNIT_DIR / 'multi-user.target.wants', UNIT_DIR / 'timers.target.wants'):
         protected_directory(path, 0, False, True, 0)
     for name, content in files.items():
         write(DEST / name, content)
+    certificate = Path('/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt')
+    if certificate.is_file() and not certificate.is_symlink():
+        info = certificate.stat()
+        if info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError('Trusted gateway CA required')
+        write(DEST / 'config/embedding-ca.crt', certificate.read_bytes())
     for name in NAMES:
         write(UNIT_DIR / (PREFIX + name + '.service'), service(name).encode())
         enable(name, name in {'adapter', 'task-feed'})

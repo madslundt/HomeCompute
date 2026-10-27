@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026-10-21-plapre-openai-tts-candidate",
+  "catalog_version": "2026-10-27-ltx25-video",
   "runtime_profiles": {
     "vllm-qwen": {
       "family": "vllm",
@@ -116,6 +116,27 @@
       "capabilities": [
         "audio_transcription"
       ]
+    },
+    "tei-cpu": {
+      "family": "text-embeddings-inference",
+      "image": "ghcr.io/huggingface/text-embeddings-inference:cpu-1.9@sha256:2538ea1c9640d3763b15af668039d24172d063b42337b0c27796fc2be180c78d",
+      "supported_protocols": [
+        "embeddings"
+      ],
+      "capabilities": [
+        "embedding"
+      ]
+    },
+    "comfyui-ltx25": {
+      "family": "comfyui",
+      "supported_protocols": [
+        "videos"
+      ],
+      "capabilities": [
+        "video_generation"
+      ],
+      "source_url": "https://github.com/Lightricks/LTX-2",
+      "source_revision": "9ec55f9f22798a3198d9c923856824821bc3317e"
     }
   },
   "artifacts": {
@@ -268,6 +289,28 @@
       "qualification": {
         "automation": "candidate"
       }
+    },
+    "harrier-oss-v1-0.6b": {
+      "upstream_model_id": "microsoft/harrier-oss-v1-0.6b",
+      "revision": "f9b9dc8d367d443f2479d27aa5d8d2850c0774ee",
+      "tokenizer_revision": "f9b9dc8d367d443f2479d27aa5d8d2850c0774ee",
+      "code_revision": "f9b9dc8d367d443f2479d27aa5d8d2850c0774ee",
+      "license_id": "mit",
+      "quantization": "BF16",
+      "artifact_max_bytes": 1208014699,
+      "artifact_max_files": 11,
+      "max_context_tokens": 32768,
+      "embedding_dimensions": 1024,
+      "runtime_profiles": [
+        "tei-cpu"
+      ],
+      "capabilities": [
+        "embedding"
+      ],
+      "qualification": {
+        "embedding": "qualified"
+      },
+      "qualification_notes": "Operational qualification: Transformers float32 parity and Danish/English/German synthetic retrieval; top-one 2/3 and top-two 3/3, not broad retrieval-quality qualification."
     }
   },
   "deployments": {
@@ -454,7 +497,7 @@
         "ple_table": "FP8-mmap",
         "context_tokens": 262144,
         "kv_cache_dtype": "auto",
-        "kv_cache_memory_bytes": "16g",
+        "kv_cache_memory_bytes": "9g",
         "max_num_seqs": 8,
         "gpu_memory_utilization": 0.01,
         "mtp": 3,
@@ -475,6 +518,27 @@
         "chat_template_kwargs": {
           "enable_thinking": true
         }
+      }
+    },
+    "harrier-home-core-primary": {
+      "artifact": "harrier-oss-v1-0.6b",
+      "host_role": "home-core",
+      "network_scope": "private_local",
+      "runtime_profile": "tei-cpu",
+      "endpoint_env": "EMBEDDING_BASE_URL",
+      "served_model_name": "microsoft/harrier-oss-v1-0.6b",
+      "context_tokens": 2048,
+      "concurrency": 32,
+      "lifecycle": "resident",
+      "availability": "active",
+      "priority": 10,
+      "runtime_config": {
+        "dtype": "float32",
+        "pooling": "last-token",
+        "max_batch_requests": 1,
+        "max_client_batch_size": 16,
+        "max_batch_tokens": 4096,
+        "auto_truncate": false
       }
     }
   },
@@ -526,6 +590,25 @@
       "concurrency": 1,
       "lifecycle": "operator-on-demand",
       "availability": "candidate",
+      "priority": 1
+    }
+  },
+  "video_deployments": {
+    "ltx25-spark": {
+      "upstream_model_id": "Lightricks/LTX-2.5",
+      "revision": "49b093a39c19169a8a81721dcc541e07e945232f",
+      "code_revision": "9ec55f9f22798a3198d9c923856824821bc3317e",
+      "license_id": "ltx-2.x-community-license-agreement",
+      "runtime_profile": "comfyui-ltx25",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "endpoint_env": "VIDEO_GENERATION_BASE_URL",
+      "served_model_name": "ltx-2.5",
+      "quantization": "NVFP4",
+      "concurrency": 1,
+      "lifecycle": "operator-on-demand",
+      "availability": "active",
+      "qualification": "qualified",
       "priority": 1
     }
   }

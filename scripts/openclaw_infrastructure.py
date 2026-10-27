@@ -112,7 +112,19 @@ class Reader:
                 or not isinstance(raw.get("unit_states"), dict) or len(raw["unit_states"]) > 1000):
             raise ValueError("snapshot metadata is unbounded")
         selected = {key: raw.get(key) for key in ("schema_version", "host", "generated_at", "containers",
-                                                 "unit_states", "maintenance_report", "model_update_report")}
+                                                 "unit_states", "maintenance_report", "model_update_report", "host_update_report")}
+        if system["id"] == "home-core" and "host-update-report" in system["updates"]:
+            try:
+                selected["host_update_report"] = self.transport.read_report(
+                    Path('/var/lib/homecompute-host-maintenance-public/report.json'), 131072)
+            except (OSError, ValueError):
+                selected["host_update_report"] = None
+        if system["id"] == "home-core" and "mcp-update-report" in system["updates"]:
+            try:
+                selected["mcp_update_report"] = self.transport.read_report(
+                    Path('/var/lib/homecompute-mcp-maintenance-public/report.json'), 65536)
+            except (OSError, ValueError):
+                selected["mcp_update_report"] = None
         try:
             selected["host_metrics"] = host_metrics(raw.get("host_metrics"))
         except ValueError:

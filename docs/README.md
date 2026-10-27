@@ -1,5 +1,9 @@
 # HomeCompute documentation guide
 
+> **TensorFold assessment (2026-10-26):** keep the live UltraFast deployment.
+> The 512K TensorFold startup memory gate and deployed n8n structured-output
+> dependencies block replacement. See the [assessment](benchmarks/tensorfold-migration-assessment-2026-10-26.md).
+
 > **Live discovery 2026-10-09:** `automation-moe` now routes to Qwen3.8
 > Flash-Next. `home-core` is the K15, and Hermes is running in the agents VM.
 > An approved synthetic [OpenClaw sandbox](openclaw-nemoclaw.md) now exists in

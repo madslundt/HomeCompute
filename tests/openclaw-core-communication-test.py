@@ -105,6 +105,63 @@ class CoreCommunicationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             setup.validate_ready(self.uid)
 
+    def test_optional_services_require_fixed_private_configuration_and_native_mcp(self):
+        self.assertNotIn('--services', setup.commands()['adapter'])
+        self.private(self.config / 'services.json', {'schema_version': 1,
+                     'tavily_token_file': str(self.config / 'tavily-search-token')})
+        self.private(self.config / 'tavily-search-token', {})
+        self.assertNotIn('--services', setup.commands()['adapter'])
+        self.private(self.config / 'native-mcp-tokens.json', {})
+        adapter = setup.commands()['adapter']
+        self.assertEqual(adapter[adapter.index('--services') + 1], str(self.config / 'services.json'))
+        setup.validate_ready(self.uid)
+        self.assertIn('scripts/openclaw_services.py', setup.FILES)
+        (self.config / 'tavily-search-token').chmod(0o644)
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        (self.config / 'tavily-search-token').chmod(0o600)
+        self.private(self.config / 'services.json', {'schema_version': 1, 'tavily_token_file': '/tmp/token'})
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+
+    def test_household_is_optional_fixed_private_and_requires_services(self):
+        self.private(self.config / 'household.json', {'schema_version': 1,
+                     'ha_token_file': str(self.config / 'household-ha-token')})
+        self.private(self.config / 'household-ha-token', {})
+        self.assertNotIn('--household', setup.commands()['adapter'])
+        self.private(self.config / 'native-mcp-tokens.json', {})
+        self.private(self.config / 'services.json', {'schema_version': 1,
+                     'tavily_token_file': str(self.config / 'tavily-search-token')})
+        self.private(self.config / 'tavily-search-token', {})
+        adapter = setup.commands()['adapter']
+        self.assertEqual(adapter[adapter.index('--household') + 1], str(self.config / 'household.json'))
+        setup.validate_ready(self.uid)
+        self.assertIn('scripts/openclaw_ha_websocket.py', setup.FILES)
+        (self.config / 'household-ha-token').chmod(0o644)
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        (self.config / 'household-ha-token').chmod(0o600)
+        self.private(self.config / 'household.json', {'schema_version': 1, 'ha_token_file': '/tmp/key'})
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+
+    def test_calendar_requires_authenticated_services_and_fixed_private_token(self):
+        self.private(self.config / 'calendar.json', {'schema_version': 1,
+                     'bridge_token_file': str(self.config / 'calendar-route-token')})
+        self.private(self.config / 'calendar-route-token', {})
+        self.assertNotIn('--calendar', setup.commands()['adapter'])
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        self.private(self.config / 'native-mcp-tokens.json', {})
+        self.private(self.config / 'services.json', {'schema_version': 1,
+                     'tavily_token_file': str(self.config / 'tavily-search-token')})
+        self.private(self.config / 'tavily-search-token', {})
+        adapter = setup.commands()['adapter']
+        self.assertEqual(adapter[adapter.index('--calendar') + 1], str(self.config / 'calendar.json'))
+        setup.validate_ready(self.uid)
+        for name in ('openclaw_calendar.py', 'openclaw_calendar_events.py'):
+            self.assertIn('scripts/' + name, setup.FILES)
+        (self.config / 'calendar-route-token').chmod(0o644)
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        (self.config / 'calendar-route-token').chmod(0o600)
+        self.private(self.config / 'calendar.json', {'schema_version': 1, 'bridge_token_file': '/tmp/key'})
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+
     def test_root_snapshot_is_finite_and_has_only_public_report_write_access(self):
         unit = setup.service('machine-status')
         for field in ('Type=oneshot', 'User=root', 'Group=root', 'TimeoutStartSec=12s',
@@ -179,7 +236,9 @@ class CoreCommunicationTest(unittest.TestCase):
         with patch.object(setup, 'protected_directory', side_effect=directory), \
              patch.object(setup, 'account', return_value=SimpleNamespace(pw_uid=self.uid, pw_gid=os.getgid())), \
              patch.object(setup, 'call', return_value=SimpleNamespace(stdout='inactive')) as call:
-            setup.install({name: b'VALUE = 1\n' for name in setup.FILES})
+            files = {name: b'# Reviewed runbook\nRead current state before repair.\n' if name.endswith('.md')
+                     else b'{}' if name.endswith('.json') else b'VALUE = 1\n' for name in setup.FILES}
+            setup.install(files)
         self.assertFalse(any(c.args[:2] == ('systemctl', 'start') for c in call.call_args_list))
         wants = setup.UNIT_DIR / 'multi-user.target.wants'
         self.assertTrue((wants / 'homecompute-openclaw-adapter.service').is_symlink())
@@ -191,6 +250,9 @@ class CoreCommunicationTest(unittest.TestCase):
         self.assertTrue((setup.UNIT_DIR / 'timers.target.wants/homecompute-openclaw-machine-status.timer').is_symlink())
         self.assertEqual(setup.TMPFILES.read_text(), f'd {setup.REPORTS} 0755 root root -\n')
         self.assertEqual(json.loads((self.state / 'telegram/telegram-cursor.json').read_text())['offset'], 37)
+        for name in setup.FILES:
+            if name.endswith('.md'):
+                self.assertEqual((setup.DEST / name).read_bytes(), files[name])
 
     def test_machine_snapshot_precedes_adapter_activation_and_receiver_is_untouched(self):
         with patch.object(setup, 'account', return_value=SimpleNamespace(pw_uid=self.uid)), \
@@ -230,7 +292,8 @@ class CoreCommunicationTest(unittest.TestCase):
         for name in setup.FILES:
             path = source / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text('{}' if name.endswith('.json') else 'VALUE = 1\n')
+            path.write_text('{}' if name.endswith('.json') else '# Reviewed runbook\nRead current state.\n'
+                            if name.endswith('.md') else 'VALUE = 1\n')
             path.chmod(0o644)
         _, before = setup.source_bundle(source)
         path = source / setup.FILES[0]
@@ -241,6 +304,21 @@ class CoreCommunicationTest(unittest.TestCase):
         path.symlink_to(source / setup.FILES[1])
         with self.assertRaises(ValueError):
             setup.source_bundle(source)
+
+    def test_reviewed_runbooks_are_bundled_as_utf8_text_with_distinct_digest(self):
+        source = self.root / 'source'; source.mkdir(mode=0o700)
+        for name in setup.FILES:
+            path = source / name; path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('{}' if name.endswith('.json') else '# Reviewed runbook\nLæs frisk tilstand.\n'
+                            if name.endswith('.md') else 'VALUE = 1\n')
+            path.chmod(0o644)
+        files, before = setup.source_bundle(source)
+        runbook = next(name for name in setup.FILES if name.endswith('.md'))
+        self.assertEqual(files[runbook].decode(), '# Reviewed runbook\nLæs frisk tilstand.\n')
+        (source / runbook).write_text('# Reviewed runbook\nChanged reviewed instruction.\n')
+        self.assertNotEqual(setup.source_bundle(source)[1], before)
+        (source / runbook).write_bytes(b'\xff')
+        with self.assertRaises(ValueError): setup.source_bundle(source)
 
 
 if __name__ == '__main__':
