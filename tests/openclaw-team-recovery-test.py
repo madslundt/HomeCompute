@@ -5,12 +5,35 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('team_recovery', ROOT / 'scripts/recover-openclaw-team.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 class TeamRecoveryTests(unittest.TestCase):
+    def test_native_mcp_rebind_preserves_other_policy_and_uses_existing_provider_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=Mock(state=Path(tmp),openshell='/fixed/openshell');ctx.observe.return_value='Ready'
+            tx=m.RetainedTransaction(ctx,'a'*64);tx.inspect=Mock()
+            original={'version':1,'network_policies':{'retained':{'name':'retained'}}}
+            tx.command=Mock(side_effect=lambda args,label,**kwargs:json.dumps({'policy':original}).encode() if label=='read-replacement-base-policy' else b'')
+            tx.attach_mcp()
+            result=json.loads((Path(tmp)/'retained-mcp-policy.yaml').read_text())
+            self.assertEqual(result['network_policies']['retained'],original['network_policies']['retained'])
+            endpoint=result['network_policies']['mcp_bridge_homecompute']['endpoints'][0]
+            self.assertEqual(endpoint['allowed_ips'],['10.77.20.1'])
+            self.assertEqual(endpoint['credential_binding'],{'provider':'agent-openclaw-mcp-homecompute'})
+            self.assertTrue(endpoint['mcp']['strict_tool_names'])
+            self.assertFalse(endpoint['mcp']['allow_all_known_mcp_methods'])
+            calls=[x.args[0] for x in tx.command.call_args_list]
+            self.assertTrue(any('attach' in x and 'agent-openclaw-mcp-homecompute' in x for x in calls))
+            self.assertFalse(any(x in ('create','update','delete') for args in calls for x in args))
+            original['network_policies']['mcp_bridge_homecompute']={'unknown':'requires review'}
+            tx.command.reset_mock()
+            with self.assertRaises(ValueError):tx.attach_mcp()
+            self.assertEqual(tx.command.call_count,1)
+
     def config(self):
         return {'models':{'providers':{'inference':{'baseUrl':'https://inference.local/v1','apiKey':'unused'}}},
                 'proxy':{'secret':'synthetic-old'},'gateway':{'auth':{'token':'synthetic-old'},'reload':{'mode':'off'}},

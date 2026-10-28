@@ -139,6 +139,29 @@ class RetainedTransaction(BASE.Transaction):
         self.policy = None
         self.previous_auth = None
 
+    def attach_mcp(self):
+        self.ctx.check_registry()
+        self.inspect()
+        if self.ctx.observe()!='Ready':raise ValueError('exact-ready-native-required')
+        # The provider and its encrypted endpoint credential survive native
+        # replacement. Restore the existing binding; never recreate credentials.
+        raw=self.command([self.ctx.openshell,'policy','get','-g',BASE.GATEWAY,BASE.NAME,
+                          '--base','-o','json'],'read-replacement-base-policy')
+        current=json.loads(raw)['policy']
+        retained=json.loads((ROOT/'deploy/openclaw/nemoclaw/retained-mcp-route.json').read_bytes())
+        key='mcp_bridge_homecompute';expected=retained['network_policies'][key]
+        existing=current.get('network_policies',{}).get(key)
+        if existing is not None and existing!=expected:raise ValueError('existing-mcp-policy-requires-reconciliation')
+        self.command([self.ctx.openshell,'sandbox','provider','attach','-g',BASE.GATEWAY,
+                      BASE.NAME,'agent-openclaw-mcp-homecompute'],'reattach-existing-mcp-provider')
+        if existing is None:
+            candidate=copy.deepcopy(current);candidate.setdefault('network_policies',{})[key]=expected
+            target=self.ctx.state/'retained-mcp-policy.yaml'
+            BASE.atomic_json(target,candidate)  # JSON is a strict YAML subset.
+            self.ctx.check_registry()
+            self.command([self.ctx.openshell,'policy','set','-g',BASE.GATEWAY,BASE.NAME,
+                          '--policy',str(target),'--wait','--timeout','60'],'restore-fixed-native-mcp-policy',timeout=90)
+
     def verify_backup(self, directory):
         raw=(directory/'openclaw.json').read_bytes()
         if digest(raw) not in self.allowed_configs:
@@ -346,6 +369,7 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         self.command(['sudo', 'systemctl', 'daemon-reload'], 'dns-unit-reload')
         self.command(['sudo', 'systemctl', 'restart', 'homecompute-public-dns.service'], 'dns-replacement-start')
         self.stage('restore-declared-native-network')
+        self.attach_mcp()
         self.command([self.ctx.cli, BASE.NAME, 'mcp', 'restart', 'homecompute'], 'restore-existing-mcp-binding', timeout=240)
         for file, host in [('deploy/openclaw/tools/browser-policy.yaml','172.18.0.1'),
                            ('deploy/openclaw/mattermost-policy.yaml','home-core.tail479ad.ts.net'),
@@ -383,6 +407,7 @@ def main():
     parser.add_argument('--apply',action='store_true')
     parser.add_argument('--resume',action='store_true',help='Resume only a journaled, stopped replacement')
     parser.add_argument('--finish',action='store_true',help='Finish an already restored, Ready, paused team without restoring data again')
+    parser.add_argument('--restore-mcp-binding',action='store_true',help='Idempotently restore only the existing fixed native MCP provider binding')
     args=parser.parse_args()
     source_release(args.revision)
     if socket.gethostname() != 'agents' or os.getuid() != 1000 or not re.fullmatch('[0-9a-f]{64}',args.expected_config_sha256):
@@ -392,9 +417,15 @@ def main():
         for line in SUPERVISOR.private_file(Path('/etc/homecompute-openclaw')/name).decode().splitlines():
             if line and not line.startswith('#'):
                 key,value=line.split('=',1);env[key]=value.strip('"')
+    env['PATH']='/home/hermes-operator/.local/bin:/home/hermes-operator/.nvm/versions/node/v22.23.3/bin:/usr/local/bin:/usr/bin:/bin'
     if args.resume and args.finish:raise ValueError('choose-one-continuation-mode')
-    ctx=SUPERVISOR.Supervisor(env, operator_resume=args.resume or args.finish)
+    ctx=SUPERVISOR.Supervisor(env, operator_resume=args.resume or args.finish or args.restore_mcp_binding)
     tx=RetainedTransaction(ctx,args.expected_config_sha256)
+    if args.restore_mcp_binding:
+        if args.resume or args.finish:raise ValueError('choose-one-continuation-mode')
+        if args.apply:tx.attach_mcp()
+        print(json.dumps({'revision':args.revision,'existing_mcp_binding_restored':args.apply,'sandbox_id':ctx.uuid}))
+        return
     if not args.resume and not args.finish:
         tx.preflight()
     if not args.apply:
