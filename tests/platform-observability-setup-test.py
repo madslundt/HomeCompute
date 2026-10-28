@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+PROBE_STARTED = 1_700_000_000.0
 spec = importlib.util.spec_from_file_location('observability_setup', ROOT / 'scripts/setup-platform-observability.py')
 setup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(setup)
@@ -134,18 +135,22 @@ class ObservabilitySetupTest(unittest.TestCase):
                 return subprocess.CompletedProcess(arguments, 0, output, '')
             if arguments[:2] == ['systemctl', 'start'] and arguments[2] == setup.HEALTH + '.service':
                 paths['METRICS'].write_text('homecompute_platform_ready ' + ('0' if degraded else '1'))
+                os.utime(paths['METRICS'], (PROBE_STARTED + 1, PROBE_STARTED + 1))
                 return subprocess.CompletedProcess(arguments, int(degraded), '', '')
             if arguments[:2] == ['systemctl', 'start'] and arguments[2] == setup.MACHINE + '.service':
                 if fail_snapshot: raise subprocess.CalledProcessError(1, arguments)
                 source = json.loads((ROOT / 'config/system-monitoring.json').read_bytes())
                 names = next(row for row in source['systems'] if row['id'] == 'home-core')['containers']
                 paths['PUBLIC_SNAPSHOT'].write_text(json.dumps({'containers': names}))
+                os.utime(paths['PUBLIC_SNAPSHOT'], (PROBE_STARTED + 1, PROBE_STARTED + 1))
             return subprocess.CompletedProcess(arguments, 0, '', '')
         stack = ExitStack()
         for key, value in paths.items(): stack.enter_context(patch.object(setup, key, value))
         stack.enter_context(patch.object(setup, 'release'))
         stack.enter_context(patch.object(setup, 'protected'))
         stack.enter_context(patch.object(setup, 'call', side_effect=call))
+        # Simulated service output must use the same clock as the rollout guard.
+        stack.enter_context(patch.object(setup.time, 'time', return_value=PROBE_STARTED))
         stack.enter_context(patch.object(setup.os, 'fchown'))
         return stack, paths, calls, paths['PRIVATE_REGISTRY'].read_bytes()
 
@@ -213,6 +218,19 @@ class ObservabilitySetupTest(unittest.TestCase):
                 self.assertEqual(paths['PRIVATE_REGISTRY'].read_bytes(),original)
                 adapter=[c[1] for c in calls if len(c)>2 and c[2]=='homecompute-openclaw-adapter.service' and c[1] in {'stop','start'}]
                 self.assertEqual(adapter,['stop','start','stop','start'])
+
+    def test_stale_probe_evidence_rolls_back_before_adapter_reload(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            stack, paths, calls, original = self.lifecycle(Path(temporary), fail_snapshot=False)
+            with stack, patch.object(setup.time, 'time', return_value=PROBE_STARTED + 2):
+                _, digest = setup.bundle(ROOT)
+                with self.assertRaisesRegex(ValueError, 'fresh probe and snapshot evidence required'):
+                    setup.apply(ROOT, 'a' * 40, digest)
+                self.assertEqual(paths['PRIVATE_REGISTRY'].read_bytes(), original)
+                self.assertEqual(paths['READER_MODULE'].read_bytes(), self.original_reader())
+                self.assertFalse((paths['STATE'] / 'receipt.json').exists())
+                self.assertLess(calls.index(['systemctl', 'start', setup.MACHINE + '.service']),
+                                calls.index(['systemctl', 'start', 'homecompute-openclaw-adapter.service']))
 
     def test_retirement_refuses_unreconciled_base_unit(self):
         with tempfile.TemporaryDirectory() as temporary:
