@@ -286,6 +286,7 @@ def main() -> None:
     parser.add_argument("--mcp-tokens", type=Path, help="optional owner-private JSON with independent openclaw/hermes MCP credentials")
     parser.add_argument("--ha-actions", action="store_true", help="enable proposal/status/cancel IPC to the separate HA approval controller; no execution authority")
     parser.add_argument("--services", type=Path, help="private finite school/shopping/search facade configuration")
+    parser.add_argument("--integrations", type=Path, help="source-owned specialist MCP/API provider catalog")
     parser.add_argument("--household", type=Path, help="private finite HA shopping, discount-watch and storage configuration")
     parser.add_argument("--calendar", type=Path, help="private finite Google Calendar facade configuration")
     parser.add_argument("--homepage-maintenance", action="store_true", help="fixed read-only Homepage check request; no chat execution approval")
@@ -319,12 +320,17 @@ def main() -> None:
         parser.error("household tools require the finite services facade")
     if args.calendar and not args.services:
         parser.error("calendar tools require the finite services facade")
+    if args.integrations and not args.services:
+        parser.error("specialist integrations require authenticated finite service transport")
     from openclaw_household import Household
     household = Household(args.household, args.state) if args.household else None
     from openclaw_calendar import Calendar
     calendar = Calendar(args.calendar, args.state) if args.calendar else None
     from openclaw_services import Services
     services = Services(args.services, household, calendar) if args.services else None
+    if args.integrations:
+        from openclaw_integrations import Integrations, IntegrationServices
+        services = IntegrationServices(services, Integrations(args.integrations, args.state / 'integrations'))
     from semantic_operations import OperationsArchive
     operations_search = OperationsArchive(store, args.state / 'retrieval' / 'operations.sqlite3', ROOT) if mcp_tokens else None
     spec = importlib.util.spec_from_file_location("hc_chat", ROOT / "scripts/openclaw-chat.py")

@@ -45,6 +45,8 @@ FILES = (
     'scripts/openclaw_machine_notifications.py', 'scripts/openclaw_tasks.py',
     'scripts/openclaw_maintenance.py',
     'scripts/openclaw_capabilities.py', 'scripts/openclaw_services.py', 'scripts/homeassistant_actions.py',
+    'scripts/openclaw_integrations.py', 'scripts/openclaw_integration_policy.py',
+    'config/openclaw-integrations.json', 'docs/openclaw-integrations.md',
     'scripts/openclaw_household.py', 'scripts/openclaw_household_requests.py',
     'scripts/openclaw_household_shopping.py', 'scripts/openclaw_household_storage.py',
     'scripts/openclaw_calendar.py', 'scripts/openclaw_calendar_events.py',
@@ -74,6 +76,7 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
     mcp_args = ['--mcp-tokens', str(CONFIG / 'native-mcp-tokens.json')] if (CONFIG / 'native-mcp-tokens.json').exists() else []
     ha_action_args = ['--ha-actions'] if mcp_args and Path('/etc/systemd/system.attached/homecompute-ha-actions.service').is_file() else []
     service_args = ['--services', str(CONFIG / 'services.json')] if mcp_args and (CONFIG / 'services.json').exists() else []
+    integration_args = ['--integrations', str(DEST / 'config/openclaw-integrations.json')] if service_args else []
     household_args = ['--household', str(CONFIG / 'household.json')] if service_args and (CONFIG / 'household.json').exists() else []
     calendar_args = ['--calendar', str(CONFIG / 'calendar.json')] if service_args and (CONFIG / 'calendar.json').exists() else []
     return {
@@ -84,7 +87,7 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                     '--task-transport', str(CONFIG / 'codex-task-transport.json'),
                     '--registry', str(registry),
                     '--infrastructure-registry', str(registry),
-                    '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args, *service_args, *household_args, *calendar_args],
+                    '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args, *service_args, *integration_args, *household_args, *calendar_args],
         'telegram': [str(python), str(scripts / 'openclaw-telegram.py'), 'run',
                      '--config', str(CONFIG / 'telegram.json'),
                      '--tokens', str(CONFIG / 'telegram-tokens.json'),

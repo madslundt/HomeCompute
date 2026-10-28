@@ -49,7 +49,7 @@ class AgentRosterTests(unittest.TestCase):
         self.assertFalse(services['shopper'] & {prefix + name for name in ('school_posts', 'storage_list', 'web_search')})
         self.assertFalse(services['keeper'] & {prefix + name for name in ('school_posts', 'shopping_add', 'web_search')})
         self.assertEqual(services['travel'], {prefix + name for name in
-                         ('web_search', 'calendar_list', 'calendar_events', 'calendar_availability')})
+                         ('web_search', 'research_search', 'calendar_list', 'calendar_events', 'calendar_availability')})
 
 
 if __name__ == '__main__':
