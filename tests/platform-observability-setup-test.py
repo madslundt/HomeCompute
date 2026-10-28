@@ -17,6 +17,13 @@ spec.loader.exec_module(setup)
 
 
 class ObservabilitySetupTest(unittest.TestCase):
+    def test_creating_child_preserves_existing_private_parent_mode(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary) / 'private'; parent.mkdir(mode=0o700)
+            setup.directory(parent / 'child')
+            self.assertEqual(parent.stat().st_mode & 0o777, 0o700)
+            self.assertEqual((parent / 'child').stat().st_mode & 0o777, 0o755)
+
     def test_bundle_is_finite_and_retains_live_workflow_health_dependency(self):
         files, digest = setup.bundle(ROOT)
         self.assertEqual(len(digest), 64)

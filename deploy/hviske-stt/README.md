@@ -220,3 +220,62 @@ separate gates. Do not perform an ordinary speech redeployment while a capacity
 candidate is active. Reconcile the successful budget and validators in source,
 publish and apply that revision through the speech lifecycle, verify actual
 commands and images, then retire the superseded private override receipt.
+
+## Supervised Spark rollout when sudo needs a password
+
+The operator stages only the reviewed `scripts/bootstrap-spark-rollout.py` and
+external public `corpus.tar` in a private `0700` directory named
+`/tmp/homecompute-spark-rollout.XXXXXXXX` on Spark. Verify the bootstrap SHA-256
+against its published Git revision before running it. The fixed bootstrap
+fetches only `https://github.com/madslundt/HomeCompute.git`, verifies the selected
+full SHA is on `origin/master`, creates a root-owned immutable release below
+`/srv/homecompute/releases`, and execs that release's wizard. Existing dirty,
+foreign or mismatched releases are refused. Mutable checkouts are untouched.
+
+The single human command uses the real published SHA and staging path supplied
+by the coordinator:
+
+```bash
+ssh -t home-spark 'sudo python3 /tmp/homecompute-spark-rollout.XXXXXXXX/bootstrap-spark-rollout.py --revision FULL_COMMIT_SHA --corpus-archive /tmp/homecompute-spark-rollout.XXXXXXXX/corpus.tar'
+```
+
+Sudo requests the password once through the terminal. Neither the wizard nor
+its receipts read, save, transmit or change it. No package, sudo policy or
+privileged remote control service is installed. The reusable wizard library is
+unchanged; its stages verify source/corpus, review the maintenance window,
+measure/review/apply the hash-bound plan, then summarize remaining acceptance.
+
+The corpus is the exact external 14,848,000-byte public archive pinned by
+`config/spark-rollout-corpus.json`; only its 12 clean and 6 noisy Danish WAVs
+are extracted, from a hash-verified in-memory snapshot. Root-only receipts live
+below `/var/lib/homecompute-spark-rollout`. The runner prepares raw HTTP ingress,
+rejects new model-bound connections while existing speech drains, and pauses
+only previously running Hviske/Plapre ingress containers. Model-local trials
+remain reachable on container loopback. Two bounded synthetic local LLM streams
+supply comparable concurrent load; generated text is discarded and Flash's
+configuration is untouched.
+
+After the baseline, type `APPLY` for the exact displayed plan within 120 seconds.
+Only the two speech engines are replaced. A failed, incomplete, declined or
+interrupted trial attempts baseline rollback and restores only the ingress
+containers that were running before maintenance. Cleanup failures retain
+truthful failure receipts and the capacity helper's recovery marker; a stale
+maintenance firewall chain is refused rather than overwritten. SIGKILL or power
+loss cannot run process cleanup and requires inspection of those records before
+retrying. Do not treat a missing terminal response as success.
+
+A passing result remains `accepted: false` and `full_voice_accepted: false`.
+The measured capacity override needs canonical source reconciliation; absolute
+voice latency, the full Home Assistant path and recovery acceptance remain
+separate gates. Core adapter cutover and legacy Spark retirement happen only
+after the separate synthetic core protocol checks pass.
+
+After the human run, the same SSH account can read its private staging
+`rollout-result.json` without sudo. The report is root-owned mode `0644` inside
+the original user-owned `0700` staging directory, created with exclusive,
+no-follow semantics. It exposes only the source SHA, finite capacity/latency
+flags, observed budget/headroom metadata, rollback state and the private
+receipt path/hash. It contains no plan objects, env values, prompts, transcripts
+or audio. The coordinator verifies ownership and schema before using it. A
+missing/malformed report remains unverified; use a fresh staging directory for
+each attempt rather than overwriting any earlier result.

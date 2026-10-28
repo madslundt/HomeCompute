@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "source": "google/fleurs",
+  "revision": "168de341b3db6859a9bac1c50a2ef5e3b47647e0",
+  "archive_size_bytes": 14848000,
+  "archive_sha256": "d673313799df319cf26873981d017458b58e91cc70320f1d66c3b59c405af06b",
+  "manifest_path": "corpus/manifest.json",
+  "manifest_sha256": "2e32b597348dedc849e4e67afb5b1cf86ff8ea27c85844a34c431300c4234aa2",
+  "danish_fixtures": 18,
+  "conditions": {
+    "clean": 12,
+    "noise10db": 6
+  },
+  "license": "CC-BY-4.0"
+}

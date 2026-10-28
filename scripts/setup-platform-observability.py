@@ -61,7 +61,10 @@ def protected(path: Path, *, directory: bool = False, service_owner: bool = Fals
 
 def directory(path: Path, mode: int = 0o755) -> None:
     if not path.exists() and not path.is_symlink():
-        directory(path.parent)
+        if not path.parent.exists():
+            directory(path.parent)
+        else:
+            protected(path.parent, directory=True)
         path.mkdir(mode=mode)
     protected(path, directory=True)
     path.chmod(mode)

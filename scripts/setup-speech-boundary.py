@@ -232,6 +232,25 @@ asyncio.run(main())
     print('Synthetic STT and TTS protocol smoke passed; no transcript/audio retained.')
 
 
+def raw_upstreams_ready() -> None:
+    # The old proxy containers retain the exact firewall-authorized source IPs.
+    # Probe from them before replacing adapters: a listening SSH forward alone
+    # does not prove permitopen authorizes its new raw inference destination.
+    for service, port in [('plapre-wyoming-proxy', 18201), ('hviske-wyoming-proxy', 18301)]:
+        code = f'''import time,urllib.request
+for attempt in range(6):
+    try:
+        with urllib.request.urlopen('http://172.28.200.1:{port}/health',timeout=3) as response:
+            if response.status!=200: raise ValueError('unready')
+            response.read(1024)
+        break
+    except Exception:
+        if attempt==5: raise SystemExit('private inference readiness failed')
+        time.sleep(1)
+'''
+        run(['docker','exec','homecompute-control-plane-'+service+'-1','python3','-c',code])
+
+
 def core_apply(idle_confirmed: bool) -> None:
     if not idle_confirmed:
         raise ValueError('Drain active text/voice requests, then pass --tunnel-idle-confirmed')
@@ -248,6 +267,7 @@ def core_apply(idle_confirmed: bool) -> None:
     try:
         run(['systemctl', 'daemon-reload'])
         run(['systemctl', 'restart', 'homecompute-compute-ssh-tunnel.service'])
+        raw_upstreams_ready()
         run(core_compose() + ['up', '-d', '--no-deps', '--no-build', '--wait', '--wait-timeout', '120', *CORE_SERVICES])
         verify_core()
     except Exception:

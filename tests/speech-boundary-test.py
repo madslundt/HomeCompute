@@ -149,6 +149,24 @@ class SpeechBoundaryTest(unittest.TestCase):
                 for payload, name in zip(pins, INSTALLER.CORE_SERVICES):
                     self.assertEqual(payload['services'][name]['image'], previous[name]['image_id'])
 
+    def test_denied_raw_forward_rolls_back_tunnel_before_replacing_any_adapter(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            state=Path(temporary)
+            (state/'before.json').write_text('{}')
+            (state/'runner.pending.py').write_bytes(Path(INSTALLER.__file__).read_bytes())
+            (state/'tunnel.pending.conf').write_text('reviewed pending tunnel')
+            with patch.object(INSTALLER,'STATE',state),patch.object(INSTALLER,'INSTALL',state/'installed'), \
+                 patch.object(INSTALLER,'DROPIN',state/'active.conf'),patch.object(INSTALLER,'trusted'), \
+                 patch.object(INSTALLER,'write'),patch.object(INSTALLER,'run') as run, \
+                 patch.object(INSTALLER,'raw_upstreams_ready',side_effect=RuntimeError('forward denied')), \
+                 patch.object(INSTALLER,'core_rollback') as rollback:
+                with self.assertRaisesRegex(RuntimeError,'forward denied'): INSTALLER.core_apply(True)
+                rollback.assert_called_once_with(True)
+                self.assertIn(['systemctl','restart','homecompute-compute-ssh-tunnel.service'],
+                              [call.args[0] for call in run.call_args_list])
+                self.assertFalse(any(call.args[0][:2]==['docker','compose'] for call in run.call_args_list))
+
 
 class SpeechReadinessTest(unittest.TestCase):
     @classmethod

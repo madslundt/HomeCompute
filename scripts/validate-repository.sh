@@ -81,6 +81,10 @@ done
 
 printf '[validate] ShellCheck\n'
 shellcheck "${shell_files[@]}"
+# Keep the wizard skill's immutable library verbatim. Its known SC1087 and
+# unused-helper SC2329 diagnostics are upstream-only; a test pins that prefix.
+bash -n "$REPO_ROOT/scripts/spark-rollout-wizard.sh"
+shellcheck --exclude=SC1087,SC2329 "$REPO_ROOT/scripts/spark-rollout-wizard.sh"
 
 printf '[validate] configuration-loader tests\n'
 bash "$REPO_ROOT/tests/config-loader-test.sh"
@@ -95,6 +99,7 @@ python3 "$REPO_ROOT/tests/openclaw-machine-snapshot-test.py"
 python3 "$REPO_ROOT/tests/n8n-observations-test.py"
 python3 "$REPO_ROOT/tests/nas-backup-credentials-test.py"
 python3 "$REPO_ROOT/tests/speech-boundary-test.py"
+python3 "$REPO_ROOT/tests/spark-rollout-test.py"
 python3 "$REPO_ROOT/tests/speech-boundary-container-test.py"
 python3 "$REPO_ROOT/tests/speech-capacity-test.py"
 python3 "$REPO_ROOT/tests/speech-capacity-benchmark-test.py"
