@@ -401,7 +401,12 @@ TCP 22 to `192.168.30.126`; other outbound traffic and non-established return
 traffic are rejected. The deployment script also requires operator-provisioned
 model-manager credentials, the pinned host key, and an explicit forced-command
 readiness flag before it builds or starts the UI.
-Embedding, vision, English STT, and TTS candidates are also absent from the production
+The `embedding` alias now routes to Harrier 0.6B on home-core through the private
+clients network. Its OpenAI-compatible `/v1/embeddings` endpoint uses the same
+gateway admission, optional credentials, and CORS policy as the other APIs.
+The network key scope is expanded explicitly with
+`sudo python3 scripts/setup-network-inference.py --enable-embedding`.
+Vision, English STT, and TTS candidates are also absent from the production
 LiteLLM model list and Caddy route allow-list while staged. Qualify one modality
 at a time against its direct private listener; add a gateway alias only through
 an explicit promotion change with route, quota, monitoring, and rollback tests.

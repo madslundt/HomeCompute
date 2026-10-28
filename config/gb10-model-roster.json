@@ -105,7 +105,7 @@
         "target_quantization": "AutoRound W4A16 routed experts, FP8 side layers, INT8 LM head",
         "ple_table": "FP8 file-backed mmap",
         "context_tokens": 262144,
-        "kv_cache_memory_bytes": "16g",
+        "kv_cache_memory_bytes": "9g",
         "mtp": 3,
         "mtp_draft_vocabulary": 65536,
         "prefix_cache": true,

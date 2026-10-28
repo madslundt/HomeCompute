@@ -1,0 +1,169 @@
+{
+  "preset": {
+    "name": "mcp-bridge-homecompute",
+    "description": "Restore the pinned native HomeCompute MCP bridge"
+  },
+  "network_policies": {
+    "mcp_bridge_homecompute": {
+      "name": "mcp_bridge_homecompute",
+      "endpoints": [
+        {
+          "host": "homecompute-capabilities.home.arpa",
+          "port": 19445,
+          "path": "/mcp",
+          "protocol": "mcp",
+          "enforcement": "enforce",
+          "allowed_ips": [
+            "10.77.20.1"
+          ],
+          "credential_binding": {
+            "provider": "agent-openclaw-mcp-homecompute"
+          },
+          "mcp": {
+            "max_body_bytes": 131072,
+            "strict_tool_names": true,
+            "allow_all_known_mcp_methods": false
+          },
+          "rules": [
+            {
+              "allow": {
+                "method": "initialize"
+              }
+            },
+            {
+              "allow": {
+                "method": "notifications/initialized"
+              }
+            },
+            {
+              "allow": {
+                "method": "ping"
+              }
+            },
+            {
+              "allow": {
+                "method": "tools/list"
+              }
+            },
+            {
+              "allow": {
+                "method": "tools/call"
+              }
+            },
+            {
+              "allow": {
+                "method": "resources/list"
+              }
+            },
+            {
+              "allow": {
+                "method": "resources/read"
+              }
+            },
+            {
+              "allow": {
+                "method": "resources/templates/list"
+              }
+            },
+            {
+              "allow": {
+                "method": "resources/subscribe"
+              }
+            },
+            {
+              "allow": {
+                "method": "resources/unsubscribe"
+              }
+            },
+            {
+              "allow": {
+                "method": "prompts/list"
+              }
+            },
+            {
+              "allow": {
+                "method": "prompts/get"
+              }
+            },
+            {
+              "allow": {
+                "method": "tasks/list"
+              }
+            },
+            {
+              "allow": {
+                "method": "tasks/get"
+              }
+            },
+            {
+              "allow": {
+                "method": "tasks/update"
+              }
+            },
+            {
+              "allow": {
+                "method": "tasks/result"
+              }
+            },
+            {
+              "allow": {
+                "method": "tasks/cancel"
+              }
+            },
+            {
+              "allow": {
+                "method": "completion/complete"
+              }
+            },
+            {
+              "allow": {
+                "method": "logging/setLevel"
+              }
+            },
+            {
+              "allow": {
+                "method": "server/discover"
+              }
+            },
+            {
+              "allow": {
+                "method": "messages/listen"
+              }
+            },
+            {
+              "allow": {
+                "method": "notifications/cancelled"
+              }
+            },
+            {
+              "allow": {
+                "method": "notifications/progress"
+              }
+            },
+            {
+              "allow": {
+                "method": "notifications/roots/list_changed"
+              }
+            },
+            {
+              "allow": {
+                "method": "notifications/elicitation/complete"
+              }
+            }
+          ]
+        }
+      ],
+      "binaries": [
+        {
+          "path": "/usr/local/bin/openclaw"
+        },
+        {
+          "path": "/usr/local/bin/node"
+        },
+        {
+          "path": "/usr/bin/node"
+        }
+      ]
+    }
+  }
+}

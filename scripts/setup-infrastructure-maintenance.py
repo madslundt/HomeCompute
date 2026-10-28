@@ -23,7 +23,9 @@ FILES = ('infrastructure_maintenance.py', 'infrastructure_update_policy.py',
          'prepare-spark-maintenance.py', 'prepare-docker-maintenance.py', 'docker_image_updates.py',
          'infrastructure-maintenance-spark.py', 'prepare-core-maintenance.py',
          'maintenance_plan_preparation.py', 'homeassistant-maintenance.py', 'container-maintenance.py',
-         'infrastructure_maintenance_operator.py')
+         'infrastructure_maintenance_operator.py', 'mcp_maintenance.py',
+         'docker_maintenance.py', 'docker_maintenance_backup.py',
+         'host_maintenance_sources.py', 'core_update_build.py')
 DEST = Path('/opt/homecompute/infrastructure-maintenance')
 STATE = Path('/var/lib/homecompute-infrastructure-maintenance')
 NAME = 'homecompute-infrastructure-maintenance'
@@ -124,6 +126,8 @@ def install(source, expected, public_key=None):
     python = '/run/current-system/sw/bin/python3' if host == 'home-core' else '/usr/bin/python3'
     container_helper = '#!' + python + ' -I\n' + files['container-maintenance.py'].decode().split('\n', 1)[1]
     write(Path('/usr/local/libexec/homecompute-container-maintenance'), container_helper.encode(), 0o755)
+    docker_helper = '#!' + python + ' -I\nimport sys\nsys.path.insert(0, ' + repr(str(DEST)) + ')\nfrom docker_maintenance import main\nraise SystemExit(main())\n'
+    write(Path('/usr/local/libexec/homecompute-docker-maintenance'), docker_helper.encode(), 0o755)
     dispatcher = '#!' + python + ' -I\n' + files['infrastructure-maintenance-spark.py'].decode().split('\n', 1)[1]
     if host == 'home-spark':
         write(Path('/usr/local/libexec/homecompute-infrastructure-maintenance-spark'), dispatcher.encode(), 0o755)

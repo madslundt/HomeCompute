@@ -101,7 +101,7 @@ HA_TOOLS = [
 MAINTENANCE_ID = {"type": "object", "additionalProperties": False,
                   "properties": {"plan_id": string(32, 32, r"[a-f0-9]{32}")}, "required": ["plan_id"]}
 MAINTENANCE_TOOLS = [
-    {"name": "homecompute_maintenance_prepare", "description": "Prepare a trusted exact update plan without installing it. Select home-core nixos or a reviewed Docker service, home-spark packages, or Home Assistant an approved update entity. Read preparation status and list plans afterward. No commands or versions accepted.",
+    {"name": "homecompute_maintenance_prepare", "description": "Prepare a trusted exact update plan without installing it. Select home-core nixos, aula-mcp, tilbudstrolden-mcp or a reviewed Docker service; home-spark packages; image- plus an exact observed container name on either host; or Home Assistant an approved update entity. Custom source builds need their reviewed adapter. MCP candidates are built and tested before registration. Read preparation status and list plans afterward. No commands or versions accepted.",
      "inputSchema": {"type": "object", "additionalProperties": False,
                      "properties": {"target": {**string(1, 64), "enum": ["home-core", "home-spark", "home-assistant"]},
                                     "component": string(1, 128, r"[A-Za-z0-9][A-Za-z0-9_.:+-]{0,127}")},
@@ -121,10 +121,16 @@ MAINTENANCE_TOOLS = [
 
 
 def tool_inventory(ledger: Tasks) -> list[dict[str, Any]]:
+    operations_tools = []
+    if getattr(ledger, 'operations_search', None) is not None:
+        from semantic_operations import TOOL
+        operations_tools = [TOOL]
     return (TOOLS + (ACTION_TOOLS if getattr(ledger, "actions", None) is not None else [])
             + (READ_TOOLS if getattr(ledger, "infrastructure", None) is not None else [])
             + (HA_TOOLS if getattr(ledger, "home_assistant", None) is not None else [])
-            + (MAINTENANCE_TOOLS if getattr(ledger, "maintenance", None) is not None else []))
+            + (MAINTENANCE_TOOLS if getattr(ledger, "maintenance", None) is not None else [])
+            + (ledger.services.tools if getattr(ledger, "services", None) is not None else [])
+            + operations_tools)
 
 
 class RpcError(ValueError):
@@ -141,6 +147,10 @@ def validate_arguments(arguments: object, schema: dict[str, Any]) -> dict[str, A
         if key not in arguments:
             continue
         value = arguments[key]
+        if rule.get('type') == 'integer':
+            if type(value) is not int or not rule['minimum'] <= value <= rule['maximum']:
+                raise RpcError(-32602, "Invalid tool arguments")
+            continue
         if (not isinstance(value, str) or not rule["minLength"] <= len(value) <= rule["maxLength"]
                 or ("enum" in rule and value not in rule["enum"])
                 or ("pattern" in rule and not re.fullmatch(rule["pattern"], value, re.I if key == "task_id" else 0))):
@@ -217,7 +227,14 @@ def call_tool(params: dict[str, Any], ledger: Tasks) -> dict[str, Any]:
     tool = next((item for item in tool_inventory(ledger) if item["name"] == params["name"]), None)
     if tool is None:
         raise RpcError(-32602, "Unknown tool")
-    if tool["name"] == "homecompute_ha_propose":
+    services = getattr(ledger, "services", None)
+    service_tool = services is not None and tool["name"] in {item["name"] for item in services.tools}
+    if service_tool:
+        try:
+            arguments = services.validate(tool["name"], params.get("arguments", {}))
+        except (ValueError, TypeError, KeyError):
+            raise RpcError(-32602, "Invalid bounded service arguments") from None
+    elif tool["name"] == "homecompute_ha_propose":
         raw = params.get("arguments")
         if not isinstance(raw, dict) or set(raw) != {"action"}:
             raise RpcError(-32602, "Invalid tool arguments")
@@ -228,7 +245,11 @@ def call_tool(params: dict[str, Any], ledger: Tasks) -> dict[str, Any]:
     else:
         arguments = validate_arguments(params.get("arguments", {}), tool["inputSchema"])
     try:
-        if tool["name"].startswith("homecompute_maintenance_"):
+        if service_tool:
+            return bounded_result(services.request(tool["name"], arguments))
+        elif tool['name'] == 'homecompute_operations_search':
+            return bounded_result(ledger.operations_search.search(arguments))
+        elif tool["name"].startswith("homecompute_maintenance_"):
             operation = tool["name"].removeprefix("homecompute_maintenance_")
             return bounded_result(ledger.maintenance.request(operation, arguments))
         elif tool["name"].startswith("homecompute_ha_"):
@@ -262,7 +283,9 @@ def call_tool(params: dict[str, Any], ledger: Tasks) -> dict[str, Any]:
         return bounded_result({"task": metadata(task)})
     except (KeyError, ValueError, TypeError, OSError, TimeoutError):
         # Context, repository output, SQL diagnostics and credentials are private.
-        return {"content": [{"type": "text", "text": "Task request rejected; check task status and operator policy."}], "isError": True}
+        message = ("Service read unavailable; retry later or ask the operator to check the integration."
+                   if service_tool else "Task request rejected; check task status and operator policy.")
+        return {"content": [{"type": "text", "text": message}], "isError": True}
 
 
 def dispatch(message: object, ledger: Tasks) -> tuple[int, dict[str, Any] | None]:

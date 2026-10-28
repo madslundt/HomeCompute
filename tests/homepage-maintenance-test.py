@@ -66,7 +66,7 @@ class Machine:
             image = OLD
             for index, arg in enumerate(argv):
                 if arg == "-f" and argv[index + 1].endswith(".json"):
-                    image = json.loads(Path(argv[index + 1]).read_text())["services"]["homepage"]["image"]
+                    image = json.loads(Path(argv[index + 1]).read_text())["services"]["homepage"].get("image", image)
             if argv[-3:] == ["config", "--format", "json"]:
                 value = {"services": {"homepage": {"image": image, "read_only": True, "user": "1000:1000"}}}
             elif argv[-3:] == ["config", "--hash", "homepage"]:
@@ -121,6 +121,79 @@ class MaintenanceTest(unittest.TestCase):
 
     def effects(self):
         return [argv for argv, _ in self.machine.calls if "up" in argv or "pull" in argv]
+
+    def overlay(self):
+        self.paths.state.mkdir(mode=0o700, exist_ok=True)
+        services = self.paths.state / "services.yaml"
+        services.write_text("- AI assistants:\n    - Mattermost:\n        href: https://mattermost.home.arpa\n")
+        value = {"services": {"homepage": {"volumes": [{"type": "bind", "source": str(services),
+                 "target": "/app/config/services.yaml", "read_only": True}]}}}
+        self.executor.write(self.paths.state / "active-config.json", value)
+        self.machine.mounts.append({"Type": "bind", "Destination": "/app/config/services.yaml", "RW": False,
+                                    "Source": str(services.resolve())})
+        return value, services
+
+    def test_exact_config_overlay_preserves_image_update_and_backup_guards(self):
+        _, services = self.overlay()
+        job = self.prepared()
+        sources = job["proposal"]["baseline"]["source_hashes"]
+        self.assertIn(str(services.resolve()), sources)
+        self.assertIn(str((self.paths.state / "active-config.json").resolve()), sources)
+        self.assertEqual(self.executor.execute(job["id"], job["proposal_hash"])["status"], "succeeded")
+        self.assertEqual(self.machine.mounts[0]["Destination"], "/app/config")
+        self.assertEqual(len(self.machine.mounts), 2)
+        for argv in self.effects():
+            self.assertIn(str((self.paths.state / "active-config.json").resolve()), argv)
+        self.assertIn(str((self.paths.state / "active-image.json").resolve()), self.executor.compose())
+        backup = json.loads((self.paths.state / (job["id"] + "-backup/manifest.json")).read_text())
+        self.assertEqual(len(backup["source_files"]), 5)
+
+    def test_overlay_services_content_change_stales_approval_before_any_effect(self):
+        _, services = self.overlay()
+        job = self.prepared()
+        previous = self.executor.source()[str(services.resolve())]
+        services.write_text("changed services content")
+        self.assertNotEqual(self.executor.source()[str(services.resolve())], previous)
+        with self.assertRaises(maintenance.Denied):
+            self.executor.execute(job["id"], job["proposal_hash"])
+        self.assertEqual(self.effects(), [])
+
+    def test_overlay_forbids_other_paths_writable_mounts_and_extra_settings(self):
+        value, _ = self.overlay()
+        for mutate in [
+            lambda v: v["services"]["homepage"]["volumes"][0].update(source="/etc/passwd"),
+            lambda v: v["services"]["homepage"]["volumes"][0].update(target="/app/config"),
+            lambda v: v["services"]["homepage"]["volumes"][0].update(read_only=False),
+            lambda v: v["services"]["homepage"]["volumes"][0].update(read_only=1),
+            lambda v: v["services"]["homepage"]["volumes"][0].update(bind={"propagation": "shared"}),
+            lambda v: v["services"]["homepage"].update(command=["sh"]),
+            lambda v: v.update(networks={"extra": {}}),
+        ]:
+            altered = json.loads(json.dumps(value)); mutate(altered)
+            self.executor.write(self.paths.state / "active-config.json", altered)
+            with self.assertRaises(maintenance.Denied):
+                self.executor.prepare()
+            self.assertEqual(self.effects(), [])
+
+    def test_overlay_rejects_untrusted_or_symlink_files_and_unexpected_runtime_bind(self):
+        _, services = self.overlay()
+        services.chmod(0o666)
+        with self.assertRaises(maintenance.Denied): self.executor.prepare()
+        services.chmod(0o600)
+        services.unlink(); services.symlink_to(self.paths.environment)
+        with self.assertRaises(maintenance.Denied): self.executor.prepare()
+        services.unlink(); services.write_text("fixed services")
+        manifest = self.paths.state / "active-config.json"
+        manifest.chmod(0o666)
+        with self.assertRaises(maintenance.Denied): self.executor.prepare()
+        manifest.chmod(0o600)
+        self.machine.mounts[1]["RW"] = True
+        with self.assertRaises(maintenance.Denied): self.executor.prepare()
+        self.machine.mounts[1]["RW"] = False
+        self.machine.mounts[1]["Source"] = "/another/services.yaml"
+        with self.assertRaises(maintenance.Denied): self.executor.prepare()
+        self.machine.mounts.pop()
+        with self.assertRaises(maintenance.Denied): self.executor.prepare()
 
     def test_prepare_is_read_only_idempotent_and_redacts_secrets(self):
         job = self.prepared(False)

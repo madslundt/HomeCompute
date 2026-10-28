@@ -8,6 +8,7 @@
   imports = [
     ./hardware-configuration.nix
     ../../modules/nixos/application-config.nix
+    ../../modules/nixos/agent-office.nix
     ../../modules/nixos/system.nix
     ../../modules/nixos/networking.nix
     ../../modules/nixos/firewall.nix
@@ -15,10 +16,12 @@
     ../../modules/nixos/compute-ssh-tunnel.nix
     ../../modules/nixos/wyoming-stt-network.nix
     ../../modules/nixos/platform-monitoring.nix
+    ../../modules/nixos/service-recovery.nix
     ../../modules/nixos/token-usage-dashboard.nix
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix
     ../../modules/nixos/openclaw.nix
+    ../../modules/nixos/mattermost.nix
     ../../modules/nixos/agents-vm.nix
     ../../modules/nixos/agents-vm-backup.nix
     ../../modules/nixos/docker.nix
@@ -34,6 +37,14 @@
   ];
 
   networking.hostName = "home-core";
+  homecompute.agentOffice.enable = true;
+  homecompute.mattermost.enable = true;
+  homecompute.serviceRecovery.enable = true;
+  homecompute.nasRecoveryBackup = {
+    enable = true;
+    share = "homecompute-backups";
+    credentialsFile = "/etc/homecompute/nas-recovery-backup.credentials";
+  };
 
   # Preserve the installed DHCP connection while bootstrapping over LAN SSH.
   # enp44s0 (84:47:09:79:58:b1) is cabled; enp45s0 is reserved for GB10.

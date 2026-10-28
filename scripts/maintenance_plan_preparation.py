@@ -37,6 +37,7 @@ DOCKER = {
     'piper': ('home-core-piper-tts', 'piper-tts', ['compose.yaml'], 'piper-tts.env'),
     'stt': ('home-core-wyoming-stt', 'wyoming-stt', ['compose.yaml'], 'wyoming-stt.env'),
 }
+MCPS = {'aula-mcp', 'tilbudstrolden-mcp'}
 MODULES = {'core': 'prepare-core-maintenance.py', 'docker': 'prepare-docker-maintenance.py',
            'spark': 'prepare-spark-maintenance.py', 'ha': 'homeassistant-maintenance.py'}
 
@@ -81,7 +82,7 @@ def destination(controller: Any) -> Path:
 
 def ssh(operation: str, selected: str, digest: str | None = None) -> list[str]:
     if operation == 'prepare':
-        if selected not in SPARK_COMPONENTS:
+        if selected not in SPARK_COMPONENTS and not re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', selected):
             raise ValueError('Spark component outside finite preparation catalogue')
     elif operation not in {'check', 'run', 'status', 'verify', 'approve'}:
         raise ValueError('unsupported Spark operation')
@@ -113,7 +114,9 @@ def remote_receipt(raw: bytes, now: float) -> dict[str, Any]:
     expected = classify_plan(receipt['policy'])
     if (receipt['policy']['target'] != 'home-spark'
             or len(receipt['policy']['updates']) > 120
-            or (receipt['policy']['operation'] == 'update' and any(row['scheme'] != 'debian' for row in receipt['policy']['updates']))
+            or (receipt['policy']['operation'] == 'update' and not
+                (all(row['scheme'] == 'debian' for row in receipt['policy']['updates']) or
+                 len(receipt['policy']['updates']) == 1 and receipt['policy']['updates'][0]['scheme'] == 'semver'))
             or (receipt['policy']['operation'] == 'fix' and receipt['policy']['updates'])):
         raise ValueError('remote package policy mismatch')
     if receipt['requires_approval'] or expected['classification'] == 'unchanged':
@@ -128,8 +131,14 @@ def remote_receipt(raw: bytes, now: float) -> dict[str, Any]:
 
 def remote_plan(controller: Any, component: str = 'packages') -> dict[str, Any]:
     receipt = remote_receipt(read(controller, ssh('prepare', component)), controller.clock())
-    if receipt['policy']['operation'] != ('update' if component == 'packages' else 'fix'):
+    if receipt['policy']['operation'] != ('update' if component == 'packages' or component.startswith('image-') else 'fix'):
         raise ValueError('remote operation differs from selected component')
+    updates = receipt['policy']['updates']
+    if component == 'packages' and not all(row['scheme'] == 'debian' for row in updates):
+        raise ValueError('remote package selector returned a different update kind')
+    if component.startswith('image-') and (len(updates) != 1 or updates[0]['scheme'] != 'semver'
+            or updates[0]['component'] != component.removeprefix('image-')):
+        raise ValueError('remote image selector returned a different container')
     remote_id = receipt['plan_id']
     current = read(controller, ssh('check', remote_id))
     expected = {key: value for key, value in receipt.items() if key != 'approved'}
@@ -239,13 +248,20 @@ def prepare(controller: Any, target: str, component: str) -> dict[str, Any]:
         raise ValueError('trusted root preparation required')
     if not isinstance(target, str) or target not in {'home-core', 'home-spark', 'home-assistant'} or not isinstance(component, str):
         raise ValueError('finite infrastructure selectors required')
-    if ((target == 'home-core' and component not in {'nixos', *DOCKER, *('restart-' + key for key in DOCKER)})
-            or (target == 'home-spark' and component not in SPARK_COMPONENTS)
+    image = bool(re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
+    if ((target == 'home-core' and not image and component not in {'nixos', *DOCKER, *MCPS, *('restart-' + key for key in DOCKER)})
+            or (target == 'home-spark' and not image and component not in SPARK_COMPONENTS)
             or (target == 'home-assistant' and component not in module('ha').ENTITIES)
             or (controller.local_target == 'home-spark' and target != 'home-spark')):
         raise ValueError('component outside trusted preparation catalogue')
     output = destination(controller)
-    if target == 'home-assistant':
+    if image and target == controller.local_target:
+        import host_maintenance_sources
+        host_maintenance_sources.prepare(controller, component.removeprefix('image-'), output)
+    elif target == 'home-core' and component in MCPS:
+        import mcp_maintenance
+        mcp_maintenance.prepare(controller, component, output)
+    elif target == 'home-assistant':
         receipt = decode(read(controller, [HA_COMMAND, 'prepare', component, '--output', str(output)]))
         if receipt != {'plan_file': str(output), 'installed_changes': False}:
             raise ValueError('HA preparation receipt mismatch')
@@ -260,10 +276,8 @@ def prepare(controller: Any, target: str, component: str) -> dict[str, Any]:
         plan, _ = helper.prepare(runner=controller.runner, clock=controller.clock)
         helper.write_plan(output, plan)
     elif component == 'nixos':
-        helper = module('core')
-        candidate = helper.resolved_system(read(controller, [helper.READLINK, '-f', helper.PROFILE]))
-        plan, _ = helper.prepare(candidate, runner=controller.runner, clock=controller.clock)
-        helper.write_plan(output, plan)
+        import core_update_build
+        core_update_build.prepare(controller, output)
     elif component.startswith('restart-'):
         receipt = decode(read(controller, [CONTAINER_COMMAND, 'prepare', DOCKER[component[8:]][0], '--output', str(output)]))
         if receipt != {'plan_file': str(output), 'installed_changes': False}:

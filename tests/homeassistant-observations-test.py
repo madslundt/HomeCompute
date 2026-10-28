@@ -8,6 +8,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -104,7 +105,7 @@ class HouseholdProjectionTests(unittest.TestCase):
             self.reject(mutate)
 
     def test_update_versions_and_check_timestamps_are_bounded(self):
-        self.assertEqual(HA.validate(fixture())['checks'][6]['evidence']['latest_version'], '2026.10.2')
+        self.assertEqual(next(row for row in HA.validate(fixture())['checks'] if row['check_id'] == 'ha.update.core')['evidence']['latest_version'], '2026.10.2')
         for mutation in (lambda r: r['checks'][0].update(observed_at=stamp(-901)),
                          lambda r: r['checks'][0].update(observed_at=stamp(31)),
                          lambda r: r['checks'][0]['evidence'].update(latest_version='PRIVATE instruction'),
@@ -137,6 +138,26 @@ class HouseholdProjectionTests(unittest.TestCase):
         self.assertNotIn('reported_at', compact['entity_columns'])
         self.assertEqual(compact['entities']['battery_soc'][compact['entity_columns'].index('sampled_at')], stamp(-10))
 
+    def test_plan_display_uses_copenhagen_offsets_and_preserves_source_instants(self):
+        cases = [
+            ('2026-10-28T14:30:00Z', 'Wed 2026-10-28 15:30 CET'),
+            ('2026-07-28T14:30:00Z', 'Tue 2026-07-28 16:30 CEST'),
+            ('2026-10-25T00:30:00Z', 'Sun 2026-10-25 02:30 CEST'),
+            ('2026-10-25T01:30:00Z', 'Sun 2026-10-25 02:30 CET'),
+        ]
+        for start, expected in cases:
+            with self.subTest(start=start):
+                raw = fixture()
+                block = raw['energy']['plan']['blocks'][0]
+                block.update(start=start, end=(HA.stamp(start) + timedelta(minutes=30)).isoformat())
+                raw['energy']['plan']['blocks'] = [block]
+                before = copy.deepcopy(raw)
+                plan = HA.compact(raw['energy'], start)['plan']
+                self.assertEqual(plan['timezone'], 'Europe/Copenhagen')
+                self.assertEqual(plan['blocks'][0]['start_local'], expected)
+                self.assertEqual(plan['blocks'][0]['start'], start)
+                self.assertEqual(raw, before)
+
     def test_local_reader_uses_only_fixed_authenticated_get_with_bounded_response(self):
         with patch.object(HA.urllib.request, 'build_opener') as factory:
             response = factory.return_value.open.return_value.__enter__.return_value
@@ -163,6 +184,46 @@ class HouseholdProjectionTests(unittest.TestCase):
                 response.status, response.read.return_value = status, payload
                 with self.assertRaises(ValueError):
                     HA.local_read('synthetic-private-token')
+
+
+class AssistDependencyProjectionTests(unittest.TestCase):
+    def project(self, states):
+        flow = json.loads((ROOT / 'automations/agent-investigation/n8n-ha-metadata-workflow.json').read_text())
+        code = next(n['parameters']['jsCode'] for n in flow['nodes'] if n['name'] == 'Project finite HA metadata')
+        wrapper = "const x=JSON.parse(require('fs').readFileSync(0));const lookup=()=>({first:()=>({json:{version:'2026.10.4'}})});const input={all:()=>x.states.map(json=>({json}))};process.stdout.write(JSON.stringify(new Function('$','$input',x.code)(lookup,input)[0].json));"
+        result = subprocess.run(['node', '-e', wrapper], input=json.dumps({'states': states, 'code': code}),
+                                capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+
+    @staticmethod
+    def states():
+        return [{'entity_id': entity, 'state': 'unknown', 'attributes': {'private': 'never projected'}}
+                for entity in ('conversation.automation_moe', 'conversation.gemma_4_e4b',
+                               'stt.hviske_vllm', 'tts.plapre_nano_v2')]
+
+    def test_unknown_voice_states_are_available_and_selected_dependency_checks_exist(self):
+        result = self.project(self.states())
+        checks = {x['check_id']: x for x in result['checks']}
+        for key in ('assist_primary', 'assist_secondary', 'assist_stt', 'assist_tts'):
+            self.assertEqual(checks['ha.' + key]['status'], 'healthy')
+            self.assertIn('ha.' + key, HA.CHECKS)
+        self.assertNotIn('never projected', json.dumps(result))
+
+    def test_missing_or_unavailable_selected_dependency_degrades_affected_pipeline(self):
+        for entity, affected in [('conversation.gemma_4_e4b', ['assist_primary']),
+                                 ('conversation.automation_moe', ['assist_secondary']),
+                                 ('stt.hviske_vllm', ['assist_primary', 'assist_secondary', 'assist_stt']),
+                                 ('tts.plapre_nano_v2', ['assist_primary', 'assist_secondary', 'assist_tts'])]:
+            for missing in (False, True):
+                with self.subTest(entity=entity, missing=missing):
+                    states = self.states()
+                    if missing: states = [x for x in states if x['entity_id'] != entity]
+                    else: next(x for x in states if x['entity_id'] == entity)['state'] = 'unavailable'
+                    checks = {x['check_id']: x for x in self.project(states)['checks']}
+                    for key in affected:
+                        self.assertEqual(checks['ha.' + key]['status'], 'degraded')
+                        self.assertEqual(checks['ha.' + key]['evidence']['reason'],
+                                         'missing' if missing else 'health_not_reported')
 
 
 class CoreHouseholdReaderTests(unittest.TestCase):
@@ -328,6 +389,31 @@ class HouseholdFeedAndOutboxTests(unittest.TestCase):
 
 
 class HAProvisioningBoundaryTests(unittest.TestCase):
+    def test_projection_reconciliation_preserves_live_authentication_graph_and_unrelated_fields(self):
+        spec = importlib.util.spec_from_file_location('ha_reconcile', ROOT / 'scripts/setup-openclaw-home-assistant.py')
+        setup = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(setup)
+        template = json.loads((ROOT / 'automations/agent-investigation/n8n-ha-metadata-workflow.json').read_text())
+        live = copy.deepcopy(template)
+        live['active'] = True
+        live['nodes'][1]['parameters']['jsCode'] = live['nodes'][1]['parameters']['jsCode'].replace('configured=false', 'configured=true')
+        live['nodes'][0]['credentials'] = {'httpHeaderAuth': {'id': 'existing-private-reader', 'name': 'preserved'}}
+        live['nodes'][4]['parameters']['jsCode'] = 'previous finite projection'
+        live['staticData'] = {'retained': True}
+        before = copy.deepcopy(live)
+        actual = setup.projection_update(live, template)
+        expected = copy.deepcopy(live)
+        expected['nodes'][4]['parameters']['jsCode'] = template['nodes'][4]['parameters']['jsCode']
+        self.assertEqual(actual, expected)
+        self.assertEqual(live, before)
+        for mutate in (lambda f: f['nodes'][2]['parameters'].update(operation='call'),
+                       lambda f: f['settings'].update(saveDataSuccessExecution='all'),
+                       lambda f: f['nodes'][1]['parameters'].update(jsCode='return [{json:{}}]')):
+            corrupt = copy.deepcopy(live)
+            mutate(corrupt)
+            with self.assertRaises(ValueError):
+                setup.projection_update(corrupt, template)
+
     def test_provisioning_rejects_control_send_retention_and_projection_bypasses(self):
         spec = importlib.util.spec_from_file_location('ha_setup', ROOT / 'scripts/setup-openclaw-home-assistant.py')
         setup = importlib.util.module_from_spec(spec)

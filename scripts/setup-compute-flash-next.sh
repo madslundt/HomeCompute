@@ -109,7 +109,7 @@ validate_ultrafast() {
   [[ "$FLASH_ULTRAFAST_SOURCE_REVISION" == 0c391a3e74b6a775cfe248691ca7fd855b1876a5 ]] || die 'Unexpected UltraFast source revision'
   [[ "$FLASH_ULTRAFAST_MODEL_ID" == Saren/Qwen3.8-Flash-Next-W4A16-AutoRound-hybrid && "$FLASH_ULTRAFAST_MODEL_REVISION" == 8b82f0b7abe3d1150a7827d298c75e86267636ae ]] || die 'Unexpected UltraFast checkpoint; refusing silent substitution'
   [[ "$FLASH_ULTRAFAST_PLE_MODEL_ID" == Saren/Qwen3.8-Flash-Next-ple-table-fp8 && "$FLASH_ULTRAFAST_PLE_REVISION" == 50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14 ]] || die 'Unexpected UltraFast PLE table; refusing silent substitution'
-  [[ "$FLASH_ULTRAFAST_CTX" == 262144 && "$FLASH_ULTRAFAST_MTP" == 3 && "$FLASH_ULTRAFAST_SEQS" == 8 && "$FLASH_ULTRAFAST_KV_BYTES" == 16g ]] || die 'UltraFast v16b context/MTP/sequence/KV tuple differs from the pinned profile'
+  [[ "$FLASH_ULTRAFAST_CTX" == 262144 && "$FLASH_ULTRAFAST_MTP" == 3 && "$FLASH_ULTRAFAST_SEQS" == 8 && "$FLASH_ULTRAFAST_KV_BYTES" == 9g ]] || die 'UltraFast context/MTP/sequence/KV tuple differs from the managed profile'
   [[ "$FLASH_ULTRAFAST_HOST_PORT" == "$FLASH_NEXT_HOST_PORT" && "$FLASH_ULTRAFAST_SERVED_MODEL_NAME" == automation-qualification ]] || die 'UltraFast must use the isolated qualification listener and stable qualification alias'
   [[ "$FLASH_ULTRAFAST_HOST_BIND" == "$GB10_BIND_ADDRESS" ]] || die 'UltraFast must bind to the configured private GB10 address'
   if ! command -v git >/dev/null || ! command -v docker >/dev/null || ! command -v patch >/dev/null; then
@@ -256,6 +256,10 @@ install_ultrafast() {
   cp "$dir/recipe/config/v16b/launch.sh" "$dir/recipe/config/v16b/serve.sh" "$dir/recipe/config/v16b/draft-vocab-ids-K65536.txt.gz" "$runtime/"
   (cd "$runtime" && patch --batch --forward --fuzz=0 -p4 <"$patch_file") || die 'Could not apply pinned HomeCompute launch patch'
   printf '%s\n' "$FLASH_ULTRAFAST_IMAGE" >"$runtime/image"
+  # Spark restart qualification: fastsafetensors allocated the final dense-MTP
+  # shard as an 8 GiB GPU mapping and failed in the NVIDIA DMA allocator.
+  # Tensor-wise CPU-mmap loading plus no eager PLE cache fill cold-starts
+  # successfully without changing checkpoint, context, KV pool or MTP settings.
   cat >"$runtime/env" <<ENV
 NAME='$FLASH_ULTRAFAST_NAME'
 IMAGE='$FLASH_ULTRAFAST_IMAGE'
@@ -274,8 +278,8 @@ SEQS='$FLASH_ULTRAFAST_SEQS'
 MTP='$FLASH_ULTRAFAST_MTP'
 CTX='$FLASH_ULTRAFAST_CTX'
 EXTRA='$FLASH_ULTRAFAST_EXTRA'
-LOAD_FORMAT='fastsafetensors'
-PREWARM='1'
+LOAD_FORMAT='safetensors'
+PREWARM='0'
 WORKERS='32'
 PLE_PREFETCH='0'
 PLE_MADV_RANDOM='1'
@@ -298,7 +302,7 @@ ENV
     printf 'LAUNCH_PATCH_SHA256=%s\nMODEL_BUILD_REPORT_SHA256=%s\nBUILD_TIME_UTC=%s\n' "$expected_patch" "$(sha256sum "$model_report" | awk '{print $1}')" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'TOKENIZER_CONFIG_SHA256=%s\nSERVED_NAME=%s\nTOOL_PARSER=%s\nREASONING_PARSER=%s\n' "$tokenizer_config_sha" "$FLASH_ULTRAFAST_SERVED_MODEL_NAME" "$FLASH_ULTRAFAST_TOOL_CALL_PARSER" "$FLASH_ULTRAFAST_REASONING_PARSER"
     printf 'CTX=%s\nSEQS=%s\nGPU_MEM=%s\nKV_BYTES=%s\nMTP=%s\nDRAFT_VOCAB_SIZE=%s\n' "$FLASH_ULTRAFAST_CTX" "$FLASH_ULTRAFAST_SEQS" "$FLASH_ULTRAFAST_GPU_MEM" "$FLASH_ULTRAFAST_KV_BYTES" "$FLASH_ULTRAFAST_MTP" "$FLASH_ULTRAFAST_DRAFT_VOCAB_SIZE"
-    printf 'PREFIX_CACHE=%s\nMTP_TIER=%s\nMTP_GROUP_SIZE=%s\nLOAD_FORMAT=fastsafetensors\nPLE_MMAP=1\n' "$FLASH_ULTRAFAST_PREFIX_CACHE" "$FLASH_ULTRAFAST_MTP_TIER" "$FLASH_ULTRAFAST_MTP_GROUP_SIZE"
+    printf 'PREFIX_CACHE=%s\nMTP_TIER=%s\nMTP_GROUP_SIZE=%s\nLOAD_FORMAT=safetensors\nPLE_PREWARM=0\nPLE_MMAP=1\n' "$FLASH_ULTRAFAST_PREFIX_CACHE" "$FLASH_ULTRAFAST_MTP_TIER" "$FLASH_ULTRAFAST_MTP_GROUP_SIZE"
   } >"$(image_record)"
   chmod 0440 "$(image_record)"
   log 'Pinned UltraFast image, target checkpoint, PLE table and dense-MTP layout prepared; runtime remains stopped'
