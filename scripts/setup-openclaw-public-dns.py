@@ -11,6 +11,9 @@ import socket
 import stat
 import sys
 import time
+import importlib.util
+import subprocess
+import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 DIRECTORY = Path('/etc/homecompute-public-dns')
@@ -54,7 +57,7 @@ def write(path: Path, content: bytes, mode: int) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def install() -> dict[str, object]:
+def install(identity_override: dict[str, str] | None = None) -> dict[str, object]:
     if os.geteuid() != 0 or sys.platform != 'linux' or socket.gethostname() != 'agents':
         raise ValueError('root agents guest required')
     module = ROOT / 'deploy/openclaw/safety-plugin/public-dns.mjs'
@@ -69,6 +72,8 @@ def install() -> dict[str, object]:
         DIRECTORY.mkdir(mode=0o755)
     identity = {'sandbox_id': SANDBOX_ID, 'generation': GENERATION,
                 'module_sha256': hashlib.sha256(module.read_bytes()).hexdigest()}
+    if identity_override is not None:
+        identity.update(identity_override)
     # Operator-owned manifest is absent on fresh cloud-init; reviewed install
     # enables only this exact current identity, with no CLI target override.
     write(DIRECTORY / 'openclaw-public-dns.py', controller.read_bytes(), 0o555)
@@ -77,10 +82,48 @@ def install() -> dict[str, object]:
     return {'staged': True, 'started': False, 'module_sha256': identity['module_sha256']}
 
 
+def rebind(sandbox_id: str, generation: str) -> dict[str, object]:
+    """Rebind only a positively verified replacement of the same native target."""
+    if os.geteuid() != 0 or socket.gethostname() != 'agents':
+        raise ValueError('root agents guest required')
+    if any(str(uuid.UUID(value)) != value for value in (sandbox_id, generation)):
+        raise ValueError('exact native UUIDs required')
+    source = ROOT / 'scripts/openclaw-public-dns.py'
+    protected(source)
+    spec = importlib.util.spec_from_file_location('dns_rebind_controller', source)
+    controller = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = controller
+    spec.loader.exec_module(controller)
+    module = ROOT / 'deploy/openclaw/safety-plugin/public-dns.mjs'
+    protected(module)
+    identity = {'sandbox_id': sandbox_id, 'generation': generation,
+                'module_sha256': hashlib.sha256(module.read_bytes()).hexdigest()}
+    controller.observe(identity)  # supervisor, registry, image, volume, UID and listeners
+    container = 'openshell-default--agent-openclaw-' + sandbox_id
+    def docker(*args):
+        subprocess.run(['/usr/bin/docker', *args], check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=30)
+    docker('exec', '--user', '0:0', container, 'install', '-d', '-o', '0', '-g', '0', '-m', '0755', '/opt/homecompute-public-dns')
+    docker('cp', str(module), container + ':/opt/homecompute-public-dns/public-dns.mjs')
+    docker('exec', '--user', '0:0', container, 'chown', '0:0', '/opt/homecompute-public-dns/public-dns.mjs')
+    docker('exec', '--user', '0:0', container, 'chmod', '0555', '/opt/homecompute-public-dns/public-dns.mjs')
+    controller.observe(identity)
+    return install({'sandbox_id': sandbox_id, 'generation': generation})
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args()
-    print(json.dumps(install()))
+    parser.add_argument('--replacement-id')
+    parser.add_argument('--replacement-generation')
+    args = parser.parse_args()
+    if bool(args.replacement_id) != bool(args.replacement_generation):
+        parser.error('both replacement UUIDs required')
+    if args.replacement_id:
+        if os.geteuid() != 0 or socket.gethostname() != 'agents':
+            raise ValueError('root agents guest required')
+        print(json.dumps(rebind(args.replacement_id, args.replacement_generation)))
+    else:
+        print(json.dumps(install()))
 
 
 if __name__ == '__main__':
