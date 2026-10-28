@@ -162,6 +162,7 @@ WantedBy=multi-user.target
         home_read = ('BindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates '
                      '/home/mads/projects/chessmate/config/.env\n') if command == 'backup' else ''
         home_protect = 'tmpfs' if command == 'backup' else 'yes'
+        quota = '100%' if command == 'backup' else '50%'
         values[PREFIX + command + '.service'] = f'''[Unit]
 Description=HomeCompute encrypted NAS recovery {command}
 Requires=network-online.target
@@ -183,7 +184,7 @@ UnsetEnvironment=DOCKER_CONTEXT HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy http
 TimeoutStopSec=10min
 KillMode=mixed
 MemoryMax=1G
-CPUQuota=50%
+CPUQuota={quota}
 IOSchedulingClass=idle
 Nice=10
 NoNewPrivileges=yes

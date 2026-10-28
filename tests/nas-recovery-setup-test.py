@@ -45,6 +45,9 @@ class NASRecoverySetupTest(unittest.TestCase):
         self.assertIn(b'RestrictAddressFamilies=AF_UNIX', backup)
         self.assertIn(b'ProtectHome=tmpfs\nBindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates /home/mads/projects/chessmate/config/.env\n', backup)
         self.assertIn(b'ProtectHome=yes\n', units[setup.ATTACHED / (setup.PREFIX + 'check.service')])
+        self.assertIn(b'CPUQuota=100%\n',backup)
+        self.assertIn(b'CPUQuota=50%\n',units[setup.ATTACHED / (setup.PREFIX + 'check.service')])
+        self.assertIn(b'IOSchedulingClass=idle\nNice=10\n',backup)
         self.assertNotIn(b'BindReadOnlyPaths=', units[setup.ATTACHED / (setup.PREFIX + 'check.service')])
         self.assertIn(b'ExecCondition=', units[setup.GUARD])
 

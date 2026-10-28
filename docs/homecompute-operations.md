@@ -230,7 +230,18 @@ The approved service inventory is `config/system-monitoring.json`; the trusted
 snapshot collector must include the same entries when installing its bundle.
 Keep deliberately retired services out of the required inventory. The expanded
 core inventory includes Immich, Mattermost, embeddings, speech adapters and CPU
-fallbacks, TTLock, the compute tunnel, Codex VM, and local backup status.
+fallbacks, TTLock, the compute tunnel, Codex VM, and local backup status. The
+fixed inventory also covers the active Omi, book, Chessmate, homepage, model
+manager and proxy containers. Deliberately stopped image studio and historical
+rollback containers remain outside the required inventory.
+
+When NAS recovery is installed, readiness also requires authorized, active
+backup/check schedules, successful service state, a completed encrypted snapshot
+within 36 hours, and a passed repository check within eight days. Missing,
+unsafe, malformed or future-dated evidence fails closed. These checks read only
+bounded private metadata and publish booleans; they never expose snapshot IDs,
+credentials or application content. A backup deferred because writers are busy
+must be retried before its freshness window expires.
 
 For an authorized repair that must preserve unrelated live application state,
 `scripts/setup-platform-observability.py` installs only readiness, the finite
@@ -306,16 +317,30 @@ The NAS module's `includeApplicationState = true` default prepares an
 application-consistent recovery archive before Restic transfer. It stops the
 declared writers and VMs, uses PostgreSQL dumps and SQLite's transactional backup
 API, archives durable application files and both VM disk sets, and resumes only
-previously active resources even if preparation fails. Active private browser
-sessions and running/claimed/publishing broker work defer the job. Both idle
+previously active resources even if preparation fails.
+Resumption reclaims gateway addresses first, then the WebUI client address,
+before remaining dynamic clients and dependent units. This avoids dynamic
+clients occupying a stopped gateway's fixed address; resources absent from
+the resume journal remain stopped.
+Active private browser sessions and running/claimed/publishing broker work
+defer the job. Both idle
 checks run again after their owning routes stop, before VM or application
 snapshots, so a racing claim or browser launch also defers safely.
+Before stopping any source, preparation also requires three quiet one-second
+samples of the exact main HTTP tunnel endpoints (`172.28.200.1` ports 18003,
+18005, 18006 and 18007). Active, half-closed or idle keep-alive connections
+defer conservatively; unavailable or malformed inspection also defers. The
+scheduled job installs no firewall maintenance gate. This is an idle preflight;
+it does not reserve the window against requests arriving after those samples.
 Preparation and deployments share a lock; the local VM
 backup and recovery preparation also exclude each other. The NAS schedule starts
 at 03:15 local host time, outside the local VM snapshot's midnight window.
 The private resume journal and `ExecStopPost` recovery also cover interrupted
 preparation. Successful preparation resumes applications before uploading the
 uncompressed archive through encrypted Restic.
+The backup unit permits one CPU (`CPUQuota=100%`) to shorten the cold archive
+window while retaining `Nice=10` and idle I/O priority. The repository check
+unit keeps its half-CPU limit. Archive format and VM images are unchanged.
 
 Preparation requires measured space for source files plus 100 GiB headroom and
 retains two completed application archives. Archives are root-only on local

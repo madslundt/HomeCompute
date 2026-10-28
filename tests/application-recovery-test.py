@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import socket
 import subprocess
 import tarfile
 import tempfile
@@ -17,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('application_recovery', ROOT / 'scripts/application-recovery.py')
 recovery = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(recovery)
+REAL_HTTP_IDLE = recovery.main_http_idle
 
 
 class ApplicationRecoveryTest(unittest.TestCase):
@@ -27,10 +29,12 @@ class ApplicationRecoveryTest(unittest.TestCase):
         broker=Path(self.journal_root.name)/'broker.sqlite'
         with closing(sqlite3.connect(broker)) as db:db.execute('CREATE TABLE tasks(state TEXT)');db.commit()
         self.broker_patch=patch.object(recovery,'BROKER_DATABASE',broker);self.broker_patch.start()
+        self.http_patch=patch.object(recovery,'main_http_idle');self.http_patch.start()
 
     def tearDown(self):
         self.journal_patch.stop()
         self.broker_patch.stop()
+        self.http_patch.stop()
         self.journal_root.cleanup()
 
     def test_sqlite_backup_includes_committed_wal_and_validates_integrity(self):
@@ -94,6 +98,33 @@ class ApplicationRecoveryTest(unittest.TestCase):
         recovery.RESUME_FILE.chmod(0o600)
         with patch.object(recovery, 'run') as run, self.assertRaises(ValueError): recovery.resume()
         run.assert_not_called()
+
+    def test_resume_reclaims_gateway_ips_and_webui_before_dynamic_clients(self):
+        resources=[('unit','homecompute-codex-broker.service'),
+                   ('container','homecompute-control-plane-caddy-1'),
+                   ('container','homecompute-control-plane-litellm-1'),
+                   ('container','homecompute-open-webui-open-webui-1'),
+                   ('container','omi-local-backend-1')]
+        allocated={4,7};addresses={};calls=[]
+        fixed={'homecompute-control-plane-caddy-1':2,'homecompute-control-plane-litellm-1':3}
+        def run(arguments,**kwargs):
+            name=arguments[-1];calls.append(name)
+            if arguments[:2]==['docker','start']:
+                address=fixed.get(name,min(set(range(2,255))-allocated))
+                if address in allocated:raise subprocess.CalledProcessError(1,arguments)
+                allocated.add(address);addresses[name]=address
+            return subprocess.CompletedProcess(arguments,0,'','')
+        with patch.object(recovery,'run',side_effect=run):recovery.resume(resources)
+        self.assertEqual(calls,['homecompute-control-plane-litellm-1','homecompute-control-plane-caddy-1',
+                                'homecompute-open-webui-open-webui-1','omi-local-backend-1','homecompute-codex-broker.service'])
+        self.assertEqual(addresses,{'homecompute-control-plane-litellm-1':3,'homecompute-control-plane-caddy-1':2,
+                                    'homecompute-open-webui-open-webui-1':5,'omi-local-backend-1':6})
+        self.assertNotIn('homecompute-image-studio-open-webui-1',calls)
+
+    def test_resume_priority_never_starts_gateway_or_webui_absent_from_journal(self):
+        with patch.object(recovery,'run') as run:recovery.resume([('container','omi-local-backend-1')])
+        self.assertEqual(run.call_count,1)
+        self.assertEqual(run.call_args.args[0],['docker','start','omi-local-backend-1'])
 
     def test_archive_rejects_traversal_external_symlinks_and_special_files(self):
         for name, kind, target in [('../escape', tarfile.REGTYPE, ''), ('/absolute', tarfile.REGTYPE, ''),
@@ -300,6 +331,42 @@ class ApplicationRecoveryTest(unittest.TestCase):
         for name in ['homecompute-open-webui-open-webui-1','homecompute-image-studio-open-webui-1','omi-local-backend-1','chessmate-backend-1',
                      'homecompute-books_importer-shelfmark-1','homecompute-books_importer-shelfmark-automated-1','homecompute-books_importer-cwa-1']:
             self.assertIn(name,recovery.CONTAINERS)
+
+    def test_main_http_parser_matches_exact_ports_and_conservative_states(self):
+        header='  sl local_address rem_address st\n'
+        def row(address='172.28.200.1',port=18005,state='01'):
+            encoded=socket.inet_aton(address)[::-1].hex().upper()
+            return f' 0: {encoded}:{port:04X} 00000000:0000 {state}\n'
+        for port in recovery.MAIN_HTTP_PORTS:
+            for state in ['01','02','03','04','05','08','09','0B','FF']:
+                self.assertEqual(recovery.main_http_connections(header+row(port=port,state=state)),1)
+        for value in [row(state='06'),row(state='07'),row(state='0A'),row(address='172.28.200.2'),row(port=19000)]:
+            self.assertEqual(recovery.main_http_connections(header+value),0)
+        for body in ['', 'unavailable\n',header+'bad row\n',header+row(state='invalid')]:
+            with self.assertRaises(ValueError):recovery.main_http_connections(body)
+
+    def test_main_http_idle_requires_three_quiet_samples_and_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'tcp';path.write_text('sl local_address rem_address st\n')
+            with patch.object(recovery,'MAIN_HTTP_TABLE',path),patch.object(recovery.time,'sleep') as sleep, \
+                    patch.object(recovery,'main_http_connections',side_effect=[0,0,0]) as parser:
+                REAL_HTTP_IDLE()
+                self.assertEqual(parser.call_count,3);self.assertEqual(sleep.call_count,2)
+            for counts in [[1],[0,1],[0,0,1]]:
+                with patch.object(recovery,'MAIN_HTTP_TABLE',path),patch.object(recovery.time,'sleep'), \
+                        patch.object(recovery,'main_http_connections',side_effect=counts),self.assertRaises(ValueError):REAL_HTTP_IDLE()
+            path.write_text('malformed')
+            with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(ValueError):REAL_HTTP_IDLE()
+            path.write_text('sl local_address rem_address st\n'+' '*1024**2)
+            with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(ValueError):REAL_HTTP_IDLE()
+            path.unlink()
+            with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(FileNotFoundError):REAL_HTTP_IDLE()
+
+    def test_busy_main_http_defers_before_any_source_stops(self):
+        with patch.object(recovery,'main_http_idle',side_effect=ValueError('main HTTP activity')),patch.object(recovery,'run') as run:
+            with self.assertRaisesRegex(ValueError,'main HTTP activity'):
+                with recovery.quiesced():self.fail('must defer before sources stop')
+            run.assert_not_called()
 
 
 if __name__ == '__main__':

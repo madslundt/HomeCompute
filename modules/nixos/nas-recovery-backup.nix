@@ -35,7 +35,7 @@ let
       TimeoutStopSec = "10min";
       KillMode = "mixed";
       MemoryMax = "1G";
-      CPUQuota = "50%";
+      CPUQuota = if command == "backup" then "100%" else "50%";
       IOSchedulingClass = "idle";
       Nice = 10;
       NoNewPrivileges = true;

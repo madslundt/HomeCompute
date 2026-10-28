@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import socket
 import sqlite3
 import stat
 import subprocess
@@ -28,6 +29,8 @@ RECOVERY_MARKER = Path('/run/homecompute/application-recovery-in-progress')
 RESUME_FILE = Path('/var/lib/homecompute/nas-recovery-backup/resume.json')
 LOCAL_VM_BACKUP = 'restic-backups-agents-vm-bootstrap.service'
 BROKER_DATABASE = Path('/srv/state/codex-broker/tasks.sqlite3')
+MAIN_HTTP_TABLE = Path('/proc/net/tcp')
+MAIN_HTTP_PORTS = {18003, 18005, 18006, 18007}
 MIN_FREE_BYTES = 100 * 1024**3
 MAX_ARCHIVE_BYTES = 512 * 1024**3
 MAX_ARCHIVE_ENTRIES = 100000
@@ -37,6 +40,10 @@ CONTAINERS = ('homecompute-control-plane-caddy-1', 'homecompute-control-plane-li
               'omi-local-backend-1', 'homecompute-books_importer-shelfmark-1',
               'homecompute-books_importer-shelfmark-automated-1', 'homecompute-books_importer-cwa-1',
               'chessmate-backend-1', 'homecompute-image-studio-open-webui-1')
+# Reclaim gateway static addresses before dynamic clients reconnect. WebUI's
+# source-declared client address (.5) must precede the dynamic Omi client (.6).
+RESUME_FIRST = ('homecompute-control-plane-litellm-1', 'homecompute-control-plane-caddy-1',
+                'homecompute-open-webui-open-webui-1')
 UNITS = ('homecompute-codex-worker-api.service', 'homecompute-codex-broker.service',
          'homecompute-openclaw-household-task-reminders.timer', 'homecompute-openclaw-family-task-reminders.timer',
          'homecompute-openclaw-update-feed.timer', 'homecompute-openclaw-household-task-reminders.service',
@@ -130,8 +137,11 @@ def resume(stopped: list[tuple[str, str]] | None = None) -> None:
     if (not isinstance(stopped, list) or len(stopped) > len(allowed)
             or any(not isinstance(row, (list, tuple)) or len(row) != 2 or tuple(row) not in allowed for row in stopped)):
         raise ValueError('resume journal contains an unreviewed resource')
+    reversed_resources = [tuple(row) for row in reversed(stopped)]
+    priority = [('container', name) for name in RESUME_FIRST if ('container', name) in reversed_resources]
+    ordered = [*priority, *[row for row in reversed_resources if row not in priority]]
     failures = []
-    for kind, name in reversed(stopped):
+    for kind, name in ordered:
         try:
             run(['docker', 'start', name] if kind == 'container' else ['systemctl', 'start', name], timeout=180)
         except (OSError, subprocess.SubprocessError):
@@ -173,6 +183,35 @@ def private_browsers_idle() -> None:
         raise ValueError('close active private browser sessions before cold recovery preparation')
 
 
+def main_http_connections(table: str) -> int:
+    # Match the reviewed speech-boundary drain's exact IPv4 tunnel endpoints.
+    # Conservative states also defer idle keep-alives and half-closed sockets;
+    # no request is terminated to make a scheduled backup proceed.
+    rows = table.splitlines()
+    if not rows or 'local_address' not in rows[0] or 'st' not in rows[0]:
+        raise ValueError('main HTTP connection inspection unavailable')
+    count = 0
+    for row in rows[1:]:
+        fields = row.split()
+        if (len(fields) < 4 or not re.fullmatch(r'[0-9A-Fa-f]{8}:[0-9A-Fa-f]{4}', fields[1])
+                or not re.fullmatch(r'[0-9A-Fa-f]{2}', fields[3])):
+            raise ValueError('unknown main HTTP connection state')
+        address, port = fields[1].split(':')
+        if (socket.inet_ntoa(bytes.fromhex(address)[::-1]) == '172.28.200.1'
+                and int(port, 16) in MAIN_HTTP_PORTS and fields[3].upper() not in {'06', '07', '0A'}):
+            count += 1
+    return count
+
+
+def main_http_idle() -> None:
+    for attempt in range(3):
+        with MAIN_HTTP_TABLE.open() as stream:
+            table = stream.read(1024 * 1024 + 1)
+        if len(table) > 1024 * 1024 or main_http_connections(table):
+            raise ValueError('main HTTP activity requires recovery preparation to defer')
+        if attempt < 2: time.sleep(1)
+
+
 def validate_volumes() -> None:
     name = 'omi-local_omi-data'; mountpoint = str(DIRECTORIES['omi-data'])
     output = run(['docker', 'volume', 'inspect', name], text=True, timeout=10).stdout
@@ -199,6 +238,7 @@ def quiesced():
         raise ValueError('a previous recovery resume journal requires reconciliation')
     try:
         worker_idle()
+        main_http_idle()
         # An active private browser can keep writing profile state independently
         # of its owner service. Defer rather than silently claim consistency.
         private_browsers_idle()
