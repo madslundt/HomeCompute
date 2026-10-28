@@ -59,22 +59,46 @@ furniture. Keep geometry and the background asset in step when editing the map.
 | --- | --- | --- |
 | Atlas | Modular coordinator; drone and electronics table | Delegate work and review specialist results |
 | Luna | Calendar rover; planning terminal | Personal planning, school, tasks, reminders |
-| Nova | Research orb; library, chess lounge, rocket models | Public research and cited evidence |
-| Apollo | Six-legged maker; enclosed 3D printer and coding monitors | Prepare coding requests and follow Codex jobs |
+| Nova | Floating research companion; library, chess lounge, rocket models | Public research and cited evidence |
+| Apollo | Humanoid maker; enclosed 3D printer and coding monitors | Prepare coding requests and follow Codex jobs |
 | Orion | Rack technician; servers, battery cabinet, automation console | Infrastructure, Home Assistant, maintenance |
 | Vega | Single-wheel scout; robotic gadget comparison counter | Shopping lists and discount watches |
-| Ceres | Tracked stock keeper; filament and component storage | Household stock, storage, expiry records |
+| Ceres | Humanoid stock keeper; filament and component storage | Household stock, storage, expiry records |
 | Lyra | Navigation drone; maps and camera equipment | Travel, restaurants, adventures |
-| Hestia | Kitchen rover; cooking arm, induction surface and recipe display | Meals and recipes |
-| Themis | Document automaton; digital review terminal | Household administration and deadlines |
-| Plutus | Four-legged analyst; shared ledger tablet | Supplied expenses, budgets, reconciliation |
-| Gaia | Solar garden rover; separate glazed atrium | Expressly shared family plans and tasks |
+| Hestia | Soft kitchen companion; mixing bowl, whisk and recipe display | Meals and recipes |
+| Themis | Humanoid document assistant; digital review terminal | Household administration and deadlines |
+| Plutus | Humanoid analyst; shared ledger tablet | Supplied expenses, budgets, reconciliation |
+| Gaia | Humanoid garden companion; separate glazed atrium | Expressly shared family plans and tasks |
 
 Locations are activity metaphors, not physical machines, real-world locations,
 authority, or access grants. A character entering another work area does not
 delegate a task or grant access. Gaia's visual area does not expose owner-private
 task content to Family. This whole dashboard is an **operator-only** projection;
 do not embed it in a shared-family channel or service.
+
+The character refresh keeps Atlas, Luna, Orion, Vega and Lyra unchanged. The
+other seven favor friendly faces and rounded humanoid bodies, with Nova as a
+floating companion. Apollo and Plutus no longer use multi-legged chassis.
+Each refreshed robot has matching standing, travel and work views, with tools
+stowed during travel. The [preview](art/robot-refresh-preview.png) shows their
+standing and work appearances.
+
+Generated source sheets and the complete built-in imagegen prompt set are kept
+in [`art/robot-refresh-prompts.json`](art/robot-refresh-prompts.json). Regeneration
+is an explicit image-generation step; routine bundle builds use the tracked PNGs.
+To repack the saved sheets, supply an external installation of `sharp@0.35.5`:
+
+```bash
+node scripts/pack-agent-office-refresh.mjs --image-library /absolute/path/to/node_modules/sharp
+```
+
+The packer needs the base Git revision recorded in the prompt manifest. It
+replaces only refreshed rows and portraits, checks that the five retained
+designs are pixel-identical, normalizes all poses with one scale per robot,
+corrects generated side-view ordering, and updates asset hashes. Sources and
+prompts stay outside the published plugin bundle. The application needs no
+image-processing dependency. Apply the normal guarded office lifecycle below
+when deploying new artwork; copying files into the running service is not a release.
 
 The glass-walled high-rise laboratory, city panorama, kitchen robotics, gaming
 console, library chess corner, miniature reusable rockets and role-specific

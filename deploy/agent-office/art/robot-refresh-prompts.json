@@ -1,0 +1,125 @@
+{
+  "generator": "Built-in image_gen tool",
+  "reference": {
+    "revision": "c0936f46f122217db60f60a13351f23bcd4a77f6",
+    "path": "deploy/agent-office/public/assets/agents.png"
+  },
+  "sourceLayout": {
+    "columns": 5,
+    "rows": 4,
+    "columnsInOrder": [
+      "standing",
+      "travel-a",
+      "travel-b",
+      "work-a",
+      "work-b"
+    ]
+  },
+  "designs": [
+    {
+      "name": "Nova",
+      "index": 2,
+      "kind": "Floating research companion",
+      "height": 112,
+      "spec": "Compact lavender and ivory floating companion robot inspired by the warmth of Weebo from Flubber, with a friendly rounded rectangular expressive face displaying TWO violet eyes, smooth small oval body, two small mitten-like manipulator hands; subtle violet research scanner on its chest. No huge single camera eye, wing blades, rings, spikes, or legs. Working: holds and scans a small open reference book with its hands.",
+      "prompt": "Use case: stylized-concept.\nAsset type: production transparent directional sprite sheet for an illustrated robot office.\nPrimary request: Redesign ONLY the specified robot, using the input image for illustration style, material shading and outline quality. Create one sheet of this SAME new robot in exactly 20 separate full-body poses.\nStyle: match reference's warmly shaded hand-painted pixel illustration, cream mechanical shells, dark outlines, clearly readable at small size. Original robot design.\nLAYOUT: EXACTLY 5 equal columns by 4 equal rows, canvas 1280 wide x 1024 high, transparent RGBA background. Each cell is 256x256. Each robot fully inside its own cell with 25px clear gutters, same body size, no overlaps. NO text, labels, grid lines, floor or shadows.\nRows are camera views: row 1 FRONT facing viewer (south); row 2 LEFT PROFILE facing LEFT (west); row 3 RIGHT PROFILE facing RIGHT (east); row 4 BACK facing away (north). Show all four views.\nColumns are action: column 1 neutral standing, empty hands/tools stowed; column 2 walking left-leg forward, tools stowed; column 3 walking right-leg forward, tools stowed; column 4 WORK gesture A with role-specific tool; column 5 WORK gesture B with same tool, visibly changed hand/tool position.\nMaintain identical head, body, accent colors and proportions in all cells. Grounded robots have feet at the same baseline in each cell. For hover robots show the same hover altitude, two travel phases with slightly different hand tilt, no shadows.\nSubject: Nova. Compact lavender and ivory floating companion robot inspired by the warmth of Weebo from Flubber, with a friendly rounded rectangular expressive face displaying TWO violet eyes, smooth small oval body, two small mitten-like manipulator hands; subtle violet research scanner on its chest. No huge single camera eye, wing blades, rings, spikes, or legs. Working: holds and scans a small open reference book with its hands.",
+      "source": "nova-poses.png",
+      "sourceRows": [
+        0,
+        2,
+        1,
+        3
+      ]
+    },
+    {
+      "name": "Apollo",
+      "index": 3,
+      "kind": "Humanoid maker",
+      "height": 128,
+      "spec": "Agile upright humanoid engineering robot inspired by Boston Dynamics Atlas and sleek Tesla/Xpeng humanoid robots. Exactly two arms and two athletic articulated legs, generous rounded cream armor, charcoal joints, violet accent panels, friendly black visor with TWO violet eyes. Small folded tool pack on back. Working: holds a small violet diagnostic tablet in left hand and taps it with right hand. No extra limbs or spider/insect body.",
+      "prompt": "Use case: stylized-concept.\nAsset type: production transparent directional sprite sheet for an illustrated robot office.\nPrimary request: Redesign ONLY the specified robot, using the input image for illustration style, material shading and outline quality. Create one sheet of this SAME new robot in exactly 20 separate full-body poses.\nStyle: match reference's warmly shaded hand-painted pixel illustration, cream mechanical shells, dark outlines, clearly readable at small size. Original robot design.\nLAYOUT: EXACTLY 5 equal columns by 4 equal rows, canvas 1280 wide x 1024 high, transparent RGBA background. Each cell is 256x256. Each robot fully inside its own cell with 25px clear gutters, same body size, no overlaps. NO text, labels, grid lines, floor or shadows.\nRows are camera views: row 1 FRONT facing viewer (south); row 2 LEFT PROFILE facing LEFT (west); row 3 RIGHT PROFILE facing RIGHT (east); row 4 BACK facing away (north). Show all four views.\nColumns are action: column 1 neutral standing, empty hands/tools stowed; column 2 walking left-leg forward, tools stowed; column 3 walking right-leg forward, tools stowed; column 4 WORK gesture A with role-specific tool; column 5 WORK gesture B with same tool, visibly changed hand/tool position.\nMaintain identical head, body, accent colors and proportions in all cells. Grounded robots have feet at the same baseline in each cell. For hover robots show the same hover altitude, two travel phases with slightly different hand tilt, no shadows.\nSubject: Apollo. Agile upright humanoid engineering robot inspired by Boston Dynamics Atlas and sleek Tesla/Xpeng humanoid robots. Exactly two arms and two athletic articulated legs, generous rounded cream armor, charcoal joints, violet accent panels, friendly black visor with TWO violet eyes. Small folded tool pack on back. Working: holds a small violet diagnostic tablet in left hand and taps it with right hand. No extra limbs or spider/insect body.",
+      "source": "apollo-poses.png",
+      "sourceRows": [
+        0,
+        2,
+        1,
+        3
+      ]
+    },
+    {
+      "name": "Ceres",
+      "index": 6,
+      "kind": "Humanoid stock keeper",
+      "height": 120,
+      "spec": "Friendly sturdy upright humanoid stock keeper, exactly two legs with broad rounded feet and two arms, ivory armor and sage olive accent panels, rounded head with dark visor and TWO warm yellow eyes, compact rounded chest storage compartment. Working: lifts a small tan supply box with both hands, visibly raises/lowers box between phases. No tracks, tank body, or multiple limbs.",
+      "prompt": "Use case: stylized-concept.\nAsset type: production transparent directional sprite sheet for an illustrated robot office.\nPrimary request: Redesign ONLY the specified robot, using the input image for illustration style, material shading and outline quality. Create one sheet of this SAME new robot in exactly 20 separate full-body poses.\nStyle: match reference's warmly shaded hand-painted pixel illustration, cream mechanical shells, dark outlines, clearly readable at small size. Original robot design.\nLAYOUT: EXACTLY 5 equal columns by 4 equal rows, canvas 1280 wide x 1024 high, transparent RGBA background. Each cell is 256x256. Each robot fully inside its own cell with 25px clear gutters, same body size, no overlaps. NO text, labels, grid lines, floor or shadows.\nRows are camera views: row 1 FRONT facing viewer (south); row 2 LEFT PROFILE facing LEFT (west); row 3 RIGHT PROFILE facing RIGHT (east); row 4 BACK facing away (north). Show all four views.\nColumns are action: column 1 neutral standing, empty hands/tools stowed; column 2 walking left-leg forward, tools stowed; column 3 walking right-leg forward, tools stowed; column 4 WORK gesture A with role-specific tool; column 5 WORK gesture B with same tool, visibly changed hand/tool position.\nMaintain identical head, body, accent colors and proportions in all cells. Grounded robots have feet at the same baseline in each cell. For hover robots show the same hover altitude, two travel phases with slightly different hand tilt, no shadows.\nSubject: Ceres. Friendly sturdy upright humanoid stock keeper, exactly two legs with broad rounded feet and two arms, ivory armor and sage olive accent panels, rounded head with dark visor and TWO warm yellow eyes, compact rounded chest storage compartment. Working: lifts a small tan supply box with both hands, visibly raises/lowers box between phases. No tracks, tank body, or multiple limbs.",
+      "source": "ceres-poses.png",
+      "sourceRows": [
+        0,
+        2,
+        1,
+        3
+      ]
+    },
+    {
+      "name": "Hestia",
+      "index": 8,
+      "kind": "Soft kitchen companion",
+      "height": 126,
+      "spec": "Gentle rounded humanoid kitchen helper with comforting Baymax-like soft silhouette, clearly original design: small rounded head and friendly dark visor with TWO amber eyes, cream body, sage green apron-like front panel, two short arms and exactly two short chunky legs. Working: holds mixing bowl in left hand and stirs with a whisk in right hand. No wheels or spider-like chassis.",
+      "prompt": "Use case: stylized-concept.\nAsset type: production transparent directional sprite sheet for an illustrated robot office.\nPrimary request: Redesign ONLY the specified robot, using the input image for illustration style, material shading and outline quality. Create one sheet of this SAME new robot in exactly 20 separate full-body poses.\nStyle: match reference's warmly shaded hand-painted pixel illustration, cream mechanical shells, dark outlines, clearly readable at small size. Original robot design.\nLAYOUT: EXACTLY 5 equal columns by 4 equal rows, canvas 1280 wide x 1024 high, transparent RGBA background. Each cell is 256x256. Each robot fully inside its own cell with 25px clear gutters, same body size, no overlaps. NO text, labels, grid lines, floor or shadows.\nRows are camera views: row 1 FRONT facing viewer (south); row 2 LEFT PROFILE facing LEFT (west); row 3 RIGHT PROFILE facing RIGHT (east); row 4 BACK facing away (north). Show all four views.\nColumns are action: column 1 neutral standing, empty hands/tools stowed; column 2 walking left-leg forward, tools stowed; column 3 walking right-leg forward, tools stowed; column 4 WORK gesture A with role-specific tool; column 5 WORK gesture B with same tool, visibly changed hand/tool position.\nMaintain identical head, body, accent colors and proportions in all cells. Grounded robots have feet at the same baseline in each cell. For hover robots show the same hover altitude, two travel phases with slightly different hand tilt, no shadows.\nSubject: Hestia. Gentle rounded humanoid kitchen helper with comforting Baymax-like soft silhouette, clearly original design: small rounded head and friendly dark visor with TWO amber eyes, cream body, sage green apron-like front panel, two short arms and exactly two short chunky legs. Working: holds mixing bowl in left hand and stirs with a whisk in right hand. No wheels or spider-like chassis.",
+      "source": "hestia-poses.png",
+      "sourceRows": [
+        0,
+        2,
+        1,
+        3
+      ]
+    },
+    {
+      "name": "Themis",
+      "index": 9,
+      "kind": "Humanoid document assistant",
+      "height": 136,
+      "spec": "Elegant upright humanoid document assistant inspired by sleek Tesla/Xpeng service robots: slim but friendly cream and slate-gray rounded armor, two legs and two arms, compact oval head with dark faceplate and TWO pale blue eyes, softly curved shoulders, subtle blue chest badge. Working: holds a small slate document tablet and turns a white document page. Avoid boxy filing-cabinet torso or dangling printer paper.",
+      "prompt": "Use case: stylized-concept.\nAsset type: production transparent directional sprite sheet for an illustrated robot office.\nPrimary request: Redesign ONLY the specified robot, using the input image for illustration style, material shading and outline quality. Create one sheet of this SAME new robot in exactly 20 separate full-body poses.\nStyle: match reference's warmly shaded hand-painted pixel illustration, cream mechanical shells, dark outlines, clearly readable at small size. Original robot design.\nLAYOUT: EXACTLY 5 equal columns by 4 equal rows, canvas 1280 wide x 1024 high, transparent RGBA background. Each cell is 256x256. Each robot fully inside its own cell with 25px clear gutters, same body size, no overlaps. NO text, labels, grid lines, floor or shadows.\nRows are camera views: row 1 FRONT facing viewer (south); row 2 LEFT PROFILE facing LEFT (west); row 3 RIGHT PROFILE facing RIGHT (east); row 4 BACK facing away (north). Show all four views.\nColumns are action: column 1 neutral standing, empty hands/tools stowed; column 2 walking left-leg forward, tools stowed; column 3 walking right-leg forward, tools stowed; column 4 WORK gesture A with role-specific tool; column 5 WORK gesture B with same tool, visibly changed hand/tool position.\nMaintain identical head, body, accent colors and proportions in all cells. Grounded robots have feet at the same baseline in each cell. For hover robots show the same hover altitude, two travel phases with slightly different hand tilt, no shadows.\nSubject: Themis. Elegant upright humanoid document assistant inspired by sleek Tesla/Xpeng service robots: slim but friendly cream and slate-gray rounded armor, two legs and two arms, compact oval head with dark faceplate and TWO pale blue eyes, softly curved shoulders, subtle blue chest badge. Working: holds a small slate document tablet and turns a white document page. Avoid boxy filing-cabinet torso or dangling printer paper.",
+      "source": "themis-poses.png",
+      "sourceRows": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "Plutus",
+      "index": 10,
+      "kind": "Humanoid analyst",
+      "height": 124,
+      "spec": "Friendly upright humanoid financial analyst with rounded golden ochre accent armor, ivory body, dark joints, compact head with a black faceplate and TWO amber eyes, exactly two arms and two legs, solid rounded feet. Small subtle chart display on chest. Working: holds small ledger tablet with a simple bar chart and taps calculator controls. No quadruped, insect or spider silhouette.",
+      "prompt": "Use case: stylized-concept.\nAsset type: production transparent directional sprite sheet for an illustrated robot office.\nPrimary request: Redesign ONLY the specified robot, using the input image for illustration style, material shading and outline quality. Create one sheet of this SAME new robot in exactly 20 separate full-body poses.\nStyle: match reference's warmly shaded hand-painted pixel illustration, cream mechanical shells, dark outlines, clearly readable at small size. Original robot design.\nLAYOUT: EXACTLY 5 equal columns by 4 equal rows, canvas 1280 wide x 1024 high, transparent RGBA background. Each cell is 256x256. Each robot fully inside its own cell with 25px clear gutters, same body size, no overlaps. NO text, labels, grid lines, floor or shadows.\nRows are camera views: row 1 FRONT facing viewer (south); row 2 LEFT PROFILE facing LEFT (west); row 3 RIGHT PROFILE facing RIGHT (east); row 4 BACK facing away (north). Show all four views.\nColumns are action: column 1 neutral standing, empty hands/tools stowed; column 2 walking left-leg forward, tools stowed; column 3 walking right-leg forward, tools stowed; column 4 WORK gesture A with role-specific tool; column 5 WORK gesture B with same tool, visibly changed hand/tool position.\nMaintain identical head, body, accent colors and proportions in all cells. Grounded robots have feet at the same baseline in each cell. For hover robots show the same hover altitude, two travel phases with slightly different hand tilt, no shadows.\nSubject: Plutus. Friendly upright humanoid financial analyst with rounded golden ochre accent armor, ivory body, dark joints, compact head with a black faceplate and TWO amber eyes, exactly two arms and two legs, solid rounded feet. Small subtle chart display on chest. Working: holds small ledger tablet with a simple bar chart and taps calculator controls. No quadruped, insect or spider silhouette.",
+      "source": "plutus-poses.png",
+      "sourceRows": [
+        0,
+        2,
+        1,
+        3
+      ]
+    },
+    {
+      "name": "Gaia",
+      "index": 11,
+      "kind": "Humanoid garden companion",
+      "height": 120,
+      "spec": "Warm rounded humanoid family and garden companion, cream armor with soft terracotta pink and sage green accents, cheerful rounded faceplate with TWO green eyes, two arms and exactly two sturdy legs. Small leaf emblem on chest, small integrated solar panel on back, no oversized vehicle chassis. Working: cradles a small potted seedling and gently waters it with a tiny watering can. No wheels, treads, or multiple legs.",
+      "prompt": "Use case: stylized-concept.\nAsset type: production transparent directional sprite sheet for an illustrated robot office.\nPrimary request: Redesign ONLY the specified robot, using the input image for illustration style, material shading and outline quality. Create one sheet of this SAME new robot in exactly 20 separate full-body poses.\nStyle: match reference's warmly shaded hand-painted pixel illustration, cream mechanical shells, dark outlines, clearly readable at small size. Original robot design.\nLAYOUT: EXACTLY 5 equal columns by 4 equal rows, canvas 1280 wide x 1024 high, transparent RGBA background. Each cell is 256x256. Each robot fully inside its own cell with 25px clear gutters, same body size, no overlaps. NO text, labels, grid lines, floor or shadows.\nRows are camera views: row 1 FRONT facing viewer (south); row 2 LEFT PROFILE facing LEFT (west); row 3 RIGHT PROFILE facing RIGHT (east); row 4 BACK facing away (north). Show all four views.\nColumns are action: column 1 neutral standing, empty hands/tools stowed; column 2 walking left-leg forward, tools stowed; column 3 walking right-leg forward, tools stowed; column 4 WORK gesture A with role-specific tool; column 5 WORK gesture B with same tool, visibly changed hand/tool position.\nMaintain identical head, body, accent colors and proportions in all cells. Grounded robots have feet at the same baseline in each cell. For hover robots show the same hover altitude, two travel phases with slightly different hand tilt, no shadows.\nSubject: Gaia. Warm rounded humanoid family and garden companion, cream armor with soft terracotta pink and sage green accents, cheerful rounded faceplate with TWO green eyes, two arms and exactly two sturdy legs. Small leaf emblem on chest, small integrated solar panel on back, no oversized vehicle chassis. Working: cradles a small potted seedling and gently waters it with a tiny watering can. No wheels, treads, or multiple legs.",
+      "source": "gaia-poses.png",
+      "sourceRows": [
+        0,
+        2,
+        1,
+        3
+      ]
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { request } from 'node:http';
 import { OfficeActivity, STALE_MS, demoSnapshot } from '../deploy/agent-office/activity.mjs';
 import { projectRoster, toolActivity } from '../deploy/agent-office/catalog.mjs';
@@ -11,7 +12,7 @@ import { officeServer } from '../deploy/agent-office/server.mjs';
 import plugin from '../deploy/agent-office/index.mjs';
 import { configPatch } from '../deploy/agent-office/config-patch.mjs';
 import { ROLE_DESTINATIONS, FURNITURE_BOUNDS, WALKWAY_SEGMENTS, resolveDestination, findPath, isWalkable, projectToScene } from '../deploy/agent-office/scene-layout.mjs';
-import { WALK_SHEETS, WORK_SHEETS, robotSpriteFrame, walkSpriteFrame, walkDirection } from '../deploy/agent-office/public/walking.mjs';
+import { WALK_SHEETS, WORK_SHEETS, ROBOT_PROFILES, robotSpriteFrame, walkSpriteFrame, walkDirection } from '../deploy/agent-office/public/walking.mjs';
 import { characterPresence } from '../deploy/agent-office/public/presence.mjs';
 import { passwordRecord, readAuth } from '../deploy/agent-office/auth.mjs';
 import { verifyBundle } from '../scripts/setup-agent-office.mjs';
@@ -265,6 +266,21 @@ test('all 12 characters have distinct leg phases and four directional planted po
   }
 });
 
+test('robot artwork matches provenance and status cues use the packed character heights', async () => {
+  const assets = new URL('deploy/agent-office/public/assets/', root);
+  const metadata = JSON.parse(await readFile(new URL('walking-art.json', assets), 'utf8'));
+  const digest = data => createHash('sha256').update(data).digest('hex');
+  for (const [name, expected] of Object.entries(metadata.sha256)) {
+    assert.equal(digest(await readFile(new URL(name, assets))), expected, `Stale asset provenance: ${name}`);
+  }
+  for (const source of metadata.refresh.sources) {
+    const png = await readFile(new URL(source.source, assets));
+    assert.equal(digest(png), source.sha256, `Changed source art: ${source.name}`);
+    assert.equal(png[25], 6, 'Generated source retains RGBA transparency');
+    assert.equal(ROBOT_PROFILES[source.index].height, source.maximumHeight, `Misplaced status cue: ${source.name}`);
+  }
+});
+
 function http(port, path, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
     const req = request({ hostname: '127.0.0.1', port, path, method, headers }, res => {
@@ -389,6 +405,7 @@ test('bundle is reproducible, includes only projected roster, and refuses overwr
     assert.ok(verified.files.has('auth.mjs'));
     assert.ok(verified.files.has('public/presence.mjs'));
     assert.ok(verified.files.has('public/favicon.svg'));
+    assert.ok([...verified.files.keys()].every(path => !path.startsWith('art/')), 'Generation sources stay outside the runtime bundle');
     const { writeFile, chmod } = await import('node:fs/promises');
     await writeFile(join(second, 'index.mjs'), 'tampered\n');
     await assert.rejects(() => verifyBundle(second), /digest mismatch/);
