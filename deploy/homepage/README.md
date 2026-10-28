@@ -97,3 +97,14 @@ sudo docker compose --env-file /etc/homecompute/homepage.env \
 
 The normal `scripts/deploy-home-core.sh` release deployment also validates,
 pulls, and reconciles this project.
+
+## Agent office
+
+The **Agent office** card links to `https://agents.home.arpa/` on the approved LAN
+and tailnet through the existing `home.arpa` split DNS and CA. Its tracked A
+record is in `config/agent-office-dns.json`. It requires a separate operator
+password; Homepage contains no credential. The observer runs inside the existing
+OpenClaw sandbox, with a Caddy-only bridge on port 18802. A host release prepares
+ingress and the card; DNS, the private credential, and the guarded sandbox/guest
+installation remain explicit rollout steps. See the
+[Agent office runbook](../agent-office/README.md) for setup, verification and rollback.
