@@ -15,12 +15,14 @@ export class OfficeActivity {
 
   identity(event, ctx) {
     // Identities come only from native context, never prompt/tool parameters.
-    if (!Object.hasOwn(ROLES, ctx?.agentId) || !this.roster.some(a => a.id === ctx.agentId)) return null;
-    const session = ctx.sessionKey;
-    const run = ctx.runId ?? event?.runId;
-    if (typeof session !== 'string' || session.length > 512 || !session.startsWith(`agent:${ctx.agentId}:`)
+    const session = ctx?.sessionKey;
+    const agent = typeof session === 'string' ? /^agent:([^:]+):/.exec(session)?.[1] : undefined;
+    if (!Object.hasOwn(ROLES, agent) || !this.roster.some(a => a.id === agent)
+        || (ctx?.agentId !== undefined && ctx.agentId !== agent)) return null;
+    const run = ctx?.runId ?? event?.runId;
+    if (typeof session !== 'string' || session.length > 512
         || typeof run !== 'string' || !run.length || run.length > 256) return null;
-    return { agent: ctx.agentId, key: JSON.stringify([ctx.agentId, session, run]) };
+    return { agent, key: JSON.stringify([agent, session, run]) };
   }
 
   observe(kind, event, ctx) {

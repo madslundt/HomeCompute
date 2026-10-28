@@ -77,10 +77,21 @@ The optional plugin registers `model_call_started`, `before_tool_call`,
 `after_tool_call`, and `agent_end` observations. These are based on the
 [pinned OpenClaw hook contract](https://github.com/openclaw/openclaw/blob/v2026.9.9/src/plugins/hook-types.ts),
 with [hook permissions documented upstream](https://docs.openclaw.ai/plugins/hooks).
+The pinned runtime's model hook supplies native session/run identity without
+an `agentId`; the observer derives only a known role from that trusted session
+prefix and rejects a conflicting explicit agent. Request-scoped plugin
+registrations share the gateway service's in-memory activity, including when
+the native loader evaluates another module instance. Unstarted request services
+cannot stop that gateway-owned listener.
 The plugin reads only native agent/session/run identity for in-memory
 correlation, fixed tool identifiers for categorization, and the end success
 boolean. It never inspects conversation content or a tool's inputs/outputs.
 Public snapshots omit native identity and raw tool identifiers.
+
+Unobserved characters stand separately near their role's floor area. Their
+status stays Unknown; their placement does not invent activity or imply a
+running task. This avoids overlapping the whole team at the entrance after a
+gateway restart.
 
 - **Working:** a fresh model/tool observation exists for an active native run.
 - **Waiting:** the observed tool is `sessions_yield`; another working run still
