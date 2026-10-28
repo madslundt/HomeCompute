@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Plan, stage or roll back the same-model .05/.05 speech capacity candidate.
+
+Run from an immutable published release as root on home-spark. Activation only
+stages a candidate; it never calls that candidate accepted or edits live env files.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import socket
+import stat
+import subprocess
+
+from speech_capacity import BUDGETS, CONTAINERS, SERVICES, activate, candidate, verify_baseline
+
+ROOT = Path(__file__).resolve().parents[1]
+STATE = Path('/var/lib/homecompute-speech-capacity')
+PATHS = {'hviske': ('deploy/hviske-stt/compose.yaml', '/etc/gb10-ai/hviske.env'),
+         'plapre': ('deploy/compute-node/plapre/compose.yaml', '/etc/gb10-ai/plapre-tts.env')}
+
+
+def run(args: list[str], timeout=60) -> str:
+    # Suppress Docker's launch command and environment in exception messages.
+    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f'{args[0]} operation failed (exit {result.returncode})')
+    return result.stdout
+
+
+def digest(value) -> str:
+    body = value if isinstance(value, bytes) else json.dumps(value, sort_keys=True).encode()
+    return hashlib.sha256(body).hexdigest()
+
+
+def protected(path: Path, directory=False) -> None:
+    for ancestor in [*reversed(path.absolute().parents), path]:
+        info = ancestor.lstat()
+        if (stat.S_ISLNK(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022 or
+                (ancestor == path and not (stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode)))):
+            raise ValueError('Untrusted deployment path: ' + str(ancestor))
+
+
+def release() -> str:
+    if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-spark':
+        raise ValueError('Run as root on home-spark')
+    protected(ROOT, directory=True)
+    revision = run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']).strip()
+    if not re.fullmatch(r'[0-9a-f]{40}', revision) or ROOT != Path('/srv/homecompute/releases') / revision:
+        raise ValueError('Use the selected published immutable release directory')
+    if run(['git', '-C', str(ROOT), 'status', '--porcelain']).strip():
+        raise ValueError('The published release checkout is modified')
+    return revision
+
+
+def inspect(name: str) -> dict:
+    value = json.loads(run(['docker', 'inspect', name]))[0]
+    return value
+
+
+def render(key: str) -> dict:
+    relative, environment = PATHS[key]
+    protected(ROOT / relative)
+    protected(Path(environment))
+    value = json.loads(run(['docker', 'compose', '--env-file', environment, '-f',
+                           str(ROOT / relative), 'config', '--format', 'json']))
+    service = value['services'][SERVICES[key]]
+    # Resolve the configured immutable/local pinned tag to the installed image;
+    # neither staging nor restoration may pull a replacement image.
+    service['image'] = json.loads(run(['docker', 'image', 'inspect', service['image']]))[0]['Id']
+    return value
+
+
+def prepare(revision: str) -> tuple[dict, dict, dict]:
+    original, running, identities = {}, {}, {}
+    for key, name in CONTAINERS.items():
+        data = inspect(name)
+        if not data['State']['Running'] or data['State'].get('Health', {}).get('Status') != 'healthy':
+            raise ValueError('A healthy running speech baseline is required: ' + key)
+        original[key] = render(key)
+        labels = data['Config']['Labels']
+        if labels.get('com.docker.compose.project') != original[key]['name']:
+            raise ValueError('The source and actual Compose project differ: ' + key)
+        running[key] = {'image': data['Image'], 'command': data['Config']['Cmd']}
+        identities[key] = data['Id']
+    verify_baseline(original, running)
+    staged = candidate(original)
+    plan = {'schema_version': 1, 'profile': 'speech-05-05-candidate', 'state': 'qualification-required',
+            'source_revision': revision, 'budgets': BUDGETS, 'container_ids': identities,
+            'baseline_sha256': digest(original), 'candidate_sha256': digest(staged),
+            'unchanged': ['models', 'images', 'voices', 'tempo', 'contexts', 'sequence counts', 'Flash runtime']}
+    plan['plan_sha256'] = digest(plan)
+    return plan, original, staged
+
+
+def write(path: Path, value) -> None:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, 'w') as handle:
+        json.dump(value, handle, sort_keys=True)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def start(directory: Path, key: str, profile: str) -> None:
+    path = directory / (key + '-' + profile + '.json')
+    protected(path)
+    run(['docker', 'compose', '-f', str(path), 'up', '-d', '--no-build', '--no-deps',
+         '--pull', 'never', '--wait', '--wait-timeout', '900', SERVICES[key]], timeout=960)
+
+
+def validate_active() -> tuple[Path, dict]:
+    marker = STATE / 'active.json'
+    protected(marker)
+    data = json.loads(marker.read_text())
+    identifier = data.get('plan_sha256', '')
+    if not re.fullmatch(r'[0-9a-f]{64}', identifier):
+        raise ValueError('Invalid candidate receipt')
+    directory = STATE / identifier
+    protected(directory, directory=True)
+    for profile in ['baseline', 'candidate']:
+        values = {}
+        for key in SERVICES:
+            path = directory / (key + '-' + profile + '.json')
+            protected(path)
+            values[key] = json.loads(path.read_text())
+        if digest(values) != data[profile + '_sha256']:
+            raise ValueError('Candidate or rollback file changed')
+    return directory, data
+
+
+def restore() -> dict:
+    directory, data = validate_active()
+    failures = []
+    for key in reversed(SERVICES):
+        try:
+            start(directory, key, 'baseline')
+        except Exception:
+            failures.append(key)
+    if failures:
+        raise RuntimeError('Speech baseline restoration failed: ' + ', '.join(failures))
+    (STATE / 'active.json').unlink()
+    return {'restored': 'baseline', 'plan_sha256': data['plan_sha256'], 'accepted': False}
+
+
+def actual_profiles(directory: Path) -> dict:
+    result = {}
+    for key, name in CONTAINERS.items():
+        data = inspect(name)
+        profile = 'unrecognized'
+        for label in ['baseline', 'candidate']:
+            service = json.loads((directory / (key + '-' + label + '.json')).read_text())['services'][SERVICES[key]]
+            if data['Image'] == service['image'] and data['Config']['Cmd'] == service['command']:
+                profile = label
+        result[key] = {'profile': profile, 'healthy': data['State'].get('Health', {}).get('Status') == 'healthy'}
+    return result
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['plan', 'apply', 'status', 'rollback'])
+    parser.add_argument('--plan-sha256')
+    parser.add_argument('--speech-idle', action='store_true',
+                        help='Coordinator has paused speech intake and verified no active speech request')
+    args = parser.parse_args()
+    revision = release()
+    if args.action == 'plan':
+        print(json.dumps(prepare(revision)[0], sort_keys=True))
+        return
+    if args.action == 'status':
+        if not (STATE / 'active.json').exists():
+            print(json.dumps({'candidate_active': False, 'accepted': False}))
+        else:
+            directory, receipt = validate_active()
+            print(json.dumps({**receipt, 'actual': actual_profiles(directory), 'accepted': False}, sort_keys=True))
+        return
+    if not args.speech_idle:
+        raise ValueError('Pause speech intake and pass --speech-idle; no running request may be interrupted')
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    protected(STATE, directory=True)
+    with (STATE / 'lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if args.action == 'rollback':
+            print(json.dumps(restore()))
+            return
+        if (STATE / 'active.json').exists():
+            raise ValueError('A capacity candidate is already active; restore or reconcile it first')
+        plan, original, staged = prepare(revision)
+        if args.plan_sha256 != plan['plan_sha256']:
+            raise ValueError('The reviewed plan changed; obtain and review a fresh plan')
+        directory = STATE / plan['plan_sha256']
+        directory.mkdir(mode=0o700)
+        for key in SERVICES:
+            write(directory / (key + '-baseline.json'), original[key])
+            write(directory / (key + '-candidate.json'), staged[key])
+        write(STATE / 'active.json', plan)
+        try:
+            activate(lambda key, profile: start(directory, key, profile))
+        except Exception:
+            # activate() attempted both restorations. Verify again and retain
+            # the marker if either baseline is not healthy; never hide drift.
+            if all(inspect(name)['State'].get('Health', {}).get('Status') == 'healthy'
+                   and inspect(name)['Config']['Cmd'] == original[key]['services'][SERVICES[key]]['command']
+                   for key, name in CONTAINERS.items()):
+                (STATE / 'active.json').unlink()
+            raise
+        print(json.dumps({'candidate_active': True, 'accepted': False,
+                          'plan_sha256': plan['plan_sha256'], 'state': 'qualification-required'}))
+
+
+if __name__ == '__main__':
+    main()

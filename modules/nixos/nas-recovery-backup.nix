@@ -8,11 +8,14 @@ let
     requires = [ "network-online.target" ];
     after = [ "network-online.target" ];
     unitConfig.RequiresMountsFor = mount;
-    path = [ pkgs.restic pkgs.util-linux ];
+    path = [ pkgs.restic pkgs.util-linux pkgs.docker pkgs.systemd ];
     serviceConfig = {
       Type = "oneshot";
       User = "root";
       UMask = "0077";
+      ExecStartPre = lib.optionals (command == "backup" && cfg.includeApplicationState) [
+        "${pkgs.python3}/bin/python3 ${../../scripts/application-recovery.py} prepare"
+      ];
       ExecStart = "${runner} ${command}";
       TimeoutStartSec = "2h";
       MemoryMax = "1G";
@@ -27,7 +30,7 @@ let
       ProtectKernelTunables = true;
       ProtectKernelModules = true;
       ProtectControlGroups = true;
-      ReadWritePaths = [ mount state ];
+      ReadWritePaths = [ mount state "/srv/backups/agent-recovery" "/var/lib/homecompute/deploy.lock" "/run/homecompute" ];
       RestrictAddressFamilies = [ "AF_UNIX" ];
     };
   };
@@ -41,8 +44,19 @@ in {
       default = null;
       description = "Root-only mount.cifs credential file for the dedicated backup account.";
     };
+    includeApplicationState = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Prepare a consistent recovery archive of gateway, n8n, Mattermost,
+        Immich databases, trusted agent state and both VMs before transfer.
+        This briefly stops applications and VMs; active private browsers defer
+        the job. Original NAS media and the host age identity remain separate.
+      '';
+    };
   };
   config = lib.mkIf cfg.enable {
+    environment.systemPackages = [ pkgs.qemu_kvm ];
     assertions = [
       { assertion = cfg.share != null && cfg.credentialsFile != null;
         message = "NAS recovery backups need a separate known share and root-only account credential."; }
@@ -56,6 +70,10 @@ in {
     systemd.tmpfiles.rules = [
       "d ${state} 0700 root root - -"
       "d /srv/backups/agent-recovery 0700 root root - -"
+      "d /srv/restore-tests 0700 root root - -"
+      "d /var/lib/homecompute 0750 root root - -"
+      "f /var/lib/homecompute/deploy.lock 0600 root root - -"
+      "d /run/homecompute 0755 root root - -"
     ];
     fileSystems.${mount} = {
       device = "//${cfg.address}/${if cfg.share == null then "UNCONFIGURED" else cfg.share}";
@@ -69,7 +87,8 @@ in {
     systemd.services.homecompute-nas-recovery-check = service "check";
     systemd.timers.homecompute-nas-recovery-backup = {
       wantedBy = [ "timers.target" ];
-      timerConfig = { OnCalendar = "daily"; RandomizedDelaySec = "30m"; Persistent = true; };
+      # Separate from the local VM bootstrap snapshot's midnight window.
+      timerConfig = { OnCalendar = "*-*-* 03:15:00"; RandomizedDelaySec = "30m"; Persistent = true; };
     };
     systemd.timers.homecompute-nas-recovery-check = {
       wantedBy = [ "timers.target" ];

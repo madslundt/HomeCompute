@@ -214,3 +214,76 @@ host-key policy.
 - A successful code rollback cannot reverse database migrations, and a failed
   Spark installer can leave runtime changes even though release pointers stay
   on the last recorded success.
+
+## Platform readiness and recovery
+
+`homecompute-platform-health.service` now checks the deployed consumer paths.
+Its read-only helper enters the existing LiteLLM container to check the actual
+configured text, embedding, transcription and speech upstreams. This preserves
+the host firewall's denial of direct SSH-forward access. Core Wyoming Describe
+checks use the two existing private adapter addresses. Probes send no inference
+requests and emit only finite readiness booleans. Required dependency failure
+writes a zero gauge and fails the unit; unit success is no longer independent
+of model readiness. A stopped optional vision profile is not a required check.
+
+The approved service inventory is `config/system-monitoring.json`; the trusted
+snapshot collector must include the same entries when installing its bundle.
+Keep deliberately retired services out of the required inventory. The expanded
+core inventory includes Immich, Mattermost, embeddings, speech adapters and CPU
+fallbacks, TTLock, the compute tunnel, Codex VM, and local backup status.
+
+The intended first off-host destination is a **separate Synology backup share**.
+Hetzner is deferred. Neither the Immich media share/account nor Omi's NFS export
+is a backup destination. Before enabling `homecompute.nasRecoveryBackup`, supply
+its actual `share` and a dedicated root-only, externally provisioned
+`credentialsFile`. Declare those non-secret settings in the host module and keep
+the credential in SOPS. An absent destination remains a blocked backup, never a
+silent same-host fallback.
+
+The NAS module's `includeApplicationState = true` default prepares an
+application-consistent recovery archive before Restic transfer. It stops the
+declared writers and VMs, uses PostgreSQL dumps and SQLite's transactional backup
+API, archives durable application files and both VM disk sets, and resumes only
+previously active resources even if preparation fails. Active private browser
+sessions defer the job. Preparation and deployments share a lock; the local VM
+backup and recovery preparation also exclude each other. The NAS schedule starts
+at 03:15 local host time, outside the local VM snapshot's midnight window.
+
+Preparation requires measured space for source files plus 100 GiB headroom and
+retains two completed application archives. Archives are root-only on local
+storage and encrypted by Restic on the NAS. Original Immich media stays outside
+this archive and requires an independent media backup. The host age identity and
+Restic recovery password need separate offline custody. Generated Nix store
+symlinks are rebuilt from the release instead of copied into a recovery archive.
+
+After deploying the reviewed configuration, validate and initialize the new
+repository once, then run transport and application backup checks:
+
+```bash
+sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py validate
+sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py init
+sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py proof
+sudo systemctl start homecompute-nas-recovery-backup.service
+sudo systemctl start homecompute-nas-recovery-check.service
+```
+
+`proof` verifies only encryption, NAS write/read and a synthetic byte restore.
+It does not prove application recovery. For a completed application's exact
+snapshot ID and archive name, restore into a new scratch directory and verify
+the archive into a second new scratch directory:
+
+```bash
+sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py restore-application \
+  --snapshot FULL_64_CHARACTER_SNAPSHOT_ID --archive EXACT_APPLICATION_ARCHIVE_NAME \
+  --target /srv/restore-tests/nas-archive-YYYYMMDD
+sudo python3 /srv/homecompute/current/scripts/application-recovery.py verify \
+  /srv/restore-tests/nas-archive-YYYYMMDD/srv/backups/agent-recovery/EXACT_APPLICATION_ARCHIVE_NAME \
+  /srv/restore-tests/application-verify-YYYYMMDD
+```
+
+Verification checks restored SQLite integrity, compressed dump checksums and all
+three qcow2 disks without touching production paths. It explicitly leaves
+PostgreSQL imports and isolated VM boots unverified; complete those drills with
+no production network access before accepting disaster recovery. NAS storage
+protects against home-core loss, while NAS/site loss remains uncovered until the
+independent second destination and its restore drill are complete.

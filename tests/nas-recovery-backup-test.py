@@ -76,6 +76,19 @@ class NASBackupTest(unittest.TestCase):
                 backup.main()
             loader.assert_not_called()
 
+    def test_restore_requires_exact_snapshot_name_and_new_scratch_target(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(backup, "root_directory"), \
+                patch.object(backup, "RESTORE_ROOT", Path(temporary)), patch.object(backup, "restic") as restic:
+            for snapshot, archive, target in [
+                ('latest', 'homecompute-applications-20261028T120000.000000Z.tar', Path(temporary) / 'new'),
+                ('a' * 64, '../other.tar', Path(temporary) / 'new'),
+                ('a' * 64, 'homecompute-applications-20261028T120000.000000Z.tar', Path('/srv/state/immich')),
+                ('a' * 64, 'homecompute-applications-20261028T120000.000000Z.tar', Path(temporary)),
+            ]:
+                with self.subTest(snapshot=snapshot, archive=archive), self.assertRaises(ValueError):
+                    backup.restore_application(snapshot, archive, target)
+            restic.assert_not_called()
+
     @unittest.skipUnless(os.geteuid() == 0 and shutil.which("restic"), "real root/Restic integration")
     def test_real_encrypted_init_snapshot_and_restore_without_nas_or_production(self):
         with tempfile.TemporaryDirectory() as temporary:

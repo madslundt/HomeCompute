@@ -73,6 +73,7 @@ in
       wantedBy = [ "multi-user.target" ];
       after = [ "tailscaled.service" "ttlock-webhook.service" ];
       requires = [ "tailscaled.service" "ttlock-webhook.service" ];
+      unitConfig.StartLimitIntervalSec = 0;
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
@@ -80,6 +81,8 @@ in
         ExecReload = "${pkgs.tailscale}/bin/tailscale funnel --yes --bg --https=443 http://127.0.0.1:${toString cfg.gatewayPort}";
         ExecStop = "${pkgs.tailscale}/bin/tailscale funnel --https=443 off";
         TimeoutStartSec = 60;
+        Restart = "on-failure";
+        RestartSec = "15s";
       };
     };
   };
