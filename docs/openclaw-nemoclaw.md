@@ -486,3 +486,10 @@ existing credential binding through OpenShell's native base-policy API. The
 third-party NemoClaw preset interface rejects `allowed_ips`; it must not be
 used by removing those pins. Recovery merges only the three tracked service
 rules, preserves other base-policy entries, and refuses conflicting rules.
+
+Native MCP restart may revision its `HOMECOMPUTE_OPENCLAW_MCP_TOKEN` resolver
+placeholder. Recovery accepts only the native stable/versioned forms of that
+same fixed key; endpoint, other headers and all retained policy remain exact.
+It reads and verifies the refreshed native config before reactivating channels,
+then preserves that latest handle rather than restoring a stale revision.
+Raw bearer credentials, another resolver key or unrelated changes are refused.

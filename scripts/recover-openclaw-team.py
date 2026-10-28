@@ -80,10 +80,23 @@ def native_auth_rotation(expected, actual, previous_auth):
     token=auth.get('token')
     candidate=copy.deepcopy(expected)
     candidate['gateway']['auth']=copy.deepcopy(auth)
+    retain_mcp_handle(candidate,actual)
     if (candidate!=actual or set(auth)!={'token'} or not isinstance(token,str)
             or not 16<=len(token)<=1024 or any(ord(c)<32 for c in token) or auth==previous_auth):
         raise ValueError('native-startup-policy-or-auth-drift')
     return auth
+
+
+def retain_mcp_handle(candidate, actual):
+    """Native MCP restart revisions only the same fixed resolver placeholder."""
+    pattern=r'Bearer openshell:resolve:env:(?:(?:v[0-9]{1,20}|s[a-f0-9]{64})_)?HOMECOMPUTE_OPENCLAW_MCP_TOKEN'
+    def headers(config):
+        return config.get('mcp',{}).get('servers',{}).get('homecompute',{}).get('headers',{})
+    before,after=headers(candidate),headers(actual)
+    if (isinstance(before,dict) and isinstance(after,dict)
+            and re.fullmatch(pattern,str(before.get('Authorization','')))
+            and re.fullmatch(pattern,str(after.get('Authorization','')))):
+        before['Authorization']=after['Authorization']
 
 
 def safe_link(relative, target):
@@ -349,6 +362,7 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         verified=backup_root/'verification-ready/.openclaw'
         self.verify_backup(verified)
         self.policy['gateway']['auth']=copy.deepcopy(native_auth_rotation(paused(self.policy),actual,self.previous_auth))
+        retain_mcp_handle(self.policy,actual)
         if BASE.logical_conversations(verified)!=BASE.logical_conversations(backup):
             raise ValueError('immutable-conversation-or-session-drift')
         module('approve-native-openclaw-cli').ensure_cli(self.ctx)
@@ -376,6 +390,11 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         self.stage('restore-declared-native-network')
         self.attach_mcp()
         self.command([self.ctx.cli, BASE.NAME, 'mcp', 'restart', 'homecompute'], 'restore-existing-mcp-binding', timeout=240)
+        refreshed=backup_root/('mcp-refreshed-'+str(time.time_ns())+'.json')
+        self.command(['/usr/bin/docker','cp',self.ctx.container+':/sandbox/.openclaw/openclaw.json',str(refreshed)],'verify-refreshed-native-policy')
+        actual=json.loads(refreshed.read_bytes())
+        self.policy['gateway']['auth']=copy.deepcopy(native_auth_rotation(paused(self.policy),actual,self.previous_auth))
+        retain_mcp_handle(self.policy,actual)
         for file, host in [('deploy/openclaw/tools/browser-policy.yaml','172.18.0.1'),
                            ('deploy/openclaw/mattermost-policy.yaml','home-core.tail479ad.ts.net')]:
             preset=ROOT/file
