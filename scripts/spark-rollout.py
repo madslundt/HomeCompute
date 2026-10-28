@@ -24,6 +24,8 @@ import tempfile
 import threading
 import time
 
+# Imports from the immutable release must never create runtime artifacts there.
+sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute-spark-rollout')
 CAPACITY_STATE = Path('/var/lib/homecompute-speech-capacity/active.json')
@@ -53,10 +55,20 @@ print(json.dumps(result))
 
 
 def run(arguments: list[str], *, timeout=240, missing=False) -> str | None:
-    result = subprocess.run(arguments, capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(arguments, capture_output=True, text=True, timeout=timeout,
+                            env={**os.environ, 'PYTHONDONTWRITEBYTECODE':'1'})
     if result.returncode:
         if missing: return None
         operation=Path(arguments[1]).name if Path(arguments[0]).name.startswith('python') and len(arguments)>1 else ' '.join(arguments[:2])
+        if operation == 'setup-speech-boundary.py':
+            for line in result.stderr.splitlines():
+                if not line.startswith('SPEECH_BOUNDARY_FAILURE '): continue
+                try: diagnostic=json.loads(line.removeprefix('SPEECH_BOUNDARY_FAILURE '))
+                except ValueError: continue
+                reason=diagnostic.get('reason')
+                if reason in {'invalid-mount','port-conflict','image-unavailable','container-not-ready',
+                              'compose-invalid','operation-failed','guard-or-filesystem'}:
+                    raise RuntimeError('Operation failed: '+operation+' ('+reason+')')
         raise RuntimeError('Operation failed: '+operation+' (exit '+str(result.returncode)+')')
     return result.stdout.strip()
 

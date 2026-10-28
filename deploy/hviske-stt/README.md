@@ -279,3 +279,11 @@ receipt path/hash. It contains no plan objects, env values, prompts, transcripts
 or audio. The coordinator verifies ownership and schema before using it. A
 missing/malformed report remains unverified; use a fresh staging directory for
 each attempt rather than overwriting any earlier result.
+
+If raw ingress preparation fails, the runner reports a finite error category
+such as `invalid-mount`, `port-conflict`, or `image-unavailable`; Docker output
+and environment values remain suppressed. This step precedes ingress pausing
+and capacity replacement. Inspect actual service health and the finite result
+before retrying from a new staging directory with a reviewed release. The
+rendered ingress tmpfs is also checked with an isolated Docker create/remove
+test, because Compose rendering alone accepts malformed relative mount paths.

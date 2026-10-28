@@ -14,6 +14,7 @@ import pwd
 import re
 import socket
 import subprocess
+import sys
 import time
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -25,13 +26,35 @@ CORE_ENV = Path('/etc/homecompute/control-plane.env')
 CORE_SERVICES = ('plapre-wyoming-proxy', 'hviske-wyoming-proxy')
 SPARK_LEGACY = ('homecompute-plapre-plapre-edge-1', 'homecompute-plapre-plapre-wyoming-1', 'gb10-hviske-wyoming')
 BIN = '/run/current-system/sw/bin'
+FAILURE_PREFIX = 'SPEECH_BOUNDARY_FAILURE '
+
+
+class OperationError(RuntimeError):
+    def __init__(self, reason: str, exit_code: int):
+        super().__init__(f'Managed operation failed (exit {exit_code}; {reason})')
+        self.reason, self.exit_code = reason, exit_code
+
+
+def failure_reason(output: str) -> str:
+    # Match locally, emit only fixed categories. Docker output can contain
+    # interpolated environment values and must never reach terminal/receipts.
+    lowered = output.lower()
+    for reason, fragments in (
+        ('invalid-mount', ('invalid mount path', 'invalid mount config')),
+        ('port-conflict', ('port is already allocated', 'address already in use')),
+        ('image-unavailable', ('pull access denied', 'failed to resolve reference', 'manifest unknown')),
+        ('container-not-ready', ('container is unhealthy', 'did not become healthy')),
+        ('compose-invalid', ('invalid interpolation', 'required variable', 'is missing a value')),
+    ):
+        if any(fragment in lowered for fragment in fragments): return reason
+    return 'operation-failed'
 
 
 def run(args: list[str], *, output: bool = False) -> str:
     result = subprocess.run(args, check=False, capture_output=True, text=True)
     if result.returncode:
         # Never relay Docker inspect/env output or HTTP response bodies.
-        raise RuntimeError(f'{args[0]} {args[1] if len(args)>1 else ""} failed (exit {result.returncode})')
+        raise OperationError(failure_reason(result.stderr), result.returncode)
     return result.stdout if output else ''
 
 
@@ -378,4 +401,12 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as error:
+        # This finite machine-readable record also survives the outer rollout
+        # helper, without forwarding Docker output or arbitrary exception text.
+        print(FAILURE_PREFIX + json.dumps({'error': type(error).__name__,
+            'reason': error.reason if isinstance(error, OperationError) else 'guard-or-filesystem',
+            'exit_code': error.exit_code if isinstance(error, OperationError) else None}), file=sys.stderr)
+        raise SystemExit(1) from None

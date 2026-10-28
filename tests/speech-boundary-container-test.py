@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import subprocess
 import unittest
+import json
+from pathlib import Path
 
 IMAGE = 'homecompute/speech-adapters:wyoming-1.10.2'
 FIXTURE = r'''
@@ -87,6 +89,26 @@ print('PASS: real Wyoming STT/auth, TTS/PCM/tempo, and unapproved voice denial')
 
 
 class SpeechBoundaryContainerTest(unittest.TestCase):
+    def test_rendered_ingress_tmpfs_is_accepted_by_engine_without_starting(self):
+        if subprocess.run(['docker','image','inspect',IMAGE],capture_output=True).returncode:
+            self.skipTest('Build the pinned speech adapter CPU image first')
+        root=Path(__file__).resolve().parents[1]
+        config=json.loads(subprocess.check_output(['docker','compose','--env-file',
+            str(root/'config/plapre-tts.env.example'),'-f',
+            str(root/'deploy/compute-node/plapre/compose.yaml'),'config','--format','json']))
+        arguments=['docker','create','--network','none','--read-only','--cap-drop','ALL',
+                   '--memory','64m','--pids-limit','64']
+        for mount in config['services']['plapre-http']['tmpfs']: arguments+=['--tmpfs',mount]
+        result=subprocess.run([*arguments,IMAGE,'python3','-c','pass'],capture_output=True,text=True,timeout=15)
+        identifier=result.stdout.strip() if result.returncode==0 else None
+        try:
+            self.assertEqual(result.returncode,0,result.stderr)
+            state=json.loads(subprocess.check_output(['docker','inspect',identifier]))[0]['State']
+            self.assertEqual(state['Status'],'created')
+            self.assertFalse(state['Running'])
+        finally:
+            if identifier: subprocess.run(['docker','rm',identifier],check=True,capture_output=True)
+
     def test_real_protocol_and_tempo_in_cpu_image(self):
         image = subprocess.run(['docker', 'image', 'inspect', IMAGE], capture_output=True)
         if image.returncode:
