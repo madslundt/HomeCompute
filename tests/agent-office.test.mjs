@@ -89,6 +89,15 @@ test('missing or inconsistent native identity cannot fabricate an observed agent
   assert.ok(activity.snapshot().agents.every(agent => agent.status === 'unknown'));
 });
 
+test('sparse native model context derives only a known agent from its trusted session identity', () => {
+  const activity = new OfficeActivity(roster);
+  activity.observe('model', { runId: 'native-model-run' }, { sessionKey: 'agent:engineer:synthetic-native-model' });
+  const agent = activity.snapshot().agents.find(a => a.id === 'engineer');
+  assert.equal(agent.status, 'working');
+  assert.equal(agent.active_runs, 1);
+  assert.ok(!JSON.stringify(activity.snapshot()).includes('synthetic-native-model'));
+});
+
 test('event retention is bounded and demo feed is explicitly synthetic', () => {
   const activity = new OfficeActivity(roster);
   for (let i = 0; i < 200; i++) {
@@ -119,6 +128,10 @@ test('every standing destination and corridor stays clear of furniture, includin
   assert.equal(isWalkable([(left + right) / 2, (top + bottom) / 2]), false);
   assert.deepEqual(findPath([(left + right) / 2, (top + bottom) / 2], ROLE_DESTINATIONS.main), []);
   assert.deepEqual(findPath(ROLE_DESTINATIONS.family, ROLE_DESTINATIONS.main), [], 'Gaia uses a separate visual garden graph');
+  const unseen = Object.keys(ROLE_DESTINATIONS).map(id => resolveDestination({ id, status: 'unknown' }));
+  for (let i = 0; i < unseen.length; i++) for (let j = i + 1; j < unseen.length; j++) {
+    assert.ok(Math.hypot(unseen[i][0] - unseen[j][0], unseen[i][1] - unseen[j][1]) > 8, 'Unobserved characters have separate role locations');
+  }
 });
 
 test('all 12 characters have distinct leg phases and four directional planted poses', async () => {
@@ -216,6 +229,26 @@ test('plugin registers observation hooks without modifying agent policies', () =
   assert.deepEqual([...handlers.keys()], ['model_call_started', 'before_tool_call', 'after_tool_call', 'agent_end']);
   for (const handler of handlers.values()) assert.equal(handler({ params: { private: 'data' } }, ctx()), undefined);
   assert.equal(service.id, 'homecompute-agent-office');
+});
+
+test('request-scoped plugin registrations observe the running service state across module instances', async () => {
+  const key = Symbol.for('homecompute.agent-office.runtime.v1');
+  const state = globalThis[key] = { activity: new OfficeActivity(roster) };
+  try {
+    const first = new Map(), second = new Map();
+    let otherService;
+    plugin.register({ on: (name, fn) => first.set(name, fn), registerService() {} });
+    const reloaded = (await import('../deploy/agent-office/index.mjs?request-registry-test')).default;
+    reloaded.register({ on: (name, fn) => second.set(name, fn), registerService: s => otherService = s });
+    const context = ctx('request-scoped-run', 'engineer');
+    const { agentId, ...sparse } = context;
+    first.get('model_call_started')({}, sparse);
+    assert.equal(state.activity.snapshot().agents.find(a => a.id === agentId).status, 'working');
+    await otherService.stop();
+    second.get('agent_end')({ success: true }, context);
+    assert.equal(state.activity.snapshot().agents.find(a => a.id === agentId).status, 'idle');
+    assert.equal(state.activity.snapshot().events.length, 2);
+  } finally { delete globalThis[key]; }
 });
 
 test('native config patch preserves other plugin access and refuses policy bypass', () => {

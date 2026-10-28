@@ -133,7 +133,7 @@ export function resolveDestination(agent, index = 0) {
     : agent.status === 'idle' ? [90.5, 84.5] : agent.status === 'waiting' ? [83.5, 74] : ROLE_DESTINATIONS.family)];
   const ordinal = roleOrder.indexOf(agent.id);
   const slot = ordinal < 0 ? Math.max(0, Math.trunc(index)) : ordinal;
-  if (agent.status === 'unknown') return [...arrival[slot % arrival.length]];
+  if (agent.status === 'unknown') return [...(ROLE_DESTINATIONS[agent.id] ?? arrival[slot % arrival.length])];
   if (agent.status === 'idle') return [...lounge[slot % lounge.length]];
   if (agent.status === 'waiting' || agent.activity === 'waiting') return [...waiting[slot % waiting.length]];
   if (agent.activity === 'coordinating') return [...(agent.id === 'main' ? ROLE_DESTINATIONS.main : waiting[slot % waiting.length])];
