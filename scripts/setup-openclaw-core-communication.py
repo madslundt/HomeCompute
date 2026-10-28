@@ -45,7 +45,7 @@ FILES = (
     'scripts/openclaw_machine_notifications.py', 'scripts/openclaw_tasks.py',
     'scripts/openclaw_maintenance.py',
     'scripts/openclaw_capabilities.py', 'scripts/openclaw_services.py', 'scripts/homeassistant_actions.py',
-    'scripts/openclaw_integrations.py', 'scripts/openclaw_integration_policy.py',
+    'scripts/openclaw_integrations.py', 'scripts/openclaw_integration_policy.py', 'scripts/openclaw_places.py',
     'config/openclaw-integrations.json', 'docs/openclaw-integrations.md',
     'scripts/openclaw_household.py', 'scripts/openclaw_household_requests.py',
     'scripts/openclaw_household_shopping.py', 'scripts/openclaw_household_storage.py',

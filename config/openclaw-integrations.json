@@ -2,7 +2,7 @@
   "schema_version": 1,
   "providers": {
     "context7": {"enabled": true, "calls_per_hour": 30},
-    "maps": {"enabled": false, "calls_per_hour": 20},
+    "maps": {"enabled": true, "calls_per_hour": 20, "backend": "geoapify"},
     "expedia": {"enabled": true, "calls_per_hour": 12},
     "immich": {"enabled": true, "calls_per_hour": 30},
     "n8n": {"enabled": true, "calls_per_hour": 30}

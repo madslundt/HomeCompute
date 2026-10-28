@@ -10,8 +10,11 @@ When granted provider tools are relevant, first check
 `configured` means local prerequisites exist, not that a live request passed.
 Use `places_search` for explicit public locations, `places_route` for driving
 or walking comparisons, and `places_weather` for an explicit location/date;
-all use the `homecompute__homecompute_` prefix. Preserve returned Google Maps
-attribution. Keep private calendar text, birthdays and names out of queries.
+all use the `homecompute__homecompute_` prefix. The maps backend is Geoapify
+plus Open-Meteo. For nearby discovery, put the city/area in `query`, select a
+`category` and optionally a place `name`. Preserve source attribution. On
+`clarification_required`, ask the owner to disambiguate the returned places
+before continuing. Keep private calendar text, birthdays and names out of queries.
 An unavailable provider ends the attempt; use the existing approved research
 path and label the missing provider evidence.
 

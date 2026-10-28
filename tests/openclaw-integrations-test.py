@@ -28,6 +28,7 @@ class IntegrationsTest(unittest.TestCase):
         self.root = Path(self.tmp.name).resolve()
         self.catalog = self.root / 'catalog.json'
         self.cfg = json.loads((ROOT / 'config/openclaw-integrations.json').read_text())
+        self.cfg['providers']['maps']['enabled'] = False
         self.catalog.write_text(json.dumps(self.cfg))
         self.tokens = {name: self.root / (name + '-token') for name in integrations.PROVIDERS}
         self.token_patch = patch.object(integrations, 'TOKENS', self.tokens); self.token_patch.start()
@@ -168,21 +169,78 @@ class IntegrationsTest(unittest.TestCase):
         self.assertEqual(combined.request('homecompute_integration_status', {'provider': 'maps'})['status'], 'disabled')
         existing.request.assert_called_once_with('existing', {})
 
-    def test_maps_calls_are_fixed_and_preserve_attribution_after_explicit_enablement(self):
+    def places_service(self, *responses):
         self.cfg['providers']['maps']['enabled'] = True
         self.catalog.write_text(json.dumps(self.cfg)); self.credential('maps')
         service = integrations.Integrations(self.catalog, self.root / 'state')
-        service._mcp = Mock(return_value={'attribution': {'source': 'Google Maps'}, 'summary': 'Public place evidence'})
-        for operation, args, upstream in [
-            ('places_search', {'query': 'parks in Copenhagen'}, 'search_places'),
-            ('places_route', {'origin': 'Copenhagen station', 'destination': 'Tivoli Copenhagen', 'mode': 'WALK'}, 'compute_routes'),
-            ('places_weather', {'location': 'Copenhagen Denmark', 'date': '2026-10-29'}, 'lookup_weather')]:
-            result = service.request('homecompute_' + operation, args)
-            self.assertEqual(result['status'], 'completed')
-            self.assertEqual(result['data']['attribution']['source'], 'Google Maps')
-            self.assertEqual(service._mcp.call_args.args[:2], ('maps', upstream))
-        self.assertEqual(service._mcp.call_args.args[2], {'location': {'address': 'Copenhagen Denmark'},
-            'date': {'year': 2026, 'month': 10, 'day': 29}})
+        service._places_http = Mock(side_effect=[(json.dumps(row).encode(), {}) for row in responses])
+        return service
+
+    @staticmethod
+    def city(lat=55.67, lon=12.56, name='Copenhagen, Denmark'):
+        return {'lat': lat, 'lon': lon, 'formatted': name, 'rank': {'confidence': 1.0}}
+
+    def test_geoapify_discovery_is_bounded_and_preserves_source_attribution(self):
+        service = self.places_service({'results': [self.city()]}, {'features': [
+            {'properties': {**self.city(), 'name': 'Public restaurant', 'cookie': 'private'}}]})
+        result = service.request('homecompute_places_search', {'query': 'Copenhagen, Denmark', 'category': 'restaurants'})
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['data']['places'][0]['name'], 'Public restaurant')
+        self.assertEqual([a['name'] for a in result['data']['attribution']], ['Geoapify', 'OpenStreetMap contributors'])
+        urls = [call.args[0] for call in service._places_http.call_args_list]
+        self.assertTrue(urls[0].startswith('https://api.geoapify.com/v1/geocode/search?'))
+        self.assertTrue(urls[1].startswith('https://api.geoapify.com/v2/places?'))
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(urls[1]).query)
+        self.assertEqual(query['categories'], ['catering.restaurant'])
+        self.assertEqual(query['filter'], ['circle:12.56,55.67,5000'])
+        self.assertEqual(query['limit'], ['5'])
+        self.assertNotIn('private', json.dumps(result))
+
+    def test_geoapify_route_returns_only_estimates_and_resolved_locations(self):
+        service = self.places_service({'results': [self.city()]}, {'results': [self.city(55.7, 12.6, 'Public destination')]},
+            {'features': [{'properties': {'distance': 1500, 'time': 900}, 'geometry': 'omitted'}]})
+        result = service.request('homecompute_places_route', {'origin': 'Copenhagen, Denmark', 'destination': 'Public destination', 'mode': 'WALK'})
+        self.assertEqual(result['data']['duration_seconds'], 900)
+        self.assertEqual(result['data']['distance_metres'], 1500)
+        self.assertNotIn('geometry', json.dumps(result))
+        url = service._places_http.call_args.args[0]
+        self.assertIn('/v1/routing?', url)
+        self.assertEqual(urllib.parse.parse_qs(urllib.parse.urlsplit(url).query)['mode'], ['walk'])
+
+    def test_open_meteo_never_receives_the_geoapify_key_and_checks_requested_date(self):
+        weather = {'timezone': 'Europe/Copenhagen', 'daily_units': {'temperature_2m_max': '°C'},
+                   'daily': {'time': ['2026-10-29'], 'temperature_2m_max': [12]}}
+        service = self.places_service({'results': [self.city()]}, weather)
+        result = service.request('homecompute_places_weather', {'location': 'Copenhagen, Denmark', 'date': '2026-10-29'})
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['data']['weather']['daily']['time'], ['2026-10-29'])
+        url, body, headers, deadline = service._places_http.call_args.args
+        self.assertTrue(url.startswith('https://api.open-meteo.com/v1/forecast?'))
+        self.assertNotIn('apiKey', url); self.assertNotIn('synthetic-private', url)
+        self.assertEqual(headers, {}); self.assertIsNone(body)
+        self.assertEqual(result['data']['attribution'][-1]['name'], 'Open-Meteo')
+
+    def test_ambiguous_geocoding_requires_clarification_before_route_or_poi_calls(self):
+        service = self.places_service({'results': [self.city(51.5, -0.12, 'London, UK'), self.city(42.98, -81.25, 'London, Canada')]})
+        result = service.request('homecompute_places_route', {'origin': 'London', 'destination': 'Public destination', 'mode': 'DRIVE'})
+        self.assertEqual(result['status'], 'clarification_required')
+        self.assertEqual(len(result['candidates']), 2)
+        self.assertEqual(service._places_http.call_count, 1)
+
+    def test_malformed_coordinates_cannot_reach_a_followup_provider(self):
+        service = self.places_service({'results': [self.city(float('nan'), 12)]})
+        result = service.request('homecompute_places_search', {'query': 'public city', 'category': 'parks'})
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertEqual(service._places_http.call_count, 1)
+
+    def test_catalog_refuses_other_maps_backends_and_redacts_url_encoded_keys(self):
+        self.cfg['providers']['maps']['backend'] = 'google'
+        self.catalog.write_text(json.dumps(self.cfg))
+        with self.assertRaises(ValueError): integrations.Integrations(self.catalog, self.root / 'other-state')
+        token = 'synthetic+private/key'
+        payload = integrations.evidence({'text': 'url?apiKey=' + urllib.parse.quote_plus(token)}, token)
+        self.assertNotIn('private', json.dumps(payload))
+
 
 
 if __name__ == '__main__': unittest.main()

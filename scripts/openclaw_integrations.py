@@ -28,7 +28,9 @@ from openclaw_services import NoRedirect, private, rpc_result
 PROVIDERS = ('context7', 'maps', 'expedia', 'immich', 'n8n')
 CONFIG_ROOT = Path('/var/lib/homecompute-openclaw/config')
 TOKENS = {name: CONFIG_ROOT / ('integration-' + name + '-token') for name in PROVIDERS}
-MCP_ENDPOINTS = {'context7': 'https://mcp.context7.com/mcp', 'maps': 'https://mapstools.googleapis.com/mcp'}
+# Keep stable maps tool/status names, but never reuse an old Google credential.
+TOKENS['maps'] = CONFIG_ROOT / 'integration-geoapify-token'
+MCP_ENDPOINTS = {'context7': 'https://mcp.context7.com/mcp'}
 IMMICH = 'http://127.0.0.1:2283'
 IMMICH_WEB = 'http://192.168.30.122:2283'
 N8N = 'http://127.0.0.1:15678/api/v1'
@@ -59,11 +61,12 @@ DEFINITIONS = [
                      {'library': string(100), 'query': string(1000)}, ['library', 'query'])),
     ('context7', tool('docs_query', 'context7', 'Read public library documentation. Use the resolved ID and exact package version; never send private source.',
                      {'library_id': string(200, pattern=r'/[A-Za-z0-9_.@/-]{1,199}'), 'query': string(1000)}, ['library_id', 'query'])),
-    ('maps', tool('places_search', 'maps', 'Find public places, restaurants or shops in an explicit location. Preserve Google Maps attribution.',
-                 {'query': string(500)}, ['query'])),
+    ('maps', tool('places_search', 'maps', 'Resolve a named place/address, or find nearby places by category using a city/area query. Geoapify/OSM coverage is partial; preserve attribution.',
+                 {'query': string(500), 'category': string(16, choices=['restaurants', 'cafes', 'shops', 'parks', 'attractions', 'hotels']),
+                  'name': string(100)}, ['query'])),
     ('maps', tool('places_route', 'maps', 'Compare driving or walking distance/duration between two explicit public locations. No live traffic or navigation.',
                  {'origin': string(300), 'destination': string(300), 'mode': string(5, choices=['DRIVE', 'WALK'])}, ['origin', 'destination', 'mode'])),
-    ('maps', tool('places_weather', 'maps', 'Read weather for an explicit location and optional local calendar date. Preserve Google Maps attribution.',
+    ('maps', tool('places_weather', 'maps', 'Read Open-Meteo weather for a Geoapify-resolved location and optional local calendar date. Preserve attribution.',
                  {'location': string(300), 'date': string(10, pattern=r'\d{4}-\d{2}-\d{2}')}, ['location'])),
     ('expedia', tool('hotel_search', 'expedia', 'Discover hotel recommendations for dates and traveler count. Not a family quote, member rate, reservation or booking.',
                     {'destination': string(200), 'check_in': string(10, pattern=r'\d{4}-\d{2}-\d{2}'),
@@ -87,8 +90,10 @@ def configuration(path: Path) -> dict:
             or not isinstance(cfg['public_workflows'], dict)
             or set(cfg['public_workflows']) != {'travel', 'sweet_deals', 'news'}):
         raise ValueError('Integration catalog refused')
-    for item in cfg['providers'].values():
-        if (not isinstance(item, dict) or set(item) != {'enabled', 'calls_per_hour'}
+    for provider, item in cfg['providers'].items():
+        expected = {'enabled', 'calls_per_hour'} | ({'backend'} if provider == 'maps' else set())
+        if (not isinstance(item, dict) or set(item) != expected
+                or provider == 'maps' and item['backend'] != 'geoapify'
                 or type(item['enabled']) is not bool or type(item['calls_per_hour']) is not int
                 or not 1 <= item['calls_per_hour'] <= 120):
             raise ValueError('Integration budget refused')
@@ -120,6 +125,8 @@ def validate(operation: str, arguments: Any) -> dict:
     if operation == PREFIX + 'hotel_search':
         if not 1 <= (date.fromisoformat(arguments['check_out']) - date.fromisoformat(arguments['check_in'])).days <= 31:
             raise ValueError('Hotel interval refused')
+    if operation == PREFIX + 'places_search' and 'name' in arguments and 'category' not in arguments:
+        raise ValueError('Place name filter requires a category')
     return copy.deepcopy(arguments)
 
 
@@ -129,6 +136,7 @@ class Integrations:
         self.tools = copy.deepcopy(TOOLS)
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         self.lock = threading.Lock()
+        self._places_lock, self._places_next = threading.Lock(), 0.0
         if any(p.is_symlink() for p in (state, *state.parents)):
             raise ValueError('Integration state refused')
         state.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -162,7 +170,8 @@ class Integrations:
         except (OSError, ValueError, UnicodeError):
             return {'provider': provider, 'status': 'credential_invalid', 'live_verified': False}
         ready = credential is not None or provider == 'context7'
-        return {'provider': provider, 'status': 'configured' if ready else 'credential_required',
+        return {'provider': provider, **({'backend': 'geoapify+open-meteo'} if provider == 'maps' else {}),
+                'status': 'configured' if ready else 'credential_required',
                 'authentication': 'anonymous' if provider == 'context7' and credential is None else 'dedicated_key',
                 'live_verified': False}
 
@@ -190,7 +199,7 @@ class Integrations:
     def _mcp(self, provider: str, name: str, arguments: dict, token: str | None, deadline: float) -> Any:
         endpoint = MCP_ENDPOINTS[provider]
         headers = {'Accept': 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-03-26'}
-        if token: headers['Authorization' if provider == 'context7' else 'X-Goog-Api-Key'] = ('Bearer ' if provider == 'context7' else '') + token
+        if token: headers['Authorization'] = 'Bearer ' + token
         session = None
         try:
             raw, response_headers = self._http(endpoint, {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
@@ -228,13 +237,8 @@ class Integrations:
                 'query-docs', {'libraryId': a['library_id'], 'query': a['query']})
             return self._mcp(provider, upstream, args, token, deadline)
         if provider == 'maps':
-            if name == 'places_search': upstream, args = 'search_places', {'text_query': a['query'], 'language_code': 'da', 'region_code': 'DK'}
-            elif name == 'places_route': upstream, args = 'compute_routes', {'origin': {'address': a['origin']}, 'destination': {'address': a['destination']}, 'travel_mode': a['mode']}
-            else:
-                upstream, args = 'lookup_weather', {'location': {'address': a['location']}}
-                if 'date' in a:
-                    d = date.fromisoformat(a['date']); args['date'] = {'year': d.year, 'month': d.month, 'day': d.day}
-            return self._mcp(provider, upstream, args, token, deadline)
+            from openclaw_places import read
+            return read(name, a, token, deadline, self._places_http)
         if provider == 'expedia':
             params = {'destination': a['destination'], 'check_in': a['check_in'], 'check_out': a['check_out'],
                       'number_of_travelers': a['travelers'], 'user_input_in_english': 'Hotel recommendations in ' + a['destination'], 'keywords': 'Hotels|MCP'}
@@ -271,6 +275,16 @@ class Integrations:
         return {'workflow': a['workflow'], 'active': workflow['active'], 'executions': rows,
                 'completeness': 'Execution metadata only; not report contents or delivery receipts.'}
 
+    def _places_http(self, *args, **kwargs):
+        # Serialize maps reads at <=4 requests/second across native callers.
+        deadline = args[3]
+        with self._places_lock:
+            delay = max(0, self._places_next - time.monotonic())
+            if time.monotonic() + delay >= deadline: raise TimeoutError
+            if delay: time.sleep(delay)
+            self._places_next = time.monotonic() + 0.26
+            return self._http(*args, **kwargs)
+
     def request(self, operation: str, arguments: Any) -> dict:
         a = validate(operation, arguments)
         provider = TOOL_PROVIDERS[operation]
@@ -288,7 +302,10 @@ class Integrations:
                     'retrieved_at': datetime.now(timezone.utc).isoformat(), 'untrusted_content': True,
                     'archive_status': 'not_archived',
                     'limitations': 'Bounded source evidence. Hotel recommendations are not matching quotes or bookings. Preserve source attribution.'}
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError, RecursionError, sqlite3.Error) as error:
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError, RecursionError, OverflowError, sqlite3.Error) as error:
+            from openclaw_places import AmbiguousPlace
+            if isinstance(error, AmbiguousPlace):
+                return {'provider': provider, 'status': 'clarification_required', 'candidates': evidence(error.candidates, token)}
             if isinstance(error, urllib.error.HTTPError): error.close()
             return {'provider': provider, 'status': 'unavailable', 'reason': 'provider_read_failed', 'live_verified': False}
 
@@ -299,7 +316,9 @@ def evidence(value: Any, token: str | None) -> Any:
     def visit(item, depth=0):
         if depth > 7: return None
         if isinstance(item, str):
-            if token: item = item.replace(token, '[redacted]')
+            if token:
+                for value in {token, urllib.parse.quote(token, safe=''), urllib.parse.quote_plus(token)}:
+                    item = item.replace(value, '[redacted]')
             return ''.join(c for c in item[:12000] if ord(c) >= 32 or c in '\n\t')
         if item is None or type(item) in {bool, int}: return item
         if type(item) is float: return item if math.isfinite(item) else None

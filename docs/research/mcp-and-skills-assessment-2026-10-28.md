@@ -10,6 +10,11 @@ grants are now implemented in [specialist integrations](../openclaw-integrations
 That runbook records qualification and rollout status; the findings below
 remain the assessment that informed the selection.
 
+Replacement follow-up: the owner selected an alternative to Google Maps.
+The draft implementation now uses Geoapify plus Open-Meteo with the same
+finite agent grants; the Google candidate below is retained as assessment
+history, not the selected deployment.
+
 ## Recommendation
 
 HomeCompute can support additional MCP-backed capabilities through its existing

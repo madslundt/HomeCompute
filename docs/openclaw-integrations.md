@@ -1,8 +1,8 @@
 # Specialist MCP and API integrations
 
 This implements the selected [assessment](research/mcp-and-skills-assessment-2026-10-28.md)
-through the existing authenticated HomeCompute MCP endpoint. Context7 and Maps
-use their official remote MCP services. Expedia, Immich and n8n use fixed,
+through the existing authenticated HomeCompute MCP endpoint. Context7 uses its official remote MCP service. Places and routes use
+Geoapify, and weather uses Open-Meteo. Expedia, Immich and n8n use fixed,
 read-only API routes in the trusted facade, avoiding redundant MCP services.
 GitHub stays in the coding broker's `gh` workflow. Paperless is deferred: no
 document-storage service or document corpus is connected by this change.
@@ -14,9 +14,9 @@ document-storage service or document corpus is connected by this change.
 | Apollo (`engineer`) | Public Context7 library resolution and documentation |
 | Orion (`operator`) | Context7 documentation and registered public n8n workflow status |
 | Nova (`researcher`) | Registered public n8n workflow status |
-| Lyra (`travel`) | Maps places/routes/weather, Expedia hotel discovery and public workflow status |
+| Lyra (`travel`) | Geoapify places/routes, Open-Meteo weather, Expedia hotel discovery and public workflow status |
 | Luna (`personal`) | Owner-private Immich photo search, metadata and asset links only |
-| Vega (`shopper`) | Maps places search for shops and opening information |
+| Vega (`shopper`) | Geoapify places search for shops and opening information |
 | Atlas, Ceres, Hestia, Themis, Plutus, Gaia | No additional domain tools |
 
 The six selected specialists also receive `integration_status`. Atlas delegates
@@ -37,13 +37,35 @@ nodes, credentials, execution payloads or report contents. It runs no jobs.
 
 Dedicated provider tokens are external files under
 `/var/lib/homecompute-openclaw/config/integration-PROVIDER-token`, where
-`PROVIDER` is `context7`, `maps`, `expedia`, `immich` or `n8n`. Provision files
+`PROVIDER` is `context7`, `geoapify`, `expedia`, `immich` or `n8n`. The stable
+`maps` tool/status provider uses the Geoapify token file; an old Google Maps
+key is never reused or forwarded. Provision files
 through the operator's secret custody path, owned by `homecompute-openclaw`,
 mode 0600, single regular file, with no symlinks. Do not paste keys into chat,
 commit them or pass them on command lines. The facade never returns key paths
 or values. An absent Context7 key permits its anonymous service; other
 providers require their own keys. Use an owner-specific Immich key limited to
 `asset.read`. Neither provider receives another provider's key.
+
+### Token file names
+
+All files are on **home-core**, under
+`/var/lib/homecompute-openclaw/config/`:
+
+| Provider | Filename |
+| --- | --- |
+| Immich | `integration-immich-token` |
+| n8n (scoped key only) | `integration-n8n-token` |
+| Expedia (qualified endpoint access) | `integration-expedia-token` |
+| Context7 (optional) | `integration-context7-token` |
+| Geoapify | `integration-geoapify-token` |
+| Open-Meteo | No key required for the non-commercial endpoint |
+
+Keep files owned by `homecompute-openclaw`, mode 0600. The hidden terminal
+entry procedure used for Immich applies to the other files by changing only
+the filename. Creating a file provisions a secret; it does not activate an
+unpublished adapter or bypass that provider's qualification. The n8n and
+Expedia prerequisites below still apply.
 
 ### Create credentials in this order
 
@@ -76,8 +98,8 @@ Start with Immich; the other providers do not all need new keys now:
    does not establish access to that endpoint.
 
 Context7 already passed anonymous requests; an account key is optional for
-its limits. Maps stays deferred behind the retention/billing qualification
-below. Harrier uses the existing private embedding route and needs no new
+its limits. The maps tools now use Geoapify and Open-Meteo as described below; no
+Google API key is needed. Harrier uses the existing private embedding route and needs no new
 provider key for this change.
 
 Creating a password-manager entry does not automatically connect it to the
@@ -87,13 +109,42 @@ private terminal/custody flow into its fixed token file. For Immich that is
 and mode specified above. Share only the entry name or external secret
 reference in chat, never the displayed API-key value.
 
-Maps is disabled by default. Before setting `enabled` in source, qualify its
-[content retention, attribution and compatible-model requirements](https://developers.google.com/maps/ai/grounding-lite).
-The facade does not index or archive Maps output, but native chat, tool
-transcripts, memory and backup retention still require a compatible policy.
-The current persistent chat environment has not been qualified for this use;
-do not treat merely supplying a key as sufficient. Budget/billing and key
-restrictions also need operator configuration.
+The source catalog selects only the `geoapify` maps backend. Create a project
+at [Geoapify MyProjects](https://myprojects.geoapify.com/), then obtain a project
+API key from its API Keys page. Geoapify currently offers a
+[free tier](https://www.geoapify.com/pricing/); no paid plan is required to
+qualify these bounded household reads. Restrict the key to the core's public
+egress IP if that address is stable and the account supports the restriction.
+Do not apply browser-referrer restrictions to server-side requests.
+
+Named place/address lookup uses Geoapify geocoding. For category discovery,
+use `places_search` with the city/area in `query`, a category (`restaurants`,
+`cafes`, `shops`, `parks`, `attractions` or `hotels`) and optionally a place
+`name`. Results are limited to five within 5 km. Routes resolve two explicit
+locations and return only driving/walking distance and duration, without route
+geometry or navigation. Ambiguous or low-confidence geocoding returns
+`clarification_required` before any follow-up search, routing or weather call.
+The same role grants and tool names remain in use; no native permission
+expansion is needed for the provider replacement.
+
+[Geoapify geocoding](https://www.geoapify.com/geocoding-api/) explicitly supports
+storing its results. Preserve returned Geoapify, OpenStreetMap and datasource
+attribution. Places coverage, opening hours and current business information
+still require provider verification; this is not a Google reviews replacement.
+[Places API](https://apidocs.geoapify.com/docs/places/) and
+[routing API](https://apidocs.geoapify.com/docs/routing/) contracts are fixed in
+`openclaw_places.py`. HTTP calls are serialized at under four per second;
+existing source-owned hourly tool budgets also apply. The API key appears in
+Geoapify's required query parameter; URLs, errors and key values are never
+logged or returned by the facade.
+
+Weather uses the existing
+[Open-Meteo forecast API](https://open-meteo.com/en/docs). Its
+[non-commercial terms](https://open-meteo.com/en/terms) cover personal home
+automation; this endpoint needs no additional API key. Requests send only
+resolved coordinates and the requested local date, never the Geoapify key.
+Preserve Open-Meteo/CC BY attribution. Both providers are external services,
+not local computation. The facade still does not archive their responses.
 
 Expedia API eligibility, authentication and current inventory require a live
 check with the issued key. Its public MCP implementation is not installed:
@@ -185,7 +236,7 @@ restore drill was run in this task.
 The new adapter completed live anonymous Context7 library resolution and a
 public Python documentation query from the workstation on 2026-10-28. This
 verifies the remote adapter path, not installed specialist sessions. Expedia,
-Maps, Immich and n8n credentials were not provisioned by this task. Native
+Geoapify, Immich and n8n credentials were not provisioned by this task. Native
 activation, provider access and post-release role denials still require the
 qualified rollout above.
 
@@ -196,3 +247,12 @@ compute SSH tunnel guard: the untouched source forwards automation to port
 18400 while the validator expects 18300. That mismatch was reproduced on the
 pristine base revision. Later validation stages were not reached. No production
 rollout was performed.
+
+Maps replacement follow-up: Google Maps transport was removed from the source.
+Synthetic checks cover Geoapify geocoding, bounded POI lookup, routing,
+ambiguity refusal, credential redaction and isolated Open-Meteo requests.
+A live unauthenticated Open-Meteo request returned current Copenhagen data
+and the expected timezone. The new provider and existing policy/installer
+checks passed (73 focused tests). Geoapify live qualification still requires
+its dedicated key; no production
+rollout or key copying was performed by this change.
