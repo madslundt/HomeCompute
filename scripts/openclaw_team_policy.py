@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from openclaw_access_policy import ACCESS_TOOLS, ACCESS_ROLES, LEGACY_ACCESS_TOOLS, candidate as _access_candidate, present as _access_present
+from openclaw_workflow_skills import SKILLS as WORKFLOW_SKILLS
 from openclaw_integration_policy import TOOLS as INTEGRATION_TOOLS, candidate as _integration_candidate, present as _integration_present
 
 ROSTER = ('main', 'personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel',
@@ -66,8 +67,7 @@ ROLE_SERVICE_TOOLS = {role: tools | ROLE_HOUSEHOLD_TOOLS[role]
                       for role, tools in ROLE_SERVICE_READ.items()}
 MANAGED_SKILLS = {'homecompute-operations', 'household-summary', 'incident-triage',
                   'household-shopping', 'discount-shopping', 'household-storage', 'google-calendar', 'travel-adventures',
-                  'public-web-research', 'meal-planning', 'household-paperwork', 'budget-analysis',
-                  'tasks-and-reminders'}
+                  'public-web-research'} | WORKFLOW_SKILLS
 REVIEWED_SKILLS = MANAGED_SKILLS | {'browser-automation'}
 FORBIDDEN = {'exec', 'process', 'sessions_send', 'sessions_list', 'sessions_history', 'sessions_search',
              'github_publish', 'canvas', 'screen', 'terminal', 'group:nodes', 'group:automation', 'group:messaging'}

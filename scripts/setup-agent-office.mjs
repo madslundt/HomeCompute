@@ -31,7 +31,7 @@ export async function verifyBundle(directory) {
   if (receipt.schema_version !== 1 || receipt.source !== 'deploy/agent-office' || !receipt.files || Object.keys(receipt.files).length > 64) throw new Error('Bundle receipt refused');
   const files = new Map();
   for (const [name, digest] of Object.entries(receipt.files)) {
-    if (!/^(?:[a-z][a-z0-9.-]*\.(?:mjs|json)|public\/(?:[a-z][a-z0-9.-]*\.(?:mjs|css|html)|assets\/[a-z][a-z0-9.-]*\.(?:png|json)))$/.test(name)
+    if ((name !== 'public/favicon.svg' && !/^(?:[a-z][a-z0-9.-]*\.(?:mjs|json)|public\/(?:[a-z][a-z0-9.-]*\.(?:mjs|css|html)|assets\/[a-z][a-z0-9.-]*\.(?:png|json)))$/.test(name))
         || !/^[a-f0-9]{64}$/.test(digest)) throw new Error('Bundle path or digest refused');
     const bytes = await regular(join(directory, name));
     if (sha(bytes) !== digest) throw new Error('Bundle content digest mismatch');

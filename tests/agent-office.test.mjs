@@ -4,14 +4,16 @@ import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { request } from 'node:http';
 import { OfficeActivity, STALE_MS, demoSnapshot } from '../deploy/agent-office/activity.mjs';
 import { projectRoster, toolActivity } from '../deploy/agent-office/catalog.mjs';
 import { officeServer } from '../deploy/agent-office/server.mjs';
 import plugin from '../deploy/agent-office/index.mjs';
 import { configPatch } from '../deploy/agent-office/config-patch.mjs';
-import { ROLE_DESTINATIONS, FURNITURE_BOUNDS, WALKWAY_SEGMENTS, resolveDestination, findPath, isWalkable } from '../deploy/agent-office/scene-layout.mjs';
-import { WALK_SHEETS, walkSpriteFrame, walkDirection } from '../deploy/agent-office/public/walking.mjs';
+import { ROLE_DESTINATIONS, FURNITURE_BOUNDS, WALKWAY_SEGMENTS, resolveDestination, findPath, isWalkable, projectToScene } from '../deploy/agent-office/scene-layout.mjs';
+import { WALK_SHEETS, WORK_SHEETS, ROBOT_PROFILES, robotSpriteFrame, walkSpriteFrame, walkDirection } from '../deploy/agent-office/public/walking.mjs';
+import { characterPresence } from '../deploy/agent-office/public/presence.mjs';
 import { passwordRecord, readAuth } from '../deploy/agent-office/auth.mjs';
 import { verifyBundle } from '../scripts/setup-agent-office.mjs';
 
@@ -48,6 +50,50 @@ test('unobserved and expired activity are unknown; a live heartbeat cannot renew
   now += STALE_MS + 1;
   assert.equal(activity.snapshot().agents.find(agent => agent.id === 'engineer').status, 'unknown');
   assert.deepEqual(activity.snapshot().events, []);
+});
+
+test('confirmed idle survives expiry without renewing its observation or surviving a restart', () => {
+  let now = 1000;
+  const activity = new OfficeActivity(roster, () => now);
+  activity.observe('end', { success: true }, ctx());
+  now += STALE_MS * 10;
+  const agent = activity.snapshot().agents.find(agent => agent.id === 'engineer');
+  assert.equal(agent.status, 'idle');
+  assert.equal(agent.activity, 'idle');
+  assert.equal(agent.active_runs, 0);
+  assert.equal(agent.observed_at, 1000);
+  assert.deepEqual(activity.snapshot().events, [], 'old transitions still expire');
+  assert.ok(activity.snapshot().agents.filter(agent => agent.id !== 'engineer').every(agent => agent.status === 'unknown'));
+  assert.ok(new OfficeActivity(roster, () => now).snapshot().agents.every(agent => agent.status === 'unknown'));
+});
+
+test('new work overrides retained idle and stale unfinished work cannot revive that idle', () => {
+  for (const pruneFromAnotherAgent of [false, true]) {
+    let now = 1000;
+    const activity = new OfficeActivity(roster, () => now);
+    const engineer = () => activity.snapshot().agents.find(agent => agent.id === 'engineer');
+    activity.observe('end', { success: true }, ctx('completed'));
+    now += STALE_MS + 1;
+    activity.observe('model', {}, ctx('unfinished'));
+    assert.equal(engineer().status, 'working');
+    activity.observe('tool', {}, ctx('unfinished', 'engineer', { toolName: 'sessions_yield' }));
+    assert.equal(engineer().status, 'waiting');
+    now += STALE_MS + 1;
+    if (pruneFromAnotherAgent) activity.observe('model', {}, ctx('other', 'researcher'));
+    assert.equal(engineer().status, 'unknown');
+    activity.observe('end', { success: true }, ctx('unfinished'));
+    now += STALE_MS + 1;
+    assert.equal(engineer().status, 'idle');
+  }
+});
+
+test('failed outcomes retain the existing five-minute expiry', () => {
+  let now = 1000;
+  const activity = new OfficeActivity(roster, () => now);
+  activity.observe('end', { success: false }, ctx());
+  assert.equal(activity.snapshot().agents.find(agent => agent.id === 'engineer').status, 'error');
+  now += STALE_MS + 1;
+  assert.equal(activity.snapshot().agents.find(agent => agent.id === 'engineer').status, 'unknown');
 });
 
 test('concurrent runs aggregate; one idle/failed run cannot hide another working run', () => {
@@ -163,15 +209,33 @@ test('every standing destination and corridor stays clear of furniture, includin
   assert.ok(ROLE_DESTINATIONS.main[1] > bottom, 'Atlas stands on floor below the table and chairs');
   assert.equal(isWalkable([(left + right) / 2, (top + bottom) / 2]), false);
   assert.deepEqual(findPath([(left + right) / 2, (top + bottom) / 2], ROLE_DESTINATIONS.main), []);
-  assert.deepEqual(findPath(ROLE_DESTINATIONS.family, ROLE_DESTINATIONS.main), [], 'Gaia uses a separate visual garden graph');
+  assert.deepEqual(findPath(ROLE_DESTINATIONS.family, ROLE_DESTINATIONS.main), [], 'Gaia uses a separate visual atrium graph');
   const roles = Object.keys(ROLE_DESTINATIONS);
   for (let i = 0; i < roles.length; i++) for (let j = i + 1; j < roles.length; j++) {
-    for (const first of ['unknown', 'idle', 'working']) for (const second of ['unknown', 'idle', 'working']) {
-      const a = resolveDestination({ id: roles[i], status: first, activity: 'thinking' });
-      const b = resolveDestination({ id: roles[j], status: second, activity: 'thinking' });
+    for (const activity of ['thinking', 'research']) for (const first of ['unknown', 'idle', 'working']) for (const second of ['unknown', 'idle', 'working']) {
+      const a = resolveDestination({ id: roles[i], status: first, activity });
+      const b = resolveDestination({ id: roles[j], status: second, activity });
       assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) > 8, `${roles[i]}/${first} and ${roles[j]}/${second} stand separately`);
     }
   }
+});
+
+test('only stationary working robots deploy tools, with distinct static state cues', () => {
+  const symbols = new Set();
+  for (const status of ['working', 'waiting', 'idle', 'unknown', 'error']) {
+    symbols.add(characterPresence(status).symbol);
+    for (let sprite = 0; sprite < 12; sprite++) {
+      const planted = robotSpriteFrame(sprite, { status });
+      assert.equal(WORK_SHEETS.includes(planted.asset), status === 'working');
+      const traveling = robotSpriteFrame(sprite, { status, traveling: true });
+      assert.ok(WALK_SHEETS.includes(traveling.asset), 'Travel never deploys work tools');
+      assert.ok(traveling.column < 8);
+    }
+  }
+  assert.equal(symbols.size, 5);
+  assert.deepEqual(characterPresence('invalid'), characterPresence('unknown'));
+  assert.deepEqual(projectToScene([50, 0]), [50, 20]);
+  assert.deepEqual(projectToScene([50, 100]), [50, 98]);
 });
 
 test('all 12 characters have distinct leg phases and four directional planted poses', async () => {
@@ -188,12 +252,32 @@ test('all 12 characters have distinct leg phases and four directional planted po
     assert.ok(idle.column >= 8 && idle.column < 12);
     assert.equal(first.row, sprite % 3);
     assert.equal(first.asset, WALK_SHEETS[Math.floor(sprite / 3)]);
+    const workA = robotSpriteFrame(sprite, { direction, status: 'working', timeMs: 0 });
+    const workB = robotSpriteFrame(sprite, { direction, status: 'working', timeMs: 450 });
+    assert.notEqual(workA.column, workB.column);
+    assert.equal(workA.asset, WORK_SHEETS[Math.floor(sprite / 3)]);
+    assert.equal(workA.row, first.row);
   }
-  for (const asset of WALK_SHEETS) {
+  for (const asset of [...WALK_SHEETS, ...WORK_SHEETS]) {
     const png = await readFile(new URL(`deploy/agent-office/public${asset}`, root));
-    assert.equal(png.readUInt32BE(16), 1536);
+    assert.equal(png.readUInt32BE(16), WORK_SHEETS.includes(asset) ? 1024 : 1536);
     assert.equal(png.readUInt32BE(20), 480);
     assert.equal(png[25], 6, 'Directional atlas keeps RGBA transparency');
+  }
+});
+
+test('robot artwork matches provenance and status cues use the packed character heights', async () => {
+  const assets = new URL('deploy/agent-office/public/assets/', root);
+  const metadata = JSON.parse(await readFile(new URL('walking-art.json', assets), 'utf8'));
+  const digest = data => createHash('sha256').update(data).digest('hex');
+  for (const [name, expected] of Object.entries(metadata.sha256)) {
+    assert.equal(digest(await readFile(new URL(name, assets))), expected, `Stale asset provenance: ${name}`);
+  }
+  for (const source of metadata.refresh.sources) {
+    const png = await readFile(new URL(source.source, assets));
+    assert.equal(digest(png), source.sha256, `Changed source art: ${source.name}`);
+    assert.equal(png[25], 6, 'Generated source retains RGBA transparency');
+    assert.equal(ROBOT_PROFILES[source.index].height, source.maximumHeight, `Misplaced status cue: ${source.name}`);
   }
 });
 
@@ -227,7 +311,10 @@ test('HTTP server is loopback-only, read-only and rejects cross-site/rebinding/p
   assert.equal((await http(port, '/catalog.mjs')).status, 200);
   assert.equal((await http(port, '/scene-layout.mjs')).status, 200);
   assert.equal((await http(port, '/walking.mjs')).status, 200);
-  for (const asset of WALK_SHEETS) assert.equal((await http(port, asset)).status, 200);
+  assert.equal((await http(port, '/presence.mjs')).status, 200);
+  assert.equal((await http(port, '/favicon.svg')).headers['content-type'], 'image/svg+xml');
+  assert.equal((await http(port, '/rooms.mjs')).status, 200);
+  for (const asset of [...WALK_SHEETS, ...WORK_SHEETS]) assert.equal((await http(port, asset)).status, 200);
 });
 
 test('published origin requires operator credentials for UI, assets, and metadata', async t => {
@@ -316,6 +403,9 @@ test('bundle is reproducible, includes only projected roster, and refuses overwr
     assert.deepEqual(built, roster);
     const verified = await verifyBundle(first);
     assert.ok(verified.files.has('auth.mjs'));
+    assert.ok(verified.files.has('public/presence.mjs'));
+    assert.ok(verified.files.has('public/favicon.svg'));
+    assert.ok([...verified.files.keys()].every(path => !path.startsWith('art/')), 'Generation sources stay outside the runtime bundle');
     const { writeFile, chmod } = await import('node:fs/promises');
     await writeFile(join(second, 'index.mjs'), 'tampered\n');
     await assert.rejects(() => verifyBundle(second), /digest mismatch/);

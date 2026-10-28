@@ -128,13 +128,15 @@ class CalendarTeamTests(unittest.TestCase):
     def test_isolated_native_helper_bundle_requires_reviewed_sibling_policy_module(self):
         with tempfile.TemporaryDirectory() as directory:
             bundle = Path(directory)
-            for name in ('setup-openclaw-team.py', 'openclaw_team_policy.py', 'openclaw_access_policy.py', 'openclaw_integration_policy.py'):
+            for name in ('setup-openclaw-team.py', 'openclaw_team_policy.py', 'openclaw_integration_policy.py',
+                         'openclaw_access_policy.py', 'openclaw_workflow_skills.py'):
                 shutil.copyfile(ROOT / 'scripts' / name, bundle / name)
             command = [sys.executable, '-I', str(bundle / 'setup-openclaw-team.py'), '--help']
             ready = subprocess.run(command, capture_output=True, text=True, timeout=10)
             self.assertEqual(ready.returncode, 0, ready.stderr)
             self.assertIn('--enable-calendar-upgrade', ready.stdout)
-            for name in ('openclaw_team_policy.py', 'openclaw_access_policy.py', 'openclaw_integration_policy.py'):
+            for name in ('openclaw_team_policy.py', 'openclaw_integration_policy.py',
+                         'openclaw_access_policy.py', 'openclaw_workflow_skills.py'):
                 (bundle / name).unlink()
                 refused = subprocess.run(command, capture_output=True, text=True, timeout=10)
                 self.assertNotEqual(refused.returncode, 0)

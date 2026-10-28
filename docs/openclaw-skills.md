@@ -1,9 +1,8 @@
 # HomeCompute OpenClaw skills
 
-## Team workflow skills (source change, 2026-10-28)
+## Team workflow skills (verified rollout, 2026-10-28)
 
-The team manifest in [`config/openclaw-team.json`](../config/openclaw-team.json)
-assigns four additional instruction-only bundles:
+The scoped assignment source adds four instruction-only bundles to existing roles:
 
 | Skill | Assigned roles | Workflow |
 | --- | --- | --- |
@@ -12,47 +11,100 @@ assigns four additional instruction-only bundles:
 | [`budget-analysis`](../deploy/openclaw/skills/budget-analysis/SKILL.md) | Plutus (`finance`) | Reconcile supplied expenses, transfers and budget assumptions without bank access. |
 | [`tasks-and-reminders`](../deploy/openclaw/skills/tasks-and-reminders/SKILL.md) | Luna (`personal`), Orion (`operator`), Gaia (`family`) | Maintain tasks, recurrence and timed/zone reminders within existing private/shared grants; verify delivery state. |
 
-Each assigned identity explicitly loads its skill before the workflow. Atlas
-continues to delegate these domains; Gaia uses only its existing shared Family
-tools without private adult sources or delegation. These bundles add no tools,
-credentials, schedules, service connections or execution authority. The full
-current source inventory also includes the household shopping/storage, discount,
-calendar, travel and public-research skills. `browser-automation` remains a
-separately qualified bundled skill, outside these managed instruction bundles.
+The finite assignments and load triggers live in
+[`openclaw_workflow_skills.py`](../scripts/openclaw_workflow_skills.py). Each
+assigned identity receives a separate managed instruction block. Atlas continues
+to delegate; Gaia uses only shared Family tools without private adult sources or
+delegation. These bundles add no tools, credentials, schedules or service access.
 
-[`openclaw_team_policy.py`](../scripts/openclaw_team_policy.py) owns the finite
-managed skill allowlist. The existing
-[`setup-openclaw-team.py`](../scripts/setup-openclaw-team.py) lifecycle installs
-reviewed bundles into only the assigned workspaces, records their hashes in
-`team-skill-ownership.json`, preserves private memory and refuses unreviewed
-overwrites. Stage the selected published release's team manifest, installer,
-policy dependencies and `deploy/openclaw/skills/` through the supported managed
-upload path. First run the installer in the sandbox as the native config owner:
+The full-team bootstrap manifest now includes the twelve-role team and its
+workflow assignments. Use the scoped
+[`setup-openclaw-workflow-skills.py`](../scripts/setup-openclaw-workflow-skills.py)
+lifecycle for a skills-only change; the full bootstrap reconciles the entire
+manifest and requires separate review.
+It appends only each assigned skill, preserves all other native configuration,
+identity blocks, private memory and unrelated ownership-ledger entries, and
+refuses unreviewed skill overwrites. The managed allowlist in
+[`openclaw_team_policy.py`](../scripts/openclaw_team_policy.py) also admits these
+four reviewed bundles. Its finite access-policy wrapper passes the explicit
+native roster to the extracted policy; it preserves grant/revocation checks.
+
+Publish a reviewed release on `origin/master`. Stage that release's scoped
+installer, assignment module and four source bundles through supported NemoClaw
+upload/exec as the native config owner. From the staged source directory:
 
 ```bash
-python3 scripts/setup-openclaw-team.py \
-  --manifest config/openclaw-team.json \
-  --skills-source deploy/openclaw/skills
+python3 scripts/setup-openclaw-workflow-skills.py --source "$PWD"
+python3 scripts/setup-openclaw-workflow-skills.py --source "$PWD" \
+  --apply --expected-plan-sha256 HASH
 ```
 
-Review the candidate, skill hashes and full role configuration against the
-actual installed roster before application. The team installer reconciles the
-full manifest; do not use an older roster to apply a skills-only change. For an
-already qualified team, rerun the reviewed command with `--apply` and
-`--expected-config-sha256 HASH`, using its dry-run `source_config_sha256`.
-Preserve existing tool revocations and independent qualification gates; new
-tool-upgrade flags are not needed for these instruction bundles. Apply startup
-changes through the supported gateway restart, then inspect `skills info` and
-`skills check` for each assigned agent and verify representative native turns,
-including Gaia's shared-only boundary. Retain the installer's private backup
-for rollback; restore only the reviewed affected config/identity/skill files
-and ownership ledger through the managed lifecycle, preserving later edits.
+Review the dry-run file hashes, six role assignments and `plan_sha256` before
+using that hash for apply. The installer dry-runs the native schema, checks
+inputs again, retains a private backup of configuration and changed files, and
+compares installed files/configuration with its exact candidate. It does not
+restart the gateway. Restart through the supported managed lifecycle:
 
-This addition is source-only: installation, gateway discovery and model skill
-use have not been verified for these four bundles. The older canary evidence
-below does not establish their deployment. Use the newer
-[tool runbook](openclaw-tools.md) and [integration status](openclaw-integrations.md)
-for their respective recorded readiness; instructions alone establish neither.
+```bash
+NEMOCLAW_GATEWAY_PORT=9123 nemoclaw agent-openclaw gateway restart --quiet
+```
+
+Then inspect `openclaw skills info NAME --agent ROLE --json` and `openclaw skills
+check --agent ROLE --json` through managed exec, and verify fresh native turns
+for all six roles. Check actual skill reads and workflow-specific results;
+eligibility alone does not prove use. Use synthetic evidence and read-only
+proposals; never test by creating real tasks, sharing private content or sending
+messages. Keep private transcripts outside Git and record sanitized outcomes.
+
+The repository-owned
+[`verify-openclaw-workflow-skills.py`](../scripts/verify-openclaw-workflow-skills.py)
+runs one new synthetic session without `--deliver`, checks only that session's
+transcript for a successful skill read and refuses a passing result if other
+tool calls occur. Run sequentially for `cook`, `administrator`, `finance`,
+`personal`, `operator` and `family`, each with a new private output directory:
+
+```bash
+python3 scripts/verify-openclaw-workflow-skills.py \
+  --role cook --output /sandbox/workflow-qualification-cook-UNIQUE
+```
+
+Review each private `answer.txt` against its supplied fixture as well as the
+read-only receipt; a nonempty answer alone does not prove correct workflow use.
+
+Rollback uses the exact private `backup_directory` from apply. Preview first,
+then apply its own fenced plan and restart through the same lifecycle:
+
+```bash
+python3 scripts/setup-openclaw-workflow-skills.py --rollback BACKUP_DIRECTORY
+python3 scripts/setup-openclaw-workflow-skills.py --rollback BACKUP_DIRECTORY \
+  --apply --expected-plan-sha256 ROLLBACK_PLAN_HASH
+```
+
+Rollback restores only the affected skill lists/files/ledger, removes new bundle
+files and refuses later native or affected-file edits. Retain the prior source
+release and backup; investigate partial failures before retrying.
+
+The managed rollout from `19131206e8c28a86336a6368cadcf5682a3c1704` passed
+schema validation, retained its private backup, and restarted successfully. All
+six assigned roles reported their skill eligible and completed fresh native
+synthetic turns with one successful skill-file read and no other tool calls.
+Their answers were reviewed against the fixtures: meal quantities/unknown prices,
+sourced paperwork deadlines, transfer-safe budget totals, and private versus
+shared tasks with Copenhagen times and no inferred reminders. The first-use
+verifier correction was published in
+`9609afc633f95603655e4a07a684359a72cec9b3` before qualifying Themis and Plutus.
+
+Final checks found all six bundle files matching source, all six managed
+instruction files matching the applied plan, and a zero-change installer
+preview. The native gateway was Ready with healthy local inference. A separate
+Agent Office plugin load-path change observed after the rollout backup was
+preserved; broad host revision drift and the older full-team bootstrap remain
+outside this scoped reconciliation. See the sanitized
+[rollout receipt](operations/openclaw-workflow-skills-rollout-2026-10-28.json).
+These synthetic turns do not establish real mailbox/document/bank connectivity
+or live reminder delivery. The older canary evidence below is historical; use
+the [tool runbook](openclaw-tools.md) and
+[integration status](openclaw-integrations.md) for their respective scope.
 
 ## Original canary bundles and historical verification (2026-10-09)
 

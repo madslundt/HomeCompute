@@ -1,6 +1,8 @@
 import { ACTIVITIES, ROLES } from '/catalog.mjs';
-import { walkSpriteFrame, walkDirection } from '/walking.mjs';
-import { resolveDestination, findPath, ROOM_LAYOUT, ROLE_FACING } from '/scene-layout.mjs';
+import { walkSpriteFrame, robotSpriteFrame, walkDirection, ROBOT_PROFILES } from '/walking.mjs';
+import { characterPresence } from '/presence.mjs';
+import { resolveDestination, findPath, ROOM_LAYOUT, ROLE_FACING, projectToScene } from '/scene-layout.mjs';
+import { ROOM_GADGETS } from '/rooms.mjs';
 
 const $ = id => document.getElementById(id);
 const clockFormat = { timeZone: 'Europe/Copenhagen', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
@@ -16,23 +18,26 @@ const specialties = {
   travel: 'Lyra’s maps, globe, and suitcase are for holidays, adventures, restaurants, and experiences.',
   cook: 'Hestia plans meals and recipes in the kitchen, using household stock and available offers.',
   administrator: 'Themis’s binders and paperwork are for supplied documents, renewals, and household deadlines.',
-  finance: 'Plutus’s ledger desk is for budgets, supplied expenses, subscriptions, and reconciled totals.',
-  family: 'Gaia’s garden is a separate shared-family space for expressly shared plans and household tasks.',
+  finance: 'Plutus’s shared ledger tablet is for budgets, supplied expenses, subscriptions, and reconciled totals.',
+  family: 'Gaia’s glazed atrium is a separate shared-family space for expressly shared plans and household tasks.',
 };
-const colors = { working: '#b08af0', waiting: '#e5bd72', idle: '#83bb9b', unknown: '#8491aa', error: '#ee8e87' };
+const colors = { working: '#64e0d3', waiting: '#e5bd72', idle: '#83bb9b', unknown: '#a4afc2', error: '#ee8e87' };
 const sprites = new Map();
 let snapshot;
 let selected = 'engineer';
 let filter = 'all';
 let paused = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let lastFrame = performance.now();
+let animationTime = 0;
 let lastSuccess = 0;
 let rosterSignature = '';
 
 function spriteStyle(element, agent) {
-  element.style.setProperty('--sprite-x', `${(agent.sprite % 4) * 100 / 3}%`);
-  element.style.setProperty('--sprite-y', `${Math.floor(agent.sprite / 4) * 50}%`);
+  const portrait = walkSpriteFrame(agent.sprite);
+  element.style.setProperty('--portrait-image', portrait.backgroundImage);
+  element.style.setProperty('--portrait-position', portrait.backgroundPosition);
   element.style.setProperty('--agent-color', agent.color);
+  element.style.setProperty('--signal-top', `${Math.max(9, (160 - ROBOT_PROFILES[agent.sprite].height) / 2)}px`);
 }
 
 function element(tag, className, text) {
@@ -52,17 +57,22 @@ function updateCharacters() {
       const node = element('button', 'character');
       const sprite = element('span', 'sprite');
       sprite.setAttribute('aria-hidden', 'true');
-      node.append(sprite);
+      const signal = element('span', 'state-signal');
+      signal.setAttribute('aria-hidden', 'true');
+      node.append(sprite, signal);
       node.addEventListener('click', () => select(agent.id));
       $('characters').append(node);
       const start = snapshot.mode === 'demo' && !paused ? resolveDestination({ ...agent, status: 'unknown' }, index) : destination;
-      character = { node, sprite, spriteIndex: agent.sprite, direction: 'south', frameKey: '', position: start, destination, path: findPath(start, destination) };
+      character = { node, sprite, signal, spriteIndex: agent.sprite, direction: 'south', frameKey: '', position: start, destination, path: findPath(start, destination) };
       sprites.set(agent.id, character);
     }
     spriteStyle(character.node, agent);
     character.node.classList.remove('working', 'waiting', 'idle', 'unknown', 'error');
     character.node.classList.add(agent.status);
     character.status = agent.status;
+    const presence = characterPresence(agent.status);
+    character.signal.textContent = presence.symbol;
+    character.node.title = `${agent.name} · ${presence.label}`;
     character.agentId = agent.id;
     character.node.classList.toggle('filtered', filter !== 'all' && filter !== agent.status);
     character.node.setAttribute('aria-pressed', String(agent.id === selected));
@@ -93,7 +103,8 @@ function renderRoster() {
     const copy = element('span');
     const name = element('strong');
     name.append(element('i', `dot ${agent.status}`), document.createTextNode(agent.name));
-    copy.append(name, element('small', '', agent.role));
+    const state = element('small', `roster-state ${agent.status}`, statusNames[agent.status]);
+    copy.append(name, element('small', '', agent.role), state);
     row.append(portrait, copy);
     row.addEventListener('click', () => select(agent.id));
     fragment.append(row);
@@ -119,16 +130,16 @@ function renderInspector() {
   spriteStyle($('profile-sprite'), agent);
   $('agent-status').textContent = statusNames[agent.status];
   $('agent-status').style.color = colors[agent.status];
-  const roleLocations = { main: 'Coordination table', personal: 'Planning desk', researcher: 'Research library', engineer: 'Engineering desk', operator: 'Operations room', shopper: 'Shopping counter', keeper: 'Inventory shelves', travel: 'Travel desk', cook: 'Kitchen', administrator: 'Administration desk', finance: 'Finance desk', family: 'Family garden' };
-  const activityLocations = { research: 'Research library', coding: 'Engineering area', operations: 'Operations room', planning: 'Planning area', shopping: 'Shopping counter', inventory: 'Inventory shelves', travel: 'Travel desk', cooking: 'Kitchen', administration: 'Administration area', finance: 'Finance area', coordinating: 'Coordination table' };
-  $('agent-location').textContent = agent.status === 'unknown' ? 'Unobserved' : agent.id === 'family' ? 'Family garden'
+  const roleLocations = { main: 'Coordination table', personal: 'Planning desk', researcher: 'Research library', engineer: 'Engineering desk', operator: 'Operations room', shopper: 'Shopping counter', keeper: 'Inventory shelves', travel: 'Travel desk', cook: 'Kitchen', administrator: 'Administration desk', finance: 'Shared review area', family: 'Family atrium' };
+  const activityLocations = { coding: 'Engineering area', operations: 'Operations room', planning: 'Planning area', shopping: 'Shopping counter', inventory: 'Inventory shelves', travel: 'Travel desk', cooking: 'Kitchen', administration: 'Administration area', finance: 'Finance area', coordinating: 'Coordination table' };
+  $('agent-location').textContent = agent.status === 'unknown' ? 'Unobserved' : agent.id === 'family' ? 'Family atrium'
     : agent.status === 'idle' ? (agent.id === 'main' ? 'Lounge' : roleLocations[agent.id]) : agent.status === 'waiting' ? 'Coordination table' : activityLocations[agent.activity] ?? roleLocations[agent.id];
   $('agent-task').textContent = ACTIVITIES[agent.activity][0];
   $('agent-task').style.setProperty('--agent-color', agent.color);
   $('agent-runs').textContent = agent.status === 'unknown' ? 'Unverified' : String(agent.active_runs);
   $('agent-observed').textContent = age(agent.observed_at);
   $('activity-note').textContent = snapshot.mode === 'demo' ? 'Synthetic preview activity. This is not live agent work.' : 'Activity categories come from native lifecycle hooks. Private task content stays in OpenClaw.';
-  $('agent-specialty').textContent = specialties[agent.id];
+  $('agent-specialty').textContent = `${ROBOT_PROFILES[agent.sprite].kind}. ${specialties[agent.id]}`;
   $('history-mode').textContent = snapshot.mode === 'demo' ? 'DEMO' : 'THIS SESSION';
   const events = snapshot.events.filter(event => event.agent === selected).slice(0, 7);
   const fragment = document.createDocumentFragment();
@@ -144,7 +155,16 @@ function renderInspector() {
   $('history-empty').hidden = events.length > 0;
 }
 
-function select(id) { selected = id; renderRoster(); renderInspector(); updateCharacters(); }
+function select(id) {
+  selected = id; renderRoster(); renderInspector(); updateCharacters();
+  // Center the chosen robot in the contained mobile panorama without jumping
+  // the document away from the roster the user is operating.
+  const map = $('map-frame'), character = sprites.get(id);
+  if (character && map.scrollWidth > map.clientWidth) {
+    const [x] = projectToScene(character.position);
+    map.scrollTo({ left: x / 100 * $('scene').clientWidth - map.clientWidth / 2, behavior: paused ? 'instant' : 'smooth' });
+  }
+}
 
 function render() {
   if (!snapshot.agents.some(agent => agent.id === selected)) selected = snapshot.agents[0]?.id;
@@ -194,19 +214,22 @@ async function poll() {
 function animate(now) {
   const delta = Math.min((now - lastFrame) / 1000, .08);
   lastFrame = now;
+  if (!paused) animationTime += delta * 1000;
   for (const character of sprites.values()) {
     const point = character.path[0];
     if (!paused && point) {
       const dx = point[0] - character.position[0], dy = point[1] - character.position[1];
       character.direction = walkDirection(dx, dy, character.direction);
       const distance = Math.hypot(dx, dy);
-      const step = delta * 11;
+      const step = delta * ROBOT_PROFILES[character.spriteIndex].speed;
       if (distance <= step) { character.position = point; character.path.shift(); }
       else character.position = [character.position[0] + dx / distance * step, character.position[1] + dy / distance * step];
     }
-    character.node.classList.toggle('walking', !paused && character.path.length > 0);
+    // Pausing freezes a journey; it must not equip a work device mid-corridor.
+    character.node.classList.toggle('walking', character.path.length > 0);
     if (!character.path.length && character.status === 'working') character.direction = ROLE_FACING[character.agentId] ?? character.direction;
-    const frame = walkSpriteFrame(character.spriteIndex, character.direction, !paused && character.path.length > 0, now);
+    character.node.dataset.facing = character.direction;
+    const frame = robotSpriteFrame(character.spriteIndex, { direction: character.direction, traveling: character.path.length > 0, status: character.status, timeMs: animationTime });
     const frameKey = `${frame.asset}:${frame.column}:${frame.row}`;
     if (character.frameKey !== frameKey) {
       character.frameKey = frameKey;
@@ -217,8 +240,9 @@ function animate(now) {
       character.sprite.style.height = '80px';
       character.sprite.style.bottom = '-3px'; // Normalized foot baseline is 154/160.
     }
-    character.node.style.left = `${character.position[0]}%`;
-    character.node.style.top = `${character.position[1]}%`;
+    const [sceneX, sceneY] = projectToScene(character.position);
+    character.node.style.left = `${sceneX}%`;
+    character.node.style.top = `${sceneY}%`;
     character.node.style.zIndex = String(Math.round(character.position[1]));
   }
   requestAnimationFrame(animate);
@@ -249,7 +273,17 @@ setInterval(() => {
 setMotion();
 for (const room of ROOM_LAYOUT) {
   const label = document.querySelector(`[data-room="${room.id}"]`);
-  if (label) { label.style.left = `${room.position[0]}%`; label.style.top = `${room.position[1]}%`; label.textContent = room.label; }
+  if (label) {
+    const [x, y] = projectToScene(room.position);
+    label.style.left = `${x}%`; label.style.top = `${y}%`; label.textContent = room.label;
+    label.setAttribute('aria-label', `Explore ${room.label}`);
+    label.addEventListener('click', () => {
+      $('gadget-title').textContent = room.label;
+      $('gadget-list').replaceChildren(...ROOM_GADGETS[room.id].map(item => element('li', '', item)));
+      $('gadget-dialog').showModal();
+    });
+  }
 }
+$('gadget-close').addEventListener('click', () => $('gadget-dialog').close());
 poll();
 requestAnimationFrame(animate);

@@ -25,12 +25,21 @@ export class OfficeActivity {
     return { agent, key: JSON.stringify([agent, session, run]) };
   }
 
+  expireRuns(now) {
+    for (const [key, run] of this.runs) if (now - run.observed_at > STALE_MS) {
+      this.runs.delete(key);
+      // Losing evidence of newer unfinished work must not resurrect an old Idle.
+      const finished = this.finished.get(run.agent);
+      if (finished && finished.observed_at <= run.observed_at) this.finished.delete(run.agent);
+    }
+  }
+
   observe(kind, event, ctx) {
     const identity = this.identity(event, ctx);
     if (!identity) return;
     const now = this.clock();
     // Expired runs are removed, not kept active by the dashboard's heartbeat.
-    for (const [key, run] of this.runs) if (now - run.observed_at > STALE_MS) this.runs.delete(key);
+    this.expireRuns(now);
     const previous = this.runs.get(identity.key);
     if (kind === 'model_end') {
       // A request can run outside an agent harness (for example native
@@ -68,6 +77,7 @@ export class OfficeActivity {
 
   snapshot() {
     const now = this.clock();
+    this.expireRuns(now);
     return {
       schema_version: 1, mode: 'live', observed_at: now,
       agents: this.roster.map(agent => {
@@ -75,10 +85,10 @@ export class OfficeActivity {
         // One completed session must never hide another session still working.
         const latest = active.sort((a, b) => (a.status === 'waiting') - (b.status === 'waiting') || b.observed_at - a.observed_at)[0]
           ?? this.finished.get(agent.id);
-        const fresh = latest && now - latest.observed_at <= STALE_MS;
-        return { ...agent, status: fresh ? latest.status : 'unknown', activity: fresh ? latest.activity : 'unknown',
+        const verified = latest && (latest.status === 'idle' || now - latest.observed_at <= STALE_MS);
+        return { ...agent, status: verified ? latest.status : 'unknown', activity: verified ? latest.activity : 'unknown',
           active_runs: active.length, observed_at: latest?.observed_at ?? null,
-          started_at: fresh ? latest.started_at : null };
+          started_at: verified ? latest.started_at : null };
       }),
       events: this.events.filter(event => now - event.at <= STALE_MS),
     };

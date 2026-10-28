@@ -92,20 +92,24 @@ printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
 python3 "$REPO_ROOT/tests/tailscale-module-test.py"
 python3 "$REPO_ROOT/tests/nas-recovery-backup-test.py"
-python3 "$REPO_ROOT/tests/nas-recovery-setup-test.py"
-python3 "$REPO_ROOT/tests/application-recovery-engine-test.py"
 python3 "$REPO_ROOT/tests/home-core-service-recovery-test.py"
 python3 "$REPO_ROOT/tests/platform-health-test.py"
-python3 "$REPO_ROOT/tests/nas-backup-credentials-test.py"
 python3 "$REPO_ROOT/tests/platform-observability-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-machine-snapshot-test.py"
+python3 "$REPO_ROOT/tests/n8n-observations-test.py"
+python3 "$REPO_ROOT/tests/nas-backup-credentials-test.py"
+python3 "$REPO_ROOT/tests/nas-recovery-setup-test.py"
 python3 "$REPO_ROOT/tests/speech-boundary-test.py"
+python3 "$REPO_ROOT/tests/speech-rollback-test.py"
+python3 "$REPO_ROOT/tests/speech-cutover-firewall-test.py"
 python3 "$REPO_ROOT/tests/spark-rollout-test.py"
 python3 "$REPO_ROOT/tests/approved-speech-capacity-test.py"
+python3 "$REPO_ROOT/tests/speech-startup-diagnostic-test.py"
 python3 "$REPO_ROOT/tests/speech-boundary-container-test.py"
-python3 "$REPO_ROOT/tests/speech-cutover-firewall-test.py"
 python3 "$REPO_ROOT/tests/speech-capacity-test.py"
 python3 "$REPO_ROOT/tests/speech-capacity-benchmark-test.py"
 python3 "$REPO_ROOT/tests/application-recovery-test.py"
+python3 "$REPO_ROOT/tests/application-recovery-engine-test.py"
 python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
@@ -728,6 +732,10 @@ rg -F 'iptables -w -A HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RE
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 rg -F 'iptables -w -A HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
+rg -F 'TCP-LISTEN:18792,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18891' \
+  "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
+rg -F 'hc-openclaw-dashboard' \
+  "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
 rg -F 'speech_gateway=(docker compose --profile speech-proxies' \
   "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null
 rg -F '"${speech_gateway[@]}" down' \
@@ -865,7 +873,7 @@ jq -e '
 ' "$ttlock_json" >/dev/null
 python3 -m py_compile "$REPO_ROOT/deploy/ttlock-webhook/app/"*.py \
   "$REPO_ROOT/deploy/ttlock-webhook/healthcheck.py"
-rg -F 'FROM python:3.12.12-slim-bookworm@sha256:' \
+rg -F 'FROM python:3.15.0-slim-bookworm@sha256:' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
 rg -F 'pip install --no-compile --require-hashes -r requirements.lock' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null

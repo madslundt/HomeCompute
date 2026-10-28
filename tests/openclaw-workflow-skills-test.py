@@ -1,106 +1,210 @@
-"""Workflow bundle installation, role isolation and unchanged execution authority."""
+"""Scoped native workflow installation, preservation, fencing and access-policy regression."""
 import copy
-import hashlib
+from contextlib import redirect_stdout
+import io
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sqlite3
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location('workflow_team_fixtures', ROOT / 'tests/openclaw-team-test.py')
-fixtures = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(fixtures)
+sys.path.insert(0, str(ROOT / 'scripts'))
+import openclaw_team_policy as policy
+from openclaw_workflow_skills import WORKFLOWS, SKILLS
 
-ASSIGNMENTS = {
-    'meal-planning': {'cook'},
-    'household-paperwork': {'administrator'},
-    'budget-analysis': {'finance'},
-    'tasks-and-reminders': {'personal', 'operator', 'family'},
-}
+spec = importlib.util.spec_from_file_location('workflow_setup', ROOT / 'scripts/setup-openclaw-workflow-skills.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+verify_spec = importlib.util.spec_from_file_location('workflow_verify', ROOT / 'scripts/verify-openclaw-workflow-skills.py')
+verifier = importlib.util.module_from_spec(verify_spec)
+verify_spec.loader.exec_module(verifier)
 
 
-class WorkflowSkillsTests(unittest.TestCase):
+class WorkflowTests(unittest.TestCase):
     def setUp(self):
-        self.fixture = fixtures.TeamSetupTest()
-        self.fixture.setUp()
-        self.addCleanup(self.fixture.tearDown)
-        self.setup = fixtures.setup
-        self.team = self.fixture.team
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.config = self.root / 'openclaw.json'
+        self.entries = {}
+        self.original = b'Private identity\n<!-- homecompute-team:start -->\nRetain native policies.\n<!-- homecompute-team:end -->\n'
+        for role in policy.ROSTER:
+            workspace = self.root / ('workspace' if role == 'main' else 'workspace-' + role)
+            workspace.mkdir()
+            (workspace / 'AGENTS.md').write_bytes(self.original)
+            (workspace / 'MEMORY.md').write_text('Private memory for ' + role)
+            self.entries[role] = {'workspace': str(workspace), 'skills': ['existing-skill'],
+                                  'tools': {'allow': ['read', 'session_status'], 'deny': ['exec']}}
+        self.before = {'agents': {'entries': self.entries, 'defaults': {'model': 'retained'}},
+                       'tools': {'deny': ['exec']}, 'plugins': {'private': 'retained'}, 'channels': {'private': 'retained'}}
+        self.config.write_text(json.dumps(self.before))
+        self.config.chmod(0o600)
+        self.ledger = self.root / 'team-skill-ownership.json'
+        self.ledger.write_text(json.dumps({'workspace/skills/retained/SKILL.md': 'a' * 64}))
+        self.ledger.chmod(0o600)
+        self.calls = []
 
-    def test_manifest_loads_workflows_only_for_their_assigned_roles(self):
-        for skill, roles in ASSIGNMENTS.items():
-            with self.subTest(skill=skill):
-                self.assertIn(skill, self.setup.MANAGED_SKILLS)
-                self.assertEqual({role for role, entry in self.team['agents'].items()
-                                  if skill in entry['skills']}, roles)
-                for role in roles:
-                    self.assertIn('Load ' + skill + ' before', self.team['agents'][role]['instructions'])
-        # Validate every real bundle through the native installer's ownership,
-        # size, frontmatter and instruction-only directory checks.
-        sources = self.setup.reviewed_skill_sources(ROOT / 'deploy/openclaw/skills')
-        self.assertTrue(ASSIGNMENTS.keys() <= sources.keys())
+    def runner(self, argv, **kwargs):
+        self.calls.append(argv)
+        if '--dry-run' not in argv:
+            current = json.loads(self.config.read_text())
+            for change in json.loads(argv[argv.index('--batch-json') + 1]):
+                target = current
+                keys = change['path'].split('.')
+                for key in keys[:-1]:
+                    target = target[key]
+                target[keys[-1]] = change['value']
+            self.config.write_text(json.dumps(current))
+        return subprocess.CompletedProcess(argv, 0)
 
-    def test_upgrade_installs_real_bundles_without_changing_authority_or_memory(self):
-        previous_team = copy.deepcopy(self.team)
-        for entry in previous_team['agents'].values():
-            entry['skills'] = [name for name in entry['skills'] if name not in ASSIGNMENTS]
-        before = fixtures.reviewed_candidate(self.fixture.before, previous_team)
-        self.fixture.config.write_text(json.dumps(before))
-        source = self.fixture.skill_sources(tuple(ASSIGNMENTS))
-        # No pre-existing main-workspace copy may mask a missing managed install.
-        for name in ASSIGNMENTS:
-            directory = self.fixture.state / 'workspace/skills' / name
-            (directory / 'SKILL.md').unlink()
-            directory.rmdir()
-        preserved = {}
-        for role, entry in before['agents']['entries'].items():
-            directory = Path(entry['workspace'])
-            directory.mkdir(mode=0o700, exist_ok=True)
-            for name in ('MEMORY.md', 'owner-notes.md'):
-                path = directory / name
-                path.write_text('Synthetic private notes for ' + role + '\n')
-                preserved[path] = path.read_bytes()
-        original = {p: p.read_bytes() for p in self.fixture.state.rglob('*') if p.is_file()}
-        dry = fixtures.reviewed_setup(self.fixture.config, self.team, skills_source=source,
-                                      runner=self.fixture.runner)
-        self.assertEqual(original, {p: p.read_bytes() for p in self.fixture.state.rglob('*') if p.is_file()})
-        self.assertEqual(set(dry['managed_skill_sha256']), set(ASSIGNMENTS))
-        result = fixtures.reviewed_setup(self.fixture.config, self.team, skills_source=source,
-                                         apply=True, runner=self.fixture.runner)
-        self.assertTrue(result['applied'])
-        after = json.loads(self.fixture.config.read_text())
-        # Only the six role skill lists change in native configuration.
+    def test_real_bundles_install_only_in_assigned_roles_without_widening_authority(self):
+        self.assertEqual(SKILLS, {'meal-planning', 'household-paperwork', 'budget-analysis', 'tasks-and-reminders'})
+        self.assertTrue(SKILLS <= policy.MANAGED_SKILLS)
+        initial = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        dry = module.setup(self.config, ROOT, runner=self.runner)
+        self.assertEqual(initial, {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+        applied = module.setup(self.config, ROOT, apply=True, expected_plan_sha256=dry['plan_sha256'], runner=self.runner)
+        self.assertEqual(applied['role_count'], 12)
+        after = json.loads(self.config.read_text())
         normalized = copy.deepcopy(after)
         for role, entry in normalized['agents']['entries'].items():
-            entry['skills'] = before['agents']['entries'][role]['skills']
-        self.assertEqual(normalized, before)
-        expected_ledger = {}
-        for skill, roles in ASSIGNMENTS.items():
-            content = (source / skill / 'SKILL.md').read_bytes()
-            for role, entry in after['agents']['entries'].items():
-                target = Path(entry['workspace']) / 'skills' / skill / 'SKILL.md'
-                if role in roles:
-                    self.assertEqual(target.read_bytes(), content)
-                    self.assertEqual(target.stat().st_mode & 0o777, 0o600)
-                    expected_ledger[str(target.relative_to(self.fixture.state))] = hashlib.sha256(content).hexdigest()
-                    self.assertIn('Load ' + skill + ' before', (target.parents[2] / 'AGENTS.md').read_text())
-                else:
-                    self.assertFalse(target.exists(), (role, skill))
-        ledger = self.fixture.state / 'team-skill-ownership.json'
-        self.assertEqual(json.loads(ledger.read_text()), expected_ledger)
-        for path, content in preserved.items():
-            self.assertEqual(path.read_bytes(), content)
-        again = fixtures.reviewed_setup(self.fixture.config, self.team, skills_source=source,
-                                        apply=True, runner=self.fixture.runner)
+            entry['skills'] = self.before['agents']['entries'][role]['skills']
+        self.assertEqual(normalized, self.before)
+        for role, entry in after['agents']['entries'].items():
+            workspace = Path(entry['workspace'])
+            self.assertEqual((workspace / 'MEMORY.md').read_bytes(), initial[workspace / 'MEMORY.md'])
+            for skill in SKILLS:
+                path = workspace / 'skills' / skill / 'SKILL.md'
+                expected = role in WORKFLOWS and WORKFLOWS[role][0] == skill
+                self.assertEqual(path.exists(), expected, (role, skill))
+                if expected:
+                    self.assertEqual(path.read_bytes(), (ROOT / 'deploy/openclaw/skills' / skill / 'SKILL.md').read_bytes())
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                    identity = (workspace / 'AGENTS.md').read_bytes()
+                    self.assertTrue(identity.startswith(self.original))
+                    self.assertIn(('Load ' + skill + ' before').encode(), identity)
+            if role not in WORKFLOWS:
+                self.assertEqual((workspace / 'AGENTS.md').read_bytes(), self.original)
+        ledger = json.loads(self.ledger.read_text())
+        self.assertEqual(ledger['workspace/skills/retained/SKILL.md'], 'a' * 64)
+        self.assertEqual(len(ledger), 7)
+        self.assertTrue(Path(applied['backup_directory'], 'openclaw-before.json').exists())
+        again = module.setup(self.config, ROOT, runner=self.runner)
+        self.assertEqual(again['changed_files'], 0)
         self.assertFalse(again['config_changed'])
-        self.assertEqual(again['workspace_files'], 0)
-        # An unreviewed installed edit must be preserved and refused on reapply.
-        edited = self.fixture.state / 'workspace-cook/skills/meal-planning/SKILL.md'
-        edited.write_text(edited.read_text() + '\nLocal pending edit.\n')
-        with self.assertRaisesRegex(self.setup.TeamRefused, 'unreviewed-skill-overwrite-refused'):
-            fixtures.reviewed_setup(self.fixture.config, self.team, skills_source=source,
-                                    apply=True, runner=self.fixture.runner)
-        self.assertTrue(edited.read_text().endswith('Local pending edit.\n'))
+
+    def test_stale_review_and_changes_during_native_validation_write_nothing(self):
+        dry = module.setup(self.config, ROOT, runner=self.runner)
+        path = self.root / 'workspace-cook/AGENTS.md'
+        path.write_bytes(self.original + b'Pending edit\n')
+        with self.assertRaisesRegex(ValueError, 'plan changed'):
+            module.setup(self.config, ROOT, apply=True, expected_plan_sha256=dry['plan_sha256'], runner=self.runner)
+        self.assertFalse((self.root / 'workflow-skill-backups').exists())
+        dry = module.setup(self.config, ROOT, runner=self.runner)
+        def changing_runner(argv, **kwargs):
+            path.write_bytes(path.read_bytes() + b'Concurrent edit\n')
+            return subprocess.CompletedProcess(argv, 0)
+        with self.assertRaisesRegex(ValueError, 'inputs changed'):
+            module.setup(self.config, ROOT, apply=True, expected_plan_sha256=dry['plan_sha256'], runner=changing_runner)
+        self.assertFalse((self.root / 'workflow-skill-backups').exists())
+
+    def test_unreviewed_skill_edits_and_symlinks_are_preserved_and_refused(self):
+        dry = module.setup(self.config, ROOT, runner=self.runner)
+        module.setup(self.config, ROOT, apply=True, expected_plan_sha256=dry['plan_sha256'], runner=self.runner)
+        path = self.root / 'workspace-cook/skills/meal-planning/SKILL.md'
+        path.write_text('Local edit\n')
+        with self.assertRaisesRegex(ValueError, 'overwrite refused'):
+            module.setup(self.config, ROOT, runner=self.runner)
+        self.assertEqual(path.read_text(), 'Local edit\n')
+        path.unlink()
+        path.symlink_to(self.config)
+        with self.assertRaisesRegex(ValueError, 'Symlink refused'):
+            module.setup(self.config, ROOT, runner=self.runner)
+
+    def test_missing_roles_reader_and_noncanonical_workspaces_are_refused(self):
+        for mutation in ('role', 'reader', 'workspace'):
+            value = copy.deepcopy(self.before)
+            if mutation == 'role':
+                del value['agents']['entries']['family']
+            elif mutation == 'reader':
+                value['agents']['entries']['family']['tools']['allow'] = []
+            else:
+                value['agents']['entries']['family']['workspace'] = str(self.root / 'workspace-personal')
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                module.candidate(value, self.root)
+
+    def test_access_wrapper_passes_the_closed_native_roster_without_restoring_revocations(self):
+        before = copy.deepcopy(self.before)
+        before['tools'] = {'allow': ['read'], 'fs': {'workspaceOnly': True}, 'elevated': {'enabled': False},
+                           'subagents': {'tools': {'allow': ['read'], 'deny': ['exec']}}}
+        with self.assertRaisesRegex(policy.TeamRefused, 'reviewed-access-upgrade-required'):
+            policy.access_candidate(before)
+        granted = policy.access_candidate(before, enable_access_upgrade=True)
+        for role, entry in granted['agents']['entries'].items():
+            self.assertEqual(set(entry['tools']['allow']) & policy.ACCESS_TOOLS,
+                             policy.ACCESS_TOOLS if role in {'travel', 'shopper'} else set())
+        self.assertEqual(policy.access_candidate(granted), granted)
+        revoked = copy.deepcopy(granted)
+        revoked['agents']['entries']['travel']['tools']['allow'].remove(sorted(policy.ACCESS_TOOLS)[0])
+        with self.assertRaisesRegex(policy.TeamRefused, 'partial-or-revoked-access-grant'):
+            policy.access_candidate(revoked, enable_access_upgrade=True)
+        unknown = copy.deepcopy(before)
+        unknown['agents']['entries']['unreviewed-role'] = copy.deepcopy(unknown['agents']['entries']['family'])
+        with self.assertRaisesRegex(policy.TeamRefused, 'managed-access-contract-refused'):
+            policy.access_candidate(unknown, enable_access_upgrade=True)
+
+    def test_retained_backup_restores_only_workflow_changes_and_refuses_later_edits(self):
+        dry = module.setup(self.config, ROOT, runner=self.runner)
+        applied = module.setup(self.config, ROOT, apply=True, expected_plan_sha256=dry['plan_sha256'], runner=self.runner)
+        backup = Path(applied['backup_directory'])
+        path = self.root / 'workspace-cook/AGENTS.md'
+        installed = path.read_bytes()
+        path.write_bytes(installed + b'Later private edit\n')
+        with self.assertRaisesRegex(ValueError, 'Later file changes'):
+            module.rollback(self.config, backup, runner=self.runner)
+        path.write_bytes(installed)
+        preview = module.rollback(self.config, backup, runner=self.runner)
+        module.rollback(self.config, backup, apply=True, expected_plan_sha256=preview['plan_sha256'], runner=self.runner)
+        self.assertEqual(json.loads(self.config.read_text()), self.before)
+        self.assertEqual(path.read_bytes(), self.original)
+        self.assertFalse((self.root / 'workspace-cook/skills/meal-planning/SKILL.md').exists())
+        self.assertEqual(json.loads(self.ledger.read_text()), {'workspace/skills/retained/SKILL.md': 'a' * 64})
+
+    def test_qualification_handles_a_roles_first_native_turn_without_creating_its_database(self):
+        for tool_name in ('read', 'write'):
+            with self.subTest(tool_name=tool_name):
+                state = self.root / ('state-' + tool_name)
+                skill = state / 'workspace-administrator/skills/household-paperwork/SKILL.md'
+                skill.parent.mkdir(parents=True)
+                skill.write_text('---\nname: household-paperwork\ndescription: Fixture\n---\n\n# Paperwork fixture\n')
+                database = state / 'agents/administrator/agent/openclaw-agent.sqlite'
+                def first_turn(argv, **kwargs):
+                    self.assertFalse(database.exists())
+                    self.assertNotIn('--deliver', argv)
+                    session = argv[argv.index('--session-id') + 1]
+                    # Simulate the native agent owning initial database creation.
+                    database.parent.mkdir(parents=True)
+                    db = sqlite3.connect(database)
+                    db.execute('CREATE TABLE transcript_events(session_id TEXT,seq INTEGER,event_json TEXT)')
+                    events = [
+                        {'message': {'role': 'assistant', 'content': [{'type': 'toolCall', 'name': tool_name, 'arguments': {'path': str(skill)}}]}},
+                        {'message': {'role': 'toolResult', 'toolName': 'read', 'content': [{'type': 'text', 'text': '# Paperwork fixture'}]}},
+                        {'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'Synthetic explanation.'}]}},
+                    ]
+                    for i, event in enumerate(events):
+                        db.execute('INSERT INTO transcript_events VALUES(?,?,?)', (session, i, json.dumps(event)))
+                    # Evidence from unrelated history cannot affect the receipt.
+                    db.execute('INSERT INTO transcript_events VALUES(?,?,?)', ('unrelated', 0, json.dumps({'message': {'role': 'toolResult', 'toolName': 'write', 'isError': True}})))
+                    db.commit()
+                    db.close()
+                    return subprocess.CompletedProcess(argv, 0, stdout='{}', stderr='')
+                with redirect_stdout(io.StringIO()):
+                    passed = verifier.verify('administrator', self.root / ('probe-' + tool_name), state_root=state, runner=first_turn)
+                self.assertEqual(passed, tool_name == 'read')
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 # OpenClaw agent office
 
-A local, read-only pixel office for the team declared in
+A local, read-only illustrated robot laboratory for the team declared in
 [`config/openclaw-team.json`](../../config/openclaw-team.json). Agent names come
 from that source; instructions, messages, channel IDs, tool arguments/results,
 and session identifiers never reach the browser. The preview needs no npm
@@ -27,15 +27,28 @@ glow and floor ring. Characters have no overhead name tags. Filter by state or
 pause motion. Reduced-motion preferences disable animation. Facing follows
 their direction of travel.
 
-The four directional atlases each contain three characters, two walking poses
-per direction, and a planted standing pose for each profile. Their shared frame
-size is 128×160 with a foot baseline at 154. The browser renders original pixel
-frames rather than bobbing a static portrait. Asset provenance and layout
-are recorded in [`walking-art.json`](public/assets/walking-art.json).
+Twelve different mechanical robots use four movement atlases and four work
+atlases, with three robots per sheet. Movement includes two phases and a planted
+pose for each direction; work includes two physical tool gestures per direction.
+Only stationary Working robots use work artwork. Travelling robots fold their
+tools; Waiting, Idle, Unknown and Needs attention use planted poses with distinct
+shape and text cues. Pause freezes the current frame, including midway through a
+journey; reduced motion retains a static work pose. Idle uses a dash, not a task
+completion checkmark.
+
+All frames are 128×160 with ground baseline 154; drones retain a fixed hover
+offset. Robots keep their different proportions. Asset provenance and layout
+are recorded in [`walking-art.json`](public/assets/walking-art.json). Select a
+room label to explore its illustrated equipment. These descriptions are static,
+not device telemetry. Nova uses the compact library; other roles research from
+their own workstations so a burst of research does not stack robots on the chess
+table. On narrow screens, pan within the panorama or select a
+robot in the roster to center it without scrolling the whole document.
 
 [`scene-layout.mjs`](scene-layout.mjs) owns room labels, floor destinations,
 facing directions, corridors, and art-derived furniture bounds. Coordinates
-anchor a character's **feet**. Atlas stands below the table and chairs; desks,
+anchor a robot's **ground position**. `projectToScene` reserves the top 20% of
+the 3:2 image for the skyline and maps the logical floor into the next 78%. Atlas stands below the table and chairs; desks,
 shelves, and counters are blocked. Mid-walk destination changes rejoin the
 existing corridor graph. Invalid routes fail closed rather than moving through
 furniture. Keep geometry and the background asset in step when editing the map.
@@ -44,18 +57,18 @@ furniture. Keep geometry and the background asset in step when editing the map.
 
 | Agent | Work area and objects | Responsibility |
 | --- | --- | --- |
-| Atlas | Coordination table, route papers | Delegate work and review specialist results |
-| Luna | Calendar, planner, sticky notes | Personal planning, school, tasks, reminders |
-| Nova | Library, reference books, research desk | Public research and cited evidence |
-| Apollo | Code monitors, purple keyboard, hardware | Prepare coding requests and follow Codex jobs |
-| Orion | Server racks, diagnostic monitor | Infrastructure, Home Assistant, maintenance |
-| Vega | Shopping counter, bags, offers, scanner | Shopping lists and discount watches |
-| Ceres | Supply shelves, jars, boxes | Household stock, storage, expiry records |
-| Lyra | World map, globe, suitcase | Travel, restaurants, adventures |
-| Hestia | Kitchen, recipe book, vegetables | Meals and recipes |
-| Themis | Binders, document trays, paperwork | Household administration and deadlines |
-| Plutus | Ledger, calculator, chart display | Supplied expenses, budgets, reconciliation |
-| Gaia | Separate family garden, picnic and toys | Expressly shared family plans and tasks |
+| Atlas | Modular coordinator; drone and electronics table | Delegate work and review specialist results |
+| Luna | Calendar rover; planning terminal | Personal planning, school, tasks, reminders |
+| Nova | Floating research companion; library, chess lounge, rocket models | Public research and cited evidence |
+| Apollo | Humanoid maker; enclosed 3D printer and coding monitors | Prepare coding requests and follow Codex jobs |
+| Orion | Rack technician; servers, battery cabinet, automation console | Infrastructure, Home Assistant, maintenance |
+| Vega | Single-wheel scout; robotic gadget comparison counter | Shopping lists and discount watches |
+| Ceres | Humanoid stock keeper; filament and component storage | Household stock, storage, expiry records |
+| Lyra | Navigation drone; maps and camera equipment | Travel, restaurants, adventures |
+| Hestia | Soft kitchen companion; mixing bowl, whisk and recipe display | Meals and recipes |
+| Themis | Humanoid document assistant; digital review terminal | Household administration and deadlines |
+| Plutus | Humanoid analyst; shared ledger tablet | Supplied expenses, budgets, reconciliation |
+| Gaia | Humanoid garden companion; separate glazed atrium | Expressly shared family plans and tasks |
 
 Locations are activity metaphors, not physical machines, real-world locations,
 authority, or access grants. A character entering another work area does not
@@ -63,8 +76,34 @@ delegate a task or grant access. Gaia's visual area does not expose owner-privat
 task content to Family. This whole dashboard is an **operator-only** projection;
 do not embed it in a shared-family channel or service.
 
-The warm oak/navy pixel environment and role-specific characters are original
-generated assets. The spatial activity idea is inspired by
+The character refresh keeps Atlas, Luna, Orion, Vega and Lyra unchanged. The
+other seven favor friendly faces and rounded humanoid bodies, with Nova as a
+floating companion. Apollo and Plutus no longer use multi-legged chassis.
+Each refreshed robot has matching standing, travel and work views, with tools
+stowed during travel. The [preview](art/robot-refresh-preview.png) shows their
+standing and work appearances.
+
+Generated source sheets and the complete built-in imagegen prompt set are kept
+in [`art/robot-refresh-prompts.json`](art/robot-refresh-prompts.json). Regeneration
+is an explicit image-generation step; routine bundle builds use the tracked PNGs.
+To repack the saved sheets, supply an external installation of `sharp@0.35.5`:
+
+```bash
+node scripts/pack-agent-office-refresh.mjs --image-library /absolute/path/to/node_modules/sharp
+```
+
+The packer needs the base Git revision recorded in the prompt manifest. It
+replaces only refreshed rows and portraits, checks that the five retained
+designs are pixel-identical, normalizes all poses with one scale per robot,
+corrects generated side-view ordering, and updates asset hashes. Sources and
+prompts stay outside the published plugin bundle. The application needs no
+image-processing dependency. Apply the normal guarded office lifecycle below
+when deploying new artwork; copying files into the running service is not a release.
+
+The glass-walled high-rise laboratory, city panorama, kitchen robotics, gaming
+console, library chess corner, miniature reusable rockets and role-specific
+robots are original generated assets. Work gestures communicate observed status;
+they do not claim that a physical gadget is being controlled. The spatial activity idea is inspired by
 [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents). No upstream code,
 sprites, or third-party furniture assets were copied. See
 [`docs/adr/009-logging-policy.md`](../../docs/adr/009-logging-policy.md) and
@@ -106,10 +145,13 @@ specialist. The detail panel names the corresponding area.
 - **Working:** a fresh model/tool observation exists for an active native run.
 - **Waiting:** the observed tool is `sessions_yield`; another working run still
   takes precedence when the same agent has concurrent work.
-- **Idle:** a successful end was observed and no fresh run remains active.
+- **Idle:** a successful end was observed and no fresh run remains active. This
+  confirmed state persists beyond five minutes until superseded by new work or
+  cleared by a gateway restart; its observation timestamp is not renewed.
 - **Needs attention:** an unsuccessful end was observed and no run remains active.
-- **Unknown:** no verified observation, missing identity, or an observation more
-  than five minutes old. A heartbeat cannot renew a run's evidence.
+- **Unknown:** no verified observation, missing identity, or unfinished work/error
+  evidence more than five minutes old. Stale newer unfinished work cannot restore
+  an older Idle state. A heartbeat cannot renew a run's evidence.
 
 Categories describe observed operations, not private task titles or outcomes.
 For example, `task_status` means repository-work activity; it does not prove
@@ -310,7 +352,8 @@ They cover concurrent runs, expiration, content exclusion, identity rejection,
 bounded event retention, request isolation, additive configuration, and
 reproducible bundle generation. Geometry checks cover every role/activity/state
 destination and corridor segment, including the table-placement regression.
-Animation checks cover all four profiles and both leg phases for all 12 agents.
+Animation checks cover all four directions, movement and work phases for all
+12 robots, and ensure travel or unobserved states never deploy work tools.
 Browser verification must also cover agent
 selection from characters and the side menu, selection highlighting, filters,
 directional walking, motion controls, and narrow
