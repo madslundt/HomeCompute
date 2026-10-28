@@ -16,16 +16,16 @@ export const WORK_SHEETS = Object.freeze([
 export const ROBOT_PROFILES = Object.freeze([
   { kind: 'Modular coordinator', speed: 9, height: 128 },
   { kind: 'Calendar rover', speed: 10, height: 108 },
-  { kind: 'Research orb', speed: 9, height: 112 },
-  { kind: 'Six-legged maker', speed: 12, height: 100 },
+  { kind: 'Floating research companion', speed: 9, height: 112 },
+  { kind: 'Humanoid maker', speed: 12, height: 128 },
   { kind: 'Rack technician', speed: 7, height: 132 },
   { kind: 'Single-wheel scout', speed: 11, height: 126 },
-  { kind: 'Tracked stock keeper', speed: 8, height: 100 },
+  { kind: 'Humanoid stock keeper', speed: 8, height: 120 },
   { kind: 'Navigation drone', speed: 13, height: 92 },
-  { kind: 'Kitchen rover', speed: 8, height: 114 },
-  { kind: 'Document automaton', speed: 9, height: 140 },
-  { kind: 'Four-legged analyst', speed: 8, height: 104 },
-  { kind: 'Solar garden rover', speed: 9, height: 104 },
+  { kind: 'Soft kitchen companion', speed: 8, height: 86 },
+  { kind: 'Humanoid document assistant', speed: 9, height: 136 },
+  { kind: 'Humanoid analyst', speed: 8, height: 122 },
+  { kind: 'Humanoid garden companion', speed: 9, height: 105 },
 ]);
 
 const DIRECTIONS = Object.freeze({ south: 0, west: 1, east: 2, north: 3 });
