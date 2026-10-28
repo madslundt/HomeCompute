@@ -37,7 +37,9 @@ export const ACTIVITIES = {
 
 export function projectRoster(team) {
   return Object.entries(team.agents).filter(([id]) => Object.hasOwn(ROLES, id))
-    .map(([id, agent]) => ({ id, name: agent.name, role: ROLES[id][0], color: ROLES[id][1], sprite: ROLES[id][2] }));
+    .map(([id, agent]) => ({ id,
+      name: typeof agent?.name === 'string' && /^[^\x00-\x1f\x7f]{1,64}$/.test(agent.name) ? agent.name : ROLES[id][0],
+      role: ROLES[id][0], color: ROLES[id][1], sprite: ROLES[id][2] }));
 }
 
 export function toolActivity(name) {
