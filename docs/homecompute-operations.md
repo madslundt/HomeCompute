@@ -297,13 +297,20 @@ the existing SOPS-managed `/run/secrets/restic/password`, creating no additional
 local-only encryption secret. Neither the Immich account/media share nor Omi's
 NFS export is reused. An absent or different mount never falls back to local
 storage.
+`findmnt` may report the ordered `systemd-1` autofs underlay followed by CIFS
+at the same target: only that exact stack or exact CIFS alone qualifies as the
+backup destination. Exact autofs alone is accepted only while the installer
+stages the mount, never while validating a backup destination.
 
 The NAS module's `includeApplicationState = true` default prepares an
 application-consistent recovery archive before Restic transfer. It stops the
 declared writers and VMs, uses PostgreSQL dumps and SQLite's transactional backup
 API, archives durable application files and both VM disk sets, and resumes only
 previously active resources even if preparation fails. Active private browser
-sessions defer the job. Preparation and deployments share a lock; the local VM
+sessions and running/claimed/publishing broker work defer the job. Both idle
+checks run again after their owning routes stop, before VM or application
+snapshots, so a racing claim or browser launch also defers safely.
+Preparation and deployments share a lock; the local VM
 backup and recovery preparation also exclude each other. The NAS schedule starts
 at 03:15 local host time, outside the local VM snapshot's midnight window.
 The private resume journal and `ExecStopPost` recovery also cover interrupted
@@ -312,8 +319,19 @@ uncompressed archive through encrypted Restic.
 
 Preparation requires measured space for source files plus 100 GiB headroom and
 retains two completed application archives. Archives are root-only on local
-storage and encrypted by Restic on the NAS. Original Immich media stays outside
-this archive and requires an independent media backup. The host age identity and
+storage and encrypted by Restic on the NAS. The fixed archive scope includes
+gateway state, n8n SQLite/encryption settings and files, Mattermost data and
+database, Immich metadata database, trusted agent/broker state and both VMs.
+It also includes both local OpenWebUI instances (chat and image studio), their
+generated embedding/instance credentials,
+Omi's exact validated local application volume, book importer configuration and
+local library files, and Chessmate's PostgreSQL 17 dump and certificates.
+Declared writers stop before these files are read; PostgreSQL data volumes and
+Docker storage as a whole are never copied. The backup sandbox exposes only
+Chessmate's certificate directory read-only through its protected home boundary.
+Original Immich media and Omi NAS audio/diary stay outside this archive and
+require independent media backups; another copy on the same NAS is not evidence
+of protection against NAS loss. The host age identity and
 Restic recovery password need separate offline custody. Generated Nix store
 symlinks are rebuilt from the release instead of copied into a recovery archive.
 The agents VM's exact immutable NoCloud seed is an exception: preparation derives
@@ -365,7 +383,8 @@ only the pre-installation configuration. Use `retire` after the normal NixOS
 generation supplies matching canonical units, source and mount settings, removing
 the managed attached units without deleting backup data.
 
-Verification checks restored SQLite integrity, compressed dump checksums and all
+Verification checks restored SQLite integrity (including `.db` files with a
+SQLite header), all four compressed dump checksums and all
 three qcow2 disks without touching production paths. It explicitly leaves
 PostgreSQL imports and isolated VM boots unverified; complete those drills with
 no production network access before accepting disaster recovery. NAS storage

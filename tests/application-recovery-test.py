@@ -134,6 +134,10 @@ class ApplicationRecoveryTest(unittest.TestCase):
             for disk in recovery.VM_DISKS:
                 p = source / 'state' / disk; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(b'synthetic-disk')
             seed=source/'state/agents-vm/seed.iso';seed.write_bytes(b'synthetic-seed')
+            app=source/'state/open-webui';app.mkdir()
+            with closing(sqlite3.connect(app/'webui.db')) as db:
+                db.execute('CREATE TABLE fixture(id INTEGER PRIMARY KEY)');db.commit()
+            (app/'arbitrary.db').write_bytes(b'not a SQLite database')
             manifest = {'schema_version': 1, 'postgres': sorted(recovery.POSTGRES),
                         'vms': ['agents-vm', 'codex-vm'], 'sqlite': ['n8n'],
                         'agents_seed':{'archive_path':'state/agents-vm/seed.iso','source':'/nix/store/'+'a'*32+'-homecompute-agents-seed.iso',
@@ -146,7 +150,8 @@ class ApplicationRecoveryTest(unittest.TestCase):
             with patch.object(recovery, 'SCRATCH', scratch), patch.object(recovery, 'run') as check:
                 result = recovery.verify(archive_path, scratch / 'new')
             self.assertEqual(result['sqlite_integrity'], 'ok')
-            self.assertEqual(result['gzip_dumps_checked'], 3)
+            self.assertEqual(result['sqlite_databases_checked'], 2)
+            self.assertEqual(result['gzip_dumps_checked'], 4)
             self.assertEqual(result['qcow2_disks_checked'], 3)
             self.assertEqual(check.call_count, 3)
             self.assertFalse(result['postgres_import_verified'])
@@ -172,7 +177,7 @@ class ApplicationRecoveryTest(unittest.TestCase):
             with patch.object(recovery, 'ARCHIVES', archives), patch.object(recovery, 'DEPLOY_LOCK', root / 'lock'), \
                     patch.object(recovery, 'RECOVERY_MARKER', root / 'marker'), \
                     patch.object(recovery, 'run', return_value=subprocess.CompletedProcess([], 0, 'ActiveState=inactive\n', '')), \
-                    patch.object(recovery, 'private_directory'), patch.object(recovery, 'space_required', return_value=0), \
+                    patch.object(recovery, 'private_directory'), patch.object(recovery, 'validate_volumes'), patch.object(recovery, 'space_required', return_value=0), \
                     patch.object(recovery, 'quiesced', side_effect=RuntimeError('synthetic failure')):
                 with self.assertRaises(RuntimeError): recovery.prepare()
             self.assertEqual(list(archives.iterdir()), [])
@@ -182,7 +187,7 @@ class ApplicationRecoveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary); archives = root / 'archives'; archives.mkdir(mode=0o700)
             with patch.object(recovery, 'ARCHIVES', archives), patch.object(recovery, 'DEPLOY_LOCK', root / 'lock'), \
-                    patch.object(recovery, 'RECOVERY_MARKER', root / 'marker'), patch.object(recovery, 'private_directory'), \
+                    patch.object(recovery, 'RECOVERY_MARKER', root / 'marker'), patch.object(recovery, 'private_directory'), patch.object(recovery, 'validate_volumes'), \
                     patch.object(recovery, 'space_required', return_value=0), patch.object(recovery, 'quiesced') as quiesced, \
                     patch.object(recovery, 'run', return_value=subprocess.CompletedProcess([], 0, 'ActiveState=active\n', '')):
                 with self.assertRaisesRegex(ValueError, 'local VM backup'): recovery.prepare()
@@ -244,6 +249,56 @@ class ApplicationRecoveryTest(unittest.TestCase):
                 with recovery.quiesced():self.fail('must defer the racing claim')
         self.assertNotIn(['systemctl','stop','homecompute-codex-vm.service'],calls)
         self.assertIn(['systemctl','start','homecompute-codex-worker-api.service'],calls)
+
+
+    def test_private_browser_launch_race_defers_before_vms_and_resumes_owners(self):
+        units=('homecompute-openclaw-sites.service','homecompute-openclaw-access.service','homecompute-codex-vm.service')
+        calls=[]
+        def run(arguments,**kwargs):
+            calls.append(arguments);return subprocess.CompletedProcess(arguments,0,'','')
+        with patch.object(recovery,'UNITS',units),patch.object(recovery,'private_browsers_idle',side_effect=[None,ValueError('browser sessions')]), \
+                patch.object(recovery,'unit_state',side_effect=['active','inactive','active','inactive']),patch.object(recovery,'run',side_effect=run):
+            with self.assertRaisesRegex(ValueError,'browser sessions'):
+                with recovery.quiesced():self.fail('must defer the racing browser')
+        self.assertNotIn(['systemctl','stop','homecompute-codex-vm.service'],calls)
+        self.assertIn(['systemctl','start','homecompute-openclaw-sites.service'],calls)
+        self.assertIn(['systemctl','start','homecompute-openclaw-access.service'],calls)
+
+    def test_only_exact_local_omi_volume_and_binding_are_admitted(self):
+        volume={'Name':'omi-local_omi-data','Driver':'local','Scope':'local',
+                'Mountpoint':str(recovery.DIRECTORIES['omi-data']),'Options':None}
+        mount={'Name':volume['Name'],'Source':volume['Mountpoint'],'Destination':'/data','Type':'volume'}
+        def inspect(v,m):
+            return [subprocess.CompletedProcess([],0,json.dumps([v]),''),subprocess.CompletedProcess([],0,json.dumps([m]),'')]
+        with patch.object(recovery,'run',side_effect=inspect(volume,mount)):recovery.validate_volumes()
+        for field,value in [('Driver','nfs'),('Scope','global'),('Mountpoint','/srv/other'),('Options',{'type':'nfs'})]:
+            with self.subTest(field=field),patch.object(recovery,'run',side_effect=inspect({**volume,field:value},mount)),self.assertRaises(ValueError):
+                recovery.validate_volumes()
+        for field,value in [('Source','/srv/other'),('Name','other'),('Type','bind'),('Destination','/other')]:
+            with self.subTest(field=field),patch.object(recovery,'run',side_effect=inspect(volume,{**mount,field:value})),self.assertRaises(ValueError):
+                recovery.validate_volumes()
+
+    def test_nas_audio_and_diary_are_excluded_but_local_omi_state_is_retained(self):
+        for relative in ['audio','audio/file.wav','diary','diary/day.json']:
+            self.assertIsNone(recovery.archive_filter(tarfile.TarInfo('state/omi-data/'+relative)))
+        self.assertIsNotNone(recovery.archive_filter(tarfile.TarInfo('state/omi-data/local.sqlite3')))
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);omi=root/'omi';omi.mkdir();n8n=root/'n8n';n8n.mkdir()
+            for name in ['audio','diary']:
+                path=omi/name;path.mkdir();(path/'excluded').write_bytes(b'large synthetic NAS file')
+            (omi/'local').write_bytes(b'abc')
+            with patch.object(recovery,'DIRECTORIES',{'omi-data':omi}),patch.object(recovery,'N8N',n8n),patch.object(recovery,'EXTRA_FILES',{}), \
+                    patch.object(recovery,'MIN_FREE_BYTES',0):
+                self.assertEqual(recovery.space_required(),1024**3+3)
+
+    def test_new_local_applications_have_fixed_writer_and_archive_coverage(self):
+        self.assertEqual(recovery.POSTGRES['chessmate'],'chessmate-db-1')
+        self.assertEqual(recovery.DIRECTORIES['open-webui'],Path('/srv/state/open-webui/data'))
+        self.assertEqual(recovery.DIRECTORIES['books-importer'],Path('/srv/state/books_importer'))
+        self.assertEqual(recovery.DIRECTORIES['image-studio'],Path('/srv/state/image-studio/data'))
+        for name in ['homecompute-open-webui-open-webui-1','homecompute-image-studio-open-webui-1','omi-local-backend-1','chessmate-backend-1',
+                     'homecompute-books_importer-shelfmark-1','homecompute-books_importer-shelfmark-automated-1','homecompute-books_importer-cwa-1']:
+            self.assertIn(name,recovery.CONTAINERS)
 
 
 if __name__ == '__main__':

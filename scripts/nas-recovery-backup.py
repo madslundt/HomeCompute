@@ -69,7 +69,11 @@ def require_mount(config: dict) -> None:
     ], text=True))
     entries = document.get("filesystems", [])
     expected = f"//{config['address']}/{config['share']}"
-    if len(entries) != 1 or entries[0] != {"target": str(MOUNT), "source": expected, "fstype": "cifs"}:
+    cifs = {"target": str(MOUNT), "source": expected, "fstype": "cifs"}
+    automount = {"target": str(MOUNT), "source": "systemd-1", "fstype": "autofs"}
+    # findmnt reports both layers of a systemd automount after activation.
+    # The order matters: the expected CIFS filesystem must be the top layer.
+    if entries not in ([cifs], [automount, cifs]):
         raise ValueError("exact separate NAS CIFS mount is unavailable; refusing local fallback")
     private_file(Path(config["credentialsFile"]))
 

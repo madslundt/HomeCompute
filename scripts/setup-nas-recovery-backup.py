@@ -159,6 +159,8 @@ WantedBy=multi-user.target
                   f'ExecStartPre={PYTHON} -I {DEST}/current/scripts/application-recovery.py prepare\n') if command == 'backup' else ''
         after = f'ExecStopPost={PYTHON} -I {DEST}/current/scripts/application-recovery.py resume\n' if command == 'backup' else ''
         capability = 'CAP_DAC_READ_SEARCH' if command == 'backup' else ''
+        home_read = 'BindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates\n' if command == 'backup' else ''
+        home_protect = 'tmpfs' if command == 'backup' else 'yes'
         values[PREFIX + command + '.service'] = f'''[Unit]
 Description=HomeCompute encrypted NAS recovery {command}
 Requires=network-online.target
@@ -188,8 +190,8 @@ CapabilityBoundingSet={capability}
 AmbientCapabilities={capability}
 PrivateTmp=yes
 ProtectSystem=strict
-ProtectHome=yes
-ProtectKernelTunables=yes
+ProtectHome={home_protect}
+{home_read}ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 ReadWritePaths={MOUNT} {STATE} /srv/backups/agent-recovery /var/lib/homecompute/deploy.lock /run/homecompute
@@ -274,9 +276,11 @@ def compatible_mount(settings: dict) -> None:
     if result.returncode != 0: raise ValueError('existing mount state is unavailable')
     expected = f'//{settings["address"]}/{settings["share"]}'
     entries = json.loads(result.stdout).get('filesystems', [])
-    if len(entries) != 1 or entries[0].get('target') != str(MOUNT) or not (
-            entries[0].get('fstype') == 'autofs' and entries[0].get('source') == 'systemd-1'
-            or entries[0].get('fstype') == 'cifs' and entries[0].get('source') == expected):
+    cifs = {'target': str(MOUNT), 'source': expected, 'fstype': 'cifs'}
+    automount = {'target': str(MOUNT), 'source': 'systemd-1', 'fstype': 'autofs'}
+    # Staging may encounter the declared automount before its first trigger.
+    # Actual backup validation separately requires CIFS to be present on top.
+    if entries not in ([automount], [cifs], [automount, cifs]):
         raise ValueError('foreign filesystem at the backup mountpoint refused')
 
 
@@ -392,7 +396,7 @@ def operation(command: str, record: dict, args) -> dict:
     backup = json.loads((STATE / 'last-backup.json').read_bytes())
     proof = json.loads((STATE / 'last-application-verification.json').read_bytes())
     if (backup['snapshot'] != proof['snapshot'] or proof['verification'].get('sqlite_integrity') != 'ok'
-            or proof['verification'].get('qcow2_disks_checked') != 3 or proof['verification'].get('gzip_dumps_checked') != 3):
+            or proof['verification'].get('qcow2_disks_checked') != 3 or proof['verification'].get('gzip_dumps_checked') != 4):
         raise ValueError('matching first application backup and isolated verification required before scheduling')
     marker = STATE / 'backup-authorized'
     if not marker.exists():

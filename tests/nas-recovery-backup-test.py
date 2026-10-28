@@ -53,6 +53,29 @@ class NASBackupTest(unittest.TestCase):
             backup.require_mount(CONFIG)
             custody.assert_called_once_with(Path(CONFIG["credentialsFile"]))
 
+    def test_exact_ordered_systemd_automount_and_cifs_stack_is_admitted(self):
+        target=str(backup.MOUNT)
+        entries=[{'target':target,'source':'systemd-1','fstype':'autofs'},
+                 {'target':target,'source':'//192.168.30.236/homecompute-backups','fstype':'cifs'}]
+        with patch.object(backup.subprocess,'check_output',return_value=json.dumps({'filesystems':entries})), \
+                patch.object(backup,'private_file') as custody:
+            backup.require_mount(CONFIG)
+            custody.assert_called_once()
+
+    def test_foreign_reverse_duplicate_and_incomplete_mount_stacks_are_refused(self):
+        target=str(backup.MOUNT)
+        underlay={'target':target,'source':'systemd-1','fstype':'autofs'}
+        cifs={'target':target,'source':'//192.168.30.236/homecompute-backups','fstype':'cifs'}
+        for entries in [[],[underlay],[cifs,underlay],[cifs,cifs],[underlay,underlay,cifs],
+                        [{**underlay,'source':'foreign'},cifs],
+                        [underlay,{**cifs,'source':'//192.168.30.236/immich-library'}],
+                        [underlay,{**cifs,'target':'/'}],[{**cifs,'fstype':'ext4'}]]:
+            with self.subTest(entries=entries), \
+                    patch.object(backup.subprocess,'check_output',return_value=json.dumps({'filesystems':entries})), \
+                    patch.object(backup,'private_file') as custody:
+                with self.assertRaises(ValueError):backup.require_mount(CONFIG)
+                custody.assert_not_called()
+
     def test_existing_repo_is_never_initialized(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(backup, "REPOSITORY", Path(temporary)), \
                 patch.object(backup, "restic") as restic:

@@ -33,7 +33,10 @@ MAX_ARCHIVE_BYTES = 512 * 1024**3
 MAX_ARCHIVE_ENTRIES = 100000
 CONTAINERS = ('homecompute-control-plane-caddy-1', 'homecompute-control-plane-litellm-1',
               'homecompute-automation-n8n-1', 'homecompute-mattermost-mattermost-1',
-              'homecompute-immich-immich-server-1')
+              'homecompute-immich-immich-server-1', 'homecompute-open-webui-open-webui-1',
+              'omi-local-backend-1', 'homecompute-books_importer-shelfmark-1',
+              'homecompute-books_importer-shelfmark-automated-1', 'homecompute-books_importer-cwa-1',
+              'chessmate-backend-1', 'homecompute-image-studio-open-webui-1')
 UNITS = ('homecompute-codex-worker-api.service', 'homecompute-codex-broker.service',
          'homecompute-openclaw-household-task-reminders.timer', 'homecompute-openclaw-family-task-reminders.timer',
          'homecompute-openclaw-update-feed.timer', 'homecompute-openclaw-household-task-reminders.service',
@@ -44,7 +47,8 @@ UNITS = ('homecompute-codex-worker-api.service', 'homecompute-codex-broker.servi
          'homecompute-ha-actions.service',
          'homecompute-codex-vm.service', 'homecompute-agents-vm.service')
 POSTGRES = {'control-plane': 'homecompute-control-plane-postgres-1',
-            'mattermost': 'homecompute-mattermost-postgres-1', 'immich': 'homecompute-immich-database-1'}
+            'mattermost': 'homecompute-mattermost-postgres-1', 'immich': 'homecompute-immich-database-1',
+            'chessmate': 'chessmate-db-1'}
 # Database data directories are deliberately absent. PostgreSQL is dumped and
 # n8n SQLite is copied through its transactional backup API, never live cp.
 DIRECTORIES = {
@@ -67,7 +71,14 @@ DIRECTORIES = {
     'codex-broker/state': Path('/srv/state/codex-broker'),
     'codex-broker/config': Path('/opt/homecompute/codex-broker/config'),
     'codex-broker/secrets': Path('/opt/homecompute/codex-broker/secrets'),
+    'open-webui': Path('/srv/state/open-webui/data'),
+    'image-studio': Path('/srv/state/image-studio/data'),
+    'omi-data': Path('/var/lib/docker/volumes/omi-local_omi-data/_data'),
+    'books-importer': Path('/srv/state/books_importer'),
+    'chessmate/certificates': Path('/home/mads/projects/chessmate/config/certificates'),
 }
+EXTRA_FILES = {'open-webui/embedding-api-key': Path('/srv/state/open-webui/embedding-api-key'),
+               'image-studio/webui-secret-key': Path('/srv/state/image-studio/webui-secret-key')}
 N8N = Path('/srv/state/automation/n8n')
 VM_DISKS = ('agents-vm/agents.qcow2', 'codex-vm/root.qcow2', 'codex-vm/work.qcow2')
 SEED_PATTERN = r'/nix/store/[0-9a-z]{32}-homecompute-agents-seed\.iso'
@@ -155,6 +166,30 @@ def worker_idle() -> None:
         raise ValueError('worker activity requires recovery preparation to defer')
 
 
+def private_browsers_idle() -> None:
+    active = run(['docker', 'ps', '--filter', 'name=homecompute-site-view-', '--format', '{{.Names}}'], text=True, timeout=10).stdout
+    if active.strip():
+        raise ValueError('close active private browser sessions before cold recovery preparation')
+
+
+def validate_volumes() -> None:
+    name = 'omi-local_omi-data'; mountpoint = str(DIRECTORIES['omi-data'])
+    output = run(['docker', 'volume', 'inspect', name], text=True, timeout=10).stdout
+    values = json.loads(output) if len(output) <= 32768 else []
+    if (not isinstance(values, list) or len(values) != 1 or not isinstance(values[0], dict) or values[0].get('Name') != name
+            or values[0].get('Driver') != 'local' or values[0].get('Scope') != 'local'
+            or values[0].get('Mountpoint') != mountpoint or values[0].get('Options') not in (None, {})):
+        raise ValueError('exact local Omi application volume is required')
+    output = run(['docker', 'inspect', 'omi-local-backend-1', '--format', '{{json .Mounts}}'], text=True, timeout=10).stdout
+    rows = json.loads(output) if len(output) <= 32768 else []
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError('bounded Omi container mount metadata required')
+    found = [row for row in rows if row.get('Destination') == '/data']
+    if len(found) != 1 or any(found[0].get(key) != value for key, value in
+            {'Name': name, 'Source': mountpoint, 'Type': 'volume'}.items()):
+        raise ValueError('Omi container no longer owns the declared data volume')
+
+
 @contextmanager
 def quiesced():
     """Only restart services that were active before this attempt, even on error."""
@@ -165,9 +200,7 @@ def quiesced():
         worker_idle()
         # An active private browser can keep writing profile state independently
         # of its owner service. Defer rather than silently claim consistency.
-        active = run(['docker', 'ps', '--filter', 'name=homecompute-site-view-', '--format', '{{.Names}}'], text=True).stdout
-        if active.strip():
-            raise ValueError('close active private browser sessions before cold recovery preparation')
+        private_browsers_idle()
         for unit in UNITS:
             if unit_state(unit) == 'active':
                 stopped.append(('unit', unit))
@@ -179,6 +212,8 @@ def quiesced():
                 # Claims are disabled now. Catch a claim committed between the
                 # first idle read and stopping the claim API/broker, before VMs.
                 worker_idle()
+            if unit == 'homecompute-openclaw-access.service':
+                private_browsers_idle()  # Owner routes are stopped; close the launch race before VMs.
         for container in CONTAINERS:
             result = run(['docker', 'inspect', container, '--format', '{{.State.Running}}'], text=True).stdout
             running = result.strip()
@@ -199,6 +234,9 @@ def archive_filter(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
         return None
     if info.name == 'state/agents-vm/seed.iso':
         return None  # Archive the exact owning-unit seed, not an incidental file.
+    if any(info.name == 'state/omi-data/' + name or info.name.startswith('state/omi-data/' + name + '/')
+           for name in ('audio', 'diary')):
+        return None  # NAS-owned originals need their independent media backup.
     if info.issym() and info.linkname.startswith('/nix/store/'):
         return None
     if info.ischr() or info.isblk() or info.isfifo() or not (info.isfile() or info.isdir() or info.issym()):
@@ -235,6 +273,8 @@ def space_required() -> int:
         if source.is_symlink() or not source.is_dir():
             raise ValueError('declared recovery source is absent or symlinked')
         for parent, directories, files in os.walk(source, followlinks=False):
+            if source == DIRECTORIES.get('omi-data') and Path(parent) == source:
+                directories[:] = [name for name in directories if name not in {'audio', 'diary'}]
             entries += len(directories) + len(files)
             if entries > MAX_ARCHIVE_ENTRIES:
                 raise ValueError('recovery source entry budget requires review')
@@ -245,18 +285,23 @@ def space_required() -> int:
                     total += info.st_size
                     if total > MAX_ARCHIVE_BYTES:
                         raise ValueError('recovery source size budget requires review')
+    for source in EXTRA_FILES.values():
+        if source.is_symlink() or not source.is_file(): raise ValueError('declared recovery file is absent or symlinked')
+        total += source.stat().st_size
+        if total > MAX_ARCHIVE_BYTES: raise ValueError('recovery source size budget requires review')
     return total + MIN_FREE_BYTES
 
 
 def prepare() -> Path:
     private_directory(ARCHIVES, create=True)
-    if shutil.disk_usage(ARCHIVES).free < space_required():
-        raise ValueError('recovery needs space for all source files plus 100 GiB remaining headroom')
     name = 'homecompute-applications-' + dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ') + '.tar'
     final = ARCHIVES / name
     temporary = ARCHIVES / (name + '.partial')
     with DEPLOY_LOCK.open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        validate_volumes()
+        if shutil.disk_usage(ARCHIVES).free < space_required():
+            raise ValueError('recovery needs space for all source files plus 100 GiB remaining headroom')
         marker = os.open(RECOVERY_MARKER, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         os.close(marker)
         try:
@@ -297,6 +342,8 @@ def prepare() -> Path:
                             raise ValueError('declared recovery source is absent or symlinked: ' + relative)
                         archive.add(source, arcname='state/' + relative, filter=archive_filter)
                     archive.add(staged_seed, arcname='state/agents-vm/seed.iso')
+                    for relative, source in EXTRA_FILES.items():
+                        archive.add(source, arcname='state/' + relative, filter=archive_filter)
                     # Original media is owned by the NAS and must have its own
                     # independent backup; copying it back to that NAS is not DR.
                     manifest = {'schema_version': 1, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -368,8 +415,11 @@ def verify(archive_path: Path, target: Path) -> dict:
     if not isinstance(config.get('encryptionKey'), str) or not config['encryptionKey']:
         raise ValueError('n8n credential encryption configuration is absent')
     database = target / 'databases/n8n.sqlite'
-    sqlite_files = [database, *sorted((target / 'state').rglob('*.sqlite3')),
-                    *sorted((target / 'state').rglob('*.sqlite'))]
+    sqlite_files = [database, *sorted((target / 'state').rglob('*.sqlite3')), *sorted((target / 'state').rglob('*.sqlite'))]
+    for candidate in sorted((target / 'state').rglob('*.db')):
+        if candidate.is_symlink() or not candidate.is_file(): raise ValueError('restored database file is unsafe')
+        with candidate.open('rb') as stream:
+            if stream.read(16) == b'SQLite format 3\0': sqlite_files.append(candidate)
     for database in sqlite_files:
         if database.is_symlink() or not database.is_file():
             raise ValueError('restored SQLite file is absent or symlinked')

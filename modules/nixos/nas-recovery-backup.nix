@@ -45,7 +45,9 @@ let
       AmbientCapabilities = lib.optional (command == "backup" && cfg.includeApplicationState) "CAP_DAC_READ_SEARCH";
       PrivateTmp = true;
       ProtectSystem = "strict";
-      ProtectHome = true;
+      ProtectHome = if command == "backup" && cfg.includeApplicationState then "tmpfs" else "yes";
+      BindReadOnlyPaths = lib.optional (command == "backup" && cfg.includeApplicationState)
+        "/home/mads/projects/chessmate/config/certificates";
       ProtectKernelTunables = true;
       ProtectKernelModules = true;
       ProtectControlGroups = true;
@@ -68,7 +70,8 @@ in {
       default = true;
       description = ''
         Prepare a consistent recovery archive of gateway, n8n, Mattermost,
-        Immich databases, trusted agent state and both VMs before transfer.
+        Immich and Chessmate databases, local OpenWebUI/Omi/book state,
+        trusted agent state and both VMs before transfer.
         This briefly stops applications and VMs; active private browsers defer
         the job. Original NAS media and the host age identity remain separate.
       '';

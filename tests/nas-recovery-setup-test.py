@@ -42,6 +42,9 @@ class NASRecoverySetupTest(unittest.TestCase):
         self.assertIn(b'ExecStopPost=', backup)
         self.assertIn(b' resume\n', backup)
         self.assertIn(b'RestrictAddressFamilies=AF_UNIX', backup)
+        self.assertIn(b'ProtectHome=tmpfs\nBindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates\n', backup)
+        self.assertIn(b'ProtectHome=yes\n', units[setup.ATTACHED / (setup.PREFIX + 'check.service')])
+        self.assertNotIn(b'BindReadOnlyPaths=', units[setup.ATTACHED / (setup.PREFIX + 'check.service')])
         self.assertIn(b'ExecCondition=', units[setup.GUARD])
 
     def test_parent_modes_are_preserved(self):
@@ -66,6 +69,24 @@ class NASRecoverySetupTest(unittest.TestCase):
         with patch.object(setup,'run',return_value=subprocess.CompletedProcess([],0,json.dumps(value),'')), self.assertRaisesRegex(ValueError,'foreign filesystem'):
             setup.compatible_mount(settings)
 
+    def test_only_exact_declared_staging_or_mounted_stacks_are_admitted(self):
+        settings=setup.policy((ROOT/'config/synology-backup.json').read_bytes())
+        target=str(setup.MOUNT)
+        underlay={'target':target,'source':'systemd-1','fstype':'autofs'}
+        cifs={'target':target,'source':'//192.168.30.236/homecompute-backups','fstype':'cifs'}
+        for entries in [[underlay],[cifs],[underlay,cifs]]:
+            with self.subTest(entries=entries), patch.object(setup,'run',return_value=
+                    subprocess.CompletedProcess([],0,json.dumps({'filesystems':entries}),'')):
+                setup.compatible_mount(settings)
+        for entries in [[],[cifs,underlay],[cifs,cifs],[underlay,underlay,cifs],
+                        [{**underlay,'source':'foreign'},cifs],
+                        [underlay,{**cifs,'source':'//192.168.30.236/immich-library'}],
+                        [{**underlay,'target':'/'},cifs],
+                        [{'target':'/','source':'/dev/nvme0','fstype':'ext4'}]]:
+            with self.subTest(entries=entries), patch.object(setup,'run',return_value=
+                    subprocess.CompletedProcess([],0,json.dumps({'filesystems':entries}),'')):
+                with self.assertRaisesRegex(ValueError,'foreign filesystem'):setup.compatible_mount(settings)
+
     def test_initial_backup_requires_explicit_pause_acknowledgment(self):
         record = {'version':'/reviewed', 'qemu_bin':'/nix/store/synthetic/bin'}
         with patch.object(setup, 'run'), self.assertRaisesRegex(ValueError, 'acknowledge-pause'):
@@ -88,10 +109,31 @@ class NASRecoverySetupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, patch.object(setup,'STATE',Path(temporary)), patch.object(setup,'run'):
             root=Path(temporary)
             (root/'last-backup.json').write_text(json.dumps({'snapshot':'a'*64}))
-            (root/'last-application-verification.json').write_text(json.dumps({'snapshot':'b'*64,'verification':{'sqlite_integrity':'ok','qcow2_disks_checked':3,'gzip_dumps_checked':3}}))
+            (root/'last-application-verification.json').write_text(json.dumps({'snapshot':'b'*64,'verification':{'sqlite_integrity':'ok','qcow2_disks_checked':3,'gzip_dumps_checked':4}}))
             with self.assertRaisesRegex(ValueError,'matching first application backup'):
                 setup.operation('enable-schedule',{'version':'/reviewed','qemu_bin':'/nix/store/synthetic/bin'},SimpleNamespace())
             self.assertFalse((root/'backup-authorized').exists())
+
+    def test_schedule_requires_all_four_postgres_dump_proofs(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(setup,'STATE',Path(temporary)), patch.object(setup,'run') as run:
+            root=Path(temporary)
+            (root/'last-backup.json').write_text(json.dumps({'snapshot':'a'*64}))
+            verification={'sqlite_integrity':'ok','qcow2_disks_checked':3,'gzip_dumps_checked':3}
+            proof={'snapshot':'a'*64,'verification':verification}
+            target=root/'last-application-verification.json';target.write_text(json.dumps(proof))
+            record={'version':'/reviewed','qemu_bin':'/nix/store/synthetic/bin'}
+            with self.assertRaisesRegex(ValueError,'matching first application backup'):
+                setup.operation('enable-schedule',record,SimpleNamespace())
+            self.assertFalse((root/'backup-authorized').exists())
+            # An existing reviewed marker avoids interacting with host timer
+            # timestamps; only mocked systemctl calls are permitted here.
+            (root/'backup-authorized').write_text('synthetic reviewed marker')
+            verification['gzip_dumps_checked']=4;target.write_text(json.dumps(proof))
+            result=setup.operation('enable-schedule',record,SimpleNamespace())
+            self.assertEqual(result['state'],'scheduled')
+            self.assertFalse(result['postgres_import_verified'])
+            self.assertFalse(result['vm_boot_verified'])
+            run.assert_any_call(['systemctl','start',setup.PREFIX+'backup.timer',setup.PREFIX+'check.timer'])
 
     def staging(self, root: Path, *, fail_mount=False):
         paths={'DEST':root/'install','STATE':root/'state','ATTACHED':root/'attached','CONFIG':root/'runtime.json','LOCK':root/'deploy.lock',
