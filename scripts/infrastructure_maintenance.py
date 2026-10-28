@@ -42,23 +42,21 @@ BIN_DIRS = {'/usr/bin', '/bin', '/run/current-system/sw/bin'}
 NIX_SYSTEM = r'/nix/store/[a-z0-9]{32}-nixos-system-home-core-[A-Za-z0-9.+_-]+'
 HA_COMMAND = '/usr/local/libexec/homecompute-home-assistant-maintenance'
 CONTAINER_COMMAND = '/usr/local/libexec/homecompute-container-maintenance'
+MCP_COMMAND = '/usr/local/libexec/homecompute-mcp-maintenance'
+DOCKER_COMMAND = '/usr/local/libexec/homecompute-docker-maintenance'
 SPARK_COMMAND = '/usr/local/libexec/homecompute-infrastructure-maintenance-spark'
 ENV = {'HOME': '/root', 'PATH': '/run/current-system/sw/bin:/usr/bin:/bin',
        'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8', 'DEBIAN_FRONTEND': 'noninteractive',
        'DOCKER_HOST': 'unix:///var/run/docker.sock', 'DOCKER_CONTEXT': 'default'}
-
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)
-
 def exact(value, keys):
     if not isinstance(value, dict) or set(value) != set(keys):
         raise ValueError('invalid fields')
-
 def identifier(value):
     if not isinstance(value, str) or not ID.fullmatch(value):
         raise ValueError('invalid plan identity')
     return value
-
 def trusted_path(path, uid, *, directory=False):
     """Inspect every ancestor, including /; never traverse writable or symlink paths."""
     path = Path(os.path.abspath(path))
@@ -73,7 +71,6 @@ def trusted_path(path, uid, *, directory=False):
         elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
             raise ValueError('trusted file must be regular with one link')
     return path
-
 def root_json(path, uid):
     path = trusted_path(path, uid)
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -94,13 +91,17 @@ def root_json(path, uid):
         return json.loads(data, object_pairs_hook=unique)
     finally:
         os.close(fd)
-
 def argv_scope(argv, target, local_target='home-core'):
     if (not isinstance(argv, list) or not 1 <= len(argv) <= 128
             or any(not isinstance(arg, str) or not arg or '\0' in arg or len(arg.encode()) > 4096 for arg in argv)
             or sum(len(arg.encode()) for arg in argv) > 16384):
         raise ValueError('invalid bounded argv')
     executable = Path(argv[0])
+    if argv[0] in {MCP_COMMAND, DOCKER_COMMAND}:
+        if (target != local_target or (argv[0] == MCP_COMMAND and target != 'home-core') or len(argv) != 3
+                or argv[1] not in {'snapshot', 'apply', 'verify'} or not ID.fullmatch(argv[2])):
+            raise ValueError('finite local image maintenance command required')
+        return
     if argv[0] == CONTAINER_COMMAND:
         if target != local_target or len(argv) != 3 or argv[1] not in {'snapshot', 'restart', 'verify'} or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', argv[2]):
             raise ValueError('finite local container maintenance command required')
@@ -136,7 +137,6 @@ def argv_scope(argv, target, local_target='home-core'):
             or argv[-2] not in {'root@home-spark', 'home-spark', 'root@192.168.30.126'}
             or not re.fullmatch(re.escape(SPARK_COMMAND) + r' (?:check|run|status|verify) [a-f0-9]{32}', argv[-1])):
         raise ValueError('Spark requires the fixed root SSH forced-command transport')
-
 def validate_plan(value, local_target='home-core'):
     required = {'schema_version', 'policy', 'prechecks', 'steps', 'postchecks', 'timeout_seconds', 'expires_at'}
     if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {'requires_approval'}:

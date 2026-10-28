@@ -47,6 +47,19 @@ model_list:
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 600
       stream_timeout: 600
+  - model_name: "embedding"
+    litellm_params:
+      model: "openai/microsoft/harrier-oss-v1-0.6b"
+      order: 1
+      api_base: "os.environ/EMBEDDING_BASE_URL"
+      api_key: "local"
+      timeout: 60
+    model_info:
+      mode: embedding
+      max_input_tokens: 2048
+      output_vector_size: 1024
+      input_cost_per_token: 0
+      output_cost_per_token: 0
   - model_name: "stt-danish"
     litellm_params:
       model: "openai/stt-danish"
@@ -77,6 +90,19 @@ model_list:
       stream_timeout: 300
     model_info:
       mode: audio_speech
+  - model_name: "video"
+    litellm_params:
+      model: "openai/ltx-2.5"
+      order: 1
+      api_base: "os.environ/VIDEO_GENERATION_BASE_URL"
+      api_key: "local"
+      timeout: 120
+    model_info:
+      mode: video_generation
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      input_cost_per_second: 0
+      output_cost_per_second: 0
 litellm_settings:
   request_timeout: 600
   num_retries: 0

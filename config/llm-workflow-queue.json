@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "workflow_ids": [
+    "lFXikEZlVyAmmeoc",
+    "xHrpkUT21u7Zs6UV",
+    "p51AOjL4ggMQfsuA",
+    "O0JTIc9aqA7OkrQS",
+    "RjId1K2BPpv5lAVN",
+    "86FmVCFIF86m8fLx",
+    "FC7HqrZ9UGsMJKao",
+    "reK3QQ0NYgxge1CB",
+    "Bp4ePUN4mEDzs7g8",
+    "U2kI7V9EGcMc14Su",
+    "jVOMdmaVWgIRFGfL"
+  ],
+  "readiness_url": "https://ai.home.arpa/llm/status",
+  "wait_seconds": 120
+}

@@ -89,17 +89,21 @@ class TransportTests(unittest.TestCase):
         action = {'domain': 'light', 'service': 'turn_on', 'entity_ids': ['light.synthetic'], 'data': {'brightness': 128}}
         try:
             with patch('openclaw_capabilities.HomeAssistant.request', new=ipc):
-                for actor in ('openclaw', 'hermes'):
+                for actor in ('openclaw',):
                     self.assertFalse(call('homecompute_ha_propose', {'action': action}, actor)['result']['isError'])
                     self.assertFalse(call('homecompute_ha_status', {'proposal_id': 'a' * 32}, actor)['result']['isError'])
                     self.assertFalse(call('homecompute_ha_cancel', {'proposal_id': 'a' * 32}, actor)['result']['isError'])
-                self.assertEqual([entry[0] for entry in identities], ['openclaw'] * 3 + ['hermes'] * 3)
+                with self.assertRaises(urllib.error.HTTPError) as denied:
+                    call('homecompute_ha_propose', {'action': action}, 'hermes')
+                self.assertEqual(denied.exception.code, 401)
+                denied.exception.close()
+                self.assertEqual([entry[0] for entry in identities], ['openclaw'] * 3)
                 for name in ('homecompute_ha_execute', 'homecompute_ha_approve', 'homecompute_ha_review'):
                     self.assertEqual(call(name, {})['error']['code'], -32602)
                 self.assertEqual(call('homecompute_ha_propose', {'action': action, 'actor': 'hermes'})['error']['code'], -32602)
                 self.assertEqual(call('homecompute_ha_propose', {'action': {**action, 'domain': 'lock'}})['error']['code'], -32602)
                 self.assertEqual(call('homecompute_ha_status', {'proposal_id': '../../secrets'})['error']['code'], -32602)
-                self.assertEqual(len(identities), 6)
+                self.assertEqual(len(identities), 3)
             turn.assert_not_called()
         finally:
             server.shutdown(); server.server_close(); thread.join()
@@ -107,7 +111,7 @@ class TransportTests(unittest.TestCase):
     def test_native_mcp_tools_share_bounded_reads_tasks_without_model_or_approval_authority(self):
         from types import SimpleNamespace
         from unittest.mock import Mock, patch
-        native_tokens = {role: 'synthetic-native-' + role + '-' * 40 for role in ('openclaw', 'hermes')}
+        native_tokens = {'openclaw': 'synthetic-native-openclaw-' + '-' * 40}
         task_id = '0aa529dc-8933-4116-852e-7871f01cbe07'
         tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'broker-assistant', 'snapshot': 'broker-snapshot'})
         reader = SimpleNamespace(registry={'systems': [{'id': 'home-core', 'enabled': True}]},
@@ -131,7 +135,6 @@ class TransportTests(unittest.TestCase):
             with patch('openclaw_capabilities.request', side_effect=broker):
                 inventory = rpc('tools/list')['result']['tools']
                 self.assertEqual(len(inventory), 8)
-                self.assertEqual(rpc('tools/list', role='hermes')['result']['tools'], inventory)
                 submit = {'project': 'synthetic-demo', 'issue_key': 'native:1', 'summary': 'Synthetic', 'context': ''}
                 result = rpc('tools/call', {'name': 'homecompute_task_submit', 'arguments': submit})['result']
                 self.assertFalse(result['isError'])
@@ -178,11 +181,19 @@ class TransportTests(unittest.TestCase):
     def test_native_mcp_credential_cannot_reuse_transport_or_broker_credentials(self):
         from types import SimpleNamespace
         tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'broker-key-' + 'x' * 40})
-        native = {'openclaw': 'native-openclaw-' + 'x' * 40, 'hermes': 'native-hermes-' + 'x' * 40}
+        native = {'openclaw': 'native-openclaw-' + 'x' * 40}
         for value in (*TOKENS.values(), *tasks.tokens.values(), 'openshell:resolve:env:FAKE_TOKEN_WITH_LONG_NAME'):
             with self.assertRaises(ValueError):
                 communication.serve(self.store, TOKENS, ALLOWED, lambda *_: '', tasks=tasks,
                     mcp_tokens={**native, 'openclaw': value})
+
+    def test_native_mcp_rejects_missing_or_extra_assistants(self):
+        from types import SimpleNamespace
+        tasks = SimpleNamespace(projects=set(), tokens={})
+        for native in ({}, {'hermes': 'x' * 40}, {'openclaw': 'x' * 40, 'operator': 'y' * 40},
+                       {'openclaw': 'x' * 40, 'hermes': 'x' * 40}):
+            with self.assertRaises(ValueError):
+                communication.serve(self.store, TOKENS, ALLOWED, lambda *_: '', tasks=tasks, mcp_tokens=native)
 
     def test_maintenance_commands_are_deterministic_and_never_call_model(self):
         from unittest.mock import Mock

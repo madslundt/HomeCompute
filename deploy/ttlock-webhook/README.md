@@ -137,3 +137,11 @@ Update by pulling reviewed source and restarting `ttlock-webhook`; rollback by
 checking out the previous revision and restarting it. To remove public ingress,
 stop/disable `ttlock-funnel` and verify `tailscale funnel status` before stopping
 the container.
+
+The Funnel unit retries every 15 seconds when startup fails, including when
+Tailscale has not finished loading its state at boot. The narrow service-recovery
+lifecycle can also retry an existing failed unit while that NixOS change awaits
+activation; it leaves intentionally inactive units and other Serve routes alone.
+See the startup recovery section in `deploy/piper-tts/README.md`. A healthy local
+webhook is insufficient: verify both the HTTPS health endpoint and Funnel state
+after recovery. Real lock events remain a separate delivery check.

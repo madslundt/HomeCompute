@@ -99,7 +99,7 @@ must be configured separately after restore validation. The initial 2 CPU /
 ## Aula MCP
 
 The production overlay builds [Casperjuel/aula-mcp](https://github.com/Casperjuel/aula-mcp)
-from reviewed upstream commit `8f9787221f933fbbc395f384228317639602caad`.
+from reviewed upstream commit `d9a27d84933446783c89446ba3e9d799fd47ea2c` (1.6.2).
 The local Dockerfile builds frozen upstream dependencies using Node and runs
 the server with Bun; both base images are pinned by digest.
 `scripts/deploy-home-core.sh` rebuilds this image during deployment. Aula is
@@ -143,11 +143,12 @@ sudo docker restart homecompute-automation-aula-mcp-1
 
 The production overlay builds
 [olgasafonova/tilbudstrolden-mcp](https://github.com/olgasafonova/tilbudstrolden-mcp)
-from upstream commit `b20a3a331f82f4415ff8cac42de7706b829f116a`. This upstream
-server only supports stdio, so the image uses Supergateway `4.1.0` to expose
+from upstream commit `fcc9c179b755e751d09f476a8427fa3da80bc64b`. This upstream
+server only supports stdio, so the image uses Supergateway `4.2.1` to expose
 Streamable HTTP at `/mcp` for n8n. The project dependency lockfile and gateway
 lockfile are installed with `npm ci`; the image applies a checked-in lockfile
-patch for compatible fixes to three transitive npm advisories before install.
+patch for compatible dependency fixes before install. The gateway lockfile
+pins patched MCP SDK and validation dependencies through explicit overrides.
 The upstream change fixes dealer pagination and household-store filtering,
 prevents duplicate pack purchases, and rounds monetary totals. Node's runtime
 image is digest-pinned.

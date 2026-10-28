@@ -25,7 +25,7 @@ services:
     pids_limit: 256
     logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
     networks:
-      browser: {aliases: [homecompute-openclaw-browser]}
+      browser: {aliases: [homecompute-openclaw-browser], ipv4_address: 172.30.188.2}
     depends_on: [browser-egress, browser-dns]
   browser-dns:
     image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
@@ -65,7 +65,9 @@ services:
     memswap_limit: 64m
     pids_limit: 64
     logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
-    networks: [browser, egress]
+    networks:
+      browser: {ipv4_address: 172.30.188.4}
+      egress: {}
   browser-egress:
     image: ${HOMECOMPUTE_BROWSER_IMAGE:?Set the qualified immutable local image ID}
     command: [squid, -N, -f, /etc/homecompute/browser-squid.conf]
@@ -82,7 +84,9 @@ services:
     memswap_limit: 128m
     pids_limit: 64
     logging: {driver: local, options: {max-size: 5m, max-file: "2"}}
-    networks: [browser, egress]
+    networks:
+      browser: {aliases: [browser-egress], ipv4_address: 172.30.188.3}
+      egress: {}
 networks:
   browser:
     name: homecompute-openclaw-browser

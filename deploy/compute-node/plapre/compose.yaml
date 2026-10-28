@@ -91,6 +91,7 @@ services:
 
   plapre-wyoming:
     <<: *runtime
+    profiles: [legacy-wyoming]
     depends_on:
       plapre-primary: {condition: service_healthy}
     environment:
@@ -120,6 +121,7 @@ services:
 
   plapre-edge:
     <<: *runtime
+    profiles: [legacy-wyoming]
     depends_on:
       plapre-wyoming: {condition: service_healthy}
     environment:
@@ -137,6 +139,34 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    networks: [edge, inference]
+
+  # Only raw model HTTP crosses the host boundary; no Wyoming on Spark.
+  plapre-http:
+    image: python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+    restart: unless-stopped
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      EDGE_LISTEN_PORT: "8004"
+      EDGE_UPSTREAM_HOST: plapre-primary
+      EDGE_UPSTREAM_PORT: "8004"
+    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
+    volumes:
+      - /srv/gb10-ai/runtime/tcp-edge-proxy.py:/opt/homecompute/tcp-edge-proxy.py:ro
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=8m"]
+    ports: ["127.0.0.1:8004:8004"]
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      interval: 15s
+      timeout: 7s
+      retries: 4
     networks: [edge, inference]
 
 networks:

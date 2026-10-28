@@ -25,7 +25,13 @@ test('DNS wire accepts only reviewed A/AAAA IN names and never resolves CNAME or
     assert.equal(rcode(await engine.handle(query(host,type,qclass))), 3);
   }
   assert.deepEqual(looked, ['example.com']);
-  assert.equal(RESEARCH_HOSTS.length, 14);
+  assert.equal(new Set(RESEARCH_HOSTS).size, RESEARCH_HOSTS.length);
+  for (const host of ['www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
+    'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk']) {
+    assert.ok(RESEARCH_HOSTS.includes(host));
+    assert.equal(rcode(await engine.handle(query(host))), 0);
+    assert.equal(rcode(await engine.handle(query(host + '.evil'))), 3);
+  }
 });
 
 test('DNS wire rejects malformed and compressed questions and limits packet length', async () => {

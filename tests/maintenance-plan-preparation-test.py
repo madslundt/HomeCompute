@@ -68,6 +68,16 @@ class RemoteTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'classification disagrees'):
             prep.remote_receipt(encoded(bad), NOW)
 
+    def test_image_selection_binds_remote_kind_and_exact_container(self):
+        self.current['policy']['updates'] = [{'component': 'service', 'scheme': 'semver',
+                                             'installed': '1.2.3', 'candidate': '1.2.4'}]
+        self.current['classification'] = classify_plan(self.current['policy'])
+        self.assertEqual(prep.remote_plan(self.controller, 'image-service')['policy'], self.current['policy'])
+        with self.assertRaisesRegex(ValueError, 'different container'):
+            prep.remote_plan(self.controller, 'image-other')
+        with self.assertRaisesRegex(ValueError, 'different update kind'):
+            prep.remote_plan(self.controller, 'packages')
+
     def test_truncated_malformed_expired_wrong_target_and_argv_receipts_rejected(self):
         bad = [dict(self.current, updates_truncated=True), dict(self.current, status='executing'),
                dict(self.current, expires_at=NOW), dict(self.current, requires_approval=1),
@@ -167,11 +177,24 @@ class PreparationTest(unittest.TestCase):
             raise AssertionError('unexpected preparation command')
         return subprocess.CompletedProcess(argv, 0, raw, b'')
 
-    def test_core_nixos_only_prepares_already_built_boot_profile(self):
-        result = prep.prepare(self.controller, 'home-core', 'nixos')
+    def test_mcp_preparation_uses_fixed_build_lane_without_running_update(self):
+        helper = SimpleNamespace(prepare=Mock(side_effect=lambda controller, component, output:
+                                              self.write(output, {'prepared': component})))
+        with patch.dict(sys.modules, {'mcp_maintenance': helper}):
+            for component in ('aula-mcp', 'tilbudstrolden-mcp'):
+                result = prep.prepare(self.controller, 'home-core', component)
+                self.assertEqual(result['status'], 'registered')
+        self.assertEqual(self.registered, [{'prepared': 'aula-mcp'}, {'prepared': 'tilbudstrolden-mcp'}])
+        self.assertEqual(self.calls, [])
+
+    def test_core_nixos_builds_private_candidate_then_registers_without_activation(self):
+        helper = SimpleNamespace(prepare=Mock(side_effect=lambda controller, output:
+                                              self.write(output, {'prepared': 'nixos'})))
+        with patch.dict(sys.modules, {'core_update_build': helper}):
+            result = prep.prepare(self.controller, 'home-core', 'nixos')
         self.assertEqual(result['status'], 'registered')
-        self.core.prepare.assert_called_once_with('/nix/store/already-built-system', runner=self.controller.runner, clock=self.controller.clock)
-        self.assertEqual(self.calls, [[self.core.READLINK, '-f', self.core.PROFILE]])
+        self.assertEqual(helper.prepare.call_args.args[0], self.controller)
+        self.assertEqual(self.calls, [])
         self.assertEqual(self.registered, [{'prepared': 'nixos'}])
 
     def test_ha_only_prepares_finite_update_entities_with_matching_receipt(self):

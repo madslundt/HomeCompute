@@ -21,6 +21,9 @@ def arguments(command):
     for component in ('packages', *FIXES):
         if command == COMMAND + ' prepare ' + component:
             return 'prepare', component
+    image = re.fullmatch(re.escape(COMMAND) + r' prepare (image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110})', command)
+    if image:
+        return 'prepare', image[1]
     approval = re.fullmatch(re.escape(COMMAND) + r' approve ([a-f0-9]{32}) ([a-f0-9]{64})', command)
     if approval:
         return ('approve', *approval.groups())
@@ -50,6 +53,14 @@ def prepare_component(controller, component):
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
     if component == 'packages':
         plan, _protected = module.prepare()
+    elif component.startswith('image-'):
+        from host_maintenance_sources import prepare
+        directory = controller.state_dir / 'prepared'
+        directory.mkdir(mode=0o700, exist_ok=True)
+        path = directory / (uuid.uuid4().hex + '.json')
+        prepare(controller, component.removeprefix('image-'), path)
+        from infrastructure_maintenance import root_json
+        plan = root_json(path, 0)
     elif component in FIXES:
         directory = controller.state_dir / 'prepared'
         directory.mkdir(mode=0o700, exist_ok=True)

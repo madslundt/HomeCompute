@@ -39,18 +39,59 @@ class GatewayCorsTests(unittest.TestCase):
                 self.assertEqual(response.headers.get('Access-Control-Allow-Private-Network'), 'true')
 
     def test_base_and_bare_preflight_without_key(self):
-        for path in ('/v1', '/v1/', '/v1/models', '/v1/chat/completions', '/v1/responses', '/v1/audio/transcriptions'):
+        for path in ('/v1', '/v1/', '/v1/models', '/v1/chat/completions', '/v1/responses', '/v1/audio/transcriptions', '/v1/embeddings', '/v1/videos'):
             with self.subTest(path=path):
                 self.preflight(path, 'https://example.org')
 
     def test_standard_and_trailing_slash_preflight_without_key(self):
-        for path, method in (('/v1/models', 'GET'), ('/v1/chat/completions', 'POST'), ('/v1/responses', 'POST'), ('/v1/audio/transcriptions', 'POST')):
+        for path, method in (('/v1/models', 'GET'), ('/v1/chat/completions', 'POST'), ('/v1/responses', 'POST'), ('/v1/audio/transcriptions', 'POST'), ('/v1/embeddings', 'POST'), ('/v1/videos', 'POST')):
             for suffix in ('', '/'):
                 with self.subTest(path=path + suffix):
                     self.preflight(path + suffix, 'http://localhost:3000', method)
 
     def test_private_network_preflight(self):
         self.preflight('/v1/chat/completions', 'https://example.org', 'POST', private_network=True)
+
+    def test_video_status_and_content_preflight_without_generation(self):
+        for path in ('/v1/videos/not-a-real-video', '/v1/videos/not-a-real-video/content'):
+            for suffix in ('', '/'):
+                with self.subTest(path=path, suffix=suffix):
+                    self.preflight(path + suffix, 'http://localhost:8080', 'GET', private_network=True)
+
+    def test_invalid_video_status_has_cors_and_never_submits_a_job(self):
+        for credentials in ({}, {'Authorization': 'Bearer local'}):
+            with self.subTest(placeholder=bool(credentials)):
+                request = urllib.request.Request(BASE + '/v1/videos/not-a-real-video', headers={
+                    'Origin': 'http://localhost:8080', **credentials,
+                })
+                with self.assertRaises(urllib.error.HTTPError) as caught:
+                    urllib.request.urlopen(request, context=tls_context(), timeout=15)
+                with caught.exception as response:
+                    self.assertIn(response.code, (400, 404, 422))
+                    self.assertEqual(response.headers.get('Access-Control-Allow-Origin'), '*')
+                    self.assertIn('error', json.load(response))
+
+    def test_keyless_embeddings_support_placeholders_and_trailing_slashes(self):
+        import math
+        for suffix, authorization in (('', None), ('/', 'Bearer local')):
+            with self.subTest(suffix=suffix):
+                headers = {'Content-Type': 'application/json', 'Origin': 'http://localhost:8080'}
+                if authorization:
+                    headers['Authorization'] = authorization
+                request = urllib.request.Request(BASE + '/v1/embeddings' + suffix,
+                    headers=headers, data=json.dumps({
+                        'model': 'embedding', 'input': ['Dette er en prøve.', 'This is a test.'],
+                        'encoding_format': 'float',
+                    }).encode())
+                with urllib.request.urlopen(request, context=tls_context(), timeout=60) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers.get('Access-Control-Allow-Origin'), '*')
+                    body = json.load(response)
+                    self.assertEqual(body['model'], 'embedding')
+                    self.assertEqual([row['index'] for row in body['data']], [0, 1])
+                    for row in body['data']:
+                        self.assertEqual(len(row['embedding']), 1024)
+                        self.assertTrue(all(math.isfinite(value) for value in row['embedding']))
 
     def test_unrecognized_credentials_fall_back_to_network_access(self):
         examples = [
@@ -67,7 +108,7 @@ class GatewayCorsTests(unittest.TestCase):
                 with urllib.request.urlopen(request, context=tls_context(), timeout=15) as response:
                     self.assertEqual(response.status, 200)
                     self.assertEqual({item['id'] for item in json.load(response)['data']},
-                                     {'automation', 'home', 'automation-moe', 'stt-danish', 'whisper-turbo'})
+                                     {'automation', 'home', 'automation-moe', 'stt-danish', 'whisper-turbo', 'plapre', 'embedding', 'video'})
         request = urllib.request.Request(BASE + '/v1/chat/completions', headers={
             'Origin': 'http://localhost:8080', 'Content-Type': 'application/json', 'Authorization': 'Bearer ',
         }, data=json.dumps({

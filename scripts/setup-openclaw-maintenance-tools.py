@@ -26,8 +26,13 @@ def update(apply=False, policy=None):
             or 'bundle-mcp' not in before['tools'].get('alsoAllow', [])):
         raise ValueError('retained managed MCP boundary required')
     allowed = before['agents']['entries']['main']['tools']['allow']
+    # Calendar writes use preflight, one mutation and readback; retain a longer
+    # reviewed timeout when maintenance tools are reapplied later.
+    request_timeout = before['mcp']['servers']['homecompute'].get('requestTimeoutMs', 15000)
+    if type(request_timeout) is not int or not 1 <= request_timeout <= 300000:
+        raise ValueError('bounded managed MCP timeout required')
     batch = [{'path': 'agents.entries.main.tools.allow', 'value': sorted(set(allowed) | NAMES)},
-             {'path': 'mcp.servers.homecompute.requestTimeoutMs', 'value': 15000},
+             {'path': 'mcp.servers.homecompute.requestTimeoutMs', 'value': max(15000, request_timeout)},
              {'path': 'mcp.servers.homecompute.connectionTimeoutMs', 'value': 5000}]
     command = ['openclaw', 'config', 'set', '--batch-json', json.dumps(batch)]
     result = subprocess.run(command + ['--dry-run'], capture_output=True, timeout=45)

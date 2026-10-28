@@ -19,7 +19,9 @@ def browser_ssrf_policy():
   '127.0.0.1','example.com','docs.openclaw.ai','docs.nvidia.com',
   'docs.litellm.ai','docs.n8n.io','www.home-assistant.io',
   'developers.home-assistant.io','nixos.org','wiki.nixos.org','nix.dev',
-  'search.nixos.org','github.com','raw.githubusercontent.com','duckduckgo.com']}
+  'search.nixos.org','github.com','raw.githubusercontent.com','duckduckgo.com','marginalia-search.com',
+  'www.afbudsrejser.dk','www.solfaktor.dk','www.spies.dk',
+  'www.tui.dk','www.apollorejser.dk','www.sunweb.dk']}
 
 def protected_guard(guard, digests):
  assert not guard.is_symlink() and guard.stat().st_uid==0 and not guard.stat().st_mode & 0o022

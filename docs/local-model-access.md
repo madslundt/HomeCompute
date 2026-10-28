@@ -11,7 +11,8 @@ expiry. Verify connectivity at
 
 Use `https://ai.home.arpa/v1` without an API key from approved LAN or Tailscale
 clients. The gateway supplies an internal credential limited to `automation`,
-`home`, `automation-moe`, `stt-danish`, and `whisper-turbo`; Plapre is added to
+`home`, `automation-moe`, `stt-danish`, and `whisper-turbo`; `embedding` is added
+with `sudo python3 scripts/setup-network-inference.py --enable-embedding`. Plapre is added to
 that scope only after the explicit `--enable-plapre` migration. Explicit LiteLLM keys remain optional and retain
 their own model scopes when valid. Empty, placeholder, expired, or unrecognized
 credentials fall back to the common network aliases rather than preventing
@@ -25,6 +26,10 @@ The current text model is selected through the stable LiteLLM alias
 Qwen3.8 Flash-Next quality trial (262K context); qualification is incomplete.
 The old `coding` alias points to a stopped Qwen3.8 deployment. The HomeCompute
 gateway and Spark inference service are already running.
+
+Image mode stops ComfyUI after 30 minutes without image-job activity and starts
+the configured text model again. Running and queued image jobs postpone this
+switch; opening the image controls does not reset the idle timer.
 
 On this Mac, the HomeCompute root CA is trusted by macOS and copied to
 `~/.config/homecompute/home-core-root.crt` for Node/Python clients. Other
@@ -43,6 +48,50 @@ Downloaded, then enable the Caddy root under Settings > General > About >
 Certificate Trust Settings. [Apple's certificate trust instructions](https://support.apple.com/en-us/102390).
 A certificate error stops the request before HTTP/CORS; verify that
 `https://ai.home.arpa/v1/models` opens directly on the phone before testing the app.
+
+## Text embeddings
+
+Use `https://ai.home.arpa/v1` or the Tailscale gateway base URL above, with
+`model: "embedding"` and no API key from approved networks. Send
+`POST /v1/embeddings` with `input` as a string or array of strings and
+`encoding_format: "float"`. The route serves `microsoft/harrier-oss-v1-0.6b`
+at revision `f9b9dc8d367d443f2479d27aa5d8d2850c0774ee` on home-core's CPU.
+Vectors have 1,024 dimensions; inputs are limited to 2,048 tokens and batches
+to 16 inputs. The gateway does not add query instructions: document text is
+plain, while retrieval queries need the model's `Instruct: ...\nQuery: ` prefix.
+
+Daythread currently uses the same model through its private internal endpoint,
+`http://homecompute-embeddings:8080/v1`. Its completed recording index remains
+unchanged; changing the endpoint or model alias selects a new index and starts
+automatic backfill.
+
+OpenClaw memory uses Harrier through the authenticated capabilities bridge at
+`https://homecompute-capabilities.home.arpa:19445/v1`. The bridge adds the memory
+query instruction only to `input_type: query`, splits long native document
+chunks and normalizes their pooled vectors. Each specialist searches its own
+memory; session transcript indexing remains disabled. Apply the reviewed native
+migration with `setup-openclaw-embeddings.py` after the bridge is available.
+
+Open WebUI uses a separate embedding-only LiteLLM key. Its entrypoint backs up
+and migrates the pinned version's saved RAG settings. A changed embedding identity
+with existing indexed content requires a reviewed reindex before startup.
+
+School and public research tools retain separate, expiring archives of passages
+already returned by successful reads. Operations retrieval indexes reviewed
+runbooks and recent infrastructure metadata receipts. Archive results include
+provenance and are historical evidence; use live reads for changing facts.
+Household searches rank current snapshots, and the Travel automation ranks
+eligible offers against its configured descriptive preference. Embedding
+outages preserve keyword search or the existing offer order.
+
+As `homecompute-openclaw`, use
+`python3 /opt/homecompute/openclaw-communication/scripts/semantic-index.py school status`
+to inspect source IDs, replacing `school` with `research` or `operations` for
+those domains. `warm` backfills up to 80 pending passages without a query;
+`delete --source SOURCE_ID` removes that source and its vectors and prevents
+replay. Restore deletion tombstones with the archive before serving searches.
+Archive coverage is bounded and populated by reads; it is not a complete import
+of school history or all conversations.
 
 ## Speech transcription
 

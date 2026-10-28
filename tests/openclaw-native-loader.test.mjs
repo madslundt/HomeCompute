@@ -14,11 +14,20 @@ test('pinned native source-transform loader loads protected hook and DNS depende
   const plugin = loaded.default ?? loaded;
   const hooks = []; const services = [];
   plugin.register({ on: (...args) => hooks.push(args), registerService: service => services.push(service) });
-  assert.equal(hooks.length, 1); assert.equal(services.length, 1);
+  assert.equal(hooks.length, 2); assert.equal(services.length, 1);
+  assert.ok(hooks.every(([name,, options]) => name === 'before_tool_call' && options.priority <= -1000000));
   const policy = hooks[0][1];
   assert.equal(policy({ toolName: 'browser', params: { action: 'navigate', targetUrl: 'https://example.com/' } }).params.profile, 'homecompute');
   for (const params of [{ action: 'act', request: { kind: 'click', ref: 'nonexistent-qualification' } },
     { action: 'navigate', targetUrl: 'https://unlisted-site.com/' }, { action: 'navigate', targetUrl: 'https://10.77.20.1/' }]) {
     assert.equal(policy({ toolName: 'browser', params }).block, true);
   }
+  const blocked = (event, role) => hooks.some(([, callback]) => callback(event,
+    { agentId: role, sessionKey: `agent:${role}:main` })?.block === true);
+  const event = { toolName: 'homecompute__homecompute_shopping_list', params: { agentId: 'shopper' } };
+  assert.equal(blocked(event, 'main'), true);
+  assert.equal(blocked(event, 'shopper'), false);
+  assert.equal(blocked({ toolName: 'browser', params: { action: 'navigate', targetUrl: 'https://example.com/' } }, 'main'), true);
+  assert.equal(blocked({ toolName: 'browser', params: { action: 'navigate', targetUrl: 'https://example.com/' } }, 'researcher'), false);
+  assert.equal(blocked({ toolName: 'browser', params: { action: 'act' } }, 'researcher'), true);
 });

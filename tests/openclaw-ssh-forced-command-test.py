@@ -33,7 +33,7 @@ def remote(arguments):
 class ForcedCommandTests(unittest.TestCase):
     def test_actual_console_wire_grammar_and_health_are_accepted(self):
         self.assertEqual(FORCED.PREFIX, CHAT.PREFIX)
-        for arguments in (agent(), FORCED.HEALTH):
+        for arguments in (agent(), FORCED.HEALTH, FORCED.LLM_ACTIVITY):
             self.assertEqual(FORCED.validate_command(CHAT.ssh_command(arguments)[-1]), arguments)
 
     def test_shell_metacharacters_remain_only_message_data(self):
@@ -55,6 +55,8 @@ class ForcedCommandTests(unittest.TestCase):
         for index, value in ((2, "other"), (4, "not-uuid"), (4, SESSION.upper()), (8, "120"), (10, "high")):
             candidate = agent(); candidate[index] = value; variants.append(candidate)
         variants += [FORCED.HEALTH + ["--token", "private"], ["gateway", "health", "--timeout", "20000", "--json"]]
+        variants += [FORCED.LLM_ACTIVITY + ['--params', '{"arbitrary":true}'],
+                     [*FORCED.LLM_ACTIVITY[:-1], '60000']]
         for arguments in variants:
             with self.subTest(arguments=arguments[:5]), self.assertRaises(FORCED.Refused):
                 FORCED.validate_command(remote(arguments))

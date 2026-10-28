@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-28",
+  "pull_requests": [
+    25,
+    26,
+    27
+  ],
+  "deployed_revision": "f93621749be422df804a8e4b2355bf63096a6379",
+  "communication_bundle_sha256": "386eacae5eabf964d82a7b5406a7794ef970f793e290576a6c8b49381ac37f17",
+  "verified_installed_files": 64,
+  "native_role_count": 12,
+  "native_config_sha256": "1a1be85786852d73211ae34ea5752840f54f21def7380fa5c86929ad38232e9b",
+  "native_grant_schema_validated": true,
+  "native_instructions_changed_files": 14,
+  "unrelated_roles_preserved": true,
+  "family_hotel_and_photo_denied_in_native_policy": true,
+  "telegram_receiver_mask_preserved": true,
+  "live_provider_precheck": {
+    "provider": "hotels",
+    "backend": "serpapi",
+    "status": "completed",
+    "bounded_hotel_count": 5,
+    "synthetic_parameters": true
+  },
+  "lyra_end_to_end_status": "verified",
+  "backup": "/srv/backups/openclaw-integrations-20261028T120743Z",
+  "global_host_revisions_reconciled": false,
+  "notes": [
+    "Initial rollout attempts restored the prior communication bundle; published follow-up fixes preserve the retired receiver mask throughout installation and verification.",
+    "The first Lyra CLI connection failed before SSH reached the guest; no agent command was sent. An independently running NAS recovery backup intentionally paused the agents VM.",
+    "Provider credentials and private runtime receipts remain external; no key values, private prompts, hotel result payloads or embeddings are included.",
+    "A generic Gateway HTTP tools/invoke probe did not expose the MCP status tool and was not used as a role-denial proof. The actual native Family turn and native finite policy were checked instead.",
+    "The Lyra provider response was verified from only that fresh synthetic session history; no unrelated conversation history was read.",
+    "The configured full team manifest still contains eight roles; the scoped installer intentionally preserves all twelve native roles without rebuilding that separate pending roster."
+  ],
+  "native_policy_and_instruction_source_revision": "f58877dedc23f8412a5d415e4436941ab9b65f31",
+  "native_config_sha256_after_external_vm_boot": "ec6e2a9850f613da879e7e8a55e67fe937099730370fda99b68aa4d926185d2c",
+  "lyra": {
+    "synthetic_session_id": "54ca68f5-1661-4a04-b35c-485ac1f9348c",
+    "run_id": "eb383761-ae2e-4796-bce9-4e6568c87fbc",
+    "cli_exit": 0,
+    "status": "ok",
+    "model": "inference/automation-moe",
+    "duration_seconds": 36.37,
+    "successful_tools": [
+      "homecompute__homecompute_integration_status",
+      "homecompute__homecompute_hotel_search"
+    ],
+    "tool_calls": 2,
+    "tool_failures": 0,
+    "provider_response_verified_from_own_history": true,
+    "hotel_count": 5,
+    "currency": "DKK",
+    "child_ages_matched": true,
+    "all_prices_advertised_lead_unconfirmed": true
+  },
+  "family": {
+    "synthetic_session_id": "db47e3ad-e8bc-4e04-82a1-7497dd5454f6",
+    "role_confirmed": true,
+    "hotel_tool_reported_available": false,
+    "hotel_and_photo_denied_in_native_policy": true,
+    "successful_hotel_or_photo_calls": 0,
+    "availability_turn_failed_own_read_calls": 1,
+    "forced_mcp_denial_call_tested": false
+  },
+  "all_installed_files_rechecked_after_vm_boot": true,
+  "scoped_grants_revalidated_after_vm_boot": true,
+  "other_provider_readiness": {
+    "geoapify": "credential_required",
+    "n8n": "credential_required",
+    "immich": "credential_present_live_photo_search_unverified"
+  },
+  "independent_backup_status": "NAS recovery backup reported exit-code failure; VM and communication services resumed; recovery marker preserved"
+}

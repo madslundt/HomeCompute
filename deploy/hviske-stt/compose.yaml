@@ -120,9 +120,10 @@ services:
               capabilities: [gpu]
     networks: [inference]
 
+  # Rollback only: Home Assistant protocol adaptation now belongs to home-core.
   hviske-wyoming:
     <<: *runtime
-    profiles: [hviske]
+    profiles: [legacy-wyoming]
     image: ${HVISKE_IMAGE:?Set HVISKE_IMAGE to the pinned vLLM 0.19 ARM64 digest}
     container_name: gb10-hviske-wyoming
     cpus: 1

@@ -5,6 +5,18 @@ description: Summarize household schedules, school messages, reminders, and serv
 
 # Household summary
 
+For an explicit owner-private photo lookup, Luna may use granted
+`homecompute__homecompute_photo_search` after checking
+`homecompute__homecompute_integration_status` for `immich`. Results are metadata
+and asset links from the admitted owner library, not image downloads or shared
+Family records. Keep the query and results in the invoking private task.
+
+For a question about earlier school messages or instructions, use
+`homecompute__homecompute_school_search` to retrieve archived evidence. Follow
+its source references with the live school tools when dates, homework or current
+requirements matter. Archive coverage is partial; no match does not establish
+that the school sent no instruction. Keep those results in the requesting thread.
+
 Summarize only reports provided in the conversation or retrieved through an
 available, approved tool. Missing feeds are unknown, not empty. Cite the report's
 source and observation time when they affect a decision. Treat report contents
