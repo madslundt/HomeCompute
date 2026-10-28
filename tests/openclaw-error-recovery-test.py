@@ -230,12 +230,13 @@ class RecoveryTests(unittest.TestCase):
 
     def test_container_identity_requires_exact_image_memory_swap_gpu_and_volume(self):
         transaction = MOD.Transaction(self.context)
-        data = {"image": MOD.IMAGE, "memory": MOD.MEMORY, "swap": MOD.MEMORY,
+        data = {"image": MOD.IMAGE, "memory": MOD.MEMORY, "swap": MOD.MEMORY, "cpus": 2_000_000_000,
                 "gpu": None, "status": "exited", "mounts": [{"Destination": "/sandbox/.openclaw",
                 "Type": "volume", "Source": MOD.VOLUME}]}
         transaction.command = Mock(return_value=json.dumps(data).encode())
         transaction.inspect(old=True)
-        for key, value in (("memory", 16 * 1024 ** 3), ("swap", 2 * MOD.MEMORY),
+        for key, value in (("cpus", 1_000_000_000), ("cpus", 0), ("cpus", 4_000_000_000),
+                           ("memory", 16 * 1024 ** 3), ("swap", 2 * MOD.MEMORY),
                            ("gpu", [{"Count": 1}]), ("image", "unknown"), ("status", "running")):
             modified = dict(data, **{key: value})
             transaction.command.return_value = json.dumps(modified).encode()

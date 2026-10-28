@@ -33,7 +33,8 @@ test('trusted execution identity routes coordinator domain calls without restric
     const event = { toolName: `homecompute__homecompute_${name}`, params: { agentId: 'shopper', context: ctx('shopper') } };
     assert.equal(coordinatorPolicy(event, ctx('main')).block, true);
     assert.match(coordinatorPolicy(event, ctx('main')).blockReason, /sessions_spawn/);
-    for (const role of ['personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel']) {
+    for (const role of ['personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel',
+      'cook', 'administrator', 'finance', 'family']) {
       assert.equal(coordinatorPolicy(event, ctx(role)), undefined);
     }
     for (const untrusted of [undefined, {}, { agentId: 'shopper' }, ctx('unknown'),

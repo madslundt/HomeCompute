@@ -6,6 +6,8 @@ deployment approach.
 
 ## Before making a change
 
+- Follow [AGENTS.md](AGENTS.md) for repository ownership, source-first changes,
+  deployment verification, and reconciliation of live drift.
 - Read the [documentation guide](docs/README.md), relevant architecture
   decisions, and the current [execution plan](docs/platform-execution-plan.md).
 - Open an issue before a large architectural change, new runtime, new model

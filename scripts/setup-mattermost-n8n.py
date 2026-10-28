@@ -23,16 +23,21 @@ BOT_USERNAME = 'hermes'
 BOT_DISPLAY_NAME = 'Hermes · Updates'
 BOT_DESCRIPTION = 'Delivers automated workflow updates from n8n.'
 TOPICS = {
+    'personal': ('Planning', 'personal', 'Plans, calendars, household tasks, reminders and correspondence drafts with Luna. School updates belong in Aula; shared Gaia tasks in Family.'),
     'aula': ('Aula', 'personal', 'School messages, family briefings, and Aula updates.'),
     'news': ('News', 'researcher', 'News digests and research follow-up.'),
+    'home-operations': ('Infrastructure', 'operator', 'HomeCompute servers, services, incidents, alerts and weekly systems reviews. Household devices belong in Home; batteries in Energy.'),
     'home': ('Home', 'operator', 'Household devices, Home Assistant automation, weather, and household reminders. Energy plans belong in Energy; server and service incidents in Infrastructure.'),
-    'calendar': ('Calendar', 'personal', 'Family schedules, invitations, and calendar updates.'),
-    'shopping': ('Shopping', 'personal', 'Shopping lists and nearby-store updates.'),
+    'shopping': ('Shopping & inventory', 'personal', 'Shopping lists, product offers and household stock. Vega handles shopping; Ceres handles inventory. Holidays, restaurants and experience deals belong in Travel.'),
     'energy': ('Energy', 'operator', 'Battery plans, energy observations, and weekly reviews.'),
-    'storage': ('Inventory', 'personal', 'Physical household stock, locations, quantities, and expiry dates. Purchases belong in Shopping; computer disk capacity in Infrastructure.'),
     'travel': ('Travel', 'personal', 'Family holidays, adventures, restaurants, and weekly holiday deals for two adults and two children.'),
+    'meals': ('Meals', 'cook', 'Meal plans, recipes, ingredients to use before expiry, and shopping-list proposals. Hestia plans; Vega handles requested shopping changes.'),
+    'household-admin': ('Household Admin', 'administrator', 'Household paperwork, warranties, subscriptions, renewals, and document deadlines. Themis works from supplied evidence and explicitly connected sources.'),
+    'finances': ('Finances', 'finance', 'Private household budgeting, spending reviews, and subscription costs from supplied records. Plutus cannot access bank accounts or make payments.'),
+    'family': ('Family', 'family', 'Shared planning, tasks, reminders, shopping and inventory with Gaia. School updates belong in Aula; calendar and correspondence work in Planning. Private adult sources stay separate.'),
 }
-ADDITIONAL_SPECIALISTS = {'shopping': 'shopper', 'storage': 'keeper', 'travel': 'travel'}
+ALIASES = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping'}
+ADDITIONAL_SPECIALISTS = {'shopping': 'shopper', 'travel': 'travel'}
 
 
 def delivery_bot(api: Any, owner: str, state: dict[str, Any]) -> str:
@@ -143,11 +148,36 @@ def provision(directory: Path = bootstrap.PRIVATE) -> dict[str, Any]:
             if (channel.get('type') != 'P' or channel.get('team_id') != team_id or channel.get('delete_at', 0) != 0
                     or state.get('channels', {}).get(slug, channel_id) != channel_id):
                 raise bootstrap.BootstrapError('topic channel privacy or identity differs')
-            expected = {owner, bot_id, account_ids['default'], account_ids[specialist]}
+            expected = {owner, bot_id, account_ids[specialist]}
+            if slug != 'family':
+                expected.add(account_ids['default'])
+            if (directory / 'household-access.json').exists():
+                access = bootstrap.read_private(directory / 'household-access.json')
+                if (access.get('owner_id') != owner or access.get('team_id') != team_id
+                        or slug == 'family' and access.get('family_channel_id') != channel_id):
+                    raise bootstrap.BootstrapError('household audience identity differs')
+                approved = access.get('shared_channel_ids', [])
+                blocked = access.get('system_channel_ids', [])
+                if (access.get('audience_policy') not in (None, 'all-except-systems')
+                        or not isinstance(approved, list) or not isinstance(blocked, list)
+                        or any(not isinstance(value, str) or not re.fullmatch('[a-z0-9]{26}', value)
+                               for value in [*approved, *blocked])
+                        or set(approved) & set(blocked)):
+                    raise bootstrap.BootstrapError('household audience policy differs')
+                if slug == 'family' or access.get('audience_policy') == 'all-except-systems' and channel_id in approved:
+                    expected.add(bootstrap.identity({'id': access['partner_id']}, 'partner'))
+            if slug == 'shopping':
+                expected.add(account_ids['keeper'])
             if slug in ADDITIONAL_SPECIALISTS:
                 expected.add(account_ids[ADDITIONAL_SPECIALISTS[slug]])
             members, _ = api.request('GET', f'/channels/{channel_id}/members?page=0&per_page=200')
             actual = {x['user_id'] for x in members}
+            # The shared assistant has its own workspace and source boundary.
+            # Retire only Atlas's membership if its timer joined this new room
+            # before the trusted Family mapping was saved.
+            if slug == 'family' and account_ids['default'] in actual:
+                api.request('DELETE', f'/channels/{channel_id}/members/' + account_ids['default'])
+                actual.remove(account_ids['default'])
             if actual - expected:
                 raise bootstrap.BootstrapError('topic channel audience requires explicit reconciliation')
             for user_id in sorted(expected - actual):
@@ -155,6 +185,8 @@ def provision(directory: Path = bootstrap.PRIVATE) -> dict[str, Any]:
             channels[slug] = channel_id
             state['channels'] = {**state.get('channels', {}), slug: channel_id}
             bootstrap.save(path, state)
+        channels.update({alias: channels[target] for alias, target in ALIASES.items()})
+        state['channels'] = channels
         town, _ = api.request('GET', f'/teams/{team_id}/channels/name/town-square')
         off_topic, _ = api.request('GET', f'/teams/{team_id}/channels/name/off-topic', missing=True)
         if off_topic:

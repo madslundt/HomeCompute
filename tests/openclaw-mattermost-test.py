@@ -38,7 +38,7 @@ class MattermostSetupTest(unittest.TestCase):
         self.token = 'SECRET_' + 'b' * 26
         self.token_file = self.root / 'token'
         self.accounts = {'base_url': setup.BASE_URL, 'accounts': [
-            {'accountId': key, 'agentId': agent, 'username': username, 'bot_id': str(i) * 26,
+            {'accountId': key, 'agentId': agent, 'username': username, 'bot_id': str(i).zfill(26),
              'token': self.token if key == 'default' else 'SECRET_' + str(i) * 26}
             for i, (key, (agent, username)) in enumerate(setup.ACCOUNTS.items(), 1)]}
         self.token_file.write_text(json.dumps(self.accounts))
@@ -122,12 +122,18 @@ class MattermostSetupTest(unittest.TestCase):
             self.assertEqual(route, {'agentId': agent, 'match': {'channel': 'mattermost', 'accountId': key},
                                     'session': {'dmScope': 'per-account-channel-peer', 'groupScope': 'per-group'}})
 
-    def test_only_atlas_answers_owner_channels_while_all_eight_owner_dms_remain_enabled(self):
+    def test_only_atlas_answers_owner_channels_while_private_specialists_remain_owner_only(self):
         after, _ = setup.candidate(self.before, self.owner, self.channels, self.accounts, setup.BASE_URL)
         root = after['channels']['mattermost']
         inherited = {key: value for key, value in root.items() if key != 'accounts'}
         for key, account in root['accounts'].items():
             effective = {**inherited, **account}
+            if key == 'family':
+                self.assertFalse(effective['enabled'])
+                self.assertEqual(effective['dmPolicy'], 'disabled')
+                self.assertEqual(effective['groupPolicy'], 'disabled')
+                self.assertEqual(effective['allowFrom'], [])
+                continue
             self.assertTrue(effective['enabled'])
             self.assertEqual(effective['dmPolicy'], 'allowlist')
             self.assertEqual(effective['allowFrom'], [self.owner])
@@ -197,7 +203,7 @@ class MattermostSetupTest(unittest.TestCase):
         previous_routes = copy.deepcopy(before['bindings'])
         previous_tokens = copy.deepcopy(before['channels']['mattermost']['accounts'])
         after, _ = setup.candidate(before, self.owner, self.channels, self.accounts, setup.BASE_URL)
-        self.assertEqual(len(after['channels']['mattermost']['accounts']), 8)
+        self.assertEqual(len(after['channels']['mattermost']['accounts']), len(setup.ACCOUNTS))
         self.assertTrue(all(route in after['bindings'] for route in previous_routes))
         for key, account in previous_tokens.items():
             self.assertEqual(after['channels']['mattermost']['accounts'][key], account)
@@ -205,7 +211,8 @@ class MattermostSetupTest(unittest.TestCase):
         self.assertEqual(after['tools'], before['tools'])
         self.assertEqual(len(setup.ROUTES), 5)
         self.assertEqual([row['username'] for row in self.accounts['accounts']],
-                         ['atlas', 'luna', 'nova', 'apollo', 'orion', 'vega', 'ceres', 'lyra'])
+                         ['atlas', 'luna', 'nova', 'apollo', 'orion', 'vega', 'ceres', 'lyra',
+                          'hestia', 'themis', 'plutus', 'gaia'])
 
     def test_unreviewed_aliases_and_unconfigured_specialists_are_refused(self):
         accounts = copy.deepcopy(self.accounts); accounts['accounts'][0]['username'] = 'openclaw'
@@ -334,6 +341,39 @@ class MattermostSetupTest(unittest.TestCase):
         again, _ = setup.candidate(after, self.owner, self.channels, self.accounts, setup.BASE_URL)
         self.assertEqual(again, after)
 
+    def test_family_requires_explicit_member_ids_and_never_falls_back_to_private_atlas(self):
+        family_id, partner = 'f' * 26, 'p' * 26
+        after, _ = setup.candidate(self.before, self.owner, self.channels, self.accounts, setup.BASE_URL,
+                                   family_channel_id=family_id, family_user_ids=[self.owner, partner])
+        accounts = after['channels']['mattermost']['accounts']
+        family = accounts['family']
+        self.assertTrue(family['enabled'])
+        self.assertEqual(family['dmPolicy'], 'disabled')
+        self.assertEqual(family['groupPolicy'], 'allowlist')
+        self.assertEqual(family['groupAllowFrom'], sorted([self.owner, partner]))
+        self.assertEqual(family['groups'], {'*': {'requireMention': True}, family_id: {'requireMention': False}})
+        family_routes = [r for r in after['bindings'] if r['match'].get('accountId') == 'family']
+        self.assertEqual(len(family_routes), 2)
+        self.assertTrue(all(r['agentId'] == 'family' for r in family_routes))
+        self.assertEqual(family_routes[0]['match']['peer'], {'kind': 'channel', 'id': family_id})
+        self.assertNotIn('peer', family_routes[1]['match'])
+        for account, value in accounts.items():
+            if account == 'family': continue
+            self.assertEqual(value['allowFrom'], [self.owner])
+            self.assertNotIn(partner, value.get('groupAllowFrom', []))
+        again, _ = setup.candidate(after, self.owner, self.channels, self.accounts, setup.BASE_URL,
+                                   family_channel_id=family_id, family_user_ids=[self.owner, partner])
+        self.assertEqual(again, after)
+
+    def test_family_rejects_forged_channels_duplicate_members_and_unreviewed_roster(self):
+        for args in ({'family_channel_id': 'invalid'},
+                     {'family_channel_id': self.channels['inbox']},
+                     {'family_channel_id': 'f' * 26, 'family_user_ids': ['p' * 26]},
+                     {'family_channel_id': 'f' * 26, 'family_user_ids': [self.owner, self.owner]},
+                     {'family_user_ids': [self.owner, 'p' * 26]}):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                setup.candidate(self.before, self.owner, self.channels, self.accounts, setup.BASE_URL, **args)
+
     def test_native_failure_does_not_publish_and_removes_secret_candidate(self):
         original = self.config.read_bytes()
         def failing_validation(arguments, **options):
@@ -378,6 +418,51 @@ class MattermostSetupTest(unittest.TestCase):
                 with self.assertRaises((ValueError, KeyError)):
                     self.update()
         self.assertFalse(self.private.exists())
+
+    def test_shared_channels_change_only_two_sender_lists_and_survive_roster_reapply(self):
+        before, _ = setup.candidate(self.before, self.owner, self.channels, self.accounts, setup.BASE_URL)
+        after, batch = setup.household_channel_access(before, self.owner, 'p' * 26, ['s' * 26], ['x' * 26, 'y' * 26])
+        expected = copy.deepcopy(before)
+        expected['channels']['mattermost']['groupAllowFrom'] = [self.owner, 'p' * 26]
+        expected['channels']['mattermost']['accounts']['default']['groupAllowFrom'] = [self.owner, 'p' * 26]
+        self.assertEqual(after, expected)
+        self.assertEqual([b['path'] for b in batch], ['channels.mattermost.groupAllowFrom', 'channels.mattermost.accounts.default.groupAllowFrom'])
+        replay, _ = setup.household_channel_access(after, self.owner, 'p' * 26, ['s' * 26], ['x' * 26, 'y' * 26])
+        self.assertEqual(replay, after)
+        refreshed, _ = setup.candidate(after, self.owner, self.channels, self.accounts, setup.BASE_URL)
+        self.assertEqual(refreshed, after)
+
+    def test_channel_sharing_rejects_overlapping_rooms_unknown_senders_and_dm_expansion(self):
+        before, _ = setup.candidate(self.before, self.owner, self.channels, self.accounts, setup.BASE_URL)
+        for allowed, systems in ((['x' * 26], ['x' * 26, 'y' * 26]), ([], ['x' * 26, 'y' * 26]),
+                                 (['s' * 26], ['x' * 26]), (['*'], ['x' * 26, 'y' * 26])):
+            with self.subTest(allowed=allowed, systems=systems), self.assertRaises(ValueError):
+                setup.household_channel_access(before, self.owner, 'p' * 26, allowed, systems)
+        for path in ('root', 'default', 'personal'):
+            changed = copy.deepcopy(before)
+            boundary = changed['channels']['mattermost']
+            if path != 'root': boundary = boundary['accounts'][path]
+            boundary['allowFrom'].append('p' * 26)
+            with self.assertRaises(ValueError):
+                setup.household_channel_access(changed, self.owner, 'p' * 26, ['s' * 26], ['x' * 26, 'y' * 26])
+        before['channels']['mattermost']['groupAllowFrom'] = [self.owner, 'z' * 26]
+        with self.assertRaises(ValueError):
+            setup.household_channel_access(before, self.owner, 'p' * 26, ['s' * 26], ['x' * 26, 'y' * 26])
+
+    def test_shared_channel_apply_needs_no_account_manifest_and_preserves_private_state(self):
+        before, _ = setup.candidate(self.before, self.owner, self.channels, self.accounts, setup.BASE_URL)
+        self.config.write_text(json.dumps(before)); self.token_file.unlink()
+        arguments = (self.owner, 'p' * 26, ['s' * 26], ['x' * 26, 'y' * 26])
+        with self.assertRaises(ValueError): setup.share_channels(*arguments, apply=True, runner=self.runner)
+        review = setup.share_channels(*arguments, runner=self.runner)
+        result = setup.share_channels(*arguments, apply=True, runner=self.runner,
+            expected_config_sha256=review['source_config_sha256'], helper_sha256=review['helper_sha256'])
+        self.assertTrue(result['applied']); self.assertFalse(result['private_dm_access_changed'])
+        self.assertTrue(result['restart_required']); self.assertTrue(result['channel_reload_required'])
+        self.assertEqual(result['systems_exclusion'], 'Mattermost-membership')
+        expected, _ = setup.household_channel_access(before, *arguments)
+        self.assertEqual(json.loads(self.config.read_text()), expected)
+        self.assertNotIn(self.token, json.dumps(result))
 
     def test_plugin_install_change_during_validation_fails_before_publication(self):
         def changing_runner(arguments, **options):

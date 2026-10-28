@@ -21,22 +21,25 @@ def load(name: str, filename: str) -> Any:
 
 b = load('mattermost_bootstrap', 'bootstrap-mattermost.py')
 GROUPS = {
-    'Family & plans': ('personal', 'aula', 'calendar', 'travel'),
-    'Household': ('home', 'energy', 'shopping', 'storage'),
+    'Family & plans': ('family', 'personal', 'aula', 'travel'),
+    'Household': ('home', 'energy', 'meals', 'shopping', 'household-admin', 'finances'),
     'Research & projects': ('research', 'news', 'engineering', 'agent-playground'),
     'Systems': ('home-operations', 'openclaw'),
 }
-RETIRED = {'home-assistant': 'home', 'alerts': 'home-operations', 'off-topic': 'town-square'}
+CONSOLIDATED = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping'}
+RETIRED = {**CONSOLIDATED, 'home-assistant': 'home', 'alerts': 'home-operations', 'off-topic': 'town-square'}
 DETAILS = {
     'inbox': ('Inbox', 'Start here when you are unsure where a task belongs. Use a topic channel for ongoing work; keep follow-ups in its thread.'),
-    'personal': ('Personal', 'Personal drafts, decisions, and planning. School messages belong in Aula; dated events in Calendar; outings and holidays in Travel.'),
-    'aula': ('Aula', 'School and childcare messages, notices, and Aula briefings. Household schedules and event changes belong in Calendar.'),
-    'calendar': ('Calendar', 'Household schedules, availability, and requested calendar event changes. School-message discussion belongs in Aula.'),
-    'travel': ('Travel', 'Holidays, local adventures, restaurants, date nights, and travel deals. Calendar event changes belong in Calendar.'),
-    'home': ('Home', 'Household devices, Home Assistant automation, weather, and reminders. Energy plans belong in Energy; server and service incidents in Infrastructure. Earlier Home Assistant threads: ' + b.SITE + '/homecompute/channels/home-assistant'),
+    'family': ('Family', 'Shared planning, tasks, reminders, shopping and inventory with Gaia. School updates belong in Aula; calendar and correspondence work in Planning. Gaia has no access to private adult sources.'),
+    'personal': ('Planning', 'Plans, calendar events, household tasks, reminders, and correspondence drafts with Luna. School updates belong in Aula; shared Gaia tasks in Family; outings and holidays in Travel.'),
+    'aula': ('Aula', 'School and childcare messages, notices, and Aula briefings. Calendar changes and combined household preparation belong in Planning.'),
+    'travel': ('Travel', 'Holidays, local adventures, restaurants, date nights, and travel deals. Calendar event changes belong in Planning.'),
+    'meals': ('Meals', 'Meal plans, recipes, ingredients to use before expiry, and shopping proposals with Hestia. Vega handles shopping changes; Ceres handles stock changes in Shopping & inventory.'),
+    'household-admin': ('Household Admin', 'Paperwork, warranties, subscriptions, renewals, and document deadlines with Themis. Analysis uses supplied evidence and explicitly connected sources.'),
+    'finances': ('Finances', 'Private budgets, spending reviews, and subscription costs with Plutus, using supplied records. Bank access and payments are not enabled.'),
+    'home': ('Home', 'Devices, Home Assistant, weather, and house maintenance with Orion. Chores and reminders belong in Planning; electricity in Energy; servers in Infrastructure. Earlier threads: ' + b.SITE + '/homecompute/channels/home-assistant'),
     'energy': ('Energy', 'Electricity, batteries, consumption, charging plans, and energy reviews. Other household devices belong in Home.'),
-    'shopping': ('Shopping', 'Shopping lists, product offers, and discount watches. Items already owned and their locations belong in Inventory.'),
-    'storage': ('Inventory', 'Physical household stock, locations, quantities, and expiry dates. Purchases belong in Shopping; computer disk capacity in Infrastructure.'),
+    'shopping': ('Shopping & inventory', 'Shopping lists, product offers, discount watches, and household stock, locations, quantities and expiry dates. Vega handles purchases and lists; Ceres handles inventory. Holidays, restaurants and experience deals belong in Travel.'),
     'research': ('Research', 'Questions, comparisons, and investigations with sources. Automated news digests and their follow-up belong in News.'),
     'news': ('News', 'Delivered news digests and discussion of those reports. New research questions belong in Research.'),
     'engineering': ('Engineering', 'Software implementation, bugs, and coding projects. Running services and incidents belong in Infrastructure; agent configuration in OpenClaw.'),
@@ -47,15 +50,17 @@ DETAILS = {
 }
 
 
-def category_plan(categories: list[dict], channels: list[dict]) -> list[dict]:
+def category_plan(categories: list[dict], channels: list[dict], *, excluded_channels: set[str] | None = None) -> list[dict]:
     """Assign every active channel once; preserve DMs and unfamiliar custom groups."""
     result = copy.deepcopy(categories)
+    excluded = excluded_channels or set()
     active = {x['name']: x['id'] for x in channels
-              if x.get('type') in {'O', 'P'} and not x.get('delete_at') and x['name'] not in RETIRED}
+              if x.get('type') in {'O', 'P'} and not x.get('delete_at') and x['name'] not in RETIRED
+              and x['id'] not in excluded}
     desired = {'Favorites': [active[n] for n in ('inbox', 'town-square') if n in active]}
     desired.update({name: [active[n] for n in slugs if n in active] for name, slugs in GROUPS.items()})
     managed = {identifier for ids in desired.values() for identifier in ids}
-    old = {x['id'] for x in channels if x.get('delete_at') or x.get('name') in RETIRED}
+    old = {x['id'] for x in channels if x.get('delete_at') or x.get('name') in RETIRED} | excluded
     for category in result:
         category['channel_ids'] = [x for x in category['channel_ids'] if x not in managed | old]
         key = 'Favorites' if category['type'] == 'favorites' else category['display_name']
@@ -95,13 +100,36 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
             return receipt
         backup = directory / ('organization-' + uuid.uuid4().hex + '.json')
         exports = {}
-        for name in ('channels.json', 'openclaw-channel.json'):
+        for name in ('channels.json', 'openclaw-channel.json', 'n8n-channels.json', 'n8n-integration.json', 'household-access.json'):
             if (directory / name).exists():
                 exports[name] = b.read_private(directory / name)
         b.save(backup, {'channels': channels, 'categories': categories, 'exports': exports})
+        # Persist delivery aliases before archiving a destination used by producers.
+        retired_ids = {by_name[name]['id']: by_name[target]['id']
+                       for name, target in CONSOLIDATED.items() if name in by_name}
+        for name, export in exports.items():
+            cleaned = copy.deepcopy(export)
+            if name == 'household-access.json':
+                cleaned['shared_channel_ids'] = sorted({retired_ids.get(value, value)
+                                                       for value in cleaned['shared_channel_ids']})
+            elif name.startswith('n8n-'):
+                mapping = cleaned['channels']
+                for source, target in CONSOLIDATED.items():
+                    if source in mapping:
+                        mapping[target] = by_name[target]['id']
+                        mapping[source] = by_name[target]['id']
+            else:
+                mapping = cleaned if name == 'channels.json' else cleaned['channels']
+                for source in RETIRED:
+                    mapping.pop(source, None)
+            if cleaned != export:
+                b.save(directory / name, cleaned)
         for slug, (display, purpose) in DETAILS.items():
             row = by_name[slug]
             header = purpose
+            earlier = [source for source, target in CONSOLIDATED.items() if target == slug and source in by_name]
+            if earlier:
+                header += ' Earlier threads: ' + ' · '.join('[' + by_name[source].get('display_name', source.title()) + '](' + b.SITE + '/homecompute/channels/' + source + ')' for source in earlier)
             if slug == 'inbox' and '[Agent directory]' in row.get('header', ''):
                 header += ' ' + row['header'][row['header'].index('[Agent directory]'):]
             changes = {'display_name': display, 'header': header, 'purpose': purpose}
@@ -142,26 +170,70 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
                 row, _ = api.request('GET', '/channels/' + by_name[source]['id'])
                 if not row.get('delete_at'):
                     raise b.BootstrapError('redundant channel archive readback differs')
-        for name, export in exports.items():
-            cleaned = copy.deepcopy(export)
-            mapping = cleaned if name == 'channels.json' else cleaned['channels']
-            for source in RETIRED:
-                mapping.pop(source, None)
-            if cleaned != export:
-                b.save(directory / name, cleaned)
         receipt['backup_file'] = str(backup)
         return receipt
+
+
+def organize_partner(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
+    """Arrange only the partner's approved rooms; never copy the owner's DMs."""
+    with b.bootstrap_lock(directory):
+        credentials = b.read_private(directory / 'credentials.json')
+        access = b.read_private(directory / 'household-access.json')
+        owner = b.identity({'id': credentials['operator_id']}, 'operator')
+        partner = b.identity({'id': access['partner_id']}, 'partner')
+        team = b.identity({'id': access['team_id']}, 'team')
+        if access.get('owner_id') != owner or access.get('audience_policy') != 'all-except-systems':
+            raise b.BootstrapError('reviewed shared household audience required')
+        allowed = {b.identity({'id': value}, 'shared room') for value in access['shared_channel_ids']}
+        blocked = {b.identity({'id': value}, 'Systems room') for value in access['system_channel_ids']}
+        if len(blocked) != 2 or allowed & blocked:
+            raise b.BootstrapError('distinct shared and Systems rooms required')
+        sync = load('partner_sidebar_sync', 'sync-mattermost-atlas.py')
+        api = sync.operator(b, directory, credentials, owner)
+        channels, _ = api.request('GET', f'/users/{partner}/teams/{team}/channels?include_deleted=true')
+        actual = {row['id'] for row in channels if row.get('type') in {'O', 'P'} and not row.get('delete_at')}
+        if actual != allowed:
+            raise b.BootstrapError('reconcile partner memberships before sidebar organization')
+        prefix = f'/users/{partner}/teams/{team}/channels/categories'
+        current, _ = api.request('GET', prefix)
+        groups = {name: slugs for name, slugs in GROUPS.items() if name != 'Systems'}
+        result = {'partner_id': partner, 'groups': list(groups), 'channel_count': len(actual), 'applied': False}
+        if not apply:
+            return result
+        backup = directory / ('partner-sidebar-' + uuid.uuid4().hex + '.json')
+        b.save(backup, current)
+        for name in groups:
+            if not any(c['type'] == 'custom' and c['display_name'] == name for c in current['categories']):
+                api.request('POST', prefix, {'display_name': name, 'type': 'custom', 'sorting': 'manual',
+                                            'user_id': partner, 'team_id': team, 'channel_ids': []})
+        current, _ = api.request('GET', prefix)
+        planned = category_plan(current['categories'], channels, excluded_channels=blocked)
+        if planned != current['categories']:
+            api.request('PUT', prefix, planned)
+        names = {name: index + 1 for index, name in enumerate(groups)}
+        ranks = {'favorites': 0, 'channels': 5, 'direct_messages': 6}
+        ordered = sorted(enumerate(planned), key=lambda item: (
+            names.get(item[1]['display_name'], ranks.get(item[1]['type'], 5)), item[0]))
+        order = [row['id'] for _, row in ordered]
+        api.request('PUT', prefix + '/order', order)
+        after, _ = api.request('GET', prefix)
+        if (after['order'] != order or {c['id']: c['channel_ids'] for c in after['categories']}
+                != {c['id']: c['channel_ids'] for c in planned}):
+            raise b.BootstrapError('partner sidebar readback differs')
+        return {**result, 'applied': True, 'backup_file': str(backup)}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--household-sidebar', action='store_true', help="organize Kristina's approved non-Systems rooms")
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')
     os.umask(0o077)
     try:
-        print(json.dumps(organize(apply=args.apply), indent=2))
+        operation = organize_partner if args.household_sidebar else organize
+        print(json.dumps(operation(apply=args.apply), indent=2))
     except (b.BootstrapError, OSError, ValueError, KeyError, TypeError):
         raise SystemExit('Workspace organization failed; inspect the protected backup before retrying.') from None
 

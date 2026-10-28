@@ -47,24 +47,11 @@ test('delivery acknowledgement requires a real message receipt for selected chat
   assert.throws(() => execute(source, {error: 'delivery timeout'}, nodes));
 });
 
-test('conversation router pins private chat, human sender, command and update identity', () => {
+test('retired Telegram conversation cannot be configured or forward any input', () => {
   const source = configured(code(conversation, 'Validate private sender and command'));
   const update = {update_id: 42, message: {chat: {id: 1234, type: 'private'}, from: {id: 5678, is_bot: false}, text: '/openclaw hello'}};
-  const result = execute(source, update)[0].json;
-  assert.equal(result.request_id, 'telegram:42');
-  assert.equal(result.text, 'hello');
-  assert.equal(result.conversation, 'operator');
-  for (const message of [
-    {...update.message, chat: {id: 1234, type: 'group'}},
-    {...update.message, from: {id: 9999}},
-    {...update.message, from: {id: 5678, is_bot: true}},
-    {...update.message, text: 'ordinary unrelated message'},
-  ]) assert.deepEqual(execute(source, {...update, message}), []);
-});
-
-test('conversation returns processing receipt; outbox alone sends replies', () => {
-  const source = code(conversation, 'Return processing status');
-  assert.equal(execute(source, {state: 'completed'})[0].json.delivery, 'queued_in_durable_outbox');
-  assert.equal(execute(source, {state: 'uncertain'})[0].json.delivery, 'requires_status_or_reconciliation');
+  assert.throws(() => execute(source, update), /Telegram conversations are retired/);
+  assert.deepEqual(conversation.connections, {});
+  assert.ok(conversation.nodes.filter(n => ['n8n-nodes-base.executeWorkflowTrigger', 'n8n-nodes-base.httpRequest'].includes(n.type)).every(n => n.disabled));
   assert.ok(conversation.nodes.every(n => n.type !== 'n8n-nodes-base.telegram'));
 });

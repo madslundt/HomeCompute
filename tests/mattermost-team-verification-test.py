@@ -76,7 +76,7 @@ class Server:
 class VerificationTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=Path(self.tmp.name)
-        names=['atlas','luna','nova','apollo','orion','vega','ceres','lyra']
+        names=['atlas','luna','nova','apollo','orion','vega','ceres','lyra','hestia','themis','plutus']
         self.accounts=[{'accountId':account,'agentId':role,'username':name,'bot_id':chr(97+i)*26,'token':'synthetic-'+role}
                        for i,((role,account),name) in enumerate(zip(verify.ROLE_ACCOUNTS.items(),names))]
         self.write('credentials.json',{'operator_id':OWNER,'operator_session':'owner-session'})
@@ -91,7 +91,7 @@ class VerificationTests(unittest.TestCase):
     def write(self,name,value):
         path=self.root/name;path.write_text(json.dumps(value));path.chmod(0o600)
 
-    def test_all_eight_dm_roles_use_stable_ids_and_preserve_existing_receipts(self):
+    def test_all_dm_roles_use_stable_ids_and_preserve_existing_receipts(self):
         historical=b'{"historical":"keep exact bytes"}'
         (self.root/'acceptance-dm-main.json').write_bytes(historical)
         for role,account in verify.ROLE_ACCOUNTS.items():
@@ -100,7 +100,7 @@ class VerificationTests(unittest.TestCase):
             saved=json.loads((self.root/('acceptance-fresh-dm-'+role+'.json')).read_text())
             self.assertEqual(saved['account_id'],account)
         self.assertEqual((self.root/'acceptance-dm-main.json').read_bytes(),historical)
-        self.assertEqual(len([r for r in self.server.requests if r[2]=='/posts']),8)
+        self.assertEqual(len([r for r in self.server.requests if r[2]=='/posts']),len(verify.ROLE_ACCOUNTS))
 
     def test_new_role_channels_and_readonly_tools_use_topic_manifest(self):
         for scenario,channel,name in [('shopper','s'*26,'atlas'),('keeper','u'*26,'atlas'),

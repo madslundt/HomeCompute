@@ -90,6 +90,11 @@ def sync(b: Any, directory: Path) -> dict[str, Any]:
         accounts = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(accounts)
         desired = set(accounts.owner_channels(b, api, owner, team_id))
+        family = mapping.get('channels', {}).get('family')
+        if family is not None:
+            # This root-private map identifies the separate shared assistant.
+            # A room name or message cannot exclude an arbitrary owner channel.
+            desired.discard(b.identity({'id': family}, 'Family channel'))
         joined = set(accounts.owner_channels(b, api, bot_id, team_id))
         missing = sorted(desired - joined)
         for channel_id in missing[:LIMIT]:

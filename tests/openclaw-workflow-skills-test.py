@@ -32,7 +32,7 @@ class WorkflowTests(unittest.TestCase):
         self.config = self.root / 'openclaw.json'
         self.entries = {}
         self.original = b'Private identity\n<!-- homecompute-team:start -->\nRetain native policies.\n<!-- homecompute-team:end -->\n'
-        for role in (*policy.ROSTER, 'cook', 'administrator', 'finance', 'family'):
+        for role in policy.ROSTER:
             workspace = self.root / ('workspace' if role == 'main' else 'workspace-' + role)
             workspace.mkdir()
             (workspace / 'AGENTS.md').write_bytes(self.original)

@@ -13,6 +13,7 @@ network_policies:
           - allow: {method: GET, path: "/llm/status"}
           - allow: {method: GET, path: "/api/v4/**"}
           - allow: {method: POST, path: "/api/v4/posts"}
+          - allow: {method: POST, path: "/api/v4/files"}
           - allow: {method: PUT, path: "/api/v4/posts/*"}
           - allow: {method: PATCH, path: "/api/v4/posts/*/patch"}
           - allow: {method: DELETE, path: "/api/v4/posts/*"}

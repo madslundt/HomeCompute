@@ -18,10 +18,11 @@ bootstrap = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(bootstrap)
 
 ROLE_ACCOUNTS = {'main': 'default', **{role: role for role in
-                 ('personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel')}}
+                 ('personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel',
+                  'cook', 'administrator', 'finance')}}
 ROLE_CHANNELS = {'coordinator': 'inbox', 'personal': 'personal', 'researcher': 'research',
                  'engineer': 'engineering', 'operator': 'home-operations', 'shopper': 'shopping', 'keeper': 'storage',
-                 'travel': 'travel'}
+                 'travel': 'travel', 'cook': 'meals', 'administrator': 'household-admin', 'finance': 'finances'}
 TOOL_PROBES = {
     'research-tool': ('researcher', 'research', 'Use the protected browser to navigate to https://example.com and read its page title.'),
     'engineering-tool': ('engineer', 'engineering', 'Use homecompute__homecompute_task_status with empty arguments to read bounded task status.'),
@@ -71,7 +72,7 @@ def mention(rows: dict[str, dict], account: str) -> str:
 
 
 def topic_channels(channels: dict, required: str, api: object, owner: str) -> dict:
-    if required in {'shopping', 'storage', 'home', 'travel'}:
+    if required in {'shopping', 'storage', 'home', 'travel', 'meals', 'tasks', 'household-admin', 'finances', 'correspondence'}:
         topics = json.loads((PRIVATE / 'n8n-channels.json').read_text())
         value = topics.get('channels', {}).get(required)
         if not isinstance(value, str) or not re.fullmatch(r'[a-z0-9]{26}', value):

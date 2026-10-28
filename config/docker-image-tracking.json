@@ -205,10 +205,6 @@
         "openshell-default--agent-openclaw-3dc5732e-8cff-47fc-8c34-d7a86f3693bd": {
           "tracked_tag": null,
           "source_lane": "source_pin"
-        },
-        "openshell-default--agent-owner-e4006fe7-88d1-451f-b65f-b7dad8c23880": {
-          "tracked_tag": null,
-          "source_lane": "source_pin"
         }
       }
     }

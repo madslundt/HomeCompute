@@ -19,10 +19,12 @@ SPEC.loader.exec_module(setup)
 
 
 def reviewed_candidate(*args, **kwargs):
-    return setup.candidate(*args, enable_calendar_upgrade=True, enable_retrieval_upgrade=True, **kwargs)
+    return setup.candidate(*args, enable_calendar_upgrade=True, enable_retrieval_upgrade=True,
+                           enable_household_task_upgrade=True, enable_family_task_upgrade=True, enable_mail_upgrade=True, **kwargs)
 
 def reviewed_setup(*args, **kwargs):
-    return setup.setup(*args, enable_calendar_upgrade=True, enable_retrieval_upgrade=True, **kwargs)
+    return setup.setup(*args, enable_calendar_upgrade=True, enable_retrieval_upgrade=True,
+                       enable_household_task_upgrade=True, enable_family_task_upgrade=True, enable_mail_upgrade=True, **kwargs)
 
 
 class TeamSetupTest(unittest.TestCase):
@@ -38,6 +40,29 @@ class TeamSetupTest(unittest.TestCase):
         before['agents']['entries']['engineer']['tools']['allow'].remove(integrations.PREFIX + 'docs_query')
         with self.assertRaises(setup.TeamRefused): setup.candidate(before, self.team)
 
+    def test_default_reapply_removes_mail_from_every_native_ceiling_and_role(self):
+        prior = reviewed_candidate(self.before, self.team)
+        after = setup.candidate(prior, self.team)
+        for key in ('allow', 'alsoAllow'):
+            self.assertFalse(set(after['tools'].get(key, [])) & setup.MAIL_TOOLS)
+        self.assertFalse(set(after['tools']['subagents']['tools']['allow']) & setup.MAIL_TOOLS)
+        for entry in after['agents']['entries'].values():
+            self.assertFalse(set(entry['tools']['allow']) & setup.MAIL_TOOLS)
+        self.assertEqual(after, setup.candidate(after, self.team))
+
+    def test_scoped_mail_retirement_preserves_all_other_config_and_is_idempotent(self):
+        prior = reviewed_candidate(self.before, self.team)
+        after = setup._team_policy.without_mail(prior)
+        self.assertEqual(after, setup._team_policy.without_mail(after))
+        reapplied = setup.candidate(after, self.team)
+        self.assertFalse(set(reapplied['tools'].get('allow', reapplied['tools'].get('alsoAllow', []))) & setup.MAIL_TOOLS)
+        for key in set(prior) - {'agents', 'tools'}:
+            self.assertEqual(prior[key], after[key])
+        for role, entry in after['agents']['entries'].items():
+            self.assertFalse(set(entry['tools']['allow']) & setup.MAIL_TOOLS)
+            self.assertTrue(setup.MAIL_TOOLS <= set(entry['tools']['deny']))
+            for key in set(entry) - {'tools'}:
+                self.assertEqual(entry[key], prior['agents']['entries'][role][key])
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -100,7 +125,7 @@ class TeamSetupTest(unittest.TestCase):
         self.assertTrue(candidate['agents']['defaults']['skipBootstrap'])
         children = candidate['agents']['defaults']['subagents']
         self.assertEqual((children['maxConcurrent'], children['maxSpawnDepth'], children['runTimeoutSeconds']), (1, 1, 300))
-        self.assertEqual(candidate['agents']['entries']['main']['subagents']['allowAgents'], list(setup.LEAVES))
+        self.assertEqual(candidate['agents']['entries']['main']['subagents']['allowAgents'], list(setup.DELEGATES))
         locations = set()
         for role in setup.LEAVES:
             entry = candidate['agents']['entries'][role]
@@ -176,10 +201,12 @@ class TeamSetupTest(unittest.TestCase):
 
     def test_channel_routing_map_is_validated_and_only_in_coordinator_identity(self):
         routes = self.team['channel_routes']
-        for name, role in {'aula': 'personal', 'shopping': 'shopper', 'storage': 'keeper',
+        for name, role in {'aula': 'personal', 'shopping': 'shopper',
                            'home': 'operator', 'energy': 'operator', 'news': 'researcher',
                            'engineering': 'engineer', 'openclaw': 'operator', 'travel': 'travel'}.items():
             self.assertEqual([row['agent'] for row in routes.values() if row['name'] == name], [role])
+        self.assertTrue({'calendar', 'tasks', 'correspondence', 'storage'}.isdisjoint(row['name'] for row in routes.values()))
+        self.assertIn('inventory (Ceres)', self.team['agents']['main']['instructions'])
         for role in setup.ROSTER:
             identity = setup.identity_text('Existing owner rules.', role, self.team)
             self.assertIn('Existing owner rules.', identity)
@@ -273,6 +300,7 @@ class TeamSetupTest(unittest.TestCase):
             self.assertEqual(effective & setup.HOUSEHOLD_TOOLS, expected)
             expected_skills = new if role in {'main', 'personal'} else {
                 'shopper': {'household-shopping', 'discount-shopping'}, 'keeper': {'household-storage'},
+                'family': new,
             }.get(role, set())
             self.assertEqual(set(entry['skills']) & new, expected_skills)
             if role != 'main':
@@ -317,7 +345,7 @@ class TeamSetupTest(unittest.TestCase):
         self.assertEqual(memory.read_bytes(), initial[str(memory)])
         self.assertEqual(retained.read_bytes(), initial[str(retained)])
         ledger = self.state / 'team-skill-ownership.json'
-        self.assertEqual(len(json.loads(ledger.read_text())), 9)
+        self.assertEqual(len(json.loads(ledger.read_text())), 12)
         self.assertEqual(ledger.stat().st_mode & 0o777, 0o600)
         again = reviewed_setup(self.config, self.team, skills_source=source, apply=True, runner=self.runner)
         self.assertFalse(again['config_changed']); self.assertEqual(again['workspace_files'], 0)
@@ -330,10 +358,10 @@ class TeamSetupTest(unittest.TestCase):
         again = reviewed_setup(self.config, self.team, skills_source=source, runner=self.runner)
         self.assertEqual(again['workspace_files'], 0)
 
-    def test_seven_agent_migration_preserves_five_existing_toolsets_and_state(self):
+    def test_expanded_agent_migration_preserves_five_existing_toolsets_and_state(self):
         old = reviewed_candidate(self.before, self.team)
         existing = setup.ROSTER[:5]
-        for role in ('shopper', 'keeper', 'travel'):
+        for role in setup.LEAVES[4:]:
             old['agents']['entries'].pop(role)
         old['agents']['entries']['main']['subagents']['allowAgents'] = list(existing[1:])
         old['agents']['defaults']['subagents']['maxChildrenPerAgent'] = 4
@@ -352,9 +380,10 @@ class TeamSetupTest(unittest.TestCase):
                 self.assertEqual(after['agents']['entries'][role][field], old['agents']['entries'][role][field])
         self.assertTrue(all(path.read_bytes() == content for path, content in retained.items()))
         self.assertEqual([after['agents']['entries'][role]['name'] for role in setup.ROSTER],
-                         ['Atlas', 'Luna', 'Nova', 'Apollo', 'Orion', 'Vega', 'Ceres', 'Lyra'])
+                         ['Atlas', 'Luna', 'Nova', 'Apollo', 'Orion', 'Vega', 'Ceres', 'Lyra',
+                          'Hestia', 'Themis', 'Plutus', 'Gaia'])
         self.assertEqual(after['agents']['defaults']['maxConcurrent'], 1)
-        self.assertEqual(after['agents']['defaults']['subagents']['maxChildrenPerAgent'], 7)
+        self.assertEqual(after['agents']['defaults']['subagents']['maxChildrenPerAgent'], len(setup.DELEGATES))
         for role, count in (('shopper', 12), ('keeper', 6)):
             entry = after['agents']['entries'][role]
             self.assertEqual(len(set(entry['tools']['allow']) & setup.SERVICE_TOOLS), count)

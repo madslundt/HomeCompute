@@ -100,7 +100,7 @@ https://{HOST}:19445 {{
     bind 10.77.20.1
     tls /run/tls/server.crt /run/tls/server.key
     request_body {{
-        max_size 128KB
+        max_size 10MB
     }}
     @mcp {{
         remote_ip 10.77.20.2
@@ -109,6 +109,9 @@ https://{HOST}:19445 {{
         expression {{http.request.orig_uri}} == "/mcp"
     }}
     handle @mcp {{
+        request_body {{
+            max_size 128KB
+        }}
         reverse_proxy 127.0.0.1:18793 {{
             transport http {{
                 dial_timeout 3s
@@ -123,10 +126,27 @@ https://{HOST}:19445 {{
         expression {{http.request.orig_uri}} == "/v1/embeddings"
     }}
     handle @embeddings {{
+        request_body {{
+            max_size 128KB
+        }}
         reverse_proxy 127.0.0.1:18793 {{
             transport http {{
                 dial_timeout 3s
                 response_header_timeout 60s
+            }}
+        }}
+    }}
+    @speech {{
+        remote_ip 10.77.20.2
+        method POST
+        path /v1/audio/transcriptions /v1/audio/speech
+        expression {{http.request.orig_uri}} in ["/v1/audio/transcriptions", "/v1/audio/speech"]
+    }}
+    handle @speech {{
+        reverse_proxy 127.0.0.1:18793 {{
+            transport http {{
+                dial_timeout 3s
+                response_header_timeout 120s
             }}
         }}
     }}
@@ -228,17 +248,20 @@ def native_tokens() -> bool:
         if TOKENS.stat().st_size > 16384:
             raise ValueError('native credential file exceeds budget')
         value = json.loads(TOKENS.read_bytes())
-        if (not isinstance(value, dict) or set(value) != {'openclaw', 'hermes'}
+        if (not isinstance(value, dict) or set(value) not in ({'openclaw'}, {'openclaw', 'hermes'})
                 or any(not isinstance(token, str) or len(token) < 32 or '\n' in token or '\r' in token
                        or token.startswith(('replace', 'openshell:resolve:')) for token in value.values())
-                or len(set(value.values())) != 2):
-            raise ValueError('two independent assistant credentials required')
+                or len(set(value.values())) != len(value)):
+            raise ValueError('independent OpenClaw credential required')
+        if 'hermes' in value:
+            write(TOKENS, json.dumps({'openclaw': value['openclaw']}).encode(), user.pw_uid, user.pw_gid, 0o600)
+            return True
         return False
     # Existing adapter-owned config directory is never recreated or rechowned.
     info = TOKENS.parent.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != user.pw_uid or info.st_mode & 0o077:
         raise ValueError('existing private adapter configuration directory required')
-    value = {actor: secrets.token_urlsafe(48) for actor in ('openclaw', 'hermes')}
+    value = {'openclaw': secrets.token_urlsafe(48)}
     write(TOKENS, json.dumps(value).encode(), user.pw_uid, user.pw_gid, 0o600)
     return True
 

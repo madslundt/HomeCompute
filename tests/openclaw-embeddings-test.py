@@ -72,6 +72,25 @@ class MemoryMigrationTests(unittest.TestCase):
             with self.assertRaises(memory.Refused):
                 memory.candidate(before, self.root)
 
+    def test_managed_embedding_credentials_follow_the_current_openshell_environment(self):
+        expected = {'source': 'env', 'provider': 'default',
+                    'id': 'HOMECOMPUTE_OPENCLAW_MCP_TOKEN'}
+        for revision in ('v123_', 'v456_', 's' + 'a' * 64 + '_', ''):
+            before = copy.deepcopy(self.before)
+            before['mcp']['servers']['homecompute']['headers']['Authorization'] = (
+                'Bearer openshell:resolve:env:' + revision + 'HOMECOMPUTE_OPENCLAW_MCP_TOKEN')
+            after, _ = memory.candidate(before, self.root)
+            self.assertEqual(after['memory']['search']['remote']['apiKey'], expected)
+            for entry in after['agents']['entries'].values():
+                self.assertEqual(entry['memory']['search']['remote']['apiKey'], expected)
+            self.assertEqual(after['mcp'], before['mcp'])
+
+    def test_managed_embedding_credentials_reject_an_unrelated_resolver_key(self):
+        self.before['mcp']['servers']['homecompute']['headers']['Authorization'] = (
+            'Bearer openshell:resolve:env:v123_OTHER_TOKEN')
+        with self.assertRaises(memory.Refused):
+            memory.candidate(self.before, self.root)
+
     def test_preview_only_validates_private_candidate_and_does_not_mutate(self):
         original = self.config.read_bytes()
         report = memory.setup(self.config, runner=self.runner)

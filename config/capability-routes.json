@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "route_version": "2026-10-27-ltx25-video",
+  "route_version": "2026-10-28-assist-route-repair",
   "timeout_profiles": {
     "home": {
       "seconds": 20
@@ -47,7 +47,7 @@
       "kind": "candidate"
     },
     "home": {
-      "state": "active",
+      "state": "candidate",
       "privacy": "local_only",
       "required_capabilities": [
         "chat",
@@ -60,7 +60,7 @@
       "minimum_context_tokens": 8192,
       "timeout_profile": "home",
       "deployments": [
-        "home-spark-primary"
+        "automation-flash-next-candidate"
       ]
     },
     "assistant": {
@@ -153,7 +153,7 @@
       ]
     },
     "assistant-canary": {
-      "state": "candidate",
+      "state": "disabled",
       "kind": "canary",
       "qualification_capability": "assistant",
       "privacy": "local_only",
@@ -166,9 +166,7 @@
       ],
       "minimum_context_tokens": 65536,
       "timeout_profile": "assistant",
-      "deployments": [
-        "automation-flash-next-candidate"
-      ]
+      "deployments": []
     },
     "automation-qualification": {
       "state": "candidate",

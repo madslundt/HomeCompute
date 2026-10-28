@@ -53,14 +53,17 @@
   services.resolved.enable = lib.mkForce false;
   networking.firewall.interfaces.enp44s0.allowedTCPPorts = [
     22
-    18789
   ];
-  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 18789 ];
-  networking.firewall.interfaces."br-hc-ctrl".allowedTCPPorts = [ 18790 ];
 
   # The dedicated Telegram delivery relay accepts only the existing n8n
   # container on its private bridge. Restore this exact rule at boot/reload.
   networking.firewall.extraCommands = lib.mkAfter ''
+    iptables -w -C INPUT -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
+      -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
+      -m comment --comment hc-openclaw-dashboard -j ACCEPT 2>/dev/null || \
+    iptables -w -I INPUT 1 -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
+      -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
+      -m comment --comment hc-openclaw-dashboard -j ACCEPT
     iptables -w -C INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
       -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
       -m comment --comment hc-openclaw-communication-supervised -j ACCEPT 2>/dev/null || \
@@ -69,6 +72,13 @@
         -m comment --comment hc-openclaw-communication-supervised -j ACCEPT
   '';
   networking.firewall.extraStopCommands = lib.mkAfter ''
+    while iptables -w -C INPUT -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
+      -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
+      -m comment --comment hc-openclaw-dashboard -j ACCEPT 2>/dev/null; do
+      iptables -w -D INPUT -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
+        -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
+        -m comment --comment hc-openclaw-dashboard -j ACCEPT
+    done
     while iptables -w -C INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
       -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
       -m comment --comment hc-openclaw-communication-supervised -j ACCEPT 2>/dev/null; do
@@ -78,53 +88,16 @@
     done
   '';
 
-  # Publish the authenticated Hermes dashboard only on the home LAN and
-  # Tailscale addresses. The dashboard itself remains inside the agents VM.
-  systemd.services.homecompute-hermes-dashboard-proxy-lan = {
-    description = "Home LAN proxy for the authenticated Hermes dashboard";
-    wantedBy = [ "multi-user.target" ];
-    wants = [ "network-online.target" "homecompute-agents-vm.service" ];
-    after = [ "network-online.target" "homecompute-agents-vm.service" ];
-    serviceConfig = {
-      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18789,bind=192.168.30.122,reuseaddr,fork TCP:10.77.20.2:18789";
-      Restart = "on-failure";
-      RestartSec = "2s";
-      NoNewPrivileges = true;
-      ProtectSystem = "strict";
-      ProtectHome = true;
-      PrivateTmp = true;
-      CapabilityBoundingSet = "";
-    };
-  };
-
-  systemd.services.homecompute-hermes-dashboard-proxy-tailscale = {
-    description = "Tailscale proxy for the authenticated Hermes dashboard";
-    wantedBy = [ "multi-user.target" ];
-    wants = [ "network-online.target" "tailscaled.service" "homecompute-agents-vm.service" ];
-    after = [ "network-online.target" "tailscaled.service" "homecompute-agents-vm.service" ];
-    serviceConfig = {
-      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18789,bind=100.110.248.102,reuseaddr,fork TCP:10.77.20.2:18789";
-      Restart = "on-failure";
-      RestartSec = "2s";
-      NoNewPrivileges = true;
-      ProtectSystem = "strict";
-      ProtectHome = true;
-      PrivateTmp = true;
-      CapabilityBoundingSet = "";
-    };
-  };
-
-  # Give the control-plane Caddy container a private bridge-only path to the
-  # authenticated dashboard. Docker owns this bridge and its gateway address;
-  # the service retries until the Compose project recreates it after boot.
-  systemd.services.homecompute-hermes-dashboard-proxy-control-plane = {
-    description = "Control-plane bridge proxy for the authenticated Hermes dashboard";
+  # The LAN HTTPS edge reaches the guest's private dashboard proxy only
+  # through this bridge listener. Native authentication and pairing remain on.
+  systemd.services.homecompute-openclaw-dashboard-proxy = {
+    description = "Control-plane bridge proxy for the native OpenClaw dashboard";
     wantedBy = [ "multi-user.target" ];
     wants = [ "network-online.target" "docker.service" "homecompute-agents-vm.service" ];
     after = [ "network-online.target" "docker.service" "homecompute-agents-vm.service" ];
     unitConfig.StartLimitIntervalSec = 0;
     serviceConfig = {
-      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18790,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18789";
+      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18792,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18891";
       Restart = "on-failure";
       RestartSec = "5s";
       NoNewPrivileges = true;
@@ -132,6 +105,19 @@
       ProtectHome = true;
       PrivateTmp = true;
       CapabilityBoundingSet = "";
+    };
+  };
+
+  systemd.services.homecompute-openclaw-dashboard-serve = {
+    description = "Private Tailscale HTTPS access to the native OpenClaw dashboard";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "tailscaled.service" "homecompute-agents-vm.service" ];
+    after = [ "tailscaled.service" "homecompute-agents-vm.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.tailscale}/bin/tailscale serve --bg --yes --https=18791 http://10.77.20.2:18891";
+      ExecStop = "${pkgs.tailscale}/bin/tailscale serve --https=18791 off";
     };
   };
 
@@ -204,9 +190,9 @@
   homecompute.agentsVm = {
     enable = true;
     dataClassification = "synthetic-only";
-    # Budget 8 GiB each for OpenClaw and Hermes, 4 GiB for Chromium,
-    # and the remaining guest memory for services and browser proxies.
-    resources.memoryMiB = 24576;
+    # Budget 8 GiB for OpenClaw, 4 GiB for Chromium, and 4 GiB for
+    # guest services and browser proxies. Hermes has been retired.
+    resources.memoryMiB = 16384;
     sshAuthorizedKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILT+ES2e5sbGFzBMLOWKZMawBm/kyadBthAldjAmK8Uc mads@home-core-admin"
     ];

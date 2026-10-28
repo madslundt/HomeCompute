@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from openclaw_team_policy import ROSTER
 
 ORIGIN = 'https://homecompute-capabilities.home.arpa:19445'
+MCP_CREDENTIAL_ENV = 'HOMECOMPUTE_OPENCLAW_MCP_TOKEN'
 
 
 class Refused(Exception):
@@ -68,12 +69,21 @@ def candidate(before: dict[str, Any], state_root: Path) -> tuple[dict[str, Any],
             raise Refused('reviewed-agent-roster-required')
         defaults = before['agents']['defaults']
         after = copy.deepcopy(before)
+        api_key: str | dict[str, str] = bearer[7:]
+        if api_key.startswith('openshell:resolve:'):
+            if not re.fullmatch(r'openshell:resolve:env:(?:(?:v[0-9]{1,20}|s[a-f0-9]{64})_)?'
+                                + MCP_CREDENTIAL_ENV, api_key):
+                raise Refused('trusted-memory-credential-required')
+            # OpenShell changes revision-scoped placeholders when provider state
+            # refreshes. Resolve the current managed environment at activation
+            # instead of freezing the MCP adapter's previous revision in memory.
+            api_key = {'source': 'env', 'provider': 'default', 'id': MCP_CREDENTIAL_ENV}
         search = copy.deepcopy(before.get('memory', {}).get('search', {}))
         search.update({'enabled': True, 'provider': 'openai-compatible', 'model': 'embedding',
                        'fallback': 'none', 'sources': ['memory'], 'extraPaths': [],
                        'experimental': {'sessionMemory': False}, 'queryInputType': 'query',
                        'documentInputType': 'document', 'outputDimensionality': 1024,
-                       'remote': {'baseUrl': ORIGIN + '/v1', 'apiKey': bearer[7:],
+                       'remote': {'baseUrl': ORIGIN + '/v1', 'apiKey': api_key,
                                   'batch': {'enabled': False}}})
         search.setdefault('store', {}).setdefault('vector', {})['enabled'] = True
         after.setdefault('memory', {})['search'] = search

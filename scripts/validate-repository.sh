@@ -122,9 +122,13 @@ python3 "$REPO_ROOT/tests/openclaw-actions-test.py"
 python3 "$REPO_ROOT/tests/openclaw-action-api-test.py"
 python3 "$REPO_ROOT/tests/openclaw-action-flow-test.py"
 python3 "$REPO_ROOT/tests/system-monitoring-test.py"
+python3 "$REPO_ROOT/tests/n8n-observations-test.py"
 python3 "$REPO_ROOT/tests/homeassistant-observations-test.py"
 python3 "$REPO_ROOT/tests/homeassistant-actions-test.py"
 python3 "$REPO_ROOT/tests/native-capabilities-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-speech-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-speech-bridge-test.py"
+python3 "$REPO_ROOT/tests/wyoming-tts-client-test.py"
 python3 "$REPO_ROOT/tests/openclaw-public-dns-launcher-test.py"
 python3 "$REPO_ROOT/tests/openclaw-public-dns-wire-test.py"
 python3 "$REPO_ROOT/tests/openclaw-chat-test.py"
@@ -138,6 +142,13 @@ python3 "$REPO_ROOT/tests/openclaw-household-test.py"
 python3 "$REPO_ROOT/tests/openclaw-ha-websocket-test.py"
 python3 "$REPO_ROOT/tests/openclaw-household-shopping-test.py"
 python3 "$REPO_ROOT/tests/openclaw-household-storage-test.py"
+python3 "$REPO_ROOT/tests/openclaw-household-tasks-test.py"
+python3 "$REPO_ROOT/tests/openclaw-location-tasks-test.py"
+python3 "$REPO_ROOT/tests/openclaw-location-transport-test.py"
+python3 "$REPO_ROOT/tests/openclaw-location-daemon-test.py"
+python3 "$REPO_ROOT/tests/openclaw-location-delivery-test.py"
+python3 "$REPO_ROOT/tests/openclaw-family-projection-test.py"
+python3 "$REPO_ROOT/tests/openclaw-mail-test.py"
 python3 "$REPO_ROOT/tests/openclaw-calendar-test.py"
 python3 "$REPO_ROOT/tests/openclaw-calendar-workflow-test.py"
 python3 "$REPO_ROOT/tests/openclaw-calendar-setup-test.py"
@@ -170,6 +181,32 @@ python3 "$REPO_ROOT/tests/openclaw-worker-api-test.py"
 python3 "$REPO_ROOT/tests/codex-guest-bootstrap-test.py"
 python3 "$REPO_ROOT/tests/openclaw-infrastructure-test.py"
 python3 "$REPO_ROOT/tests/openclaw-telegram-test.py"
+python3 "$REPO_ROOT/tests/telegram-retirement-test.py"
+python3 "$REPO_ROOT/tests/openclaw-bitwarden-test.py"
+python3 "$REPO_ROOT/tests/openclaw-bitwarden-tty-test.py"
+python3 "$REPO_ROOT/tests/openclaw-access-grants-test.py"
+python3 "$REPO_ROOT/tests/openclaw-access-auth-test.py"
+python3 "$REPO_ROOT/tests/openclaw-access-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-access-notifications-test.py"
+python3 "$REPO_ROOT/tests/openclaw-access-bridge-test.py"
+python3 "$REPO_ROOT/tests/openclaw-access-native-test.py"
+printf '[validate] registered-site grants, private owner sessions and isolated workers\n'
+python3 "$REPO_ROOT/tests/openclaw-site-registry-test.py"
+python3 "$REPO_ROOT/tests/openclaw-sites-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-executor-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-egress-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-transactions-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-transaction-page-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-owner-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-owner-mobile-browser-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-fill-feedback-test.py"
+python3 "$REPO_ROOT/tests/openclaw-sites-owner-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-sessions-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-worker-test.py"
+# Real Chromium and optional parser checks report explicit dependency skips.
+python3 "$REPO_ROOT/tests/openclaw-site-session-worker-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-network-health-test.py"
+python3 "$REPO_ROOT/tests/openclaw-site-worker-browser-test.py"
 python3 "$REPO_ROOT/tests/mattermost-service-test.py"
 python3 "$REPO_ROOT/tests/mattermost-bootstrap-test.py"
 python3 "$REPO_ROOT/tests/mattermost-organization-test.py"
@@ -177,12 +214,14 @@ python3 "$REPO_ROOT/tests/mattermost-agent-accounts-test.py"
 python3 "$REPO_ROOT/tests/mattermost-atlas-membership-test.py"
 python3 "$REPO_ROOT/tests/mattermost-team-verification-test.py"
 python3 "$REPO_ROOT/tests/mattermost-n8n-test.py"
+python3 "$REPO_ROOT/tests/mattermost-household-test.py"
 python3 "$REPO_ROOT/tests/openclaw-team-test.py"
 python3 "$REPO_ROOT/tests/openclaw-team-recovery-test.py"
 python3 "$REPO_ROOT/tests/agent-office-ingress-test.py"
 python3 "$REPO_ROOT/tests/openclaw-child-results-test.py"
 python3 "$REPO_ROOT/tests/openclaw-yield-acknowledgment-test.py"
 python3 "$REPO_ROOT/tests/openclaw-team-calendar-test.py"
+python3 "$REPO_ROOT/tests/openclaw-team-household-test.py"
 python3 "$REPO_ROOT/tests/openclaw-workflow-skills-test.py"
 python3 "$REPO_ROOT/tests/openclaw-mattermost-test.py"
 python3 "$REPO_ROOT/tests/agent-roster-test.py"
@@ -192,6 +231,7 @@ if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/openclaw-n8n-communication.test.mjs"
   node --test "$REPO_ROOT/tests/system-monitoring-ha-workflow.test.mjs"
   node --test "$REPO_ROOT/tests/homeassistant-action-workflow.test.mjs"
+  node --test "$REPO_ROOT/tests/household-routines.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-safety-plugin.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-public-dns.test.mjs"
   node --test "$REPO_ROOT/tests/native-llm-queue.test.mjs"
@@ -584,8 +624,6 @@ AI_FQDN=ai.home.arpa
 AI_LEGACY_FQDN=home-core.invalid
 N8N_FQDN=n8n.home.arpa
 N8N_UPSTREAM=http://192.168.30.122:15678
-HERMES_FQDN=hermes.home.arpa
-HERMES_UPSTREAM=http://172.28.200.1:18790
 CHAT_FQDN=chat.home.arpa
 MODELS_FQDN=models.home.arpa
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -694,9 +732,9 @@ rg -F 'iptables -w -A HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RE
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 rg -F 'iptables -w -A HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
-rg -F 'networking.firewall.interfaces."br-hc-ctrl".allowedTCPPorts = [ 18790 ];' \
+rg -F 'TCP-LISTEN:18792,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18891' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
-rg -F 'TCP-LISTEN:18790,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18789' \
+rg -F 'hc-openclaw-dashboard' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
 rg -F 'speech_gateway=(docker compose --profile speech-proxies' \
   "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null

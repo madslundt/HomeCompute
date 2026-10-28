@@ -26,7 +26,9 @@ ROUTES = {'inbox': 'main', 'personal': 'personal', 'research': 'researcher',
 ACCOUNTS = {'default': ('main', 'atlas'), 'personal': ('personal', 'luna'),
             'researcher': ('researcher', 'nova'), 'engineer': ('engineer', 'apollo'),
             'operator': ('operator', 'orion'), 'shopper': ('shopper', 'vega'), 'keeper': ('keeper', 'ceres'),
-            'travel': ('travel', 'lyra')}
+            'travel': ('travel', 'lyra'), 'cook': ('cook', 'hestia'),
+            'administrator': ('administrator', 'themis'), 'finance': ('finance', 'plutus'),
+            'family': ('family', 'gaia')}
 IDENTIFIER = re.compile(r'[a-z0-9]{26}')
 DIGEST = re.compile(r'[0-9a-f]{64}')
 
@@ -138,12 +140,22 @@ def account_tokens(manifest: dict, base_url: str) -> dict[str, str]:
     return tokens
 
 
-def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url: str) -> tuple[dict, list]:
+def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url: str, *,
+              family_channel_id: str | None = None, family_user_ids: list[str] | None = None) -> tuple[dict, list]:
     if (not isinstance(owner, str) or not IDENTIFIER.fullmatch(owner)
             or not isinstance(channels, dict) or set(channels) != set(ROUTES)
             or any(not isinstance(value, str) or not IDENTIFIER.fullmatch(value) for value in channels.values())
             or len(set(channels.values())) != len(ROUTES) or base_url != BASE_URL):
         raise ValueError('fixed channel identity and destination required')
+    family_users = [owner] if family_user_ids is None else family_user_ids
+    if (not isinstance(family_users, list) or not 1 <= len(family_users) <= 8 or owner not in family_users
+            or any(not isinstance(value, str) or not IDENTIFIER.fullmatch(value) for value in family_users)
+            or len(set(family_users)) != len(family_users)
+            or family_channel_id is not None and (not isinstance(family_channel_id, str)
+                                                 or not IDENTIFIER.fullmatch(family_channel_id)
+                                                 or family_channel_id in channels.values())
+            or family_channel_id is None and family_users != [owner]):
+        raise ValueError('explicit Family channel and authenticated member identities required')
     tokens = account_tokens(accounts, base_url)
     if (before['agents']['defaults']['workspace'] != '/sandbox/.openclaw/workspace'
             or not {agent for agent, _ in ACCOUNTS.values()} <= set(before['agents']['entries'])
@@ -158,6 +170,13 @@ def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url
                    for key, value in existing_accounts.items())
             or old_channel.get('botToken', tokens['default']) != tokens['default']):
         raise ValueError('existing Mattermost credential ownership requires reconciliation')
+    shared = old_channel.get('groupAllowFrom', [owner])
+    if shared != [owner]:
+        if (not isinstance(shared, list) or len(shared) != 2 or owner not in shared
+                or len(set(shared)) != 2
+                or any(not isinstance(x, str) or not IDENTIFIER.fullmatch(x) for x in shared)
+                or existing_accounts.get('default', {}).get('groupAllowFrom') != shared):
+            raise ValueError('existing shared channel audience requires reconciliation')
     channel = copy.deepcopy(old_channel)
     channel.pop('botToken', None)
     # Membership bounds channel access. Atlas answers the exact owner in every
@@ -173,13 +192,28 @@ def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url
                     'replyToModeByChatType': {'direct': 'off', 'group': 'all', 'channel': 'all'},
                     'commands': {'native': False, 'nativeSkills': False},
                     'network': {'dangerouslyAllowPrivateNetwork': True}})
-    channel['accounts'] = {key: {'enabled': True, 'botToken': tokens[key]} for key in ACCOUNTS}
+    channel['accounts'] = {key: {'enabled': key != 'family', 'botToken': tokens[key],
+                                'dmPolicy': 'allowlist', 'allowFrom': [owner]} for key in ACCOUNTS}
     channel['accounts']['default'].update({
         'groupPolicy': 'allowlist', 'groupAllowFrom': [owner],
         'groups': {'*': {'requireMention': False}}, 'chatmode': 'onmessage', 'requireMention': False,
     })
+    # A subsequent roster refresh must retain a separately reviewed shared-room
+    # sender grant; Family membership alone never creates this grant.
+    channel['groupAllowFrom'] = copy.deepcopy(shared)
+    channel['accounts']['default']['groupAllowFrom'] = copy.deepcopy(shared)
     for key in ACCOUNTS.keys() - {'default'}:
         channel['accounts'][key]['groupPolicy'] = 'disabled'
+    # The pinned plugin has no channel-admission allowlist. Gaia therefore has
+    # a shared-only role on every family-account route, including its fallback.
+    # No message on this account may fall through to the private system agent.
+    family = channel['accounts']['family']
+    family.update({'enabled': family_channel_id is not None, 'dmPolicy': 'disabled', 'allowFrom': [],
+                   'groupPolicy': 'allowlist' if family_channel_id else 'disabled',
+                   'groupAllowFrom': sorted(family_users),
+                   'groups': {'*': {'requireMention': True}}, 'chatmode': 'onmessage', 'requireMention': True})
+    if family_channel_id:
+        family['groups'][family_channel_id] = {'requireMention': False}
     after['channels']['mattermost'] = channel
     plugins = after.setdefault('plugins', {})
     plugins['allow'] = list(dict.fromkeys(plugins.get('allow', []) + ['mattermost']))
@@ -190,6 +224,10 @@ def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url
     routes = [{'agentId': agent, 'match': {'channel': 'mattermost', 'accountId': key},
                'session': {'dmScope': 'per-account-channel-peer', 'groupScope': 'per-group'}}
               for key, (agent, _) in ACCOUNTS.items()]
+    if family_channel_id:
+        routes.insert(0, {'agentId': 'family', 'match': {'channel': 'mattermost', 'accountId': 'family',
+                                                     'peer': {'kind': 'channel', 'id': family_channel_id}},
+                          'session': {'dmScope': 'per-account-channel-peer', 'groupScope': 'per-group'}})
     prior_routes = copy.deepcopy(routes)
     for item in prior_routes:
         item['session'].pop('groupScope')
@@ -212,16 +250,81 @@ def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url
     return after, batch
 
 
+def household_channel_access(before: dict, owner: str, partner: str,
+                             allowed_ids: list[str], system_ids: list[str]) -> tuple[dict, list]:
+    """Admit a reviewed adult to Atlas channels; Mattermost membership fences Systems.
+
+    The pinned plugin cannot express per-room sender exclusions. The operator
+    must first reconcile the supplied room IDs against real memberships; these
+    IDs are review evidence, never a claim of native per-room enforcement.
+    """
+    identities = [owner, partner]
+    if (any(not isinstance(x, str) or not IDENTIFIER.fullmatch(x) for x in identities)
+            or owner == partner or not isinstance(allowed_ids, list) or not 1 <= len(allowed_ids) <= 64
+            or not isinstance(system_ids, list) or len(system_ids) != 2
+            or any(not isinstance(x, str) or not IDENTIFIER.fullmatch(x) for x in allowed_ids + system_ids)
+            or len(set(allowed_ids + system_ids)) != len(allowed_ids + system_ids)):
+        raise ValueError('explicit distinct adult and non-Systems room identities required')
+    channel = before['channels']['mattermost']
+    accounts = channel['accounts']
+    audience = sorted(identities)
+    if (channel.get('enabled') is not True or channel.get('baseUrl') != BASE_URL
+            or channel.get('contextVisibility') != 'allowlist'
+            or channel.get('dangerouslyAllowNameMatching') is not False
+            or set(accounts) != set(ACCOUNTS)):
+        raise ValueError('reviewed native channel boundary required')
+    for boundary in (channel, accounts['default']):
+        if (boundary.get('dmPolicy') != 'allowlist' or boundary.get('allowFrom') != [owner]
+                or boundary.get('groupPolicy') != 'allowlist'
+                or sorted(boundary.get('groupAllowFrom', [])) not in ([owner], audience)):
+            raise ValueError('existing owner DM and bounded channel audience required')
+    for key, account in accounts.items():
+        if key in {'default', 'family'}:
+            continue
+        if (account.get('dmPolicy') != 'allowlist' or account.get('allowFrom') != [owner]
+                or account.get('groupPolicy') != 'disabled'):
+            raise ValueError('private specialist admission differs')
+    after = copy.deepcopy(before)
+    after['channels']['mattermost']['groupAllowFrom'] = audience
+    after['channels']['mattermost']['accounts']['default']['groupAllowFrom'] = audience
+    return after, [{'path': path, 'value': audience} for path in (
+        'channels.mattermost.groupAllowFrom', 'channels.mattermost.accounts.default.groupAllowFrom')]
+
+
 def update(owner: str, channels_file: Path, accounts_file: Path, base_url: str = BASE_URL, *,
            apply: bool = False, expected_config_sha256: str | None = None,
-           helper_sha256: str | None = None, runner=subprocess.run) -> dict:
+           helper_sha256: str | None = None, family_channel_id: str | None = None,
+           family_user_ids: list[str] | None = None, runner=subprocess.run) -> dict:
     raw = read_file(CONFIG, 2 * 1024 * 1024)
     before = json.loads(raw)
     outside_workspaces(accounts_file, before)
     outside_workspaces(PRIVATE, before)
     accounts = json.loads(read_file(accounts_file, 16384, private=True))
     channels = json.loads(read_file(channels_file, 16384))
-    after, batch = candidate(before, owner, channels, accounts, base_url)
+    after, batch = candidate(before, owner, channels, accounts, base_url,
+                             family_channel_id=family_channel_id, family_user_ids=family_user_ids)
+    return publish(raw, before, after, batch, apply=apply, expected_config_sha256=expected_config_sha256,
+                   helper_sha256=helper_sha256, runner=runner)
+
+
+def share_channels(owner: str, partner: str, allowed_ids: list[str], system_ids: list[str], *,
+                   apply: bool = False, expected_config_sha256: str | None = None,
+                   helper_sha256: str | None = None, runner=subprocess.run) -> dict:
+    raw = read_file(CONFIG, 2 * 1024 * 1024)
+    before = json.loads(raw)
+    outside_workspaces(PRIVATE, before)
+    after, batch = household_channel_access(before, owner, partner, allowed_ids, system_ids)
+    return publish(raw, before, after, batch, apply=apply, expected_config_sha256=expected_config_sha256,
+                   helper_sha256=helper_sha256, runner=runner, summary={
+                       'mode': 'shared-channel-access', 'shared_channel_ids': sorted(allowed_ids),
+                       'system_channel_ids': sorted(system_ids), 'partner_id': partner,
+                       'systems_exclusion': 'Mattermost-membership', 'private_dm_access_changed': False,
+                       'channel_reload_required': apply, 'restart_required': apply})
+
+
+def publish(raw: bytes, before: dict, after: dict, batch: list, *, apply: bool,
+            expected_config_sha256: str | None, helper_sha256: str | None,
+            runner, summary: dict | None = None) -> dict:
     source_digest = digest(raw)
     if apply and (not expected_config_sha256 or not DIGEST.fullmatch(expected_config_sha256)
                   or expected_config_sha256 != source_digest
@@ -246,7 +349,10 @@ def update(owner: str, channels_file: Path, accounts_file: Path, base_url: str =
                   'plugin_provenance_sha256': provenance_digest,
                   'dm_policy': 'allowlist', 'account_count': len(ACCOUNTS),
                   'channel_contact_account': 'default', 'specialist_channel_policy': 'disabled',
+                  'family_ingress_enabled': after['channels']['mattermost']['accounts']['family']['enabled'],
+                  'family_route_prepared': after['channels']['mattermost']['accounts']['family']['enabled'],
                   'base_url': BASE_URL, 'restart_required': apply}
+        result.update(summary or {})
         if not apply:
             return result
         write_private(PRIVATE / ('backup-' + uuid.uuid4().hex + '.json'), raw)
@@ -269,17 +375,36 @@ def update(owner: str, channels_file: Path, accounts_file: Path, base_url: str =
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--owner-id', required=True)
-    parser.add_argument('--channels-json', required=True, type=Path)
-    parser.add_argument('--accounts-json', required=True, type=Path)
+    parser.add_argument('--channels-json', type=Path)
+    parser.add_argument('--accounts-json', type=Path)
     parser.add_argument('--base-url', default=BASE_URL)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--expected-config-sha256')
     parser.add_argument('--helper-sha256')
+    parser.add_argument('--family-channel-id', help='trusted private Family room; admits the separate shared-only Gaia account')
+    parser.add_argument('--family-user-id', action='append', help='explicit approved Family member IDs; include owner')
+    parser.add_argument('--share-channel-access', action='store_true', help='reviewed additive Atlas channel sender grant; private DMs remain owner-only')
+    parser.add_argument('--partner-id')
+    parser.add_argument('--shared-channel-id', action='append')
+    parser.add_argument('--system-channel-id', action='append', help='exact restricted Infrastructure/OpenClaw room IDs; membership is enforced separately')
     args = parser.parse_args()
     try:
-        result = update(args.owner_id, args.channels_json, args.accounts_json, args.base_url,
-                        apply=args.apply, expected_config_sha256=args.expected_config_sha256,
-                        helper_sha256=args.helper_sha256)
+        if args.share_channel_access:
+            if (args.channels_json or args.accounts_json or args.family_channel_id or args.family_user_id
+                    or args.base_url != BASE_URL):
+                raise ValueError('channel-sharing review cannot regenerate account configuration')
+            result = share_channels(args.owner_id, args.partner_id, args.shared_channel_id,
+                                    args.system_channel_id, apply=args.apply,
+                                    expected_config_sha256=args.expected_config_sha256,
+                                    helper_sha256=args.helper_sha256)
+        else:
+            if (not args.channels_json or not args.accounts_json or args.partner_id
+                    or args.shared_channel_id or args.system_channel_id):
+                raise ValueError('explicit native setup inputs required')
+            result = update(args.owner_id, args.channels_json, args.accounts_json, args.base_url,
+                            apply=args.apply, expected_config_sha256=args.expected_config_sha256,
+                            helper_sha256=args.helper_sha256, family_channel_id=args.family_channel_id,
+                            family_user_ids=args.family_user_id)
         print(json.dumps(result, sort_keys=True))
         return 0
     except (OSError, ValueError, KeyError, TypeError, UnicodeError, subprocess.SubprocessError):

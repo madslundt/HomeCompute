@@ -17,10 +17,11 @@ assigned identity receives a separate managed instruction block. Atlas continues
 to delegate; Gaia uses only shared Family tools without private adult sources or
 delegation. These bundles add no tools, credentials, schedules or service access.
 
-The published full-team bootstrap manifest predates the twelve-role native
-roster. Use the scoped
+The full-team bootstrap manifest now includes the twelve-role team and its
+workflow assignments. Use the scoped
 [`setup-openclaw-workflow-skills.py`](../scripts/setup-openclaw-workflow-skills.py)
-lifecycle for this change rather than reapplying that older full manifest.
+lifecycle for a skills-only change; the full bootstrap reconciles the entire
+manifest and requires separate review.
 It appends only each assigned skill, preserves all other native configuration,
 identity blocks, private memory and unrelated ownership-ledger entries, and
 refuses unreviewed skill overwrites. The managed allowlist in

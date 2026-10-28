@@ -77,6 +77,15 @@ class CategoryPlanTests(unittest.TestCase):
         planned = organization.category_plan(self.categories, self.channels)
         self.assertEqual(organization.category_plan(planned, self.channels), planned)
 
+    def test_shared_sidebar_removes_systems_from_every_group_without_copying_owner_dms(self):
+        blocked = {self.ids[name] for name in organization.GROUPS['Systems']}
+        planned = organization.category_plan(self.categories, self.channels, excluded_channels=blocked)
+        actual = {identifier for category in planned for identifier in category['channel_ids']}
+        self.assertFalse(actual & blocked)
+        self.assertTrue(set(self.ids.values()) - blocked <= actual)
+        direct = next(row for row in planned if row['type'] == 'direct_messages')
+        self.assertEqual(direct['channel_ids'], ['d' * 26])
+
 
 class OrganizationAPI:
     """Model the Mattermost boundaries exercised by the apply operation."""
@@ -151,6 +160,34 @@ class OrganizationAPI:
 
 
 class OrganizationApplyTests(unittest.TestCase):
+    def test_partner_sidebar_removes_archived_memberships_from_custom_groups(self):
+        fixture = CategoryPlanTests()
+        fixture.setUp()
+        blocked = {fixture.ids[name] for name in organization.GROUPS['Systems']}
+        channels = [copy.deepcopy(row) for row in fixture.channels if row['id'] not in blocked]
+        for row in channels:
+            if row['name'] in organization.RETIRED:
+                row['delete_at'] = 1234
+        categories = [copy.deepcopy(row) for row in fixture.categories if row['display_name'] != 'Systems']
+        for index, category in enumerate(categories, 1):
+            category.update(id=f'{index + 200:026d}', user_id=OrganizationAPI.owner, team_id=OrganizationAPI.team)
+        api = OrganizationAPI(self, channels, categories)
+        allowed = {row['id'] for row in channels if row['type'] in {'O', 'P'} and not row['delete_at']}
+        sync = organization.load('partner_sidebar_regression', 'sync-mattermost-atlas.py')
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary).resolve() / 'private'
+            directory.mkdir(mode=0o700)
+            organization.b.save(directory / 'credentials.json', {'operator_id': 'e' * 26})
+            organization.b.save(directory / 'household-access.json', {
+                'owner_id': 'e' * 26, 'partner_id': api.owner, 'team_id': api.team,
+                'audience_policy': 'all-except-systems', 'shared_channel_ids': sorted(allowed),
+                'system_channel_ids': sorted(blocked)})
+            with patch.object(organization, 'load', return_value=sync), patch.object(sync, 'operator', return_value=api):
+                organization.organize_partner(directory, apply=True)
+            shown = {value for category in api.categories for value in category['channel_ids']}
+            self.assertTrue(set(fixture.retired).isdisjoint(shown))
+            self.assertTrue(allowed <= shown)
+
     def test_apply_preserves_history_and_delivery_mapping_and_retries_without_reorganizing(self):
         fixture = CategoryPlanTests()
         fixture.setUp()
@@ -169,9 +206,15 @@ class OrganizationApplyTests(unittest.TestCase):
             organization.b.save(directory / 'channels.json', original_map)
             channel_export = {'owner_id': api.owner, 'channels': original_map, 'base_url': organization.b.TRANSPORT_SITE}
             organization.b.save(directory / 'openclaw-channel.json', channel_export)
-            delivery_map = {'team_id': api.team, 'channels': {'home': fixture.ids['home'], 'energy': fixture.ids['energy']}}
+            delivery_map = {'team_id': api.team, 'channels': {'home': fixture.ids['home'], 'energy': fixture.ids['energy'],
+                           **{name: original_map[name] for name in organization.CONSOLIDATED}}}
             organization.b.save(directory / 'n8n-channels.json', delivery_map)
-            delivery_bytes = (directory / 'n8n-channels.json').read_bytes()
+            expected_delivery = copy.deepcopy(delivery_map)
+            for source, target in organization.CONSOLIDATED.items():
+                expected_delivery['channels'][source] = fixture.ids[target]
+                expected_delivery['channels'][target] = fixture.ids[target]
+            access = {'shared_channel_ids': list(original_map.values())}
+            organization.b.save(directory / 'household-access.json', access)
             with patch.object(organization, 'load', return_value=sync), patch.object(sync, 'operator', return_value=api):
                 receipt = organization.organize(directory, apply=True)
                 self.assertTrue(receipt['applied'])
@@ -191,18 +234,22 @@ class OrganizationApplyTests(unittest.TestCase):
                 for source in organization.RETIRED:
                     self.assertGreater(api.channels[original_map[source]]['delete_at'], 0)
                 self.assertEqual(api.history, history)
+                retired_ids = {original_map[name] for name in organization.CONSOLIDATED}
+                actual_access = organization.b.read_private(directory / 'household-access.json')['shared_channel_ids']
+                self.assertFalse(set(actual_access) & retired_ids)
+                self.assertTrue({fixture.ids['personal'], fixture.ids['shopping']} <= set(actual_access))
                 expected_map = {name: identifier for name, identifier in original_map.items() if name not in organization.RETIRED}
                 self.assertEqual(organization.b.read_private(directory / 'channels.json'), expected_map)
                 self.assertEqual(organization.b.read_private(directory / 'openclaw-channel.json'),
                                  {**channel_export, 'channels': expected_map})
-                self.assertEqual((directory / 'n8n-channels.json').read_bytes(), delivery_bytes)
+                self.assertEqual(organization.b.read_private(directory / 'n8n-channels.json'), expected_delivery)
                 before_retry = copy.deepcopy((api.channels, api.categories, api.order, api.history))
                 first_calls = len(api.calls)
                 organization.organize(directory, apply=True)
                 self.assertEqual((api.channels, api.categories, api.order, api.history), before_retry)
                 self.assertEqual([(method, path) for method, path, _ in api.calls[first_calls:] if method != 'GET'],
                                  [('PUT', api.prefix + '/order')])
-                self.assertEqual((directory / 'n8n-channels.json').read_bytes(), delivery_bytes)
+                self.assertEqual(organization.b.read_private(directory / 'n8n-channels.json'), expected_delivery)
                 self.assertTrue(all(not (method == 'POST' and path in {'/posts', '/channels'})
                                     for method, path, _ in api.calls))
 

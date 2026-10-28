@@ -30,6 +30,34 @@ The dedicated host SSH key permits only fixed native chat/health commands in
 the guest and reading Spark's maintenance report. It grants no arbitrary shell
 or forwarding; the Mac operator key was not copied. n8n remains the sole sender.
 Off-host backup/restore remains a separate household rollout requirement.
+
+## Mattermost voice messages
+
+Enabled on 2026-10-27. Send an audio attachment or voice message to the existing
+Mattermost assistant. Native OpenClaw transcribes it through local Whisper Turbo
+and adds a Danish WAV attachment to the final reply. Typed messages keep text
+replies. Incoming recordings are limited to 10 MB and 60 seconds. The speech
+bridge uses the existing managed MCP credential and exact audio POST endpoints;
+recordings and synthesis requests have no external-provider fallback.
+
+`scripts/setup-openclaw-speech.py` validates a private native candidate before
+`--apply`; run its `--network-policy` mode on the agents VM to add the speech
+endpoints and Mattermost file-upload permission. The installed Mattermost plugin
+does not accept channel-level TTS settings, so the helper requires Mattermost
+to be the only enabled channel and uses native root `tts.auto=inbound` with
+`mode=final`. Audio understanding is explicitly scoped to Mattermost. Reconcile
+speech scope before enabling another channel. Existing session-level `/tts`
+preferences can override the configured default.
+
+The trusted host adapter accepts only bounded local models and the approved
+`danish-default` voice in WAV format. Plapre output is checked by Danish Hviske
+before delivery, with at most one resynthesis after a mismatch. A second mismatch,
+GPU timeout, or unavailable verifier uses the existing CPU Piper Danish voice.
+If synthesis is unavailable, native OpenClaw retains its text reply. The Plapre
+HTTP shim uses the fixed proxy address because Docker network restoration can
+lose its Compose DNS alias. Setup preserves private configuration and policy
+backups; no conversation or credential reset is needed.
+
 ## Use the working console
 
 On the existing operator Mac, from the HomeCompute checkout:

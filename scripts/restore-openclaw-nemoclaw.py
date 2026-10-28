@@ -25,6 +25,7 @@ GATEWAY = "nemoclaw-9123"
 IMAGE = "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:51d9fe7e0097931ce96f72f3c7dea522c129c569d91680d2e11989ea70a37d8a"
 VOLUME = "/var/lib/docker/volumes/nemoclaw-openclaw-state-v1-agent-openclaw/_data"
 MEMORY = 8 * 1024 ** 3
+CPUS = 2
 TOOLS = {"session_status", "memory_search", "memory_get", "write"}
 BLOCKED_TOOLS = TOOLS - {"session_status"}
 DENIES = {"homecompute_task_submit", "homecompute_task_status", "homecompute_task_cancel",
@@ -253,12 +254,13 @@ class Transaction:
         return output
 
     def inspect(self, *, old: bool = False) -> dict[str, Any]:
-        fields = '{"status":{{json .State.Status}},"image":{{json .Config.Image}},"memory":{{.HostConfig.Memory}},"swap":{{.HostConfig.MemorySwap}},"gpu":{{json .HostConfig.DeviceRequests}},"mounts":{{json .Mounts}}}'
+        fields = '{"status":{{json .State.Status}},"image":{{json .Config.Image}},"memory":{{.HostConfig.Memory}},"swap":{{.HostConfig.MemorySwap}},"cpus":{{.HostConfig.NanoCpus}},"gpu":{{json .HostConfig.DeviceRequests}},"mounts":{{json .Mounts}}}'
         data = json.loads(self.command(["/usr/bin/docker", "inspect", "--format", fields,
                                        self.ctx.container], "transaction-identity"))
         if (data["image"] not in (IMAGE, "sha256:" + IMAGE.rsplit("sha256:", 1)[1]) or
-                data["memory"] != MEMORY or data["swap"] != MEMORY or data["gpu"]):
-            raise RecoveryRefused("container-image-memory-gpu-mismatch")
+                data["memory"] != MEMORY or data["swap"] != MEMORY
+                or data["cpus"] != CPUS * 1_000_000_000 or data["gpu"]):
+            raise RecoveryRefused("container-image-cpu-memory-gpu-mismatch")
         mount = [item for item in data["mounts"] if item.get("Destination") == "/sandbox/.openclaw"]
         if len(mount) != 1 or mount[0].get("Type") != "volume" or mount[0].get("Source") != VOLUME:
             raise RecoveryRefused("exact-state-volume-required")
@@ -361,8 +363,8 @@ print("config-owner-mode-verified")'''
             self.ctx.check_registry()
             self.record.update(newId=new_id, newGeneration=generation)
             self.stage("replacement-created")
-            # Prevent any extra swap allowance in the newly created container.
-            self.command(["/usr/bin/docker", "update", "--memory", str(MEMORY),
+            # Restore the approved CPU/memory budget without extra swap allowance.
+            self.command(["/usr/bin/docker", "update", "--cpus", str(CPUS), "--memory", str(MEMORY),
                           "--memory-swap", str(MEMORY), self.ctx.container], "cap-replacement-memory")
             self.inspect()
             native_path = backup_root / "replacement-native.json"

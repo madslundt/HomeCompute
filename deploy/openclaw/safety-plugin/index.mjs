@@ -69,7 +69,8 @@ export function browserPolicy(event) {
   }
 }
 
-const SPECIALISTS = new Set(['personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel']);
+const SPECIALISTS = new Set(['personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel',
+  'cook', 'administrator', 'finance', 'family']);
 const COORDINATOR_DENIED = { block: true, blockReason: 'Coordinator domain execution is blocked. Delegate to the appropriate existing specialist via sessions_spawn with mode="run", context="isolated", then await its result with sessions_yield.' };
 
 export function coordinatorPolicy(event, ctx) {

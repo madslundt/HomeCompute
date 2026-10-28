@@ -1,10 +1,10 @@
 # HomeCompute
 
-> **Observed live state (2026-09-29):** `home-core` and `home-spark` are
-> deployed. n8n production remains on `unsloth/Qwen3.6-35B-A3B-NVFP4` at
-> revision `739af1e7aac320af1682ed1e0cce369af4c5265d`, served as
-> `automation-moe`. Flash-Next is not production-qualified. See
-> [current state](docs/current-state.md) for the exact snapshot and open gaps.
+> **Observed live state (2026-10-28):** Home Assistant, n8n 2.46.0 and the
+> twelve-role OpenClaw deployment are running. `automation-moe` and `home`
+> reach the current local Flash-Next backend; full qualification remains open.
+> Telegram is outbound-only and mail intake is paused. See
+> [current state](docs/current-state.md) for verified repairs and remaining gaps.
 
 HomeCompute is a local-first AI platform for private inference, automation,
 voice, meetings, coding, research, and personal agents.
@@ -24,10 +24,9 @@ model names directly.
 > not a turnkey installer. Off-host restore testing, direct private-link
 > cutover, production-run evidence, and complete model failover remain open.
 >
-> The model registry and generated LiteLLM route section now exist in source;
-> the generated configuration has not been applied to the live gateway or
-> n8n. See the [routing baseline](docs/model-routing-refactor-baseline-2026-09-27.md)
-> and [ADR-024](docs/adr/024-model-artifact-deployment-capability-separation.md).
+> Model routing is live. The [September routing baseline](docs/model-routing-refactor-baseline-2026-09-27.md)
+> is historical; [ADR-024](docs/adr/024-model-artifact-deployment-capability-separation.md)
+> describes the registry contract.
 
 ![Target platform overview](diagrams/gb10-platform.svg)
 
@@ -48,6 +47,9 @@ Logical aliases are stable contracts. A model may back several aliases only
 after it passes each use case's quality, safety, latency, and recovery tests.
 
 ## GB10 model state
+
+The dated qualification handoff below is historical. Use the October live
+snapshot in [current state](docs/current-state.md) for deployed routes.
 
 **CURRENT:** Qwen3.6 remains the production automation model at the immutable
 revision shown above. Preserve its artifact as the rollback baseline. Its live

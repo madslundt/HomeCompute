@@ -2,6 +2,7 @@
 	admin off
 	auto_https disable_redirects
 	https_port {$CADDY_HTTPS_PORT}
+	default_sni 192.168.30.122
 	servers {
 		protocols h1 h2
 	}
@@ -344,6 +345,14 @@ import /config/video-api/Caddyfile
 	import ai_api
 }
 
+# Native OpenClaw dashboard on the home LAN. The IP origin is accepted by
+# OpenClaw's private same-origin checks; authentication and pairing stay native.
+192.168.30.122 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy 172.28.200.1:18792
+}
+
 agents.home.arpa {
 	tls internal
 	encode zstd gzip
@@ -431,26 +440,6 @@ chessmate.home.arpa {
 			response_header_timeout 10m
 		}
 	}
-	log {
-		output stdout
-		format filter {
-			request>uri delete
-			request>headers delete
-		}
-	}
-}
-
-{$HERMES_FQDN} {
-	tls internal
-	encode zstd gzip
-
-	reverse_proxy {$HERMES_UPSTREAM} {
-		transport http {
-			dial_timeout 3s
-			response_header_timeout 10m
-		}
-	}
-
 	log {
 		output stdout
 		format filter {

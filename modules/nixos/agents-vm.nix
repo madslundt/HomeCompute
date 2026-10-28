@@ -262,7 +262,6 @@ in
         53
         443
         inferenceBridgePort
-        18789
       ];
       allowedUDPPorts = [ 53 ];
     };

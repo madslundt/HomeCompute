@@ -43,6 +43,12 @@
         href: https://models.home.arpa/control/
         description: Text, images and video · LLM returns after 30 minutes idle
 
+    - OpenClaw:
+        id: homecore-openclaw
+        icon: mdi-robot-outline
+        href: https://192.168.30.122/
+        description: Native dashboard · agents, sessions and settings
+
     - Mattermost:
         id: homecore-mattermost
         icon: mattermost.png
@@ -54,12 +60,6 @@
         icon: open-webui.png
         href: https://chat.home.arpa/
         description: Chat with local AI models
-
-    - Mads' Hermes:
-        id: homecore-hermes-mads
-        icon: mdi-robot-outline
-        href: https://hermes.home.arpa/
-        description: Your private AI assistant · sign-in required
 
 - Administration:
     - n8n:

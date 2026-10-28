@@ -66,8 +66,8 @@ class RelaySetupTest(unittest.TestCase):
         self.assertEqual({p.name: p.read_bytes() for p in setup.CA.iterdir()}, before_ca)
         self.assertNotIn(tokens.decode(), json.dumps(first))
         values = json.loads(tokens)
-        self.assertEqual(set(values), {'openclaw', 'hermes'})
-        self.assertNotEqual(values['openclaw'], values['hermes'])
+        self.assertEqual(set(values), {'openclaw'})
+        self.assertGreaterEqual(len(values['openclaw']), 32)
         self.assertEqual(setup.TOKENS.stat().st_mode & 0o777, 0o600)
         self.assertEqual((setup.TLS / 'server.key').stat().st_mode & 0o777, 0o400)
         self.assertEqual(setup.TLS.stat().st_mode & 0o777, 0o750)
@@ -76,6 +76,15 @@ class RelaySetupTest(unittest.TestCase):
         signer = next(args for args in self.commands if '-CAkey' in args)
         self.assertIn('-set_serial', signer); self.assertNotIn('-CAcreateserial', signer)
         self.assertEqual(signer[signer.index('-days') + 1], '90')
+
+    def test_legacy_credentials_drop_hermes_and_preserve_openclaw_atomically(self):
+        legacy = {'openclaw': 'existing-openclaw-' + 'x' * 40, 'hermes': 'retired-hermes-' + 'y' * 40}
+        setup.TOKENS.write_text(json.dumps(legacy))
+        setup.TOKENS.chmod(0o600)
+        self.assertTrue(setup.native_tokens())
+        self.assertEqual(json.loads(setup.TOKENS.read_bytes()), {'openclaw': legacy['openclaw']})
+        self.assertEqual(setup.TOKENS.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(setup.native_tokens())
 
     def test_symlink_and_malformed_token_targets_fail_closed(self):
         setup.TOKENS.symlink_to(setup.CA / 'root.key')

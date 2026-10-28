@@ -21,7 +21,7 @@ class CalendarTeamTests(unittest.TestCase):
         self.fixture.setUp()
         self.setup = fixtures.setup
         self.team = self.fixture.team
-        self.installed = self.setup.candidate(self.fixture.before, self.team, enable_calendar_upgrade=True, enable_retrieval_upgrade=True)
+        self.installed = fixtures.reviewed_candidate(self.fixture.before, self.team)
         self.legacy = copy.deepcopy(self.installed)
         calendar = self.setup.CALENDAR_TOOLS
         for entry in self.legacy['agents']['entries'].values():
@@ -34,13 +34,17 @@ class CalendarTeamTests(unittest.TestCase):
         self.legacy['tools']['subagents']['tools']['allow'] = sorted(
             set(self.legacy['tools']['subagents']['tools']['allow']) - calendar)
 
+    def candidate(self, *args, **kwargs):
+        # Calendar tests retain the separately reviewed optional mail fixture.
+        return self.setup.candidate(*args, enable_mail_upgrade=True, **kwargs)
+
     def tearDown(self):
         self.fixture.tearDown()
 
     def test_upgrade_requires_review_and_preserves_other_roles_and_protected_config(self):
         with self.assertRaisesRegex(self.setup.TeamRefused, 'reviewed-calendar-upgrade-required'):
-            self.setup.candidate(self.legacy, self.team)
-        after = self.setup.candidate(self.legacy, self.team, enable_calendar_upgrade=True)
+            self.candidate(self.legacy, self.team)
+        after = self.candidate(self.legacy, self.team, enable_calendar_upgrade=True)
         self.assertEqual(len(self.setup.CALENDAR_TOOLS), 6)
         for role, entry in after['agents']['entries'].items():
             permitted = set(entry['tools']['allow']) - set(entry['tools']['deny'])
@@ -51,15 +55,15 @@ class CalendarTeamTests(unittest.TestCase):
             self.assertEqual('google-calendar' in entry['skills'], role == 'personal')
         for section in self.setup.PROTECTED:
             self.assertEqual(after.get(section), self.legacy.get(section))
-        self.assertEqual(self.setup.candidate(after, self.team), after)
+        self.assertEqual(self.candidate(after, self.team), after)
 
     def test_missing_existing_roster_ceiling_cannot_be_recreated_by_upgrade_flag(self):
         for enabled in (False, True):
             before = copy.deepcopy(self.legacy); before['tools'].pop('subagents')
             with self.assertRaisesRegex(self.setup.TeamRefused, 'finite-child-tool-policy-required'):
-                self.setup.candidate(before, self.team, enable_calendar_upgrade=enabled)
+                self.candidate(before, self.team, enable_calendar_upgrade=enabled)
         with self.assertRaisesRegex(self.setup.TeamRefused, 'reviewed-calendar-upgrade-required'):
-            self.setup.candidate(self.fixture.before, self.team)
+            self.candidate(self.fixture.before, self.team)
 
     def test_upgrade_cannot_revive_legacy_global_or_child_revocations(self):
         name = next(iter(self.setup.SHOPPING_READ))
@@ -70,7 +74,7 @@ class CalendarTeamTests(unittest.TestCase):
             if location == 'global_allow': before['tools']['alsoAllow'].remove(name)
             if location == 'global_deny': before['tools']['deny'].append(name)
             with self.assertRaises(self.setup.TeamRefused):
-                self.setup.candidate(before, self.team, enable_calendar_upgrade=True)
+                self.candidate(before, self.team, enable_calendar_upgrade=True)
 
     def test_partial_calendar_or_later_revocations_are_never_an_upgrade(self):
         name = next(iter(self.setup.CALENDAR_TOOLS))
@@ -83,12 +87,12 @@ class CalendarTeamTests(unittest.TestCase):
                 if location == 'global_deny': before['tools']['deny'].append(name)
                 if location in {'personal', 'main'}: before['agents']['entries'][location]['tools']['allow'].remove(name)
                 with self.assertRaises(self.setup.TeamRefused):
-                    self.setup.candidate(before, self.team, enable_calendar_upgrade=enabled)
+                    self.candidate(before, self.team, enable_calendar_upgrade=enabled)
         revoked = copy.deepcopy(self.installed)
         revoked['tools']['subagents']['tools']['allow'] = sorted(
             set(revoked['tools']['subagents']['tools']['allow']) - self.setup.CALENDAR_TOOLS)
         with self.assertRaises(self.setup.TeamRefused):
-            self.setup.candidate(revoked, self.team, enable_calendar_upgrade=True)
+            self.candidate(revoked, self.team, enable_calendar_upgrade=True)
 
     def test_unknown_child_grant_and_calendar_denial_remain_fail_closed(self):
         for location in ('unknown', 'child', 'global', 'personal'):
@@ -98,7 +102,7 @@ class CalendarTeamTests(unittest.TestCase):
             if location == 'global': before['tools']['deny'] += list(self.setup.CALENDAR_TOOLS)
             if location == 'personal': before['agents']['entries']['personal']['tools']['deny'] += list(self.setup.CALENDAR_TOOLS)
             with self.assertRaises(self.setup.TeamRefused):
-                self.setup.candidate(before, self.team, enable_calendar_upgrade=True)
+                self.candidate(before, self.team, enable_calendar_upgrade=True)
 
     def test_managed_calendar_skill_installs_only_for_luna_and_preserves_memory(self):
         self.fixture.config.write_text(json.dumps(self.legacy))
@@ -162,13 +166,16 @@ class CalendarTeamTests(unittest.TestCase):
         legacy['tools']['subagents']['tools']['allow'] = sorted(
             set(legacy['tools']['subagents']['tools']['allow']) - retrieval)
         with self.assertRaisesRegex(self.setup.TeamRefused, 'reviewed-retrieval-upgrade-required'):
-            self.setup.candidate(legacy, self.team)
-        after = self.setup.candidate(legacy, self.team, enable_retrieval_upgrade=True)
+            self.candidate(legacy, self.team)
+        after = self.candidate(legacy, self.team, enable_retrieval_upgrade=True)
         self.assertEqual(after, self.installed)
         expected = {'main': retrieval, 'personal': {self.setup.MCP_PREFIX + 'school_search'},
                     'researcher': {self.setup.MCP_PREFIX + 'research_search'},
                     'operator': {self.setup.MCP_PREFIX + 'operations_search'},
-                    'travel': {self.setup.MCP_PREFIX + 'research_search'}}
+                    'travel': {self.setup.MCP_PREFIX + 'research_search'},
+                    'cook': {self.setup.MCP_PREFIX + 'research_search'},
+                    'administrator': {self.setup.MCP_PREFIX + 'research_search'},
+                    'finance': {self.setup.MCP_PREFIX + 'research_search'}}
         for role, entry in after['agents']['entries'].items():
             allowed = set(entry['tools']['allow']) - set(entry['tools']['deny'])
             self.assertEqual(allowed & retrieval, expected.get(role, set()))
@@ -184,19 +191,19 @@ class CalendarTeamTests(unittest.TestCase):
             elif location == 'personal': revoked['agents']['entries']['personal']['tools']['allow'].remove(name)
             else: revoked['tools']['deny'].append(name)
             with self.subTest(location=location), self.assertRaises(self.setup.TeamRefused):
-                self.setup.candidate(revoked, self.team, enable_retrieval_upgrade=True)
+                self.candidate(revoked, self.team, enable_retrieval_upgrade=True)
 
     def test_additive_travel_role_keeps_existing_specialist_permissions_and_native_state(self):
         before = copy.deepcopy(self.installed)
         before['agents']['entries'].pop('travel')
         before['agents']['entries']['main']['subagents']['allowAgents'].remove('travel')
         before['agents']['defaults']['subagents']['maxChildrenPerAgent'] = 6
-        after = self.setup.candidate(before, self.team)
-        for role in self.setup.LEAVES[:-1]:
+        after = self.candidate(before, self.team)
+        for role in set(self.setup.LEAVES) - {'travel'}:
             self.assertEqual(after['agents']['entries'][role], before['agents']['entries'][role])
         for section in self.setup.PROTECTED:
             self.assertEqual(after.get(section), before.get(section))
-        self.assertEqual(self.setup.candidate(after, self.team), after)
+        self.assertEqual(self.candidate(after, self.team), after)
 
     def test_managed_travel_skill_installs_only_for_travel_without_touching_memory(self):
         self.fixture.config.write_text(json.dumps(self.installed))

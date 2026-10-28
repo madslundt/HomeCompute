@@ -98,7 +98,6 @@ flowchart LR
   subgraph vm[Existing isolated agents VM on home-core]
     oc[OpenClaw in its own NemoClaw/OpenShell sandbox]
     route[OpenShell managed inference and credential custody]
-    hermes[Existing Hermes sandbox]
     memory[Built-in Markdown memory and FTS]
   end
   broker[Trusted home-core task broker and SQLite ledger]
@@ -115,16 +114,14 @@ flowchart LR
   proxy --> openai[Codex supported OpenAI backend]
   broker -->|draft PR only| github[GitHub human review and independent CI]
   oc --> memory
-  hermes -. remains independent .-> user
 ```
 
 The observed K15 is `home-core`, so selecting a separate K15 is not an available
 placement decision. The recommended household target is **a separate OpenClaw
-NemoClaw/OpenShell sandbox in the existing agents VM on home-core**, alongside
-Hermes. NemoClaw/OpenShell provides managed inference credential custody and
+NemoClaw/OpenShell sandbox in the existing agents VM on home-core**. NemoClaw/OpenShell provides managed inference credential custody and
 filesystem/network policy; it does not replace the broker's human approval
 boundary. See [the pinned NemoClaw assessment](openclaw-nemoclaw.md) before any
-rollout. Do not install OpenClaw into the running Hermes sandbox or on Spark.
+rollout. Keep OpenClaw in its own sandbox and keep Spark inference-only.
 
 The optional NixOS module and Compose stack here are an isolated **validation
 fallback**, disabled by default. They stage restricted containers directly on
@@ -132,8 +129,12 @@ home-core and do not claim VM-strength isolation. Do not enable this fallback
 as the household deployment merely because its schema passes. A NemoClaw rollout
 must use its managed `inference.local` route and a policy-scoped broker adapter;
 the Compose proxy/model relay are unnecessary on that managed assistant path.
-Keeping both assistants permanently needs an explicit owner/product decision;
-this pilot evaluates OpenClaw without silently replacing Hermes.
+The owner retired the unused Hermes sandbox, gateway and dashboard on
+2026-10-27. OpenClaw retains the shared agents VM, operator account and
+NemoClaw/OpenShell tooling. The VM budget is now 16 GiB: 8 GiB for OpenClaw,
+4 GiB for its browser and 4 GiB for guest services. OpenClaw may use up to two
+of the guest's four vCPUs; Docker preserves that limit across restarts, and the
+state-preserving replacement helper reapplies it.
 
 Choose noninteractive `codex exec` with JSONL events for the first repair lane:
 it supports a fixed command, bounded lifetime, persistent session identity and
@@ -230,7 +231,7 @@ results are untrusted worker output; publishing still requires independent CI.
 ## Setup after explicit approval
 
 1. Review this diff, the pinned NemoClaw target, the isolation acceptance checklist and existing
-   Hermes resource reservation. Choose a **synthetic-only** first deployment;
+   OpenClaw and browser resource limits. Choose a **synthetic-only** first deployment;
    household memory also requires off-host backups and a successful restore.
 2. Decide unattended Codex authentication. Supported API-key authentication
    is simplest for a headless service; a dedicated project/service account

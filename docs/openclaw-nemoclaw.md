@@ -351,8 +351,31 @@ acceptance. Keep household data and autonomous actions disabled.
 
 ### Access, stop and rollback
 
-The dashboard forward stays on guest loopback. From the Mac, use the existing
-operator key and jump host:
+The Homepage OpenClaw card opens the native dashboard at
+`https://192.168.30.122/` on the home LAN. Caddy uses the existing HomeCompute
+HTTPS CA and preserves Host, Origin and client forwarding headers. Remote
+Tailscale clients can use `https://home-core.tail479ad.ts.net:18791/`.
+Both paths retain native gateway authentication and browser device pairing;
+Homepage never contains a token or authenticated dashboard URL.
+
+The native OpenShell forward remains on guest loopback. A guest-side service
+binds only `10.77.20.2:18891`, forwarding to `127.0.0.1:18791`. Install it in the
+guest after native onboarding:
+
+```bash
+sudo install -m 0644 deploy/openclaw/nemoclaw/homecompute-openclaw-dashboard-proxy.service \
+  /etc/systemd/system/homecompute-openclaw-dashboard-proxy.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now homecompute-openclaw-dashboard-proxy.service
+```
+
+The NixOS host owns the restricted Caddy bridge proxy on `172.28.200.1:18792`
+and the private Tailscale Serve route. The LAN IP and Tailscale hostname are
+accepted by the pinned gateway's private same-origin check, so these entry
+points require no gateway origin-policy change. Do not strip client forwarding
+headers or treat remote browsers as loopback clients to bypass pairing.
+
+The existing SSH tunnel remains available as a local fallback:
 
 ```bash
 ssh -N -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
