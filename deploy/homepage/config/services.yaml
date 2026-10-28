@@ -39,7 +39,7 @@
 
     - Spark models:
         id: homecore-comfyui
-        icon: mdi-auto-fix
+        icon: mdi-image-edit-outline
         href: https://models.home.arpa/control/
         description: Text, images and video · LLM returns after 30 minutes idle
 

@@ -101,6 +101,11 @@ The operator still reviews and merges changes before deployment. GitHub
 Actions only validates and proposes dependency updates; it has no SSH access
 to the home network.
 
+When an approved maintained image or Homepage configuration blocks a full
+release, follow [release override reconciliation](operations/release-override-reconciliation.md).
+Capture the running settings in source first, then use its hash-bound archival
+lifecycle. Never discard an override marker to bypass a deployment guard.
+
 ## Deploy one host
 
 ```bash

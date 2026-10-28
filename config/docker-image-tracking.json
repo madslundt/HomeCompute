@@ -33,7 +33,7 @@
           "source_lane": "registry"
         },
         "homecompute-mattermost-mattermost-1": {
-          "tracked_tag": "11.7.14",
+          "tracked_tag": "11.11.3",
           "source_lane": "registry"
         },
         "homecompute-mattermost-postgres-1": {
