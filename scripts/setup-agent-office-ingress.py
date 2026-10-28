@@ -206,7 +206,8 @@ def main():
             link=wants/UNITS[1]
             if not link.is_symlink():link.symlink_to(ATTACHED/UNITS[1])
             call(['systemctl','daemon-reload'])
-            call(['systemctl','start',UNITS[1]])
+            changed_unit=previous[str(ATTACHED/UNITS[1])] not in (None,str(units[UNITS[1]]))
+            call(['systemctl','restart' if changed_unit else 'start',UNITS[1]])
             for path,old,new in zip(paths,before,after):
                 if old!=new:in_place(path,old,new);changed.append((path,old,new))
             if before[0]!=after[0]:call(['docker','restart',CADDY],timeout=90)

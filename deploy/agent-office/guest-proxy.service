@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=hermes-operator
 Group=hermes-operator
-ExecStart=/usr/bin/socat TCP4-LISTEN:18802,bind=10.77.20.2,reuseaddr,fork TCP4:127.0.0.1:18802
+ExecStart=/usr/bin/socat TCP4-LISTEN:18803,bind=10.77.20.2,reuseaddr,fork TCP4:127.0.0.1:18802
 Restart=on-failure
 RestartSec=3s
 NoNewPrivileges=true

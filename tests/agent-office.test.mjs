@@ -204,6 +204,9 @@ test('DNS, Homepage and private HTTPS path agree and retain a Caddy-only bridge'
   const nix = await readFile(new URL('modules/nixos/agent-office.nix', root), 'utf8');
   assert.match(nix, /-s 172\.28\.200\.2\/32 -d 172\.28\.200\.1\/32/);
   assert.ok(!nix.includes('allowedTCPPorts'));
+  assert.match(nix, /TCP4:10\.77\.20\.2:18803/);
+  const guest = await readFile(new URL('deploy/agent-office/guest-proxy.service', root), 'utf8');
+  assert.match(guest, /TCP4-LISTEN:18803,bind=10\.77\.20\.2,reuseaddr,fork TCP4:127\.0\.0\.1:18802/);
 });
 
 test('plugin registers observation hooks without modifying agent policies', () => {

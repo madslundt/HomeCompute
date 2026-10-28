@@ -240,13 +240,18 @@ The selected release's normal host deployment is:
 ./scripts/homecompute deploy home-core --revision FULL_SHA
 ```
 
-The path is Caddy → `172.28.200.1:18802` → `10.77.20.2:18802` → the guest's
+The path is Caddy → `172.28.200.1:18802` → `10.77.20.2:18803` → the guest's
 OpenShell loopback forward → the observer's `127.0.0.1:18802`. The NixOS firewall
 admits only Caddy's fixed `172.28.200.2` source on the control bridge. Caddy accepts
 approved LAN/tailnet clients and rewrites Host for the fixed loopback upstream;
 Origin remains validated and every page/asset/API request requires the separate
 operator password. A local preview refuses the publication marker, so connecting
 Caddy to an unconfigured preview fails closed. No password enters Homepage.
+
+The guest bridge proxy uses port 18803 because native OpenShell forwarding
+checks port ownership across all interfaces before binding loopback port 18802.
+Using the same number on the bridge would prevent native forwarding from
+starting or recovering. No additional LAN listener is introduced.
 
 ### Verify and roll back
 
