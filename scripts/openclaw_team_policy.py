@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from openclaw_access_policy import ACCESS_TOOLS, ACCESS_ROLES, LEGACY_ACCESS_TOOLS, candidate as _access_candidate, present as _access_present
+from openclaw_workflow_skills import SKILLS as WORKFLOW_SKILLS, RETAINED_ROLES
 from openclaw_integration_policy import TOOLS as INTEGRATION_TOOLS, candidate as _integration_candidate, present as _integration_present
 
 ROSTER = ('main', 'personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel')
@@ -49,7 +51,7 @@ ROLE_SERVICE_TOOLS = {role: tools | ROLE_HOUSEHOLD_TOOLS[role]
                       for role, tools in ROLE_SERVICE_READ.items()}
 MANAGED_SKILLS = {'homecompute-operations', 'household-summary', 'incident-triage',
                   'household-shopping', 'discount-shopping', 'household-storage', 'google-calendar', 'travel-adventures',
-                  'public-web-research'}
+                  'public-web-research'} | WORKFLOW_SKILLS
 REVIEWED_SKILLS = MANAGED_SKILLS | {'browser-automation'}
 FORBIDDEN = {'exec', 'process', 'sessions_send', 'sessions_list', 'sessions_history', 'sessions_search',
              'github_publish', 'canvas', 'screen', 'terminal', 'group:nodes', 'group:automation', 'group:messaging'}
@@ -57,6 +59,15 @@ PROTECTED = ('models', 'gateway', 'proxy', 'plugins', 'mcp', 'browser', 'acp', '
              'channels', 'bindings')
 class TeamRefused(Exception):
     """Fixed diagnostic only; never disclose native configuration or credentials."""
+
+
+def access_present(before: dict[str, Any]) -> bool:
+    return _access_present(before, finite)
+
+
+def access_candidate(before: dict[str, Any], *, enable_access_upgrade: bool = False) -> dict[str, Any]:
+    return _access_candidate(before, finite=finite, roster=ROSTER + RETAINED_ROLES, refused=TeamRefused,
+                             enable_access_upgrade=enable_access_upgrade)
 
 
 def digest(value: Any) -> str:
