@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "route_version": "2026-09-30-qwen38-alias-trial",
+  "route_version": "2026-10-27-ltx25-video",
   "timeout_profiles": {
     "home": {
       "seconds": 20
@@ -13,6 +13,18 @@
     },
     "long_running": {
       "seconds": 600
+    },
+    "transcription": {
+      "seconds": 120
+    },
+    "tts": {
+      "seconds": 300
+    },
+    "embedding": {
+      "seconds": 60
+    },
+    "video": {
+      "seconds": 120
     }
   },
   "routes": {
@@ -175,6 +187,59 @@
       "timeout_profile": "automation",
       "deployments": [
         "automation-flash-next-candidate"
+      ]
+    },
+    "embedding": {
+      "state": "active",
+      "privacy": "local_only",
+      "required_capabilities": [
+        "embedding"
+      ],
+      "required_protocols": [
+        "embeddings"
+      ],
+      "minimum_context_tokens": 2048,
+      "timeout_profile": "embedding",
+      "deployments": [
+        "harrier-home-core-primary"
+      ]
+    }
+  },
+  "transcription_routes": {
+    "stt-danish": {
+      "state": "active",
+      "privacy": "local_only",
+      "timeout_profile": "transcription",
+      "deployments": [
+        "hviske-spark-primary"
+      ]
+    },
+    "whisper-turbo": {
+      "state": "active",
+      "privacy": "local_only",
+      "timeout_profile": "transcription",
+      "deployments": [
+        "whisper-turbo-spark-primary"
+      ]
+    }
+  },
+  "tts_routes": {
+    "plapre": {
+      "state": "candidate",
+      "privacy": "local_only",
+      "timeout_profile": "tts",
+      "deployments": [
+        "plapre-nano-v2"
+      ]
+    }
+  },
+  "video_routes": {
+    "video": {
+      "state": "active",
+      "privacy": "local_only",
+      "timeout_profile": "video",
+      "deployments": [
+        "ltx25-spark"
       ]
     }
   }

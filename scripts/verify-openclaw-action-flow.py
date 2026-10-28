@@ -136,8 +136,14 @@ class FixedResultWorker(Worker):
             self.observed["investigation"] = "Generated fixture add() subtracts; baseline confirms 2 + 3 returns -1."
             (directory / "src/calc.py").write_text(FIXED)
             session = "synthetic-session-" + task_id
+            proposal = {"problem": "The generated addition fixture subtracts operands.",
+                        "change": "Return the sum of the two operands.",
+                        "validation": "The generated positive and negative operand tests are run by the controller.",
+                        "risk": "Fixture-only change; no live integration or publication is tested."}
             evidence.write_text(json.dumps({"type": "thread.started", "thread_id": session}) + "\n"
-                                + json.dumps({"type": "synthetic.fixed_result", "authenticated_Codex": False}) + "\n")
+                                + json.dumps({"type": "synthetic.fixed_result", "authenticated_Codex": False}) + "\n"
+                                + json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(proposal)}}) + "\n"
+                                + json.dumps({"type": "turn.completed"}) + "\n")
             return 0
         assert argv == self.projects["synthetic-demo"]["tests"]
         assert file_budget == "tests"

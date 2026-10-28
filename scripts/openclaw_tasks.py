@@ -75,7 +75,7 @@ class Tasks:
             return None
         if words[0] == "/code":
             if len(words) != 4 or words[1] not in self.projects or not KEY.fullmatch(words[2]):
-                return "Use /code PROJECT STABLE_KEY SUMMARY. The project must be reviewed. Submission requires separate execution approval."
+                return "Use /code PROJECT STABLE_KEY SUMMARY. The project must be reviewed. Isolated preparation follows its operator policy; publication requires human approval."
             summary = words[3]
             if len(summary) > 1000:
                 return "Coding summary exceeds 1,000 characters; no task submitted."
@@ -95,7 +95,8 @@ class Tasks:
         if not isinstance(value, dict) or value.get("project") not in self.projects:
             raise ValueError("task receipt outside reviewed projects")
         return ("Broker task " + str(value["id"]) + ": " + str(value["state"]) +
-                ". Use /task TASK_UUID for the latest collected result. Chat cannot approve execution or publication. "
+                (". Human execution approval is required. " if value["state"] == "pending" else ". ") +
+                "Use /task TASK_UUID for the latest collected result. Chat cannot approve publication or production changes. "
                 "Reuse the same project and stable key when reconciling a lost submission receipt.")
 
 

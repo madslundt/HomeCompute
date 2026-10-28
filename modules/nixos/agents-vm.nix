@@ -27,6 +27,9 @@ let
     iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -p tcp -m multiport --dports 80,443 -j ACCEPT
     iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -p udp --dport 123 -j ACCEPT
   '';
+  cloudContent = text: lib.concatMapStringsSep "\n" (line: "          ${line}") (lib.splitString "\n" text);
+  publicDnsController = cloudContent (builtins.readFile ../../scripts/openclaw-public-dns.py);
+  publicDnsUnit = cloudContent (builtins.readFile ../../deploy/openclaw/nemoclaw/homecompute-public-dns.service);
 
   userData = pkgs.writeText "agents-vm-user-data" ''
     #cloud-config
@@ -51,8 +54,20 @@ let
           PasswordAuthentication no
           PermitRootLogin no
           AllowUsers ${cfg.operatorUser}
+      - path: /etc/homecompute-public-dns/openclaw-public-dns.py
+        owner: root:root
+        permissions: '0555'
+        content: |
+    ${publicDnsController}
+      - path: /etc/systemd/system/homecompute-public-dns.service
+        owner: root:root
+        permissions: '0644'
+        content: |
+    ${publicDnsUnit}
     runcmd:
       - [systemctl, restart, ssh.service]
+      - [systemctl, daemon-reload]
+      - [sh, -c, 'if [ -f /etc/homecompute-public-dns/identity.json ]; then systemctl enable --now homecompute-public-dns.service; fi']
   '';
 
   metaData = pkgs.writeText "agents-vm-meta-data" ''
@@ -363,6 +378,7 @@ in
             bind ${hostAddress}
             hosts {
               ${hostAddress} ai.home.arpa
+              ${hostAddress} homecompute-capabilities.home.arpa
               fallthrough
             }
             forward . /etc/resolv.conf

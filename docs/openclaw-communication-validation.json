@@ -452,5 +452,440 @@
       "total_passed": 103
     },
     "external_security_scan": "Unavailable offline: ENOTCACHED; not claimed passed"
+  },
+  "home_assistant_connection": {
+    "activated_date": "2026-10-10",
+    "origin": "http://homeassistant.local/",
+    "placement": "home-core",
+    "mode": "observe-only",
+    "workflow": "hcOpenClawHA20261010",
+    "existing_ha_credential_reused": true,
+    "existing_workflows_preserved": 38,
+    "projection_schema": 2,
+    "projection_max_bytes": 65536,
+    "health_checks": [
+      "collection",
+      "installed-version",
+      "battery_optimizer",
+      "battery_telemetry",
+      "grid_meter",
+      "tariff",
+      "operation_plan",
+      "grid_availability"
+    ],
+    "update_sources": [
+      "core",
+      "supervisor",
+      "os",
+      "house_battery",
+      "stromligning",
+      "watts_live"
+    ],
+    "numeric_observations": 22,
+    "maximum_price_slots": 200,
+    "maximum_plan_blocks": 32,
+    "cadence_seconds": 300,
+    "freshness_ttl_seconds": 900,
+    "services": [
+      "homecompute-openclaw-adapter.service",
+      "homecompute-openclaw-telegram.service",
+      "homecompute-openclaw-task-feed.service"
+    ],
+    "timers": [
+      "homecompute-openclaw-machine-status.timer",
+      "homecompute-openclaw-update-feed.timer"
+    ],
+    "boot_target_dependencies_verified": true,
+    "actual_host_reboot_performed": false,
+    "restart_verified": true,
+    "outbox_claims_and_receipts_preserved": true,
+    "cursor_preserved": true,
+    "existing_conversation_sessions_preserved": true,
+    "outbox_events_before_after": [
+      33,
+      33
+    ],
+    "native_adapter_turns_before_after": [
+      10,
+      10
+    ],
+    "normal_question_context_qualified": true,
+    "ha_only_prompt_bytes": 8303,
+    "maximum_ascii_question_context_bytes": 15930,
+    "native_read_only_answers_verified": 3,
+    "uncertain_validation_conversations_preserved": 1,
+    "scheduled_admission_observations": 28,
+    "scheduled_ha_observations": 14,
+    "repeated_collection_created_no_duplicate_events": true,
+    "current_selected_ha_checks": "healthy",
+    "wrong_webhook_credential_status": 403,
+    "input_selector_rejected_status": 500,
+    "no_redirects": true,
+    "no_proxy": true,
+    "execution_payload_retention": "none",
+    "assistant_raw_attributes": false,
+    "credentials_outside_git_and_sandbox": true,
+    "private_temporary_discovery_payloads_removed": true,
+    "ha_device_or_automation_writes": 0,
+    "battery_setting_or_schedule_writes": 0,
+    "firmware_or_update_actions": 0,
+    "synthetic_telegram_messages": 0,
+    "outgoing_telegram_owner": "n8n",
+    "isolation_engine": {
+      "passed": true,
+      "network": "none",
+      "requests": [
+        "GET /api/config",
+        "GET /api/states"
+      ],
+      "production_credentials": false,
+      "telegram_messages": 0,
+      "image": "sha256:526daa38b68e923cc00c5280d18b4da5d489f115a73bdbf3b8e452b184197a9a"
+    },
+    "focused_tests": {
+      "ha_observations": 18,
+      "ha_workflow": 9,
+      "infrastructure": 22,
+      "communication": 32,
+      "observation_feed": 12,
+      "machine_notifications": 11,
+      "core_deployment": 11,
+      "system_monitoring": 20,
+      "error_recovery": 19,
+      "supervisor": 25,
+      "telegram": 22
+    },
+    "full_repository_validation": "Python/Node, JSON/YAML, Compose and diagram stages passed; final unchanged Nix evaluation unavailable because Mac Docker daemon is offline",
+    "external_security_scan": "Unavailable offline (ENOTCACHED), not recorded as passed",
+    "gaps": [
+      "No selected solar entity exists",
+      "Estimated realized savings today reports unknown",
+      "No HA historical execution audit or broad integration/config-entry diagnostic inventory",
+      "Actual production host reboot not exercised",
+      "Earlier isolated native validation turn remains uncertain; policy-construction defect fixed without replaying that turn"
+    ],
+    "backup": "/srv/backups/openclaw-ha-20261010T094327Z",
+    "recorded_at": "2026-10-10T10:22:50.990070+00:00",
+    "post_tool_free_reload_native_answer_verified": true,
+    "latest_scheduled_feed": "2026-10-10T10:17:15.315539Z",
+    "native_tool_policy": {
+      "global_and_main_allow": [],
+      "global_and_main_deny_include": "*",
+      "existing_denies_preserved": true,
+      "granted_tools": 0,
+      "pinned_matcher_tests": 14,
+      "native_config_valid": true,
+      "controlled_gateway_restart": true,
+      "recovery_validator_accepts_strict_policy": true,
+      "stable_agent_database_and_sessions_preserved": true,
+      "workspace_preserved": true,
+      "transient_sqlite_shm_changed": true,
+      "failed_validation_session_replayed": false
+    }
+  },
+  "capability_rollout": {
+    "verified_on": "2026-10-13",
+    "status": "operational_nas_pending",
+    "hermes": {
+      "sandbox_phase": "Ready",
+      "model_health_http": 200,
+      "actual_model_mcp_reads_verified": true,
+      "qualification_session": "20261012_135528_c744dc",
+      "ha_native_qualification": {
+        "session_id": "20261013_104743_1de719",
+        "proposal_id": "c5a7d9c01fc1e59ecc38d61f518ba4a8",
+        "actor": "hermes",
+        "state": "cancelled",
+        "review_approval_or_execution_performed": false,
+        "native_transcript_verification": "passed",
+        "native_cli_exit": 0,
+        "model_requests": 5,
+        "successful_tools": [
+          "mcp__homecompute__homecompute_ha_propose",
+          "mcp__homecompute__homecompute_ha_status",
+          "mcp__homecompute__homecompute_ha_cancel"
+        ],
+        "qualification_session_failed_before_fix": "20261013_102853_188260",
+        "failed_session_retained": true
+      },
+      "independent_final_audit": {
+        "sandbox_phase": "Ready",
+        "model_health_http": 200,
+        "terminal_uid": 998,
+        "terminal_gid": 999,
+        "effective_capabilities": 0,
+        "no_new_privileges": true,
+        "seccomp_mode": 2,
+        "host_mounts": [],
+        "docker_sockets_present": false,
+        "operator_credentials_accessible": false,
+        "mcp_catalog_tools": 8,
+        "agent_approve_or_execute_tools": false,
+        "approval_mode": "manual"
+      }
+    },
+    "openclaw": {
+      "sandbox_phase": "Ready",
+      "replacement_approved": true,
+      "replacement_completed": true,
+      "native_browser_qualification_pending": false,
+      "telegram_receiver_active": true,
+      "sandbox_id": "7bdaf599-aebf-47b9-94cf-f6bb6c287859",
+      "capability_restoration": "complete; native model, browser, supervision and Telegram operational",
+      "mcp_reattached": {
+        "tools": 8,
+        "wire_http": 200,
+        "control_http": 401,
+        "native_schema_valid": true,
+        "warnings": []
+      },
+      "main_allowed_tools": 17,
+      "actual_model_mcp_reads": {
+        "verified": true,
+        "session_id": "e967e117-d1b3-408e-a77e-604e0007dd63",
+        "successful_tools": [
+          "homecompute__homecompute_systems",
+          "homecompute__homecompute_system_read"
+        ]
+      },
+      "actual_exec": {
+        "verified": true,
+        "session_id": "97b74568-7506-4e39-80ec-c4900dcafb68",
+        "successful_calls": 1,
+        "failures": 0,
+        "helper_result": 391,
+        "replay_safe": false
+      },
+      "browser_guard": {
+        "native_tools_invoke_test_passed": true,
+        "http": 403,
+        "error_type": "tool_call_blocked",
+        "interaction_attempt_ref": "nonexistent-qualification-ref",
+        "private_navigation_http": 403,
+        "unapproved_public_navigation_http": 403,
+        "interaction_http": 403,
+        "repeated_after_research_rest_rule_removed": true
+      },
+      "browser_positive": {
+        "verified": true,
+        "session_id": "7b8a4ca9-458c-4b88-8046-5d184eea3ef8",
+        "successful_browser_calls": 2,
+        "failures": 0,
+        "public_url": "https://example.com/",
+        "actual_page_observation": "documentation examples",
+        "native_direct_positive_after_research_rest_rule_removed": true
+      },
+      "ha_native_qualification": {
+        "successful_tools": [
+          "homecompute__homecompute_ha_propose",
+          "homecompute__homecompute_ha_status",
+          "homecompute__homecompute_ha_cancel"
+        ],
+        "session_id": "84321de6-1b48-4f26-ad95-60d21ec1fff7",
+        "proposal_id": "c0bbe4a85c7cf97c06fa2b216198f8f0",
+        "actor": "openclaw",
+        "state": "cancelled",
+        "review_approval_or_execution_performed": false,
+        "final_model_response": "RPM6 exceeded; authoritative LiteLLM limit_type=requests",
+        "qualification_conversation_retained_uncertain": true,
+        "replayed": false
+      },
+      "quota": {
+        "rpm": 10,
+        "tpm": 200000,
+        "parallel": 1,
+        "model_scope_unchanged": true,
+        "financial_fields_unchanged": true,
+        "expiry_unchanged": true,
+        "route": "local home-spark",
+        "origin": "bounded increase from synthetic canary limits"
+      },
+      "browser_relay": {
+        "native_http_and_websocket_health_passed": true,
+        "sha256": "8f2c56d26195a58b9307402634d671626a3574f7270e12a3ea3bf38fcb9ca74d"
+      },
+      "core_forced_ssh_combined": {
+        "passed": true,
+        "session_id": "7b8a4ca9-458c-4b88-8046-5d184eea3ef8",
+        "conversation": "core_final_1791893419_3bdbbe",
+        "calls": 5,
+        "failures": 0,
+        "successful_tools": [
+          "homecompute__homecompute_systems",
+          "homecompute__homecompute_system_read",
+          "exec",
+          "browser"
+        ],
+        "helper_result": 391,
+        "replay_safe": false,
+        "new_conversation": true,
+        "earlier_uncertain_conversations_retained": true
+      },
+      "browser_policy": {
+        "public_hosts": 14,
+        "private_network_access": false,
+        "interactions_allowed": false,
+        "dns_fix": "live operator-owned finite resolver; native browser and actual model qualification passed"
+      },
+      "protected_browser_guard_sha256": {
+        "index.mjs": "b0d6c6f50aa6a3fe621df21ab42be885729da5f26308c2d3ddf3654e833cd369",
+        "browser-relay.mjs": "8f2c56d26195a58b9307402634d671626a3574f7270e12a3ea3bf38fcb9ca74d",
+        "public-dns.mjs": "78fca99a624b2244e0af798b4ff85657e12d1848f443b461d02415acfe5a2468",
+        "openclaw.plugin.json": "6aeff98557d98f2c2de553eb6172487b92b6f64ae01876a333efc1a2f642d44a",
+        "package.json": "caa885e5a254ccd01f6cf90fdd680450c7e336fbdf61b12a6aede6df74b5ee99"
+      },
+      "public_dns": {
+        "active": true,
+        "boot_enabled": true,
+        "child_uid": 998,
+        "child_gid": 998,
+        "supplementary_groups": [],
+        "capability_sets_all_zero": true,
+        "no_new_privileges": true,
+        "seccomp_mode": 2,
+        "native_gateway_namespace_matches": true,
+        "udp_a_aaaa_and_tcp_a_verified": true,
+        "unapproved_names": "NXDOMAIN",
+        "listener": "127.0.0.11:53",
+        "public_endpoint_authenticated": true,
+        "dns_sidecar_listener": "172.30.188.5:18802",
+        "dns_sidecar_published_ports": [],
+        "child_module_sha256": "78fca99a624b2244e0af798b4ff85657e12d1848f443b461d02415acfe5a2468",
+        "independent_live_privilege_review": "passed",
+        "native_loader_integration_passed": true
+      },
+      "failed_qualifications": {
+        "browser_before_relay_fix": {
+          "verified": false,
+          "session_id": "e1747112-4838-4a7d-903a-4ad580eed49f",
+          "failures": 2,
+          "reason": "attachOnly profile not running",
+          "qualification_conversation_retained_uncertain": true
+        },
+        "core_before_dns_fix": {
+          "passed": false,
+          "session_id": "a007184f-9768-4a30-b71d-d7faedbe5a51",
+          "calls": 5,
+          "failures": 1,
+          "successful_tools": [
+            "homecompute__homecompute_systems",
+            "homecompute__homecompute_system_read",
+            "exec",
+            "browser"
+          ],
+          "failed_step": "public hostname navigation rejected by native remote CDP SSRF guard",
+          "rate_limit_error": false,
+          "retained_uncertain": true,
+          "replayed": false
+        }
+      },
+      "network_policy": {
+        "effective_version": 6,
+        "additional_public_rest_group_removed": true,
+        "other_policy_entries_preserved": true
+      },
+      "supervisor_active": true,
+      "telegram_resume": {
+        "retained_conversation_initialized": true,
+        "retained_conversation_uncertain": false,
+        "retained_cursor_paused": false,
+        "cursor_or_session_reset": false,
+        "started_with_supported_setup_script": true,
+        "boot_target_dependency_verified": true,
+        "synthetic_outbound_test_sent": false
+      }
+    },
+    "coding": {
+      "automatic_isolated_preparation_enabled": true,
+      "actual_qualification_task": "351ac753-4e28-4b83-9cff-4ee912c972a2",
+      "state": "review",
+      "fixed_controller_checks_passed": true,
+      "publication_performed": false,
+      "result_digest": "9f2bb454d98292f91629e80319f6bd162d82f16819f0c099bbdc6ecd34fb94d6"
+    },
+    "ha": {
+      "controller_active": true,
+      "agent_tools": [
+        "propose",
+        "status",
+        "cancel"
+      ],
+      "agent_approval_or_execution_authority": false,
+      "physical_actions_executed": 0,
+      "real_entity_fresh_review": {
+        "passed": true,
+        "proposal_id": "3f43f076e18b75a1f9d1335e683a4ec9",
+        "state": "cancelled",
+        "fresh_snapshot_and_digest": true,
+        "approved": false,
+        "executed": false,
+        "workflow_and_credential_metadata_unchanged": true
+      }
+    },
+    "backup": {
+      "full_state_archive_verified": true,
+      "sqlite_databases_integrity_checked": 3,
+      "core_second_copy_verified": true,
+      "archive_bytes": 362588160,
+      "archive_sha256": "8c3985b6a20ea40eaa2b37f13023886964f4a460f92190a1e3655ed114f4147d",
+      "nas_off_host_active": false,
+      "nas_pending": "dedicated share and backup account",
+      "fresh_replacement_archive": {
+        "bytes": 323631616,
+        "sha256": "de29c7be44c833bf364a8d83d653282e9dc9874d8cf2e56b1a82fe87a00bc5bf",
+        "core_second_copy_verified": true
+      },
+      "nas_source_ready": true,
+      "nas_encrypted_restore_test": "isolated local Restic repository; passed; no NAS write",
+      "final_qualified_archive": {
+        "bytes": 359464960,
+        "sha256": "13b812aa593ec048137143484f4f4758860167c18c6409525c87394a657edc4f",
+        "guest_and_core_copies_verified": true,
+        "core_owner": "root",
+        "core_mode": "0600",
+        "sqlite_online_backups": 3,
+        "sqlite_reader_uid": 998,
+        "sqlite_integrity_checks": "passed",
+        "live_wal_shm_ownership_preserved": true,
+        "protected_guards_verified": 5,
+        "operator_bundle_bytes": 143360,
+        "operator_bundle_sha256": "aa2a99228ed10ce7059661f8c888787fa9d7b4f58958cbb7ee55efa1c1650f61",
+        "operator_bundle_core_copy_verified": true,
+        "recovery_manifest_sha256": "827d341f1d25b5bd99bf8d79b800596451e40f60384e3e3cfb1b57660aa20ed4",
+        "recovery_manifest_core_copy_verified": true
+      }
+    },
+    "critical_gates": {
+      "publication": "separate human approval bound to exact result digest",
+      "ha_execution": "human approval bound to fresh state and action digest",
+      "destructive_recovery": "explicit user approval received"
+    },
+    "hostname_mapping": {
+      "address": "10.77.20.1",
+      "hostname": "homecompute-capabilities.home.arpa",
+      "guest_cloud_init_template_persistent": true,
+      "declarative_core_dns_added": true,
+      "nix_eval_passed": true
+    },
+    "validation": {
+      "repository_non_nix_checks": "passed",
+      "local_nix": "unavailable; Docker daemon not running",
+      "remote_full_flake_check": "passed",
+      "remote_compute_tunnel_and_openclaw_extended_host_evaluations": "passed",
+      "final_dns_launcher_guest_tests": 13,
+      "native_loader_actual_runtime_tests": 1,
+      "root_dns_independent_privilege_review": "passed"
+    },
+    "services": {
+      "core_adapter": "active",
+      "core_telegram": "active",
+      "core_task_feed": "active",
+      "core_native_mcp_relay": "active",
+      "core_ha_actions": "active",
+      "core_failed_units": [],
+      "attached_core_boot_target_dependencies_verified": true,
+      "guest_supervisor": "active",
+      "guest_public_dns": "active"
+    }
   }
 }

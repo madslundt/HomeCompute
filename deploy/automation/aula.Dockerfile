@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /app
 # Reviewed upstream main commit, frozen dependencies, and digest-pinned runtimes.
 RUN git init . && git remote add origin https://github.com/Casperjuel/aula-mcp.git \
-    && git fetch --depth 1 origin 8f9787221f933fbbc395f384228317639602caad \
+    && git fetch --depth 1 origin d9a27d84933446783c89446ba3e9d799fd47ea2c \
     && git checkout --detach FETCH_HEAD && rm -rf .git
 COPY aula-n8n.patch /tmp/aula-n8n.patch
 RUN git apply --unidiff-zero --check /tmp/aula-n8n.patch \

@@ -98,6 +98,10 @@ def checkout_probe(parent: Path) -> None:
                 seconds: int, prompt: str | None = None, codex: bool = False,
                 file_budget: FileBudget = "default") -> int:
             if codex:
+                schema = argv[argv.index("--output-schema") + 1]
+                if super().run(["python3", "-c", "import json,sys; json.load(open(sys.argv[1]))", schema],
+                               directory, evidence.parent / "schema-read.log", task_id, 10, codex=False):
+                    raise RuntimeError("isolated job cannot read the trusted output schema")
                 overrides = [argv[index + 1] for index, argument in enumerate(argv) if argument == "-c"]
                 shell = tomllib.loads("\n".join(overrides))["shell_environment_policy"]
                 assert shell == {"exclude": ["CODEX_API_KEY", "OPENAI_API_KEY"],
@@ -110,7 +114,12 @@ def checkout_probe(parent: Path) -> None:
                     raise RuntimeError("production Codex exec argv rejected by pinned CLI")
                 # Explicit fixed-result substitute; never invoke exec/auth/model.
                 (directory / "src/example.py").write_text("value = 2\n")
-                evidence.write_text('{"type":"thread.started","thread_id":"synthetic-checkout"}\n')
+                proposal = {"problem": "Synthetic value is wrong.", "change": "Set the synthetic value to two.",
+                            "validation": "Run the fixed synthetic checks.", "risk": "No production change."}
+                evidence.write_text('\n'.join(json.dumps(event) for event in [
+                    {"type": "thread.started", "thread_id": "synthetic-checkout"},
+                    {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(proposal)}},
+                    {"type": "turn.completed"}]))
                 return 0
             if argv == project["tests"]:
                 argv = ["codex", "-a", "never", "--sandbox", "workspace-write", "-c",

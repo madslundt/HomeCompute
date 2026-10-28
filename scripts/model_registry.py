@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -23,6 +24,10 @@ REVISION = re.compile(r"^(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})$")
 SEMANTIC_ALIAS = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 LIFECYCLES = {"resident", "hot-standby", "cold-standby", "operator-on-demand", "disabled"}
 AVAILABILITY = {"active", "intentionally-stopped", "candidate", "unavailable"}
+MEDIA_SPEC = importlib.util.spec_from_file_location("model_registry_media", ROOT / "scripts/model_registry_media.py")
+assert MEDIA_SPEC and MEDIA_SPEC.loader
+MEDIA = importlib.util.module_from_spec(MEDIA_SPEC)
+MEDIA_SPEC.loader.exec_module(MEDIA)
 
 
 class RegistryError(ValueError):
@@ -98,6 +103,10 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
             raise RegistryError(f"artifacts.{artifact_id}.max_context_tokens must be positive")
         artifact_runtimes = string_list(artifact.get("runtime_profiles"), f"artifacts.{artifact_id}.runtime_profiles")
         capabilities = set(string_list(artifact.get("capabilities"), f"artifacts.{artifact_id}.capabilities"))
+        if "embedding" in capabilities:
+            dimensions = artifact.get("embedding_dimensions")
+            if type(dimensions) is not int or dimensions <= 0:
+                raise RegistryError(f"artifacts.{artifact_id}.embedding_dimensions must be positive")
         unknown = set(artifact_runtimes) - set(runtime_profiles)
         if unknown:
             raise RegistryError(f"artifacts.{artifact_id} references unknown runtime profile(s): {', '.join(sorted(unknown))}")
@@ -203,6 +212,81 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
                 raise RegistryError(f"deployment {deployment_id} does not meet {alias}'s context requirement")
             if state == "active" and artifact.get("qualification", {}).get(qualification_capability) != "qualified":
                 raise RegistryError(f"active route {alias} includes an artifact not qualified for that capability")
+    validate_transcription(catalog, routes_doc)
+    validate_tts(catalog, routes_doc)
+    MEDIA.MediaRegistry(RegistryError).validate_video(catalog, routes_doc)
+
+
+def validate_transcription(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
+    """Validate audio deployments independently of text context requirements."""
+    deployments = obj(catalog.get("transcription_deployments", {}), "transcription_deployments")
+    runtimes = catalog["runtime_profiles"]
+    for deployment_id, raw_deployment in deployments.items():
+        name = f"transcription_deployments.{deployment_id}"
+        deployment = obj(raw_deployment, name)
+        if any(field in deployment for field in ("context_tokens", "max_context_tokens")):
+            raise RegistryError(f"{name} must not declare a text context requirement")
+        string(deployment.get("upstream_model_id"), f"{name}.upstream_model_id")
+        revision = string(deployment.get("revision"), f"{name}.revision")
+        if not REVISION.fullmatch(revision):
+            raise RegistryError(f"{name}.revision must be an immutable commit or sha256 digest")
+        if deployment.get("tokenizer_revision") != revision or deployment.get("code_revision") != revision:
+            raise RegistryError(f"{name} tokenizer/code revisions must be pinned explicitly")
+        string(deployment.get("license_id"), f"{name}.license_id")
+        string(deployment.get("host_role"), f"{name}.host_role")
+        string(deployment.get("served_model_name"), f"{name}.served_model_name")
+        endpoint = string(deployment.get("endpoint_env"), f"{name}.endpoint_env")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*_BASE_URL", endpoint):
+            raise RegistryError(f"{name}.endpoint_env must reference a named environment variable")
+        if deployment.get("network_scope") not in {"private_local", "cloud"}:
+            raise RegistryError(f"{name}.network_scope is invalid")
+        runtime_id = string(deployment.get("runtime_profile"), f"{name}.runtime_profile")
+        runtime = runtimes.get(runtime_id, {})
+        if "audio_transcriptions" not in runtime.get("supported_protocols", []) or \
+                "audio_transcription" not in runtime.get("capabilities", []):
+            raise RegistryError(f"runtime for {deployment_id} lacks the transcription protocol/capability")
+        for field in ("concurrency", "priority"):
+            value = deployment.get(field)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise RegistryError(f"{name}.{field} must be positive")
+        if deployment.get("lifecycle") not in LIFECYCLES or deployment.get("availability") not in AVAILABILITY:
+            raise RegistryError(f"{name} lifecycle/availability is invalid")
+    identities = {
+        re.sub(r"[^a-z0-9]+", "-", identity.lower()).strip("-")
+        for identity in [*deployments, *(item["upstream_model_id"] for item in deployments.values())]
+    }
+    for alias, raw_route in obj(routes_doc.get("transcription_routes", {}), "transcription_routes").items():
+        name = f"transcription_routes.{alias}"
+        route = obj(raw_route, name)
+        if not SEMANTIC_ALIAS.fullmatch(alias) or alias == "auto" or alias in identities:
+            raise RegistryError(f"{name} must use a lowercase semantic alias, not a checkpoint identity")
+        if alias in routes_doc["routes"]:
+            raise RegistryError(f"route alias {alias!r} is already used by a text route")
+        if "minimum_context_tokens" in route:
+            raise RegistryError(f"{name} must not declare a text context requirement")
+        state = route.get("state")
+        if state not in {"active", "candidate", "disabled"} or route.get("privacy") != "local_only":
+            raise RegistryError(f"{name} must have a valid state and local_only privacy")
+        timeout_id = string(route.get("timeout_profile"), f"{name}.timeout_profile")
+        if timeout_id not in routes_doc["timeout_profiles"]:
+            raise RegistryError(f"{name} references unknown timeout profile")
+        selected = string_list(route.get("deployments"), f"{name}.deployments", allow_empty=state == "disabled")
+        if state == "disabled" and selected:
+            raise RegistryError(f"disabled route {alias} must not contain deployments")
+        for deployment_id in selected:
+            if deployment_id not in deployments:
+                raise RegistryError(f"{name} references unknown transcription deployment {deployment_id}")
+            deployment = deployments[deployment_id]
+            if deployment["network_scope"] != "private_local":
+                raise RegistryError(f"local-only route {alias} references a non-local deployment")
+            if state == "active" and deployment["availability"] != "active":
+                raise RegistryError(f"active route {alias} references a deployment that is not active")
+            if state == "active" and deployment["lifecycle"] not in {"resident", "hot-standby"}:
+                raise RegistryError(f"active route {alias} references a non-resident deployment")
+
+
+def validate_tts(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
+    MEDIA.MediaRegistry(RegistryError).validate_tts(catalog, routes_doc)
 
 
 def _yaml_quote(value: str) -> str:
@@ -219,6 +303,7 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
         for position, deployment_id in enumerate(ordered, start=1):
             deployment = deployments[deployment_id]
             timeout = routes_doc["timeout_profiles"][route["timeout_profile"]]["seconds"]
+            embedding = "embeddings" in route["required_protocols"]
             lines.extend(
                 [
                     f"  - model_name: {_yaml_quote(alias)}",
@@ -226,11 +311,64 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                     f"      model: {_yaml_quote('openai/' + deployment['served_model_name'])}",
                     f"      order: {position}",
                     f"      api_base: {_yaml_quote('os.environ/' + deployment['endpoint_env'])}",
-                    "      api_key: os.environ/COMPUTE_API_KEY",
+                    '      api_key: "local"' if embedding else "      api_key: os.environ/COMPUTE_API_KEY",
                     f"      timeout: {timeout}",
-                    f"      stream_timeout: {timeout}",
                 ]
             )
+            if embedding:
+                artifact = catalog["artifacts"][deployment["artifact"]]
+                lines.extend([
+                    "    model_info:",
+                    "      mode: embedding",
+                    f"      max_input_tokens: {deployment['context_tokens']}",
+                    f"      output_vector_size: {artifact['embedding_dimensions']}",
+                    "      input_cost_per_token: 0",
+                    "      output_cost_per_token: 0",
+                ])
+            else:
+                lines.append(f"      stream_timeout: {timeout}")
+    transcription_deployments = catalog.get("transcription_deployments", {})
+    for alias, route in routes_doc.get("transcription_routes", {}).items():
+        if route["state"] == "disabled":
+            continue
+        ordered = sorted(route["deployments"], key=lambda item: transcription_deployments[item]["priority"])
+        for position, deployment_id in enumerate(ordered, start=1):
+            deployment = transcription_deployments[deployment_id]
+            timeout = routes_doc["timeout_profiles"][route["timeout_profile"]]["seconds"]
+            lines.extend([
+                f"  - model_name: {_yaml_quote(alias)}",
+                "    litellm_params:",
+                f"      model: {_yaml_quote('openai/' + deployment['served_model_name'])}",
+                f"      order: {position}",
+                f"      api_base: {_yaml_quote('os.environ/' + deployment['endpoint_env'])}",
+                "      api_key: os.environ/COMPUTE_API_KEY",
+                f"      timeout: {timeout}",
+                # Hviske supports JSON; LiteLLM otherwise defaults to verbose_json.
+                "      response_format: json",
+                "    model_info:",
+                "      mode: audio_transcription",
+            ])
+    tts_deployments = catalog.get("tts_deployments", {})
+    for alias, route in routes_doc.get("tts_routes", {}).items():
+        if route["state"] == "disabled":
+            continue
+        ordered = sorted(route["deployments"], key=lambda item: tts_deployments[item]["priority"])
+        for position, deployment_id in enumerate(ordered, start=1):
+            deployment = tts_deployments[deployment_id]
+            timeout = routes_doc["timeout_profiles"][route["timeout_profile"]]["seconds"]
+            lines.extend([
+                f"  - model_name: {_yaml_quote(alias)}",
+                "    litellm_params:",
+                f"      model: {_yaml_quote('openai/' + deployment['served_model_name'])}",
+                f"      order: {position}",
+                f"      api_base: {_yaml_quote('os.environ/' + deployment['endpoint_env'])}",
+                "      api_key: os.environ/COMPUTE_API_KEY",
+                f"      timeout: {timeout}",
+                f"      stream_timeout: {timeout}",
+                "    model_info:",
+                "      mode: audio_speech",
+            ])
+    lines.extend(MEDIA.MediaRegistry.render_video(catalog, routes_doc))
     return "\n".join(lines) + "\n"
 
 

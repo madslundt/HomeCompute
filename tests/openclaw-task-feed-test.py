@@ -21,6 +21,11 @@ spec = importlib.util.spec_from_file_location("communication", ROOT / "scripts/o
 communication = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(communication)
 
+PROPOSAL = {"problem": "Synthetic addition returns the wrong total.",
+            "change": "Correct the return value in src/calc.py.",
+            "validation": "The fixed project test command passed.",
+            "risk": "Human review and independent CI are required before publication."}
+
 
 class FeedTests(unittest.TestCase):
     def setUp(self):
@@ -96,15 +101,138 @@ class FeedTests(unittest.TestCase):
                     "text": "/task " + tid}, self.store, lambda *_: self.fail("model invoked"), time.time())
         self.assertIn("synthetic-session", result["reply"])
 
+    def test_automatic_preparation_has_no_execution_approval_notice_but_requires_publication_review(self):
+        self.ledger.projects = {"demo": {**self.policy["demo"], "auto_prepare": True}}
+        reply = self.client.respond("/code demo automatic:one Fix synthetic addition")
+        self.assertIn("queued", reply)
+        self.assertNotIn("execution approval is required", reply)
+        task = self.ledger.list_tasks()[0]
+        cursor = tasks.feed_once(self.client, 0, self.transport["collector"])
+        events = self.store.db.execute("SELECT kind,body FROM events WHERE topic=?", ("task:" + task["id"],)).fetchall()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0][0], "progress")
+        self.assertIn("Queued for isolated preparation", json.loads(events[0][1])["text"])
+        self.assertNotIn("after execution approval", json.loads(events[0][1])["text"])
+        self.post("/worker/claim", "worker", {})
+        self.post("/tasks/" + task["id"] + "/result", "worker", {"ok": True, "session_id": None,
+            "tests_passed": True, "files": [{"path": "src/calc.py", "content": base64.b64encode(b"return 5\n").decode()}]})
+        tasks.feed_once(self.client, cursor, self.transport["collector"])
+        review = self.store.db.execute("SELECT body FROM events WHERE topic=? AND kind='approval'",
+                                       ("task:" + task["id"],)).fetchall()
+        self.assertEqual(len(review), 1)
+        self.assertIn("publication requires its reviewed digest", json.loads(review[0][0])["text"])
+        for action in ("approve", "publish"):
+            with self.assertRaises(urllib.error.HTTPError) as denied:
+                self.post("/tasks/" + task["id"] + "/" + action, "assistant", {})
+            self.assertEqual(denied.exception.code, 403)
+            denied.exception.close()
+
+    def test_feedback_reaches_task_read_and_review_notification_without_private_files(self):
+        tid = self.submit()
+        pending_review = tasks.request(tasks.BROKER, "/tasks/" + tid + "/review", self.tokens["operator"])
+        self.assertEqual(pending_review["request"]["summary"], "Fix synthetic addition")
+        self.assertEqual(pending_review["policy"], self.policy["demo"])
+        self.assertIsNone(self.ledger.claim())
+        self.post("/tasks/" + tid + "/approve", "operator", {})
+        self.post("/worker/claim", "worker", {})
+        self.post("/tasks/" + tid + "/result", "worker", {
+            "ok": True, "session_id": "synthetic-feedback-session", "tests_passed": True,
+            "files": [{"path": "src/calc.py", "content": base64.b64encode(b"private file contents\n").decode()}],
+            "proposal": PROPOSAL})
+        cursor = tasks.feed_once(self.client, 0, self.transport["collector"])
+        self.assertEqual(tasks.feed_once(self.client, 0, self.transport["collector"]), cursor)
+        snapshot = self.store.task_snapshot(tid)
+        self.assertEqual(snapshot["result"]["proposal"], PROPOSAL)
+        result = communication.conversation({"conversation": "operator", "destination": "private",
+            "request_id": "phone:feedback", "text": "/task " + tid}, self.store,
+            lambda *_: self.fail("model invoked"), time.time())
+        for text in PROPOSAL.values():
+            self.assertIn(text, result["reply"])
+        notifications = [json.loads(row[0]) for row in self.store.db.execute(
+            "SELECT body FROM events WHERE topic=? AND kind='approval'", ("task:" + tid,))]
+        review = [event for event in notifications if event["task"]["state"] == "review"]
+        self.assertEqual(len(review), 1)
+        self.assertEqual(review[0]["task"]["result"]["proposal"], PROPOSAL)
+        for text in PROPOSAL.values():
+            self.assertIn(text, review[0]["text"])
+        self.assertIn("Chat replies do not approve", review[0]["text"])
+        for exposed in (result["reply"], json.dumps(review)):
+            self.assertNotIn("private file contents", exposed)
+            self.assertNotIn("content", exposed)
+
     def test_readonly_and_assistant_permission_denials(self):
         tid = self.submit()
-        for role, action in (("snapshot", "cancel"), ("assistant", "approve"), ("assistant", "publish")):
+        for role, action in (("snapshot", "cancel"), ("snapshot", "approve"), ("snapshot", "publish"),
+                             ("assistant", "approve"), ("assistant", "publish")):
             with self.assertRaises(urllib.error.HTTPError) as denied:
                 self.post("/tasks/" + tid + "/" + action, role, {})
             self.assertEqual(denied.exception.code, 403); denied.exception.close()
         self.assertIn("reviewed", self.client.respond("/code unreviewed issue:one bad"))
         self.assertEqual(len(self.ledger.list_tasks()), 1)
         self.assertIn("Use /cancel", self.client.respond("/cancel-task malformed"))
+
+    def test_maximum_unicode_feedback_fits_task_reply_and_delivery_budget(self):
+        tid = self.submit()
+        proposal = {key: "😀" * 400 for key in PROPOSAL}
+        self.ledger.action(tid, "approve", {})
+        self.ledger.claim()
+        self.ledger.action(tid, "result", {"ok": True, "session_id": None,
+            "files": [{"path": "src/calc.py", "content": base64.b64encode(b"return 5\n").decode()}],
+            "proposal": proposal})
+        tasks.feed_once(self.client, 0, self.transport["collector"])
+        result = communication.conversation({"conversation": "operator", "destination": "private",
+            "request_id": "phone:unicode-feedback", "text": "/task " + tid}, self.store,
+            lambda *_: self.fail("model invoked"), time.time())
+        self.assertEqual(result["state"], "completed")
+        self.assertLessEqual(len(result["reply"]), 4000)
+        self.assertIn("😀" * 400, result["reply"])
+        review = next(json.loads(row[0]) for row in self.store.db.execute(
+            "SELECT body FROM events WHERE topic=? AND kind='approval'", ("task:" + tid,))
+            if json.loads(row[0])["task"]["state"] == "review")
+        self.assertLessEqual(len(review["text"]), 4000)
+        self.assertIn("😀" * 400, review["text"])
+        with patch("openclaw_notifications.quiet", return_value=False):
+            claimed_review = None
+            for _ in range(10):
+                delivery = self.store.claim(time.time())
+                if delivery is None:
+                    break
+                self.assertLessEqual(len(delivery["text"]), 4000)
+                if delivery["kind"] == "approval":
+                    claimed_review = delivery
+                self.store.acknowledge(delivery["delivery_key"], delivery["claim"],
+                    "synthetic-unicode-receipt", time.time())
+        self.assertIsNotNone(claimed_review)
+        self.assertIn("😀" * 400, claimed_review["text"])
+
+    def test_maximum_feedback_batch_advances_lossless_cursor_within_transport_budget(self):
+        files = [{"path": "src/calc.py", "content": base64.b64encode(b"return 5\n").decode()}]
+        proposal = {key: "😀" * 400 for key in PROPOSAL}
+        expected = set()
+        for number in range(25):
+            task = self.ledger.submit({"project": "demo", "issue_key": "batch:" + str(number),
+                "summary": "Synthetic feedback batch", "context": ""})
+            tid = task["id"]
+            expected.add(tid)
+            self.ledger.action(tid, "approve", {})
+            self.ledger.claim()
+            self.ledger.action(tid, "result", {"ok": True, "session_id": None,
+                "files": files, "proposal": proposal})
+            with self.ledger.lock, self.ledger.db:
+                self.ledger.transition(tid, "publishing")
+                self.ledger.transition(tid, "completed")
+        cursor, pages = 0, 0
+        final_cursor = self.ledger.db.execute("SELECT max(seq) FROM events").fetchone()[0]
+        while cursor < final_cursor and pages < 100:
+            after = tasks.feed_once(self.client, cursor, self.transport["collector"])
+            self.assertGreater(after, cursor)
+            cursor, pages = after, pages + 1
+        self.assertEqual(cursor, final_cursor)
+        received = self.store.status(time.time())["tasks"]
+        self.assertEqual({row["id"] for row in received}, expected)
+        for row in received:
+            self.assertEqual(row["state"], "completed")
+            self.assertEqual(row["result"]["proposal"], proposal)
 
     def test_historical_gap_and_lost_adapter_receipt_retain_cursor(self):
         tid = self.submit()

@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import hashlib
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -50,7 +52,7 @@ class FlashNextLifecycleTests(unittest.TestCase):
         self.assertEqual("8b82f0b7abe3d1150a7827d298c75e86267636ae", artifact["revision"])
         self.assertEqual("50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14", artifact["ple_table"]["revision"])
         self.assertEqual(262144, runtime["context_tokens"])
-        self.assertEqual("16g", runtime["kv_cache_memory_bytes"])
+        self.assertEqual("9g", runtime["kv_cache_memory_bytes"])
         self.assertEqual(3, runtime["mtp"])
         self.assertEqual(65536, runtime["draft_vocab_size"])
         self.assertEqual("qwen3_xml", runtime["tool_call_parser"])
@@ -79,6 +81,24 @@ class FlashNextLifecycleTests(unittest.TestCase):
         actual = hashlib.sha256((ROOT / "deploy/compute-node/patches/dime-ultrafast-private-launch.patch").read_bytes()).hexdigest()
         self.assertEqual(expected, actual)
 
+    def test_generated_ultrafast_environment_uses_qualified_low_peak_startup(self) -> None:
+        # Execute the real environment-generation heredoc, not the installer or
+        # any Docker command, to validate the generated launch configuration.
+        body = SCRIPT.split('  cat >"$runtime/env" <<ENV\n', 1)[1].split('\nENV\n', 1)[0]
+        environment = {name: 'fixture' for name in re.findall(r'\$([A-Za-z_][A-Za-z0-9_]*)', body)}
+        environment.update(FLASH_ULTRAFAST_CTX='262144', FLASH_ULTRAFAST_SEQS='8',
+                           FLASH_ULTRAFAST_KV_BYTES='9g', FLASH_ULTRAFAST_MTP='3')
+        with tempfile.TemporaryDirectory() as directory:
+            environment['runtime'] = directory
+            command = ('cat >"$runtime/env" <<ENV\n' + body + '\nENV\n'
+                       '. "$runtime/env"\n'
+                       'printf "%s\\n" "$LOAD_FORMAT" "$PREWARM" "$CTX" "$SEQS" "$KV_BYTES" "$MTP"')
+            result = subprocess.run(['/bin/bash', '-eu', '-c', command], env=environment,
+                                    check=True, capture_output=True, text=True)
+        self.assertEqual(result.stdout.splitlines(), ['safetensors', '0', '262144', '8', '9g', '3'])
+        self.assertIn('LOAD_FORMAT=safetensors\\nPLE_PREWARM=0\\n', SCRIPT)
+        self.assertNotIn('VLLM_FASTSAFETENSORS_QUEUE_SIZE', SCRIPT + PATCH)
+
     def test_lifecycle_records_and_restores_prior_text_containers(self) -> None:
         self.assertIn("previous-text-containers", SCRIPT)
         self.assertIn("restore_previous; trap - INT TERM; die 'Candidate failed to start", SCRIPT)
@@ -103,6 +123,9 @@ class FlashNextLifecycleTests(unittest.TestCase):
         self.assertIn("FLASH_NEXT_REASONING_EFFORT=xhigh", ENV)
         self.assertIn("FLASH_NEXT_HOST_PORT=18300", ENV)
         self.assertIn("FLASH_ULTRAFAST_TOOL_CALL_PARSER=qwen3_xml", ENV)
+        self.assertIn("FLASH_ULTRAFAST_KV_BYTES=9g", ENV)
+        roster = json.loads((ROOT / "config/gb10-model-roster.json").read_text())
+        self.assertEqual("9g", roster["text_models"]["flash_next_ultrafast_challenger"]["runtime_profile"]["kv_cache_memory_bytes"])
         self.assertIn("TOKENIZER_CONFIG_SHA256=%s", SCRIPT)
         self.assertIn("792fa3f0cb88b111e54ef3134c873531008c4df471d108da17903426e308aa7b", SCRIPT)
         self.assertNotRegex(ENV, r"(?im)^(?:HF_TOKEN|VLLM_API_KEY|PASSWORD|SECRET)=")

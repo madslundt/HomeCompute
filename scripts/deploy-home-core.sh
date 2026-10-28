@@ -14,6 +14,32 @@ install -d -m 0755 /srv/homecompute/releases
 install -d -m 0700 /var/lib/homecompute
 exec 9>/var/lib/homecompute/deploy.lock
 flock -n 9 || { printf 'Another deployment is running.\n' >&2; exit 1; }
+[[ ! -e /var/lib/homecompute/homepage-maintenance/active-image.json ]] || {
+  printf 'Reconcile the human-approved Homepage image override before full deployment.\n' >&2; exit 1;
+}
+[[ ! -e /var/lib/homecompute/homepage-maintenance/active-config.json ]] || {
+  printf 'Reconcile the Homepage configuration override before full deployment.\n' >&2; exit 1;
+}
+# Prepared image overrides preserve the selected digest until source pins are
+# reconciled. A full deployment must not silently replace those running images.
+if [[ -f /var/lib/homecompute-infrastructure-maintenance/plans.sqlite ]]; then
+  python3 - /var/lib/homecompute-infrastructure-maintenance/plans.sqlite <<'PY'
+import json, sqlite3, sys
+with sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True) as db:
+    for (raw,) in db.execute("SELECT plan FROM plans WHERE status IN ('succeeded','executing','uncertain')"):
+        plan = json.loads(raw)
+        if any(arg.startswith('/var/lib/homecompute-infrastructure-maintenance/prepared/') and arg.endswith('.image.json')
+               for command in plan['steps'] for arg in command):
+            raise SystemExit('Reconcile infrastructure image overrides before full deployment.')
+        if any(command[:2] == ['/usr/local/libexec/homecompute-mcp-maintenance', 'apply']
+               for command in plan['steps']):
+            raise SystemExit('Reconcile MCP image updates and source pins before full deployment.')
+PY
+fi
+# Automatic daemon replacements keep exact deployment state outside Compose.
+if [[ -d /var/lib/homecompute-docker-maintenance ]] && find /var/lib/homecompute-docker-maintenance -maxdepth 1 -name '*.active' -print -quit | read -r _active_docker_update; then
+  printf 'Reconcile automatic Docker updates and source pins before full deployment.\n' >&2; exit 1;
+fi
 # Restoring state and the identity is a separate operation; never initialize an
 # empty replacement for the migrated n8n instance as a side effect of deployment.
 for required_file in /var/lib/sops-nix/key.txt /srv/state/automation/n8n/database.sqlite /srv/state/automation/n8n/config; do
@@ -33,6 +59,18 @@ git -C "$release" checkout --detach "$revision"
 [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]]
 (cd /var/lib/homecompute && nixos-rebuild build --flake "$release#home-core")
 nixos-rebuild switch --flake "$release#home-core"
+# The temporary live probe override is superseded by this release's Nix unit.
+rm -f -- /etc/systemd/system.control/homecompute-platform-health.service.d/90-public-gateway.conf \
+  /etc/systemd/system.control/homecompute-compute-ssh-tunnel.service.d/90-spark-stt.conf \
+  /etc/systemd/system.control/homecompute-compute-ssh-tunnel-firewall.service.d/90-spark-stt.conf
+rm -f -- /usr/local/lib/systemd/system/homecompute-gateway-certificate.service \
+  /usr/local/lib/systemd/system/homecompute-gateway-certificate.timer \
+  /usr/local/lib/systemd/system/timers.target.wants/homecompute-gateway-certificate.timer \
+  /usr/local/lib/systemd/system/homecompute-token-usage.service \
+  /usr/local/lib/systemd/system/homecompute-token-usage.timer \
+  /usr/local/lib/systemd/system/timers.target.wants/homecompute-token-usage.timer
+rm -f -- /etc/systemd/system.control/homecompute-token-usage.service.d/90-cache-pricing.conf
+systemctl daemon-reload
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
@@ -46,7 +84,9 @@ immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deplo
 "${automation[@]}" config --quiet
 "${homepage[@]}" config --quiet
 open_webui_ready=false
-if [[ -s /run/secrets/open-webui/litellm-api-key && -s /run/secrets/open-webui/webui-secret-key ]]; then
+if [[ -s /run/secrets/open-webui/litellm-api-key &&
+      -s /run/secrets/open-webui/webui-secret-key &&
+      -s /srv/state/open-webui/embedding-api-key ]]; then
   open_webui_ready=true
   "${open_webui[@]}" config --quiet
 fi
@@ -61,6 +101,10 @@ if [[ -s /run/secrets/model-manager/username &&
 fi
 "${piper[@]}" config --quiet
 "${stt[@]}" config --quiet
+install -d -m 0755 /srv/state/control-plane/caddy-config/model-controls
+install -m 0644 "$release/deploy/comfyui-control/index.html" /srv/state/control-plane/caddy-config/model-controls/index.html
+install -d -m 0755 /srv/state/control-plane/caddy-config/video-api
+install -m 0644 "$release/deploy/control-plane/video-api.Caddyfile" /srv/state/control-plane/caddy-config/video-api/Caddyfile
 stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environment.WYO_WHISPER_MODEL')"
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
@@ -91,12 +135,35 @@ if docker network inspect "$edge_network" >/dev/null 2>&1; then
     "${speech_gateway[@]}" down
   fi
 fi
+# Bootstrap authenticated internal services before provisioning the keyless edge.
+"${gateway[@]}" up -d --wait --wait-timeout 180 postgres
+# Existing databases must be guarded before the updated proxy accepts traffic.
+docker exec -i homecompute-control-plane-postgres-1 \
+  psql -X -v ON_ERROR_STOP=1 -U postgres -d litellm < "$release/deploy/control-plane/token-usage.sql"
+"${gateway[@]}" up -d --wait --wait-timeout 180 postgres litellm
+# On first installation, LiteLLM creates its tables during the step above.
+docker exec -i homecompute-control-plane-postgres-1 \
+  psql -X -v ON_ERROR_STOP=1 -U postgres -d litellm < "$release/deploy/control-plane/token-usage.sql"
+install -D -m 0755 "$release/scripts/token-usage.py" /usr/local/bin/homecompute-token-usage
+usage_directory=/srv/state/control-plane/caddy-data/token-usage
+install -d -m 0755 "$usage_directory"
+for asset in index.html styles.css dashboard.js metrics.mjs icon.svg; do
+  install -m 0644 "$release/deploy/control-plane/token-usage/$asset" "$usage_directory/$asset"
+done
+systemctl start homecompute-token-usage.service
+python3 "$release/scripts/setup-network-inference.py"
+python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
+# Release Homepage's former LAN port 80 before the gateway claims it.
+"${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
+python3 "$release/scripts/setup-comfyui-access.py"
+if [[ -d /var/lib/homecompute-image-chat/config-backups ]]; then
+  python3 "$release/scripts/setup-open-webui-images.py" --install-shim-only
+fi
 if [[ ${#speech_proxies_to_restore[@]} -gt 0 ]]; then
   "${speech_gateway[@]}" up -d --wait --wait-timeout 180 "${speech_proxies_to_restore[@]}"
 fi
 "${automation[@]}" up -d --wait --wait-timeout 180
-"${homepage[@]}" up -d --wait --wait-timeout 180
 if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" up -d --wait --wait-timeout 180
 else
@@ -134,8 +201,8 @@ if [[ -f /etc/homecompute/immich.env ]]; then
       printf 'Immich NAS library could not be mounted: %s\n' "$immich_library_path" >&2
       exit 1
     }
-    mounted_source="$(findmnt --noheadings --output SOURCE --target "$immich_library_path")"
-    mounted_type="$(findmnt --noheadings --output FSTYPE --target "$immich_library_path")"
+    mounted_source="$(findmnt --noheadings --output SOURCE --types cifs --submounts --target "$immich_library_path")"
+    mounted_type="$(findmnt --noheadings --output FSTYPE --types cifs --submounts --target "$immich_library_path")"
     [[ $mounted_source == "$immich_library_mount_source" && $mounted_type == cifs ]] || {
       printf 'Immich library mount mismatch at %s (expected %s, found %s %s).\n' \
         "$immich_library_path" "$immich_library_mount_source" "$mounted_source" "$mounted_type" >&2

@@ -66,12 +66,28 @@
   "memory": {
     "search": {
       "enabled": true,
-      "provider": "none",
+      "provider": "openai-compatible",
       "sources": [
         "memory"
       ],
       "store": {
         "vector": {
+          "enabled": true
+        }
+      },
+      "model": "embedding",
+      "fallback": "none",
+      "queryInputType": "query",
+      "documentInputType": "document",
+      "outputDimensionality": 1024,
+      "extraPaths": [],
+      "experimental": {
+        "sessionMemory": false
+      },
+      "remote": {
+        "baseUrl": "https://homecompute-capabilities.home.arpa:19445/v1",
+        "apiKey": "configure-with-setup-openclaw-embeddings",
+        "batch": {
           "enabled": false
         }
       }

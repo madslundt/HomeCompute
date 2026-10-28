@@ -19,7 +19,7 @@ services:
       - /app/config/logs:rw,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0750
     ports:
       - "127.0.0.1:${HOMEPAGE_PORT:-80}:3000"
-      - "${HOMEPAGE_LAN_ADDRESS:?Set the home-core LAN address}:${HOMEPAGE_PORT:-80}:3000"
+      # Caddy owns LAN port 80 and routes the dashboard's existing hostnames here.
       - "${HOMEPAGE_TAILSCALE_ADDRESS:?Set the home-core Tailscale address}:${HOMEPAGE_PORT:-80}:3000"
     cpus: 0.50
     mem_limit: 512m

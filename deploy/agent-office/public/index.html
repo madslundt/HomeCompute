@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Agent lab · HomeCompute</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.mjs"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="heading"><span class="brand-mark" aria-hidden="true">▦</span><h1>Agent lab</h1><p>Local minds. Hands-on experiments.</p></div>
+    <div class="header-actions"><span id="connection" class="connection">Connecting…</span><button type="button" id="motion" aria-pressed="false">Ⅱ <span>Pause motion</span></button></div>
+  </header>
+  <main>
+    <aside class="roster panel" aria-label="Agent roster">
+      <div class="roster-heading"><h2>The team</h2><span id="team-count">OpenClaw</span></div>
+      <label class="filter-label" for="filter">Show agents</label>
+      <select id="filter"><option value="all">Everyone</option><option value="working">Working</option><option value="waiting">Waiting</option><option value="idle">Idle</option><option value="unknown">Unknown</option><option value="error">Needs attention</option></select>
+      <div id="roster-list" class="roster-list" aria-label="Choose an agent"></div>
+      <p class="roster-note">Your OpenClaw specialists,<br>each in their own element.</p>
+    </aside>
+    <section class="office panel" aria-label="Visual agent office" aria-describedby="map-caption">
+      <div class="office-heading"><div><span class="tiny-light" aria-hidden="true"></span><span id="office-summary">Waiting for observations</span></div><span id="office-clock"></span></div>
+      <div class="map-frame" id="map-frame" tabindex="0" aria-label="Explore the lab panorama">
+        <div class="scene" id="scene" aria-label="High-rise lab with robot agent locations">
+          <img class="office-art" src="/assets/office.png" alt="Panoramic high-rise robotics lab with glass walls and city views, AI racks, batteries, drone and 3D printing workbenches, coding desks, a library chess corner, gaming lounge, robotic kitchen, and a glazed family atrium" draggable="false">
+          <button type="button" class="room-label operations" data-room="operations">Operations</button>
+          <button type="button" class="room-label administration" data-room="administration">Administration</button>
+          <button type="button" class="room-label planning" data-room="planning">Planning</button>
+          <button type="button" class="room-label research" data-room="research">Research library</button>
+          <button type="button" class="room-label shopping" data-room="shopping">Shopping</button>
+          <button type="button" class="room-label lounge" data-room="lounge">Lounge</button>
+          <button type="button" class="room-label coordination" data-room="coordination">Coordination</button>
+          <button type="button" class="room-label inventory" data-room="inventory">Inventory</button>
+          <button type="button" class="room-label finance" data-room="finance">Finance</button>
+          <button type="button" class="room-label engineering" data-room="engineering">Engineering</button>
+          <button type="button" class="room-label travel" data-room="travel">Travel</button>
+          <button type="button" class="room-label kitchen" data-room="kitchen">Kitchen</button>
+          <button type="button" class="room-label family" data-room="family">Family atrium</button>
+          <button type="button" class="room-label arrival" data-room="arrival">Arrival</button>
+          <div id="characters"></div>
+        </div>
+      </div>
+      <footer class="office-footer"><div class="legend"><span><b class="state-key working">▥</b>Working</span><span><b class="state-key waiting">Ⅱ</b>Waiting</span><span><b class="state-key idle">–</b>Idle</span><span><b class="state-key unknown">?</b>Unknown</span><span><b class="state-key error">!</b>Attention</span></div></footer>
+      <p id="map-caption" class="map-caption">Robots deploy their tools while working. Select a room to explore its gadgets. Locations represent activity.</p>
+    </section>
+    <aside class="inspector panel" aria-label="Selected agent details">
+      <div class="inspector-heading"><h2 id="agent-name">Select an agent</h2><div class="agent-navigation"><button type="button" id="previous" aria-label="Previous agent">‹</button><span id="agent-index"></span><button type="button" id="next" aria-label="Next agent">›</button></div></div>
+      <p id="agent-role" class="muted"></p>
+      <div class="agent-profile"><div id="profile-sprite" class="portrait"><span class="sprite"></span></div><div><div id="agent-status" class="status-text">Unknown</div><p id="agent-location" class="location">Unobserved</p></div></div>
+      <section class="detail-section"><h3>Current activity</h3><p id="agent-task" class="task-value">Waiting for the feed</p><dl><div><dt>Active runs</dt><dd id="agent-runs">—</dd></div><div><dt>Observed</dt><dd id="agent-observed">—</dd></div></dl><p id="activity-note" class="activity-note"></p></section>
+      <section class="detail-section role-section"><h3>In their element</h3><p id="agent-specialty"></p></section>
+      <section class="detail-section history-section"><h3>Recent activity <span id="history-mode"></span></h3><ol id="history"></ol><p id="history-empty" class="muted">Activity will appear here as it is observed.</p></section>
+      <p class="privacy-note"><span aria-hidden="true">◇</span> Local, read-only activity.<br>No messages, prompts, or tool results.</p>
+    </aside>
+  </main>
+  <dialog id="gadget-dialog" aria-labelledby="gadget-title"><div class="dialog-heading"><div><p class="eyebrow">ROOM ILLUSTRATION</p><h2 id="gadget-title"></h2></div><button type="button" id="gadget-close" aria-label="Close room details">×</button></div><ul id="gadget-list"></ul></dialog>
+  <div id="feed-notice" class="feed-notice" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -26,6 +26,7 @@ __pycache__/
 .cache/
 tmp/
 artifacts/
+.playwright-mcp/
 
 # Local agent-harness runtime state (policies intended for deployment belong in
 # reviewed configuration files, not tool-generated state directories).

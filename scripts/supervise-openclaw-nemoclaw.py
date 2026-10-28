@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import closing
 import json
 import importlib.util
+import hashlib
 import os
 from pathlib import Path
 import signal
@@ -30,6 +31,15 @@ IMAGE = "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:51d9fe7e0097931ce96f72f
 INTERVAL = 60
 WINDOW = 1800
 MAX_ATTEMPTS = 3
+# Built module from the pinned source revision above. Use the native exact-target
+# recovery contract; the global credentials query refuses transport failures.
+GATEWAY_RUNTIME_SHA256 = "d445c9fc21b44d8687e43528a45fb2b7096c9ba8b186ee4190f4840552517fcc"
+GATEWAY_RECOVERY_JS = """const {recoverNamedGatewayRuntime}=require(process.argv[1]);
+recoverNamedGatewayRuntime({gatewayName:'nemoclaw-9123',
+  runtimeSelection:{gatewayName:'nemoclaw-9123',workspace:'default'},
+  authorizeExactTargetTransportRecovery:true}).then(result=>{
+    process.exitCode=result.recovered&&result.after.state==='healthy_named'?0:1;
+  }).catch(()=>{process.exitCode=1;});"""
 ENV_KEYS = {
     "NEMOCLAW_INSTALL_REF", "NEMOCLAW_INSTALL_TAG", "NEMOCLAW_AGENT",
     "NEMOCLAW_SANDBOX_NAME", "NEMOCLAW_GATEWAY_PORT",
@@ -278,10 +288,9 @@ class Supervisor:
             return
         if phase == "host-gateway-down":
             self.check_native_database()
-            # The supported credentials query restores the named managed
-            # gateway through recoverNamedGatewayRuntime. Onboarding instead
-            # reserves an inference route and cannot finalize a Stopped agent.
-            argv = [self.cli, "credentials", "list"]
+            # Match native ACP's exact recorded gateway selection. This only
+            # repairs its retained host transport; never run full onboarding.
+            argv = self.host_gateway_recovery_argv()
         else:
             argv = [self.cli, NAME, "start" if phase == "Stopped" else "recover"]
         event(f"recovery-attempt:{phase}")
@@ -328,6 +337,17 @@ class Supervisor:
         else:
             self.failures = 0
             self.report("ready")
+
+    def host_gateway_recovery_argv(self) -> list[str]:
+        module = self.home / ".nemoclaw/source/dist/lib/gateway-runtime-action.js"
+        try:
+            if module.is_symlink() or not module.is_file():
+                raise Refused("native-gateway-module-unavailable")
+            if hashlib.sha256(module.read_bytes()).hexdigest() != GATEWAY_RUNTIME_SHA256:
+                raise Refused("native-gateway-module-revision-mismatch")
+        except OSError:
+            raise Refused("native-gateway-module-unavailable") from None
+        return ["node", "-e", GATEWAY_RECOVERY_JS, str(module)]
 
     def check_native_database(self) -> None:
         # An observation fence only: no native DB or phase mutations. Refuse

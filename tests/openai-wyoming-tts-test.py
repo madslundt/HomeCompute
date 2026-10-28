@@ -167,6 +167,8 @@ class RunningAdapter:
             voice_alias="danish-default",
             piper_voice_id="da_DK-talesyntese-medium",
             max_input_chars=20,
+            synthesis_timeout_seconds=5,
+            max_concurrent_requests=1,
         )
         self.server = ADAPTER.build_server(self.config, gateway)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)

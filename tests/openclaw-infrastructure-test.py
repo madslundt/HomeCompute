@@ -335,7 +335,33 @@ class CoreInfrastructureTests(unittest.TestCase):
         machine = Reader.compact(report)["machines"]["home-spark"]
         self.assertEqual(machine["monitored_health"]["status"], "degraded")
         prompt = self.reader.contextual_prompt("Machine status?")
-        self.assertIn("Do not offer unavailable broker tools", prompt)
+        self.assertIn("Use monitored_health for the monitored service status", prompt)
+        self.assertIn("publication, deployment and live changes require the trusted operator approval path", prompt)
+        self.assertNotIn("Do not write memory, call tools, submit tasks", prompt)
+
+    def test_normal_context_summarizes_inventory_without_truncating_snapshot_or_hiding_failures(self):
+        for row in self.raw_core['containers']:
+            row['status'] = 'Exited observed'
+        report = self.reader.read('all')
+        original = copy.deepcopy(report)
+        complete = Reader.compact(report)
+        evidence = Reader.conversation_evidence(report)
+        core = evidence['machines']['home-core']
+        inventory = core['inventory_health']
+        self.assertEqual(inventory['degraded'], len(self.raw_core['containers']))
+        self.assertEqual(inventory['checks'], len(self.raw_core['containers']) + len(self.raw_core['unit_states']))
+        details = [row for row in core['checks'] if row[0].startswith(('container.', 'unit.'))]
+        self.assertLessEqual(len(details), 8)
+        self.assertTrue(all(row[2] == 'degraded' for row in details))
+        self.assertEqual(inventory['omitted_nonhealthy_details'], inventory['degraded'] - len(details))
+        self.assertGreater(len(complete['machines']['home-core']['checks']), len(core['checks']))
+        self.assertEqual(core['monitored_health']['status'], 'degraded')
+        self.assertEqual(core['host_metrics'], complete['machines']['home-core']['host_metrics'])
+        self.assertEqual(evidence['home_assistant_energy'], complete['home_assistant_energy'])
+        self.assertEqual(evidence['timestamp_table'], complete['timestamp_table'])
+        self.assertEqual(report, original)
+        self.assertNotIn('PRIVATE', json.dumps(evidence))
+        self.assertLessEqual(len(self.reader.contextual_prompt('x' * 4000).encode()), 16384)
 
     def test_package_coverage_flag_never_becomes_a_source_count_in_model_context(self):
         self.raw_spark["maintenance_report"]["package_updates"]["provenance"]["skipped_sources"] = 3

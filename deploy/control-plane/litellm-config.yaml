@@ -47,6 +47,62 @@ model_list:
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 600
       stream_timeout: 600
+  - model_name: "embedding"
+    litellm_params:
+      model: "openai/microsoft/harrier-oss-v1-0.6b"
+      order: 1
+      api_base: "os.environ/EMBEDDING_BASE_URL"
+      api_key: "local"
+      timeout: 60
+    model_info:
+      mode: embedding
+      max_input_tokens: 2048
+      output_vector_size: 1024
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+  - model_name: "stt-danish"
+    litellm_params:
+      model: "openai/stt-danish"
+      order: 1
+      api_base: "os.environ/COMPUTE_STT_DANISH_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 120
+      response_format: json
+    model_info:
+      mode: audio_transcription
+  - model_name: "whisper-turbo"
+    litellm_params:
+      model: "openai/whisper-turbo"
+      order: 1
+      api_base: "os.environ/COMPUTE_STT_MULTILINGUAL_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 120
+      response_format: json
+    model_info:
+      mode: audio_transcription
+  - model_name: "plapre"
+    litellm_params:
+      model: "openai/plapre"
+      order: 1
+      api_base: "os.environ/PLAPRE_TTS_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 300
+      stream_timeout: 300
+    model_info:
+      mode: audio_speech
+  - model_name: "video"
+    litellm_params:
+      model: "openai/ltx-2.5"
+      order: 1
+      api_base: "os.environ/VIDEO_GENERATION_BASE_URL"
+      api_key: "local"
+      timeout: 120
+    model_info:
+      mode: video_generation
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      input_cost_per_second: 0
+      output_cost_per_second: 0
 litellm_settings:
   request_timeout: 600
   num_retries: 0
@@ -61,7 +117,7 @@ general_settings:
   database_url: os.environ/DATABASE_URL
   store_model_in_db: false
   store_prompts_in_spend_logs: false
-  disable_spend_logs: true
+  disable_spend_logs: false
   disable_error_logs: true
 
 router_settings:

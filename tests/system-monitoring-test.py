@@ -26,12 +26,18 @@ def registry():
 
 def snapshot(system, *, failing=False):
     return {"schema_version": 1, "host": system["target"], "failed_units": [],
+            "n8n_workflow_health": {"schema_version": 1, "generated_at": MONITOR.iso(NOW),
+                                    "window_seconds": 900, "failure_count": 0},
             "unit_states": {u["name"]: {"LoadState": "loaded", "ActiveState": "active" if u["kind"] == "persistent" else "inactive",
                              "SubState": "running" if u["kind"] == "persistent" else "dead", "Result": "success",
                              "ExecMainStatus": "0", "ExecMainStartTimestampMonotonic": "1"} for u in system["units"]},
             "containers": [{"name": s["name"], "status": "Restarting (1) 3 seconds ago" if failing else "Up 8 days (healthy)"}
                            for s in system["containers"]],
             "platform_updates": None,
+            "host_update_report": {"schema_version": 1, "host": system["target"], "generated_at": MONITOR.iso(NOW),
+                "items": [{"component": "fixture", "kind": "packages", "status": "current"}], "summary": {"current": 1}},
+            "mcp_update_report": {"schema_version": 1, "host": "home-core", "generated_at": MONITOR.iso(NOW),
+                "components": [{"component": c, "status": "current"} for c in ("aula-mcp", "tilbudstrolden-mcp")]},
             "maintenance_report": {"schema_version": 1, "mode": "observe-only", "host": system["target"],
                 "generated_at": MONITOR.iso(NOW),
                 "package_updates": {"status": "current", "candidate_count": 0},
@@ -45,6 +51,20 @@ def fixtures(reg):
 
 
 class MonitoringTest(unittest.TestCase):
+    def test_workflow_failure_monitor_catches_pruned_errors_and_deduplicates_counts(self):
+        reg = registry(); data = fixtures(reg)
+        data['home-core']['n8n_workflow_health']['failure_count'] = 1
+        first = MONITOR.make_report(reg, data, NOW)
+        row = next(x for x in first['observations'] if x['check_id'] == 'n8n-workflow-failures')
+        self.assertEqual((row['status'], row['evidence']), ('degraded', {'failed': True}))
+        data['home-core']['n8n_workflow_health']['failure_count'] = 20
+        second = MONITOR.make_report(reg, data, NOW + timedelta(seconds=10), first)
+        self.assertFalse(any(x['stable_key'].endswith('n8n-workflow-failures') for x in second['changes']))
+        data['home-core']['n8n_workflow_health']['failure_count'] = 0
+        recovered = MONITOR.make_report(reg, data, NOW + timedelta(seconds=20), second)
+        self.assertTrue(any(x['stable_key'].endswith('n8n-workflow-failures') and x['transition'] == 'resolved'
+                            for x in recovered['changes']))
+
     def test_registry_cannot_supply_commands_hosts_or_automatic_actions(self):
         for mutation in (lambda r: r["systems"][0].update(command="sudo reboot"),
                          lambda r: r["systems"][0].update(target="-oProxyCommand=bad"),
@@ -214,7 +234,7 @@ class MonitoringTest(unittest.TestCase):
             self.assertIn('token="' + "a" * 32 + 'FIELDSTOKEN"', source)
             self.assertIn("http://127.0.0.1:15678/webhook/homecompute-openclaw-ha-metadata", source)
             self.assertIn("method='GET'", source); self.assertIn("NoRedirect", source)
-            self.assertIn("response.read(1025)", source)
+            self.assertIn("response.read(65537)", source)
             self.assertEqual(calls[0][1]["timeout"], 4)
             for change in ({"states": "PRIVATE"}, {"installed_version": "PRIVATE"}, {"unavailable_count": True}, {"generated_at": None}):
                 old = dict(raw); raw.update(change)

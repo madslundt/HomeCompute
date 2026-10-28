@@ -192,6 +192,78 @@ class ChatTest(unittest.TestCase):
                 bad["result"]["meta"]["agentMeta"]["terminalReceipt"][key] = value
                 with self.assertRaises(CHAT.ChatError):CHAT.parse_turn(bad, session)
 
+    def test_native_mcp_scope_and_effect_receipt_binding(self):
+        session = "683dfe77-bdc2-4db7-a544-a9a213b98292"
+        candidate = receipt(session)
+        terminal = candidate["result"]["meta"]["agentMeta"]["terminalReceipt"]
+        terminal["successfulToolNames"] = ["homecompute__homecompute_systems"]
+        self.assertEqual(CHAT.parse_turn(candidate, session)["text"], "42")
+        for unknown in ("other__homecompute_systems", "homecompute__homecompute_task_approve",
+                        "homecompute__homecompute_ha_approve", "homecompute__homecompute_ha_execute"):
+            terminal["successfulToolNames"] = [unknown]
+            with self.assertRaises(CHAT.ChatError):
+                CHAT.parse_turn(candidate, session)
+        candidate["runId"] = "mcp-run"
+        terminal.update(runId="mcp-run", turnId="mcp-turn", terminalDisposition="visible",
+                        successfulToolNames=["homecompute__homecompute_task_submit"])
+        self.assertFalse(CHAT.parse_turn(candidate, session)["replay_safe"])
+        terminal["runId"] = "another-run"
+        with self.assertRaises(CHAT.ChatError):
+            CHAT.parse_turn(candidate, session)
+
+    def test_maintenance_reads_and_effects_keep_native_receipt_and_no_replay_boundary(self):
+        session = '683dfe77-bdc2-4db7-a544-a9a213b98292'
+        for suffix in ('list', 'status', 'preparation'):
+            data = receipt(session)
+            data['result']['meta']['agentMeta']['terminalReceipt']['successfulToolNames'] = ['homecompute__homecompute_maintenance_' + suffix]
+            self.assertTrue(CHAT.parse_turn(data, session)['replay_safe'])
+        for suffix in ('prepare', 'run'):
+            data = receipt(session)
+            terminal = data['result']['meta']['agentMeta']['terminalReceipt']
+            terminal['successfulToolNames'] = ['homecompute__homecompute_maintenance_' + suffix]
+            with self.assertRaises(CHAT.ChatError): CHAT.parse_turn(data, session)
+            data['runId'] = 'maintenance-run'
+            terminal.update(runId='maintenance-run', turnId='maintenance-turn', terminalDisposition='visible')
+            self.assertFalse(CHAT.parse_turn(data, session)['replay_safe'])
+
+    def test_workspace_tools_require_bound_visible_completion(self):
+        session = "683dfe77-bdc2-4db7-a544-a9a213b98292"
+        for tool in ("write", "edit", "apply_patch", "memory_search", "memory_get"):
+            candidate = receipt(session, "Completed scoped workspace operation")
+            candidate["runId"] = "workspace-run"
+            candidate["result"]["meta"]["replayInvalid"] = True
+            terminal = candidate["result"]["meta"]["agentMeta"]["terminalReceipt"]
+            terminal.update(runId="workspace-run", turnId="workspace-turn",
+                            terminalDisposition="visible", successfulToolNames=[tool])
+            self.assertFalse(CHAT.parse_turn(candidate, session)["replay_safe"])
+            for key, value in (("runId", "different"), ("turnId", ""),
+                               ("terminalDisposition", "pending")):
+                bad = copy.deepcopy(candidate)
+                bad["result"]["meta"]["agentMeta"]["terminalReceipt"][key] = value
+                with self.assertRaises(CHAT.ChatError):
+                    CHAT.parse_turn(bad, session)
+
+    def test_pinned_raw_cli_completion_without_snapshot_disposition(self):
+        session = "683dfe77-bdc2-4db7-a544-a9a213b98292"
+        value = receipt(session, "143")
+        value['runId'] = 'native-run'
+        meta = value['result']['meta']
+        meta.update(replayInvalid=True, stopReason='stop',
+                    completion={'stopReason': 'stop', 'finishReason': 'stop'},
+                    finalAssistantVisibleText='143',
+                    toolSummary={'calls': 1, 'tools': ['exec'], 'failures': 0})
+        meta['agentMeta']['terminalReceipt'].update(runId='native-run', turnId='native-run',
+                                                   successfulToolNames=['exec'])
+        self.assertFalse(CHAT.parse_turn(value, session)['replay_safe'])
+        for fields in ({'finalAssistantVisibleText': 'different'},
+                       {'completion': {'stopReason': 'stop', 'finishReason': 'length'}},
+                       {'toolSummary': {'calls': 1, 'tools': ['exec'], 'failures': 1}},
+                       {'stopReason': 'error'}):
+            bad = copy.deepcopy(value)
+            bad['result']['meta'].update(fields)
+            with self.assertRaises(CHAT.ChatError):
+                CHAT.parse_turn(bad, session)
+
     def test_cli_exit_one_requires_completion_and_clears_uncertainty_once(self):
         calls = []
         def completed(argv, **kwargs):

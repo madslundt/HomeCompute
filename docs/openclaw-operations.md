@@ -19,8 +19,75 @@ behind `automation-moe`; no model cutover is part of this change. See
 
 ## Architecture and choice
 
-Target architecture: the managed assistant and native broker are live; the manual
-worker is qualified. Scheduled observations and Home Assistant integration remain staged.
+The live infrastructure lane exposes scoped reads for Home Assistant, home-core,
+and home-spark, with health and update observations every five minutes. OpenClaw
+can prepare, list, inspect and run exact maintenance plans through the separate
+root controller. Verified minor/patch updates use standing authorization. Every
+fix, major upgrade, uncertain version, unsupported stateful image change and protected Spark
+driver/kernel update requires human approval. Home Assistant monthly releases
+count as major changes; update entities need exact-version and backup support.
+
+Use `homecompute_maintenance_prepare` with home-core `nixos`, a reviewed Docker
+component (`homepage`, `n8n`, `caddy`, `litellm`, `postgres`, `open-webui`, `immich`,
+`piper`, `stt`), the custom MCP components `aula-mcp` and `tilbudstrolden-mcp`,
+or `restart-` plus a standard Docker component. Both hosts accept `image-`
+plus an exact observed container name through fresh registry discovery.
+Spark supports `packages`,
+`restart-plapre`, `restart-hviske`, and `restart-qwen`. Home Assistant uses a
+reviewed `update.*` entity ID. Preparation installs no update or repair; Docker
+preparation downloads an immutable candidate. Read preparation status, then
+inspect the plan's versions, digest, expiry and approval requirement.
+
+Orion covers both compute hosts; another conversational agent is unnecessary.
+The root host runner inventories every Docker container and checks host packages
+daily at 05:55 Copenhagen through `homecompute-host-update.timer`. Install its
+hash-bound bundle with `scripts/setup-host-maintenance.py` after installing the
+infrastructure controller. Spark needs a separate root installation; missing
+installation is reported as missing coverage until that step is complete.
+The `host-update-report` records successful updates and outstanding review or
+coverage gaps. Published numeric registry releases need independent platform
+and image provenance, the same image variant, a healthy running baseline, and
+bounded recoverable data before automatic replacement. The former container
+and private data backup are retained; failed attempts roll back and remain held.
+Major changes, same-version rebuilds, custom builds without a qualified recipe,
+unsupported registry sources and intentionally stopped/unhealthy containers
+remain review items. Full releases must reconcile successful image overrides.
+Core package candidates refresh the approved release's existing flake inputs
+in a private clone and build before full-closure classification. Spark refreshes
+signed APT metadata and permits only exact routine transactions without hidden
+solver effects; NVIDIA, kernel, runtime and major changes remain for review.
+Snap's existing refresh service remains responsible for snap updates. Imperative
+Nix profiles, source-pinned tools and user Python tools are explicit review gaps.
+
+The MCP lane checks published stable releases each Monday at 09:20 Copenhagen
+through `homecompute-mcp-update.timer`. Owner authorization permits tested patch
+and minor releases; a 0.x minor change remains a major compatibility change.
+The trusted builder pins release commits, applies the reviewed patches, runs
+upstream tests and production dependency audits, and binds the existing runtime
+configuration. Deployment backs up stopped service state, checks health and MCP
+discovery from n8n, and attempts rollback on failure. Major changes and failed
+or uncertain attempts remain held for operator review. Source-only commits and
+gateway dependency changes remain review signals outside this release lane.
+OpenClaw reads `mcp-update-report` and the maintenance ledger; prepare a fresh
+exact plan before requesting approval for a major update. The first live check
+on 2026-10-25 found both installed releases current. Install reviewed recipes and
+the timer with `scripts/setup-mcp-maintenance.py`; its default prints the bundle
+hash and changes nothing. Keep repository pins aligned before reconciling an
+automatic MCP deployment and performing a full host release.
+
+The root-only CLI is `/opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py`.
+An operator runs `review PLAN_ID`, then `approve PLAN_ID DIGEST` over the trusted
+SSH path; the native agent has neither operation. Spark approval is forwarded to
+the exact remote plan. Execution binds snapshots and source hashes, shares host
+deployment locks, records one attempt before effects, and never retries an
+uncertain result. Review running state and source pins before root-only
+`reconcile PLAN_ID`; full core deployment refuses unresolved image overrides.
+NixOS preparation builds an immutable candidate before registration. Other image/model
+layouts require a separately reviewed root plan rather than arbitrary commands.
+
+The managed assistant, native broker, scheduled observations and scoped Home
+Assistant integration are live; the manual worker is qualified. The broader
+broker controlled-action executors described below remain staged.
 
 ```mermaid
 flowchart LR

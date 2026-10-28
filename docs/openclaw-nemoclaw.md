@@ -390,3 +390,106 @@ a retained backup of the previous directory and a fresh supported managed
 onboarding run. Do not blindly rerun that filesystem migration or edit the
 trusted lifecycle checkpoint. `start`/`doctor`/`status` can send model probes;
 respect the scoped credential's pilot limits.
+
+## Retained production team recovery
+
+The automatic Error replacement remains limited to its original single-agent
+canary. It must refuse a production roster rather than silently restoring only
+`main`, discarding specialist workspaces, channels, plugins or credentials.
+For an authorized incident, `scripts/recover-openclaw-team.py` supplies a separate
+operator-only lifecycle. Run it as `hermes-operator` on the agents VM from a
+root-owned, clean checkout of a full revision published on `origin/master`.
+The selected release must retain the pinned native image/runtime tuple.
+
+First inspect the exact Error sandbox, its registry generation, stopped
+container, mounted state volume and the private native configuration digest.
+The default command is a plan; apply additionally requires that exact digest:
+
+```bash
+python3 /srv/homecompute/releases/FULL_SHA/scripts/recover-openclaw-team.py \
+  --revision FULL_SHA --expected-config-sha256 REVIEWED_NATIVE_CONFIG_SHA256
+python3 /srv/homecompute/releases/FULL_SHA/scripts/recover-openclaw-team.py \
+  --revision FULL_SHA --expected-config-sha256 REVIEWED_NATIVE_CONFIG_SHA256 --apply
+```
+
+The controller pauses only the watchdog, captures the complete native state,
+checks active SQLite databases, hashes all files and approved symlink targets,
+and records original ownership/modes. Native destroy/onboard replace the exact
+terminal sandbox. No native phase database or checkpoint is edited. The pinned
+native image, fresh native authentication/model/proxy ownership, 8 GiB memory
+and swap cap, and existing two-CPU allocation are retained. Every other native
+setting and all specialist workspaces, dependencies, private credentials,
+channels, devices and conversations come from the verified retained state.
+Channels and cron remain paused during offline and read-only startup checks.
+Only after those checks does the controller restore the retained active policy
+and restart through the native lifecycle. It submits no agent turn or message.
+
+The existing yield-acknowledgment and bounded child-result fixes are reproduced
+by their exact-input tracked patch builders, not an opaque container snapshot.
+The existing public-DNS controller is rebound to the replacement's positively
+verified UUID/generation, image, volume and gateway process. Its public-only
+DNS policy and unprivileged namespace boundary remain unchanged.
+
+Private diagnostics, complete backup, file hashes, permissions and transaction
+journal remain under the operator's `.local/state/homecompute-openclaw-supervisor`.
+A failure after deletion durably blocks another automatic transaction. Keep the
+backup and inspect `failureCode`/`failedStage` privately. `--resume --apply` is
+available only for the journaled exact replacement in native `Stopped` state;
+it cannot start a new replacement or restore over an active team. Do not clear
+its journal to retry. Restoring data after the active team has resumed requires
+a separate application-consistent recovery decision, preserving newer writes.
+
+Verify all agent identities, authenticated native readiness, model access,
+Mattermost connectivity, private DNS, specialist workspaces and the office feed.
+A successful restoration is runtime recovery, not reconciliation of unrelated
+host release or infrastructure-maintenance overrides.
+
+Native `start` can issue another fresh gateway token after state restoration.
+The retained-team verifier accepts that native authentication rotation only when
+every other paused configuration field is unchanged and the token differs from
+the pre-replacement credential. The canonical authenticated CLI is then checked.
+A paused Ready restoration that already passed offline hashes can be finished
+without copying its agent data again:
+
+```bash
+python3 /srv/homecompute/releases/FULL_SHA/scripts/recover-openclaw-team.py \
+  --revision FULL_SHA --expected-config-sha256 REVIEWED_NATIVE_CONFIG_SHA256 \
+  --finish --apply
+```
+
+This continuation requires the same failed replacement journal, verified offline
+checkpoint, intact backup and matching paused policy. It refuses an already
+active team and preserves any newer conversation/workspace writes. Only after
+read-only readiness, retained workspace/session checks and the exact local CLI
+qualification does it commit the new supervisor identity and reconnect services.
+
+A replacement also needs the original named MCP provider attached to its new
+sandbox identity and its fixed base-policy rule. The provider's encrypted
+credential survives in the existing gateway; do not rotate or copy it into the
+sandbox. The controller now restores `agent-openclaw-mcp-homecompute` plus the
+tracked, pinned native bridge template before refreshing MCP. It preserves all
+other base-policy entries and refuses a conflicting existing bridge rule. The
+same idempotent binding step can be independently reapplied from a published
+release using `--restore-mcp-binding --apply` with the normal revision and
+retained-config digest arguments. No agent data, channels, credentials or model
+route are modified by that narrow operation.
+
+The DNS namespace controller identifies the gateway by ownership of both its
+canonical listening sockets, in addition to the existing UID, executable,
+command, image, volume, namespace and generation checks. A short-lived native
+CLI probe with the same process title cannot become the gateway. Multiple true
+listener owners remain ambiguous and are refused. Rebinding waits briefly for
+that verified single-gateway state; all identity failures remain immediate.
+
+Private embedding and speech routes retain their explicit address pins and
+existing credential binding through OpenShell's native base-policy API. The
+third-party NemoClaw preset interface rejects `allowed_ips`; it must not be
+used by removing those pins. Recovery merges only the three tracked service
+rules, preserves other base-policy entries, and refuses conflicting rules.
+
+Native MCP restart may revision its `HOMECOMPUTE_OPENCLAW_MCP_TOKEN` resolver
+placeholder. Recovery accepts only the native stable/versioned forms of that
+same fixed key; endpoint, other headers and all retained policy remain exact.
+It reads and verifies the refreshed native config before reactivating channels,
+then preserves that latest handle rather than restoring a stale revision.
+Raw bearer credentials, another resolver key or unrelated changes are refused.

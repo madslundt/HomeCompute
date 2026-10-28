@@ -148,14 +148,27 @@ class PolicyTests(unittest.TestCase):
                 (target / ".git/config").write_text("synthetic Git config")
             def run(argv, cwd, evidence, *args, **kwargs):
                 if kwargs.get("codex"):
-                    evidence.write_text('{"type":"thread.started","thread_id":"synthetic-session"}\n')
+                    schema = Path(argv[argv.index("--output-schema") + 1])
+                    self.assertEqual(schema.stat().st_mode & 0o777, 0o444,
+                                     "the isolated job UID must read the controller-owned schema under service umask 0077")
+                    proposal = {"problem": "Synthetic addition is wrong.", "change": "Correct the addition.",
+                                "validation": "Fixed tests pass.", "risk": "No deployment performed."}
+                    evidence.write_text('\n'.join(json.dumps(event) for event in [
+                        {"type": "thread.started", "thread_id": "synthetic-session"},
+                        {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(proposal)}},
+                        {"type": "turn.completed"}]))
                 return 0
             with patch("worker.os.chown") as chown, patch.object(worker, "clone", side_effect=clone), patch.object(worker, "git", side_effect=git), \
                     patch.object(worker, "run", side_effect=run) as calls, patch.object(worker, "running", return_value=True), \
                     patch.object(worker, "collect", return_value=FILES):
-                result = worker.execute(task)
+                previous_umask = os.umask(0o077)
+                try:
+                    result = worker.execute(task)
+                finally:
+                    os.umask(previous_umask)
                 self.assertEqual(result["session_id"], "synthetic-session")
                 self.assertTrue(result["tests_passed"])
+                self.assertEqual(result["proposal"]["change"], "Correct the addition.")
                 self.assertEqual(worker.phase, "collect")
             job = root / task["id"]
             self.assertEqual((job / "clone/.git").stat().st_mode & 0o777, 0o750)

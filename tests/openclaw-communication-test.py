@@ -43,6 +43,173 @@ def report(status="degraded", now=NOW, evidence=None):
 
 
 class TransportTests(unittest.TestCase):
+    def test_ha_ipc_is_fixed_socket_and_filters_private_controller_receipts(self):
+        from unittest.mock import Mock, patch
+        from openclaw_capabilities import HomeAssistant
+        action = {'domain': 'light', 'service': 'turn_off', 'entity_ids': ['light.synthetic'], 'data': {}}
+        receipt = {'proposal_id': 'a' * 32, 'actor': 'hermes', 'state': 'proposed', 'created_at': NOW,
+                   'approval_expires_at': None, 'action': action, 'result': None, 'token': 'PRIVATE', 'snapshot': 'PRIVATE'}
+        connection, stream = Mock(), Mock()
+        connection.getresponse.return_value.status = 200
+        connection.getresponse.return_value.read.side_effect = [json.dumps(receipt).encode(),
+            json.dumps({**receipt, 'actor': 'openclaw'}).encode()]
+        with patch('openclaw_capabilities.http.client.HTTPConnection', return_value=connection), \
+             patch('openclaw_capabilities.socket.socket', return_value=stream):
+            client = HomeAssistant('hermes')
+            result = client.request('propose', {'action': action})
+            self.assertNotIn('PRIVATE', json.dumps(result))
+            self.assertEqual(stream.connect.call_args.args, ('/run/homecompute-ha-actions/agent.sock',))
+            self.assertEqual(connection.request.call_args.args[:2], ('POST', '/propose'))
+            self.assertEqual(json.loads(connection.request.call_args.args[2]), {'actor': 'hermes', 'action': action})
+            with self.assertRaises(ValueError): client.request('status', {'proposal_id': 'a' * 32})
+            with self.assertRaises(ValueError): client.request('approve', {'proposal_id': 'a' * 32})
+            with self.assertRaises(ValueError): client.request('propose', {'action': action, 'actor': 'openclaw'})
+
+    def test_native_ha_tools_assign_authenticated_actor_and_cannot_execute(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        native_tokens = {role: 'native-' + role + '-' * 40 for role in ('openclaw', 'hermes')}
+        tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'assistant', 'snapshot': 'snapshot'})
+        turn = Mock(side_effect=AssertionError('native model must not run'))
+        identities = []
+        def ipc(client, operation, arguments):
+            identities.append((client.actor, operation, arguments))
+            return {'proposal_id': 'a' * 32, 'actor': client.actor, 'state': 'proposed'}
+        server = communication.serve(self.store, TOKENS, ALLOWED, turn, ('127.0.0.1', 0), lambda: NOW,
+            tasks=tasks, mcp_tokens=native_tokens, ha_actions=True)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        def call(name, arguments, actor='openclaw'):
+            req = urllib.request.Request(f'http://127.0.0.1:{server.server_address[1]}/mcp',
+                data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                    'params': {'name': name, 'arguments': arguments}}).encode(),
+                headers={'Authorization': 'Bearer ' + native_tokens[actor], 'Content-Type': 'application/json',
+                         'Accept': 'application/json, text/event-stream'})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                return json.loads(response.read())
+        action = {'domain': 'light', 'service': 'turn_on', 'entity_ids': ['light.synthetic'], 'data': {'brightness': 128}}
+        try:
+            with patch('openclaw_capabilities.HomeAssistant.request', new=ipc):
+                for actor in ('openclaw',):
+                    self.assertFalse(call('homecompute_ha_propose', {'action': action}, actor)['result']['isError'])
+                    self.assertFalse(call('homecompute_ha_status', {'proposal_id': 'a' * 32}, actor)['result']['isError'])
+                    self.assertFalse(call('homecompute_ha_cancel', {'proposal_id': 'a' * 32}, actor)['result']['isError'])
+                with self.assertRaises(urllib.error.HTTPError) as denied:
+                    call('homecompute_ha_propose', {'action': action}, 'hermes')
+                self.assertEqual(denied.exception.code, 401)
+                denied.exception.close()
+                self.assertEqual([entry[0] for entry in identities], ['openclaw'] * 3)
+                for name in ('homecompute_ha_execute', 'homecompute_ha_approve', 'homecompute_ha_review'):
+                    self.assertEqual(call(name, {})['error']['code'], -32602)
+                self.assertEqual(call('homecompute_ha_propose', {'action': action, 'actor': 'hermes'})['error']['code'], -32602)
+                self.assertEqual(call('homecompute_ha_propose', {'action': {**action, 'domain': 'lock'}})['error']['code'], -32602)
+                self.assertEqual(call('homecompute_ha_status', {'proposal_id': '../../secrets'})['error']['code'], -32602)
+                self.assertEqual(len(identities), 3)
+            turn.assert_not_called()
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+
+    def test_native_mcp_tools_share_bounded_reads_tasks_without_model_or_approval_authority(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        native_tokens = {'openclaw': 'synthetic-native-openclaw-' + '-' * 40}
+        task_id = '0aa529dc-8933-4116-852e-7871f01cbe07'
+        tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'broker-assistant', 'snapshot': 'broker-snapshot'})
+        reader = SimpleNamespace(registry={'systems': [{'id': 'home-core', 'enabled': True}]},
+            read=Mock(return_value={'trusted': True}), compact=lambda value: {'status': 'healthy', 'fresh': value['trusted']})
+        turn = Mock(side_effect=AssertionError('MCP must never call native model recursively'))
+        routes = []
+        def broker(origin, path, token, body=None):
+            routes.append((origin, path, token, body))
+            return {'id': task_id, 'project': 'synthetic-demo', 'state': 'pending', 'context': 'PRIVATE', 'policy': 'PRIVATE'}
+        server = communication.serve(self.store, TOKENS, ALLOWED, turn, ('127.0.0.1', 0), lambda: NOW,
+            infrastructure=reader, tasks=tasks, mcp_tokens=native_tokens)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        def rpc(method, params=None, role='openclaw', path='/mcp', token=None):
+            payload = {'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or {}}
+            req = urllib.request.Request(f'http://127.0.0.1:{server.server_address[1]}' + path,
+                data=json.dumps(payload).encode(), headers={'Authorization': 'Bearer ' + (token or native_tokens[role]),
+                    'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                return json.loads(response.read())
+        try:
+            with patch('openclaw_capabilities.request', side_effect=broker):
+                inventory = rpc('tools/list')['result']['tools']
+                self.assertEqual(len(inventory), 8)
+                submit = {'project': 'synthetic-demo', 'issue_key': 'native:1', 'summary': 'Synthetic', 'context': ''}
+                result = rpc('tools/call', {'name': 'homecompute_task_submit', 'arguments': submit})['result']
+                self.assertFalse(result['isError'])
+                self.assertNotIn('PRIVATE', json.dumps(result))
+                self.assertEqual(routes, [('http://127.0.0.1:18792', '/tasks', 'broker-assistant', submit)])
+                result = rpc('tools/call', {'name': 'homecompute_system_read', 'arguments': {'system_id': 'home-core'}})['result']
+                self.assertEqual(json.loads(result['content'][0]['text'])['report']['status'], 'healthy')
+                reader.read.assert_called_once_with('home-core')
+                for name in ('homecompute_task_approve', 'homecompute_task_publish', 'homecompute_action_execute', 'homecompute_action_approve'):
+                    self.assertEqual(rpc('tools/call', {'name': name})['error']['code'], -32602)
+                result = rpc('tools/call', {'name': 'homecompute_task_submit', 'arguments': {**submit, 'project': 'forbidden'}})['result']
+                self.assertTrue(result['isError'])
+                self.assertEqual(len(routes), 1)
+                self.assertEqual(rpc('tools/call', {'name': 'homecompute_system_read', 'arguments': {'system_id': 'router'}})['error']['code'], -32602)
+                for token in TOKENS.values():
+                    with self.assertRaises(urllib.error.HTTPError) as denied:
+                        rpc('tools/list', token=token)
+                    self.assertEqual(denied.exception.code, 401)
+                for path in ('/conversation', '/observations', '/claim', '/actions'):
+                    with self.assertRaises(urllib.error.HTTPError) as denied:
+                        rpc('tools/list', path=path)
+                    self.assertEqual(denied.exception.code, 401)
+            turn.assert_not_called()
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+
+    def test_native_mcp_cancel_verifies_project_before_forwarding_and_never_escalates(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from openclaw_capabilities import Capabilities
+        tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'assistant', 'snapshot': 'snapshot'})
+        bridge = Capabilities(tasks, actions={'synthetic.recover': 'synthetic-core'})
+        with patch('openclaw_capabilities.request', return_value={'project': 'private-project'}) as request:
+            with self.assertRaises(ValueError): bridge.action('known-id', 'cancel', {})
+            self.assertEqual(request.call_count, 1)
+            self.assertEqual(request.call_args.args[2], 'snapshot')
+        with patch('openclaw_capabilities.request') as request:
+            for operation in ('approve', 'publish', 'result', 'execute'):
+                with self.assertRaises(ValueError): bridge.action('known-id', operation, {})
+            with self.assertRaises(ValueError): bridge.actions.propose({})
+            with self.assertRaises(ValueError): bridge.actions.propose({'action_id': 'sudo.restart', 'target': 'home-core'})
+            request.assert_not_called()
+
+    def test_native_mcp_credential_cannot_reuse_transport_or_broker_credentials(self):
+        from types import SimpleNamespace
+        tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'broker-key-' + 'x' * 40})
+        native = {'openclaw': 'native-openclaw-' + 'x' * 40}
+        for value in (*TOKENS.values(), *tasks.tokens.values(), 'openshell:resolve:env:FAKE_TOKEN_WITH_LONG_NAME'):
+            with self.assertRaises(ValueError):
+                communication.serve(self.store, TOKENS, ALLOWED, lambda *_: '', tasks=tasks,
+                    mcp_tokens={**native, 'openclaw': value})
+
+    def test_native_mcp_rejects_missing_or_extra_assistants(self):
+        from types import SimpleNamespace
+        tasks = SimpleNamespace(projects=set(), tokens={})
+        for native in ({}, {'hermes': 'x' * 40}, {'openclaw': 'x' * 40, 'operator': 'y' * 40},
+                       {'openclaw': 'x' * 40, 'hermes': 'x' * 40}):
+            with self.assertRaises(ValueError):
+                communication.serve(self.store, TOKENS, ALLOWED, lambda *_: '', tasks=tasks, mcp_tokens=native)
+
+    def test_maintenance_commands_are_deterministic_and_never_call_model(self):
+        from unittest.mock import Mock
+        with tempfile.TemporaryDirectory() as folder:
+            store = Outbox(Path(folder) / 'transport.sqlite3', SETTINGS)
+            turn = Mock(side_effect=AssertionError('model must not run'))
+            maintenance = Mock()
+            maintenance.respond.return_value = 'Read-only check requested; human approval required.'
+            for index, text in enumerate(('/updates homepage', '/update homepage execute', '/maintenance homepage', '/approve homepage')):
+                result = communication.conversation({'conversation': 'operator', 'request_id': str(index),
+                    'destination': SETTINGS['destination'], 'text': text}, store, turn, NOW, maintenance=maintenance)
+                self.assertIsNotNone(result)
+            turn.assert_not_called()
+            self.assertEqual(maintenance.respond.call_count, 3)
+            store.db.close()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Outbox(Path(self.temp.name) / "transport.sqlite3", SETTINGS)

@@ -15,7 +15,9 @@ import sys
 from typing import Any, Callable
 
 import homecompute
-from maintenance_observations import SOURCES, TTL, project, semantic_evidence
+from maintenance_observations import SOURCES, TTL, project, semantic_evidence, ttl as source_ttl
+import homeassistant_observations as ha
+import n8n_observations as n8n
 
 ROOT = Path(__file__).resolve().parents[1]
 ID = re.compile(r"^[a-z0-9][a-z0-9_.@-]{0,120}$")
@@ -108,7 +110,7 @@ def check(system: dict[str, Any], check_id: str, status: str, evidence: dict[str
           now: datetime, *, updates: bool = False) -> dict[str, Any]:
     ttl = system["update_ttl_seconds" if updates else "health_ttl_seconds"]
     if check_id.split(".")[0] in SOURCES:
-        ttl = TTL
+        ttl = source_ttl(check_id.split(".")[0])
     return {"system_id": system["id"], "check_id": check_id,
             "stable_key": system["id"] + ":" + check_id,
             "category": "updates" if updates else "health", "status": status,
@@ -119,8 +121,8 @@ def check(system: dict[str, Any], check_id: str, status: str, evidence: dict[str
 
 def normalize(system: dict[str, Any], raw: dict[str, Any] | None, now: datetime) -> list[dict[str, Any]]:
     add = lambda key, status, evidence, **kw: check(system, key, status, evidence, now, **kw)
-    if not isinstance(raw, dict) or raw.get("schema_version") != 1 or raw.get("host") != system["target"]:
-        return [add("collection", "unknown", {"reason": "collection_failed" if system["enabled"] else "not_provisioned"})] + [
+    if not isinstance(raw, dict) or raw.get("schema_version") not in (1, 2) or raw.get("host") != system["target"]:
+        return [add("collection", "degraded" if system["enabled"] and system["collector"] == "homeassistant-metadata" else "unknown", {"reason": "collection_failed" if system["enabled"] else "not_provisioned"})] + [
             row for source in SOURCES.intersection(system["updates"]) for row in project(system, {}, source, now, check)]
     checks = [add("collection", "healthy", {"available": True})]
     if system["collector"] == "homeassistant-metadata":
@@ -130,7 +132,20 @@ def normalize(system: dict[str, Any], raw: dict[str, Any] | None, now: datetime)
         except (ValueError, KeyError, TypeError):
             fresh = False
         if not fresh:
-            return [add("collection", "unknown", {"reason": "stale"})]
+            return [add("collection", "degraded" if raw.get("schema_version") == 2 else "unknown", {"reason": "stale"})]
+        if raw.get("schema_version") == 2:
+            try:
+                ha.validate(raw)
+            except (ValueError, KeyError, TypeError):
+                return [add("collection", "degraded", {"reason": "unsupported_schema"})]
+            checks.append(add("installed-version", "healthy", {"installed_version": raw["installed_version"]}))
+            for item in raw["checks"]:
+                checks.append(check(system, item["check_id"], item["status"], item["evidence"],
+                                    timestamp(item["observed_at"]), updates=ha.CHECKS[item["check_id"]] == "updates"))
+            for row in checks[:2]:
+                row["observed_at"] = iso(generated)
+                row["expires_at"] = iso(generated + timedelta(seconds=system["health_ttl_seconds"]))
+            return checks
         # n8n owns the HA credential and returns only this finite projection.
         version = raw.get("installed_version")
         checks.append(add("installed-version", "healthy" if isinstance(version, str) and VERSION.fullmatch(version) else "unknown",
@@ -144,6 +159,9 @@ def normalize(system: dict[str, Any], raw: dict[str, Any] | None, now: datetime)
             row["observed_at"] = iso(generated)
             row["expires_at"] = iso(generated + timedelta(seconds=system["update_ttl_seconds"] if row["category"] == "updates" else system["health_ttl_seconds"]))
         return checks
+    if system['id'] == 'home-core':
+        status, evidence = n8n.project(raw.get('n8n_workflow_health'), now)
+        checks.append(add(n8n.CHECK, status, evidence))
     containers = raw.get("containers")
     for service in system["containers"]:
         key = "container." + service["name"]
@@ -223,6 +241,13 @@ for unit in units:
    result[unit]={k:values.get(k) for k in fields}
  except (OSError,subprocess.TimeoutExpired,ValueError): pass
 payload={'unit_states':result}
+if 'homecompute-agents-vm.service' in units:
+ try:
+  with open('/run/homecompute-openclaw-reports/machine-status.json') as stream:
+   value=stream.read(1048577)
+   if len(value)>1048576: raise ValueError('report budget')
+   payload['n8n_workflow_health']=json.loads(value).get('n8n_workflow_health')
+ except (OSError,ValueError): pass
 if MAINTENANCE:
  try:
   import os,stat
@@ -231,6 +256,22 @@ if MAINTENANCE:
    info=os.fstat(fd)
    if not stat.S_ISREG(info.st_mode) or info.st_size>1048576: raise ValueError('report budget')
    payload['maintenance_report']=json.loads(os.read(fd,1048577))
+  finally: os.close(fd)
+ except (OSError,ValueError): pass
+ try:
+  fd=os.open('/var/lib/homecompute-mcp-maintenance-public/report.json',os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022 or info.st_size>65536: raise ValueError('report budget')
+   payload['mcp_update_report']=json.loads(os.read(fd,65537))
+  finally: os.close(fd)
+ except (OSError,ValueError): pass
+ try:
+  fd=os.open('/var/lib/homecompute-host-maintenance-public/report.json',os.O_RDONLY|os.O_NOFOLLOW)
+  try:
+   info=os.fstat(fd)
+   if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode&0o022 or info.st_size>131072: raise ValueError('report budget')
+   payload['host_update_report']=json.loads(os.read(fd,131073))
   finally: os.close(fd)
  except (OSError,ValueError): pass
 print(json.dumps(payload))
@@ -246,10 +287,10 @@ try:
  request=urllib.request.Request('http://127.0.0.1:15678/webhook/homecompute-openclaw-ha-metadata',headers={'Authorization':'Bearer '+token},method='GET')
  with urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect()).open(request,timeout=3) as response:
   if response.status!=200: raise ValueError('unavailable')
-  raw=response.read(1025)
-  if len(raw)>1024: raise ValueError('oversized')
+  raw=response.read(65537)
+  if len(raw)>65536: raise ValueError('oversized')
   data=json.loads(raw)
- if not isinstance(data,dict) or set(data)!=FIELDS: raise ValueError('schema')
+ if not isinstance(data,dict) or set(data) not in (FIELDS,EXTENDED_FIELDS): raise ValueError('schema')
  print(json.dumps(data))
 except Exception:
  sys.exit(2)
@@ -282,7 +323,7 @@ def load_ha_transport(path: Path) -> dict[str, Any]:
 
 
 def collect(system: dict[str, Any], runner: Callable[..., Any] = homecompute.default_runner,
-            *, ha_transport: dict[str, Any] | None = None) -> dict[str, Any] | None:
+            *, ha_transport: dict[str, Any] | None = None, core_host_mode: bool = False) -> dict[str, Any] | None:
     if not system["enabled"]:
         return None
     if system["collector"] == "homeassistant-metadata":
@@ -295,12 +336,16 @@ def collect(system: dict[str, Any], runner: Callable[..., Any] = homecompute.def
         token = private_text(Path(ha_transport["token_file"])).strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token):
             raise ValueError("invalid HA metadata transport token")
-        script = HA_PROJECTION.replace("FIELDS", repr(HA_FIELDS)).replace("TOKEN", json.dumps(token))
+        if core_host_mode:
+            return ha.local_read(token)
+        script = HA_PROJECTION.replace("EXTENDED_FIELDS", repr(ha.FIELDS)).replace("FIELDS", repr(HA_FIELDS)).replace("TOKEN", json.dumps(token))
         result = runner(homecompute.ssh_argv("home-core", "python3 -"), input_text=script, timeout=4)
-        if result.returncode != 0 or len(result.stdout) > 1024:
+        if result.returncode != 0 or len(result.stdout) > ha.MAX_BYTES:
             return None
         try:
             raw = json.loads(result.stdout)
+            if isinstance(raw, dict) and raw.get("schema_version") == 2:
+                return ha.validate(raw)
             if not isinstance(raw, dict) or set(raw) != HA_FIELDS:
                 return None
             if type(raw["schema_version"]) is not int or raw["schema_version"] != 1 or raw["host"] != "home-assistant":
@@ -323,7 +368,10 @@ def collect(system: dict[str, Any], runner: Callable[..., Any] = homecompute.def
                 payload = json.loads(result.stdout)
                 if isinstance(payload, dict):
                     raw["unit_states"] = payload.get("unit_states")
+                    raw['n8n_workflow_health'] = payload.get('n8n_workflow_health')
                     raw["maintenance_report"] = payload.get("maintenance_report")
+                    raw["mcp_update_report"] = payload.get("mcp_update_report")
+                    raw["host_update_report"] = payload.get("host_update_report")
             except json.JSONDecodeError: pass
     return raw
 
@@ -359,7 +407,7 @@ def valid_previous(previous: dict[str, Any], keys: set[str]) -> dict[str, dict[s
                      or (key == "source_report_generated_at" and isinstance(value, str) and iso(timestamp(value)) == value)
                      or (key == "source_digest" and isinstance(value, str) and bool(re.fullmatch(r"[a-f0-9]{64}", value)))
                      or (key == "update_scope" and value in {"installed_packages", "package_catalog"})
-                     or (key == "installed_version" and isinstance(value, str) and VERSION.fullmatch(value)))
+                     or (key in {"installed_version", "latest_version"} and isinstance(value, str) and VERSION.fullmatch(value)))
             if not valid: raise ValueError("previous evidence is not normalized")
         result[row["stable_key"]] = row
     return result
@@ -371,6 +419,8 @@ def make_report(registry: dict[str, Any], snapshots: dict[str, Any], now: dateti
     allowed = set()
     for system in registry["systems"]:
         base = {"collection", "installed-version", "update_available_count", "unavailable_count"}
+        if system['id'] == 'home-core':
+            base.add(n8n.CHECK)
         base.update("container." + x["name"] for x in system["containers"])
         base.update("unit." + x["name"] for x in system["units"])
         base.update(system["updates"])
@@ -378,6 +428,8 @@ def make_report(registry: dict[str, Any], snapshots: dict[str, Any], now: dateti
         if "package-update-report" in system["updates"]:
             base.add("package-update-report.reboot-required")
         base.update("model-update-report." + x for x in ("changed", "pin_drift", "source_errors", "outperforms_active"))
+        if system["collector"] == "homeassistant-metadata":
+            base.update(ha.CHECKS)
         allowed.update(system["id"] + ":" + x for x in base)
         observations.extend(normalize(system, snapshots.get(system["id"]), now))
     prior = valid_previous(previous, allowed) if previous else {}

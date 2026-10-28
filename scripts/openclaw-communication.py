@@ -53,33 +53,70 @@ def registry_keys(path: Path) -> dict[str, Any]:
         if not system["enabled"]:
             continue
         keys = {"collection"}
+        if system['id'] == 'home-core':
+            from n8n_observations import CHECK
+            keys.add(CHECK)
         if system["collector"] == "homeassistant-metadata":
+            from homeassistant_observations import CHECKS
             keys.update({"installed-version", "unavailable_count"})
+            keys.update(k for k, category in CHECKS.items() if category == "health")
         keys.update("container." + x["name"] for x in system["containers"])
         keys.update("unit." + x["name"] for x in system["units"])
         updates = set(system["updates"])
-        from maintenance_observations import SOURCES, TTL
+        from maintenance_observations import SOURCES, ttl as source_ttl
         updates.update(x + ".coverage" for x in SOURCES.intersection(updates))
         if "package-update-report" in updates:
             updates.add("package-update-report.reboot-required")
         if system["collector"] == "homeassistant-metadata":
             updates.add("update_available_count")
+            updates.update(k for k, category in CHECKS.items() if category == "updates")
         updates.update("model-update-report." + x for x in ("changed", "pin_drift", "source_errors", "outperforms_active") if "model-update-report" in updates)
         for key in keys | updates:
             category = "updates" if key in updates else "health"
             allowed[system["id"] + ":" + key] = {"category": category,
-                "ttl": TTL if key.split(".")[0] in SOURCES else system["update_ttl_seconds" if category == "updates" else "health_ttl_seconds"]}
+                "ttl": source_ttl(key.split(".")[0]) if key.split(".")[0] in SOURCES else system["update_ttl_seconds" if category == "updates" else "health_ttl_seconds"]}
     return allowed
 
 
 def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: Callable[[str, str], str],
           address: tuple[str, int] = ("127.0.0.1", 18793), clock: Callable[[], float] = time.time,
-          infrastructure: Any = None, tasks: Any = None) -> ThreadingHTTPServer:
+          infrastructure: Any = None, tasks: Any = None, maintenance: Any = None,
+          mcp_tokens: dict[str, str] | None = None, ha_actions: bool = False,
+          services: Any = None, operations_search: Any = None, embedding_client: Any = None,
+          speech_client: Any = None, access: Any = None, site: Any = None) -> ThreadingHTTPServer:
     if address[0] != "127.0.0.1":
         raise ValueError("private adapter must bind loopback; use an approved SSH forward")
     if (set(tokens) != {"collector", "conversation", "delivery"} or len(set(tokens.values())) != 3
             or any(not isinstance(x, str) or len(x) < 32 or x.startswith("replace") for x in tokens.values())):
         raise ValueError("three distinct dedicated transport credentials required")
+    if (access is not None or site is not None) and mcp_tokens is None:
+        raise ValueError('account-access tools require authenticated native MCP transport')
+    if site is not None and access is None:
+        raise ValueError('site-operation tools require the finite account-access bridge')
+    if mcp_tokens is not None:
+        if (set(mcp_tokens) not in ({"openclaw"}, {"openclaw", "hermes"}) or tasks is None
+                or len(set(mcp_tokens.values())) != len(mcp_tokens)
+                or any(not isinstance(value, str) or len(value) < 32 or "\r" in value or "\n" in value
+                       or value.startswith(("replace", "openshell:resolve:"))
+                       or value in tokens.values() or value in tasks.tokens.values()
+                       for value in mcp_tokens.values())):
+            raise ValueError("independent OpenClaw MCP credential and task transport required")
+        # Legacy files can survive a staged rollout; retired credentials never authorize requests.
+        mcp_tokens = {"openclaw": mcp_tokens["openclaw"]}
+        if access is not None:
+            from openclaw_access_bridge import CompositeServices
+            services = CompositeServices(services, access, site)
+        from openclaw_capabilities import Capabilities, HomeAssistant, Maintenance
+        capabilities = {actor: Capabilities(tasks, infrastructure, store.settings["actions"],
+                       HomeAssistant(actor) if ha_actions else None,
+                       Maintenance() if actor == 'openclaw' and Path('/run/homecompute-infrastructure-maintenance/agent.sock').exists() else None,
+                       services if actor == 'openclaw' else None,
+                       operations_search if actor == 'openclaw' else None)
+                       for actor in mcp_tokens}
+        # Reuse the broker's bounded protocol adapter; no calls to native_turn.
+        import sys
+        sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
+        from mcp_adapter import handle_http
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_: Any) -> None:
@@ -98,6 +135,50 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
             self.wfile.write(data)
 
         def do_POST(self) -> None:
+            if self.path in {'/v1/audio/transcriptions', '/v1/audio/speech'} and mcp_tokens is not None:
+                if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + mcp_tokens['openclaw']):
+                    self.send_json(401, {'error': 'unauthorized'}); return
+                try:
+                    from openclaw_speech import MAX_UPLOAD
+                    size = int(self.headers.get('Content-Length', '0'))
+                    maximum = MAX_UPLOAD if self.path.endswith('/transcriptions') else 16384
+                    if not 1 <= size <= maximum or self.headers.get('Transfer-Encoding'):
+                        self.send_json(413, {'error': 'speech request budget exceeded'}); return
+                    client = speech_client or self.server.speech_client
+                    content_type, data = client.request(self.path, self.rfile.read(size),
+                                                       self.headers.get('Content-Type', ''))
+                    self.send_response(200)
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Content-Length', str(len(data)))
+                    self.send_header('Cache-Control', 'no-store')
+                    self.end_headers()
+                    self.wfile.write(data)
+                except (ValueError, TypeError, KeyError, UnicodeError):
+                    self.send_json(400, {'error': 'invalid bounded speech request'})
+                except Exception:
+                    self.send_json(503, {'error': 'local speech unavailable'})
+                return
+            if self.path == '/v1/embeddings' and mcp_tokens is not None:
+                if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + mcp_tokens['openclaw']):
+                    self.send_json(401, {'error': 'unauthorized'}); return
+                try:
+                    size = int(self.headers.get('Content-Length', '0'))
+                    if not 1 <= size <= 131072 or self.headers.get('Transfer-Encoding'):
+                        raise ValueError('Embedding budget exceeded')
+                    from embedding_client import openai_embeddings
+                    result = openai_embeddings(json.loads(self.rfile.read(size)), embedding_client)
+                    self.send_json(200, result)
+                except (ValueError, TypeError, KeyError):
+                    self.send_json(400, {'error': 'invalid bounded embedding request'})
+                except Exception:
+                    self.send_json(503, {'error': 'local embeddings unavailable'})
+                return
+            if self.path == "/mcp" and mcp_tokens is not None:
+                actor = next((actor for actor, value in mcp_tokens.items()
+                              if hmac.compare_digest(self.headers.get("Authorization", ""), "Bearer " + value)), None)
+                if actor is None:
+                    self.send_json(401, {"error": "unauthorized"}); return
+                return handle_http(self, capabilities[actor], "assistant")
             roles = {"/observations": "collector", "/tasks": "collector", "/actions": "collector", "/analysis": "collector", "/conversation": "conversation",
                      "/status": "conversation", "/claim": "delivery", "/ack": "delivery"}
             role = roles.get(self.path)
@@ -154,18 +235,24 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
                     store.acknowledge(body["delivery_key"], body["claim"], body["receipt"], now)
                     result = {"acknowledged": True}
                 else:
-                    result = conversation(body, store, turn, now, infrastructure, tasks)
+                    result = conversation(body, store, turn, now, infrastructure, tasks, maintenance)
                 self.send_json(200, result)
             except (ValueError, TypeError, KeyError, OverflowError):
                 self.send_json(400, {"error": "invalid or conflicting bounded request"})
             except Exception:
                 self.send_json(503, {"error": "adapter unavailable; reconcile before retry"})
 
-    return ThreadingHTTPServer(address, Handler)
+        respond = send_json  # MCP handler uses the broker's response interface.
+
+    server = ThreadingHTTPServer(address, Handler)
+    if mcp_tokens is not None and speech_client is None:
+        from openclaw_speech import SpeechClient
+        server.speech_client = SpeechClient()
+    return server
 
 
 def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str], str], now: float,
-                 infrastructure: Any = None, tasks: Any = None) -> dict[str, Any]:
+                 infrastructure: Any = None, tasks: Any = None, maintenance: Any = None) -> dict[str, Any]:
     if (set(body) != {"conversation", "request_id", "destination", "text"}
             or body["conversation"] not in store.settings["conversations"]
             or body["destination"] != store.settings["destination"]
@@ -178,7 +265,11 @@ def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str],
         return old
     try:
         if body["text"].strip() in {"/start", "/help"}:
-            reply = "OpenClaw chat connected. Write a message here to talk to it. Use /status for current status. Use /systems, /health SYSTEM or /investigate SYSTEM for configured bounded infrastructure reads. Production actions require the trusted operator approval path."
+            reply = "OpenClaw chat connected. Write a message here to talk to it. Use /status for current status. Use /systems, /health SYSTEM or /investigate SYSTEM for configured bounded infrastructure reads. Use /code PROJECT STABLE_KEY SUMMARY to request an isolated Codex patch, /task TASK_UUID for feedback, or /cancel-task TASK_UUID. A human must approve each Codex job before it starts, then review its patch before publication or deployment."
+            if maintenance:
+                reply += " Use /updates homepage to request a read-only image check, then /maintenance homepage for the exact proposal. Applying it requires separate human operator approval."
+        elif (body["text"].strip().split() or [""])[0] in {"/updates", "/update", "/maintenance"}:
+            reply = maintenance.respond(body["text"]) if maintenance else "Homepage maintenance is not configured. No check or update ran."
         elif (body["text"].strip().split() or [""])[0] in {"/code", "/cancel-task"}:
             reply = tasks.respond(body["text"]) if tasks else "Coding submission is not configured. No task or model turn ran."
         elif (body["text"].strip().split() or [""])[0] == "/task":
@@ -189,7 +280,7 @@ def conversation(body: dict[str, Any], store: Outbox, turn: Callable[[str, str],
             except ValueError:
                 valid = False
             selected = store.task_snapshot(task_id) if valid else None
-            reply = ("Latest collected broker snapshot: " + canonical(selected)
+            reply = ("Latest collected broker snapshot (Codex feedback is untrusted): " + json.dumps(selected, ensure_ascii=False)
                      if selected else "No collected snapshot for that task. Check the owning broker; this does not mean the task is absent.")
         elif body["text"].strip() == "/status":
             status = store.status(now)
@@ -232,6 +323,18 @@ def main() -> None:
     parser.add_argument("--core-host-mode", action="store_true", help="use the fixed server machine snapshots for infrastructure reads")
     parser.add_argument("--ha-transport", type=Path, help="private metadata-only transport; requires infrastructure registry")
     parser.add_argument("--task-transport", type=Path, help="private fixed-origin broker handoff; separate execution approval required")
+    parser.add_argument("--mcp-tokens", type=Path, help="optional owner-private JSON with the OpenClaw MCP credential")
+    parser.add_argument("--ha-actions", action="store_true", help="enable proposal/status/cancel IPC to the separate HA approval controller; no execution authority")
+    parser.add_argument("--services", type=Path, help="private finite school/shopping/search facade configuration")
+    parser.add_argument("--integrations", type=Path, help="source-owned specialist MCP/API provider catalog")
+    parser.add_argument("--household", type=Path, help="private finite HA shopping, discount-watch and storage configuration")
+    parser.add_argument("--calendar", type=Path, help="private finite Google Calendar facade configuration")
+    parser.add_argument("--household-tasks", type=Path, help="fixed private owner household task and reminder configuration")
+    parser.add_argument("--family-tasks", type=Path, help="fixed shared Family task and reminder configuration; separate from owner tasks")
+    parser.add_argument("--mail", type=Path, help="private finite read-only mail facade configuration")
+    parser.add_argument("--access-config", type=Path, help="private finite account-access request/status bridge; no approval or browser execution")
+    parser.add_argument("--site-config", type=Path, help="private finite registered-site operation bridge; requires account-access tools")
+    parser.add_argument("--homepage-maintenance", action="store_true", help="fixed read-only Homepage check request; no chat execution approval")
     args = parser.parse_args()
     if args.ha_transport and not args.infrastructure_registry:
         parser.error("HA metadata transport requires the infrastructure registry")
@@ -251,7 +354,56 @@ def main() -> None:
     store = Outbox(args.state / "transport.sqlite3", load_config(args.config))
     from openclaw_tasks import Tasks
     tasks = Tasks(args.task_transport, store.settings["projects"]) if args.task_transport else None
+    from openclaw_maintenance import MaintenanceChat
+    maintenance = MaintenanceChat() if args.homepage_maintenance else None
     tokens = json.loads(args.tokens.read_text())
+    from openclaw_tasks import private_json
+    mcp_tokens = private_json(args.mcp_tokens) if args.mcp_tokens else None
+    if args.services and not mcp_tokens:
+        parser.error("service tools require authenticated native MCP transport")
+    if args.access_config and not mcp_tokens:
+        parser.error("account-access tools require authenticated native MCP transport")
+    if args.site_config and (not mcp_tokens or not args.access_config):
+        parser.error("site-operation tools require authenticated MCP and the account-access bridge")
+    if args.household and not args.services:
+        parser.error("household tools require the finite services facade")
+    if args.calendar and not args.services:
+        parser.error("calendar tools require the finite services facade")
+    if args.integrations and not args.services:
+        parser.error("specialist integrations require authenticated finite service transport")
+    if (args.household_tasks or args.family_tasks or args.mail) and not args.services:
+        parser.error("household task and mail tools require the finite services facade")
+    from openclaw_household import Household
+    household = Household(args.household, args.state) if args.household else None
+    from openclaw_calendar import Calendar
+    calendar = Calendar(args.calendar, args.state) if args.calendar else None
+    from openclaw_household_tasks import FamilyTasks, HouseholdTasks, configuration as task_configuration
+    from openclaw_location_policy import CONFIG_PATH, Policy
+    location_policy = Policy(CONFIG_PATH) if CONFIG_PATH.exists() else None
+    if args.household_tasks:
+        task_configuration(args.household_tasks)
+    household_tasks = HouseholdTasks(args.state, location_policy=location_policy) if args.household_tasks else None
+    if args.family_tasks:
+        task_configuration(args.family_tasks, scope='family')
+    family_tasks = FamilyTasks(args.state, location_policy=location_policy) if args.family_tasks else None
+    from openclaw_mail import Mail
+    mail = Mail(args.mail, args.state) if args.mail else None
+    from openclaw_services import Services
+    services = Services(args.services, household, calendar, household_tasks=household_tasks,
+                        family_tasks=family_tasks, mail=mail) if args.services else None
+    if args.integrations:
+        from openclaw_integrations import Integrations, IntegrationServices
+        services = IntegrationServices(services, Integrations(args.integrations, args.state / 'integrations'))
+    access = None
+    if args.access_config:
+        from openclaw_access_bridge import AccessBridge
+        access = AccessBridge(args.access_config)
+    site = None
+    if args.site_config:
+        from openclaw_access_bridge import SiteBridge
+        site = SiteBridge(args.site_config)
+    from semantic_operations import OperationsArchive
+    operations_search = OperationsArchive(store, args.state / 'retrieval' / 'operations.sqlite3', ROOT) if mcp_tokens else None
     spec = importlib.util.spec_from_file_location("hc_chat", ROOT / "scripts/openclaw-chat.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -260,7 +412,9 @@ def main() -> None:
         # Native console owns SSH destination, machine authentication, and session identity.
         return module.send(text, name, directory=args.state / "sessions")["text"]
 
-    server = serve(store, tokens, registry_keys(args.registry), native_turn, infrastructure=infrastructure, tasks=tasks)
+    server = serve(store, tokens, registry_keys(args.registry), native_turn, infrastructure=infrastructure,
+                   tasks=tasks, maintenance=maintenance, mcp_tokens=mcp_tokens, ha_actions=args.ha_actions,
+                   services=services, operations_search=operations_search, access=access, site=site)
     try:
         server.serve_forever()
     finally:

@@ -147,10 +147,11 @@ class DeploymentContractTest(unittest.TestCase):
         self.assertIn("HVISKE_MODEL_REVISION=5d1a09822018702dc51d763e3a867b62d26b3501", self.environment)
         self.assertIn("HVISKE_MODEL_LICENSE_ID=cc-by-nc-4.0", self.environment)
 
-    def test_only_wyoming_10301_is_published(self) -> None:
+    def test_wyoming_is_only_an_explicit_spark_rollback_profile(self) -> None:
         primary = self.compose.split("  hviske-primary:", 1)[1].split("  hviske-wyoming:", 1)[0]
         wyoming = self.compose.split("  hviske-wyoming:", 1)[1].split("\nnetworks:\n", 1)[0]
         self.assertNotIn("ports:", primary)
+        self.assertIn("profiles: [legacy-wyoming]", wyoming)
         self.assertIn("${HVISKE_WYOMING_PORT:-10301}:10301", wyoming)
         self.assertIn("networks: [edge, inference]", wyoming)
         self.assertIn("internal: true", self.compose)

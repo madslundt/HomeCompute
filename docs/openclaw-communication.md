@@ -14,6 +14,16 @@ Telegram reception, the adapter/outbox, task feed and update collector run as
 disabled. Configuration lives in `/var/lib/homecompute-openclaw/config` and
 retained cursor, receipts and sessions in `/var/lib/homecompute-openclaw/communication`.
 Directories are 0700 and files 0600. No Mac login or awake session is needed.
+
+On 2026-10-10, the operator authorized and activated real read-only Home Assistant
+monitoring through `http://homeassistant.local/` (port 80), reusing n8n's existing
+HA credential. `hcOpenClawHA20261010` publishes the fixed authenticated GET route;
+38 earlier workflow records retained their versions and activation. The trusted
+adapter and existing five-minute observation timer share the private enabled
+registry at `/var/lib/homecompute-openclaw/config/system-monitoring.json`. Ordinary
+chat includes fresh, bounded household evidence. HA/device writes were unavailable
+at that activation; the separately approved proposal controller is described below.
+
 Native OpenClaw remains in the 24 GiB agents VM with an 8 GiB
 limit, `Restart=always` VM supervision and its existing native watchdog.
 The dedicated host SSH key permits only fixed native chat/health commands in
@@ -40,17 +50,78 @@ deadline, with no model/delivery override. The external command deadline is 65
 seconds. Input uses shell argument quoting, not executable assistant commands.
 
 Only a completed native receipt with the exact session and
-`inference/automation-moe` route is returned. Write receipts, reroutes, native
-replay warnings, command failure and lost connections durably pause that local
-conversation. Do not retry the same turn automatically. Reconcile its native
+`inference/automation-moe` route is returned. Qualified completed workspace,
+bounded exec, browser and native MCP receipts are accepted only with the required
+completion and identity evidence. Effects remain unsafe to replay. Reroutes,
+unverified failures and lost connections durably pause that local conversation.
+Do not retry the same turn automatically. Reconcile its native
 session before starting another conversation; switching names is not proof that
 a prior effect did not occur. `/status` still works while a conversation is paused.
 
 Earlier two-way synthetic recall passed, including a second verification through
-the HTTP adapter. The supervised phone canary now denies all four previously
-allowed tools, including memory writes/search, after the replay issue described
-below. Conversation context remains available. The console still rejects unsafe
-receipts and grants no additional native tools or production control.
+the HTTP adapter. The earlier tool quarantine recorded below is historical.
+The October 12 capability rollout retains strict receipt validation and moves
+critical authority into independent operator services.
+
+## Approved capability rollout, 2026-10-12
+
+Both dedicated model keys were renewed without changing their scopes. OpenClaw
+has workspace reads, drafts and edits, memory lookup, the finite protected CLI
+helper and an isolated public browser. The root-owned browser plugin permits
+navigation to 14 approved public hosts and observation; interaction, forms,
+alternate profiles and private URLs are blocked. Its gateway service forwards
+one loopback CDP endpoint to the authenticated worker, preserving the native
+managed proxy for other traffic. A separate authenticated DNS-only worker serves
+those public names. The operator controller binds DNS in the exact approved
+gateway namespace, then drops its child to UID/GID 998 with empty groups, zero
+capabilities and no new privileges. Identity drift stops the worker. No native
+TCP egress grant is required.
+
+Both agents have separate endpoint-bound MCP credentials for bounded system
+observations, coding task submit/status/cancel, and HA propose/status/cancel.
+The relay exposes only authenticated POST `/mcp` from the agents guest. Neither
+credential can approve, publish or execute. The native Python SDK's newer initial
+protocol offer negotiates the supported June 2025 version; later requests retain
+strict protocol checks.
+
+All three reviewed coding repositories allow automatic isolated preparation.
+Publication remains bound to a separately reviewed result digest. A real worker
+qualification task (`351ac753-4e28-4b83-9cff-4ee912c972a2`) produced two proposed
+files, passed the controller's fixed checks and stopped in `review`. It was not
+published. The schema permission failure from the preceding test is retained
+as a failed task; schema readability is now checked under the real isolated UID.
+
+The independent HA controller accepts bounded light, climate and cover proposals.
+A root operator reviews fresh target state, approves its exact digest and executes
+within five minutes against unchanged preconditions. Approval is consumed before
+the effect; uncertainty cannot be retried. Native agents have no approval or
+execution interface. Provisioning preserved 39 existing workflows and 20 existing
+credentials. Both agents passed native proposal/status/cancel checks. An operator
+also reviewed a real light against a fresh state snapshot and cancelled the
+proposal. No physical action was executed.
+
+Retained runtime/forward recovery remains supervised. Destructive native `Error`
+replacement requires operator handling because the old quarantine-only restore
+validator intentionally refuses the expanded capability profile. The approved
+replacement now has a Ready native sandbox and restored conversations and
+databases. The final request through home-core passed five actual model tool
+calls: system inventory, host status, protected calculation, public navigation
+and a page snapshot. Native browser checks also blocked private and unapproved
+hosts and interactions after removing the temporary public REST rule. Supervision
+and the retained Telegram receiver are active, with boot dependencies verified.
+The final full-state archive and protected operator recovery bundle have verified
+root-only copies on both the guest and home-core. All three online SQLite backups
+passed integrity checks without changing live WAL/SHM ownership. Current status
+and archive hashes are recorded in the validation JSON.
+
+The encrypted NAS archive-backup module is prepared and disabled. It requires a
+separate NAS share and backup account; the Immich library is not a backup destination.
+A temporary local Restic repository passed an encrypted snapshot and restore test,
+and enabled/disabled Nix module evaluation passed. No NAS repository was written.
+The backup scope is completed recovery archives on home-core, rather than continuous
+live VM or agent-state capture. Keep an exported recovery key separately from both
+home-core and the NAS before relying on it for disaster recovery. Native OpenClaw
+activation and browser qualification status are recorded in the validation JSON.
 
 ## Selected phone chat: dedicated Telegram bot
 
@@ -172,6 +243,20 @@ and real Telegram delivery after reconciliation. The previous native deny list
 is backed up privately in `native-tools-deny-before-phone.json`; restore it only
 after stopping this supervised connection and reviewing the native replay issue.
 
+The 2026-10-10 HA qualification exposed a pinned compaction failure when an
+explicit allowlist resolves to no callable tools. The live supervised canary now
+uses `allow:[]` plus `deny:[...,"*"]` at both global and main-agent scope. Empty
+allow alone is permissive in this release; both wildcard denies are required.
+Pure tests against the installed matcher/guard confirmed denial of all tested and
+future tool names without the construction failure. The native config and
+`.last-good` mirror passed config validation, and the existing gateway lifecycle
+restarted it with no sandbox rebuild, VM reboot or conversation reset.
+`restore-openclaw-nemoclaw.py` now accepts this strict policy and preserves it during
+native Error recovery. Stable agent database, sessions and workspace files were
+preserved; SQLite's transient shared-memory file changed during restart as expected.
+The failed isolated validation conversation remains uncertain and was not replayed;
+phone conversations and outbox receipts were unaffected.
+
 ## Trusted communication adapter
 
 `scripts/openclaw-communication.py` is a stdlib, loopback-only service on 18793.
@@ -221,7 +306,7 @@ cannot gain broker authority.
 The observation path reuses the registry and collector in
 `scripts/observe-homecompute.py`. A trusted operator collector sends only its
 normalized report to `/observations`; collection does not call the model or send
-a message. HA remains disabled. Extra fields are dropped and unknown evidence
+a message. The authorized HA route is active on home-core. Extra fields are dropped and unknown evidence
 keys rejected; assistant context receives finite identifiers, enumerated
 health/update evidence, provenance timestamps and `monitor:<episode_key>`.
 Registry TTLs and source-report expiry are enforced. Missing, stale and unknown
@@ -259,35 +344,77 @@ Each SSH subprocess is capped at four seconds; parallel collection takes at
 most eight seconds before the existing 65-second native deadline. Slow reads
 return unknown. Health and advisory update availability remain separate.
 
-The new inactive `automations/agent-investigation/n8n-ha-metadata-workflow.json`
-owns the HA credential and exposes only authenticated input-free GET
-`/webhook/homecompute-openclaw-ha-metadata` on existing core-loopback n8n port
-15678. Its two native HA nodes read `/api/config` and `/api/states`, then project
-only version, aggregate update count, aggregate unknown/unavailable count and
-source timestamp. Entity IDs, states, attributes, personal payloads and credentials
-stay outside OpenClaw. Success/error/manual execution payload retention is disabled;
-the workflow has no schedule, messages, writes or MCP exposure. The source
-activation gate defaults closed. A disposable network-none container using the
-exact live n8n image qualified both native GET nodes and the projection with
-synthetic HA responses and no production credentials.
+The source `automations/agent-investigation/n8n-ha-metadata-workflow.json` remains
+inactive with its gate closed. `scripts/setup-openclaw-home-assistant.py` validates
+the fixed graph, snapshots the existing n8n database, creates only a dedicated
+Header Auth reader credential, binds the existing HA credential and publishes
+`hcOpenClawHA20261010`. It disables success/error/manual payload retention and
+MCP exposure. Its native HA nodes perform only GET `/api/config` and `/api/states`,
+as documented by the [HA REST API](https://developers.home-assistant.io/docs/api/rest/).
+The live route rejects unauthenticated requests and all input selectors. n8n
+retains the production HA token; only its finite webhook bearer is available to
+the trusted host reader, mode 0600 outside Git and the assistant VM.
 
-Connecting HA requires approval to create a dedicated metadata reader Header Auth
-credential, import/publish this one new workflow using the existing HA credential,
-set its source gate `configured=true`, and restart only the Mac adapter with its
-explicit infrastructure registry and `--ha-transport` private config. Copy
-`config/system-monitoring.json` privately, enable only its HA entry, and use
-`config/system-monitoring-ha.example.json` with an absolute owner-only token file.
-The token authenticates only the finite metadata webhook, never HA itself.
-Verify all three bounded reads, rejected credentials/inputs and duplicate native
-turn suppression before phone use. The prior Telegram approval did not cover
-this production HA read route. No production workflow or credential for this
-route has yet been created. Live operator reads and native investigations have
-been qualified for both compute hosts; HA live qualification remains pending.
+The schema-2 projection is capped at 64 KiB. It monitors availability, battery
+optimizer and telemetry health, whole-house grid meter, tariff, operation plan,
+physical grid availability, and update entities for core, supervisor, OS,
+house_battery, Strømligning and Watts Live. Collection/source gaps become explicit
+incidents, without claiming an HA crash or fabricated recovery. Every five minutes
+the existing feed admits HA health/update checks, alongside compute update checks,
+into the unchanged outbox. HA observations expire after 15 minutes. Current
+unknown/stale entity values never enter numerical analysis; unchanged findings
+stay quiet and incidents/recoveries share the existing per-system grouped claims.
+
+A reusable bounded read exposes 22 verified numerical observations, up to 200
+VAT-inclusive price slots and 32 modeled plan blocks. Whole-house import/export
+comes from Watts Live; connected load and device charge/discharge are separate.
+Integrated battery energy and savings are labeled estimates, configured settings
+are observations only, and the operation plan does not prove execution. Numeric
+fluctuations do not enter notification state. `sampled_at` denotes the selected
+integration refresh/meter heartbeat; `reported_at` retains the entity's state-change
+time. Stable settings/update states are collected as current HA states; they do
+not prove a recent device report or a fresh upstream update check. Solar has no
+verified source and today’s estimated realized savings currently reports unknown.
+Battery/HA-only questions select HA evidence; cross-system and general questions
+retain the compute coverage. Normal conversation gets a compact projection with timestamps and selected future
+plan/price intervals, within the native input budget.
+
+From home-core, without the Mac or Telegram:
+
+```bash
+sudo -u homecompute-openclaw env HOMECOMPUTE_OPENCLAW_TRANSPORT=home-core \
+  /run/current-system/sw/bin/python3 \
+  /opt/homecompute/openclaw-communication/scripts/openclaw_infrastructure.py home-assistant \
+  --registry /var/lib/homecompute-openclaw/config/system-monitoring.json \
+  --ha-transport /var/lib/homecompute-openclaw/config/home-assistant.json --core-host-mode
+```
+
+This returns finite operational checks and the reusable energy projection; it
+never submits an outbox event or applies a control. The deployed private registry
+survives code installation; the Git template remains closed for unprovisioned
+systems. The adapter's `--registry` and `--infrastructure-registry` must select the
+same private policy. The feeder and adapter use the same private HA transport.
+
+Real bounded reads, a native read-only answer, denied credentials/input selectors,
+existing-session/cursor/outbox preservation and successful scheduled admission were
+qualified. No synthetic Telegram message was sent. Persistent target dependencies,
+service restart behavior and n8n restart ownership are verified. `is-enabled` reports
+`disabled` for NixOS attached units, while the effective boot target `Wants` graph
+includes all three services and both timers; the root-owned links reside in durable
+`/etc/systemd/system.attached`. This is boot configuration proof, not a claim that
+an actual production host reboot was performed during this qualification.
+
+Rollback stops only the HA extension, unpublishes `hcOpenClawHA20261010`, removes
+its private HA arguments and disables HA in the private registry. Revoke only
+`hcOpenClawHAReader20261010` after readers stop. Preserve polling offsets, sessions,
+outbox receipts, the existing HA credential and all household workflows. The
+pre-import backup is `/srv/backups/openclaw-ha-20261010T094327Z`; do not overwrite
+subsequent household state by restoring that database as routine rollback.
 
 Control remains in the existing broker/operator/executor lanes. Production
 executors are disabled/unprovisioned and HA/device actions are unavailable;
 neither a successful read nor chat text supplies execution approval. This adds
-no automatic monitoring, boot supervision or repair authority. Rollback removes
+read-only monitoring and boot supervision, without repair authority. Rollback removes
 the adapter's two opt-in arguments and unpublishes only the new HA workflow,
 revoking its dedicated reader credential. Preserve existing workflow state,
 native sessions and outbox receipts. Off-host backup qualification remains separate.

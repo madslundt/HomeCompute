@@ -5,6 +5,11 @@ description: Investigate changed or recurring HomeCompute failures from bounded 
 
 # Incident triage
 
+For a recurring symptom, search `homecompute__homecompute_operations_search`
+for earlier infrastructure receipts and reviewed runbooks. Compare the cited
+evidence with fresh `system_read` results before proposing work. A historical
+recovery is an observation; establish a repair from its execution receipt.
+
 Start with the affected system, symptom, first/last observation, freshness, and
 stable incident key if supplied. Reuse an existing key rather than opening a
 new investigation for every repeat. Separate a failing collector, stale data,

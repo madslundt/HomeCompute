@@ -11,6 +11,7 @@ import subprocess
 BROWSER = 'homecompute-openclaw-browser'
 EGRESS = 'homecompute-openclaw-browser-egress'
 INGRESS = 'homecompute-openclaw-browser-ingress'
+DNS = 'homecompute-openclaw-browser-dns'
 PROFILE = 'homecompute-openclaw-browser-profile'
 
 
@@ -45,7 +46,7 @@ def install(directory: Path, image: str):
             if network['Internal'] != internal or network['IPAM']['Config'][0]['Subnet'] != subnet:
                 raise ValueError('existing network differs from browser contract')
     existing = docker('ps', '-a', '--format', '{{.Names}}').splitlines()
-    if any(name in existing for name in (BROWSER, EGRESS, INGRESS)):
+    if any(name in existing for name in (BROWSER, EGRESS, INGRESS, DNS)):
         raise ValueError('browser containers already exist; inspect before replacement')
     common = ['--init', '--restart', 'unless-stopped', '--user', '10001:10001', '--read-only',
               '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
@@ -55,17 +56,28 @@ def install(directory: Path, image: str):
         '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=1777',
         '--mount', 'type=bind,src=' + str(directory / 'tools/browser-squid.conf') + ',dst=/etc/homecompute/browser-squid.conf,readonly',
         image, '/usr/sbin/squid', '-N', '-f', '/etc/homecompute/browser-squid.conf')
-    docker('network', 'connect', '--alias', 'browser-egress', BROWSER, EGRESS)
+    # Every internal endpoint is fixed: dynamic peers can otherwise claim a
+    # stopped worker's address first during Docker/VM restart.
+    docker('network', 'connect', '--ip', '172.30.188.3', '--alias', 'browser-egress', BROWSER, EGRESS)
     docker('start', EGRESS)
+    docker('create', '--name', DNS, *common, '--network', BROWSER,
+        '--network-alias', 'browser-dns', '--ip', '172.30.188.5',
+        '--cpus', '0.25', '--memory', '64m', '--memory-swap', '64m', '--pids-limit', '64',
+        '--mount', 'type=bind,src=' + str(token) + ',dst=/run/browser-token,readonly',
+        '--env', 'BROWSER_TOKEN_FILE=/run/browser-token', image,
+        '/usr/bin/python3', '/opt/homecompute/browser_worker.py', '--dns-only')
+    docker('network', 'connect', EGRESS, DNS)
+    docker('start', DNS)
     docker('volume', 'create', PROFILE)
-    docker('create', '--name', BROWSER, *common, '--network', BROWSER,
+    docker('create', '--name', BROWSER, '--hostname', BROWSER, *common, '--network', BROWSER,
+        '--ip', '172.30.188.2',
         '--cpus', '1', '--memory', '4g', '--memory-swap', '4g', '--pids-limit', '256',
         '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=1777',
         '--mount', 'type=bind,src=' + str(token) + ',dst=/run/browser-token,readonly',
         '--mount', 'type=volume,src=' + PROFILE + ',dst=/home/browser/profile',
         '--env', 'HOME=/tmp', '--env', 'XDG_CONFIG_HOME=/tmp/config', '--env', 'XDG_CACHE_HOME=/tmp/cache',
         '--env', 'BROWSER_TOKEN_FILE=/run/browser-token',
-        '--env', 'BROWSER_PUBLIC_ORIGIN=http://172.18.0.1:18800', image)
+        '--env', 'BROWSER_PUBLIC_ORIGIN=http://127.0.0.1:18800', image)
     docker('start', BROWSER)
     docker('create', '--name', INGRESS, *common, '--network', EGRESS,
         '--cpus', '0.25', '--memory', '64m', '--memory-swap', '64m', '--pids-limit', '64',
@@ -73,9 +85,11 @@ def install(directory: Path, image: str):
         '--publish', '172.18.0.1:18800:18800',
         '--env', 'BROWSER_UPSTREAM=homecompute-openclaw-browser:18800',
         image, '/usr/bin/python3', '/opt/homecompute/tcp_relay.py')
-    docker('network', 'connect', BROWSER, INGRESS)
+    docker('network', 'connect', '--ip', '172.30.188.4', BROWSER, INGRESS)
     docker('start', INGRESS)
-    receipt = {'browser': BROWSER, 'egress': EGRESS, 'image': image,
+    hostname = json.loads(docker('inspect', BROWSER))[0]['Config']['Hostname']
+    receipt = {'browser': BROWSER, 'egress': EGRESS, 'dns': DNS, 'dns_listener': '172.30.188.5:18802',
+               'image': image, 'hostname': hostname,
                'listener': '172.18.0.1:18800', 'private_networks': 'proxy denied'}
     (private / 'installation.json').write_text(json.dumps(receipt, indent=2) + '\n')
     print(json.dumps(receipt))

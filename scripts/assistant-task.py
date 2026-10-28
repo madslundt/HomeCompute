@@ -44,7 +44,8 @@ def main() -> None:
                     raise ValueError("unsafe broker proposal")
                 target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
                 target.write_bytes(base64.b64decode(item["content"], validate=True))
-        result = {"task": result["task"], "result_sha256": result["result_sha256"],
+        result = {"task": result["task"], "request": result["request"], "policy": result["policy"],
+                  "proposal": result["result"].get("proposal"), "result_sha256": result["result_sha256"],
                   "files": [item["path"] for item in result["result"].get("files", [])],
                   "exported_to": str(args.export) if args.export else None}
     print(json.dumps(result, indent=2))

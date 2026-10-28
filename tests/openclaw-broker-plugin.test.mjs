@@ -1,17 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import plugin from '../deploy/openclaw/broker-plugin/index.mjs';
-import { requestTask } from '../deploy/openclaw/broker-plugin/transport.mjs';
+import { requestTask, requestAction } from '../deploy/openclaw/broker-plugin/transport.mjs';
 
 const id = '0aa529dc-8933-4116-852e-7871f01cbe07';
 const submit = { project: 'homecompute', issue_key: 'simulated:test-1', summary: 'Synthetic issue', context: 'No personal data' };
 const response = value => new Response(JSON.stringify(value), { status: 200 });
 
-test('runtime registers exactly the three optional manifest tools', () => {
+test('runtime registers exactly six optional bounded tools', () => {
   const registered = [];
   plugin.register({ registerTool: (tool, options) => registered.push({ tool, options }) });
-  assert.deepEqual(registered.map(x => x.tool.name), ['homecompute_task_submit', 'homecompute_task_status', 'homecompute_task_cancel']);
+  assert.deepEqual(registered.map(x => x.tool.name), ['homecompute_task_submit', 'homecompute_task_status', 'homecompute_task_cancel',
+    'homecompute_action_propose', 'homecompute_action_status', 'homecompute_action_cancel']);
   assert(registered.every(x => x.options.optional && x.tool.parameters.additionalProperties === false));
+});
+
+test('action bridge only proposes, reads and cancels operator-defined actions', async () => {
+  const body = { action_id: 'synthetic.recover', target: 'synthetic-core', incident_key: 'episode-1', evidence_id: id };
+  const options = { token: 'synthetic', fetchImpl: async (url, opts) => {
+    assert.equal(url, 'http://broker:8080/actions');
+    assert.equal(opts.method, 'POST');
+    assert.deepEqual(JSON.parse(opts.body), body);
+    assert.equal(opts.redirect, 'error');
+    return response({ id, ...body, state: 'pending', policy: { secret: 'private' }, approval_sha256: 'private', snapshot: 'private' });
+  } };
+  assert.deepEqual(await requestAction('propose', body, options), { id, ...body, state: 'pending' });
+  for (const operation of ['approve', 'review', 'execute', 'refresh', 'evidence']) {
+    await assert.rejects(requestAction(operation, body, options), /Invalid task operation/);
+  }
+  await assert.rejects(requestAction('propose', { ...body, command: 'reboot' }, options), /Invalid task arguments/);
+});
+
+test('action status/cancel keep fixed routes and private action fields out', async () => {
+  for (const operation of ['status', 'cancel']) {
+    const row = await requestAction(operation, { task_id: id }, { token: 'synthetic', fetchImpl: async (url, opts) => {
+      assert.equal(url, `http://broker:8080/actions/${id}${operation === 'cancel' ? '/cancel' : ''}`);
+      assert.equal(opts.method, operation === 'status' ? 'GET' : 'POST');
+      return response({ id, state: 'pending', approved_at: 1, evidence: 'private' });
+    } });
+    assert.deepEqual(row, { id, state: 'pending' });
+  }
 });
 
 test('public status preserves bounded progress/results and only verified PR artifacts', async () => {
@@ -39,6 +67,19 @@ test('submission fixes the origin, auth, route and rejects redirects; strips pri
     return response({ id, state: 'pending', context: 'private', worker_log: 'private', api_key: 'private', result: { pr_url: 'https://github.com/example/project/pull/1', prompt: 'private' } });
   } });
   assert.deepEqual(task, { id, state: 'pending', result: { pr_url: 'https://github.com/example/project/pull/1' } });
+});
+
+test('feedback preserves bounded Unicode proposals and rejects raw or credential-shaped output', async () => {
+  const proposal = Object.fromEntries(['problem', 'change', 'validation', 'risk'].map(key => [key, '🦉'.repeat(400)]));
+  const opts = value => ({ token: 'synthetic', fetchImpl: async () => response({ id, state: 'review',
+    result: { ok: true, changed_files: 1, proposal: value, files: [{ content: 'private' }], transcript: 'private' } }) });
+  const task = await requestTask('status', { task_id: id }, opts(proposal));
+  assert.deepEqual(task.result.proposal, proposal);
+  assert(!JSON.stringify(task).includes('private'));
+  for (const invalid of [null, [], 'raw transcript', { ...proposal, change: '🦉'.repeat(401) },
+    { ...proposal, secret: 'extra' }, { ...proposal, risk: 'Bearer ' + 'x'.repeat(32) }]) {
+    await assert.rejects(requestTask('status', { task_id: id }, opts(invalid)), /Invalid or oversized/);
+  }
 });
 
 test('status and cancel use only the UUID-owned route without request bodies', async () => {
