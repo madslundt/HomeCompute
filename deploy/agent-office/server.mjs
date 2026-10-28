@@ -4,9 +4,12 @@ import { authenticated } from './auth.mjs';
 
 const FILES = {
   '/': ['index.html', 'text/html; charset=utf-8'],
+  '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
   '/style.css': ['style.css', 'text/css; charset=utf-8'],
   '/app.mjs': ['app.mjs', 'text/javascript; charset=utf-8'],
   '/walking.mjs': ['walking.mjs', 'text/javascript; charset=utf-8'],
+  '/presence.mjs': ['presence.mjs', 'text/javascript; charset=utf-8'],
+  '/rooms.mjs': ['rooms.mjs', 'text/javascript; charset=utf-8'],
   '/scene-layout.mjs': ['../scene-layout.mjs', 'text/javascript; charset=utf-8'],
   '/catalog.mjs': ['../catalog.mjs', 'text/javascript; charset=utf-8'],
   '/assets/office.png': ['assets/office.png', 'image/png'],
@@ -15,6 +18,10 @@ const FILES = {
   '/assets/walk-operations.png': ['assets/walk-operations.png', 'image/png'],
   '/assets/walk-household.png': ['assets/walk-household.png', 'image/png'],
   '/assets/walk-planning.png': ['assets/walk-planning.png', 'image/png'],
+  '/assets/work-coordination.png': ['assets/work-coordination.png', 'image/png'],
+  '/assets/work-operations.png': ['assets/work-operations.png', 'image/png'],
+  '/assets/work-household.png': ['assets/work-household.png', 'image/png'],
+  '/assets/work-planning.png': ['assets/work-planning.png', 'image/png'],
 };
 
 export function officeServer(snapshot, { port = 18802, publicRoot = new URL('./public/', import.meta.url), publicOrigin, auth } = {}) {
