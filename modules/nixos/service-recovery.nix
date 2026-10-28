@@ -13,6 +13,9 @@ in {
       environment.DOCKER_HOST = "unix:///var/run/docker.sock";
       serviceConfig = {
         Type = "oneshot";
+        RuntimeDirectory = "homecompute-service-recovery";
+        RuntimeDirectoryMode = "0700";
+        RuntimeDirectoryPreserve = true;
         ExecStart = "${pkgs.python3}/bin/python3 ${../../scripts/home-core-service-recovery.py} repair";
         TimeoutStartSec = 120;
         UMask = "0077";

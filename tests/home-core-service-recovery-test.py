@@ -45,6 +45,12 @@ class Runtime:
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_lock_is_inside_the_unit_managed_writable_runtime_directory(self):
+        source = (ROOT / 'scripts/home-core-service-recovery.py').read_text()
+        self.assertEqual(recovery.RUNTIME, Path('/run/homecompute-service-recovery'))
+        self.assertIn('RuntimeDirectory=homecompute-service-recovery', source)
+        self.assertNotIn("open('/run/lock/", source)
+
     def test_mount_is_established_and_rechecked_before_starting_immich(self):
         run = Runtime()
         self.assertEqual(recovery.recover('immich', repair=True, run=run)['status'], 'started')

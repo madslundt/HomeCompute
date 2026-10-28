@@ -15,6 +15,7 @@ import tempfile
 
 ROOT = Path('/opt/homecompute/service-recovery')
 UNITS = Path('/etc/systemd/system.attached')
+RUNTIME = Path('/run/homecompute-service-recovery')
 TARGETS = {
     'immich': ('homecompute-immich-immich-server-1', 'homecompute-immich', 'immich-server'),
     'moss': ('home-core-moss-tts', 'homecompute-piper-tts', 'moss'),
@@ -154,6 +155,9 @@ After=network-online.target docker.service
 
 [Service]
 Type=oneshot
+RuntimeDirectory=homecompute-service-recovery
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 Environment=PATH=/run/current-system/sw/bin
 Environment=DOCKER_HOST=unix:///var/run/docker.sock
 UnsetEnvironment=DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH
@@ -207,7 +211,10 @@ def main() -> None:
             parser.error('install requires --expected-sha256 from reviewed source')
         print(json.dumps(install(args.expected_sha256)))
         return
-    with open('/run/lock/homecompute-service-recovery.lock', 'a') as lock:
+    RUNTIME.mkdir(mode=0o700, exist_ok=True)
+    if RUNTIME.is_symlink():
+        raise ValueError('runtime directory must not be a symlink')
+    with (RUNTIME / 'lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         results = []
         for target in TARGETS:
