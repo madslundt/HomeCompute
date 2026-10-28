@@ -23,14 +23,46 @@ from typing import Any, Callable
 import uuid
 
 CONTAINERS = {
-    "home-core": ("homecompute-automation-aula-mcp-1", "homecompute-automation-tilbudstrolden-mcp-1",
-                  "homecompute-control-plane-caddy-1", "homecompute-control-plane-litellm-1",
-                  "homecompute-control-plane-postgres-1", "homecompute-automation-n8n-1"),
+    "home-core": (
+        'homecompute-automation-aula-mcp-1',
+        'homecompute-automation-tilbudstrolden-mcp-1',
+        'homecompute-control-plane-caddy-1',
+        'homecompute-control-plane-litellm-1',
+        'homecompute-control-plane-postgres-1',
+        'homecompute-automation-n8n-1',
+        'homecompute-immich-immich-server-1',
+        'homecompute-immich-immich-machine-learning-1',
+        'homecompute-immich-database-1',
+        'homecompute-immich-redis-1',
+        'homecompute-mattermost-mattermost-1',
+        'homecompute-mattermost-postgres-1',
+        'home-core-embeddings',
+        'homecompute-open-webui-open-webui-1',
+        'home-core-piper-tts',
+        'home-core-wyoming-stt',
+        'homecompute-control-plane-plapre-wyoming-proxy-1',
+        'homecompute-control-plane-hviske-wyoming-proxy-1',
+        'homecompute-control-plane-plapre-openai-tts-1',
+        'homecompute-ttlock-webhook-gateway-1',
+        'home-core-moss-tts',
+    ),
     "home-spark": ("qwen38-flash-ultrafast", "gb10-hviske-primary", "homecompute-plapre-plapre-primary-1",
                    "gb10-whisper-primary", "gb10-whisper-http", "gb10-hviske-http"),
 }
-UNITS = {"home-core": ("homecompute-host-update.service", "homecompute-mcp-update.service", "homecompute-platform-health.service",
-                       "homecompute-model-update-monitor.service", "homecompute-agents-vm.service"),
+UNITS = {"home-core": (
+    'homecompute-host-update.service',
+    'homecompute-mcp-update.service',
+    'homecompute-platform-health.service',
+    'homecompute-model-update-monitor.service',
+    'homecompute-agents-vm.service',
+    'homecompute-compute-ssh-tunnel.service',
+    'homecompute-codex-vm.service',
+    'homecompute-mattermost.service',
+    'ttlock-webhook.service',
+    'ttlock-funnel.service',
+    'restic-backups-agents-vm-bootstrap.service',
+    'homecompute-service-recovery.service',
+    ),
          "home-spark": ("homecompute-host-update.service",)}
 MAINTENANCE = Path("/var/lib/homecompute-maintenance/report.json")
 HOST_MAINTENANCE = Path("/var/lib/homecompute-host-maintenance-public/report.json")
@@ -221,6 +253,11 @@ def snapshot(host: str, runner: Callable[..., bytes] = bounded_command) -> dict[
     except (OSError, ValueError):
         result["host_update_report"] = None
     if host == "home-core":
+        import n8n_observations
+        try:
+            result['n8n_workflow_health'] = n8n_observations.collect()
+        except (OSError, ValueError, n8n_observations.sqlite3.Error):
+            result['n8n_workflow_health'] = None
         try:
             result["model_update_report"] = model_projection(read_report(MODEL))
         except (OSError, ValueError, KeyError, TypeError, OverflowError):
