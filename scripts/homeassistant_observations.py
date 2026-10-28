@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import urllib.request
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_BYTES = 65536
@@ -40,7 +41,8 @@ NUMERIC = {
 UPDATES = {'core': 'update.home_assistant_core_update', 'supervisor': 'update.home_assistant_supervisor_update',
  'os': 'update.home_assistant_operating_system_update', 'house_battery': 'update.house_battery_update',
  'stromligning': 'update.stromligning_update', 'watts_live': 'update.watts_live_update'}
-HEALTH = ('battery_optimizer', 'battery_telemetry', 'grid_meter', 'tariff', 'operation_plan', 'grid_availability')
+HEALTH = ('battery_optimizer', 'battery_telemetry', 'grid_meter', 'tariff', 'operation_plan', 'grid_availability',
+          'assist_primary', 'assist_secondary', 'assist_stt', 'assist_tts')
 CHECKS = {'ha.' + key: 'health' for key in HEALTH} | {'ha.update.' + key: 'updates' for key in UPDATES}
 REASONS = {'missing', 'stale', 'unsupported_schema', 'health_not_reported', 'collection_failed'}
 VERSION = re.compile(r'^v?[0-9]+(?:[.][0-9A-Za-z_-]+){0,5}$')
@@ -177,5 +179,13 @@ def compact(energy: dict[str, Any], generated: str) -> dict[str, Any]:
     result['entities'] = {alias: [row['status'], row.get('value', row.get('reason')), row['unit'], row['source'], row.get('sampled_at')]
                           for alias, row in energy['entities'].items()}
     if energy['plan']['status'] == 'available':
-        result['plan'] = dict(energy['plan'], blocks=[b for b in energy['plan']['blocks'] if stamp(b['end']) > stamp(generated)][:4])
+        local = ZoneInfo('Europe/Copenhagen')
+        blocks = []
+        for block in energy['plan']['blocks']:
+            if stamp(block['end']) > stamp(generated):
+                blocks.append(dict(block, **{key + '_local': stamp(block[key]).astimezone(local).strftime('%a %Y-%m-%d %H:%M %Z')
+                                             for key in ('start', 'end')}))
+        # Preserve source instants, and supply ready-to-quote local windows so
+        # chat does not have to infer DST or convert the same time twice.
+        result['plan'] = dict(energy['plan'], timezone='Europe/Copenhagen', blocks=blocks[:4])
     return result

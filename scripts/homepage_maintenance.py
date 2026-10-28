@@ -79,10 +79,29 @@ class Maintenance:
             raise Denied("fixed maintenance command failed or exceeded its output budget")
         return result.stdout
 
+    def config_overlay(self) -> tuple[Path, Path] | None:
+        """Accept only the fixed, read-only services file over the release config."""
+        manifest = self.paths.state / "active-config.json"
+        if not manifest.exists() and not manifest.is_symlink():
+            return None
+        services = self.paths.state / "services.yaml"
+        for path in (manifest, services):
+            if path.is_symlink() or not path.is_file():
+                raise Denied("Homepage config overlay must use fixed regular files")
+            self.trusted(path)
+        expected = {"services": {"homepage": {"volumes": [{"type": "bind", "source": str(services),
+                    "target": "/app/config/services.yaml", "read_only": True}]}}}
+        if manifest.stat().st_size > 4096 or digest(json.loads(manifest.read_text())) != digest(expected):
+            raise Denied("Homepage config overlay differs from the fixed read-only services mount")
+        return self.trusted(manifest), self.trusted(services)
+
     def compose(self, override: Path | None = None) -> list[str]:
         directory = self.trusted(self.paths.release) / "deploy/homepage"
         args = ["docker", "compose", "--project-name", "homecompute-homepage", "--project-directory", str(directory),
                 "--env-file", str(self.trusted(self.paths.environment)), "-f", str(self.trusted(directory / "compose.yaml"))]
+        overlay = self.config_overlay()
+        if overlay:
+            args += ["-f", str(overlay[0])]
         active = self.paths.state / "active-image.json"
         if active.exists():
             args += ["-f", str(self.trusted(active))]
@@ -119,6 +138,9 @@ class Maintenance:
     def source(self) -> dict[str, str]:
         directory = self.trusted(self.paths.release) / "deploy/homepage"
         files = [self.trusted(directory / "compose.yaml"), self.trusted(self.paths.environment)]
+        overlay = self.config_overlay()
+        if overlay:
+            files.extend(overlay)
         active = self.paths.state / "active-image.json"
         if active.exists():
             files.append(self.trusted(active))
@@ -148,12 +170,15 @@ class Maintenance:
             raise Denied("running Homepage differs from trusted Compose configuration")
         mounts = container["Mounts"]
         binds = [mount for mount in mounts if mount.get("Type") == "bind"]
-        expected_config = str(self.trusted(self.paths.release) / "deploy/homepage/config")
+        expected_binds = {"/app/config": str(self.trusted(self.paths.release) / "deploy/homepage/config")}
+        overlay = self.config_overlay()
+        if overlay:
+            expected_binds["/app/config/services.yaml"] = str(overlay[1])
         if (not service.get("read_only") or service.get("privileged") or "build" in service
                 or service.get("user") != "1000:1000" or container["HostConfig"].get("Privileged")
                 or container["HostConfig"].get("ReadonlyRootfs") is not True
-                or len(binds) != 1 or binds[0].get("Destination") != "/app/config" or binds[0].get("RW") is not False
-                or binds[0].get("Source") != expected_config
+                or len(binds) != len(expected_binds) or {mount.get("Destination") for mount in binds} != set(expected_binds)
+                or any(mount.get("RW") is not False or mount.get("Source") != expected_binds.get(mount.get("Destination")) for mount in binds)
                 or any(mount.get("Type") not in {"bind", "tmpfs"} or mount.get("Type") == "tmpfs"
                        and mount.get("Destination") not in {"/tmp", "/app/.next/cache", "/app/config/logs"} for mount in mounts)):
             raise Denied("only the reviewed stateless Homepage configuration supports image rollback")

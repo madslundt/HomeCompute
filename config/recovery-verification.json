@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "postgres": {
+    "control-plane": {
+      "image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+      "uid": 70, "gid": 70, "database": "litellm", "major": 16,
+      "extensions": {"plpgsql": "1.0"}, "preload": ""
+    },
+    "mattermost": {
+      "image_id": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+      "uid": 70, "gid": 70, "database": "mattermost", "major": 16,
+      "extensions": {"plpgsql": "1.0"}, "preload": ""
+    },
+    "immich": {
+      "image_id": "sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23",
+      "uid": 999, "gid": 999, "database": "immich", "major": 14,
+      "extensions": {"cube": "1.5", "earthdistance": "1.1", "pg_trgm": "1.6", "plpgsql": "1.0", "unaccent": "1.1", "uuid-ossp": "1.1", "vchord": "0.4.3", "vector": "0.8.1"},
+      "preload": "vchord.so,vectors.so"
+    },
+    "chessmate": {
+      "image_id": "sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+      "uid": 70, "gid": 70, "database": "chessmate", "major": 17,
+      "extensions": {"plpgsql": "1.0"}, "preload": ""
+    }
+  },
+  "vms": {
+    "agents-vm": {"hostname": "agents", "user": "homecompute-agents-vm", "disks": ["agents.qcow2"], "seed": "seed.iso"},
+    "codex-vm": {"hostname": "codex-worker", "user": "homecompute-codex-vm", "disks": ["root.qcow2", "work.qcow2"], "seed": "seed.iso"}
+  }
+}

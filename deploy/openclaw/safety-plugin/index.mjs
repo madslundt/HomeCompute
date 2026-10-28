@@ -3,6 +3,7 @@
 // browser effects and fails closed when a registered policy hook fails.
 import { createBrowserRelay } from './browser-relay.mjs';
 import { RESEARCH_HOSTS } from './public-dns.mjs';
+import { registerLlmActivity } from './llm-queue.mjs';
 const RESEARCH = new Set(RESEARCH_HOSTS);
 const PROFILE = 'homecompute';
 const COMMON = ['action', 'profile', 'target'];
@@ -68,6 +69,22 @@ export function browserPolicy(event) {
   }
 }
 
+const SPECIALISTS = new Set(['personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel']);
+const COORDINATOR_DENIED = { block: true, blockReason: 'Coordinator domain execution is blocked. Delegate to the appropriate existing specialist via sessions_spawn with mode="run", context="isolated", then await its result with sessions_yield.' };
+
+export function coordinatorPolicy(event, ctx) {
+  try {
+    const name = typeof event?.toolName === 'string' ? event.toolName.trim().toLowerCase() : '';
+    if (name !== 'browser' && !name.startsWith('homecompute_')) return undefined;
+    // Identity comes from the native execution context, never tool parameters.
+    if (SPECIALISTS.has(ctx?.agentId) && typeof ctx?.sessionKey === 'string'
+        && ctx.sessionKey.startsWith(`agent:${ctx.agentId}:`)) return undefined;
+    return { ...COORDINATOR_DENIED };
+  } catch {
+    return { ...COORDINATOR_DENIED };
+  }
+}
+
 export default {
   id: 'homecompute-safety',
   name: 'HomeCompute browser safety',
@@ -75,6 +92,8 @@ export default {
     // Validate after ordinary rewriting hooks. A blocking result is sticky in
     // the pinned native runner and cannot be undone by a subsequent hook.
     api.on('before_tool_call', browserPolicy, { priority: -1000000 });
+    api.on('before_tool_call', coordinatorPolicy, { priority: -1000000 });
     api.registerService(createBrowserRelay());
+    registerLlmActivity(api);
   },
 };

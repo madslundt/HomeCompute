@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "address": "192.168.30.236",
+  "share": "homecompute-backups",
+  "username": "homecompute-backup",
+  "credentials_file": "/etc/homecompute/nas-recovery-backup.credentials",
+  "mountpoint": "/mnt/homecompute-backups",
+  "protocol": "SMB3.1.1",
+  "restic_encryption_required": true,
+  "nas_account": {
+    "groups": ["users"],
+    "allowed_applications": ["SMB"],
+    "denied_applications": ["AFP", "DSM", "FTP", "File Station", "SFTP", "Universal Search", "rsync"],
+    "denied_shares": ["homeassistant", "immich-library", "omi"]
+  },
+  "nas_share": {
+    "volume": "Volume 1",
+    "filesystem": "Btrfs",
+    "hide_from_network_places": true,
+    "hide_without_permissions": true,
+    "data_checksum": true,
+    "recycle_bin": false,
+    "read_write_accounts": ["homecompute-backup", "madslundt"],
+    "denied_accounts": ["guest", "homeassistant", "immich-svc"]
+  }
+}

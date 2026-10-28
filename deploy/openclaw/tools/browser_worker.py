@@ -19,7 +19,7 @@ import time
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 CDP = ("127.0.0.1", 18801)
-PATH = re.compile(r"/(?:json(?:/(?:version|list))?|devtools/(?:browser|page)/[A-Za-z0-9-]+)")
+PATH = re.compile(r"/(?:json(?:/(?:version|list)|/(?:close|activate)/[A-Za-z0-9-]{1,128})?|devtools/(?:browser|page)/[A-Za-z0-9-]+)")
 CLIENTS = threading.BoundedSemaphore(16)
 DNS_CLIENTS = threading.BoundedSemaphore(4)
 DNS_POOL = ThreadPoolExecutor(max_workers=4)
@@ -28,6 +28,9 @@ PUBLIC_RESEARCH_HOSTS = frozenset([
     'docs.n8n.io', 'www.home-assistant.io', 'developers.home-assistant.io',
     'nixos.org', 'wiki.nixos.org', 'nix.dev', 'search.nixos.org', 'github.com',
     'raw.githubusercontent.com', 'duckduckgo.com',
+    'marginalia-search.com',
+    'www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
+    'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk',
 ])
 
 
@@ -128,6 +131,10 @@ def serve(token: str, origin: str, address: tuple[str, int] = ("0.0.0.0", 18800)
                     raw = response.read(1048577)
                     if len(raw) > 1048576:
                         return self.reply(502, b'{"error":"browser response budget"}')
+                    # Chromium's tab lifecycle endpoints return plain text.
+                    # The native close/focus client checks HTTP success only.
+                    if path.startswith(('/json/close/', '/json/activate/')):
+                        return self.reply(response.status, raw, 'text/plain')
                     value = json.loads(raw)
                     for row in value if isinstance(value, list) else [value]:
                         if isinstance(row, dict) and "webSocketDebuggerUrl" in row:
@@ -175,9 +182,9 @@ def serve(token: str, origin: str, address: tuple[str, int] = ("0.0.0.0", 18800)
                             return
                         (upstream if source is self.connection else self.connection).sendall(data)
 
-        def reply(self, status: int, data: bytes) -> None:
+        def reply(self, status: int, data: bytes, content_type: str = 'application/json') -> None:
             self.send_response(status)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)

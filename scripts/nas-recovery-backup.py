@@ -17,9 +17,10 @@ import tempfile
 MOUNT = Path("/mnt/homecompute-backups")
 STATE = Path("/var/lib/homecompute/nas-recovery-backup")
 SOURCE = Path("/srv/backups/agent-recovery")
-PASSWORD = STATE / "restic-password"
+PASSWORD = Path("/run/secrets/restic/password")
 REPOSITORY = MOUNT / "restic-homecompute-agent-recovery"
 CONFIG = Path("/etc/homecompute/nas-recovery-backup.json")
+RESTORE_ROOT = Path("/srv/restore-tests")
 
 
 def configuration(value: dict) -> dict:
@@ -68,7 +69,11 @@ def require_mount(config: dict) -> None:
     ], text=True))
     entries = document.get("filesystems", [])
     expected = f"//{config['address']}/{config['share']}"
-    if len(entries) != 1 or entries[0] != {"target": str(MOUNT), "source": expected, "fstype": "cifs"}:
+    cifs = {"target": str(MOUNT), "source": expected, "fstype": "cifs"}
+    automount = {"target": str(MOUNT), "source": "systemd-1", "fstype": "autofs"}
+    # findmnt reports both layers of a systemd automount after activation.
+    # The order matters: the expected CIFS filesystem must be the top layer.
+    if entries not in ([cifs], [automount, cifs]):
         raise ValueError("exact separate NAS CIFS mount is unavailable; refusing local fallback")
     private_file(Path(config["credentialsFile"]))
 
@@ -97,14 +102,10 @@ def initialize() -> None:
     if REPOSITORY.exists() or REPOSITORY.is_symlink():
         raise ValueError("repository path already exists; initialization refused")
     root_directory(STATE, create=True)
-    if not PASSWORD.exists():
-        descriptor = os.open(PASSWORD, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(descriptor, "w") as handle:
-            handle.write(secrets.token_urlsafe(48) + "\n")
     private_file(PASSWORD)
     REPOSITORY.mkdir(mode=0o700)
     restic(["init", "--json"])
-    print(f"Encrypted repository initialized. Export {PASSWORD} securely for disaster recovery.")
+    print("Encrypted repository initialized using the existing SOPS-managed Restic password.")
 
 
 def backup() -> None:
@@ -140,10 +141,32 @@ def proof() -> None:
     print("Encrypted NAS write, snapshot, and isolated restore proof passed.")
 
 
+def restore_application(snapshot: str, archive: str, target: Path) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{64}", snapshot):
+        raise ValueError("an exact full snapshot ID is required")
+    if not re.fullmatch(r"homecompute-applications-[0-9]{8}T[0-9]{6}\.[0-9]{6}Z\.tar", archive):
+        raise ValueError("an exact application recovery archive name is required")
+    root_directory(RESTORE_ROOT)
+    if (not target.is_absolute() or target.parent.resolve() != RESTORE_ROOT.resolve()
+            or target.exists() or target.is_symlink()):
+        raise ValueError("restore needs a new direct child of /srv/restore-tests")
+    target.mkdir(mode=0o700)
+    source = SOURCE / archive
+    restic(["restore", snapshot, "--target", str(target), "--include", str(source)])
+    restored = target / str(source).lstrip("/")
+    private_file(restored)
+    record("last-application-restore.json", {"snapshot": snapshot, "archive": archive,
+                                            "scope": "isolated archive restore; application verification pending"})
+    return restored
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("validate", "init", "backup", "proof", "check"))
+    parser.add_argument("command", choices=("validate", "init", "backup", "proof", "check", "restore-application"))
     parser.add_argument("--config", type=Path, default=CONFIG)
+    parser.add_argument("--snapshot")
+    parser.add_argument("--archive")
+    parser.add_argument("--target", type=Path)
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise PermissionError("trusted root operator required")
@@ -158,6 +181,11 @@ def main() -> None:
         backup()
     elif args.command == "proof":
         proof()
+    elif args.command == "restore-application":
+        if not args.snapshot or not args.archive or not args.target:
+            parser.error("restore-application requires --snapshot, --archive and --target")
+        print(json.dumps({"restored_archive": str(restore_application(args.snapshot, args.archive, args.target)),
+                          "application_verification": "pending"}))
     else:
         restic(["check", "--read-data-subset=5%"])
         record("last-check.json", {"passed": True})

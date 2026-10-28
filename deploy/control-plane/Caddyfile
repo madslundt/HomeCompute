@@ -7,10 +7,127 @@
 	}
 }
 
+(model_controls_page) {
+	handle /control/ {
+		root * /config/model-controls
+		rewrite * /index.html
+		header Cache-Control no-store
+		file_server
+	}
+}
+
+# Both entry points share the same local-only Spark forwards. The HTTP
+# listener is reached only by private Tailscale Serve on the Docker bridge.
+(comfyui_studio) {
+	encode zstd gzip
+	import model_controls_page
+	redir /control /control/ 308
+	@control_activity {
+		method GET
+		path /control/api/activity
+	}
+	handle @control_activity {
+		rewrite * /llm/activity
+		reverse_proxy 172.28.200.1:18190
+	}
+	@controls path /control/*
+	handle @controls {
+		reverse_proxy 172.28.200.1:18189
+	}
+	@starter_workflow path /api/workflow_templates/homecompute/qwen-image-edit-2511-scottzilla-nsfw.json
+	handle @starter_workflow {
+		rewrite * /api/userdata/workflows%252Fqwen-image-edit-2511-scottzilla-nsfw.json
+		reverse_proxy 172.28.200.1:18188
+	}
+	@chat_image_submission {
+		method POST
+		path /prompt /api/prompt
+		remote_ip {$OPEN_WEBUI_CLIENT_IP:172.28.210.5}
+	}
+	handle @chat_image_submission {
+		# The fixed image-chat backends have no browser Origin header.
+		reverse_proxy 172.28.200.1:18189 {
+			header_up Origin https://comfyui.home.arpa
+		}
+	}
+	@image_submission {
+		method POST
+		path /prompt /api/prompt
+	}
+	handle @image_submission {
+		# Serialize queue admission with stop/idle expiry on the Spark.
+		reverse_proxy 172.28.200.1:18189
+	}
+	handle {
+		reverse_proxy 172.28.200.1:18188 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10m
+			}
+		}
+	}
+	handle_errors {
+		@asleep expression {err.status_code} in [502, 503, 504]
+		redir @asleep /control/ 307
+	}
+}
+
+(image_chat) {
+	encode zstd gzip
+	redir /control /control/ 308
+	@control_activity {
+		method GET
+		path /control/api/activity
+	}
+	handle @control_activity {
+		rewrite * /llm/activity
+		reverse_proxy 172.28.200.1:18190
+	}
+	@controls path /control/*
+	handle @controls {
+		reverse_proxy 172.28.200.1:18189
+	}
+	handle {
+		redir https://chat.home.arpa/?models=homecompute-images 307
+	}
+}
+
+comfyui.home.arpa {
+	tls internal
+	import comfyui_studio
+}
+
+http://:8188 {
+	import comfyui_studio
+}
+
+http://:8194 {
+	import comfyui_studio
+}
+
+# Deterministic image-chat acknowledgements stay on the private Docker network.
+http://:8193 {
+	@image_chat remote_ip {$OPEN_WEBUI_CLIENT_IP:172.28.210.5}
+	handle @image_chat {
+		reverse_proxy 172.28.200.1:18193
+	}
+	handle {
+		respond "Forbidden" 403
+	}
+}
+
 # LAN HTTP shares the standard port with Homepage. Match Daythread before
 # forwarding the remaining hosts to Homepage's existing private publication.
 http://:8080 {
 	encode zstd gzip
+	@comfyui host comfyui.home.arpa
+	handle @comfyui {
+		redir https://comfyui.home.arpa{uri} 308
+	}
+	@agent_office host agents.home.arpa
+	handle @agent_office {
+		redir https://agents.home.arpa{uri} 308
+	}
 	@daythread host {$DAYTHREAD_FQDN:daythread.home.arpa}
 	handle @daythread {
 		# Bootstrap client trust through HTTP; only the public root is served.
@@ -44,11 +161,73 @@ http://:8080 {
 	}
 }
 
+import /config/video-api/Caddyfile
+
 (ai_api) {
 	encode zstd gzip
+	import video_content_routes
+
+	@llm_status {
+		method GET
+		path /llm/status
+	}
+	handle @llm_status {
+		rewrite * /control/api/llm-status
+		header Cache-Control no-store
+		reverse_proxy 172.28.200.1:18189
+	}
+	@llm_activity {
+		method GET
+		path /llm/activity
+	}
+	handle @llm_activity {
+		reverse_proxy 172.28.200.1:18190
+	}
+
+	@workflow_retrieval {
+		remote_ip 172.28.201.2
+		method POST
+		path /internal/workflow-retrieval
+	}
+	handle @workflow_retrieval {
+		request_body {
+			max_size 256KB
+		}
+		reverse_proxy 172.28.200.1:18795 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 30s
+			}
+		}
+	}
+
+	# Background work waits as soon as a switch is requested. Protected
+	# workflow turns retain admission for their remaining model/tool calls.
+	@background_text {
+		remote_ip {$DAYTHREAD_CLIENT_IP:172.28.210.6}
+		method POST
+		path /v1/chat/completions /v1/responses /v1/completions
+	}
+	forward_auth @background_text 172.28.200.1:18192 {
+		uri /llm/admission
+		header_up -Authorization
+		header_up -X-Litellm-Api-Key
+	}
+
+	# Existing workflow turns may finish their later model calls during the
+	# first drain phase. The intake gate closes only after those turns finish.
+	@text_generation {
+		method POST
+		path /v1/chat/completions /v1/responses /v1/completions
+	}
+	forward_auth @text_generation 172.28.200.1:18191 {
+		uri /health
+		header_up -Authorization
+		header_up -X-Litellm-Api-Key
+	}
 
 	# Accept SDK/checker trailing slashes without a redirect during preflight.
-	@api_slash path /v1/ /v1/models/ /v1/responses/ /v1/chat/completions/ /v1/audio/transcriptions/ /v1/audio/speech/
+	@api_slash path /v1/ /v1/models/ /v1/responses/ /v1/chat/completions/ /v1/audio/transcriptions/ /v1/audio/speech/ /v1/embeddings/ /v1/videos/
 	uri @api_slash strip_suffix /
 
 	# Network admission controls keyless inference. Check optional credentials
@@ -56,7 +235,7 @@ http://:8080 {
 	# or stale key must not prevent access to the already-public network models.
 	@credentialed {
 		method GET POST
-		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
+		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech /v1/embeddings /v1/videos /v1/videos/*
 		not {
 			header !Authorization
 			header !X-Litellm-Api-Key
@@ -75,13 +254,13 @@ http://:8080 {
 		}
 	}
 	@keyless {
-		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
+		path /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech /v1/embeddings /v1/videos /v1/videos/*
 		header !Authorization
 		header !X-Litellm-Api-Key
 	}
 	request_header @keyless Authorization "Bearer {env.LITELLM_NETWORK_KEY}"
 
-	@api path /v1/audio/transcriptions /v1/audio/speech /v1 /v1/ /v1/models /v1/models/ /v1/responses /v1/responses/ /v1/chat/completions /v1/chat/completions/ /v1/audio/transcriptions/ /v1/audio/speech/
+	@api path /v1/audio/transcriptions /v1/audio/speech /v1 /v1/ /v1/models /v1/models/ /v1/responses /v1/responses/ /v1/chat/completions /v1/chat/completions/ /v1/audio/transcriptions/ /v1/audio/speech/ /v1/embeddings /v1/embeddings/ /v1/videos /v1/videos/*
 	header @api {
 		Access-Control-Allow-Origin "*"
 		-Access-Control-Allow-Credentials
@@ -89,7 +268,7 @@ http://:8080 {
 	}
 	@api_preflight {
 		method OPTIONS
-		path /v1 /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
+		path /v1 /v1/models /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech /v1/embeddings /v1/videos /v1/videos/*
 	}
 	handle @api_preflight {
 		header Access-Control-Allow-Methods "GET, POST, OPTIONS"
@@ -135,7 +314,7 @@ http://:8080 {
 
 	@standard {
 		method POST
-		path /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech
+		path /v1/responses /v1/chat/completions /v1/audio/transcriptions /v1/audio/speech /v1/embeddings /v1/videos
 	}
 	handle @standard {
 		request_body {
@@ -163,6 +342,39 @@ http://:8080 {
 {$AI_LEGACY_FQDN} {
 	tls /data/tailscale-tls/current/cert.pem /data/tailscale-tls/current/key.pem
 	import ai_api
+}
+
+agents.home.arpa {
+	tls internal
+	encode zstd gzip
+	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
+	handle @private {
+		# The observer still validates Origin and requires its own password.
+		# Its native listener and both relay hops remain on private interfaces.
+		reverse_proxy 172.28.200.1:18802 {
+			header_up Host 127.0.0.1:18802
+			header_up X-HomeCompute-Office-Origin https://agents.home.arpa
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10s
+			}
+		}
+	}
+	respond "Forbidden" 403
+}
+
+mattermost.home.arpa {
+	tls internal
+	encode zstd gzip
+
+	reverse_proxy https://100.110.248.102:9443 {
+		header_up Host home-core.tail479ad.ts.net:9443
+		transport http {
+			tls_server_name home-core.tail479ad.ts.net
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
 }
 
 {$N8N_FQDN} {
@@ -273,11 +485,27 @@ chessmate.home.arpa {
 {$MODELS_FQDN} {
 	tls internal
 	encode zstd gzip
+	import model_controls_page
+	redir /control /control/ 308
+	@control_activity {
+		method GET
+		path /control/api/activity
+	}
+	handle @control_activity {
+		rewrite * /llm/activity
+		reverse_proxy 172.28.200.1:18190
+	}
+	@controls path /control/*
+	handle @controls {
+		reverse_proxy 172.28.200.1:18189
+	}
 
-	reverse_proxy model-manager:8080 {
-		transport http {
-			dial_timeout 3s
-			response_header_timeout 10m
+	handle {
+		reverse_proxy model-manager:8080 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10m
+			}
 		}
 	}
 

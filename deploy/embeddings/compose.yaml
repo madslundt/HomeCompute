@@ -1,0 +1,80 @@
+name: homecompute-embeddings
+
+services:
+  embeddings:
+    image: ${EMBEDDING_IMAGE:?Run setup-home-core-embeddings.py prepare}
+    container_name: home-core-embeddings
+    platform: linux/amd64
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - --model-id
+      - /model
+      - --served-model-name
+      - ${EMBEDDING_MODEL:?Set EMBEDDING_MODEL}
+      - --hostname
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --dtype
+      - float32
+      - --pooling
+      - last-token
+      - --tokenization-workers
+      - "2"
+      - --max-concurrent-requests
+      - "32"
+      - --max-client-batch-size
+      - "16"
+      - --max-batch-requests
+      # TEI 1.9 Qwen3 CPU mishandles causal masking in equal-length batches.
+      # Accept client batches, but infer each passage separately for correct vectors.
+      - "1"
+      - --max-batch-tokens
+      - "4096"
+      - --auto-truncate=false
+      - --payload-limit
+      - "131072"
+      - --disable-spans
+      - --json-output
+    environment:
+      HOME: /tmp
+      HF_HOME: /tmp/huggingface
+      HF_HUB_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      DO_NOT_TRACK: "1"
+      OMP_NUM_THREADS: "6"
+      MKL_NUM_THREADS: "6"
+      RAYON_NUM_THREADS: "6"
+      RUST_LOG: warn
+    volumes:
+      - ${EMBEDDING_MODEL_DIR:?Run model preparation}:/model:ro
+    expose: ["8080"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,uid=1000,gid=1000,mode=0700
+    cpus: 6.0
+    mem_limit: 8g
+    pids_limit: 256
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "10", http://127.0.0.1:8080/health]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      clients:
+        aliases: [homecompute-embeddings]
+
+networks:
+  clients:
+    external: true
+    name: homecompute-control-plane_clients

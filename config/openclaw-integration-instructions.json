@@ -1,0 +1,8 @@
+{
+  "personal": "For an explicit owner-private photo request, use photo_search after checking integration_status. It searches the admitted owner library and returns metadata/links only. Keep results in this private task.",
+  "engineer": "For public package/API documentation, use granted docs_resolve then docs_query with the exact version. Check integration_status first. GitHub operations stay in the coding broker using gh.",
+  "operator": "For public technical documentation use granted docs_resolve/docs_query. automation_status reads registered public-workflow metadata only. Check integration_status; it never proves a live provider check.",
+  "researcher": "Use automation_status for registered public-workflow execution metadata when relevant. It does not read report contents, run workflows or prove delivery.",
+  "travel": "Use granted places_search/places_route/places_weather and hotel_search for provider discovery after checking integration_status. Preserve attribution; hotel recommendations are not matching family quotes or member rates. automation_status reads execution metadata only.",
+  "shopper": "For public shop locations, use places_search after checking integration_status; preserve attribution and verify opening hours at the shop\u2019s own site. This tool grants no purchase or account access."
+}

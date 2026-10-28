@@ -15,6 +15,9 @@ install -d -m 0755 /srv/homecompute/releases
 install -d -m 0700 /var/lib/homecompute
 exec 9>/var/lib/homecompute/home-spark-deploy.lock
 flock -n 9 || { printf 'Another home-spark deployment is running.\n' >&2; exit 1; }
+if [[ -d /var/lib/homecompute-docker-maintenance ]] && find /var/lib/homecompute-docker-maintenance -maxdepth 1 -name '*.active' -print -quit | read -r _active_docker_update; then
+  printf 'Reconcile automatic Docker updates and source pins before full deployment.\n' >&2; exit 1;
+fi
 source_repo=/home/madslundt/HomeCompute
 [[ -d "$source_repo" && -d "$source_repo/.git" ]] || {
   printf 'Expected the HomeCompute source checkout at %s.\n' "$source_repo" >&2; exit 1;

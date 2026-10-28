@@ -107,9 +107,11 @@ of home-core worker availability.
 ## Persistence, memory and proactive work
 
 The dedicated state mount retains sessions, SQLite databases/audit, and the
-workspace's Markdown memory. The standard memory plugin uses deliberate
-keyword-only search (`memory.search.provider: none`) so this assistant does
-not silently invoke an unconfigured embedding API or download another model.
+workspace's Markdown memory. The standard memory plugin uses hybrid keyword
+and local Harrier retrieval through the authenticated capabilities bridge.
+`setup-openclaw-embeddings.py` validates the native configuration, preserves
+consistent backups and rebuilds each agent's own memory index. Query instructions
+are added by the bridge; documents use bounded, pooled Harrier embeddings.
 Only memory sources are indexed, not all private session transcripts. The
 filesystem write tool is limited to the isolated workspace; its read-only
 mounted policy instructs concise preferences/decisions and memory files.

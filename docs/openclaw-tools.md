@@ -1,5 +1,68 @@
 # OpenClaw browser and CLI installation
 
+## Current browser access (2026-10-25)
+
+The running protected browser is enabled for Nova and Lyra. Atlas delegates
+research to specialists; the coordinator guard blocks his direct domain calls.
+Other specialists retain their existing service tools without browser access.
+Chromium already uses modern headless mode (`--headless=new`).
+
+Approved travel hosts are `www.afbudsrejser.dk`, `www.solfaktor.dk`,
+`www.spies.dk`, `www.tui.dk`, `www.apollorejser.dk` and `www.sunweb.dk`.
+The native browser configuration, protected DNS modules and browser/DNS image
+share that finite policy. Private destinations and interactive page actions
+remain blocked. Lyra starts with navigation directly; the bundled skill's
+generic status/tabs setup loop is unsupported by this protected profile.
+
+A live Lyra turn successfully navigated Solfaktor, read the rendered page and
+closed its tab. Authenticated forwarding now handles Chromium's plain-text
+close/focus responses, fixing a prior HTTP 403 during tab cleanup. Current image:
+`sha256:53fdd15f25c86b8dd959683ca6243351ac83f5cc05a9884ded457d932acbac7a`.
+It derives from the existing browser image without package upgrades. Original
+containers and private configuration backups were retained for rollback.
+
+Browser evidence can establish current advertised prices. Matching group quotes
+also require dates, traveler ages, room/board, currency and the complete total;
+interactive selectors, cookie walls and CAPTCHAs remain explicit coverage gaps.
+The existing n8n supplier quote workflow remains separate.
+
+## Tavily fallback
+
+Nova and Lyra load the shared `public-web-research` skill. The trusted search
+tool returns `browser_fallback_required` when Tavily is unavailable, rate limited
+or over quota. The result contains a fixed Marginalia search URL and empty result
+and source lists; it is a navigation plan, not retrieved evidence. The specialist
+then uses the protected headless browser to navigate, snapshot and close its tab.
+`provider: browser` requests the same plan without making a Tavily request.
+
+Quota responses (432/433) suppress further Tavily attempts for six hours, rate
+limits (429) for one minute, and other failures for 30 seconds. This cooldown is
+in memory and resets when the communication adapter restarts. Public queries are
+encoded as URL data, with an explicit shorter-query response if the browser's
+4096-character URL limit would be exceeded. Upstream error bodies and credentials
+are never returned to the agent. Other household service errors retain their
+existing behavior.
+
+Marginalia returned relevant results in the live headless probe and its exact
+host, `marginalia-search.com`, is now approved. It favors non-commercial pages and
+has a smaller index; news/date filters and commercial price coverage are limited.
+Check dates and prices at approved primary sources. DuckDuckGo, Google and several
+other public engines presented bot challenges or unavailable results from this
+network, so they are not treated as a dependable automatic fallback. A challenge
+or policy refusal ends the attempt and is reported, without a retry loop.
+
+The live Nova verification called `provider: browser`, searched Marginalia,
+inspected a discovered official nix.dev page and closed its tab successfully.
+No Tavily request was made. The shared workflow is also installed for Lyra.
+The CLI exit waiter timed out after the terminal reply was saved; successful
+tool results and the final report were independently checked in the canonical
+transcript, and a native read confirmed that no verification run remained active.
+
+## Earlier installation and recovery record
+
+The following records the original installation and unfinished activation during
+the 2026-10-10 recovery, rather than the current browser permissions above.
+
 The headless browser is installed on the agents guest. A bounded CLI helper and
 the bundled `browser-automation` skill are also installed in the OpenClaw
 workspace. Tool activation is **unfinished**: a native skill-management command

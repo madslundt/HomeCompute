@@ -1,0 +1,13 @@
+{
+  "id": "homecompute-agent-office",
+  "name": "HomeCompute agent office",
+  "description": "Owner-only loopback pixel office with metadata-only agent activity.",
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object", "additionalProperties": false,
+    "properties": {
+      "port": { "type": "integer", "minimum": 1024, "maximum": 65535, "default": 18802 },
+      "publicOrigin": { "type": "string", "enum": ["https://agents.home.arpa"] }
+    }
+  }
+}

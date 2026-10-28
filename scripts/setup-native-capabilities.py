@@ -116,6 +116,20 @@ https://{HOST}:19445 {{
             }}
         }}
     }}
+    @embeddings {{
+        remote_ip 10.77.20.2
+        method POST
+        path /v1/embeddings
+        expression {{http.request.orig_uri}} == "/v1/embeddings"
+    }}
+    handle @embeddings {{
+        reverse_proxy 127.0.0.1:18793 {{
+            transport http {{
+                dial_timeout 3s
+                response_header_timeout 60s
+            }}
+        }}
+    }}
     respond 404
 }}
 '''

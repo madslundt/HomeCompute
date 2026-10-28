@@ -1,0 +1,28 @@
+# Public operations use the gateway's existing credential checks and scope.
+(video_content_routes) {
+	@video_content {
+		method GET
+		path_regexp video_content ^/v1/videos/video_[A-Za-z0-9_=-]{1,1000}(/content)?$
+	}
+	handle @video_content {
+		import litellm_proxy
+	}
+	@invalid_video {
+		method GET
+		path /v1/videos/*
+		not path_regexp valid_video_id ^/v1/videos/video_[A-Za-z0-9_=-]{1,1000}(/content)?$
+	}
+	handle @invalid_video {
+		header Content-Type application/json
+		respond `{"error":{"message":"Unknown video ID","type":"invalid_request_error"}}` 404
+	}
+}
+
+# This listener is unpublished and accepts only the fixed LiteLLM edge address.
+http://:8195 {
+	@video_proxy remote_ip 172.28.200.3
+	handle @video_proxy {
+		reverse_proxy 172.28.200.1:18194
+	}
+	respond "Forbidden" 403
+}

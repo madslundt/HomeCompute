@@ -56,7 +56,9 @@ def install(directory: Path, image: str):
         '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=1777',
         '--mount', 'type=bind,src=' + str(directory / 'tools/browser-squid.conf') + ',dst=/etc/homecompute/browser-squid.conf,readonly',
         image, '/usr/sbin/squid', '-N', '-f', '/etc/homecompute/browser-squid.conf')
-    docker('network', 'connect', '--alias', 'browser-egress', BROWSER, EGRESS)
+    # Every internal endpoint is fixed: dynamic peers can otherwise claim a
+    # stopped worker's address first during Docker/VM restart.
+    docker('network', 'connect', '--ip', '172.30.188.3', '--alias', 'browser-egress', BROWSER, EGRESS)
     docker('start', EGRESS)
     docker('create', '--name', DNS, *common, '--network', BROWSER,
         '--network-alias', 'browser-dns', '--ip', '172.30.188.5',
@@ -68,6 +70,7 @@ def install(directory: Path, image: str):
     docker('start', DNS)
     docker('volume', 'create', PROFILE)
     docker('create', '--name', BROWSER, '--hostname', BROWSER, *common, '--network', BROWSER,
+        '--ip', '172.30.188.2',
         '--cpus', '1', '--memory', '4g', '--memory-swap', '4g', '--pids-limit', '256',
         '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=1777',
         '--mount', 'type=bind,src=' + str(token) + ',dst=/run/browser-token,readonly',
@@ -82,7 +85,7 @@ def install(directory: Path, image: str):
         '--publish', '172.18.0.1:18800:18800',
         '--env', 'BROWSER_UPSTREAM=homecompute-openclaw-browser:18800',
         image, '/usr/bin/python3', '/opt/homecompute/tcp_relay.py')
-    docker('network', 'connect', BROWSER, INGRESS)
+    docker('network', 'connect', '--ip', '172.30.188.4', BROWSER, INGRESS)
     docker('start', INGRESS)
     hostname = json.loads(docker('inspect', BROWSER))[0]['Config']['Hostname']
     receipt = {'browser': BROWSER, 'egress': EGRESS, 'dns': DNS, 'dns_listener': '172.30.188.5:18802',

@@ -18,6 +18,23 @@
         const url = new URL(link.href);
         link.href = `https://home-core.tail479ad.ts.net:18080${url.pathname}${url.search}${url.hash}`;
       }
+      for (const link of document.querySelectorAll('a[href^="https://models.home.arpa/control/"]')) {
+        const url = new URL(link.href);
+        link.href = `https://home-core.tail479ad.ts.net:18188${url.pathname}${url.search}${url.hash}`;
+      }
+    }
+    // Keep lifecycle commands in the controls' own origin. Homepage receives
+    // no Docker access or cross-origin mutation privileges.
+    const comfyCard = document.querySelector("#homecore-comfyui .service-card");
+    if (comfyCard && !comfyCard.querySelector(".homecompute-comfy-controls")) {
+      const frame = document.createElement("iframe");
+      frame.className = "homecompute-comfy-controls";
+      frame.title = "Text, image and video model controls: start, stop and status";
+      frame.src = `${tailnetAccess ? "https://home-core.tail479ad.ts.net:18188" : "https://models.home.arpa"}/control/?compact=1`;
+      frame.loading = "lazy";
+      frame.referrerPolicy = "no-referrer";
+      frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox");
+      comfyCard.appendChild(frame);
     }
     for (const link of document.querySelectorAll(`a[href*="${marker}"]`)) {
       const markerUrl = new URL(link.href, window.location.href);

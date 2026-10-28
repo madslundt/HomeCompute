@@ -22,6 +22,7 @@ PATH = HOME + "/.local/bin:" + HOME + "/.npm-global/bin:/usr/local/bin:/usr/bin:
 PREFIX = ["env", "PATH=" + PATH, "NEMOCLAW_GATEWAY_PORT=9123", "nemoclaw",
           "agent-openclaw", "exec", "--", "openclaw"]
 HEALTH = ["gateway", "health", "--timeout", "10000", "--json"]
+LLM_ACTIVITY = ["gateway", "call", "homecompute-safety.llm.activity", "--json", "--timeout", "5000"]
 MAX_MESSAGE = 16384
 MAX_COMMAND = MAX_MESSAGE * 5 + 4096
 MAX_OUTPUT = 2 * 1024 * 1024
@@ -42,7 +43,7 @@ def validate_command(command: str) -> list[str]:
         if arguments[:len(PREFIX)] != PREFIX:
             raise Refused("command-prefix-refused")
         arguments = arguments[len(PREFIX):]
-        if arguments == HEALTH:
+        if arguments in (HEALTH, LLM_ACTIVITY):
             return arguments
         if (len(arguments) != 12 or arguments[:4] != ["agent", "--agent", "main", "--session-id"]
                 or arguments[5] != "--message"

@@ -3,15 +3,65 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import plugin, { browserPolicy } from '../deploy/openclaw/safety-plugin/index.mjs';
+import plugin, { browserPolicy, coordinatorPolicy } from '../deploy/openclaw/safety-plugin/index.mjs';
 import { createBrowserRelay } from '../deploy/openclaw/safety-plugin/browser-relay.mjs';
 
 const call = params => browserPolicy({ toolName: 'browser', params });
 
+test('browser fallback search uses one approved public authority with encoded query data', () => {
+  const targetUrl='https://marginalia-search.com/search?query='+encodeURIComponent('NixOS & docs? æøå');
+  assert.equal(call({action:'navigate',targetUrl}).params.targetUrl,targetUrl);
+  assert.equal(call({action:'navigate',targetUrl:'https://marginalia-search.com.evil/search?query=x'}).block,true);
+});
+
+test('travel specialist can read approved public provider pages without interacting', () => {
+  for (const host of ['www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
+    'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk']) {
+    const event = { toolName: 'browser', params: { action: 'navigate', targetUrl: `https://${host}/` } };
+    assert.equal(browserPolicy(event)?.block, undefined, host);
+    assert.equal(coordinatorPolicy(event, { agentId: 'travel', sessionKey: 'agent:travel:main' }), undefined);
+    assert.equal(call({ action: 'navigate', targetUrl: `https://${host}.evil/` }).block, true);
+  }
+  for (const action of ['click', 'fill', 'evaluate', 'act']) {
+    assert.equal(call({ action, targetUrl: 'https://www.solfaktor.dk/' }).block, true);
+  }
+});
+
+test('trusted execution identity routes coordinator domain calls without restricting child authorization', () => {
+  const ctx = role => ({ agentId: role, sessionKey: `agent:${role}:subagent:synthetic` });
+  for (const name of ['shopping_list', 'storage_list', 'school_calendar', 'web_search', 'ha_propose', 'task_submit']) {
+    const event = { toolName: `homecompute__homecompute_${name}`, params: { agentId: 'shopper', context: ctx('shopper') } };
+    assert.equal(coordinatorPolicy(event, ctx('main')).block, true);
+    assert.match(coordinatorPolicy(event, ctx('main')).blockReason, /sessions_spawn/);
+    for (const role of ['personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel']) {
+      assert.equal(coordinatorPolicy(event, ctx(role)), undefined);
+    }
+    for (const untrusted of [undefined, {}, { agentId: 'shopper' }, ctx('unknown'),
+      { agentId: 'shopper', sessionKey: 'agent:main:main' }]) {
+      assert.equal(coordinatorPolicy(event, untrusted).block, true);
+    }
+  }
+  for (const toolName of ['read', 'write', 'memory_search', 'sessions_spawn', 'sessions_yield', 'exec']) {
+    assert.equal(coordinatorPolicy({ toolName, params: {} }, ctx('main')), undefined);
+  }
+});
+
+test('registered coordinator hook preserves browser safety vetoes for specialist calls', () => {
+  const hooks = [];
+  plugin.register({ on: (...args) => hooks.push(args), registerService() {}, registerGatewayMethod() {} });
+  assert.ok(hooks.some(([, callback]) => callback === coordinatorPolicy));
+  const blocked = (params, role) => hooks.some(([, callback]) => callback({ toolName: 'browser', params },
+    { agentId: role, sessionKey: `agent:${role}:main` })?.block === true);
+  assert.equal(blocked({ action: 'navigate', targetUrl: 'https://docs.openclaw.ai/' }, 'main'), true);
+  assert.equal(blocked({ action: 'navigate', targetUrl: 'https://docs.openclaw.ai/' }, 'researcher'), false);
+  for (const params of [{ action: 'act' }, { action: 'navigate', targetUrl: 'https://home.arpa/' },
+    { action: 'snapshot', profile: 'user' }]) assert.equal(blocked(params, 'researcher'), true);
+});
+
 test('registered native before-tool hook pins every permitted action to the isolated gateway profile', () => {
   const hooks = [];
   const services = [];
-  plugin.register({ on: (...args) => hooks.push(args), registerService: service => services.push(service) });
+  plugin.register({ on: (...args) => hooks.push(args), registerService: service => services.push(service), registerGatewayMethod() {} });
   assert.equal(services.length, 1);
   assert.equal(services[0].id, 'homecompute-browser-relay');
   assert.equal(hooks[0][0], 'before_tool_call');

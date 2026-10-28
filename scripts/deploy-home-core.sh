@@ -17,6 +17,9 @@ flock -n 9 || { printf 'Another deployment is running.\n' >&2; exit 1; }
 [[ ! -e /var/lib/homecompute/homepage-maintenance/active-image.json ]] || {
   printf 'Reconcile the human-approved Homepage image override before full deployment.\n' >&2; exit 1;
 }
+[[ ! -e /var/lib/homecompute/homepage-maintenance/active-config.json ]] || {
+  printf 'Reconcile the Homepage configuration override before full deployment.\n' >&2; exit 1;
+}
 # Prepared image overrides preserve the selected digest until source pins are
 # reconciled. A full deployment must not silently replace those running images.
 if [[ -f /var/lib/homecompute-infrastructure-maintenance/plans.sqlite ]]; then
@@ -28,7 +31,14 @@ with sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True) as db:
         if any(arg.startswith('/var/lib/homecompute-infrastructure-maintenance/prepared/') and arg.endswith('.image.json')
                for command in plan['steps'] for arg in command):
             raise SystemExit('Reconcile infrastructure image overrides before full deployment.')
+        if any(command[:2] == ['/usr/local/libexec/homecompute-mcp-maintenance', 'apply']
+               for command in plan['steps']):
+            raise SystemExit('Reconcile MCP image updates and source pins before full deployment.')
 PY
+fi
+# Automatic daemon replacements keep exact deployment state outside Compose.
+if [[ -d /var/lib/homecompute-docker-maintenance ]] && find /var/lib/homecompute-docker-maintenance -maxdepth 1 -name '*.active' -print -quit | read -r _active_docker_update; then
+  printf 'Reconcile automatic Docker updates and source pins before full deployment.\n' >&2; exit 1;
 fi
 # Restoring state and the identity is a separate operation; never initialize an
 # empty replacement for the migrated n8n instance as a side effect of deployment.
@@ -74,7 +84,9 @@ immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deplo
 "${automation[@]}" config --quiet
 "${homepage[@]}" config --quiet
 open_webui_ready=false
-if [[ -s /run/secrets/open-webui/litellm-api-key && -s /run/secrets/open-webui/webui-secret-key ]]; then
+if [[ -s /run/secrets/open-webui/litellm-api-key &&
+      -s /run/secrets/open-webui/webui-secret-key &&
+      -s /srv/state/open-webui/embedding-api-key ]]; then
   open_webui_ready=true
   "${open_webui[@]}" config --quiet
 fi
@@ -89,6 +101,10 @@ if [[ -s /run/secrets/model-manager/username &&
 fi
 "${piper[@]}" config --quiet
 "${stt[@]}" config --quiet
+install -d -m 0755 /srv/state/control-plane/caddy-config/model-controls
+install -m 0644 "$release/deploy/comfyui-control/index.html" /srv/state/control-plane/caddy-config/model-controls/index.html
+install -d -m 0755 /srv/state/control-plane/caddy-config/video-api
+install -m 0644 "$release/deploy/control-plane/video-api.Caddyfile" /srv/state/control-plane/caddy-config/video-api/Caddyfile
 stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environment.WYO_WHISPER_MODEL')"
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
@@ -140,6 +156,10 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
+python3 "$release/scripts/setup-comfyui-access.py"
+if [[ -d /var/lib/homecompute-image-chat/config-backups ]]; then
+  python3 "$release/scripts/setup-open-webui-images.py" --install-shim-only
+fi
 if [[ ${#speech_proxies_to_restore[@]} -gt 0 ]]; then
   "${speech_gateway[@]}" up -d --wait --wait-timeout 180 "${speech_proxies_to_restore[@]}"
 fi

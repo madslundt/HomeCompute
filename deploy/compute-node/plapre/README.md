@@ -1,5 +1,19 @@
 # Opt-in Plapre Nano v2 TTS on home-spark
 
+The current source boundary keeps `plapre-primary` (including its hybrid
+inference decoder) and a small loopback HTTP ingress on Spark. The CPU Wyoming
+adapter, approved `danish-default` to `tor` voice mapping, 1.20x tempo adjustment
+and PCM/request limits run on home-core. Its existing HA-facing service/IP/port
+remain unchanged. Normal Spark Compose startup contains no Wyoming service;
+`plapre-wyoming` and `plapre-edge` require the explicit `legacy-wyoming` rollback
+profile. The new `plapre-http` ingress uses a pinned Python image and does not
+rebuild or restart the GPU engine.
+
+Use the [cross-host migration and rollback procedure](../../hviske-stt/README.md#wyoming-placement-2026-10-28).
+The original deployment details below describe the retained legacy Wyoming
+profile. Model pins, offline settings, consent/license and quality gates still
+apply; this placement change does not promote an unqualified model.
+
 This isolated compute-side project adds Danish Plapre TTS without changing the
 default compute stack or replacing the existing Piper Wyoming service. It is
 not started by `deploy/compute-node/compose.yaml` and is not production-routed

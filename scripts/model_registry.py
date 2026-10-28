@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
@@ -23,6 +24,10 @@ REVISION = re.compile(r"^(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})$")
 SEMANTIC_ALIAS = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 LIFECYCLES = {"resident", "hot-standby", "cold-standby", "operator-on-demand", "disabled"}
 AVAILABILITY = {"active", "intentionally-stopped", "candidate", "unavailable"}
+MEDIA_SPEC = importlib.util.spec_from_file_location("model_registry_media", ROOT / "scripts/model_registry_media.py")
+assert MEDIA_SPEC and MEDIA_SPEC.loader
+MEDIA = importlib.util.module_from_spec(MEDIA_SPEC)
+MEDIA_SPEC.loader.exec_module(MEDIA)
 
 
 class RegistryError(ValueError):
@@ -98,6 +103,10 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
             raise RegistryError(f"artifacts.{artifact_id}.max_context_tokens must be positive")
         artifact_runtimes = string_list(artifact.get("runtime_profiles"), f"artifacts.{artifact_id}.runtime_profiles")
         capabilities = set(string_list(artifact.get("capabilities"), f"artifacts.{artifact_id}.capabilities"))
+        if "embedding" in capabilities:
+            dimensions = artifact.get("embedding_dimensions")
+            if type(dimensions) is not int or dimensions <= 0:
+                raise RegistryError(f"artifacts.{artifact_id}.embedding_dimensions must be positive")
         unknown = set(artifact_runtimes) - set(runtime_profiles)
         if unknown:
             raise RegistryError(f"artifacts.{artifact_id} references unknown runtime profile(s): {', '.join(sorted(unknown))}")
@@ -205,6 +214,7 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
                 raise RegistryError(f"active route {alias} includes an artifact not qualified for that capability")
     validate_transcription(catalog, routes_doc)
     validate_tts(catalog, routes_doc)
+    MEDIA.MediaRegistry(RegistryError).validate_video(catalog, routes_doc)
 
 
 def validate_transcription(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
@@ -276,63 +286,7 @@ def validate_transcription(catalog: dict[str, Any], routes_doc: dict[str, Any]) 
 
 
 def validate_tts(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
-    """Validate text-to-speech deployments without imposing text-model fields."""
-    deployments = obj(catalog.get("tts_deployments", {}), "tts_deployments")
-    for deployment_id, raw_deployment in deployments.items():
-        name = f"tts_deployments.{deployment_id}"
-        deployment = obj(raw_deployment, name)
-        string(deployment.get("upstream_model_id"), f"{name}.upstream_model_id")
-        for revision_field in ("revision", "code_revision"):
-            revision = string(deployment.get(revision_field), f"{name}.{revision_field}")
-            if not REVISION.fullmatch(revision):
-                raise RegistryError(f"{name}.{revision_field} must be an immutable commit or sha256 digest")
-        string(deployment.get("license_id"), f"{name}.license_id")
-        string(deployment.get("host_role"), f"{name}.host_role")
-        string(deployment.get("served_model_name"), f"{name}.served_model_name")
-        string(deployment.get("voice_alias"), f"{name}.voice_alias")
-        endpoint = string(deployment.get("endpoint_env"), f"{name}.endpoint_env")
-        if not re.fullmatch(r"[A-Z][A-Z0-9_]*_BASE_URL", endpoint):
-            raise RegistryError(f"{name}.endpoint_env must reference a named environment variable")
-        if deployment.get("network_scope") != "private_local":
-            raise RegistryError(f"{name}.network_scope must be private_local")
-        for field in ("concurrency", "priority"):
-            value = deployment.get(field)
-            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-                raise RegistryError(f"{name}.{field} must be positive")
-        if deployment.get("lifecycle") not in LIFECYCLES or deployment.get("availability") not in AVAILABILITY:
-            raise RegistryError(f"{name} lifecycle/availability is invalid")
-
-    identities = {
-        re.sub(r"[^a-z0-9]+", "-", identity.lower()).strip("-")
-        for identity in [*deployments, *(item["upstream_model_id"] for item in deployments.values())]
-    }
-    used_aliases = set(routes_doc["routes"]) | set(routes_doc.get("transcription_routes", {}))
-    for alias, raw_route in obj(routes_doc.get("tts_routes", {}), "tts_routes").items():
-        name = f"tts_routes.{alias}"
-        route = obj(raw_route, name)
-        if not SEMANTIC_ALIAS.fullmatch(alias) or alias == "auto" or alias in identities:
-            raise RegistryError(f"{name} must use a lowercase semantic alias, not a checkpoint identity")
-        if alias in used_aliases:
-            raise RegistryError(f"route alias {alias!r} is already used by another route")
-        if route.get("privacy") != "local_only":
-            raise RegistryError(f"{name}.privacy must be local_only")
-        state = route.get("state")
-        if state not in {"active", "candidate", "disabled"}:
-            raise RegistryError(f"{name}.state is invalid")
-        timeout_id = string(route.get("timeout_profile"), f"{name}.timeout_profile")
-        if timeout_id not in routes_doc["timeout_profiles"]:
-            raise RegistryError(f"{name} references unknown timeout profile")
-        selected = string_list(route.get("deployments"), f"{name}.deployments", allow_empty=state == "disabled")
-        if (state == "disabled") != (not selected):
-            raise RegistryError(f"{name} disabled state and deployments do not agree")
-        for deployment_id in selected:
-            if deployment_id not in deployments:
-                raise RegistryError(f"{name} references unknown TTS deployment {deployment_id}")
-            deployment = deployments[deployment_id]
-            if state == "active" and deployment["availability"] != "active":
-                raise RegistryError(f"active route {alias} references a deployment that is not active")
-            if state == "active" and deployment["lifecycle"] not in {"resident", "hot-standby"}:
-                raise RegistryError(f"active route {alias} references a non-resident deployment")
+    MEDIA.MediaRegistry(RegistryError).validate_tts(catalog, routes_doc)
 
 
 def _yaml_quote(value: str) -> str:
@@ -349,6 +303,7 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
         for position, deployment_id in enumerate(ordered, start=1):
             deployment = deployments[deployment_id]
             timeout = routes_doc["timeout_profiles"][route["timeout_profile"]]["seconds"]
+            embedding = "embeddings" in route["required_protocols"]
             lines.extend(
                 [
                     f"  - model_name: {_yaml_quote(alias)}",
@@ -356,11 +311,22 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                     f"      model: {_yaml_quote('openai/' + deployment['served_model_name'])}",
                     f"      order: {position}",
                     f"      api_base: {_yaml_quote('os.environ/' + deployment['endpoint_env'])}",
-                    "      api_key: os.environ/COMPUTE_API_KEY",
+                    '      api_key: "local"' if embedding else "      api_key: os.environ/COMPUTE_API_KEY",
                     f"      timeout: {timeout}",
-                    f"      stream_timeout: {timeout}",
                 ]
             )
+            if embedding:
+                artifact = catalog["artifacts"][deployment["artifact"]]
+                lines.extend([
+                    "    model_info:",
+                    "      mode: embedding",
+                    f"      max_input_tokens: {deployment['context_tokens']}",
+                    f"      output_vector_size: {artifact['embedding_dimensions']}",
+                    "      input_cost_per_token: 0",
+                    "      output_cost_per_token: 0",
+                ])
+            else:
+                lines.append(f"      stream_timeout: {timeout}")
     transcription_deployments = catalog.get("transcription_deployments", {})
     for alias, route in routes_doc.get("transcription_routes", {}).items():
         if route["state"] == "disabled":
@@ -402,6 +368,7 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                 "    model_info:",
                 "      mode: audio_speech",
             ])
+    lines.extend(MEDIA.MediaRegistry.render_video(catalog, routes_doc))
     return "\n".join(lines) + "\n"
 
 

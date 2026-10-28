@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 SPEC = importlib.util.spec_from_file_location("snapshot", ROOT / "scripts/openclaw-machine-snapshot.py")
 SNAP = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SNAP)
@@ -74,7 +75,8 @@ class MachineSnapshotTests(unittest.TestCase):
 
     def test_total_command_deadline_prevents_late_systemctl_dispatch(self):
         calls = []
-        with patch.object(SNAP.time, "monotonic", side_effect=[0, 0, 2, 4, 7.9, 8.1]), \
+        ticks = iter([0, 0, 2, 4, 7.9])
+        with patch.object(SNAP.time, "monotonic", side_effect=lambda: next(ticks, 8.1)), \
                 patch.object(SNAP, "host_metrics", return_value={}), patch.object(SNAP, "read_report", side_effect=OSError()):
             result = SNAP.snapshot("home-core", self.runner(calls))
         self.assertEqual(len(calls), 4)

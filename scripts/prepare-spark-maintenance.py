@@ -14,6 +14,7 @@ import time
 from typing import Any, Callable
 
 from infrastructure_maintenance import ENV, MAX_OUTPUT, trusted_path, validate_plan
+from infrastructure_update_policy import classify_version
 
 APT = '/usr/bin/apt-get'
 DPKG = '/usr/bin/dpkg-query'
@@ -23,7 +24,8 @@ PACKAGE_TEXT = r'[a-z0-9][a-z0-9+.-]{0,127}(?::[a-z0-9][a-z0-9-]{0,31})?'
 PACKAGE = re.compile(PACKAGE_TEXT + r'\Z')
 VERSION = r'[A-Za-z0-9.+:~_-]{1,256}'
 INST = re.compile(rf'Inst ({PACKAGE_TEXT}) \[({VERSION})\] \(({VERSION})(?: [^()\r\n]*)?\)(?: \[[^]\r\n]*\])?\Z')
-CONF = re.compile(rf'Conf ({PACKAGE_TEXT}) \(({VERSION})(?: [^()\r\n]*)?\)\Z')
+DEPENDENCY_ANNOTATION = rf'(?: \[(?:{PACKAGE_TEXT}(?: {PACKAGE_TEXT}){{0,119}} ?)?\])?'
+CONF = re.compile(rf'Conf ({PACKAGE_TEXT}) \(({VERSION})(?: [^()\r\n]*)?\){DEPENDENCY_ANNOTATION}\Z')
 SUMMARY = re.compile(r'(\d+) upgraded, (\d+) newly installed, (\d+) to remove and (\d+) not upgraded\.\Z')
 HEADERS = {'The following packages will be upgraded:', 'The following packages have been kept back:',
            'The following upgrades have been deferred due to phasing:',
@@ -31,27 +33,38 @@ HEADERS = {'The following packages will be upgraded:', 'The following packages h
 PROGRESS = {'Reading package lists...', 'Building dependency tree...', 'Reading state information...',
             'Calculating upgrade...'}
 FORMAT = '${Package}\t${Architecture}\t${Version}\t${db:Status-Status}\n'
-PROTECTED = re.compile(r'nvidia|cuda|cudnn|nccl|tensorrt|nvinfer|nvrtc|nvjitlink|cublas|cufft|curand|cusolver|cusparse|cupti|nvjpeg|dgx|firmware|ofed|mlnx|ibverbs|rdma|^linux-', re.I)
+PROTECTED = re.compile(r'nvidia|cuda|cudnn|nccl|tensorrt|nvinfer|nvrtc|nvjitlink|cublas|cufft|curand|cusolver|cusparse|cupti|nvjpeg|xnvctrl|dgx|firmware|ofed|mlnx|ibverbs|rdma|^linux-', re.I)
 
 
-def parse_simulation(output: bytes) -> list[dict[str, str]]:
+def parse_simulation(output: bytes, *, allow_empty: bool = False) -> list[dict[str, str]]:
     """Account for every effect in the complete solver report; never select a subset."""
     if not isinstance(output, bytes) or not output or len(output) > MAX_OUTPUT:
         raise ValueError('bounded complete apt simulation required')
     rows, configured, summary, listing = {}, set(), None, False
+    listed_package, pending_alternative = False, False
     for line in output.decode('utf-8', errors='strict').splitlines():
         if not line:
             continue
+        words = line.split()
+        if line.startswith('  ') and listing and words:
+            for word in words:
+                if word == '|':
+                    if not listed_package or pending_alternative:
+                        raise ValueError('invalid optional package alternative')
+                    pending_alternative = True
+                elif PACKAGE.fullmatch(word):
+                    listed_package, pending_alternative = True, False
+                else:
+                    raise ValueError('unrecognized package listing')
+            continue
+        if pending_alternative:
+            raise ValueError('incomplete optional package alternative')
         if line in PROGRESS:
             listing = False
             continue
         if line in HEADERS:
             listing = True
-            continue
-        words = line.split()
-        if (line.startswith('  ') and listing and words and words[0] != '|' and words[-1] != '|'
-                and all(PACKAGE.fullmatch(word) or word == '|' for word in words)
-                and all(words[index - 1] != '|' for index, word in enumerate(words) if word == '|')):
+            listed_package = False
             continue
         listing = False
         match = SUMMARY.fullmatch(line)
@@ -75,7 +88,7 @@ def parse_simulation(output: bytes) -> list[dict[str, str]]:
             configured.add(name)
             continue
         raise ValueError('unrecognized apt solver output or unsupported package effect')
-    if summary is None or summary != len(rows) or configured != set(rows) or not rows:
+    if pending_alternative or summary is None or summary != len(rows) or configured != set(rows) or not rows and not allow_empty:
         raise ValueError('incomplete or empty apt upgrade simulation')
     return [rows[name] for name in sorted(rows)]
 
@@ -112,17 +125,26 @@ def read_command(argv: list[str], runner: Callable[..., Any]) -> bytes:
     return result.stdout
 
 
-def prepare(*, host: str = 'home-spark', ttl: int = 900,
+def prepare(*, host: str = 'home-spark', ttl: int = 900, routine_only: bool = False,
             runner: Callable[..., Any] = subprocess.run, clock: Callable[[], float] = time.time) -> tuple[dict[str, Any], list[str]]:
     if os.geteuid() != 0:
         raise ValueError('preparation requires root on home-spark')
-    if host != 'home-spark' or type(ttl) is not int or not 60 <= ttl <= 3600:
+    if host != 'home-spark' or type(ttl) is not int or not 60 <= ttl <= 3600 or type(routine_only) is not bool:
         raise ValueError('fixed Spark host and TTL from 60 to 3600 seconds required')
     if read_command([HOSTNAME, '-s'], runner).strip() != b'home-spark':
         raise ValueError('package preparation must run on home-spark')
     upgrade_argv = [APT, '-s', '--no-remove', 'upgrade']
     upgrade_output = read_command(upgrade_argv, runner)
-    updates = parse_simulation(upgrade_output)
+    updates = parse_simulation(upgrade_output, allow_empty=routine_only)
+    if routine_only:
+        # Select from a complete inventory, then require the complete exact
+        # install simulation to have precisely these effects. Dependencies may
+        # not silently reintroduce protected or unclassified package updates.
+        updates = [row for row in updates
+                   if not PROTECTED.search(row['component'].split(':')[0])
+                   and classify_version(row['installed'], row['candidate'], row['scheme'])['classification'] == 'routine']
+        if not updates:
+            raise ValueError('no routine package updates')
     names = [row['component'] for row in updates]
     specs = [row['component'] + '=' + row['candidate'] for row in updates]
     dpkg_argv = [DPKG, '--show', '--showformat=' + FORMAT, *names]
@@ -169,9 +191,10 @@ def main() -> int:
     parser.add_argument('--host', choices=['home-spark'], default='home-spark')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--ttl', type=int, default=900)
+    parser.add_argument('--routine-only', action='store_true', help='prepare only a complete verified routine package transaction')
     args = parser.parse_args()
     try:
-        plan, protected = prepare(host=args.host, ttl=args.ttl)
+        plan, protected = prepare(host=args.host, ttl=args.ttl, routine_only=args.routine_only)
         write_plan(args.output, plan)
         classification = validate_plan(plan, local_target='home-spark')
     except (OSError, ValueError, UnicodeError, subprocess.SubprocessError) as error:
