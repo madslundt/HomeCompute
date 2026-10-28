@@ -290,6 +290,9 @@ class CoreCommunicationTest(unittest.TestCase):
             if create:
                 path.mkdir(parents=True, exist_ok=True)
         setup.TMPFILES.parent.mkdir()
+        setup.UNIT_DIR.mkdir(parents=True)
+        retired = setup.UNIT_DIR / 'homecompute-openclaw-telegram.service'
+        retired.symlink_to('/dev/null')
         with patch.object(setup, 'protected_directory', side_effect=directory), \
              patch.object(setup, 'account', return_value=SimpleNamespace(pw_uid=self.uid, pw_gid=os.getgid())), \
              patch.object(setup, 'call', return_value=SimpleNamespace(stdout='inactive')) as call:
@@ -305,6 +308,8 @@ class CoreCommunicationTest(unittest.TestCase):
         self.assertTrue((wants / 'homecompute-openclaw-adapter.service').is_symlink())
         self.assertTrue((wants / 'homecompute-openclaw-task-feed.service').is_symlink())
         self.assertFalse((wants / 'homecompute-openclaw-telegram.service').exists())
+        self.assertTrue(retired.is_symlink())
+        self.assertEqual(str(retired.readlink()), '/dev/null')
         self.assertFalse((wants / 'homecompute-openclaw-update-feed.service').exists())
         self.assertFalse((wants / 'homecompute-openclaw-machine-status.service').exists())
         self.assertTrue((setup.UNIT_DIR / 'timers.target.wants/homecompute-openclaw-update-feed.timer').is_symlink())

@@ -442,7 +442,10 @@ def install(files: dict[str, bytes]) -> None:
             raise ValueError('Trusted gateway CA required')
         write(DEST / 'config/embedding-ca.crt', certificate.read_bytes())
     for name in NAMES:
-        write(UNIT_DIR / (PREFIX + name + '.service'), service(name).encode())
+        # Never recreate or replace the retired receiver, including /dev/null
+        # masks. Boot disablement below also applies to older regular units.
+        if name != 'telegram':
+            write(UNIT_DIR / (PREFIX + name + '.service'), service(name).encode())
         enable(name, name in {'adapter', 'task-feed'})
     for name in TIMERS:
         write(UNIT_DIR / (PREFIX + name + '.timer'), timer(name).encode())
