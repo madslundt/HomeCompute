@@ -72,6 +72,18 @@ class TeamRecoveryTests(unittest.TestCase):
             old=self.config();mutation(old)
             with self.assertRaises(ValueError):m.retained_config(old,self.config())
 
+    def test_native_auth_rotation_accepts_only_fresh_token_and_unchanged_paused_policy(self):
+        expected=m.paused(self.config());previous={'token':'old-native-token-1234'}
+        actual=copy.deepcopy(expected);actual['gateway']['auth']={'token':'fresh-native-token-1234'}
+        self.assertEqual(m.native_auth_rotation(expected,actual,previous),actual['gateway']['auth'])
+        for change in (lambda x:x['agents']['entries'].update(extra={}),
+                       lambda x:x['channels']['mattermost'].update(enabled=True),
+                       lambda x:x['gateway'].update(auth=previous),
+                       lambda x:x['gateway'].update(auth={'token':'short'}),
+                       lambda x:x['gateway'].update(auth={'token':'fresh-native-token-1234','password':'extra'})):
+            value=copy.deepcopy(actual);change(value)
+            with self.assertRaises(ValueError):m.native_auth_rotation(expected,value,previous)
+
     def test_symlinks_must_remain_inside_state_or_fixed_pinned_sdk(self):
         for path,target in [('npm/project/.bin/tool','../tool/bin.js'),('plugin-skills/browser','/usr/local/lib/nemoclaw/openclaw-runtime/node_modules/openclaw/dist/browser')]:
             self.assertTrue(m.safe_link(path,target))

@@ -443,3 +443,22 @@ Verify all agent identities, authenticated native readiness, model access,
 Mattermost connectivity, private DNS, specialist workspaces and the office feed.
 A successful restoration is runtime recovery, not reconciliation of unrelated
 host release or infrastructure-maintenance overrides.
+
+Native `start` can issue another fresh gateway token after state restoration.
+The retained-team verifier accepts that native authentication rotation only when
+every other paused configuration field is unchanged and the token differs from
+the pre-replacement credential. The canonical authenticated CLI is then checked.
+A paused Ready restoration that already passed offline hashes can be finished
+without copying its agent data again:
+
+```bash
+python3 /srv/homecompute/releases/FULL_SHA/scripts/recover-openclaw-team.py \
+  --revision FULL_SHA --expected-config-sha256 REVIEWED_NATIVE_CONFIG_SHA256 \
+  --finish --apply
+```
+
+This continuation requires the same failed replacement journal, verified offline
+checkpoint, intact backup and matching paused policy. It refuses an already
+active team and preserves any newer conversation/workspace writes. Only after
+read-only readiness, retained workspace/session checks and the exact local CLI
+qualification does it commit the new supervisor identity and reconnect services.
