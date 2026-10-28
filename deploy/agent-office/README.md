@@ -331,6 +331,11 @@ systemd and verify the Nix-owned units remain active before retiring old GC
 roots. Reconcile existing general maintenance overrides separately; a scoped
 office rollout does not claim global host synchronization.
 
+The office HTTPS admission includes both existing trusted LANs
+(`192.168.30.0/24` and `192.168.10.0/24`) and the household tailnet. The scoped
+installer can upgrade the exact previous office block to this policy; a custom
+or broader existing office block still requires explicit reconciliation.
+
 On the native plugin path, the roster uses `api.config.agents.entries` from the
 verified OpenClaw plugin API. It projects only supported role IDs and bounded
 display names. This includes the currently registered 12-agent team without

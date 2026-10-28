@@ -480,3 +480,9 @@ command, image, volume, namespace and generation checks. A short-lived native
 CLI probe with the same process title cannot become the gateway. Multiple true
 listener owners remain ambiguous and are refused. Rebinding waits briefly for
 that verified single-gateway state; all identity failures remain immediate.
+
+Private embedding and speech routes retain their explicit address pins and
+existing credential binding through OpenShell's native base-policy API. The
+third-party NemoClaw preset interface rejects `allowed_ips`; it must not be
+used by removing those pins. Recovery merges only the three tracked service
+rules, preserves other base-policy entries, and refuses conflicting rules.

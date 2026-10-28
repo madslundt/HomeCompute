@@ -88,6 +88,16 @@ class TeamRecoveryTests(unittest.TestCase):
             self.assertEqual(endpoint['credential_binding'],{'provider':'agent-openclaw-mcp-homecompute'})
             self.assertEqual(endpoint['rules'],[{'allow':{'method':'POST','path':endpoint['path']}}])
 
+    def test_private_service_routes_use_native_policy_without_untrusted_preset_admission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=Mock(state=Path(tmp),openshell='/fixed/openshell');ctx.observe.return_value='Ready'
+            tx=m.RetainedTransaction(ctx,'a'*64);tx.inspect=Mock()
+            tx.command=Mock(side_effect=lambda args,label,**kwargs:json.dumps({'policy':{'version':1,'network_policies':{'retained':{'name':'retained'}}}}).encode() if label=='read-replacement-base-policy' else b'')
+            tx.merge_native_policy('retained-service-routes.json','services.yaml')
+            policy=json.loads((Path(tmp)/'services.yaml').read_text())
+            self.assertEqual(len(policy['network_policies']),4)
+            self.assertTrue(all('attach' not in x.args[0] and '--from-file' not in x.args[0] for x in tx.command.call_args_list))
+
     def test_managed_inference_and_plugin_required(self):
         for mutation in (lambda c:c['models']['providers']['inference'].update(apiKey='private'),
                          lambda c:c['models']['providers']['inference'].update(baseUrl='https://example.com'),

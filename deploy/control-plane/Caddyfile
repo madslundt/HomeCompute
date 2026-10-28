@@ -347,7 +347,7 @@ import /config/video-api/Caddyfile
 agents.home.arpa {
 	tls internal
 	encode zstd gzip
-	@private remote_ip 192.168.30.0/24 100.64.0.0/10
+	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
 	handle @private {
 		# The observer still validates Origin and requires its own password.
 		# Its native listener and both relay hops remain on private interfaces.

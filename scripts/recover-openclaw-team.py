@@ -140,6 +140,9 @@ class RetainedTransaction(BASE.Transaction):
         self.previous_auth = None
 
     def attach_mcp(self):
+        self.merge_native_policy('retained-mcp-route.json','retained-mcp-policy.yaml',attach=True)
+
+    def merge_native_policy(self,source_name,target_name,*,attach=False):
         self.ctx.check_registry()
         self.inspect()
         if self.ctx.observe()!='Ready':raise ValueError('exact-ready-native-required')
@@ -148,15 +151,17 @@ class RetainedTransaction(BASE.Transaction):
         raw=self.command([self.ctx.openshell,'policy','get','-g',BASE.GATEWAY,BASE.NAME,
                           '--base','-o','json'],'read-replacement-base-policy')
         current=json.loads(raw)['policy']
-        retained=json.loads((ROOT/'deploy/openclaw/nemoclaw/retained-mcp-route.json').read_bytes())
-        key='mcp_bridge_homecompute';expected=retained['network_policies'][key]
-        existing=current.get('network_policies',{}).get(key)
-        if existing is not None and existing!=expected:raise ValueError('existing-mcp-policy-requires-reconciliation')
-        self.command([self.ctx.openshell,'sandbox','provider','attach','-g',BASE.GATEWAY,
-                      BASE.NAME,'agent-openclaw-mcp-homecompute'],'reattach-existing-mcp-provider')
-        if existing is None:
-            candidate=copy.deepcopy(current);candidate.setdefault('network_policies',{})[key]=expected
-            target=self.ctx.state/'retained-mcp-policy.yaml'
+        retained=json.loads((ROOT/'deploy/openclaw/nemoclaw'/source_name).read_bytes())
+        candidate=copy.deepcopy(current)
+        for key,expected in retained['network_policies'].items():
+            existing=current.get('network_policies',{}).get(key)
+            if existing is not None and existing!=expected:raise ValueError('existing-native-policy-requires-reconciliation')
+            candidate.setdefault('network_policies',{})[key]=expected
+        if attach:
+            self.command([self.ctx.openshell,'sandbox','provider','attach','-g',BASE.GATEWAY,
+                          BASE.NAME,'agent-openclaw-mcp-homecompute'],'reattach-existing-mcp-provider')
+        if candidate!=current:
+            target=self.ctx.state/target_name
             BASE.atomic_json(target,candidate)  # JSON is a strict YAML subset.
             self.ctx.check_registry()
             self.command([self.ctx.openshell,'policy','set','-g',BASE.GATEWAY,BASE.NAME,
@@ -372,18 +377,11 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         self.attach_mcp()
         self.command([self.ctx.cli, BASE.NAME, 'mcp', 'restart', 'homecompute'], 'restore-existing-mcp-binding', timeout=240)
         for file, host in [('deploy/openclaw/tools/browser-policy.yaml','172.18.0.1'),
-                           ('deploy/openclaw/mattermost-policy.yaml','home-core.tail479ad.ts.net'),
-                           ('deploy/openclaw/nemoclaw/retained-service-routes.json','homecompute-capabilities.home.arpa')]:
+                           ('deploy/openclaw/mattermost-policy.yaml','home-core.tail479ad.ts.net')]:
             preset=ROOT/file
-            if preset.suffix=='.json':
-                # Native preset admission requires a YAML filename. Keep JSON
-                # as the tracked declaration and render its identical YAML
-                # subset into the private recovery directory.
-                rendered=backup_root/(preset.stem+'.yaml')
-                BASE.atomic_json(rendered,json.loads(preset.read_bytes()))
-                preset=rendered
             self.command([self.ctx.cli, BASE.NAME, 'policy', 'add', '--from-file', str(preset),
                           '--trusted-private-host',host,'--yes'], 'restore-retained-network-preset', timeout=180)
+        self.merge_native_policy('retained-service-routes.json','retained-service-policy.yaml')
         final = backup_root / 'restored-active-config.json'
         BASE.atomic_json(final, self.policy)
         code, _ = self.ctx.run([self.ctx.cli, BASE.NAME, 'stop'], 'verified-team-stop', timeout=180)

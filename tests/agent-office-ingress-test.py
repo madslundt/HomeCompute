@@ -31,6 +31,14 @@ class IngressTest(unittest.TestCase):
                     (self.caddy,self.home.replace('AI assistants','Other assistants'))):
             with self.assertRaises(ValueError):m.office_patch(c,h,self.source_caddy,self.source_home)
 
+    def test_exact_previous_route_upgrades_to_the_existing_trusted_default_lan(self):
+        c,h=m.office_patch(self.caddy,self.home,self.source_caddy,self.source_home)
+        legacy=c.replace('192.168.30.0/24 192.168.10.0/24 100.64.0.0/10','192.168.30.0/24 100.64.0.0/10')
+        self.assertEqual(m.office_patch(legacy,h,self.source_caddy,self.source_home),(c,h))
+        self.assertIn('-s 192.168.10.0/24 -j RETURN',(ROOT/'modules/nixos/automation-network.nix').read_text())
+        unsafe=legacy.replace('192.168.30.0/24 100.64.0.0/10','0.0.0.0/0')
+        with self.assertRaises(ValueError):m.office_patch(unsafe,h,self.source_caddy,self.source_home)
+
     def test_file_mount_inode_preserved_and_concurrent_change_refused(self):
         with tempfile.TemporaryDirectory() as d:
             path=Path(d)/'Caddyfile';path.write_bytes(b'before');ino=path.stat().st_ino
