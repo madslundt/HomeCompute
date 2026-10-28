@@ -106,6 +106,7 @@ python3 "$REPO_ROOT/tests/speech-boundary-container-test.py"
 python3 "$REPO_ROOT/tests/speech-capacity-test.py"
 python3 "$REPO_ROOT/tests/speech-capacity-benchmark-test.py"
 python3 "$REPO_ROOT/tests/application-recovery-test.py"
+python3 "$REPO_ROOT/tests/application-recovery-engine-test.py"
 python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"

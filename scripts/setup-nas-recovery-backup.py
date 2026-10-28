@@ -159,7 +159,8 @@ WantedBy=multi-user.target
                   f'ExecStartPre={PYTHON} -I {DEST}/current/scripts/application-recovery.py prepare\n') if command == 'backup' else ''
         after = f'ExecStopPost={PYTHON} -I {DEST}/current/scripts/application-recovery.py resume\n' if command == 'backup' else ''
         capability = 'CAP_DAC_READ_SEARCH' if command == 'backup' else ''
-        home_read = 'BindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates\n' if command == 'backup' else ''
+        home_read = ('BindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates '
+                     '/home/mads/projects/chessmate/config/.env\n') if command == 'backup' else ''
         home_protect = 'tmpfs' if command == 'backup' else 'yes'
         values[PREFIX + command + '.service'] = f'''[Unit]
 Description=HomeCompute encrypted NAS recovery {command}
@@ -389,9 +390,13 @@ def operation(command: str, record: dict, args) -> dict:
         if not args.snapshot or not args.archive or not args.target: raise ValueError('restore needs exact snapshot, archive and new scratch target')
         result = json.loads(run([*nas, 'restore-application', '--snapshot', args.snapshot, '--archive', args.archive,
                                 '--target', str(args.target)], env=env, timeout=7500).stdout)
-        proof = json.loads(run([*recovery, 'verify', result['restored_archive'], str(args.target.with_name(args.target.name + '-application'))],
+        application = args.target.with_name(args.target.name + '-application')
+        proof = json.loads(run([*recovery, 'verify', result['restored_archive'], str(application)],
                               env=env, timeout=7500).stdout)
-        output = {'snapshot': args.snapshot, 'archive': args.archive, 'verification': proof}
+        manifest = application / 'manifest.json'; safe(manifest)
+        output = {'snapshot': args.snapshot, 'archive': args.archive, 'verification': proof,
+                  'restore_directory': str(application.resolve()),
+                  'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest()}
         write(STATE / 'last-application-verification.json', json.dumps(output).encode(), 0o600); return output
     backup = json.loads((STATE / 'last-backup.json').read_bytes())
     proof = json.loads((STATE / 'last-application-verification.json').read_bytes())

@@ -46,8 +46,10 @@ let
       PrivateTmp = true;
       ProtectSystem = "strict";
       ProtectHome = if command == "backup" && cfg.includeApplicationState then "tmpfs" else "yes";
-      BindReadOnlyPaths = lib.optional (command == "backup" && cfg.includeApplicationState)
-        "/home/mads/projects/chessmate/config/certificates";
+      BindReadOnlyPaths = lib.optionals (command == "backup" && cfg.includeApplicationState) [
+        "/home/mads/projects/chessmate/config/certificates"
+        "/home/mads/projects/chessmate/config/.env"
+      ];
       ProtectKernelTunables = true;
       ProtectKernelModules = true;
       ProtectControlGroups = true;

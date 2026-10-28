@@ -2,6 +2,7 @@
 """Targeted NAS staging, qualification gates and non-destructive rollback."""
 from contextlib import ExitStack
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,7 +43,7 @@ class NASRecoverySetupTest(unittest.TestCase):
         self.assertIn(b'ExecStopPost=', backup)
         self.assertIn(b' resume\n', backup)
         self.assertIn(b'RestrictAddressFamilies=AF_UNIX', backup)
-        self.assertIn(b'ProtectHome=tmpfs\nBindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates\n', backup)
+        self.assertIn(b'ProtectHome=tmpfs\nBindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates /home/mads/projects/chessmate/config/.env\n', backup)
         self.assertIn(b'ProtectHome=yes\n', units[setup.ATTACHED / (setup.PREFIX + 'check.service')])
         self.assertNotIn(b'BindReadOnlyPaths=', units[setup.ATTACHED / (setup.PREFIX + 'check.service')])
         self.assertIn(b'ExecCondition=', units[setup.GUARD])
@@ -104,6 +105,21 @@ class NASRecoverySetupTest(unittest.TestCase):
         self.assertEqual(result['state'], 'sources-resumed')
         self.assertEqual(run.call_count,1)
         self.assertEqual(run.call_args.args[0][-1],'resume')
+
+    def test_restore_receipt_binds_exact_verified_target_and_manifest_hash(self):
+        with tempfile.TemporaryDirectory() as temporary,patch.object(setup,'STATE',Path(temporary)):
+            root=Path(temporary);application=root/'nas-application';application.mkdir(mode=0o700)
+            manifest=application/'manifest.json';manifest.write_bytes(b'{"synthetic":true}')
+            def run(arguments,**kwargs):
+                if 'restore-application' in arguments:return subprocess.CompletedProcess(arguments,0,json.dumps({'restored_archive':'/private/archive.tar'}),'')
+                if 'verify' in arguments:return subprocess.CompletedProcess(arguments,0,json.dumps({'sqlite_integrity':'ok'}),'')
+                return subprocess.CompletedProcess(arguments,0,'','')
+            args=SimpleNamespace(snapshot='a'*64,archive='exact.tar',target=root/'nas')
+            with patch.object(setup,'run',side_effect=run):
+                result=setup.operation('restore-verify',{'version':'/reviewed','qemu_bin':'/nix/store/synthetic/bin'},args)
+            self.assertEqual(result['restore_directory'],str(application.resolve()))
+            self.assertEqual(result['manifest_sha256'],hashlib.sha256(manifest.read_bytes()).hexdigest())
+            self.assertEqual(json.loads((root/'last-application-verification.json').read_bytes()),result)
 
     def test_schedule_cannot_be_enabled_from_a_mismatched_restore_receipt(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(setup,'STATE',Path(temporary)), patch.object(setup,'run'):

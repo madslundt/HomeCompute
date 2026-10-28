@@ -293,6 +293,7 @@ class ApplicationRecoveryTest(unittest.TestCase):
 
     def test_new_local_applications_have_fixed_writer_and_archive_coverage(self):
         self.assertEqual(recovery.POSTGRES['chessmate'],'chessmate-db-1')
+        self.assertEqual(recovery.EXTRA_FILES['chessmate/runtime.env'],Path('/home/mads/projects/chessmate/config/.env'))
         self.assertEqual(recovery.DIRECTORIES['open-webui'],Path('/srv/state/open-webui/data'))
         self.assertEqual(recovery.DIRECTORIES['books-importer'],Path('/srv/state/books_importer'))
         self.assertEqual(recovery.DIRECTORIES['image-studio'],Path('/srv/state/image-studio/data'))

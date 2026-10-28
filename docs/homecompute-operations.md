@@ -325,10 +325,12 @@ database, Immich metadata database, trusted agent/broker state and both VMs.
 It also includes both local OpenWebUI instances (chat and image studio), their
 generated embedding/instance credentials,
 Omi's exact validated local application volume, book importer configuration and
-local library files, and Chessmate's PostgreSQL 17 dump and certificates.
+local library files, and Chessmate's PostgreSQL 17 dump, certificates and private
+runtime environment from its separately owned Git project.
 Declared writers stop before these files are read; PostgreSQL data volumes and
 Docker storage as a whole are never copied. The backup sandbox exposes only
-Chessmate's certificate directory read-only through its protected home boundary.
+Chessmate's certificate directory and runtime environment file read-only through
+its otherwise hidden home boundary.
 Original Immich media and Omi NAS audio/diary stay outside this archive and
 require independent media backups; another copy on the same NAS is not evidence
 of protection against NAS loss. The host age identity and
@@ -387,6 +389,8 @@ Verification checks restored SQLite integrity (including `.db` files with a
 SQLite header), all four compressed dump checksums and all
 three qcow2 disks without touching production paths. It explicitly leaves
 PostgreSQL imports and isolated VM boots unverified; complete those drills with
-no production network access before accepting disaster recovery. NAS storage
+no production network access using the separate
+[engine restore verifier](operations/application-engine-restore.md) before
+accepting disaster recovery. NAS storage
 protects against home-core loss, while NAS/site loss remains uncovered until the
 independent second destination and its restore drill are complete.

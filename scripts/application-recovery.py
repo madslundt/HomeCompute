@@ -78,7 +78,8 @@ DIRECTORIES = {
     'chessmate/certificates': Path('/home/mads/projects/chessmate/config/certificates'),
 }
 EXTRA_FILES = {'open-webui/embedding-api-key': Path('/srv/state/open-webui/embedding-api-key'),
-               'image-studio/webui-secret-key': Path('/srv/state/image-studio/webui-secret-key')}
+               'image-studio/webui-secret-key': Path('/srv/state/image-studio/webui-secret-key'),
+               'chessmate/runtime.env': Path('/home/mads/projects/chessmate/config/.env')}
 N8N = Path('/srv/state/automation/n8n')
 VM_DISKS = ('agents-vm/agents.qcow2', 'codex-vm/root.qcow2', 'codex-vm/work.qcow2')
 SEED_PATTERN = r'/nix/store/[0-9a-z]{32}-homecompute-agents-seed\.iso'
