@@ -59,6 +59,13 @@ def office_patch(caddy, homepage, source_caddy, source_homepage):
         raise ValueError('canonical-office-source-shape')
     block,redirect,card=blocks[0],redirects[0],cards[0]
     if 'agents.home.arpa' in caddy:
+        if block not in caddy:
+            # Upgrade only the exact previously published office block. The
+            # trusted Default LAN is already admitted by automation-network.nix.
+            legacy=block.replace('192.168.30.0/24 192.168.10.0/24 100.64.0.0/10',
+                                 '192.168.30.0/24 100.64.0.0/10')
+            if legacy==block or legacy not in caddy:raise ValueError('existing-office-route-differs')
+            caddy=caddy.replace(legacy,block,1)
         if block not in caddy or redirect not in caddy:
             raise ValueError('existing-office-route-differs')
     else:
