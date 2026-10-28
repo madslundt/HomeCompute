@@ -330,6 +330,13 @@ Resumption reclaims gateway addresses first, then the WebUI client address,
 before remaining dynamic clients and dependent units. This avoids dynamic
 clients occupying a stopped gateway's fixed address; resources absent from
 the resume journal remain stopped.
+The private approval certificate watcher and proxy are captured and paused
+before their backend. Stopping that backend implicitly stops its requiring
+proxy, so recording the proxy afterward would lose its original active state.
+Resumption starts the backend and proxy, waits for the proxy's existing private
+Unix admin reload to accept its unchanged TLS configuration, then re-arms the
+watcher. An unready proxy leaves the watcher paused and the recovery journal
+retained for operator retry. Previously stopped proxy/watcher units stay stopped.
 Active private browser sessions and running/claimed/publishing broker work
 defer the job. Both idle
 checks run again after their owning routes stop, before VM or application

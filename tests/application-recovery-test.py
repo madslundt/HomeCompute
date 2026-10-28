@@ -126,6 +126,72 @@ class ApplicationRecoveryTest(unittest.TestCase):
         self.assertEqual(run.call_count,1)
         self.assertEqual(run.call_args.args[0],['docker','start','omi-local-backend-1'])
 
+    def test_backup_journals_proxy_before_backend_requires_stop_and_rearms_watcher_after_ready(self):
+        watcher=recovery.ACCESS_CERTIFICATE_PATH;proxy=recovery.ACCESS_PROXY;backend='homecompute-openclaw-access.service'
+        selected={watcher,recovery.ACCESS_CERTIFICATE_SERVICE,proxy,backend}
+        units=tuple(name for name in recovery.UNITS if name in selected)
+        self.assertEqual(set(units),selected)
+        states={name:('inactive' if name==recovery.ACCESS_CERTIFICATE_SERVICE else 'active') for name in units};events=[]
+        def run(arguments,**kwargs):
+            if arguments[:2]==['systemctl','stop']:
+                name=arguments[-1];events.append(('stop',name));states[name]='inactive'
+                if name==backend:states[proxy]='inactive'  # PID1 Requires propagation.
+            if arguments[:2]==['systemctl','start']:
+                name=arguments[-1];events.append(('start',name));states[name]='active'
+            return subprocess.CompletedProcess(arguments,0,'','')
+        def ready():
+            self.assertEqual(states[backend],'active');self.assertEqual(states[proxy],'active');events.append(('ready',proxy))
+        with patch.object(recovery,'UNITS',units),patch.object(recovery,'CONTAINERS',()), \
+                patch.object(recovery,'unit_state',side_effect=lambda name:states[name]),patch.object(recovery,'run',side_effect=run), \
+                patch.object(recovery,'approval_proxy_ready',side_effect=ready):
+            with recovery.quiesced():
+                journal=json.loads(recovery.RESUME_FILE.read_bytes())
+                self.assertIn(['unit',proxy],journal)
+                self.assertIn(['unit',watcher],journal)
+        self.assertLess(events.index(('stop',watcher)),events.index(('stop',proxy)))
+        self.assertLess(events.index(('stop',proxy)),events.index(('stop',backend)))
+        self.assertLess(events.index(('start',backend)),events.index(('start',proxy)))
+        self.assertLess(events.index(('start',proxy)),events.index(('ready',proxy)))
+        self.assertLess(events.index(('ready',proxy)),events.index(('start',watcher)))
+
+    def test_stopped_proxy_and_watcher_remain_stopped_after_backend_backup(self):
+        watcher=recovery.ACCESS_CERTIFICATE_PATH;proxy=recovery.ACCESS_PROXY;backend='homecompute-openclaw-access.service'
+        units=(watcher,proxy,backend);states={watcher:'inactive',proxy:'inactive',backend:'active'};calls=[]
+        def run(arguments,**kwargs):
+            calls.append(arguments)
+            if arguments[:2]==['systemctl','stop']:states[arguments[-1]]='inactive'
+            return subprocess.CompletedProcess(arguments,0,'','')
+        with patch.object(recovery,'UNITS',units),patch.object(recovery,'CONTAINERS',()), \
+                patch.object(recovery,'unit_state',side_effect=lambda name:states[name]),patch.object(recovery,'run',side_effect=run), \
+                patch.object(recovery,'approval_proxy_ready') as ready:
+            with recovery.quiesced():pass
+        ready.assert_not_called()
+        self.assertNotIn(['systemctl','start',proxy],calls);self.assertNotIn(['systemctl','start',watcher],calls)
+
+    def test_unready_restored_proxy_keeps_watcher_paused_and_journal_retained(self):
+        resources=[('unit',recovery.ACCESS_CERTIFICATE_PATH),('unit',recovery.ACCESS_PROXY),('unit','homecompute-openclaw-access.service')]
+        recovery.save_resume(resources)
+        with patch.object(recovery,'run') as run,patch.object(recovery,'approval_proxy_ready',side_effect=RuntimeError('private approval proxy readiness failed')):
+            with self.assertRaisesRegex(RuntimeError,'could not resume'):recovery.resume(resources)
+        self.assertNotIn(['systemctl','start',recovery.ACCESS_CERTIFICATE_PATH],[call.args[0] for call in run.call_args_list])
+        self.assertTrue(recovery.RESUME_FILE.exists())
+
+    def test_proxy_readiness_uses_only_existing_unix_reload_and_retries_startup(self):
+        responses=[subprocess.CompletedProcess([],0,'false\n',''),subprocess.CompletedProcess([],0,'true\n',''),subprocess.CompletedProcess([],0,'','')]
+        with patch.object(recovery,'run',side_effect=responses) as run,patch.object(recovery.time,'sleep'):
+            recovery.approval_proxy_ready()
+        command=run.call_args.args[0]
+        self.assertEqual(command[:4],['docker','exec',recovery.ACCESS_PROXY_CONTAINER,'caddy'])
+        self.assertEqual(command[-2:],['--address','unix//tmp/caddy-admin.sock'])
+        self.assertIn('/etc/caddy/Caddyfile',command)
+
+    def test_proxy_readiness_fails_closed_when_state_is_missing_or_unready(self):
+        for state in ['false\n','unknown\n','']:
+            with self.subTest(state=state),patch.object(recovery,'run',return_value=subprocess.CompletedProcess([],0,state,'')) as run, \
+                    patch.object(recovery.time,'monotonic',side_effect=[0,31]),patch.object(recovery.time,'sleep') as sleep:
+                with self.assertRaisesRegex(RuntimeError,'private approval proxy readiness failed'):recovery.approval_proxy_ready()
+                self.assertEqual(run.call_count,1);sleep.assert_not_called()
+
     def test_archive_rejects_traversal_external_symlinks_and_special_files(self):
         for name, kind, target in [('../escape', tarfile.REGTYPE, ''), ('/absolute', tarfile.REGTYPE, ''),
                                    ('link', tarfile.SYMTYPE, '/etc/shadow'), ('pipe', tarfile.FIFOTYPE, '')]:

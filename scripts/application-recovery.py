@@ -44,13 +44,18 @@ CONTAINERS = ('homecompute-control-plane-caddy-1', 'homecompute-control-plane-li
 # source-declared client address (.5) must precede the dynamic Omi client (.6).
 RESUME_FIRST = ('homecompute-control-plane-litellm-1', 'homecompute-control-plane-caddy-1',
                 'homecompute-open-webui-open-webui-1')
+ACCESS_PROXY = 'homecompute-openclaw-access-proxy.service'
+ACCESS_CERTIFICATE_PATH = 'homecompute-openclaw-access-certificate.path'
+ACCESS_CERTIFICATE_SERVICE = 'homecompute-openclaw-access-certificate.service'
+ACCESS_PROXY_CONTAINER = 'homecompute-openclaw-access-proxy'
 UNITS = ('homecompute-codex-worker-api.service', 'homecompute-codex-broker.service',
          'homecompute-openclaw-household-task-reminders.timer', 'homecompute-openclaw-family-task-reminders.timer',
          'homecompute-openclaw-update-feed.timer', 'homecompute-openclaw-household-task-reminders.service',
          'homecompute-openclaw-family-task-reminders.service', 'homecompute-openclaw-update-feed.service',
          'homecompute-openclaw-task-feed.service',
          'homecompute-openclaw-adapter.service', 'homecompute-openclaw-location-reminders.service',
-         'homecompute-openclaw-sites.service', 'homecompute-openclaw-access.service',
+         'homecompute-openclaw-sites.service', ACCESS_CERTIFICATE_PATH, ACCESS_CERTIFICATE_SERVICE,
+         ACCESS_PROXY, 'homecompute-openclaw-access.service',
          'homecompute-ha-actions.service',
          'homecompute-codex-vm.service', 'homecompute-agents-vm.service')
 POSTGRES = {'control-plane': 'homecompute-control-plane-postgres-1',
@@ -141,14 +146,40 @@ def resume(stopped: list[tuple[str, str]] | None = None) -> None:
     priority = [('container', name) for name in RESUME_FIRST if ('container', name) in reversed_resources]
     ordered = [*priority, *[row for row in reversed_resources if row not in priority]]
     failures = []
+    proxy_restored = ('unit', ACCESS_PROXY) not in ordered
     for kind, name in ordered:
+        if kind == 'unit' and name == ACCESS_CERTIFICATE_PATH and not proxy_restored:
+            failures.append(name)
+            continue  # Never re-arm renewal while a restored proxy is unready.
         try:
             run(['docker', 'start', name] if kind == 'container' else ['systemctl', 'start', name], timeout=180)
-        except (OSError, subprocess.SubprocessError):
+            if kind == 'unit' and name == ACCESS_PROXY:
+                approval_proxy_ready()
+                proxy_restored = True
+        except (OSError, subprocess.SubprocessError, RuntimeError):
             failures.append(name)
     if failures:
         raise RuntimeError('recovery preparation could not resume: ' + ', '.join(failures))
     RESUME_FILE.unlink(missing_ok=True)
+
+
+def approval_proxy_ready() -> None:
+    # Use the existing private Unix admin socket, preserving the service's
+    # AF_UNIX-only backup sandbox and all TLS/auth policy. Reloading the same
+    # config also loads certificates changed while the renewal path was paused.
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            state = run(['docker', 'inspect', ACCESS_PROXY_CONTAINER, '--format', '{{.State.Running}}'], text=True, timeout=10).stdout.strip()
+            if state == 'true':
+                run(['docker', 'exec', ACCESS_PROXY_CONTAINER, 'caddy', 'reload', '--config', '/etc/caddy/Caddyfile',
+                     '--adapter', 'caddyfile', '--address', 'unix//tmp/caddy-admin.sock'], timeout=10)
+                return
+        except (OSError, subprocess.SubprocessError):
+            pass
+        if time.monotonic() >= deadline:
+            raise RuntimeError('private approval proxy readiness failed')
+        time.sleep(1)
 
 
 def unit_state(unit: str) -> str:
