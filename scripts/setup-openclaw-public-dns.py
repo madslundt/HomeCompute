@@ -98,7 +98,7 @@ def rebind(sandbox_id: str, generation: str) -> dict[str, object]:
     protected(module)
     identity = {'sandbox_id': sandbox_id, 'generation': generation,
                 'module_sha256': hashlib.sha256(module.read_bytes()).hexdigest()}
-    controller.observe(identity)  # supervisor, registry, image, volume, UID and listeners
+    observe_ready(controller, identity)  # supervisor, registry, image, volume, UID and listeners
     container = 'openshell-default--agent-openclaw-' + sandbox_id
     def docker(*args):
         subprocess.run(['/usr/bin/docker', *args], check=True, stdout=subprocess.DEVNULL,
@@ -107,8 +107,21 @@ def rebind(sandbox_id: str, generation: str) -> dict[str, object]:
     docker('cp', str(module), container + ':/opt/homecompute-public-dns/public-dns.mjs')
     docker('exec', '--user', '0:0', container, 'chown', '0:0', '/opt/homecompute-public-dns/public-dns.mjs')
     docker('exec', '--user', '0:0', container, 'chmod', '0555', '/opt/homecompute-public-dns/public-dns.mjs')
-    controller.observe(identity)
+    observe_ready(controller, identity)
     return install({'sandbox_id': sandbox_id, 'generation': generation})
+
+
+def observe_ready(controller, identity):
+    # The just-completed native CLI probe briefly shares the truncated gateway
+    # process title. Wait for one positively verified gateway; never select one
+    # from an ambiguous set or retry an identity/permission failure.
+    for attempt in range(30):
+        try:
+            return controller.observe(identity)
+        except controller.Refused as error:
+            if str(error)!='gateway-cardinality' or attempt==29:
+                raise
+            time.sleep(0.1)
 
 
 def main() -> None:

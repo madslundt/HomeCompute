@@ -118,6 +118,31 @@ class Snapshot:
     process: tuple[int, int, int, int]
 
 
+def owns_gateway_listeners(pid: int, *, proc_root: Path = Path('/proc')) -> bool:
+    """Distinguish the canonical server from short-lived gateway CLI probes."""
+    base=proc_root/str(pid)
+    try:
+        sockets=set()
+        for index,path in enumerate((base/'fd').iterdir()):
+            if index>=8192:return False
+            try:
+                target=str(path.readlink())
+            except FileNotFoundError:
+                continue
+            if target.startswith('socket:['):sockets.add(target)
+        with (base/'net/tcp').open() as stream:
+            table=stream.read(1024*1024+1)
+        if len(table)>1024*1024:return False
+        owned=set()
+        for line in table.splitlines()[1:]:
+            fields=line.split()
+            if len(fields)>=10 and fields[3]=='0A' and 'socket:['+fields[9]+']' in sockets:
+                owned.add(fields[1])
+        return {'00000000:4967','0100007F:4970'}<=owned
+    except OSError:
+        return False
+
+
 def observe(identity: dict[str, str]) -> Snapshot:
     expected_env = ('OPENCLAW_EXPECTED_SANDBOX_ID=' + identity['sandbox_id'] + '\n'
                     'OPENCLAW_EXPECTED_GENERATION=' + identity['generation'] + '\n')
@@ -158,7 +183,8 @@ def observe(identity: dict[str, str]) -> Snapshot:
     for line in command(['top', container, '-eo', 'pid,uid,comm']).decode().splitlines()[1:]:
         fields = line.split()
         if len(fields) == 3 and fields[1:] == ['998', 'openclaw-gatewa']:
-            candidates.append(int(fields[0]))
+            pid=int(fields[0])
+            if owns_gateway_listeners(pid):candidates.append(pid)
     if len(candidates) != 1:
         raise Refused('gateway-cardinality')
     pid = candidates[0]

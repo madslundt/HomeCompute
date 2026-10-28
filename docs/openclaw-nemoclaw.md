@@ -462,3 +462,21 @@ checkpoint, intact backup and matching paused policy. It refuses an already
 active team and preserves any newer conversation/workspace writes. Only after
 read-only readiness, retained workspace/session checks and the exact local CLI
 qualification does it commit the new supervisor identity and reconnect services.
+
+A replacement also needs the original named MCP provider attached to its new
+sandbox identity and its fixed base-policy rule. The provider's encrypted
+credential survives in the existing gateway; do not rotate or copy it into the
+sandbox. The controller now restores `agent-openclaw-mcp-homecompute` plus the
+tracked, pinned native bridge template before refreshing MCP. It preserves all
+other base-policy entries and refuses a conflicting existing bridge rule. The
+same idempotent binding step can be independently reapplied from a published
+release using `--restore-mcp-binding --apply` with the normal revision and
+retained-config digest arguments. No agent data, channels, credentials or model
+route are modified by that narrow operation.
+
+The DNS namespace controller identifies the gateway by ownership of both its
+canonical listening sockets, in addition to the existing UID, executable,
+command, image, volume, namespace and generation checks. A short-lived native
+CLI probe with the same process title cannot become the gateway. Multiple true
+listener owners remain ambiguous and are refused. Rebinding waits briefly for
+that verified single-gateway state; all identity failures remain immediate.
