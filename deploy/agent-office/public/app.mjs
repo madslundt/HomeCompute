@@ -122,7 +122,7 @@ function renderInspector() {
   const roleLocations = { main: 'Coordination table', personal: 'Planning desk', researcher: 'Research library', engineer: 'Engineering desk', operator: 'Operations room', shopper: 'Shopping counter', keeper: 'Inventory shelves', travel: 'Travel desk', cook: 'Kitchen', administrator: 'Administration desk', finance: 'Finance desk', family: 'Family garden' };
   const activityLocations = { research: 'Research library', coding: 'Engineering area', operations: 'Operations room', planning: 'Planning area', shopping: 'Shopping counter', inventory: 'Inventory shelves', travel: 'Travel desk', cooking: 'Kitchen', administration: 'Administration area', finance: 'Finance area', coordinating: 'Coordination table' };
   $('agent-location').textContent = agent.status === 'unknown' ? 'Unobserved' : agent.id === 'family' ? 'Family garden'
-    : agent.status === 'idle' ? 'Lounge' : agent.status === 'waiting' ? 'Coordination table' : activityLocations[agent.activity] ?? roleLocations[agent.id];
+    : agent.status === 'idle' ? (agent.id === 'main' ? 'Lounge' : roleLocations[agent.id]) : agent.status === 'waiting' ? 'Coordination table' : activityLocations[agent.activity] ?? roleLocations[agent.id];
   $('agent-task').textContent = ACTIVITIES[agent.activity][0];
   $('agent-task').style.setProperty('--agent-color', agent.color);
   $('agent-runs').textContent = agent.status === 'unknown' ? 'Unverified' : String(agent.active_runs);

@@ -30,7 +30,7 @@ export const ACTIVITIES = {
   coordinating: ['Coordinating a handoff', 'Coordination table'],
   workspace: ['Working in own workspace', 'Workspace'],
   waiting: ['Waiting for a specialist', 'Coordination table'],
-  idle: ['Ready for the next request', 'Lounge'],
+  idle: ['Ready for the next request', 'Break area'],
   error: ['Run ended with an error', 'Workspace'],
   unknown: ['No fresh activity observation', 'Unobserved'],
 };
