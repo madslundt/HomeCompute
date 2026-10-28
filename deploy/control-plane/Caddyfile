@@ -124,6 +124,10 @@ http://:8080 {
 	handle @comfyui {
 		redir https://comfyui.home.arpa{uri} 308
 	}
+	@agent_office host agents.home.arpa
+	handle @agent_office {
+		redir https://agents.home.arpa{uri} 308
+	}
 	@daythread host {$DAYTHREAD_FQDN:daythread.home.arpa}
 	handle @daythread {
 		# Bootstrap client trust through HTTP; only the public root is served.
@@ -338,6 +342,25 @@ import /config/video-api/Caddyfile
 {$AI_LEGACY_FQDN} {
 	tls /data/tailscale-tls/current/cert.pem /data/tailscale-tls/current/key.pem
 	import ai_api
+}
+
+agents.home.arpa {
+	tls internal
+	encode zstd gzip
+	@private remote_ip 192.168.30.0/24 100.64.0.0/10
+	handle @private {
+		# The observer still validates Origin and requires its own password.
+		# Its native listener and both relay hops remain on private interfaces.
+		reverse_proxy 172.28.200.1:18802 {
+			header_up Host 127.0.0.1:18802
+			header_up X-HomeCompute-Office-Origin https://agents.home.arpa
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10s
+			}
+		}
+	}
+	respond "Forbidden" 403
 }
 
 mattermost.home.arpa {

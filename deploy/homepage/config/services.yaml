@@ -31,6 +31,12 @@
         description: Find books and request downloads
 
 - AI assistants:
+    - Agent office:
+        id: homecore-agent-office
+        icon: mdi-account-group-outline
+        href: https://agents.home.arpa/
+        description: See agent activity in the pixel office · operator sign-in
+
     - Spark models:
         id: homecore-comfyui
         icon: mdi-auto-fix
