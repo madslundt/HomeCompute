@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Readiness follows deployed consumers and fails closed without exposing content."""
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 import importlib.util
 import json
 from pathlib import Path
@@ -17,6 +18,49 @@ spec.loader.exec_module(health)
 
 
 class PlatformHealthTest(unittest.TestCase):
+    def test_nas_requires_fresh_successful_evidence_and_enabled_schedules(self):
+        now = datetime(2026, 10, 28, 12, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            config = state / 'nas-config.json'
+            config.write_text('{}')
+            def record(name, value):
+                path = state / name
+                path.write_text(json.dumps(value)); path.chmod(0o600)
+            record('deployment.json', {'state': 'scheduled'})
+            record('last-backup.json', {'time': now.isoformat(), 'snapshot': 'a' * 64})
+            record('last-check.json', {'time': now.isoformat(), 'passed': True})
+            permit = state / 'backup-authorized'; permit.write_text('authorized'); permit.chmod(0o600)
+            def units(*, failed=False, enabled=True):
+                return '\n\n'.join('\n'.join([f'Id=homecompute-nas-recovery-{operation}.{kind}',
+                    'ActiveState=' + ('active' if kind == 'timer' and enabled else 'inactive'),
+                    'Result=' + ('exit-code' if failed and kind == 'service' else 'success')])
+                    for operation in ('backup', 'check') for kind in ('timer', 'service'))
+            with patch.object(health, 'NAS_STATE', state), patch.object(health, 'NAS_CONFIG', config), \
+                    patch.object(health.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, units(), '')) as call:
+                self.assertEqual(health.nas_readiness(now), {'nas_backup_ready': True, 'nas_check_ready': True})
+                record('last-backup.json', {'time': (now - timedelta(hours=37)).isoformat(), 'snapshot': 'a' * 64})
+                self.assertFalse(health.nas_readiness(now)['nas_backup_ready'])
+                self.assertTrue(health.nas_readiness(now)['nas_check_ready'])
+                record('last-backup.json', {'time': (now + timedelta(minutes=3)).isoformat(), 'snapshot': 'a' * 64})
+                self.assertFalse(health.nas_readiness(now)['nas_backup_ready'])
+                record('last-backup.json', {'time': now.isoformat(), 'snapshot': 'a' * 64})
+                call.return_value = subprocess.CompletedProcess([], 0, units(failed=True), '')
+                self.assertFalse(any(health.nas_readiness(now).values()))
+                call.return_value = subprocess.CompletedProcess([], 0, units(enabled=False), '')
+                self.assertFalse(any(health.nas_readiness(now).values()))
+                call.return_value = subprocess.CompletedProcess([], 0, units(), '')
+                (state / 'last-check.json').chmod(0o644)
+                self.assertFalse(any(health.nas_readiness(now).values()))
+
+    def test_nas_optional_without_installation_but_partial_installation_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            with patch.object(health, 'NAS_STATE', state), patch.object(health, 'NAS_CONFIG', state / 'config.json'):
+                self.assertEqual(health.nas_readiness(), {})
+                (state / 'config.json').write_text('{}')
+                self.assertEqual(health.nas_readiness(), {'nas_backup_ready': False, 'nas_check_ready': False})
+
     def test_inventory_covers_photo_chat_cpu_speech_and_callback_failures(self):
         registry = json.loads((ROOT / 'config/system-monitoring.json').read_text())
         core = next(system for system in registry['systems'] if system['id'] == 'home-core')

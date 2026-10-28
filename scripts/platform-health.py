@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import socket
+import stat
 import subprocess
 import tempfile
 
 METRIC_DIRECTORY = Path('/var/lib/homecompute-health')
 EDGE_CA = '/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt'
 UPSTREAM_KEYS = ('text', 'embedding', 'stt_danish', 'stt_multilingual', 'tts')
+NAS_CONFIG = Path('/etc/homecompute/nas-recovery-backup.json')
+NAS_STATE = Path('/var/lib/homecompute/nas-recovery-backup')
 # Run at the existing consumer boundary. The host is intentionally denied direct
 # access to the SSH-forward ports; do not weaken that firewall for monitoring.
 UPSTREAM_PROBE = r'''
@@ -98,6 +103,68 @@ def wyoming_ready(host: str, port: int) -> bool:
         return False
 
 
+def private_record(path: Path) -> dict:
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                or info.st_mode & 0o077 or not 0 < info.st_size <= 65536):
+            raise ValueError('private bounded recovery receipt required')
+        raw = stream.read(65537)
+        if len(raw) > 65536:
+            raise ValueError('recovery receipt exceeds its bound')
+        value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError('recovery receipt object required')
+    return value
+
+
+def nas_readiness(now: datetime | None = None) -> dict[str, bool]:
+    deployment = NAS_STATE / 'deployment.json'
+    if not any(path.exists() or path.is_symlink() for path in (NAS_CONFIG, deployment)):
+        return {}
+    unavailable = {'nas_backup_ready': False, 'nas_check_ready': False}
+    try:
+        if private_record(deployment).get('state') != 'scheduled':
+            return unavailable
+        permit = (NAS_STATE / 'backup-authorized').lstat()
+        if (not stat.S_ISREG(permit.st_mode) or permit.st_uid != os.geteuid()
+                or permit.st_mode & 0o077 or not 0 < permit.st_size <= 1024):
+            return unavailable
+        names = {f'homecompute-nas-recovery-{operation}.{kind}'
+                 for operation in ('backup', 'check') for kind in ('timer', 'service')}
+        result = subprocess.run(['systemctl', 'show', *sorted(names), '-p', 'Id', '-p', 'ActiveState', '-p', 'Result'],
+                                capture_output=True, text=True, timeout=3, check=False)
+        if result.returncode or len(result.stdout) > 8192:
+            return unavailable
+        units = {}
+        for block in result.stdout.strip().split('\n\n'):
+            fields = dict(line.split('=', 1) for line in block.splitlines() if '=' in line)
+            name = fields.get('Id')
+            if name not in names or name in units:
+                return unavailable
+            units[name] = fields
+        if set(units) != names:
+            return unavailable
+        current = now or datetime.now(timezone.utc)
+        ready = {}
+        for operation, maximum_age in (('backup', 36 * 3600), ('check', 8 * 86400)):
+            receipt = private_record(NAS_STATE / f'last-{operation}.json')
+            timestamp = datetime.fromisoformat(receipt['time'])
+            age = (current - timestamp).total_seconds()
+            evidence = (isinstance(receipt.get('snapshot'), str)
+                        and re.fullmatch('[0-9a-f]{64}', receipt['snapshot']) is not None
+                        if operation == 'backup' else receipt.get('passed') is True)
+            timer = units[f'homecompute-nas-recovery-{operation}.timer']
+            service = units[f'homecompute-nas-recovery-{operation}.service']
+            ready[f'nas_{operation}_ready'] = bool(evidence and -120 <= age <= maximum_age
+                and timer.get('ActiveState') == 'active' and service.get('Result') == 'success'
+                and service.get('ActiveState') in {'inactive', 'active', 'activating'})
+        return ready
+    except (OSError, ValueError, TypeError, KeyError, RecursionError, subprocess.SubprocessError):
+        return unavailable
+
+
 def collect() -> dict[str, bool]:
     jobs = {
         'edge_process_healthy': lambda: http_ready(
@@ -109,11 +176,13 @@ def collect() -> dict[str, bool]:
         'wyoming_tts_ready': lambda: wyoming_ready('172.28.200.4', 10201),
         'wyoming_stt_ready': lambda: wyoming_ready('172.28.200.5', 10301),
         'upstreams': upstream_readiness,
+        'nas': nas_readiness,
     }
     with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
         futures = {name: pool.submit(job) for name, job in jobs.items()}
         result = {name: future.result() for name, future in futures.items()}
     upstreams = result.pop('upstreams')
+    result.update(result.pop('nas'))
     result.update({name + '_ready': state for name, state in upstreams.items()})
     result['platform_ready'] = all(result.values())
     return result

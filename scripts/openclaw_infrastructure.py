@@ -309,6 +309,27 @@ class Reader:
             raise ValueError("observation context exceeds native budget; select one system")
         return prompt
 
+    @staticmethod
+    def conversation_evidence(report: dict[str, Any]) -> dict[str, Any]:
+        # Keep the full snapshot and /investigate projection intact. Normal
+        # conversation reserves its existing budget for the user's message,
+        # host/energy facts, update provenance and the most useful exceptions.
+        result = Reader.compact(report)
+        for machine in result['machines'].values():
+            inventory = [row for row in machine['checks']
+                         if row[1] == 'health' and row[0].startswith(('container.', 'unit.'))]
+            if not inventory:
+                continue
+            counts = {state: sum(row[2] == state for row in inventory)
+                      for state in ('healthy', 'degraded', 'unknown')}
+            nonhealthy = sorted((row for row in inventory if row[2] != 'healthy'),
+                                key=lambda row: (row[2] != 'degraded', row[0]))
+            details = nonhealthy[:8]
+            machine['inventory_health'] = {'checks': len(inventory), **counts,
+                                           'omitted_nonhealthy_details': len(nonhealthy) - len(details)}
+            machine['checks'] = [row for row in machine['checks'] if row not in inventory] + details
+        return result
+
     def contextual_prompt(self, text: str) -> str:
         if not isinstance(text, str) or not text.strip() or "\0" in text or len(text) > 4000:
             raise ValueError("normal conversation input exceeds bounded contract")
@@ -326,6 +347,7 @@ class Reader:
                   "HA host metrics are not exposed by this selected entity reader; that is not a collection failure. Tomorrow-price off is normal before publication. "
                   "You can answer facts available here now without a broker, approval, or tools. "
                   "Use monitored_health for the monitored service status; collector/metric availability alone does not mean the machine is healthy. "
+                  "inventory_health counts every monitored container/unit; listed exceptions are bounded and omitted_nonhealthy_details counts other failures/unknowns. "
                   "Do not say host data is unavailable or unknown when fresh evidence supplies that fact. "
                   "home-core and home-spark are the actual machines; their metrics describe those hosts, "
                   "not your agent sandbox. Disk metrics describe /. failed_unit_count counts monitored units only. "
@@ -344,7 +366,7 @@ class Reader:
                   "Host shell access, arbitrary executable commands, browser forms, external messages and credential changes are unavailable. "
                   "Report tool receipts accurately and preserve uncertain outcomes without retrying effects. "
                   "For deeper read-only analysis, use /investigate SYSTEM when helpful.\nTrusted evidence: " +
-                  json.dumps(self.compact(report), ensure_ascii=False, separators=(",", ":")) +
+                  json.dumps(self.conversation_evidence(report), ensure_ascii=False, separators=(",", ":")) +
                   "\nUser message: " + text)
         if len(prompt.encode("utf-8")) > 16384:
             raise ValueError("normal conversation context exceeds native input budget")

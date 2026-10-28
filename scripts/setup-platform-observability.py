@@ -2,8 +2,9 @@
 """Deploy only source-pinned readiness, machine inventory and its approved registry.
 
 Default is a read-only bundle plan. Apply requires an immutable published-release
-checkout and its exact reviewed hash. Communication code, credentials and channel
-policy are never reinstalled. Managed attached drop-ins outrank the existing Nix
+checkout and its exact reviewed hash. Only the reviewed bounded evidence
+projection may change in the installed reader; communication entrypoints,
+credentials and provider/channel policy are never reinstalled. Managed attached drop-ins outrank the existing Nix
 and attached base units; retire only after their canonical replacements match.
 """
 from __future__ import annotations
@@ -32,6 +33,7 @@ STATE = Path('/var/lib/homecompute-observability')
 ATTACHED = Path('/etc/systemd/system.attached')
 PRIVATE_REGISTRY = Path('/var/lib/homecompute-openclaw/config/system-monitoring.json')
 BUNDLED_REGISTRY = Path('/opt/homecompute/openclaw-communication/config/system-monitoring.json')
+READER_MODULE = Path('/opt/homecompute/openclaw-communication/scripts/openclaw_infrastructure.py')
 PUBLIC_SNAPSHOT = Path('/run/homecompute-openclaw-reports/machine-status.json')
 METRICS = Path('/var/lib/homecompute-health/homecompute-health.prom')
 LOCK = Path('/var/lib/homecompute/deploy.lock')
@@ -41,7 +43,71 @@ MACHINE = 'homecompute-openclaw-machine-status'
 DROP_NAME = '90-homecompute-observability.conf'
 FILES = ('scripts/setup-platform-observability.py', 'scripts/platform-health.py',
          'scripts/openclaw-machine-snapshot.py', 'scripts/n8n_observations.py',
-         'config/system-monitoring.json', 'modules/nixos/platform-monitoring.nix')
+         'config/system-monitoring.json', 'modules/nixos/platform-monitoring.nix',
+         'scripts/openclaw_infrastructure.py')
+INVENTORY_HINT = ('inventory_health counts every monitored container/unit; listed exceptions are bounded '
+                  'and omitted_nonhealthy_details counts other failures/unknowns. ')
+
+
+def reader_projection_signature(raw: bytes, *, reviewed=False) -> str:
+    """Normalize exactly three approved metadata edits, preserving every other AST node."""
+    try:
+        tree = ast.parse(raw)
+    except (SyntaxError, ValueError, TypeError):
+        raise ValueError('reader syntax requires review') from None
+    readers = [node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'Reader']
+    if len(readers) != 1:
+        raise ValueError('reader class shape requires review')
+    reader = readers[0]
+    counts = [sum(getattr(node, 'name', None) == 'conversation_evidence' for node in reader.body), 0, 0]
+    reader.body = [node for node in reader.body if getattr(node, 'name', None) != 'conversation_evidence']
+    prompts = [node for node in reader.body if isinstance(node, ast.FunctionDef) and node.name == 'contextual_prompt']
+    if len(prompts) != 1:
+        raise ValueError('reader conversation shape requires review')
+    for node in ast.walk(prompts[0]):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == 'self'
+                and node.func.attr == 'conversation_evidence'):
+            if (len(node.args) != 1 or not isinstance(node.args[0], ast.Name)
+                    or node.args[0].id != 'report' or node.keywords):
+                raise ValueError('reader projection call requires review')
+            node.func.attr = 'compact'; counts[1] += 1
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and INVENTORY_HINT in node.value:
+            counts[2] += node.value.count(INVENTORY_HINT)
+            node.value = node.value.replace(INVENTORY_HINT, '')
+    if counts not in ([0, 0, 0], [1, 1, 1]) or reviewed and counts != [1, 1, 1]:
+        raise ValueError('reader projection shape requires review')
+    return hashlib.sha256(ast.dump(tree, include_attributes=False).encode()).hexdigest()
+
+
+def reader_update(before: bytes, reviewed: bytes) -> dict[str, str]:
+    if reader_projection_signature(before) != reader_projection_signature(reviewed, reviewed=True):
+        raise ValueError('installed reader differs outside the approved metadata projection')
+    return {'before_sha256': hashlib.sha256(before).hexdigest(),
+            'after_sha256': hashlib.sha256(reviewed).hexdigest()}
+
+
+def protected_reader() -> None:
+    for parent in reversed(READER_MODULE.parents):
+        protected(parent, directory=True)
+    protected(READER_MODULE)
+
+
+def reader_matches(allowed: set[str]) -> None:
+    protected_reader()
+    if hashlib.sha256(READER_MODULE.read_bytes()).hexdigest() not in allowed:
+        raise ValueError('reader changed since the reviewed rollout; replacement held')
+
+
+def adapter_active() -> bool:
+    result = call(['systemctl', 'show', 'homecompute-openclaw-adapter.service',
+                   '-p', 'LoadState', '-p', 'ActiveState'], check=False)
+    fields = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+    if fields == {'LoadState': 'not-found', 'ActiveState': 'inactive'}:
+        return False
+    if result.returncode or fields.get('LoadState') != 'loaded' or fields.get('ActiveState') not in {'active', 'inactive', 'failed'}:
+        raise ValueError('existing adapter state is unavailable or transitional')
+    return fields['ActiveState'] == 'active'
 
 
 def call(arguments: list[str], *, check: bool = True) -> subprocess.CompletedProcess:
@@ -118,6 +184,7 @@ def bundle(source: Path) -> tuple[dict[str, bytes], str]:
         files[name] = content
         digest.update(name.encode() + b'\0' + hashlib.sha256(content).digest())
     policy = registry(json.loads(files['config/system-monitoring.json']))
+    reader_projection_signature(files['scripts/openclaw_infrastructure.py'], reviewed=True)
     constants = {node.targets[0].id: ast.literal_eval(node.value)
                  for node in ast.parse(files['scripts/openclaw-machine-snapshot.py']).body
                  if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
@@ -216,7 +283,7 @@ def link_current(target: str) -> None:
 
 def restore(backup: Path) -> None:
     protected(backup / 'manifest.json')
-    allowed = {str(path) for path in [*dropins(), PRIVATE_REGISTRY, BUNDLED_REGISTRY, DEST / 'current', STATE / 'receipt.json']}
+    allowed = {str(path) for path in [*dropins(), PRIVATE_REGISTRY, BUNDLED_REGISTRY, READER_MODULE, DEST / 'current', STATE / 'receipt.json']}
     rows = json.loads((backup / 'manifest.json').read_bytes())
     if any(row.get('path') not in allowed for row in rows):
         raise ValueError('backup manifest contains an unmanaged target')
@@ -253,9 +320,13 @@ def apply(source: Path, revision: str, expected: str) -> dict:
         raise ValueError('reviewed bundle hash mismatch')
     release(source, revision, contents)
     target = PRIVATE_REGISTRY if PRIVATE_REGISTRY.exists() else BUNDLED_REGISTRY
-    protected(target, service_owner=True)
-    original = target.read_bytes(); rendered = merged_registry(contents['config/system-monitoring.json'], original)
     with locked():
+        protected(target, service_owner=True)
+        original = target.read_bytes(); rendered = merged_registry(contents['config/system-monitoring.json'], original)
+        protected_reader()
+        reader_before = READER_MODULE.read_bytes(); reader_info = READER_MODULE.stat()
+        reader = reader_update(reader_before, contents['scripts/openclaw_infrastructure.py'])
+        running_adapter = adapter_active()
         for path, mode in ((DEST, 0o755), (DEST / 'releases', 0o755), (STATE, 0o700), (STATE / 'backups', 0o700)):
             directory(path, mode)
         receipt = STATE / 'receipt.json'
@@ -264,12 +335,14 @@ def apply(source: Path, revision: str, expected: str) -> dict:
             raise ValueError('existing unmanaged observability drop-in requires review')
         stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
         backup = STATE / 'backups' / stamp; directory(backup, 0o700)
-        save([*overlays, target, DEST / 'current', receipt], backup)
+        save([*overlays, target, READER_MODULE, DEST / 'current', receipt], backup)
         timers = active_timers()
         try:
             if timers:
                 call(['systemctl', 'stop', *timers])
             call(['systemctl', 'stop', HEALTH + '.service', MACHINE + '.service'])
+            if running_adapter:
+                call(['systemctl', 'stop', 'homecompute-openclaw-adapter.service'])
             version = DEST / 'releases' / (revision + '-' + digest[:16])
             for name, content in contents.items():
                 directory((version / name).parent)
@@ -279,6 +352,9 @@ def apply(source: Path, revision: str, expected: str) -> dict:
             link_current(str(version))
             if target.read_bytes() != original:
                 raise ValueError('registry changed during installation')
+            reader_matches({reader['before_sha256']})
+            write(READER_MODULE, contents['scripts/openclaw_infrastructure.py'],
+                  stat.S_IMODE(reader_info.st_mode), (reader_info.st_uid, reader_info.st_gid))
             info = target.stat(); write(target, rendered, stat.S_IMODE(info.st_mode), (info.st_uid, info.st_gid))
             for path, content in overlays.items():
                 directory(path.parent); write(path, content)
@@ -293,15 +369,21 @@ def apply(source: Path, revision: str, expected: str) -> dict:
             expected_names = {row['name'] for row in system['containers']}
             if {row['name'] for row in snapshot['containers']} != expected_names:
                 raise ValueError('expanded inventory was not collected')
-            call(['systemctl', 'try-restart', 'homecompute-openclaw-adapter.service'])
+            if running_adapter:
+                call(['systemctl', 'start', 'homecompute-openclaw-adapter.service'])
             record = {'revision': revision, 'bundle_hash': digest, 'backup': stamp,
                       'registry': str(target), 'readiness': readiness, 'state': 'applied',
+                      'reader': reader,
                       'applied_at': datetime.now(timezone.utc).isoformat()}
             write(receipt, json.dumps(record, sort_keys=True).encode(), 0o600)
             return record
         except BaseException:
+            reader_matches(set(reader.values()))
+            if running_adapter:
+                call(['systemctl', 'stop', 'homecompute-openclaw-adapter.service'])
             restore(backup); call(['systemctl', 'daemon-reload'])
-            call(['systemctl', 'try-restart', 'homecompute-openclaw-adapter.service'], check=False)
+            if running_adapter:
+                call(['systemctl', 'start', 'homecompute-openclaw-adapter.service'], check=False)
             raise
         finally:
             if timers:
@@ -314,6 +396,8 @@ def retire(expected: str) -> dict:
     if record['bundle_hash'] != expected:
         raise ValueError('installed receipt hash mismatch')
     with locked():
+        if record.get('reader'):
+            reader_matches({record['reader']['after_sha256']})
         current_registry = Path(record['registry']).read_bytes()
         rendered = merged_registry((DEST / 'current/config/system-monitoring.json').read_bytes(), current_registry)
         if json.loads(rendered) != json.loads(current_registry):
@@ -357,13 +441,19 @@ def rollback(expected: str, identifier: str | None = None) -> dict:
     backup = STATE / 'backups' / identifier
     protected(backup, directory=True)
     with locked():
+        if record.get('reader'):
+            reader_matches({record['reader']['after_sha256']})
+        running_adapter = adapter_active()
         timers = active_timers()
         try:
             if timers:
                 call(['systemctl', 'stop', *timers])
             call(['systemctl', 'stop', HEALTH + '.service', MACHINE + '.service'])
+            if running_adapter:
+                call(['systemctl', 'stop', 'homecompute-openclaw-adapter.service'])
             restore(backup); call(['systemctl', 'daemon-reload'])
-            call(['systemctl', 'try-restart', 'homecompute-openclaw-adapter.service'])
+            if running_adapter:
+                call(['systemctl', 'start', 'homecompute-openclaw-adapter.service'])
             call(['systemctl', 'start', MACHINE + '.service'])
             call(['systemctl', 'start', HEALTH + '.service'], check=False)
         finally:

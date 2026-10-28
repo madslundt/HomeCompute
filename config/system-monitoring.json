@@ -95,6 +95,66 @@
         {
           "name": "home-core-moss-tts",
           "require_health": true
+        },
+        {
+          "name": "omi-local-backend-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-homepage-homepage-1",
+          "require_health": true
+        },
+        {
+          "name": "chessmate-frontend-1",
+          "require_health": true
+        },
+        {
+          "name": "chessmate-backend-1",
+          "require_health": true
+        },
+        {
+          "name": "chessmate-db-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-books_importer-shelfmark-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-books_importer-shelfmark-automated-1",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-books_importer-cwa-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-model-manager-model-manager-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-openclaw-access-proxy",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-native-mcp-relay",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-site-egress",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-codex-egress",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-mattermost-proxy-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-openclaw-communication-private-relay-1",
+          "require_health": false
         }
       ],
       "units": [
@@ -145,6 +205,14 @@
         {
           "name": "homecompute-service-recovery.service",
           "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-nas-recovery-backup.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-nas-recovery-check.service",
+          "kind": "oneshot"
         }
       ],
       "updates": [
@@ -185,6 +253,10 @@
         },
         {
           "name": "gb10-hviske-http",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-plapre-plapre-http-1",
           "require_health": true
         }
       ],

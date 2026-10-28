@@ -244,10 +244,18 @@ credentials or application content. A backup deferred because writers are busy
 must be retried before its freshness window expires.
 
 For an authorized repair that must preserve unrelated live application state,
-`scripts/setup-platform-observability.py` installs only readiness, the finite
-machine collector and their approved registry from an exact published release.
-It does not reinstall the communication bundle or change household tools,
-credentials, channels, containers or inference settings. Its default prints the
+`scripts/setup-platform-observability.py` installs readiness, the finite machine
+collector, their approved registry and the bounded conversation evidence
+projection from an exact published release. The reader update permits only its
+new inventory projection, the matching conversation call and explanatory hint;
+every other AST node must match the installed module. Unknown reader drift
+aborts before service or registry changes. Its existing owner/mode and exact
+before/after hashes are retained with the registry backup. The previously active
+adapter is stopped while both files change and resumed after validation;
+rollback restores both before reloading it. An inactive adapter stays inactive,
+and later unrelated reader changes block rollback instead of being overwritten.
+The installer does not reinstall the communication bundle or change household
+tools, credentials, providers, channels, containers or inference settings. Its default prints the
 reviewable bundle hash without writing anything:
 
 ```bash
