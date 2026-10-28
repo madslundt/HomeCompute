@@ -121,10 +121,13 @@ specialist. The detail panel names the corresponding area.
 - **Working:** a fresh model/tool observation exists for an active native run.
 - **Waiting:** the observed tool is `sessions_yield`; another working run still
   takes precedence when the same agent has concurrent work.
-- **Idle:** a successful end was observed and no fresh run remains active.
+- **Idle:** a successful end was observed and no fresh run remains active. This
+  confirmed state persists beyond five minutes until superseded by new work or
+  cleared by a gateway restart; its observation timestamp is not renewed.
 - **Needs attention:** an unsuccessful end was observed and no run remains active.
-- **Unknown:** no verified observation, missing identity, or an observation more
-  than five minutes old. A heartbeat cannot renew a run's evidence.
+- **Unknown:** no verified observation, missing identity, or unfinished work/error
+  evidence more than five minutes old. Stale newer unfinished work cannot restore
+  an older Idle state. A heartbeat cannot renew a run's evidence.
 
 Categories describe observed operations, not private task titles or outcomes.
 For example, `task_status` means repository-work activity; it does not prove

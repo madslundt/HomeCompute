@@ -51,6 +51,50 @@ test('unobserved and expired activity are unknown; a live heartbeat cannot renew
   assert.deepEqual(activity.snapshot().events, []);
 });
 
+test('confirmed idle survives expiry without renewing its observation or surviving a restart', () => {
+  let now = 1000;
+  const activity = new OfficeActivity(roster, () => now);
+  activity.observe('end', { success: true }, ctx());
+  now += STALE_MS * 10;
+  const agent = activity.snapshot().agents.find(agent => agent.id === 'engineer');
+  assert.equal(agent.status, 'idle');
+  assert.equal(agent.activity, 'idle');
+  assert.equal(agent.active_runs, 0);
+  assert.equal(agent.observed_at, 1000);
+  assert.deepEqual(activity.snapshot().events, [], 'old transitions still expire');
+  assert.ok(activity.snapshot().agents.filter(agent => agent.id !== 'engineer').every(agent => agent.status === 'unknown'));
+  assert.ok(new OfficeActivity(roster, () => now).snapshot().agents.every(agent => agent.status === 'unknown'));
+});
+
+test('new work overrides retained idle and stale unfinished work cannot revive that idle', () => {
+  for (const pruneFromAnotherAgent of [false, true]) {
+    let now = 1000;
+    const activity = new OfficeActivity(roster, () => now);
+    const engineer = () => activity.snapshot().agents.find(agent => agent.id === 'engineer');
+    activity.observe('end', { success: true }, ctx('completed'));
+    now += STALE_MS + 1;
+    activity.observe('model', {}, ctx('unfinished'));
+    assert.equal(engineer().status, 'working');
+    activity.observe('tool', {}, ctx('unfinished', 'engineer', { toolName: 'sessions_yield' }));
+    assert.equal(engineer().status, 'waiting');
+    now += STALE_MS + 1;
+    if (pruneFromAnotherAgent) activity.observe('model', {}, ctx('other', 'researcher'));
+    assert.equal(engineer().status, 'unknown');
+    activity.observe('end', { success: true }, ctx('unfinished'));
+    now += STALE_MS + 1;
+    assert.equal(engineer().status, 'idle');
+  }
+});
+
+test('failed outcomes retain the existing five-minute expiry', () => {
+  let now = 1000;
+  const activity = new OfficeActivity(roster, () => now);
+  activity.observe('end', { success: false }, ctx());
+  assert.equal(activity.snapshot().agents.find(agent => agent.id === 'engineer').status, 'error');
+  now += STALE_MS + 1;
+  assert.equal(activity.snapshot().agents.find(agent => agent.id === 'engineer').status, 'unknown');
+});
+
 test('concurrent runs aggregate; one idle/failed run cannot hide another working run', () => {
   const activity = new OfficeActivity(roster);
   activity.observe('model', {}, ctx('one'));
