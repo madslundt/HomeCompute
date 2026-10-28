@@ -278,6 +278,13 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
                      'rebind-existing-native-public-dns', timeout=120)
         self.command(['sudo', 'systemctl', 'daemon-reload'], 'dns-unit-reload')
         self.command(['sudo', 'systemctl', 'restart', 'homecompute-public-dns.service'], 'dns-replacement-start')
+        self.stage('restore-declared-native-network')
+        self.command([self.ctx.cli, BASE.NAME, 'mcp', 'restart', 'homecompute'], 'restore-existing-mcp-binding', timeout=240)
+        for file, host in [('deploy/openclaw/tools/browser-policy.yaml','172.18.0.1'),
+                           ('deploy/openclaw/mattermost-policy.yaml','home-core.tail479ad.ts.net'),
+                           ('deploy/openclaw/nemoclaw/retained-service-routes.json','homecompute-capabilities.home.arpa')]:
+            self.command([self.ctx.cli, BASE.NAME, 'policy', 'add', '--from-file', str(ROOT/file),
+                          '--trusted-private-host',host,'--yes'], 'restore-retained-network-preset', timeout=180)
         after = backup_root / 'verification-ready/.openclaw'
         observed = complete_hashes(after)
         for role in json.loads((backup / 'openclaw.json').read_text())['agents']['entries']:
