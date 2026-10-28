@@ -93,6 +93,11 @@ status stays Unknown; their placement does not invent activity or imply a
 running task. This avoids overlapping the whole team at the entrance after a
 gateway restart.
 
+Completed runs move characters to distinct rest positions on the existing
+floor graph, near their own work areas (Atlas uses the lounge). Those positions
+also clear other roles' home spots, so an idle agent cannot overlap an unobserved
+specialist. The detail panel names the corresponding area.
+
 - **Working:** a fresh model/tool observation exists for an active native run.
 - **Waiting:** the observed tool is `sessions_yield`; another working run still
   takes precedence when the same agent has concurrent work.

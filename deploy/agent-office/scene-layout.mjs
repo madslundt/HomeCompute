@@ -120,6 +120,14 @@ const travel = rowPool([50, 52.5, 55, 57.5], [83.3, 85, 86.5], ([x]) => [[55.5, 
 const cooking = rowPool([73, 75, 76.3], [42, 45, 48, 51], ([, y]) => [[75.5, 53.8], [75.5, y]]);
 const finance = rowPool([50, 52, 54, 55.5], [60, 61.5, 63.2], ([x]) => [[55, 63.2], [x, 63.2]]);
 const roleOrder = Object.keys(ROLE_DESTINATIONS);
+// Separate rest positions on the existing corridor graph. Keep these clear of
+// every other role's home position as well as other resting characters.
+const idleDestinations = {
+  main: [22.2, 63.2], personal: [58, 31.5], researcher: [85.5, 31],
+  engineer: [40, 89.5], operator: [18, 26.5], shopper: [23.8, 47.8],
+  keeper: [58.7, 51.3], travel: [55, 86.5], cook: [76.3, 51],
+  administrator: [42, 31.5], finance: [55.5, 63.2],
+};
 const activityDestinations = {
   research: ['researcher', research], coding: ['engineer', coding],
   operations: ['operator', operations], planning: ['personal', planning],
@@ -134,7 +142,7 @@ export function resolveDestination(agent, index = 0) {
   const ordinal = roleOrder.indexOf(agent.id);
   const slot = ordinal < 0 ? Math.max(0, Math.trunc(index)) : ordinal;
   if (agent.status === 'unknown') return [...(ROLE_DESTINATIONS[agent.id] ?? arrival[slot % arrival.length])];
-  if (agent.status === 'idle') return [...lounge[slot % lounge.length]];
+  if (agent.status === 'idle') return [...(idleDestinations[agent.id] ?? lounge[slot % lounge.length])];
   if (agent.status === 'waiting' || agent.activity === 'waiting') return [...waiting[slot % waiting.length]];
   if (agent.activity === 'coordinating') return [...(agent.id === 'main' ? ROLE_DESTINATIONS.main : waiting[slot % waiting.length])];
   const destination = activityDestinations[agent.activity];

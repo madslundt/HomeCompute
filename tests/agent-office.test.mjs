@@ -128,9 +128,13 @@ test('every standing destination and corridor stays clear of furniture, includin
   assert.equal(isWalkable([(left + right) / 2, (top + bottom) / 2]), false);
   assert.deepEqual(findPath([(left + right) / 2, (top + bottom) / 2], ROLE_DESTINATIONS.main), []);
   assert.deepEqual(findPath(ROLE_DESTINATIONS.family, ROLE_DESTINATIONS.main), [], 'Gaia uses a separate visual garden graph');
-  const unseen = Object.keys(ROLE_DESTINATIONS).map(id => resolveDestination({ id, status: 'unknown' }));
-  for (let i = 0; i < unseen.length; i++) for (let j = i + 1; j < unseen.length; j++) {
-    assert.ok(Math.hypot(unseen[i][0] - unseen[j][0], unseen[i][1] - unseen[j][1]) > 8, 'Unobserved characters have separate role locations');
+  const roles = Object.keys(ROLE_DESTINATIONS);
+  for (let i = 0; i < roles.length; i++) for (let j = i + 1; j < roles.length; j++) {
+    for (const first of ['unknown', 'idle', 'working']) for (const second of ['unknown', 'idle', 'working']) {
+      const a = resolveDestination({ id: roles[i], status: first, activity: 'thinking' });
+      const b = resolveDestination({ id: roles[j], status: second, activity: 'thinking' });
+      assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) > 8, `${roles[i]}/${first} and ${roles[j]}/${second} stand separately`);
+    }
   }
 });
 
