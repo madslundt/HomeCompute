@@ -29,7 +29,25 @@ sudo python3 scripts/setup-speech-boundary.py core-smoke --revision "$RELEASE_SH
 sudo python3 scripts/setup-speech-boundary.py spark-retire --revision "$RELEASE_SHA" --core-verified
 ```
 
-`core-stage` preserves the old adapter release in a private rollback receipt.
+`core-stage` holds the deployment lock and preserves the old adapter release in
+a private rollback receipt, so staging cannot replace a plan during cutover.
+It also derives a standalone, image-pinned rollback document for each previous
+service from that service's exact immutable source. Historical full projects may
+still require retired Caddy `HERMES_FQDN/HERMES_UPSTREAM` address fields during
+parsing. Two distinct public parser-only address pairs must produce identical
+selected services; those fields and all unrelated services are discarded.
+The resulting documents reference only the already-owned external edge network
+and each original read-only helper, with no retired service dependencies.
+
+Staging checks actual entrypoint/command, image, environment, mount modes,
+published ports, network/IP and baseline health against that old source. Before
+gating traffic or changing the tunnel, `core-apply` verifies the private plan's
+hashes, original Git source/helper bytes, existing images/network, standalone
+Compose rendering and unchanged baseline container IDs. Existing legacy
+`before.json` receipts are upgraded without replacing their original release or
+environment provenance. Rollback uses only these selected-service documents,
+disables pulls/builds/dependency startup and never parses the retired project.
+
 Its managed systemd drop-in resolves the immutable Nix tunnel source at every
 start, changes only the reviewed speech forwards and preserves the existing
 text-admission route. It does not restart models or the tunnel. `core-apply`

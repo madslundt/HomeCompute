@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -57,8 +58,8 @@ def failure_reason(output: str) -> str:
     return 'operation-failed'
 
 
-def run(args: list[str], *, output: bool = False, timeout: int = 600) -> str:
-    result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=timeout)
+def run(args: list[str], *, output: bool = False, timeout: int = 600, environment: dict | None = None) -> str:
+    result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=timeout, env=environment)
     if result.returncode:
         # Never relay Docker inspect/env output or HTTP response bodies.
         raise OperationError(failure_reason(result.stderr), result.returncode)
@@ -170,7 +171,159 @@ def previous_services(rows: list[dict]) -> dict[str, dict]:
     return previous
 
 
+def previous_receipt() -> dict:
+    trusted(STATE / 'before.json')
+    receipt = json.loads((STATE / 'before.json').read_text())
+    if set(receipt['previous']) != set(CORE_SERVICES) or receipt['environment'] != str(STATE / 'environment.before'):
+        raise ValueError('Invalid rollback receipt')
+    trusted(Path(receipt['environment']))
+    for row in receipt['previous'].values():
+        if (not re.fullmatch(r'/srv/homecompute/releases/[0-9a-f]{40}/deploy/control-plane/compose.yaml', row['compose'])
+                or not re.fullmatch(r'sha256:[0-9a-f]{64}', row['image_id'])):
+            raise ValueError('Invalid previous rollback identity')
+    return receipt
+
+
+def previous_source(compose: Path) -> str:
+    root = compose.parents[2]; revision = root.name
+    trusted(compose)
+    expected = run(['git', '-C', str(root), 'show', revision + ':deploy/control-plane/compose.yaml'], output=True)
+    if compose.read_text() != expected:
+        raise ValueError('Previous Compose source differs from its immutable revision')
+    run(['git', '-C', str(root), 'merge-base', '--is-ancestor', revision, 'origin/master'])
+    return hashlib.sha256(compose.read_bytes()).hexdigest()
+
+
+def compose_environment(retired: int = 0) -> dict:
+    value = {'PATH': os.environ.get('PATH', '/run/current-system/sw/bin'), 'HOME': '/var/empty',
+             'DOCKER_HOST': 'unix:///var/run/docker.sock', 'DOCKER_CONFIG': '/var/empty'}
+    if retired:
+        # These two public address fields occur only in retired Caddy settings.
+        # They allow parsing old projects, never authorize or start a service.
+        value.update(HERMES_FQDN=f'discarded-{retired}.invalid', HERMES_UPSTREAM=f'127.0.0.1:{retired}')
+    return value
+
+
+def selected_rollback(document: dict, name: str, image: str) -> dict:
+    service = document['services'][name]
+    if (document.get('name') != 'homecompute-control-plane' or
+            any(service.get(key) for key in ('build', 'depends_on', 'links', 'volumes_from', 'secrets', 'configs', 'network_mode')) or
+            set(service.get('environment', {})) != {'EDGE_LISTEN_PORT', 'EDGE_UPSTREAM_HOST', 'EDGE_UPSTREAM_PORT'} or
+            set(service.get('networks', {})) != {'edge'} or len(service.get('volumes', [])) != 1):
+        raise ValueError('Unreviewed previous speech service resources')
+    if any(token in json.dumps(service) for token in ('HERMES_', 'discarded-1.invalid', 'discarded-2.invalid', '$')):
+        raise ValueError('Retired parser inputs or interpolation reached selected rollback service')
+    result = {'name': document['name'], 'services': {name: {**service, 'image': image}},
+              'networks': {'edge': {'name': document['networks']['edge']['name'], 'external': True}}}
+    return result
+
+
+def baseline_contract(document: dict, name: str, actual: dict, image: dict) -> None:
+    service = document['services'][name]
+    config = actual['Config']; host = actual['HostConfig']
+    expected_env = dict(row.split('=', 1) for row in image['Config'].get('Env', []))
+    expected_env.update(service['environment'])
+    network = document['networks']['edge']['name']
+    expected_mounts = sorted((row['type'], row['source'], row['target'], row.get('read_only', False)) for row in service['volumes'])
+    actual_mounts = sorted((row['Type'], row['Source'], row['Destination'], not row['RW']) for row in actual['Mounts'])
+    ports = {}
+    for port in service['ports']:
+        key = str(port['target']) + '/' + port.get('protocol', 'tcp')
+        ports.setdefault(key, []).append({'HostIp': port.get('host_ip', ''), 'HostPort': str(port['published'])})
+    if (actual['Image'] != service['image'] or image['Id'] != service['image'] or
+            config.get('Entrypoint') != service.get('entrypoint') or
+            (config.get('Cmd') or None) != (service.get('command') or None) or
+            dict(row.split('=', 1) for row in config.get('Env', [])) != expected_env or
+            config.get('User') != service.get('user') or host.get('ReadonlyRootfs') != service.get('read_only') or
+            actual_mounts != expected_mounts or host.get('PortBindings') != ports or
+            set(actual['NetworkSettings']['Networks']) != {network} or
+            actual['NetworkSettings']['Networks'][network]['IPAddress'] != service['networks']['edge']['ipv4_address'] or
+            actual['State'].get('Running') is not True or actual['State'].get('Health', {}).get('Status') != 'healthy'):
+        raise ValueError('Previous speech source does not match the actual healthy baseline')
+
+
+def rollback_command(name: str) -> list[str]:
+    return ['docker', 'compose', '--project-name', 'homecompute-control-plane', '--profile', 'speech-proxies',
+            '--env-file', '/dev/null', '-f', str(STATE / ('rollback-' + name + '.json'))]
+
+
+def previous_helper(source: Path, document: dict, name: str) -> None:
+    mount = document['services'][name]['volumes'][0]
+    helper = source.parents[2] / 'scripts/tcp-edge-proxy.py'
+    if ({key: value for key, value in mount.items() if key != 'bind'} !=
+            {'type': 'bind', 'source': str(helper), 'target': '/opt/homecompute/tcp-edge-proxy.py', 'read_only': True}
+            or mount.get('bind', {}) not in ({}, {'create_host_path': True}, {'create_host_path': False})):
+        raise ValueError('Unreviewed previous speech helper mount')
+    trusted(helper)
+    if helper.read_text() != run(['git', '-C', str(source.parents[2]), 'show', source.parents[2].name + ':scripts/tcp-edge-proxy.py'], output=True):
+        raise ValueError('Previous mounted helper differs from its immutable revision')
+
+
+def stage_rollback() -> None:
+    before = previous_receipt(); records = {}
+    for name, row in before['previous'].items():
+        source = Path(row['compose']); source_hash = previous_source(source)
+        documents, originals = [], []
+        for variant in (1, 2):
+            rendered = json.loads(run(['docker', 'compose', '--profile', 'speech-proxies', '--env-file', before['environment'],
+                '-f', str(source), 'config', '--format', 'json'], output=True, environment=compose_environment(variant)))
+            originals.append(rendered['services'][name])
+            documents.append(selected_rollback(rendered, name, row['image_id']))
+        if originals[0] != originals[1] or documents[0] != documents[1]:
+            raise ValueError('Retired parser inputs influence the selected rollback service')
+        document = documents[0]
+        actual = json.loads(run(['docker', 'inspect', 'homecompute-control-plane-' + name + '-1'], output=True))[0]
+        image = json.loads(run(['docker', 'image', 'inspect', row['image_id']], output=True))[0]
+        resolved = json.loads(run(['docker', 'image', 'inspect', originals[0]['image']], output=True))[0]
+        if resolved['Id'] != row['image_id']:
+            raise ValueError('Previous source image differs from the retained baseline image')
+        baseline_contract(document, name, actual, image)
+        previous_helper(source, document, name)
+        body = json.dumps(document, sort_keys=True)
+        write(STATE / ('rollback-' + name + '.json'), body)
+        records[name] = {'compose': str(source), 'source_sha256': source_hash,
+                         'document_sha256': hashlib.sha256(body.encode()).hexdigest(), 'baseline_id': actual['Id']}
+    write(STATE / 'rollback-plan.json', json.dumps({'revision': SOURCE.name, 'services': records}, sort_keys=True))
+    validate_rollback(True)
+
+
+def validate_rollback(check_baseline: bool) -> None:
+    before = previous_receipt(); path = STATE / 'rollback-plan.json'; trusted(path)
+    plan = json.loads(path.read_text())
+    if plan.get('revision') != SOURCE.name or set(plan.get('services', {})) != set(CORE_SERVICES):
+        raise ValueError('Stage rollback from the selected installer release before cutover')
+    for name, record in plan['services'].items():
+        row = before['previous'][name]; path = STATE / ('rollback-' + name + '.json'); trusted(path)
+        if (record['compose'] != row['compose'] or previous_source(Path(row['compose'])) != record['source_sha256'] or
+                hashlib.sha256(path.read_bytes()).hexdigest() != record['document_sha256']):
+            raise ValueError('Rollback provenance or staged configuration changed')
+        document = json.loads(path.read_text())
+        if set(document['services']) != {name} or document['services'][name]['image'] != row['image_id']:
+            raise ValueError('Rollback selected-service scope changed')
+        previous_helper(Path(row['compose']), document, name)
+        image = json.loads(run(['docker', 'image', 'inspect', row['image_id']], output=True))[0]
+        for definition in document['networks'].values():
+            if definition.get('external') is not True:
+                raise ValueError('Rollback must not reconcile shared networks')
+            run(['docker', 'network', 'inspect', definition['name']])
+        rendered = json.loads(run(rollback_command(name) + ['config', '--format', 'json'], output=True, environment=compose_environment()))
+        if set(rendered['services']) != {name} or rendered['services'][name]['image'] != row['image_id']:
+            raise ValueError('Standalone rollback rendering changed the selected service')
+        if check_baseline:
+            actual = json.loads(run(['docker', 'inspect', 'homecompute-control-plane-' + name + '-1'], output=True))[0]
+            if actual['Id'] != record['baseline_id']:
+                raise ValueError('Previous speech baseline was replaced after staging')
+            baseline_contract(document, name, actual, image)
+
+
 def core_stage(revision: str) -> None:
+    # Pending runner files and rollback documents are one staged generation;
+    # never let another stage replace them during an in-progress cutover.
+    with deployment_lock():
+        core_stage_locked(revision)
+
+
+def core_stage_locked(revision: str) -> None:
     # Refuse unknown competing overrides; retain the known admission override.
     if DROPIN.exists() and 'HomeCompute speech boundary' not in DROPIN.read_text():
         raise ValueError('Unmanaged speech tunnel override exists')
@@ -188,6 +341,7 @@ def core_stage(revision: str) -> None:
         write(saved_environment, environment.read_text())
         write(receipt, json.dumps({'previous': previous, 'environment': str(saved_environment),
                                   'revision': revision}))
+    stage_rollback()
     run(core_compose() + ['config', '--quiet'])
     run(core_compose() + ['build', *CORE_SERVICES])
     # Staging must not change what an unrelated restart will execute. Keep
@@ -382,36 +536,33 @@ def core_apply(idle_confirmed: bool, drain_timeout: int = 120) -> None:
         raise ValueError('Run core-stage first')
     if runner.read_bytes() != Path(__file__).read_bytes():
         raise ValueError('Staged runner differs from the selected release; stage again')
-    with deployment_lock(), core_maintenance(drain_timeout):
-        try:
-            INSTALL.mkdir(parents=True, exist_ok=True)
-            trusted(INSTALL, directory=True)
-            write(INSTALL / 'setup-speech-boundary.py', runner.read_text(), 0o755)
-            write(DROPIN, pending.read_text(), 0o644)
-            run(['systemctl', 'daemon-reload'])
-            run(['systemctl', 'restart', 'homecompute-compute-ssh-tunnel.service'])
-            raw_upstreams_ready()
-            run(core_compose() + ['up', '-d', '--no-deps', '--no-build', '--wait', '--wait-timeout', '120', *CORE_SERVICES])
-            verify_core()
-        except BaseException:
-            core_rollback(idle_confirmed)
-            raise
+    with deployment_lock():
+        validate_rollback(True)
+        with core_maintenance(drain_timeout):
+            core_apply_drained(idle_confirmed, pending, runner)
+
+
+def core_apply_drained(idle_confirmed: bool, pending: Path, runner: Path) -> None:
+    try:
+        INSTALL.mkdir(parents=True, exist_ok=True)
+        trusted(INSTALL, directory=True)
+        write(INSTALL / 'setup-speech-boundary.py', runner.read_text(), 0o755)
+        write(DROPIN, pending.read_text(), 0o644)
+        run(['systemctl', 'daemon-reload'])
+        run(['systemctl', 'restart', 'homecompute-compute-ssh-tunnel.service'])
+        raw_upstreams_ready()
+        run(core_compose() + ['up', '-d', '--no-deps', '--no-build', '--wait', '--wait-timeout', '120', *CORE_SERVICES])
+        verify_core()
+    except BaseException:
+        core_rollback(idle_confirmed)
+        raise
 
 
 def core_rollback(idle_confirmed: bool) -> None:
     if not idle_confirmed:
         raise ValueError('Rollback requires a drained inference tunnel')
-    receipt = json.loads((STATE / 'before.json').read_text())
-    previous = receipt['previous']
-    if set(previous) != set(CORE_SERVICES) or receipt['environment'] != str(STATE / 'environment.before'):
-        raise ValueError('Invalid rollback receipt')
-    for name, row in previous.items():
-        if not re.fullmatch(r'/srv/homecompute/releases/[0-9a-f]{40}/deploy/control-plane/compose.yaml', row['compose']):
-            raise ValueError('Invalid rollback release')
-        if not re.fullmatch(r'sha256:[0-9a-f]{64}', row['image_id']):
-            raise ValueError('Invalid rollback image')
-        # Pin the existing image ID even if its old local tag has since moved.
-        run(['docker', 'image', 'inspect', row['image_id']])
+    validate_rollback(False)
+    previous = previous_receipt()['previous']
     _, base = base_runner()
     if ':18201:127.0.0.1:8004' in base or ':18301:127.0.0.1:8003' in base:
         write(DROPIN, f'''# HomeCompute speech boundary explicit legacy rollback.
@@ -423,12 +574,9 @@ ExecStart={BIN}/python3 {INSTALL}/setup-speech-boundary.py run-legacy-tunnel
         DROPIN.unlink(missing_ok=True)
     run(['systemctl', 'daemon-reload'])
     run(['systemctl', 'restart', 'homecompute-compute-ssh-tunnel.service'])
-    for name, row in previous.items():
-        override = STATE / f'rollback-{name}.json'
-        write(override, json.dumps({'services': {name: {'image': row['image_id']}}}))
-        run(['docker', 'compose', '--profile', 'speech-proxies', '--env-file', receipt['environment'],
-             '-f', row['compose'], '-f', str(override), 'up', '-d', '--no-deps', '--no-build',
-             '--wait', '--wait-timeout', '120', name])
+    for name in previous:
+        run(rollback_command(name) + ['up', '-d', '--no-deps', '--no-build', '--pull', 'never',
+                                    '--wait', '--wait-timeout', '120', name], environment=compose_environment())
     print('Each previous adapter image/config and prior tunnel owner restored; GPU models untouched.')
 
 

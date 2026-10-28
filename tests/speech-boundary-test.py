@@ -122,9 +122,11 @@ class SpeechBoundaryTest(unittest.TestCase):
             (state / 'before.json').write_text('{}')
             base = ':18005:127.0.0.1:18400\n:18201:127.0.0.1:10201\n:18301:127.0.0.1:10301\n'
             with patch.object(INSTALLER, 'STATE', state), \
+                 patch.object(INSTALLER, 'deployment_lock', return_value=nullcontext()), \
                  patch.object(INSTALLER, 'DROPIN', state / 'active-not-created.conf'), \
                  patch.object(INSTALLER, 'INSTALL', state / 'active-runner-not-created'), \
                  patch.object(INSTALLER, 'base_runner', return_value=(None, base)), \
+                 patch.object(INSTALLER, 'stage_rollback'), \
                  patch.object(INSTALLER, 'write') as write, patch.object(INSTALLER, 'run') as run:
                 INSTALLER.core_stage('1' * 40)
                 for call in run.call_args_list:
@@ -136,30 +138,30 @@ class SpeechBoundaryTest(unittest.TestCase):
                 self.assertFalse((state / 'active-runner-not-created').exists())
                 self.assertFalse((state / 'active-not-created.conf').exists())
 
-    def test_rollback_restores_each_old_source_and_pinned_image_without_dependencies(self):
+    def test_rollback_executes_only_selected_service_documents_without_pulls(self):
         import tempfile
         with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary)
             previous = {name: {'compose': '/srv/homecompute/releases/' + str(i + 1) * 40 + '/deploy/control-plane/compose.yaml',
                                'image_id': 'sha256:' + str(i + 3) * 64}
                         for i, name in enumerate(INSTALLER.CORE_SERVICES)}
-            (state / 'before.json').write_text(json.dumps({'previous': previous,
-                'environment': str(state / 'environment.before')}))
-            with patch.object(INSTALLER, 'STATE', state), patch.object(INSTALLER, 'write') as write, \
-                 patch.object(INSTALLER, 'DROPIN', state / 'unused-dropin'), \
-                 patch.object(INSTALLER, 'base_runner', return_value=(None, 'old Wyoming base')), \
-                 patch.object(INSTALLER, 'run') as run:
+            before={'previous':previous,'environment':str(state/'environment.before')}
+            with patch.object(INSTALLER,'STATE',state),patch.object(INSTALLER,'write') as write, \
+                 patch.object(INSTALLER,'previous_receipt',return_value=before), \
+                 patch.object(INSTALLER,'validate_rollback') as validate, \
+                 patch.object(INSTALLER,'DROPIN',state/'unused-dropin'), \
+                 patch.object(INSTALLER,'base_runner',return_value=(None,'old Wyoming base')), \
+                 patch.object(INSTALLER,'run') as run:
                 INSTALLER.core_rollback(True)
-                compose_calls = [call.args[0] for call in run.call_args_list if call.args[0][:2] == ['docker', 'compose']]
-                self.assertEqual(len(compose_calls), 2)
-                for command, name in zip(compose_calls, INSTALLER.CORE_SERVICES):
-                    self.assertIn(previous[name]['compose'], command)
-                    self.assertEqual(command[-1], name)
-                    self.assertIn('--no-deps', command)
-                    self.assertIn('--no-build', command)
-                pins = [json.loads(call.args[1]) for call in write.call_args_list]
-                for payload, name in zip(pins, INSTALLER.CORE_SERVICES):
-                    self.assertEqual(payload['services'][name]['image'], previous[name]['image_id'])
+                validate.assert_called_once_with(False)
+                calls=[c.args[0] for c in run.call_args_list if c.args[0][:2]==['docker','compose']]
+                self.assertEqual(len(calls),2)
+                for command,name in zip(calls,INSTALLER.CORE_SERVICES):
+                    self.assertIn(str(state/('rollback-'+name+'.json')),command)
+                    self.assertNotIn(previous[name]['compose'],command)
+                    self.assertEqual(command[-1],name)
+                    for value in ('--no-deps','--no-build','--pull','never','/dev/null'):self.assertIn(value,command)
+                write.assert_not_called()
 
     def test_denied_raw_forward_rolls_back_tunnel_before_replacing_any_adapter(self):
         import tempfile
@@ -173,6 +175,7 @@ class SpeechBoundaryTest(unittest.TestCase):
                  patch.object(INSTALLER,'write'),patch.object(INSTALLER,'run') as run, \
                  patch.object(INSTALLER,'deployment_lock',return_value=nullcontext()), \
                  patch.object(INSTALLER,'core_maintenance',return_value=nullcontext()), \
+                 patch.object(INSTALLER,'validate_rollback'), \
                  patch.object(INSTALLER,'raw_upstreams_ready',side_effect=RuntimeError('forward denied')), \
                  patch.object(INSTALLER,'core_rollback') as rollback:
                 with self.assertRaisesRegex(RuntimeError,'forward denied'): INSTALLER.core_apply(True)
@@ -249,6 +252,7 @@ class SpeechBoundaryTest(unittest.TestCase):
             with patch.object(INSTALLER,'STATE',state),patch.object(INSTALLER,'DEPLOY_LOCK',state/'deploy.lock'), \
                  patch.object(INSTALLER,'run',side_effect=run),patch.object(INSTALLER,'write') as write, \
                  patch.object(INSTALLER,'core_rollback') as rollback, \
+                 patch.object(INSTALLER,'validate_rollback'), \
                  patch.object(INSTALLER,'drain_main_http',side_effect=ValueError('still active')):
                 with self.assertRaisesRegex(ValueError,'still active'):INSTALLER.core_apply(True,3)
             write.assert_not_called();rollback.assert_not_called()
@@ -263,6 +267,16 @@ class SpeechBoundaryTest(unittest.TestCase):
                 fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
                 with self.assertRaises(BlockingIOError):
                     with INSTALLER.deployment_lock():self.fail('must not overlap a deployment or backup')
+
+    def test_staging_cannot_replace_rollback_plan_during_a_locked_cutover(self):
+        import tempfile,fcntl
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'deploy.lock'
+            with path.open('a') as held,patch.object(INSTALLER,'DEPLOY_LOCK',path), \
+                 patch.object(INSTALLER,'write') as write,patch.object(INSTALLER,'run') as run:
+                fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                with self.assertRaises(BlockingIOError):INSTALLER.core_stage('1'*40)
+                write.assert_not_called();run.assert_not_called()
 
     def test_interrupted_apply_rolls_back_before_releasing_maintenance_gate(self):
         import tempfile
@@ -282,6 +296,7 @@ class SpeechBoundaryTest(unittest.TestCase):
                  patch.object(INSTALLER,'INSTALL',state/'installed'),patch.object(INSTALLER,'trusted'), \
                  patch.object(INSTALLER,'write'),patch.object(INSTALLER,'run'), \
                  patch.object(INSTALLER,'core_maintenance',side_effect=maintenance), \
+                 patch.object(INSTALLER,'validate_rollback'), \
                  patch.object(INSTALLER,'raw_upstreams_ready'), \
                  patch.object(INSTALLER,'verify_core',side_effect=InterruptedError('synthetic signal')), \
                  patch.object(INSTALLER,'core_rollback',side_effect=lambda _:events.append('rollback')):
