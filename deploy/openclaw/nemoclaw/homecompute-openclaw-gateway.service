@@ -1,0 +1,18 @@
+# STAGED ONLY: external lifecycle qualification failed; leave disabled.
+[Unit]
+Description=HomeCompute synthetic OpenClaw OpenShell gateway 9123
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/openshell-gateway
+EnvironmentFile=/etc/homecompute-openclaw/gateway.env
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

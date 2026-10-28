@@ -10,9 +10,10 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | Script | Target | Mutating commands |
 | --- | --- | --- |
 | `setup-compute-node.sh` | NVIDIA GB10 or DGX Spark-class appliance | `init`, `firewall`, `install`, `rollback`, `down` |
-| `setup-compute-automation-moe.sh` | Opt-in Qwen3.6 MoE candidate on `home-spark` | `prepare`, `install`, `activate`, `deactivate` |
-| `setup-compute-automation-nvidia.sh` | NVIDIA ModelOpt Qwen3.6 qualification cold-swap on `home-spark` | `validate`, `prepare`, `install`, `activate`, `smoke`, `deactivate` |
-| `setup-compute-home-assistant-model.sh` | Isolated Gemma 4 E4B fast Home Assistant fallback | `prepare`, `install`, `up`, `smoke`, `down` |
+| `setup-compute-automation-moe.sh` | Current Qwen3.6 automation lifecycle and rollback | `prepare`, `install`, `activate`, `deactivate` |
+| `setup-compute-flash-next.sh` | Shared exclusive lifecycle for Blazux quality baseline and dime UltraFast challenger | `validate`, `prepare`, `install`, `activate-canary`, `switch-profile`, `smoke`, `status`, `deactivate-canary` with `--profile quality|ultrafast` |
+| `setup-compute-automation-nvidia.sh` | Historical NVIDIA Qwen3.6 qualification lifecycle | `validate`, `prepare`, `install`, `activate`, `smoke`, `deactivate` |
+| `setup-compute-home-assistant-model.sh` | Historical Gemma 4 E4B Home Assistant service | `prepare`, `install`, `up`, `smoke`, `down` |
 | `setup-compute-plapre.sh` | Isolated Plapre Nano v2 Danish TTS on `home-spark` | `build`, `up`, `down` |
 | `setup-compute-hviske-stt.sh` | Isolated Hviske v5.3 Danish STT on `home-spark` | `prepare`, `install`, `up`, `down` |
 | `setup-compute-modalities.sh` | Staged embedding, rendered-page vision, STT, OpenAI TTS, and Wyoming TTS on `home-spark` | `prepare`, `install`, `up`, `down` |
@@ -29,6 +30,17 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-compute-sparkrun-manager.sh` | Root-run forced-command SSH boundary for the sparkrun model manager | `validate`, `install` |
 | `verify_client_model_access.py` | Live `/v1/models` visibility audit for supplied client keys | Exact expected aliases per environment-variable credential; never prints key values |
 | `codex_session.py` | Policy-aware Codex session entry point | Cloud default for committed `cloud_allowed` repositories; explicit whole-session GB10 Local mode |
+| `assistant-task.py` | Approved local task broker operator interface | Per-task execution approval, cancellation, private proposal export and digest-bound draft PR publication |
+| `openclaw_tasks.py` | Trusted coding handoff and status feed | Fixed loopback broker submission/cancellation, durable public event cursor to existing communication outbox; no execution or publication approval |
+| `verify-openclaw-runtime.py` | Isolated synthetic local-model probe | One native OpenClaw tool loop against a temporary pending-only broker; never invokes Codex or GitHub |
+| `prepare-openclaw-nemoclaw.py` | Local private managed-config preparation | Preserves NemoClaw gateway/proxy ownership; never installs, uploads, provisions credentials or deploys |
+| `setup-openclaw-browser.py` | Dedicated guest headless browser | Immutable image, private CDP token and bounded containers; refuses existing container replacement |
+| `enable-openclaw-tools.py` | In-sandbox browser/CLI activation | Native schema dry-run by default; explicit apply backs up config and scopes exec to one helper; current activation blocked, see `docs/openclaw-tools.md` |
+| `check-maintenance.py` | Daily host-local package and Docker registry reports | Fresh isolated signed APT indexes, deployed NixOS catalog revision and public manifest metadata; never apply updates |
+| `setup-maintenance-monitor.py` | Install the dedicated metadata timer | Digest-bound dry-run/install/rollback; only the monitor is activated |
+| `openclaw-observation-feed.py` | Update report admission | Existing fixed SSH reads, finite summary to private outbox, meaningful notifications through its n8n owner |
+| `observe-homecompute.py` | Operator read-only monitoring projection | Fixed host reads and optional private n8n HA metadata projection; default HA disabled; no notifications or recovery actions |
+| `openclaw_infrastructure.py` | On-demand infrastructure metadata | Fixed system selection, fresh health/update evidence and prepared native investigation context; no control or outbound delivery |
 | `initialize-compute-secrets.py` | Invoked by compute setup | Symlink-safe exclusive secret initialization |
 
 The compute scripts default to safe, staged operation. Run `help`, `validate`,
@@ -39,6 +51,7 @@ models, caches, secrets, previous release records, or the text runtime.
 ```bash
 ./scripts/setup-compute-node.sh help
 ./scripts/setup-compute-automation-moe.sh help
+./scripts/setup-compute-flash-next.sh help
 ./scripts/setup-compute-automation-nvidia.sh help
 ./scripts/setup-compute-plapre.sh help
 ./scripts/setup-compute-hviske-stt.sh help
@@ -51,20 +64,50 @@ The script must run from an intact repository checkout because it resolves
 templates relative to their own location. Production configuration lives under
 `/etc`, and runtime/model data lives outside the repository.
 
-## Opt-in n8n automation MoE
+## Current and candidate automation model lifecycle
 
-`setup-compute-automation-moe.sh install` downloads and accepts the pinned
-Unsloth Qwen3.6-35B-A3B NVFP4 artifact but does not load it. `activate` stops
-the normal Qwen3.8 service before starting the separate `automation-moe`
-profile on port 8005; `deactivate` restores Qwen3.8. The baseline disables
-thinking and MTP, uses the model-card `qwen3_coder` parser, and remains an
-explicit qualification route. The ordinary `automation` alias does not move
-until Danish, structured-output, real n8n, 64-tool, memory, and recovery tests
-pass. Flash-Next is never started by this lifecycle.
+Production remains on Unsloth Qwen3.6-35B-A3B NVFP4 revision
+`739af1e7aac320af1682ed1e0cce369af4c5265d`, served as `automation-moe`.
+The exact live request tuple still needs metadata-only verification.
 
-## NVIDIA Qwen3.6 qualification
+The Qwen3.6 and NVIDIA lifecycle instructions below are retained as dated
+qualification history; do not use their cold-swap commands as current model
+cutover instructions. Flash-Next profiles share one guarded lifecycle. Prepare
+either immutable profile without starting it, then cold-swap one profile at a
+time:
 
-The NVIDIA ModelOpt candidate has a dedicated vLLM 0.28.0 ARM64 image,
+```bash
+sudo ./scripts/setup-compute-flash-next.sh validate
+sudo ./scripts/setup-compute-flash-next.sh install
+sudo ./scripts/setup-compute-flash-next.sh status
+
+sudo ./scripts/setup-compute-flash-next.sh validate --profile ultrafast
+sudo ./scripts/setup-compute-flash-next.sh install --profile ultrafast
+sudo ./scripts/setup-compute-flash-next.sh switch-profile --profile ultrafast
+```
+
+Both profiles bind the same private qualification listener and expose the
+stable internal `automation-qualification` name. Select the candidate
+deployment in the control-plane registry for the A/B run; never change
+production semantic aliases as part of profile qualification.
+
+`install` builds and prepares the pinned source/artifact and leaves running
+models untouched. Candidate activation is a separate exclusive smoke/benchmark
+step; it records and restores previous text containers and does not change
+LiteLLM production routes. See
+[`deploy/compute-node/README.md`](../deploy/compute-node/README.md) and
+[ADR-025](../docs/adr/025-flash-next-primary-candidate.md).
+
+## Historical Qwen3.6 qualification scripts
+
+`setup-compute-automation-moe.sh` and `setup-compute-automation-nvidia.sh`
+contain earlier vLLM profiles. Their lifecycle notes below describe past
+qualification states, not the live production tuple or the new Flash-Next
+candidate. Preserve their rollback source until the current service owner
+reconciles them with the deployed host.
+## NVIDIA Qwen3.6 production service
+
+The NVIDIA ModelOpt production model has a dedicated vLLM 0.28.0 ARM64 image,
 pinned artifact, cache manifest, Compose profile, and gateway alias. Existing
 compute configurations must be migrated once so the NVIDIA tuple is included:
 
@@ -74,17 +117,21 @@ sudo ./scripts/setup-compute-automation-nvidia.sh validate
 sudo ./scripts/setup-compute-automation-nvidia.sh install
 sudo ./scripts/setup-compute-automation-nvidia.sh activate
 sudo ./scripts/setup-compute-automation-nvidia.sh smoke
-sudo ./scripts/setup-compute-automation-nvidia.sh deactivate
 ```
 
-`install` only pulls and stages. `activate` records whether Unsloth or Qwen3.8
-was running, stops it, and starts NVIDIA on the exclusive automation listener.
-Startup or smoke failure restores that exact source; `deactivate` does the same
-after qualification. While NVIDIA runs, the old served model name is
-unavailable, so schedule an explicit evaluation window. The candidate alias is
-`automation-moe-nvidia`; activation does not promote it to a production route.
-The basic smoke is not the promotion gate: the full 64-tool, Danish,
-structured-output, memory, and recovery qualification is still required.
+`install` only pulls and stages. The initial `activate` command records which
+text server was running, stops it, and starts NVIDIA on the exclusive automation
+listener. Startup or smoke failure restores that source. NVIDIA serves both
+`automation-moe-nvidia` and the stable `automation-moe` model name, so existing
+gateway clients continue working during the cold swap. Its containers use a
+persistent restart policy. The generated gateway route maps `automation` and
+`automation-moe` to the NVIDIA deployment. If rolling back after that gateway
+configuration is live, restore the previous gateway mapping before running
+`deactivate`; otherwise requests would still target the NVIDIA model name.
+The 2026-09-29 production cutover removed the old Unsloth containers and the
+activation rollback marker. Do not run `deactivate` for this deployment.
+The qualification results and their workflow guards are recorded in
+`docs/nvidia-qwen36-automation-qualification-2026-09-29.md`.
 
 ## sparkrun model manager
 
@@ -159,6 +206,30 @@ On `home-core`, make a dedicated client key if one does not already exist:
 ssh-keygen -t ed25519 -f ~/.ssh/homecompute-sparkrun-manager \
   -C sparkrun-manager@home-core
 ```
+
+Add the manager credentials, private key, and pinned Spark host key to the
+encrypted `secrets/home-core.sops.yaml` document with `sops`. Use these nested
+keys; the private SSH key and operator password must never be added as
+plaintext:
+
+```yaml
+model-manager:
+  username: <operator username>
+  password: <operator password>
+  spark-ssh-key: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  known-hosts: |
+    192.168.30.126 ssh-ed25519 <base64 host public key>
+```
+
+Get the host public key from the Spark's `/etc/ssh/ssh_host_ed25519_key.pub`
+and verify its fingerprint at the trusted Spark console before adding it.
+SOPS-Nix materializes these as root-only files under
+`/run/secrets/model-manager/` during activation. The Home Core deployment keeps
+the manager stopped until all four are present and the forced-command
+readiness flag is explicitly enabled.
 
 Transfer only its public half to `home-spark`, then place it in the root-only
 source file. The following commands assume `home-spark` is the SSH host alias
@@ -301,3 +372,23 @@ D2 is installed.
 clean GitHub commit, rebuilds NixOS, and applies the gateway, n8n, Homepage,
 and prepared Piper projects. See [Git deployment](../docs/git-deployment.md)
 for prerequisites and rollback limits. The books importer remains staged.
+
+## OpenClaw private conversation
+
+`python3 scripts/openclaw-chat.py chat --conversation main` opens the authenticated
+operator console for the synthetic canary; `status` checks its native gateway.
+The scoped adapter and inactive n8n conversation/notification workflows are
+described in [the deployment and rollback proposal](../docs/openclaw-communication.md).
+External delivery requires a selected authorized destination and activation approval.
+
+`openclaw-telegram.py` prepares the selected dedicated Telegram phone chat.
+It polls outside the assistant with pinned bot/chat/human identities, uses a
+durable update cursor and queues replies through the same n8n outbox. `inspect`
+shows sender candidates without enrolling them; `run` requires approved private
+credentials and configuration. See the phone setup in the same deployment proposal.
+
+`setup-codex-vm.py` provisions only the approved dedicated Codex KVM guest on
+home-core, from the pinned Ubuntu image with separate root/work disks and host
+identity. It refuses existing disk/config replacement. `--lock-egress` closes
+bootstrap public HTTP(S)/DNS; `--stop` retains disks and evidence. See the
+[actual VM installation and rollback](../docs/openclaw-runtime-research.md#approved-dedicated-vm-provisioning-2026-10-09).

@@ -1,0 +1,232 @@
+{
+  "generator": "Built-in image_gen tool",
+  "sourceReference": "agents.png",
+  "environment": {
+    "asset": "office.png",
+    "style": "High-rise robotics laboratory with glass partitions and panoramic skyline",
+    "sceneProjection": {
+      "topPercent": 20,
+      "floorHeightPercent": 78
+    }
+  },
+  "layout": {
+    "rows": 3,
+    "frameWidth": 128,
+    "frameHeight": 160,
+    "baselineY": 154,
+    "movement": {
+      "columns": 12,
+      "frameOrder": [
+        "south-stride",
+        "south-passing",
+        "west-stride",
+        "west-passing",
+        "east-stride",
+        "east-passing",
+        "north-stride",
+        "north-passing",
+        "south-standing",
+        "west-standing",
+        "east-standing",
+        "north-standing"
+      ]
+    },
+    "work": {
+      "columns": 8,
+      "frameOrder": [
+        "south-a",
+        "south-b",
+        "west-a",
+        "west-b",
+        "east-a",
+        "east-b",
+        "north-a",
+        "north-b"
+      ]
+    }
+  },
+  "groups": [
+    {
+      "movement": "walk-coordination.png",
+      "work": "work-coordination.png",
+      "robots": [
+        "Atlas",
+        "Luna",
+        "Nova"
+      ]
+    },
+    {
+      "movement": "walk-operations.png",
+      "work": "work-operations.png",
+      "robots": [
+        "Apollo",
+        "Orion",
+        "Vega"
+      ]
+    },
+    {
+      "movement": "walk-household.png",
+      "work": "work-household.png",
+      "robots": [
+        "Ceres",
+        "Lyra",
+        "Hestia"
+      ]
+    },
+    {
+      "movement": "walk-planning.png",
+      "work": "work-planning.png",
+      "robots": [
+        "Themis",
+        "Plutus",
+        "Gaia"
+      ]
+    }
+  ],
+  "normalization": {
+    "method": "Detect three row bands from alpha coverage; crop cells using significant alpha-component bounds; shared scale per robot strip; centered 128x160 cells with a ground baseline and transparent gutters.",
+    "maximumWidth": 116,
+    "maximumHeight": 140,
+    "alpha": "Original RGBA transparency retained within cropped cells.",
+    "hover": "Nova uses an 8px ground offset. Lyra movement uses 28px; work uses 8px to accommodate its hanging map at the same body altitude.",
+    "corrections": "Mirrored generated side-facing cells to make west/east consistent; removed isolated neighboring-cell fragments from crop bounds.",
+    "directionalCorrections": {
+      "walk-coordination": [
+        [
+          2,
+          5,
+          9,
+          10
+        ],
+        [
+          2,
+          5,
+          9,
+          10
+        ],
+        [
+          2,
+          5,
+          9,
+          10
+        ]
+      ],
+      "work-coordination": [
+        [
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          2,
+          3,
+          4,
+          5
+        ]
+      ],
+      "walk-operations": [
+        [
+          3,
+          4
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "work-operations": [
+        [],
+        [],
+        [
+          3
+        ]
+      ],
+      "walk-household": [
+        [
+          2,
+          5,
+          9,
+          10
+        ],
+        [
+          2,
+          5,
+          9,
+          10
+        ],
+        [
+          3,
+          4
+        ]
+      ],
+      "work-household": [
+        [
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          2,
+          3,
+          4,
+          5
+        ]
+      ],
+      "walk-planning": [
+        [
+          2,
+          3,
+          5,
+          10
+        ],
+        [
+          5,
+          10
+        ],
+        [
+          10
+        ]
+      ],
+      "work-planning": [
+        [
+          2,
+          3,
+          4,
+          5
+        ],
+        [
+          3
+        ],
+        []
+      ]
+    }
+  },
+  "sha256": {
+    "agents.png": "af842cfdb86675a37e0952650f474c230490d6e1f95e9aee729ecce8bb533b33",
+    "office.png": "a279a7cfc972b267d24d8bdbb65cc7b483baa59fc539b3dcff4c70924330d680",
+    "walk-coordination.png": "2f7ffa0570c1f116deb7063e2b81e531c4abe4fa4a5240988c9b4221f169e5bd",
+    "work-coordination.png": "a7d78206e8ec5baf85a807940c2be7c96810392a573e53224841d48cb875a4b9",
+    "walk-operations.png": "6f4db834f0eabe0f2ba3da5509049ae83bcbc755ca6b7867c1957a08c0503626",
+    "work-operations.png": "168d90c4a919ed0a5c3cf1bd6c9484fb948bb886ccfd1fdc032e223c0f3cf66a",
+    "walk-household.png": "5950a465934088661fc28a34d1bf9aa88e8470ce7df707ef83c0da1e1bf6d9a9",
+    "work-household.png": "66d8b9ca179cbfb9116d4850e206b4919b07c3763d68e195d0e7b4f89a555e21",
+    "walk-planning.png": "d769a6e11f4ef47f1d5d2d0679b6c9da826d0eacb538a4be90661270c03b56e3",
+    "work-planning.png": "f939cc3ca9e1271375e18f4642f95d81d8f3016f7ca74014db344729245dd00c"
+  }
+}

@@ -8,9 +8,11 @@ hideVersion: true
 disableIndexing: true
 target: _blank
 layout:
-  Home services:
-    style: row
-    columns: 2
-  Local operator access:
-    style: row
-    columns: 2
+  Everyday:
+    style: column
+  Books & reading:
+    style: column
+  AI assistants:
+    style: column
+  Administration:
+    style: column

@@ -99,7 +99,7 @@ must be configured separately after restore validation. The initial 2 CPU /
 ## Aula MCP
 
 The production overlay builds [Casperjuel/aula-mcp](https://github.com/Casperjuel/aula-mcp)
-from reviewed upstream commit `f1360000eaccf7cae528bed1cab6b0d0b2a32cfc`.
+from reviewed upstream commit `d9a27d84933446783c89446ba3e9d799fd47ea2c` (1.6.2).
 The local Dockerfile builds frozen upstream dependencies using Node and runs
 the server with Bun; both base images are pinned by digest.
 `scripts/deploy-home-core.sh` rebuilds this image during deployment. Aula is
@@ -108,8 +108,12 @@ The local `aula-n8n.patch` changes MCP tool-name dots to underscores because
 OpenAI accepts only letters, digits, underscores, and hyphens in function
 names. It also expresses positive integer IDs as `minimum: 1` instead of
 `exclusiveMinimum: 0`, which is equivalent for integer IDs and compatible with
-Gemini's function-schema subset. Reapply and review this patch whenever the
-upstream commit changes; the image build fails if it no longer applies cleanly.
+Gemini's function-schema subset. The patch also keeps discovery metadata and
+upstream tests aligned with the registered names. Aula 1.6.1 includes fixes
+for MitID broker redirects, Danish Keychain records, Aula API v24 retries, and
+attachments delivered through `media.file`, plus Min Uddannelse homework text.
+Reapply and review this patch whenever the upstream commit changes; the image
+build fails if it no longer applies cleanly.
 
 The previous deployed image was built on 2026-09-20 from upstream commit
 `af49805ae9c6d7c9026f6e559f2e01ca209c9e46`. Rebuild and recreate Aula from
@@ -139,10 +143,15 @@ sudo docker restart homecompute-automation-aula-mcp-1
 
 The production overlay builds
 [olgasafonova/tilbudstrolden-mcp](https://github.com/olgasafonova/tilbudstrolden-mcp)
-from upstream commit `1749d507faadda5c8bd699e190828da172889448`. This upstream
-server only supports stdio, so the image uses Supergateway `4.0.0` to expose
+from upstream commit `fcc9c179b755e751d09f476a8427fa3da80bc64b`. This upstream
+server only supports stdio, so the image uses Supergateway `4.2.1` to expose
 Streamable HTTP at `/mcp` for n8n. The project dependency lockfile and gateway
-lockfile are installed with `npm ci`; Node's runtime image is digest-pinned.
+lockfile are installed with `npm ci`; the image applies a checked-in lockfile
+patch for compatible dependency fixes before install. The gateway lockfile
+pins patched MCP SDK and validation dependencies through explicit overrides.
+The upstream change fixes dealer pagination and household-store filtering,
+prevents duplicate pack purchases, and rounds monetary totals. Node's runtime
+image is digest-pinned.
 
 The only host publication is loopback port 17879. On home-core use
 `http://127.0.0.1:17879/mcp`; n8n uses

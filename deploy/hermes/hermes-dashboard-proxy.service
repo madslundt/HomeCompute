@@ -1,0 +1,20 @@
+[Unit]
+Description=HomeCompute loopback proxy for the Hermes dashboard
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hermes-operator
+Group=hermes-operator
+ExecStart=/usr/bin/socat TCP-LISTEN:18789,bind=10.77.20.2,reuseaddr,fork TCP:127.0.0.1:18790
+Restart=on-failure
+RestartSec=3s
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

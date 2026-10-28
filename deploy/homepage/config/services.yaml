@@ -1,43 +1,93 @@
-- Home services:
+- Everyday:
     - Home Assistant:
         id: homecore-home-assistant
         icon: home-assistant.png
-        href: http://homeassistant.local/
-        description: Smart home control
+        href: http://192.168.30.30/
+        description: Control smart devices and home automations
 
-    - n8n:
-        id: homecore-n8n
-        icon: n8n.png
-        href: /__homecore_service__/http/15678/
-        description: Automations and workflows
+    - Daythread:
+        id: homecore-daythread
+        icon: https://daythread.home.arpa/icons/daythread-192.png?v=c383e773
+        href: https://daythread.home.arpa/
+        description: Search recordings, transcripts, and daily recaps
 
-    - AI gateway:
-        id: homecore-ai-gateway
-        icon: mdi-creation-outline
-        href: /__homecore_service__/https/edge/healthz
-        description: LiteLLM API gateway health
+    - Chessmate:
+        id: homecore-chessmate
+        icon: mdi-chess-knight
+        href: https://chessmate.home.arpa/
+        description: Practice chess and get coaching
 
-    - Open WebUI:
-        id: homecore-open-webui
-        icon: mdi-chat-processing-outline
-        href: https://chat.home.arpa/
-        description: Chat with local models
-
-    - Model manager:
-        id: homecore-model-manager
-        icon: mdi-server
-        href: https://models.home.arpa/
-        description: Load, unload, and replace Spark models
-
-- Local operator access:
+- Books & reading:
     - Calibre Web Automated:
         id: homecore-calibre-web
-        icon: calibre-web.png
+        icon: calibre.png
         href: /__homecore_service__/http/8083/
-        description: E-book library
+        description: Browse and read your e-book library
 
     - Shelfmark:
         id: homecore-shelfmark
-        icon: mdi-bookshelf
+        icon: shelfmark.png
         href: /__homecore_service__/http/8084/
-        description: Book discovery and requests
+        description: Find books and request downloads
+
+- AI assistants:
+    - Agent office:
+        id: homecore-agent-office
+        icon: mdi-account-group-outline
+        href: https://agents.home.arpa/
+        description: See agent activity in the pixel office · operator sign-in
+
+    - Spark models:
+        id: homecore-comfyui
+        icon: mdi-auto-fix
+        href: https://models.home.arpa/control/
+        description: Text, images and video · LLM returns after 30 minutes idle
+
+    - Mattermost:
+        id: homecore-mattermost
+        icon: mattermost.png
+        href: https://mattermost.home.arpa/
+        description: Chat with your agent team and collaborate on projects
+
+    - Open WebUI:
+        id: homecore-open-webui
+        icon: open-webui.png
+        href: https://chat.home.arpa/
+        description: Chat with local AI models
+
+    - Mads' Hermes:
+        id: homecore-hermes-mads
+        icon: mdi-robot-outline
+        href: https://hermes.home.arpa/
+        description: Your private AI assistant · sign-in required
+
+- Administration:
+    - n8n:
+        id: homecore-n8n
+        icon: n8n.png
+        href: https://n8n.home.arpa/
+        description: Build and manage automation workflows
+
+    - Model Manager:
+        id: homecore-model-manager
+        icon: mdi-server
+        href: https://models.home.arpa/
+        description: Load, unload, and switch local AI models
+
+    - LiteLLM Gateway:
+        id: homecore-ai-gateway
+        icon: mdi-api
+        href: https://ai.home.arpa/healthz
+        description: Check the local AI gateway health
+
+    - AI Token Usage:
+        id: homecore-token-usage
+        icon: mdi-chart-bar
+        href: https://ai.home.arpa/usage/
+        description: Review daily, weekly, and monthly token usage
+
+    - Home HTTPS Certificate:
+        id: homecore-https-certificate
+        icon: mdi-certificate-outline
+        href: http://daythread.home.arpa/.well-known/home-core-root-ca.crt
+        description: Download the certificate for secure home services

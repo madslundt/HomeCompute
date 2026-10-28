@@ -8,6 +8,9 @@ services:
       N8N_MCP_BASE_URL: https://n8n.home.arpa
       WEBHOOK_URL: https://n8n.home.arpa/
       N8N_PROXY_HOPS: "1"
+      # Durable local-LLM waits are excluded from workflow wall-clock budgets.
+      # Individual HTTP, MCP and model calls retain bounded timeouts.
+      EXECUTIONS_TIMEOUT: "-1"
       NODE_EXTRA_CA_CERTS: /etc/ssl/certs/homecompute-caddy-root.crt
     volumes:
       - ${HOMECOMPUTE_CA_CERT_FILE:-/srv/state/automation/certs/homecompute-caddy-root.crt}:/etc/ssl/certs/homecompute-caddy-root.crt:ro
@@ -19,7 +22,7 @@ services:
       - "100.110.248.102:15678:5678"
 
   aula-mcp:
-    image: homecompute/aula-mcp:f1360000eaccf7cae528bed1cab6b0d0b2a32cfc-n8n1
+    image: homecompute/aula-mcp:d9a27d84933446783c89446ba3e9d799fd47ea2c-n8n1
     pull_policy: never
     build:
       context: .
@@ -67,7 +70,7 @@ services:
         max-file: "3"
 
   tilbudstrolden-mcp:
-    image: homecompute/tilbudstrolden-mcp:1749d507faadda5c8bd699e190828da172889448
+    image: homecompute/tilbudstrolden-mcp:fcc9c179b755e751d09f476a8427fa3da80bc64b
     pull_policy: never
     build:
       context: .

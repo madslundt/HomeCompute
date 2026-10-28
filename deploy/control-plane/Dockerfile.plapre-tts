@@ -1,0 +1,13 @@
+ARG BASE_IMAGE=python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+FROM ${BASE_IMAGE}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN python3 -m pip install --no-cache-dir --no-compile wyoming==1.10.2 \
+    && python3 -c 'import wyoming; print(wyoming.__file__)'
+
+COPY scripts/openai-wyoming-tts.py /opt/homecompute/openai-wyoming-tts.py
+USER 65532:65532
+ENTRYPOINT ["python3", "/opt/homecompute/openai-wyoming-tts.py"]

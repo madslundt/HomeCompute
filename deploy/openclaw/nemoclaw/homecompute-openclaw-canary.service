@@ -1,0 +1,20 @@
+# STAGED ONLY: external lifecycle qualification failed; leave disabled.
+[Unit]
+Description=Recover only the synthetic HomeCompute OpenClaw sandbox
+Requires=homecompute-openclaw-gateway.service
+After=homecompute-openclaw-gateway.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+Environment=NEMOCLAW_GATEWAY_PORT=9123
+Environment=NEMOCLAW_GATEWAY_MANAGEMENT=/etc/homecompute-openclaw/gateway-management.json
+Environment=PATH=/home/hermes-operator/.local/bin:/home/hermes-operator/.nvm/versions/node/v22.23.3/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/usr/bin/python3 /etc/homecompute-openclaw/wait-gateway.py
+ExecStart=%h/.local/bin/nemoclaw agent-openclaw start
+TimeoutStartSec=180
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

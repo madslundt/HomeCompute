@@ -1,0 +1,116 @@
+{
+  "name": "HomeCompute OpenClaw conversation route (inactive private sender scaffold)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "trusted-existing-telegram-router",
+      "name": "Trusted existing Telegram router",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Invoke only from the one existing, authenticated Telegram ingress router.\nconst cfg={configured:false,adapter_url:'https://openclaw-communication.home.arpa:19443',destination:'replace-selected-authorized-destination',chat_id:'replace-selected-private-chat-id',user_id:'replace-selected-operator-id'};\nif (!cfg.configured || !/^[0-9]+$/.test(cfg.chat_id) || !/^[0-9]+$/.test(cfg.user_id)) throw new Error('Selected private chat and sender approval required');\nconst update=$json; const msg=update.message;\nif (!Number.isSafeInteger(update.update_id) || !msg || msg.chat?.type!=='private' || String(msg.chat.id)!==cfg.chat_id || String(msg.from?.id)!==cfg.user_id || msg.from?.is_bot || typeof msg.text!=='string' || msg.text.length>4000 || !msg.text.startsWith('/openclaw ')) return [];\nreturn [{json:{adapter_url:cfg.adapter_url,conversation:'operator',destination:cfg.destination,request_id:'telegram:'+update.update_id,text:msg.text.slice(10)}}];"
+      },
+      "id": "validate-private-sender-and-command",
+      "name": "Validate private sender and command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.adapter_url + '/conversation' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({conversation:$json.conversation,destination:$json.destination,request_id:$json.request_id,text:$json.text}) }}",
+        "options": {
+          "timeout": 70000
+        }
+      },
+      "id": "conversation-with-durable-request-identity",
+      "name": "Conversation with durable request identity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "OpenClaw dedicated conversation transport (select after approval)"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "if (!['completed','running','uncertain'].includes($json.state)) throw new Error('Unexpected conversation receipt'); return [{json:{state:$json.state,delivery:$json.state==='completed'?'queued_in_durable_outbox':'requires_status_or_reconciliation'}}];"
+      },
+      "id": "return-processing-status",
+      "name": "Return processing status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Trusted existing Telegram router": {
+      "main": [
+        [
+          {
+            "node": "Validate private sender and command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate private sender and command": {
+      "main": [
+        [
+          {
+            "node": "Conversation with durable request identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation with durable request identity": {
+      "main": [
+        [
+          {
+            "node": "Return processing status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Copenhagen",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none"
+  },
+  "pinData": {},
+  "tags": []
+}

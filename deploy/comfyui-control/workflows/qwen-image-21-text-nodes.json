@@ -1,0 +1,51 @@
+[
+  {
+    "type": "model",
+    "node_ids": [
+      "1"
+    ],
+    "key": "unet_name"
+  },
+  {
+    "type": "prompt",
+    "node_ids": [
+      "6"
+    ],
+    "key": "prompt"
+  },
+  {
+    "type": "seed",
+    "node_ids": [
+      "9"
+    ],
+    "key": "seed"
+  },
+  {
+    "type": "steps",
+    "node_ids": [
+      "9"
+    ],
+    "key": "steps"
+  },
+  {
+    "type": "width",
+    "node_ids": [
+      "8"
+    ],
+    "key": "width"
+  },
+  {
+    "type": "height",
+    "node_ids": [
+      "8"
+    ],
+    "key": "height"
+  },
+  {
+    "type": "n",
+    "node_ids": [
+      "8"
+    ],
+    "key": "batch_size"
+  }
+]

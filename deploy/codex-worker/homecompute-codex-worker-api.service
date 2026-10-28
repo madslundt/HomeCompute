@@ -1,0 +1,34 @@
+[Unit]
+Description=HomeCompute dedicated guest worker TLS API
+After=network.target homecompute-codex-broker.service homecompute-codex-network.service homecompute-codex-firewall.service
+Requires=homecompute-codex-broker.service homecompute-codex-network.service homecompute-codex-firewall.service
+
+[Service]
+Type=simple
+User=homecompute-codex-broker
+Group=homecompute-codex-broker
+ExecStart=/run/current-system/sw/bin/python3 /opt/homecompute/codex-broker/worker_api.py
+Environment=CODEX_BROKER_SECRETS=/opt/homecompute/codex-broker/secrets
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+CapabilityBoundingSet=
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32 10.77.21.2/32
+MemoryMax=128M
+CPUQuota=25%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import importlib.util
+import contextlib
+import io
 import json
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +28,20 @@ SMOKE = load_module("tool_call_smoke", ROOT / "scripts" / "tool_call_smoke.py")
 
 
 class ToolCallSmokeTests(unittest.TestCase):
+    def test_chat_client_can_omit_credentials_and_preserves_explicit_keys(self) -> None:
+        for key in (None, "explicit-scoped-key"):
+            environment = {} if key is None else {"HOMECOMPUTE_SCRIPT_API_KEY": key}
+            response = io.BytesIO(json.dumps({"choices": [{"message": {"content": "READY"}}]}).encode())
+            with self.subTest(key=key), \
+                 patch.dict(CHAT.os.environ, environment, clear=True), \
+                 patch.object(CHAT.ssl, "create_default_context"), \
+                 patch.object(CHAT.urllib.request, "urlopen", return_value=response) as open_url, \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                CHAT.main(["--model", "automation-moe", "Reply with READY"])
+            request = open_url.call_args.args[0]
+            self.assertEqual(request.get_header("Authorization"), None if key is None else "Bearer " + key)
+            self.assertEqual(output.getvalue().strip(), "READY")
+
     def test_chat_example_keeps_plain_chat_default_and_exposes_tool_calls(self) -> None:
         plain = CHAT.build_body("auto", "Hi")
         self.assertNotIn("tools", plain)

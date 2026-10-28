@@ -1,0 +1,338 @@
+{
+  "name": "HomeCompute approved finite Home Assistant actions",
+  "active": false,
+  "nodes": [
+    {
+      "name": "HA approved action webhook",
+      "id": "ha-approved-action-webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "homecompute-approved-ha-actions",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "homecompute-approved-ha-actions",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hcApprovedHAExecutor20261012",
+          "name": "HA controller executor only"
+        }
+      }
+    },
+    {
+      "name": "Validate HA action request",
+      "id": "validate-ha-action-request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const configured=false;\nif(!configured)throw Error('Trusted HA action route setup required');\nif($input.all().length!==1||Object.keys($json.query||{}).length||Object.keys($json.params||{}).length)throw Error('Bounded input required');\nconst r=$json.body, obj=x=>x&&typeof x==='object'&&!Array.isArray(x), exact=(x,ks)=>obj(x)&&Object.keys(x).sort().join(',')===ks.slice().sort().join(','), num=(x,a,b)=>typeof x==='number'&&Number.isFinite(x)&&x>=a&&x<=b;\nif(!obj(r)||!['snapshot','execute'].includes(r.operation)||!exact(r,r.operation==='snapshot'?['operation','action']:['operation','action','proposal_id','approval_digest','expected_entities','approved_at','approval_expires_at']))throw Error('Exact route operation required');\nconst a=r.action, services={light:['turn_on','turn_off'],climate:['set_temperature','set_hvac_mode'],cover:['open_cover','close_cover','stop_cover']}, modes=['off','heat','cool','heat_cool','auto','dry','fan_only'];\nif(!exact(a,['domain','service','entity_ids','data'])||typeof a.domain!=='string'||typeof a.service!=='string'||!services[a.domain]?.includes(a.service))throw Error('Service outside finite policy');\nif(!Array.isArray(a.entity_ids)||a.entity_ids.length<1||a.entity_ids.length>8||new Set(a.entity_ids).size!==a.entity_ids.length||a.entity_ids.some(e=>typeof e!=='string'||!/^[a-z_]+\\.[a-z0-9_]{1,128}$/.test(e)||!e.startsWith(a.domain+'.'))||!obj(a.data))throw Error('Explicit matching targets required');\nconst d=a.data;\nif(a.domain==='light'&&a.service==='turn_on'){\n if(Object.keys(d).some(k=>!['brightness','transition'].includes(k))||('brightness'in d&&(!Number.isInteger(d.brightness)||!num(d.brightness,0,255)))||('transition'in d&&!num(d.transition,0,30)))throw Error('Invalid light data');\n}else if(a.service==='set_temperature'){\n if(!exact(d,['temperature'])||!num(d.temperature,5,35))throw Error('Bounded Celsius temperature required');\n}else if(a.service==='set_hvac_mode'){\n if(!exact(d,['hvac_mode'])||typeof d.hvac_mode!=='string'||!modes.includes(d.hvac_mode))throw Error('Invalid HVAC mode');\n}else if(Object.keys(d).length)throw Error('Service takes no data');\nif(r.operation==='execute'){\n const now=Date.now()/1000;\n if(typeof r.proposal_id!=='string'||!/^[a-f0-9]{32}$/.test(r.proposal_id)||typeof r.approval_digest!=='string'||!/^[a-f0-9]{64}$/.test(r.approval_digest)||!exact(r.expected_entities,a.entity_ids)||!num(r.approved_at,now-300,now+2)||!num(r.approval_expires_at,now+0.001,r.approved_at+300)||r.approval_expires_at-r.approved_at!==300)throw Error('Unexpired exact approval required');\n}\nreturn [{json:{request:{...r,action:{...a,entity_ids:a.entity_ids.slice().sort()}}}}];"
+      }
+    },
+    {
+      "name": "Read HA configuration",
+      "id": "read-ha-configuration",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        400,
+        0
+      ],
+      "parameters": {
+        "resource": "config",
+        "operation": "get"
+      },
+      "retryOnFail": false,
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "name": "Select explicit HA targets",
+      "id": "select-explicit-ha-targets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $('Validate HA action request').first().json.request.action.entity_ids.map(entity_id=>({json:{entity_id}}));"
+      }
+    },
+    {
+      "name": "Read selected HA target",
+      "id": "read-selected-ha-target",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        800,
+        0
+      ],
+      "parameters": {
+        "resource": "state",
+        "operation": "get",
+        "entityId": "={{ $json.entity_id }}"
+      },
+      "retryOnFail": false,
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "name": "Verify selected snapshot",
+      "id": "verify-selected-snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const r=$('Validate HA action request').first().json.request, config=$('Read HA configuration').first().json;\nconst rows=$input.all(), entities={};\nif(rows.length!==r.action.entity_ids.length)throw Error('Exact selected snapshot required');\nfor(const {json:e} of rows){\n if(!e||!r.action.entity_ids.includes(e.entity_id)||e.entity_id in entities)throw Error('Unexpected target state');\n const domain=r.action.domain,a=e.attributes||{},states={light:['on','off'],climate:['off','heat','cool','heat_cool','auto','dry','fan_only'],cover:['open','closed','opening','closing']};\n if(!states[domain].includes(e.state))throw Error('Target unavailable or unsupported');\n const row={state:e.state};\n if(domain==='light'&&a.brightness!==undefined&&a.brightness!==null){if(!Number.isInteger(a.brightness)||a.brightness<0||a.brightness>255)throw Error('Invalid brightness state');row.brightness=a.brightness;}\n if(domain==='climate'){\n  if(config.unit_system?.temperature!=='°C')throw Error('Celsius HA configuration required');\n  row.temperature_unit='°C';\n  if(a.temperature!==undefined&&a.temperature!==null){if(typeof a.temperature!=='number'||!Number.isFinite(a.temperature)||a.temperature< -50||a.temperature>100)throw Error('Invalid target temperature');row.temperature=a.temperature;}\n  const modes=states.climate;\n  if(a.hvac_modes!==undefined){if(!Array.isArray(a.hvac_modes)||!a.hvac_modes.length||a.hvac_modes.length>modes.length||a.hvac_modes.some(m=>!modes.includes(m)))throw Error('Invalid HVAC modes');row.hvac_modes=a.hvac_modes.slice().sort();}\n  if(r.action.service==='set_hvac_mode'&&!row.hvac_modes?.includes(r.action.data.hvac_mode))throw Error('Unsupported target HVAC mode');\n }\n entities[e.entity_id]=row;\n}\nconst canonical=x=>Array.isArray(x)?'['+x.map(canonical).join(',')+']':x&&typeof x==='object'?'{'+Object.keys(x).sort().map(k=>JSON.stringify(k)+':'+canonical(x[k])).join(',')+'}':JSON.stringify(x);\nif(r.operation==='execute'&&(Date.now()/1000>=r.approval_expires_at||canonical(entities)!==canonical(r.expected_entities)))throw Error('Approval expired or targets changed');\nreturn [{json:{request:r,snapshot:{observed_at:Date.now()/1000,entities}}}];"
+      }
+    },
+    {
+      "name": "Execute approved action",
+      "id": "execute-approved-action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "execute",
+              "leftValue": "={{ $json.request.operation }}",
+              "rightValue": "execute",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Call finite HA service",
+      "id": "call-finite-ha-service",
+      "type": "n8n-nodes-base.homeAssistant",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        -120
+      ],
+      "parameters": {
+        "resource": "service",
+        "operation": "call",
+        "domain": "={{ $json.request.action.domain }}",
+        "service": "={{ $json.request.action.service }}",
+        "serviceAttributes": "={{ {attributes: [{name:'entity_id',value:$json.request.action.entity_ids.join(',')}, ...Object.entries($json.request.action.data).map(([name,value])=>({name,value}))]} }}"
+      },
+      "retryOnFail": false,
+      "credentials": {
+        "homeAssistantApi": {
+          "id": "Xk0jp9yhKbeuvcVH",
+          "name": "Home Assistant account"
+        }
+      }
+    },
+    {
+      "name": "Bounded effect receipt",
+      "id": "bounded-effect-receipt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "const r=$('Verify selected snapshot').first().json.request; return [{json:{executed:true,proposal_id:r.proposal_id}}];"
+      }
+    },
+    {
+      "name": "Bounded snapshot response",
+      "id": "bounded-snapshot-response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        120
+      ],
+      "parameters": {
+        "jsCode": "return [{json:$json.snapshot}];"
+      }
+    },
+    {
+      "name": "Respond to HA controller",
+      "id": "respond-to-ha-controller",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "HA approved action webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate HA action request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate HA action request": {
+      "main": [
+        [
+          {
+            "node": "Read HA configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read HA configuration": {
+      "main": [
+        [
+          {
+            "node": "Select explicit HA targets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select explicit HA targets": {
+      "main": [
+        [
+          {
+            "node": "Read selected HA target",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read selected HA target": {
+      "main": [
+        [
+          {
+            "node": "Verify selected snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify selected snapshot": {
+      "main": [
+        [
+          {
+            "node": "Execute approved action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute approved action": {
+      "main": [
+        [
+          {
+            "node": "Call finite HA service",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bounded snapshot response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call finite HA service": {
+      "main": [
+        [
+          {
+            "node": "Bounded effect receipt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bounded effect receipt": {
+      "main": [
+        [
+          {
+            "node": "Respond to HA controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bounded snapshot response": {
+      "main": [
+        [
+          {
+            "node": "Respond to HA controller",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false,
+    "availableInMCP": false,
+    "executionTimeout": 25
+  }
+}

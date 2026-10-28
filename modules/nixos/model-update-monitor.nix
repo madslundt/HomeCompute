@@ -2,7 +2,9 @@
 let
   pinsFile = "/etc/homecompute/model-update-pins.json";
   selectionFile = "/var/lib/homecompute/benchmarks/selection.json";
-  reportFile = "/var/lib/homecompute/model-update-check/report.json";
+  stateDirectoryName = "homecompute-model-update-check";
+  stateDirectory = "/var/lib/${stateDirectoryName}";
+  reportFile = "${stateDirectory}/report.json";
   notificationEnvironment = "/etc/homecompute/model-update-notification.env";
 
   monitorBundle = pkgs.runCommand "homecompute-model-update-monitor" { } ''
@@ -84,7 +86,7 @@ in
       ExecStart = "${runMonitor}/bin/homecompute-model-update-monitor";
       TimeoutStartSec = "15min";
       DynamicUser = true;
-      StateDirectory = "homecompute-model-update-check";
+      StateDirectory = stateDirectoryName;
       StateDirectoryMode = "0700";
       UMask = "0077";
 
@@ -137,7 +139,7 @@ in
       PrivateTmp = true;
       ProtectHome = true;
       ProtectSystem = "strict";
-      ReadWritePaths = [ "/var/lib/homecompute/model-update-check" ];
+      ReadWritePaths = [ stateDirectory ];
     };
   };
 

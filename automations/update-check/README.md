@@ -1,9 +1,13 @@
-# Weekly setup update check
+# Weekly HomeCompute software update review
 
 This directory contains an importable n8n workflow that checks the upstream
 projects relevant to the HomeCompute setup once a week. It produces a review
 notification when a watched artifact changes, an installed pin differs from
-upstream, a new NVIDIA NVFP4 model appears, or a source cannot be checked.
+upstream, a new NVIDIA NVFP4 model appears, or a source cannot be checked. The
+watchlist covers the production model/runtime sources, the HomeCompute NixOS
+release line, and the exact upstream commits used to build the Aula and
+TilbudsTrolden MCP servers on `home-core`. It also reports changes to open
+Dependabot and automated Nix flake update pull requests in this repository.
 
 The workflow is deliberately **review-only**. It never downloads, installs,
 promotes, or switches a model. An upstream revision is not proof that a model is
@@ -14,9 +18,11 @@ GB10 hardware.
 
 - `n8n-workflow.json` is the workflow export to import into n8n.
 - `watchlist.json` is the repository-owned list of models and projects to
-  monitor. Each benchmark-linked model also names the exact release-manifest
-  artifact source that is eligible for comparison. Update these bindings in
-  code review when the setup's candidate set changes.
+  monitor. Model revisions come from the model roster; MCP revisions are pinned
+  beside their upstream source entries and must match the commits in their
+  Dockerfiles. Each benchmark-linked model also names the exact
+  release-manifest artifact source that is eligible for comparison. Update
+  these bindings in code review when the setup's candidate set changes.
 - `../../scripts/check-model-updates.py` is the dependency-free headless
   checker; `../../scripts/update_check_http.py` is its restricted HTTP adapter.
 
@@ -29,16 +35,18 @@ must already exist:
 ```bash
 python3 scripts/check-model-updates.py \
   --watchlist automations/update-check/watchlist.json \
-  --state /var/lib/homecompute/model-update-check/state.json \
-  --report /var/lib/homecompute/model-update-check/report.json \
+  --state /var/lib/homecompute-model-update-check/state.json \
+  --report /var/lib/homecompute-model-update-check/report.json \
   --pins /etc/homecompute/model-update-pins.json \
   --selection /var/lib/homecompute/benchmarks/selection.json
 ```
 
 On `home-core`, `homecompute-model-update-monitor.timer` invokes the same
 interface weekly from immutable Nix store inputs. The corresponding oneshot is
-`homecompute-model-update-monitor.service`; it creates the state directory and
-writes the paths shown above. Its `OnSuccess` consumer deduplicates attention
+`homecompute-model-update-monitor.service`; its systemd `StateDirectory`
+creates `/var/lib/homecompute-model-update-check` (a DynamicUser-managed
+symlink into `/var/lib/private`), and it writes the paths shown above.
+The CLI and notifier read that same directory. Its `OnSuccess` consumer deduplicates attention
 reports by digest. Without additional configuration it records a warning in the
 system journal. To deliver the report to an HTTPS webhook, create root-owned,
 mode-0600 `/etc/homecompute/model-update-notification.env` containing:
@@ -68,6 +76,25 @@ cannot report `outperforms_active`. The pins document is metadata only:
 Legacy string pin values remain supported because the string is the exact
 installed artifact revision used for the active-artifact comparison. A pin that
 does not provide that revision cannot support an outperforming classification.
+
+The headless checker also accepts the watchlist's `installed_revision`
+metadata as default pins. Commit/checkpoint sources require a hexadecimal
+revision; release sources require a bounded tag. Explicit entries in `--pins`
+override those defaults. Inventory/discovery sources cannot declare an installed
+artifact revision. This keeps the repository's pinned Aula and TilbudsTrolden
+MCP commits covered even when no separate host pins file is supplied.
+
+The headless and n8n paths both support `github_pull_requests`. The HTTP adapter
+permits only GitHub's repository `/pulls` endpoint with exactly
+`state=open&per_page=100&sort=updated&direction=desc`; it does not paginate.
+GitHub's list response includes PR bodies; normalization discards those fields
+before recording state or exposing a report. It selects open PRs authored by `dependabot[bot]`
+or whose head branch is `automation/nix-flake-update`, matching the existing
+n8n review filter. Its state marker hashes sorted PR number/title/update-time
+metadata; raw titles, bodies and URLs are not retained in the headless report.
+An unchanged queue stays quiet; changes to selected PRs prompt review. This
+finite most-recent 100-PR page is not a complete inventory of all open PRs,
+and the filter is a review heuristic, not authorization to merge a PR.
 
 `--selection` consumes the schema-versioned output from
 `python3 benchmarks/harness.py select --run RUN --output PATH`. For every
@@ -106,7 +133,7 @@ success as model-selection success.
 
 ```bash
 systemctl status homecompute-model-update-monitor.service --no-pager
-sudo cat /var/lib/homecompute/model-update-check/report.json
+sudo cat /var/lib/homecompute-model-update-check/report.json
 ```
 
 ## Install in n8n
@@ -170,6 +197,28 @@ The NVIDIA NVFP4 discovery query is intentionally broad. It can find a new
 artifact worth evaluating, but it cannot determine that the artifact is better
 for HomeCompute's workloads. Add promising discoveries to the explicit
 watchlist only after a human review.
+
+## Other host software update lanes
+
+The weekly review is one part of the Home-core and Home-spark maintenance
+loop. It watches upstream MCP commits and model/runtime/NixOS sources. Image
+and package updates that are expressed in repository Dockerfiles, Compose
+files, GitHub Actions, or the TTLock Python lockfile are proposed through the
+weekly GitHub Dependabot pull requests, whose open/updated status is included
+in the n8n review. The separate Nix flake update pull request is included too.
+Pinned host image values supplied via
+`/etc` runtime environment files, locally built images, and packages installed
+outside those manifests still need operator inventory and review; this n8n
+workflow does not inspect either host over SSH or change deployed software.
+
+Review each proposed change against the host that owns it. For `home-core`,
+use the NixOS generation and Compose build/deploy procedures in
+`docs/nixos-operations.md`. For `home-spark`, use the supported DGX OS and
+model/runtime qualification procedures in `docs/setup-guide.md` and
+`docs/current-state.md`. Back up state where needed, check upstream security
+and migration notes, build or validate the candidate, and retain a rollback
+path. Do not make this workflow automatically pull images, update packages,
+restart services, deploy MCPs, or promote model/runtime changes.
 
 ## Operational notes
 

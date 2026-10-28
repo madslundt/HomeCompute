@@ -2,6 +2,9 @@
 import importlib.util
 import json
 import subprocess
+import re
+import shutil
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -102,6 +105,42 @@ class HomeComputeCliTests(unittest.TestCase):
             rc = hc.main(["status", "--json"], runner)
         self.assertEqual(rc, 0)
         self.assertEqual(set(json.loads(output.getvalue())), {"schema_version", "desired_revision", "hosts", "unverified"})
+
+    def test_update_reader_notifier_and_systemd_state_use_one_directory(self):
+        module = (hc.ROOT / "modules/nixos/model-update-monitor.nix").read_text()
+        state_name = re.search(r'stateDirectoryName = "([^"]+)";', module).group(1)
+        expected_path = "/var/lib/" + state_name
+        self.assertIn('StateDirectory = stateDirectoryName;', module)
+        self.assertIn('stateDirectory = "/var/lib/${stateDirectoryName}";', module)
+        self.assertIn('reportFile = "${stateDirectory}/report.json";', module)
+        self.assertIn('report=\'${reportFile}\'', module)
+        self.assertIn('ReadWritePaths = [ stateDirectory ];', module)
+        self.assertIn("report_file=" + expected_path + "/report.json", hc.REMOTE_STATUS)
+        self.assertNotIn("/var/lib/homecompute/model-update-check", module + hc.REMOTE_STATUS)
+
+    @unittest.skipUnless(shutil.which("jq"), "jq required for the real shell projection")
+    def test_real_shell_report_reader_selects_summary_without_private_payloads(self):
+        snippet = re.search(r'update_report=null\n(.*?)\ntools=', hc.REMOTE_STATUS, re.S).group(1)
+        snippet = re.sub(r'^report_file=.*$', 'report_file="$1"', snippet, flags=re.M)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "report.json"
+            path.write_text(json.dumps({"schema_version": 1, "document_type": "model_update_report",
+                                        "mode": "review-only", "status": "attention",
+                                        "generated_at": "2026-10-09T12:00:00Z",
+                                        "summary": {"changed": 7, "pin_drift": 1, "source_errors": 0, "outperforms_active": 0},
+                                        "changes": [{"private": "SECRET"}], "source_errors": [{"message": "PRIVATE"}]}))
+            result = subprocess.run(["bash", "-c", snippet + '\nprintf %s "$update_report"', "reader", str(path)],
+                                    text=True, capture_output=True, check=True)
+            projection = json.loads(result.stdout)
+            self.assertEqual(projection["summary"]["changed"], 7)
+            self.assertNotIn("SECRET", result.stdout)
+            self.assertNotIn("PRIVATE", result.stdout)
+            self.assertNotIn("changes", projection)
+            path.write_text("invalid JSON SECRET")
+            result = subprocess.run(["bash", "-c", snippet + '\nprintf %s "$update_report"', "reader", str(path)],
+                                    text=True, capture_output=True, check=True)
+            self.assertEqual(result.stdout, "null")
+            self.assertEqual(result.stderr, "")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,564 @@
+# OpenClaw and home-core Codex pilot
+
+Status: the approved dedicated Codex VM and trusted broker are installed, and
+the supervised phone coding handoff/status feed is connected. HomeCompute is
+allowlisted at its immutable reviewed base. HomeClaw authentication is verified:
+one coding run produced a regression that passes 26 independent native tests.
+The broker retains its failed pre-fix test-budget check; checkout and test-budget
+compatibility are corrected. The worker is stopped. Guest sandbox qualification
+and a VM-only reboot passed; shared Docker and sandbox requirements remain intact.
+See [deployment and remaining gates](openclaw-runtime-research.md#coding-integration-recheck-and-dedicated-worker-candidate).
+The approved synthetic OpenClaw sandbox has been created in the existing
+agents VM; qualification is recorded in [managed evidence](openclaw-nemoclaw.md).
+The standalone Compose fallback remains disabled; the dedicated worker is stopped
+after the bounded test; its saved proposal is held for review.
+Unattended worker activation, real GitHub publishing, host reboot and restore
+acceptance remain release gates. The model route is Qwen3.8 Flash-Next
+behind `automation-moe`; no model cutover is part of this change. See
+[discovery](openclaw-discovery.md) for dated live evidence and every n8n workflow.
+
+## Architecture and choice
+
+The live infrastructure lane exposes scoped reads for Home Assistant, home-core,
+and home-spark, with health and update observations every five minutes. OpenClaw
+can prepare, list, inspect and run exact maintenance plans through the separate
+root controller. Verified minor/patch updates use standing authorization. Every
+fix, major upgrade, uncertain version, unsupported stateful image change and protected Spark
+driver/kernel update requires human approval. Home Assistant monthly releases
+count as major changes; update entities need exact-version and backup support.
+
+Use `homecompute_maintenance_prepare` with home-core `nixos`, a reviewed Docker
+component (`homepage`, `n8n`, `caddy`, `litellm`, `postgres`, `open-webui`, `immich`,
+`piper`, `stt`), the custom MCP components `aula-mcp` and `tilbudstrolden-mcp`,
+or `restart-` plus a standard Docker component. Both hosts accept `image-`
+plus an exact observed container name through fresh registry discovery.
+Spark supports `packages`,
+`restart-plapre`, `restart-hviske`, and `restart-qwen`. Home Assistant uses a
+reviewed `update.*` entity ID. Preparation installs no update or repair; Docker
+preparation downloads an immutable candidate. Read preparation status, then
+inspect the plan's versions, digest, expiry and approval requirement.
+
+Orion covers both compute hosts; another conversational agent is unnecessary.
+The root host runner inventories every Docker container and checks host packages
+daily at 05:55 Copenhagen through `homecompute-host-update.timer`. Install its
+hash-bound bundle with `scripts/setup-host-maintenance.py` after installing the
+infrastructure controller. Spark needs a separate root installation; missing
+installation is reported as missing coverage until that step is complete.
+The `host-update-report` records successful updates and outstanding review or
+coverage gaps. Published numeric registry releases need independent platform
+and image provenance, the same image variant, a healthy running baseline, and
+bounded recoverable data before automatic replacement. The former container
+and private data backup are retained; failed attempts roll back and remain held.
+Major changes, same-version rebuilds, custom builds without a qualified recipe,
+unsupported registry sources and intentionally stopped/unhealthy containers
+remain review items. Full releases must reconcile successful image overrides.
+Core package candidates refresh the approved release's existing flake inputs
+in a private clone and build before full-closure classification. Spark refreshes
+signed APT metadata and permits only exact routine transactions without hidden
+solver effects; NVIDIA, kernel, runtime and major changes remain for review.
+Snap's existing refresh service remains responsible for snap updates. Imperative
+Nix profiles, source-pinned tools and user Python tools are explicit review gaps.
+
+The MCP lane checks published stable releases each Monday at 09:20 Copenhagen
+through `homecompute-mcp-update.timer`. Owner authorization permits tested patch
+and minor releases; a 0.x minor change remains a major compatibility change.
+The trusted builder pins release commits, applies the reviewed patches, runs
+upstream tests and production dependency audits, and binds the existing runtime
+configuration. Deployment backs up stopped service state, checks health and MCP
+discovery from n8n, and attempts rollback on failure. Major changes and failed
+or uncertain attempts remain held for operator review. Source-only commits and
+gateway dependency changes remain review signals outside this release lane.
+OpenClaw reads `mcp-update-report` and the maintenance ledger; prepare a fresh
+exact plan before requesting approval for a major update. The first live check
+on 2026-10-25 found both installed releases current. Install reviewed recipes and
+the timer with `scripts/setup-mcp-maintenance.py`; its default prints the bundle
+hash and changes nothing. Keep repository pins aligned before reconciling an
+automatic MCP deployment and performing a full host release.
+
+The root-only CLI is `/opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py`.
+An operator runs `review PLAN_ID`, then `approve PLAN_ID DIGEST` over the trusted
+SSH path; the native agent has neither operation. Spark approval is forwarded to
+the exact remote plan. Execution binds snapshots and source hashes, shares host
+deployment locks, records one attempt before effects, and never retries an
+uncertain result. Review running state and source pins before root-only
+`reconcile PLAN_ID`; full core deployment refuses unresolved image overrides.
+NixOS preparation builds an immutable candidate before registration. Other image/model
+layouts require a separately reviewed root plan rather than arbitrary commands.
+
+The managed assistant, native broker, scheduled observations and scoped Home
+Assistant integration are live; the manual worker is qualified. The broader
+broker controlled-action executors described below remain staged.
+
+```mermaid
+flowchart LR
+  user[Operator over SSH through Tailscale] --> ui[Loopback OpenClaw UI :18791]
+  n8n[Existing n8n schedules and workflow state] -. scoped events, staged .-> ui
+  systems[home-core, home-spark, Home Assistant, future systems] --> observe[Trusted read-only collectors]
+  observe -->|bounded changed findings| n8n
+  subgraph vm[Existing isolated agents VM on home-core]
+    oc[OpenClaw in its own NemoClaw/OpenShell sandbox]
+    route[OpenShell managed inference and credential custody]
+    hermes[Existing Hermes sandbox]
+    memory[Built-in Markdown memory and FTS]
+  end
+  broker[Trusted home-core task broker and SQLite ledger]
+  worker[Separate home-core Codex worker, per-task UID and worktree]
+  ui --> oc
+  oc --> route
+  route --> llm[Existing Caddy and LiteLLM automation-moe]
+  llm --> spark[DGX Spark Qwen3.8 Flash-Next]
+  oc -. scoped broker adapter requires qualification .-> broker
+  user -->|execution approval and digest-bound publication| broker
+  broker --> worker
+  worker -->|bounded files and untrusted test evidence| broker
+  worker --> proxy[CONNECT allowlist proxy]
+  proxy --> openai[Codex supported OpenAI backend]
+  broker -->|draft PR only| github[GitHub human review and independent CI]
+  oc --> memory
+  hermes -. remains independent .-> user
+```
+
+The observed K15 is `home-core`, so selecting a separate K15 is not an available
+placement decision. The recommended household target is **a separate OpenClaw
+NemoClaw/OpenShell sandbox in the existing agents VM on home-core**, alongside
+Hermes. NemoClaw/OpenShell provides managed inference credential custody and
+filesystem/network policy; it does not replace the broker's human approval
+boundary. See [the pinned NemoClaw assessment](openclaw-nemoclaw.md) before any
+rollout. Do not install OpenClaw into the running Hermes sandbox or on Spark.
+
+The optional NixOS module and Compose stack here are an isolated **validation
+fallback**, disabled by default. They stage restricted containers directly on
+home-core and do not claim VM-strength isolation. Do not enable this fallback
+as the household deployment merely because its schema passes. A NemoClaw rollout
+must use its managed `inference.local` route and a policy-scoped broker adapter;
+the Compose proxy/model relay are unnecessary on that managed assistant path.
+Keeping both assistants permanently needs an explicit owner/product decision;
+this pilot evaluates OpenClaw without silently replacing Hermes.
+
+Choose noninteractive `codex exec` with JSONL events for the first repair lane:
+it supports a fixed command, bounded lifetime, persistent session identity and
+headless permission policy without exposing a coding runtime to the assistant.
+The worker is pinned to CLI 0.145.0, whose exact flags were checked locally.
+This is deliberately an independently pinned CLI lane. Native Codex plugin,
+app-server supervision, ACP and paired Mac discovery are compared in
+[runtime research](openclaw-runtime-research.md). The Mac installation and auth
+are independent and unchanged; no Mac credential is reused.
+
+## Configuration and controls
+
+The following module, relay, broker and worker controls describe the staged
+Compose fallback. The live managed assistant's effective policy and resource
+measurements are recorded in the NemoClaw runbook. Its broker tools are disabled.
+
+- `homecompute.openclaw.enable` defaults to false. Importing the module changes
+  no running service, firewall, secret, mount or account while disabled.
+- Official OpenClaw 2026.9.9 uses an immutable OCI digest. Worker Node base is
+  digest-pinned, Debian apt uses a frozen snapshot, npm uses integrity-locked
+  artifacts and `npm ci --ignore-scripts`. The worker image built successfully
+  on home-core; the Compose assistant image remains unqualified.
+- Model relay permits only `/v1/models` and `/v1/chat/completions` for
+  `automation-moe`, fixes upstream TLS SNI/Host to `ai.home.arpa`, verifies the
+  private CA, forbids redirects and caps concurrency at one. Input/response
+  budgets are 4 MiB and output limit 4,096 tokens. Buffered SSE is supported;
+  token streaming latency is not preserved through the relay.
+- OpenClaw has a 32K operating context budget inside the observed 262,144
+  upstream ceiling, one turn at a time and no cloud fallback. These are pilot
+  limits, not long-context or reasoning qualification results. Gateway transient
+  retry behavior must be included in outage acceptance; turn/provider timeouts
+  alone may not bound all upstream retries.
+- OpenClaw can write its own workspace memory. It has no shell, browser, nodes,
+  Docker, SSH, n8n admin, database or physical-device tools. Only three custom
+  broker tools are exposed; status can list recent unresolved/completed tasks.
+- In the Compose fallback, broker/operator and worker endpoints are internal; UI and operator port bind
+  only `127.0.0.1`. Use an SSH tunnel through an approved Tailscale SSH alias:
+  `ssh -L 18791:127.0.0.1:18791 home-core`. Existing public TTLock Funnel is
+  unrelated and is not extended. Private gateway Tailscale reachability remains
+  a discovered gap; do not publish this pilot through Funnel.
+  For the recommended managed sandbox, tunnel to **guest** loopback through the
+  existing `home-core` jump host, using the operator SSH identity; see the
+  NemoClaw runbook for the distinct guest dashboard path.
+- Compose container budgets: assistant 1 CPU/1.5 GiB, worker 2 CPUs/4 GiB, broker
+  0.5 CPU/256 MiB, relay 0.25 CPU/128 MiB, proxy 0.25 CPU/128 MiB; no swap.
+  There is one worker claim at a time, at most 32 pending tasks, 30-minute job
+  lifetime, 120-second test stages and 10 MiB evidence file bounds.
+- Dedicated ext4 loop files cap assistant/ledger state at 4 GiB and workspaces
+  at 12 GiB. Sizes are creation-time settings; resizing an existing filesystem
+  requires separate operator maintenance. No old worktree is deleted automatically.
+- Trusted worker controller uses container-root with only setuid, setgid,
+  chown, DAC override and kill capabilities. Repository subprocesses use a
+  separate task UID and empty groups. No Docker/SSH/host socket is mounted.
+  Controller and evidence remain inaccessible to job code; completed workspace
+  roots are sealed before another UID is used. Every job ends the entire worker
+  container, so Docker restart destroys remaining processes.
+- Repository code necessarily sees the dedicated Codex key through the Codex
+  process environment. It must be revocable, scoped and budgeted. It cannot read
+  the worker control token, operator token or GitHub publisher token. Cloud
+  Codex is restricted to projects whose operator policy and committed
+  `.codex/data-policy.json` both say `cloud_allowed`; personal n8n/HA data is
+  not to be sent as task context. Public HTTPS allowlists limit reachable
+  destinations but do not prevent exfiltration to an allowed destination.
+
+## Task and memory ownership
+
+The ledger uses SQLite, already shipped with Python, for a single sequential
+worker. It introduces no database/Redis service, embedding service, custom
+personal-memory API or vector store. This small task ledger is justified by
+idempotency and approval/audit requirements; it is not competing n8n memory.
+
+`(project, issue_key)` uniquely identifies an investigation for its lifetime.
+Use stable keys such as `battery:failure:2026-10-09`, never randomized keys on
+event retries. State transitions are recorded transactionally:
+
+`pending → queued → running → review → publishing → completed`
+
+`cancelled` and `failed` are terminal. Default autonomous retry count is zero.
+Loss of a worker heartbeat for 60 seconds or broker restart marks in-flight
+work failed, never requeues a potentially completed write. Recovery requires
+reconciling worktrees/GitHub first; use a deliberately new incident generation
+only after human review. A publish failure can leave a branch or draft PR on
+GitHub; stable `codex/repair-<task UUID>` identifies it. The broker never force
+pushes, updates default branches, merges or deploys.
+
+Built-in OpenClaw Markdown/FTS owns preferences, decisions and assistant
+conversation memory. Git/PRs own project code and review history. Existing n8n
+tables own processed Aula runs, notifications, shopping state and execution
+history. The ledger alone owns agent job state/session ID/commit/PR link. No
+one copies entire workflow execution histories into the assistant. Status reads
+metadata; private code/context remains in restricted state/evidence. Review
+results are untrusted worker output; publishing still requires independent CI.
+
+## Setup after explicit approval
+
+1. Review this diff, the pinned NemoClaw target, the isolation acceptance checklist and existing
+   Hermes resource reservation. Choose a **synthetic-only** first deployment;
+   household memory also requires off-host backups and a successful restore.
+2. Decide unattended Codex authentication. Supported API-key authentication
+   is simplest for a headless service; a dedicated project/service account
+   with spend controls avoids borrowing Mac login files. It has separate API
+   billing. Supported device authorization is another option, but requires a
+   separate owner-maintained worker login lifecycle. This implementation uses
+   `CODEX_API_KEY` for `codex exec`; no key was read/created for this pilot.
+3. Provision nine dedicated values in the existing encrypted SOPS document:
+   `openclaw/gateway_token`, `model_key`, `broker_token`, `worker_token`,
+   `operator_token`, `snapshot_token`, `github_token`, `github_checkout_token`, `codex_api_key`. The broker role
+   tokens must be distinct random values of at least 32 characters. The model
+   key must permit only `automation-moe`; never use the LiteLLM master key.
+   Codex/checkout keys are root0400; worker token is root0440 in the broker-reader group;
+   repository subprocesses have neither that group nor UID. These fallback
+   secrets have not been provisioned. The approved managed synthetic canary uses
+   one separate seven-day `automation-moe` virtual key outside its sandbox,
+   verified to deny other aliases; see the managed evidence for its expiry.
+4. Review a synthetic test repository, its immutable base SHA, fixed test argv,
+   directory write prefixes and cloud data policy. Edit `config/codex-projects.json`.
+   It currently contains no projects, so all submissions are rejected. Example
+   policy intentionally fails validation until placeholders are replaced.
+   Public/private clones use fixed HTTPS URLs. A separate read-only GitHub
+   checkout credential is exposed only to the trusted controller's initial
+   Git process, never repository tests/Codex or persistent Git config. Its
+   repository selection must match the project allowlist. The publisher uses
+   a repository-scoped GitHub App token or fine-grained PAT with contents/PR
+   permission only; token renewal is operator-owned, no broad personal token.
+5. For an explicitly approved **Compose validation fallback only**, set
+   `homecompute.openclaw.enable = true` in reviewed host configuration,
+   evaluate/build the flake, then use the existing guarded deployment only
+   after approval. The module renders config privately, creates bounded state,
+   applies narrow ingress/egress rules before Docker starts, and runs the
+   opt-in Compose profile. Failed starts tear down the pilot stack.
+6. Validate synthetic-only UI, model relay, broker auth and Linux job isolation
+   before approving a worker task. Adding repositories changes policy rather
+   than model instructions; repositories cannot supply URLs/commands/credentials.
+
+The official auth and execution references are
+[Codex authentication](https://developers.openai.com/codex/auth/) and
+[noninteractive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
+No assumption is made that Codex uses the local model.
+
+## Operating a task
+
+Run the operator client on home-core; the token stays in its existing SOPS path.
+No token needs to be pasted into an assistant conversation.
+
+```bash
+sudo python3 /srv/homecompute/current/scripts/assistant-task.py list
+sudo python3 /srv/homecompute/current/scripts/assistant-task.py approve TASK_UUID
+sudo python3 /srv/homecompute/current/scripts/assistant-task.py status TASK_UUID
+sudo python3 /srv/homecompute/current/scripts/assistant-task.py review TASK_UUID --export /tmp/new-proposal-directory
+# Inspect exported files against the immutable base and private test evidence.
+sudo python3 /srv/homecompute/current/scripts/assistant-task.py publish TASK_UUID --result-sha256 REVIEWED_DIGEST
+sudo python3 /srv/homecompute/current/scripts/assistant-task.py cancel TASK_UUID
+```
+
+`approve` authorizes only that isolated coding task. `publish` authorizes only
+the exact reviewed proposal and creates a draft PR. Sensitive changes, physical
+devices, infrastructure/config files and deploy directories are outside the
+default write prefixes. They need a separately reviewed policy/action rather
+than an approval message generated by the model.
+
+Notifications remain in existing n8n delivery and deduplication state. Stage an
+inactive event adapter that sends minimal incident context; query task metadata
+and send only terminal changes/required approval, with a unique delivery key
+`task:<UUID>:<state>`. Importable scaffold in `automations/agent-investigation/`
+does not enable a workflow or send a real notification. Real n8n→OpenClaw hooks
+and notification wiring require explicit production approval and are not claimed
+as connected.
+
+## Extensible system observation and maintenance
+
+OpenClaw investigates observations and proposes repairs. Existing deterministic
+collectors and n8n schedules own detection and delivery. Maintenance remains
+observation and proposals: applying packages/images, NixOS switches, firmware,
+service restarts and Home Assistant actions require their existing approval paths.
+
+The operator-owned `config/system-monitoring.json` registers each system and
+its supported checks. `scripts/observe-homecompute.py` collects host metadata
+through the existing fixed SSH status implementation; no assistant can supply
+a shell command, arbitrary URL or credential. Its normalized findings and change
+keys enter the existing private outbox through `openclaw-observation-feed.py` for
+update checks only. Collection runs outside the sandbox. The committed Home
+Assistant entry remains disabled for live collection.
+
+Daily server timers run at 05:30 Europe/Copenhagen with up to 15 minutes of jitter.
+They write `/var/lib/homecompute-maintenance/report.json` without installing or
+pulling anything. The Mac feed admits summaries every five minutes; the existing
+n8n owner delivers meaningful changes after quiet hours. Collection survives Mac
+sleep; notification admission needs the Mac relay. Guest lanes remain unprovisioned.
+
+| System | Observation and update evidence | Consequential action |
+| --- | --- | --- |
+| home-core | Approved health, weekly model report, daily deployed nixpkgs catalog drift and public Docker channel manifests; local/source pins are explicit coverage gaps | Reviewed pinned change, backups/migrations as applicable, guarded NixOS/Compose deployment and rollback |
+| home-spark | Approved health, daily fresh isolated signed APT indexes and Docker metadata; public vendor sources are covered, four authenticated ESM suites and local images are explicit gaps | Vendor-supported DGX OS maintenance; model/runtime/parser changes require the existing qualification and promotion gates |
+| Home Assistant | Selected unavailable entities and update availability; reuse existing battery/device analysis findings | Software/integration recovery needs approval; battery, heating, locks and other physical-device behavior always needs explicit approval |
+| Future systems | Register a reviewed check using an existing adapter, or implement a new bounded read-only adapter | Define a separate action policy and executor only when that capability is approved |
+
+Home Assistant's REST API includes state reads and service writes under bearer
+authentication. Keep its credential in a trusted projection/collector with only
+approved read paths exposed to the assistant. Reading update entities does not
+authorize `update.install` or integration reloads. Do not give the sandbox a broad
+Home Assistant token or full state/history/error-log dump.
+[REST API](https://developers.home-assistant.io/docs/api/rest/),
+[update entities and actions](https://www.home-assistant.io/integrations/update/).
+
+Use this operational sequence when the event adapter is approved:
+
+1. A deterministic check records bounded evidence, its observation time and
+   freshness. Missing data is unknown rather than healthy. Define expected
+   service state explicitly so an intentionally stopped candidate is quiet.
+2. Compare the prior snapshot and deliver only new/changed actionable findings
+   or recovery. Reuse n8n notification receipts; collection itself does not send
+   a message. Keep a stable incident key across repeated observations.
+3. OpenClaw gathers only the approved context and proposes a cause, confidence,
+   concrete change and verification. "Not optimal" requires a defined baseline,
+   metric and persistence threshold; ordinary sensor variation is insufficient.
+4. A code repair becomes a pending broker task under an allowlisted repository.
+   Operator approval permits isolated coding; digest-bound approval permits a
+   draft PR. Neither permits a production deployment or device action.
+   Use `monitor:<episode_key>` as the broker issue key, mapped by the trusted
+   event adapter to a reviewed project; this fits the 128-character key budget
+   and keeps repeated observations attached to one investigation.
+5. The broker's controlled-action lane accepts a finite action ID, exact target
+   and trusted evidence ID. Synthetic recovery/update executors exercise approval,
+   windows, cooldowns, attempt limits, postchecks and rollback. Production
+   executors remain unavailable; their disabled policies reference the existing
+   maintenance mechanisms. The operator performs live recovery until the
+   corresponding executor, artifact and rollback runbook pass qualification.
+
+This separation makes adding a system a registry/adapter change rather than
+an expansion of assistant host access. It also preserves monitoring when the
+local model is unavailable: collectors still detect and report failures.
+
+The broker now includes a locally verified Streamable HTTP MCP endpoint at
+`/mcp`, exposing only submit/status/cancel with its assistant role. An actual
+official SDK loop tested initialization and all three tools against a synthetic
+loopback broker. Operator/worker credentials and unresolved credential
+placeholders are rejected. This is source-level transport verification: a live
+private HTTPS listener, OpenShell credential injection and endpoint policy are
+still required before connecting the sandbox. Expose only `/mcp`, never the
+operator HTTP routes, and keep the direct standalone plugin disabled in NemoClaw.
+
+## Controlled-action implementation and synthetic evidence
+
+`config/system-actions.json` is an operator-owned registry. It currently enables
+only `synthetic.recover` on `synthetic-core` and `synthetic.update` on
+`synthetic-spark`. Five production policy entries cover reviewed home-core
+deployment, n8n recovery, reviewed Spark application deployment, Plapre recovery
+and vendor DGX OS maintenance. They are disabled **and have no provisioned
+production executor**; changing `enabled` is rejected. No Home Assistant or
+physical-device action exists. The staged Sunday 02:00–03:00 Copenhagen windows
+are templates, not an accepted production schedule.
+
+`deploy/codex-worker/actions.py` uses separate action tables in the existing
+broker SQLite file, with a single execution owner, durable state transitions and
+bounded evidence retention. Existing n8n remains the scheduler and delivery
+owner; this lane adds no polling service or notification transport. Observation
+envelopes reuse the monitoring registry's `system_id`, `check_id`, `stable_key`,
+status, evidence and timezone-bearing freshness fields. Use the monitor episode
+key as the stable incident ID. The collector/operator supplies evidence and
+qualification gates; model output cannot set their values.
+
+The assistant can propose/status/cancel. Its exact proposal fields are
+`action_id`, `target`, `incident_key`, `evidence_id`; it cannot submit commands,
+URLs, credentials or timestamps. Operator review binds the action, registry,
+policy and evidence to an approval digest. Execution rechecks that digest,
+approval expiry, latest observation, evidence expiry, maintenance window,
+target lock, cooldown and attempt budget. Fresh evidence refresh revokes an old
+approval. The same action/target/incident always returns its original request,
+including after completion or restart. Initial policies allow one attempt.
+An uncertain effect blocks the target for operator reconciliation, rather than
+retrying. Synthetic rollback restores the recorded snapshot once and verifies
+it; a failed or interrupted rollback requires reconciliation.
+
+The operator client uses the existing loopback broker and operator token:
+
+```bash
+sudo python3 scripts/assistant-action.py evidence --document /path/to/trusted-observation-envelope.json
+sudo python3 scripts/assistant-action.py list
+sudo python3 scripts/assistant-action.py review ACTION_INSTANCE_UUID
+sudo python3 scripts/assistant-action.py approve ACTION_INSTANCE_UUID --approval-sha256 REVIEWED_DIGEST
+sudo python3 scripts/assistant-action.py execute ACTION_INSTANCE_UUID
+sudo python3 scripts/assistant-action.py refresh ACTION_INSTANCE_UUID --evidence-id FRESH_EVIDENCE_UUID
+```
+
+The evidence envelope has exactly `observation`, `incident_key`, `gates`.
+Select an exact normalized observation from the trusted collector; keep
+qualification/promotion receipts in their existing owning systems. An update
+count or cached apt inventory cannot supply reviewed-change, backup, model
+qualification or promotion approval. Production activation additionally needs
+an immutable reviewed artifact and a qualified executor/runbook; those are not
+inferred from advisory availability. Action state remains in `/actions` and its
+action audit; coding task state remains in `/tasks`. Reporting consumers should
+use stable `action:<UUID>:<state>` receipts in their existing delivery owner,
+and must not interpret chat replies as approval.
+
+When an action registry is loaded, `/mcp` additionally advertises exactly
+`homecompute_action_propose`, `homecompute_action_status`,
+`homecompute_action_cancel`. Without it, the original three-task inventory
+remains unchanged. Official SDK tests cover both inventories. The standalone
+plugin still exposes its original three coding tools. Managed configuration
+explicitly denies both tool sets and remains disconnected.
+
+`deploy/openclaw/nemoclaw/mcp.Caddyfile` stages a virtual host on existing Caddy
+and the existing agents-VM private TLS listener at `10.77.20.1:443`
+that proxies only literal `POST /mcp` and rejects other paths, methods and query
+variants. Native Caddy adaptation passed without reload. It is **not imported
+or deployed**: private DNS, routing, a reviewed fixed broker upstream, firewall
+admission and runtime CA trust remain required. Caddy also needs a reviewed
+private broker transport; its container loopback cannot reach the host-loopback
+operator port. Do not solve that by exposing operator routes to the sandbox.
+For eventual managed registration,
+use the pinned supported `mcp add` flow on gateway 9123 with a distinct
+`HOMECOMPUTE_TASK_MCP_TOKEN`, exact URL
+`https://openclaw-broker.home.arpa/mcp` and
+`--trusted-private-host openclaw-broker.home.arpa`. Load the credential transiently
+from the approved secret manager; OpenShell must own its endpoint-bound provider
+and resolver placeholder. Verify its private address pins and differential
+credential-resolution probe before enabling only the reviewed tools. Private CA
+changes require the supported rebuild/trust workflow, not a TLS-verification
+bypass. No credential was provisioned or managed MCP registration attempted.
+
+[Controlled-action evidence](openclaw-actions-validation.json) records completed
+synthetic update/recovery and durable audits. [Coding-flow evidence](openclaw-action-flow-validation.json)
+retains a synthetic session ID, actual disposable local Git commit, fixed-test
+results, reviewed digest and simulated draft PR payload. Run
+`python3 scripts/verify-openclaw-action-flow.py --report /tmp/synthetic-flow.json`
+to repeat the credential-free coding flow. Its fixed-result backend, local
+checkout and GitHub transport are explicitly simulated: this is **not an
+authenticated Codex fix or a real GitHub PR**. Real publication stays a separate
+digest-bound operator approval; merge and deployment are never performed.
+
+The isolation recheck confirmed Docker's default policy denies user namespace
+creation. The same pinned Codex binary passed native credential-free
+workspace-write under an unused UID with empty groups, no capabilities and
+no-new-privileges; outside writes, protected Git metadata writes, private
+sentinel reads and network sockets were denied. Both worker commands now
+exclude shared `/tmp` while retaining private job `TMPDIR`. This proves kernel
+capability, not a host-direct production replacement. The supported next
+candidate is a dedicated worker VM with normal Bubblewrap and scoped distro
+AppArmor support where required; it remains unprovisioned and unqualified.
+See [worker evidence](openclaw-worker-validation.json). No seccomp relaxation,
+extra container privilege, auth-file reuse or production worker was introduced.
+The existing assistant boot units remain disabled, its model key still expires
+2026-10-16 16:15:04 UTC, and Hermes remains on gateway 8080.
+
+## Acceptance and honest limitations
+
+Verified here: live host/model/workflow discovery; small synthetic required
+tool and strict JSON protocol tests; official OpenClaw schema/plugin/startup
+checks in isolated temporary state; offline broker HTTP roles/deduplication,
+cancel/lease/restart behavior, patch boundaries and draft publisher contract.
+An actual isolated OpenClaw agent called the real broker through the live
+`automation-moe` model in 6.176 seconds and left one synthetic task pending.
+That probe used direct verified TLS on the Mac, so it does not verify the
+deployment relay, Linux worker or container network. Sanitized receipts are in
+[runtime validation](openclaw-runtime-validation.json).
+Repository/flake check results and remaining runtime gates are recorded in
+[validation summary](openclaw-validation-summary.json).
+The worker image subsequently built on home-core in an isolated, secret-free
+one-CPU/2-GiB build. Disposable containers verified per-job UID isolation,
+protected secret/evidence denial, temporary files and detached non-dumpable
+child cleanup. The unprivileged Squid profile starts and rejects direct HTTP,
+private/unknown targets and non-443 CONNECT without DNS lookups for rejected
+hosts. See [Linux worker evidence](openclaw-worker-validation.json). A native
+Codex Linux sandbox probe still encountered a Bubblewrap namespace denial under
+Docker's default policy; actual Codex execution is not qualified by these tests.
+No sandbox bypass or extra container privilege was granted.
+The worker now runs a literal workspace-write sandbox preflight in a private
+empty directory before checkout or model authentication. It fails within
+30 seconds when the runtime cannot enforce the profile, with zero API calls.
+The pinned CLI's deprecated Landlock alternative also failed workspace-write
+compatibility, so it is not enabled. Read-only Landlock did work in the same
+container; this does not qualify the coding lane.
+The offline publisher uses a fake GitHub endpoint and is **not evidence of a
+real PR or actual Codex fix**. See runtime research for actual native agent
+probe results; do not treat standalone tool protocol success as agent qualification.
+
+Before enabling autonomous scoped code repair, demonstrate:
+
+- Linux image build and `codex --version` have passed; verify sandbox workspace-write under
+  Docker's default seccomp/user-namespace policy (no bypass flag is configured).
+- Repository tests cannot read control/publisher/operator secret mounts, signal
+  the trusted controller, see another task directory or reach production LAN,
+  Docker, SSH or physical devices. Codex's own limited key exposure is expected.
+- Squid starts unprivileged and denies private addresses/unknown hosts; model
+  relay cannot select another Caddy Host, URL, model or upstream credential.
+- Actual worker clone→fix→fixed-tests→proposal→operator-reviewed draft PR in the
+  nominated synthetic repo, with session/commit/PR links and existing n8n notification.
+- SIGTERM/cancel/kill/reboot during Codex and publication produces terminal state,
+  no duplicate investigations and no default-branch write. Confirm zero old child
+  processes after each container restart and runtime CPU/RAM/disk ceilings.
+- Upstream outage/retry deadline, 32K context growth, multistep reasoning and
+  representative assistant tasks under n8n's usual workload. No model change
+  should be recommended before these realistic comparisons pass.
+- Existing n8n execution/error rates and household services stay healthy;
+  record baseline and after results without triggering consequential workflows.
+- Encrypted off-host backup, restore to a disposable isolated stack and startup
+  from retained OpenClaw state. Upgrade state only with an explicit offline
+  writable-config migration, then recreate from immutable declarative config.
+
+## Kill switch, backup and rollback
+
+```bash
+sudo touch /srv/state/openclaw/DISABLED
+sudo systemctl stop homecompute-openclaw
+```
+
+This stops all pilot containers and prevents systemd-start/reboot from reactivating
+them. Also disable the Nix option and deploy the reviewed rollback if stopping
+indefinitely; Docker restart policies need the containers removed by Compose down.
+Revoke the dedicated model/Codex/GitHub/role credentials for an incident.
+
+Consistent backup requires stopping the whole stack. Existing Restic source
+integration refuses backup while any pilot container is running, including after
+a failed service start. It includes memory, SQLite WAL and restricted workspaces;
+protect private Codex evidence like source data. Off-host backup is disabled today,
+so no personal data is admitted by the synthetic pilot. Restore into different
+loop files/ports with internal networking and empty projects, verify integrity,
+then restore credentials externally. Snapshots never authorize pending writes.
+
+Rollback uses the existing reviewed HomeCompute revision and sets the enable
+option false. Preserve state/images for recovery; do not delete a database to
+force a duplicate investigation. A code rollback cannot reverse OpenClaw state
+migrations, GitHub branches or PRs; reconcile those explicitly. Root disk paths,
+bounded images and existing production databases are never destroyed automatically.
+
+The authenticated conversation console, scoped notification adapter and inactive
+n8n delivery route have separate [communication evidence and an activation/rollback proposal](openclaw-communication.md).

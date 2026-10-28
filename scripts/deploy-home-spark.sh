@@ -15,6 +15,9 @@ install -d -m 0755 /srv/homecompute/releases
 install -d -m 0700 /var/lib/homecompute
 exec 9>/var/lib/homecompute/home-spark-deploy.lock
 flock -n 9 || { printf 'Another home-spark deployment is running.\n' >&2; exit 1; }
+if [[ -d /var/lib/homecompute-docker-maintenance ]] && find /var/lib/homecompute-docker-maintenance -maxdepth 1 -name '*.active' -print -quit | read -r _active_docker_update; then
+  printf 'Reconcile automatic Docker updates and source pins before full deployment.\n' >&2; exit 1;
+fi
 source_repo=/home/madslundt/HomeCompute
 [[ -d "$source_repo" && -d "$source_repo/.git" ]] || {
   printf 'Expected the HomeCompute source checkout at %s.\n' "$source_repo" >&2; exit 1;
@@ -40,10 +43,13 @@ git_source merge --ff-only "$source_revision"
 chown --no-dereference --recursive "$source_owner:$source_group" "$source_repo"
 release="/srv/homecompute/releases/$revision"
 if [[ ! -d "$release" ]]; then
-  git -c "safe.directory=$source_repo" clone --no-checkout "$source_repo" "$release"
+  # Clone from the reviewed upstream commit rather than asking root to open the
+  # operator-owned working tree as a Git transport. Git rejects that nested
+  # .git path as dubious ownership even when the worktree is explicitly trusted.
+  git clone --no-checkout https://github.com/madslundt/HomeCompute.git "$release"
 fi
 if ! git -C "$release" cat-file -e "$revision^{commit}" 2>/dev/null; then
-  git -c "safe.directory=$source_repo" -C "$release" fetch --no-tags "$source_repo" "$revision"
+  git -C "$release" fetch --no-tags https://github.com/madslundt/HomeCompute.git "$revision"
 fi
 git -C "$release" cat-file -e "$revision^{commit}"
 

@@ -1,5 +1,40 @@
 # Current-state analysis
 
+## OpenClaw discovery addendum (2026-10-09)
+
+Read-only live inspection found `home-core` is the GMKtec K15 with Intel
+Core Ultra 5 125U, not the older Ryzen/M7 description. `automation-moe` now
+routes through LiteLLM and the existing SSH tunnel to Flash-Next UltraFast's
+`automation-qualification` endpoint on Spark loopback port 18300, advertising 262144
+context tokens. Small synthetic tool/result/schema probes passed. Hermes is
+running in the agents VM. After explicit approval, a separate synthetic
+`agent-openclaw` sandbox was created on NemoClaw gateway 9123 using
+`automation-moe`; Hermes retains its original route. The Codex worker and
+production monitoring/action integrations remain disabled. Managed qualification
+and remaining gates are in [OpenClaw in NemoClaw](openclaw-nemoclaw.md).
+Discovery details and evidence limits are in
+[OpenClaw discovery](openclaw-discovery.md) and
+[OpenClaw runtime validation](openclaw-runtime-validation.json).
+
+The September snapshots below remain historical records. Source model catalog
+and qualification procedures were not promoted or deployed during discovery.
+
+> **Model-current snapshot:** the 2026-10-09 addendum above is the newest live observation. `Model replacement qualification` below retains the 2026-09-29 handoff; earlier dated statements remain historical snapshots.
+
+## Immich and photo backup status (2026-09-29)
+
+The repository now defines a pinned Immich v3.2.4 Compose deployment, a
+configurable media path with local PostgreSQL state, and a reusable
+source-to-destination Restic model. It also includes a consistent SQL dump
+helper, strict-host-key SFTP target settings, weekly repository checks,
+machine-readable status files, a Google Takeout import helper, and an isolated
+restore helper. Immich is enabled in the host configuration with its database
+password provisioned in SOPS, but has not been deployed. Off-site backups remain
+disabled pending a purchased/configured Hetzner Storage Box and its credentials.
+No service deployment, backup, restore drill, or Takeout import has been
+observed.
+See [`immich.md`](immich.md) for setup and remaining release gates.
+
 **Date:** 2026-09-26
 **Status:** Live deployment observed on both hosts; canary and hardening gaps remain
 
@@ -350,3 +385,53 @@ streaming, tool, privacy, and latency corpus.
 9. Decide the canonical personal event-store host and API authorization model;
    do not infer that the existing LibreChat PostgreSQL/Qdrant/Redis stores are
    reusable or appropriately isolated.
+
+
+## Model replacement qualification and alias trial (2026-09-30)
+
+**CURRENT:** n8n and other clients continue to call the LiteLLM alias
+`automation-moe`. The owner directed LiteLLM to route that alias to NVIDIA
+Qwen3.8-Flash-Next NVFP4 revision
+`fc694b54fb0174e0913e6adf86691ef85a4ead47` through the restricted home-core
+SSH tunnel to home-spark loopback port 18300. The model remains marked as a
+candidate: synthetic screening was inconclusive and full quality qualification
+is incomplete. Qwen3.6 is stopped and retained as the rollback model.
+
+**OWNER-DIRECTED TRIAL:** NVIDIA Qwen3.8-Flash-Next NVFP4 revision
+`fc694b54fb0174e0913e6adf86691ef85a4ead47`, using Blazux commit
+`b05e14681325f3cc5bd22e7f48537feeeb0bf266` and pinned vLLM 0.30.0 ARM64 base
+image digest, is running at GPU memory utilization 0.74. Its measured local
+image digest is `sha256:12ef55e080d1a050a40f6801127dffa7b297e622f71e20d498456f9336db7127`.
+Physical and workflow quality qualification remain incomplete.
+
+**PERFORMANCE CHALLENGER:** `dime-online/qwen3.8-Flash-DGX-UltraFast` is pinned
+to source commit `0c391a3e74b6a775cfe248691ca7fd855b1876a5`, AutoRound model
+revision `8b82f0b7abe3d1150a7827d298c75e86267636ae`, and FP8 PLE table revision
+`50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14`. It is not production-qualified.
+Its quantized target differs from NVIDIA NVFP4, so MTP target verification does
+not prove parity with the Blazux quality baseline. Both profiles use only the
+isolated `automation-qualification` route for A/B work; production routes stay
+unchanged.
+
+**TARGET (pending):** one resident general text model across semantic routes;
+retain only Hviske v5.3 and Plapre Nano v2 as required Spark speech services.
+Qwen3.8-27B remains a substantially smaller, efficient cold fallback/workhorse
+artifact. It is not part of the current n8n route. Gemma and Qwen3-TTS are outside the
+target; Whisper is optional/deferred to `home-core`.
+
+The benchmark comparison, unrun metrics, and remaining gates are tracked
+in [`benchmarks/qwen36-vs-flash-next-automation.md`](benchmarks/qwen36-vs-flash-next-automation.md).
+The n8n workflow node and credential still use the alias; only the LiteLLM
+backend mapping changes during model swaps.
+
+**Live-host reconciliation note (2026-09-29):** read-only Docker inspection
+after access was granted found healthy container `gb10-automation-nvidia-primary`
+serving `nvidia/Qwen3.6-35B-A3B-NVFP4` revision
+`1355db6a052410cfd62085d94b58866fd0f2c3c5` behind both `automation-moe` and
+`automation-moe-nvidia`. Its vLLM image is pinned to
+`sha256:2a7cde230b59f3ce6cab33dd245ba6bee41aa87b38c9fe84f966ff24016813ce`;
+the configured context is 131072 and KV cache is FP8. This differs from the
+Unsloth `739af1e…` revision named as current production in the handoff and
+model catalog. The discrepancy must be reconciled before a Qwen3.6 baseline
+can be called representative of production. The candidate was not installed,
+started, or routed.

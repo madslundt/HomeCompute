@@ -1,0 +1,6 @@
+# Apply only with the existing n8n base + production Compose files after approval.
+# Preserve the existing homeassistant.local mapping and all original state/settings.
+services:
+  n8n:
+    extra_hosts:
+      - openclaw-communication.home.arpa:172.28.201.1

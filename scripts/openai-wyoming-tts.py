@@ -33,9 +33,8 @@ MAX_PCM_BYTES = 32 * 1024 * 1024
 MAX_WYOMING_EVENTS = 65_536
 CONNECT_TIMEOUT_SECONDS = 5.0
 READ_TIMEOUT_SECONDS = 15.0
-SYNTHESIS_TIMEOUT_SECONDS = 60.0
-HTTP_TIMEOUT_SECONDS = 65.0
-MAX_CONCURRENT_REQUESTS = 4
+DEFAULT_SYNTHESIS_TIMEOUT_SECONDS = 60
+DEFAULT_MAX_CONCURRENT_REQUESTS = 4
 ALLOWED_FIELDS = {"model", "input", "voice", "response_format", "speed"}
 
 
@@ -63,6 +62,8 @@ class Config:
     voice_alias: str
     piper_voice_id: str
     max_input_chars: int
+    synthesis_timeout_seconds: int
+    max_concurrent_requests: int
 
 
 def _required_env(name: str) -> str:
@@ -94,6 +95,18 @@ def load_config() -> Config:
         1,
         100_000,
     )
+    synthesis_timeout = _integer(
+        "TTS_SYNTHESIS_TIMEOUT_SECONDS",
+        os.environ.get("TTS_SYNTHESIS_TIMEOUT_SECONDS", str(DEFAULT_SYNTHESIS_TIMEOUT_SECONDS)),
+        1,
+        300,
+    )
+    max_concurrent = _integer(
+        "TTS_MAX_CONCURRENT_REQUESTS",
+        os.environ.get("TTS_MAX_CONCURRENT_REQUESTS", str(DEFAULT_MAX_CONCURRENT_REQUESTS)),
+        1,
+        16,
+    )
     key_path = Path(_required_env("TTS_API_KEY_FILE"))
     key_text = key_path.read_text(encoding="utf-8").strip()
     if not key_text or any(character.isspace() for character in key_text):
@@ -117,6 +130,8 @@ def load_config() -> Config:
         voice_alias=aliases["TTS_VOICE_ALIAS"],
         piper_voice_id=aliases["PIPER_VOICE_ID"],
         max_input_chars=max_chars,
+        synthesis_timeout_seconds=synthesis_timeout,
+        max_concurrent_requests=max_concurrent,
     )
 
 
@@ -148,9 +163,11 @@ class WyomingGateway:
         self,
         uri: str,
         client_factory: Callable[..., Any] = AsyncClient.from_uri,
+        synthesis_timeout_seconds: int = DEFAULT_SYNTHESIS_TIMEOUT_SECONDS,
     ) -> None:
         self.uri = uri
         self.client_factory = client_factory
+        self.synthesis_timeout_seconds = synthesis_timeout_seconds
 
     def _client(self) -> Any:
         # Wyoming 1.8, the image's declared floor, has no timeout parameters.
@@ -205,7 +222,7 @@ class WyomingGateway:
             return asyncio.run(
                 asyncio.wait_for(
                     self._synthesize(text, voice_id),
-                    timeout=SYNTHESIS_TIMEOUT_SECONDS,
+                    timeout=self.synthesis_timeout_seconds,
                 )
             )
         except (OSError, TimeoutError, asyncio.TimeoutError, ValueError, AssertionError) as error:
@@ -227,7 +244,7 @@ class AdapterHandler(BaseHTTPRequestHandler):
 
     def setup(self) -> None:
         super().setup()
-        self.connection.settimeout(HTTP_TIMEOUT_SECONDS)
+        self.connection.settimeout(self.config.synthesis_timeout_seconds + 5)
 
     def log_message(self, _format: str, *args: Any) -> None:
         return
@@ -390,7 +407,7 @@ class AdapterHTTPServer(ThreadingMixIn, HTTPServer):
     def __init__(self, address: tuple[str, int], config: Config, gateway: WyomingGateway) -> None:
         self.config = config
         self.gateway = gateway
-        self._slots = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
+        self._slots = threading.BoundedSemaphore(config.max_concurrent_requests)
         super().__init__(address, AdapterHandler)
 
     def process_request(self, request: socket.socket, client_address: Any) -> None:
@@ -423,7 +440,10 @@ def build_server(config: Config, gateway: WyomingGateway | None = None) -> Adapt
     return AdapterHTTPServer(
         (config.bind_address, config.port),
         config,
-        gateway or WyomingGateway(config.wyoming_uri),
+        gateway or WyomingGateway(
+            config.wyoming_uri,
+            synthesis_timeout_seconds=config.synthesis_timeout_seconds,
+        ),
     )
 
 

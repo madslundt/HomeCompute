@@ -53,25 +53,26 @@ def main(argv=None):
         "--model",
         default="automation",
         help=(
-            "Requested stable HomeCompute capability (default: automation); this does not grant access. "
-            "The deployed client credentials still need migration to the stable alias."
+            "Requested stable HomeCompute capability (default: automation). "
+            "Explicit client credentials restrict the available aliases."
         ),
     )
     parser.add_argument("--tools", action="store_true", help="Offer the example get_temperature function")
     parser.add_argument("--tool-choice", choices=("auto", "required", "none"), default="auto")
     args = parser.parse_args(argv)
     key = os.environ.get("HOMECOMPUTE_SCRIPT_API_KEY")
-    if not key:
-        raise SystemExit("Set HOMECOMPUTE_SCRIPT_API_KEY (source ~/.config/homecompute/clients.env)")
     if args.tool_choice != "auto" and not args.tools:
         parser.error("--tool-choice requires --tools")
 
     message = " ".join(args.message) or "Reply with READY."
     body = build_body(args.model, message, include_tools=args.tools, tool_choice=args.tool_choice)
+    headers = {"Content-Type": "application/json"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
     request = urllib.request.Request(
         "https://ai.home.arpa/v1/chat/completions",
         data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     ca_path = os.environ.get("HOMECOMPUTE_CA_CERT", os.path.expanduser("~/.config/homecompute/home-core-root.crt"))

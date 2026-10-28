@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "mode": "externally-supervised",
+  "endpoint": "https://127.0.0.1:9123",
+  "stateDir": "/home/hermes-operator/.local/state/homecompute-openclaw/gateway-9123",
+  "supervisor": {
+    "kind": "systemd-user",
+    "serviceName": "homecompute-openclaw-gateway.service",
+    "execPath": "/home/hermes-operator/.local/bin/openshell-gateway"
+  },
+  "requiredCapabilities": ["gateway.health", "sandbox.create", "sandbox.exec"]
+}

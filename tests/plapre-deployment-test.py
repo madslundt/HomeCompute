@@ -28,16 +28,16 @@ class PlapreDeploymentTest(unittest.TestCase):
             raise AssertionError(result.stderr)
         cls.document = json.loads(result.stdout)
 
-    def test_only_wyoming_edge_is_published(self) -> None:
+    def test_only_private_inference_http_is_published_on_spark(self) -> None:
         services = self.document["services"]
+        self.assertEqual(set(services), {"plapre-primary", "plapre-http"})
         self.assertNotIn("ports", services["plapre-primary"])
-        self.assertNotIn("ports", services["plapre-wyoming"])
-        self.assertEqual(services["plapre-edge"]["ports"][0]["published"], "10201")
-        self.assertEqual(services["plapre-edge"]["ports"][0]["target"], 10201)
+        self.assertEqual(services["plapre-http"]["ports"][0]["published"], "8004")
+        self.assertEqual(services["plapre-http"]["ports"][0]["host_ip"], "127.0.0.1")
         self.assertEqual(set(services["plapre-primary"]["networks"]), {"inference"})
-        self.assertEqual(set(services["plapre-wyoming"]["networks"]), {"inference"})
-        self.assertEqual(set(services["plapre-edge"]["networks"]), {"edge", "inference"})
+        self.assertEqual(set(services["plapre-http"]["networks"]), {"edge", "inference"})
         self.assertTrue(self.document["networks"]["inference"]["internal"])
+        self.assertNotIn("deploy", services["plapre-http"])
 
     def test_runtime_is_offline_least_privilege_and_pinned(self) -> None:
         services = self.document["services"]
@@ -58,14 +58,17 @@ class PlapreDeploymentTest(unittest.TestCase):
         self.assertEqual(primary["environment"]["PLAPRE_GB10_HYBRID_DECODE"], "1")
         self.assertEqual(primary["environment"]["OPENBLAS_NUM_THREADS"], "1")
         self.assertEqual(primary["environment"]["OMP_NUM_THREADS"], "2")
-        self.assertIn("/var/cache/triton:rw,exec,nosuid,nodev,size=1g", primary["tmpfs"])
+        self.assertIn(
+            "/var/cache/triton:rw,exec,nosuid,nodev,size=1g,uid=65532,gid=65532",
+            primary["tmpfs"],
+        )
         command = " ".join(primary["command"])
         self.assertIn("/opt/plapre/models/plapre", command)
         self.assertNotIn("syvai/plapre-nano-v2", command)
-        self.assertEqual(services["plapre-wyoming"]["environment"]["PLAPRE_VOICE_ALIAS"], "danish-default")
-        self.assertEqual(services["plapre-wyoming"]["environment"]["PLAPRE_SPEAKER_ID"], "tor")
-        self.assertEqual(services["plapre-wyoming"]["environment"]["PLAPRE_TEMPO"], "1.20")
-        self.assertIn("--tempo=1.20", services["plapre-wyoming"]["command"])
+        core = (ROOT / "deploy/control-plane/compose.yaml").read_text()
+        self.assertIn("--voice-alias=danish-default", core)
+        self.assertIn("--speaker-id=tor", core)
+        self.assertIn("--tempo=1.20", core)
 
     def test_image_build_closes_mutable_revision_gaps(self) -> None:
         text = DOCKERFILE.read_text(encoding="utf-8")

@@ -1,0 +1,29 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+# Dedicated bridge-only listener; never attach this origin to Funnel or LAN binds.
+https://openclaw-communication.home.arpa:19443 {
+	bind 172.28.201.1
+	tls /run/tls/communication.crt /run/tls/communication.key
+	request_body {
+		max_size 256KB
+	}
+	@bounded {
+		remote_ip 172.28.201.2
+		method POST
+		path /conversation /status /observations /analysis /tasks /actions /claim /ack
+	}
+	handle @bounded {
+		# SSH reverse-forward from the existing operator workstation, core loopback only.
+		reverse_proxy 127.0.0.1:18793 {
+			transport http {
+				response_header_timeout 70s
+			}
+		}
+	}
+	handle {
+		respond "Not found" 404
+	}
+}

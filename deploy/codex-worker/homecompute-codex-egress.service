@@ -1,0 +1,16 @@
+[Unit]
+Description=HomeCompute dedicated guest scoped CONNECT proxy
+After=docker.service network.target homecompute-codex-network.service homecompute-codex-firewall.service
+Requires=docker.service homecompute-codex-network.service homecompute-codex-firewall.service
+
+[Service]
+Type=simple
+ExecStartPre=-/run/current-system/sw/bin/docker rm -f homecompute-codex-egress
+ExecStart=/run/current-system/sw/bin/docker run --rm --name homecompute-codex-egress --network host --read-only --user 1000:1000 --cap-drop ALL --security-opt no-new-privileges:true --memory 128m --memory-swap 128m --cpus 0.25 --pids-limit 64 --tmpfs /tmp:rw,noexec,nosuid,nodev,size=32m,uid=1000,gid=1000,mode=0700 --mount type=bind,source=/opt/homecompute/codex-broker/host-squid.conf,target=/etc/squid/homecompute.conf,readonly --entrypoint squid sha256:a3949b9505f2430473e5f33b8388c1eb3d09bf611e444fdba066e035ab0883d5 -N -f /etc/squid/homecompute.conf
+ExecStop=/run/current-system/sw/bin/docker stop homecompute-codex-egress
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

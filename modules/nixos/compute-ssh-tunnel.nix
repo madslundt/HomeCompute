@@ -62,10 +62,12 @@ let
         -o UserKnownHostsFile="$known_hosts" \
         -i "$identity" \
         -p '${toString cfg.sshPort}' \
-        -L "$bind_address:18005:127.0.0.1:8005" \
+        -L "$bind_address:18003:127.0.0.1:8003" \
+        -L "$bind_address:18005:127.0.0.1:18400" \
         -L "$bind_address:18006:127.0.0.1:8006" \
-        -L "$bind_address:18201:127.0.0.1:10201" \
-        -L "$bind_address:18301:127.0.0.1:10301" \
+        -L "$bind_address:18007:127.0.0.1:8007" \
+        -L "$bind_address:18201:127.0.0.1:8004" \
+        -L "$bind_address:18301:127.0.0.1:8003" \
         "$target"
     '';
   };
@@ -146,32 +148,49 @@ in
       script = ''
         # Install a temporary reject before replacing the live chain so a
         # failed activation cannot expose a forward to another edge container.
-        iptables -w -I INPUT 1 -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j REJECT
+        iptables -w -I INPUT 1 -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j REJECT
+        while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j HC-COMPUTE-TUNNEL 2>/dev/null; do
+          iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j HC-COMPUTE-TUNNEL
+        done
+        while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL 2>/dev/null; do
+          iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL
+        done
+        # Remove the pre-transcription chain reference during a scoped upgrade.
         while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL 2>/dev/null; do
           iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL
         done
         iptables -w -N HC-COMPUTE-TUNNEL 2>/dev/null || true
         iptables -w -F HC-COMPUTE-TUNNEL
+        iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18003 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18005 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+        iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18007 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.4/32 -d 172.28.200.1/32 -p tcp --dport 18201 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.5/32 -d 172.28.200.1/32 -p tcp --dport 18301 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -j REJECT
-        iptables -w -I INPUT 1 -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL
+        iptables -w -I INPUT 1 -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j HC-COMPUTE-TUNNEL
 
+        iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18003 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18005 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+        iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18007 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.4/32 -d 172.28.200.1/32 -p tcp --dport 18201 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.5/32 -d 172.28.200.1/32 -p tcp --dport 18301 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -j REJECT
-        while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j REJECT 2>/dev/null; do
-          iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j REJECT
+        while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j REJECT 2>/dev/null; do
+          iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j REJECT
         done
       '';
       preStop = ''
-        iptables -w -I INPUT 1 -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j REJECT
+        iptables -w -I INPUT 1 -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j REJECT
+        while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j HC-COMPUTE-TUNNEL 2>/dev/null; do
+          iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18007,18201,18301 -j HC-COMPUTE-TUNNEL
+        done
         while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL 2>/dev/null; do
           iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL
+        done
+        while iptables -w -C INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL 2>/dev/null; do
+          iptables -w -D INPUT -d 172.28.200.1/32 -p tcp -m multiport --dports 18003,18005,18006,18201,18301 -j HC-COMPUTE-TUNNEL
         done
         if iptables -w -L HC-COMPUTE-TUNNEL -n >/dev/null 2>&1; then
           iptables -w -F HC-COMPUTE-TUNNEL

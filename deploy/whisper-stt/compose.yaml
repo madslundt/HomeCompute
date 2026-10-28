@@ -1,0 +1,193 @@
+name: whisper-stt
+
+x-runtime: &runtime
+  image: ${WHISPER_IMAGE:-nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d}
+  init: true
+  user: "${GB10_RUNTIME_UID:?Set GB10_RUNTIME_UID}:${GB10_RUNTIME_GID:?Set GB10_RUNTIME_GID}"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: local
+    options: {max-size: "10m", max-file: "3"}
+
+services:
+  whisper-fetch:
+    <<: *runtime
+    profiles: [prepare]
+    cpus: 2
+    mem_limit: 4g
+    pids_limit: 128
+    environment:
+      HF_HOME: /var/cache/huggingface
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      HF_HUB_DISABLE_XET: "1"
+    entrypoint: [python3, /opt/homecompute/model-cache-integrity.py]
+    command:
+      - fetch
+      - --cache-root
+      - /var/cache/huggingface
+      - --repo-id
+      - openai/whisper-large-v3-turbo
+      - --revision
+      - 41f01f3fe87f28c78e2fbf8b568835947dd65ed9
+      - --max-artifact-bytes
+      - "3000000000"
+      - --max-artifact-files
+      - "32"
+      - --max-cache-bytes
+      - "536870912000"
+      - --max-cache-files
+      - "50000"
+      - --min-free-bytes
+      - "214748364800"
+    volumes:
+      - ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface:/var/cache/huggingface
+      - ../../scripts/model-cache-integrity.py:/opt/homecompute/model-cache-integrity.py:ro
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=128m"]
+    networks: [artifact-fetch]
+
+  whisper-accept:
+    <<: *runtime
+    profiles: [prepare]
+    user: "0:${GB10_RUNTIME_GID:?Set GB10_RUNTIME_GID}"
+    cpus: 2
+    mem_limit: 1g
+    pids_limit: 64
+    entrypoint: [python3, -c]
+    command:
+      - |
+        import json, os, stat, subprocess
+        from pathlib import Path
+        args = ['python3', '/opt/homecompute/model-cache-integrity.py', 'create',
+                '--cache-root', '/var/cache/huggingface', '--repo-id', 'openai/whisper-large-v3-turbo',
+                '--revision', '41f01f3fe87f28c78e2fbf8b568835947dd65ed9']
+        manifest = subprocess.check_output(args)
+        objects = json.loads(manifest)['objects'].values()
+        assert any(obj['sha256'] == '542566a422ae4f3fd23f1ba11add198fca01bbf82e66e6a2857b3f608b1eb9d1'
+                   and obj['size'] == 1617824864 for obj in objects), 'Whisper weight checksum mismatch'
+        target = Path('/manifests/accepted-whisper-turbo-cache.json')
+        if target.exists() or target.is_symlink():
+            info = target.lstat()
+            assert stat.S_ISREG(info.st_mode) and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o440, "Untrusted accepted Whisper manifest"
+            assert target.read_bytes() == manifest, 'Existing accepted Whisper manifest differs'
+        else:
+            temporary = target.with_suffix('.tmp')
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o440)
+            with os.fdopen(fd, 'wb') as handle:
+                handle.write(manifest)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.link(temporary, target)
+            temporary.unlink()
+        print('Verified and accepted pinned Whisper Turbo cache')
+    volumes:
+      - ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface:/var/cache/huggingface:ro
+      - ${GB10_ROOT:?Set GB10_ROOT}/manifests:/manifests
+      - ../../scripts/model-cache-integrity.py:/opt/homecompute/model-cache-integrity.py:ro
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=16m"]
+    networks: [inference]
+
+  whisper-primary:
+    <<: *runtime
+    container_name: gb10-whisper-primary
+    restart: unless-stopped
+    cpus: 4
+    mem_limit: 8g
+    pids_limit: 256
+    shm_size: 1gb
+    environment:
+      HF_HOME: /var/cache/huggingface
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+      HOME: /var/cache/vllm
+      TRITON_CACHE_DIR: /var/cache/vllm/triton
+      VLLM_CACHE_ROOT: /var/cache/vllm/vllm
+      USER: gb10-ai
+      LOGNAME: gb10-ai
+      TORCHINDUCTOR_CACHE_DIR: /var/cache/vllm/torchinductor
+      TOKENIZERS_PARALLELISM: "false"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface \
+          --repo-id openai/whisper-large-v3-turbo --revision 41f01f3fe87f28c78e2fbf8b568835947dd65ed9 \
+          --manifest /run/accepted-whisper-turbo-cache.json
+        export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
+        exec vllm serve openai/whisper-large-v3-turbo --revision 41f01f3fe87f28c78e2fbf8b568835947dd65ed9 \
+          --served-model-name whisper-turbo --host 0.0.0.0 --port 8000 \
+          --gpu-memory-utilization 0.04 --max-num-seqs 1 --max-num-batched-tokens 2048 --enforce-eager \
+          --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes:
+      - ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface:/var/cache/huggingface:ro
+      - ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-whisper-turbo-cache.json:/run/accepted-whisper-turbo-cache.json:ro
+      - ../../scripts/model-cache-integrity.py:/opt/homecompute/model-cache-integrity.py:ro
+    # Triton loads generated shared libraries from its isolated compiler cache.
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=1g"
+      - "/var/cache/vllm:rw,exec,nosuid,nodev,size=512m,uid=${GB10_RUNTIME_UID},gid=${GB10_RUNTIME_GID},mode=0700"
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8000/health >/dev/null"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 5m
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks: [inference]
+
+  whisper-http:
+    container_name: gb10-whisper-http
+    image: homecompute/stt-http:1.1.0
+    build:
+      context: ../../scripts
+      dockerfile: ../deploy/hviske-stt/Dockerfile.http-relay
+    restart: unless-stopped
+    init: true
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 256m
+    pids_limit: 64
+    ports: ["127.0.0.1:8007:8007"]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      STT_RELAY_PORT: "8007"
+      STT_MODEL: whisper-turbo
+      STT_UPSTREAM_BASE_URL: http://whisper-primary:8000
+      STT_MAX_UPLOAD_BYTES: "10000000"
+      STT_MAX_AUDIO_SECONDS: "60"
+      STT_MAX_CONNECTIONS: "1"
+      STT_UPSTREAM_TIMEOUT_SECONDS: "120"
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=32m"]
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/openai-stt-relay.py, --probe-upstream]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: local
+      options: {max-size: "5m", max-file: "2"}
+    depends_on:
+      whisper-primary: {condition: service_healthy}
+    networks: [edge, inference]
+
+networks:
+  inference: {internal: true}
+  edge: {}
+  artifact-fetch: {}
+
+secrets:
+  vllm_api_key:
+    file: ${VLLM_API_KEY_FILE:?Set VLLM_API_KEY_FILE}

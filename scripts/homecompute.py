@@ -49,9 +49,11 @@ if [[ "$host" == home-spark ]]; then
   platform_updates="$(apt list --upgradable 2>/dev/null | grep '\[upgradable from:' || true)"
 fi
 update_report=null
-report_file=/var/lib/homecompute/model-update-check/report.json
-if [[ -r "$report_file" ]]; then update_report="$(jq -c . "$report_file" 2>/dev/null || printf null)"
-elif sudo -n test -r "$report_file" 2>/dev/null; then update_report="$(sudo -n jq -c . "$report_file" 2>/dev/null || printf null)"; fi
+report_file=/var/lib/homecompute-model-update-check/report.json
+# Keep upstream labels, URLs, error bodies and benchmark payloads on the host.
+report_projection='{schema_version,document_type,generated_at,mode,status,summary:{changed:.summary.changed,pin_drift:.summary.pin_drift,source_errors:.summary.source_errors,outperforms_active:.summary.outperforms_active}}'
+if [[ -r "$report_file" ]]; then update_report="$(jq -c "$report_projection" "$report_file" 2>/dev/null || printf null)"
+elif sudo -n test -r "$report_file" 2>/dev/null; then update_report="$(sudo -n jq -c "$report_projection" "$report_file" 2>/dev/null || printf null)"; fi
 tools="$(jq -cn \
   --argjson git "$(present git)" --argjson docker "$(present docker)" \
   --argjson jq "$(present jq)" --argjson curl "$(present curl)" \

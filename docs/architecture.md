@@ -67,12 +67,18 @@ deployment order live in `config/capability-routes.json`. The deterministic
 renderer owns only LiteLLM's `model_list` block. It does not derive key access,
 firewall rules, runtime lifecycle, or fallback behavior from model metadata.
 
-Current stable generated routes are `automation` and `home`. The stopped
-Qwen3.8 service no longer contributes `auto`, `coding`, `research`, `meeting`,
-or `assistant` as active routes. `assistant-canary` remains a separate
-qualification route. The generated source configuration is not yet applied to
-the live gateway, and n8n still has its scoped `automation-moe` credential.
-ADR-024 records the staged migration and its remaining promotion gates.
+**CURRENT:** n8n production remains on Qwen3.6 through `automation-moe`.
+**CANDIDATE:** the source registry contains one isolated
+`automation-qualification` route. It selects the Blazux/NVIDIA quality baseline
+or dime UltraFast performance challenger for cold-swap A/B runs; ordinary
+aliases still point to the current Qwen3.6 deployment. Candidate authorization
+remains separately scoped. Qwen3.8-27B remains a smaller cold fallback without
+preassigned consumer routing.
+**TARGET (pending qualification):** one resident text model may back the
+semantic roles, but each alias retains independent privacy, tool, timeout, and
+reasoning policy. The generated registry has not been applied to the live
+gateway. ADR-024 records the routing separation; ADR-025 records the candidate
+gates.
 
 ## 1. System context
 
@@ -428,6 +434,14 @@ project uses `/srv/state/control-plane` for Caddy and PostgreSQL data. NixOS
 owns directory creation and off-host backup scheduling. Each stateful workload
 must create an application-consistent dump or snapshot before Restic reads it.
 sops-nix materializes runtime credentials outside both Git and `/srv/state`.
+
+Immich keeps PostgreSQL on local NVMe at `/srv/state/immich/database` while
+its media library has an independent configurable host path. Restic sources
+select one or more named destinations and carry their own paths, preparation,
+schedule, and retention. Immich media and database dumps use a dedicated
+Hetzner repository; caches are rebuildable and excluded. The deployment,
+backup credentials, and restore drill remain gated on operator provisioning.
+See [`docs/immich.md`](immich.md) for its rollout and recovery procedure.
 
 The compute appliance has a separate rebuildable storage policy:
 

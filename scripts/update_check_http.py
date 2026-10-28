@@ -80,6 +80,12 @@ def validate_request_url(url: str, kind: str, resolver: Callable[[str], list[str
             raise ValidationError("github_file request_url has an unsupported endpoint")
         if any(len(values) != 1 for values in query.values()) or query.get("per_page") != ["1"]:
             raise ValidationError("github_file request_url must request exactly one commit")
+    elif kind == "github_pull_requests":
+        expected = {"state": ["open"], "per_page": ["100"], "sort": ["updated"], "direction": ["desc"]}
+        if (parsed.hostname != "api.github.com"
+                or not re.fullmatch(r"/repos/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pulls", decoded_path)
+                or query != expected):
+            raise ValidationError("github_pull_requests must request one bounded page of open PRs ordered by update")
     else:
         raise ValidationError(f"unsupported source kind: {kind}")
     addresses = resolver(parsed.hostname)

@@ -1,0 +1,9 @@
+{
+  "name": "@homecompute/agent-office",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node serve.mjs", "demo": "node serve.mjs --demo", "test": "node --test ../../tests/agent-office.test.mjs" },
+  "openclaw": { "extensions": ["./index.mjs"] }
+}

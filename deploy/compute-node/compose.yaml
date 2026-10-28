@@ -467,7 +467,7 @@ services:
           --kv-cache-dtype fp8 --attention-backend "${VLLM_ATTENTION_BACKEND:-flashinfer}" --moe-backend "${VLLM_MOE_BACKEND:-marlin}" \
           --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.40}" --generation-config vllm --max-model-len "${VLLM_MAX_MODEL_LEN:-131072}" \
           --max-num-seqs "${VLLM_MAX_NUM_SEQS:-2}" --max-num-batched-tokens "${VLLM_MAX_BATCHED_TOKENS:-8192}" --enable-chunked-prefill \
-          --async-scheduling --enable-prefix-caching "$$@" --load-format fastsafetensors --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" \
+          --async-scheduling --enable-prefix-caching --enable-prompt-tokens-details "$$@" --load-format fastsafetensors --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" \
           --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_coder}" --default-chat-template-kwargs "$${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS}" \
           --enable-auto-tool-choice --no-enable-log-requests --disable-uvicorn-access-log
     secrets: [vllm_api_key]
@@ -522,7 +522,7 @@ services:
           --kv-cache-dtype fp8 --attention-backend flashinfer --moe-backend "${AUTOMATION_MOE_BACKEND:-cutlass}" \
           --gpu-memory-utilization "${AUTOMATION_GPU_MEMORY_UTILIZATION:-0.40}" --generation-config vllm --max-model-len "${AUTOMATION_MAX_MODEL_LEN:-131072}" \
           --max-num-seqs "${AUTOMATION_MAX_NUM_SEQS:-4}" --max-num-batched-tokens "${AUTOMATION_MAX_BATCHED_TOKENS:-8192}" --enable-chunked-prefill \
-          --async-scheduling --enable-prefix-caching "$$@" --load-format fastsafetensors --reasoning-parser qwen3 \
+          --async-scheduling --enable-prefix-caching --enable-prompt-tokens-details "$$@" --load-format fastsafetensors --reasoning-parser qwen3 \
           --tool-call-parser "${AUTOMATION_TOOL_CALL_PARSER:-qwen3_coder}" --default-chat-template-kwargs "$${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS}" \
           --enable-auto-tool-choice --allowed-media-domains invalid.homecompute.invalid --no-enable-log-requests --disable-uvicorn-access-log
     secrets: [vllm_api_key]
@@ -543,7 +543,6 @@ services:
   automation-nvidia-edge:
     <<: *edge
     profiles: [automation-nvidia]
-    restart: "no"
     container_name: gb10-automation-nvidia-edge
     ports: ["${GB10_BIND_ADDRESS:-127.0.0.1}:${AUTOMATION_HOST_PORT:-8005}:8000"]
     environment:
@@ -555,7 +554,6 @@ services:
   automation-nvidia-primary:
     <<: *runtime
     profiles: [automation-nvidia]
-    restart: "no"
     image: ${NVIDIA_AUTOMATION_VLLM_IMAGE:?Set NVIDIA_AUTOMATION_VLLM_IMAGE to an immutable image digest}
     container_name: gb10-automation-nvidia-primary
     shm_size: "${VLLM_SHM_SIZE:-16gb}"
@@ -573,11 +571,11 @@ services:
         set --
         if [ -n "$${VLLM_SPECULATIVE_CONFIG}" ]; then set -- --speculative-config "$${VLLM_SPECULATIVE_CONFIG}"; fi
         exec vllm serve "${NVIDIA_AUTOMATION_MODEL_ID}" --revision "${NVIDIA_AUTOMATION_MODEL_REVISION}" --tokenizer-revision "${NVIDIA_AUTOMATION_TOKENIZER_REVISION}" --code-revision "${NVIDIA_AUTOMATION_CODE_REVISION}" \
-          --served-model-name automation-moe-nvidia --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
+          --served-model-name automation-moe-nvidia automation-moe --host 0.0.0.0 --port 8000 --tensor-parallel-size 1 --trust-remote-code \
           --kv-cache-dtype fp8 --attention-backend "${NVIDIA_AUTOMATION_ATTENTION_BACKEND:-flashinfer}" --moe-backend "${NVIDIA_AUTOMATION_MOE_BACKEND:-marlin}" \
           --gpu-memory-utilization "${NVIDIA_AUTOMATION_GPU_MEMORY_UTILIZATION:-0.5}" --generation-config vllm --max-model-len "${NVIDIA_AUTOMATION_MAX_MODEL_LEN:-131072}" \
           --max-num-seqs "${NVIDIA_AUTOMATION_MAX_NUM_SEQS:-4}" --max-num-batched-tokens "${NVIDIA_AUTOMATION_MAX_BATCHED_TOKENS:-8192}" --enable-chunked-prefill \
-          --async-scheduling --enable-prefix-caching "$$@" --load-format fastsafetensors --reasoning-parser "${NVIDIA_AUTOMATION_REASONING_PARSER:-qwen3}" \
+          --async-scheduling --enable-prefix-caching --enable-prompt-tokens-details "$$@" --load-format fastsafetensors --reasoning-parser "${NVIDIA_AUTOMATION_REASONING_PARSER:-qwen3}" \
           --tool-call-parser "${NVIDIA_AUTOMATION_TOOL_CALL_PARSER:-qwen3_coder}" --default-chat-template-kwargs "$${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS}" \
           --enable-auto-tool-choice --allowed-media-domains invalid.homecompute.invalid --no-enable-log-requests --disable-uvicorn-access-log
     secrets: [vllm_api_key]

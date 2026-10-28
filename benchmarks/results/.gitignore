@@ -1,2 +1,5 @@
 *
 !.gitignore
+!README.md
+!schema.json
+!example-sanitized-result.json

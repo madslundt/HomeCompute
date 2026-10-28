@@ -1,0 +1,7 @@
+{
+  "bot_id": "replace-dedicated-bot-id",
+  "chat_id": "replace-selected-private-chat-id",
+  "user_id": "replace-selected-operator-id",
+  "destination": "openclaw-operator-private",
+  "conversation": "operator"
+}

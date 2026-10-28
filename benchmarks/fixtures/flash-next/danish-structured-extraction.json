@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "danish-family-event-extraction-synthetic",
+  "track": "danish-structured-output",
+  "messages": [
+    {
+      "role": "system",
+      "content": "Udtræk kun oplysninger, der står i teksten. Returnér gyldig JSON med felterne titel, dato og barn. Brug null, hvis en værdi mangler."
+    },
+    {
+      "role": "user",
+      "content": "Besked: Freja har tandlægetid torsdag den 8. oktober klokken 14.30. Hendes matematikbog skal også med i tasken."
+    }
+  ],
+  "objective_checks": [
+    {"id": "valid-json", "type": "valid_json", "weight": 2},
+    {"id": "exact-title", "type": "json_path_equals", "path": "titel", "value": "Tandlægetid", "weight": 2},
+    {"id": "exact-date", "type": "json_path_equals", "path": "dato", "value": "2026-10-08 14:30", "weight": 3},
+    {"id": "child-grounding", "type": "json_path_equals", "path": "barn", "value": "Freja", "weight": 2},
+    {"id": "no-invented-information", "type": "not_contains", "value": "2026-10-09", "weight": 1}
+  ],
+  "rubric": [
+    {"id": "danish-comprehension", "description": "Understands the Danish message and preserves the stated child, date, and time.", "weight": 2},
+    {"id": "schema-discipline", "description": "Returns only the requested structured information and marks absent values as null.", "weight": 2}
+  ]
+}

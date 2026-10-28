@@ -3,6 +3,8 @@ name: homecompute-control-plane
 services:
   caddy:
     image: ${CADDY_IMAGE:?Set CADDY_IMAGE to an immutable image digest}
+    entrypoint: [/bin/sh, /opt/homecompute/caddy-entrypoint.sh]
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
     restart: unless-stopped
     init: true
     read_only: true
@@ -19,14 +21,21 @@ services:
       AI_LEGACY_FQDN: ${AI_LEGACY_FQDN:?Set AI_LEGACY_FQDN}
       N8N_FQDN: ${N8N_FQDN:?Set N8N_FQDN}
       N8N_UPSTREAM: ${N8N_UPSTREAM:?Set N8N_UPSTREAM}
+      DAYTHREAD_FQDN: ${DAYTHREAD_FQDN:-daythread.home.arpa}
+      DAYTHREAD_UPSTREAM: ${DAYTHREAD_UPSTREAM:-omi-local-backend-1:8787}
+      DAYTHREAD_CLIENT_IP: ${DAYTHREAD_CLIENT_IP:-172.28.210.6}
+      OPEN_WEBUI_CLIENT_IP: ${OPEN_WEBUI_CLIENT_IP:-172.28.210.5}
       CHAT_FQDN: ${CHAT_FQDN:?Set CHAT_FQDN}
       MODELS_FQDN: ${MODELS_FQDN:?Set MODELS_FQDN}
       CADDY_HTTPS_PORT: "8443"
+      HOMEPAGE_HTTP_UPSTREAM: ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:80
     ports:
+      - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:80:8080/tcp
       - ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:${CONTROL_PLANE_TAILSCALE_HTTPS_PORT:-443}:8443/tcp
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${CONTROL_PLANE_LAN_HTTPS_PORT:-443}:8443/tcp
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy-entrypoint.sh:/opt/homecompute/caddy-entrypoint.sh:ro
       - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/caddy-data:/data
       - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/caddy-config:/config
     tmpfs:
@@ -72,6 +81,11 @@ services:
       COMPUTE_OPENAI_BASE_URL: ${COMPUTE_OPENAI_BASE_URL:?Set COMPUTE_OPENAI_BASE_URL}
       COMPUTE_AUTOMATION_BASE_URL: ${COMPUTE_AUTOMATION_BASE_URL:?Set COMPUTE_AUTOMATION_BASE_URL}
       COMPUTE_AUTOMATION_CANDIDATE_BASE_URL: ${COMPUTE_AUTOMATION_CANDIDATE_BASE_URL:?Set COMPUTE_AUTOMATION_CANDIDATE_BASE_URL}
+      COMPUTE_STT_MULTILINGUAL_BASE_URL: ${COMPUTE_STT_MULTILINGUAL_BASE_URL:-http://172.28.200.1:18007/v1}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://homecompute-embeddings:8080/v1}
+      VIDEO_GENERATION_BASE_URL: ${VIDEO_GENERATION_BASE_URL:-http://caddy:8195/v1}
+      COMPUTE_STT_DANISH_BASE_URL: ${COMPUTE_STT_DANISH_BASE_URL:-http://172.28.200.1:18003/v1}
+      PLAPRE_TTS_BASE_URL: ${PLAPRE_TTS_BASE_URL:-http://plapre-openai-tts:8004/v1}
       COMPUTE_HOME_BASE_URL: ${COMPUTE_HOME_BASE_URL:?Set COMPUTE_HOME_BASE_URL}
       LITELLM_CONFIG: /etc/litellm/config.yaml
       LITELLM_MIGRATION_DIR: /app/migrations
@@ -193,9 +207,15 @@ services:
     networks:
       automation-backup: {}
 
+  # Service names/IPs remain stable so the HA firewall and callers do not move.
   plapre-wyoming-proxy:
     profiles: [speech-proxies]
-    image: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to an immutable image digest}
+    image: ${SPEECH_ADAPTER_IMAGE:-homecompute/speech-adapters:wyoming-1.10.2}
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.speech-adapters
+      args:
+        BASE_IMAGE: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to a pinned Python image}
     restart: unless-stopped
     init: true
     user: "65532:65532"
@@ -203,24 +223,30 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
-      EDGE_LISTEN_PORT: "10201"
-      EDGE_UPSTREAM_HOST: ${PLAPRE_WYOMING_UPSTREAM_HOST:-10.77.10.10}
-      EDGE_UPSTREAM_PORT: ${PLAPRE_WYOMING_UPSTREAM_PORT:-10201}
-    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
+      PLAPRE_UPSTREAM_URL: http://${PLAPRE_WYOMING_UPSTREAM_HOST:-10.77.10.10}:${PLAPRE_WYOMING_UPSTREAM_PORT:-8004}
+    entrypoint: [python3, /opt/homecompute/plapre-wyoming.py]
+    command:
+      - --uri=tcp://0.0.0.0:10201
+      - --upstream-url=http://${PLAPRE_WYOMING_UPSTREAM_HOST:-10.77.10.10}:${PLAPRE_WYOMING_UPSTREAM_PORT:-8004}
+      - --voice-alias=danish-default
+      - --speaker-id=tor
+      - --tempo=1.20
+      - --max-input-chars=2000
+      - --max-pcm-bytes=48000000
+      - --timeout-seconds=300
+      - --samples-per-chunk=4096
     ports:
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${PLAPRE_WYOMING_LAN_PORT:-10201}:10201/tcp
-    volumes:
-      - ../../scripts/tcp-edge-proxy.py:/opt/homecompute/tcp-edge-proxy.py:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532,mode=0700
     healthcheck:
-      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      test: [CMD, python3, /opt/homecompute/speech-adapter-health.py, tts]
       interval: 15s
-      timeout: 7s
+      timeout: 12s
       retries: 4
       start_period: 15s
-    cpus: 0.25
-    mem_limit: 64m
+    cpus: 1.0
+    mem_limit: 512m
     pids_limit: 64
     logging:
       driver: local
@@ -229,34 +255,95 @@ services:
       edge:
         ipv4_address: ${PLAPRE_PROXY_EDGE_IP:?Set PLAPRE_PROXY_EDGE_IP}
 
-  hviske-wyoming-proxy:
+  plapre-openai-tts:
     profiles: [speech-proxies]
-    image: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to an immutable image digest}
+    image: ${PLAPRE_OPENAI_TTS_IMAGE:?Set PLAPRE_OPENAI_TTS_IMAGE to a release-pinned local image tag}
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.plapre-tts
+      args:
+        BASE_IMAGE: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to a pinned Python image}
     restart: unless-stopped
     init: true
     user: "65532:65532"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
-      EDGE_LISTEN_PORT: "10301"
-      EDGE_UPSTREAM_HOST: ${HVISKE_WYOMING_UPSTREAM_HOST:-10.77.10.10}
-      EDGE_UPSTREAM_PORT: ${HVISKE_WYOMING_UPSTREAM_PORT:-10301}
-    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
-    ports:
-      - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${HVISKE_WYOMING_LAN_PORT:-10301}:10301/tcp
-    volumes:
-      - ../../scripts/tcp-edge-proxy.py:/opt/homecompute/tcp-edge-proxy.py:ro
+      GB10_BIND_ADDRESS: 0.0.0.0
+      TTS_HOST_PORT: "8004"
+      WYOMING_URI: tcp://${PLAPRE_PROXY_EDGE_IP:?Set PLAPRE_PROXY_EDGE_IP}:10201
+      TTS_API_KEY_FILE: /run/secrets/compute_api_key
+      TTS_MODEL_ALIAS: plapre
+      TTS_VOICE_ALIAS: danish-default
+      PIPER_VOICE_ID: danish-default
+      TTS_MAX_INPUT_CHARS: "2000"
+      TTS_SYNTHESIS_TIMEOUT_SECONDS: "300"
+      TTS_MAX_CONCURRENT_REQUESTS: "1"
+    secrets: [compute_api_key]
+    expose: ["8004"]
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532,mode=0700
+    depends_on:
+      plapre-wyoming-proxy:
+        condition: service_healthy
     healthcheck:
-      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      test: [CMD, python3, /opt/homecompute/openai-wyoming-tts.py, --probe-ready]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    cpus: 0.5
+    mem_limit: 128m
+    pids_limit: 64
+    logging:
+      driver: local
+      options: {max-size: 5m, max-file: "2"}
+    networks: [edge]
+
+  hviske-wyoming-proxy:
+    profiles: [speech-proxies]
+    image: ${SPEECH_ADAPTER_IMAGE:-homecompute/speech-adapters:wyoming-1.10.2}
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.speech-adapters
+      args:
+        BASE_IMAGE: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to a pinned Python image}
+    restart: unless-stopped
+    init: true
+    user: "65532:65532"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      WYOMING_BIND_ADDRESS: 0.0.0.0
+      WYOMING_PORT: "10301"
+      STT_UPSTREAM_URL: http://${HVISKE_WYOMING_UPSTREAM_HOST:-10.77.10.10}:${HVISKE_WYOMING_UPSTREAM_PORT:-8003}/v1/audio/transcriptions
+      STT_API_KEY_FILE: /run/secrets/compute_api_key
+      STT_MODEL: stt-danish
+      STT_LANGUAGE: da
+      STT_MAX_AUDIO_BYTES: "10000000"
+      STT_MAX_AUDIO_SECONDS: "60"
+      STT_UPSTREAM_TIMEOUT_SECONDS: "120"
+      STT_MAX_CONNECTIONS: "4"
+    entrypoint: [python3, /opt/homecompute/wyoming-openai-stt.py]
+    secrets: [compute_api_key]
+    ports:
+      - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${HVISKE_WYOMING_LAN_PORT:-10301}:10301/tcp
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/speech-adapter-health.py, stt]
       interval: 15s
-      timeout: 7s
+      timeout: 12s
       retries: 4
       start_period: 15s
-    cpus: 0.25
-    mem_limit: 64m
+    cpus: 1.0
+    mem_limit: 512m
     pids_limit: 64
     logging:
       driver: local
@@ -313,6 +400,7 @@ networks:
     driver: bridge
     driver_opts:
       com.docker.network.bridge.host_binding_ipv4: 127.0.0.1
+      com.docker.network.bridge.name: br-hc-ctrl
     ipam:
       config:
         - subnet: ${CONTROL_PLANE_EDGE_SUBNET:?Set CONTROL_PLANE_EDGE_SUBNET}

@@ -69,11 +69,51 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
+            "model-manager/username" = {
+              mode = "0400";
+            };
+            "model-manager/password" = {
+              mode = "0400";
+            };
+            "model-manager/spark-ssh-key" = {
+              mode = "0400";
+            };
+            "model-manager/known-hosts" = {
+              mode = "0400";
+            };
+            "open-webui/litellm-api-key" = {
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
+            "open-webui/webui-secret-key" = {
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
           } // lib.optionalAttrs (
             config.homecompute.backups.enable
             || config.homecompute.agentsVm.localBootstrapBackup.enable
           ) {
             "restic/password" = {
+              mode = "0400";
+            };
+          } // lib.optionalAttrs config.homecompute.backups.enable {
+            "restic/hetzner/password" = {
+              mode = "0400";
+            };
+            "restic/hetzner/ssh-key" = {
+              mode = "0400";
+            };
+          } // lib.optionalAttrs config.homecompute.immich.enable {
+            "immich/database-password" = {
+              mode = "0400";
+            };
+          } // lib.optionalAttrs config.homecompute.immich.synologyMount.enable {
+            "immich/synology-smb-credentials" = {
+              sopsFile = ../../secrets/synology-immich.sops.yaml;
+              mode = "0400";
+            };
+          } // lib.optionalAttrs (config.homecompute.immich.enable && config.homecompute.immich.importEnabled) {
+            "immich/import-api-key" = {
               mode = "0400";
             };
           };

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "projects": {
+    "synthetic-demo": {
+      "repository": "OWNER/SYNTHETIC-TEST-REPOSITORY",
+      "base_sha": "0000000000000000000000000000000000000000",
+      "base_branch": "main",
+      "classification": "cloud_allowed",
+      "tests": ["python3", "-m", "unittest", "discover", "-s", "tests"],
+      "write_prefixes": ["src/", "tests/"]
+    }
+  }
+}

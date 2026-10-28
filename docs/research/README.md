@@ -8,6 +8,7 @@ Start with these current synthesis documents:
 
 | Topic | Entry point |
 | --- | --- |
+| MCP and skill additions (2026-10-28) | [`mcp-and-skills-assessment-2026-10-28.md`](mcp-and-skills-assessment-2026-10-28.md) |
 | Quality-first GB10 recommendations and Danish ASR additions (2026-09-05) | [`gb10-best-models-2026-09-05.md`](gb10-best-models-2026-09-05.md) |
 | Model installation order | [`llm-installation-recommendation.md`](llm-installation-recommendation.md) |
 | Latest text-model shortlist audit (2026-09-04) | [`text-model-shortlist-refresh-2026-09-04.md`](text-model-shortlist-refresh-2026-09-04.md) |
@@ -20,6 +21,7 @@ Start with these current synthesis documents:
 | Gateway | [`gateway-evaluation.md`](gateway-evaluation.md) |
 | Codex | [`codex-compatibility.md`](codex-compatibility.md) |
 | Personal agents / Hermes | [`nemoclaw-machine-placement.md`](nemoclaw-machine-placement.md) and [`hermes-personal-assistant-verification.md`](hermes-personal-assistant-verification.md) |
+| Hermes and n8n integration | [`hermes-n8n-integration-assessment-2026-09-29.md`](hermes-n8n-integration-assessment-2026-09-29.md) |
 | Home Assistant | [`home-assistant-model-evaluation.md`](home-assistant-model-evaluation.md) |
 | Speech | [`stt-model-evaluation.md`](stt-model-evaluation.md) and [`danish-tts-recommendation.md`](danish-tts-recommendation.md) |
 | Capacity and workload routing | [`n8n-model-routing-and-scheduling.md`](n8n-model-routing-and-scheduling.md) |

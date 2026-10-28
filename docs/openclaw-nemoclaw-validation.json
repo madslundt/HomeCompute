@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-09T16:54:31Z",
+  "scope": "approved synthetic-only canary",
+  "status": "running_production_blocked",
+  "runtime": {
+    "nemoclaw_version": "0.0.129",
+    "source_commit": "26922313bba96184e65c3663b351683ebae9504d",
+    "openshell_version": "0.0.116",
+    "openclaw_version": "2026.9.1",
+    "managed_image": "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:51d9fe7e0097931ce96f72f3c7dea522c129c569d91680d2e11989ea70a37d8a"
+  },
+  "gateway": {
+    "name": "nemoclaw-9123",
+    "port": 9123,
+    "active_owner": "nemoclaw-managed detached",
+    "dashboard_guest_loopback_port": 18791,
+    "gateway_bind_addresses": [
+      "127.0.0.1",
+      "172.18.0.1 internal Docker bridge"
+    ],
+    "machine_auth_rotated_by_fresh_onboarding": true,
+    "native_gateway_restart_health_passed": true,
+    "working_auth_consistency_verified_by_final_agent_turn": true
+  },
+  "model": {
+    "provider": "inference",
+    "model": "automation-moe",
+    "base_url": "https://inference.local/v1",
+    "agent_credential": "unused sentinel",
+    "upstream": "http://ai.home.arpa:18080/v1 existing host-only verified-TLS bridge",
+    "context_budget": 32768,
+    "native_context_ceiling": 262144,
+    "output_budget": 4096,
+    "scoped_key_expires_at": "2026-10-16T16:15:04Z",
+    "max_parallel_requests": 1,
+    "rpm": 6,
+    "tpm": 65536,
+    "other_model_alias_rejected_http_status": 403
+  },
+  "native_config_validation": {
+    "valid": true,
+    "warnings": [],
+    "config_mode": "0600",
+    "sha256": "ef85449266466b8beb38611bd9b4803b4a9c52e3b33e784d6463d660200795ad",
+    "workspace_only": true,
+    "tool_search": false,
+    "tools_allow": [
+      "write",
+      "session_status",
+      "memory_search",
+      "memory_get"
+    ],
+    "broker_plugin_enabled": false,
+    "broker_tools_denied": true,
+    "proxy_policy_memory_plugin_installs_preserved": true
+  },
+  "synthetic_write_probe": {
+    "native_status": "ok",
+    "cli_exit": 1,
+    "replay_invalid": true,
+    "successful_tool_names": [
+      "write"
+    ],
+    "assistant_turns": 2,
+    "model": "automation-moe",
+    "rerouted": false,
+    "retry_performed": false,
+    "note": "Native runtime marks potential side effects unsafe to replay; applied memory file verified, not an unqualified CLI success."
+  },
+  "post_rollback_read_only_probe": {
+    "native_status": "ok",
+    "cli_exit": 0,
+    "replay_invalid": false,
+    "elapsed_seconds": 11,
+    "successful_tool_names": [
+      "memory_get"
+    ],
+    "provider": "inference",
+    "model": "automation-moe",
+    "result": "HC_OPENCLAW_20261009",
+    "memory_sha256_before_and_after": "2f8d4d0a04aad4fef785f457a39983bde9274d2a58244d9f9420b77f750493d9",
+    "final_probe_after_auth_consistency_restoration": true
+  },
+  "effective_boundaries": {
+    "network_policy_names": [
+      "managed_inference"
+    ],
+    "public_egress_failed": true,
+    "direct_core_failed": true,
+    "direct_spark_failed": true,
+    "etc_write_denied": true,
+    "host_docker_socket_visible": false,
+    "host_model_key_file_visible": false,
+    "raw_broker_token_env_present": false,
+    "uid": 998,
+    "no_new_privs": 1,
+    "seccomp": 2,
+    "landlock_abi": "V2",
+    "landlock_rules_applied": 14,
+    "landlock_rules_skipped": 1,
+    "landlock_compatibility": "best_effort",
+    "docker_privileged": false,
+    "docker_readonly_rootfs": false,
+    "docker_apparmor": "unconfined",
+    "docker_cpu_limit": 1,
+    "docker_memory_limit_bytes": 2147483648,
+    "docker_memory_plus_swap_limit_bytes": 4294967296,
+    "docker_restart_policy": "no"
+  },
+  "supervision": {
+    "attempted": true,
+    "external_gateway_doctor_before_fresh_onboarding": {
+      "status": "ok",
+      "warnings": 0
+    },
+    "gateway_service_restart_observed": true,
+    "fresh_external_onboard_blocker": "host.docker.storage_incompatible: Docker29.1.3 overlayfs/containerd snapshotter on pinned external lifecycle path",
+    "rollback_complete": true,
+    "latest_private_state_preserved": true,
+    "proposed_units_disabled": [
+      "homecompute-openclaw-gateway.service",
+      "homecompute-openclaw-canary.service"
+    ],
+    "active_external_declaration": false,
+    "original_auth_restoration_attempt": "native restart refused token mismatch; reverted to native-issued working auth",
+    "boot_supervision_qualified": false,
+    "guest_reboot_performed": false
+  },
+  "hermes": {
+    "gateway": "nemoclaw",
+    "gateway_port": 8080,
+    "model": "assistant-canary",
+    "route_version_before_and_after": 10,
+    "original_container_unchanged": true,
+    "docker_daemon_changed": false
+  },
+  "production_gates": [
+    "supported boot supervision and reboot drill",
+    "encrypted off-host backup and restore",
+    "rebuild policy and credential preservation",
+    "prompt injection acceptance",
+    "private HTTPS MCP-only endpoint and OpenShell credential provider qualification",
+    "Codex and GitHub approval and publishing acceptance"
+  ]
+}

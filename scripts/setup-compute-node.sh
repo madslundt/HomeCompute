@@ -18,7 +18,7 @@ COMPUTE_CONFIG_KEYS=(
   COMPUTE_NODE_NAME MODEL_DEPLOYMENT_ID VLLM_IMAGE MODEL_ID MODEL_REVISION TOKENIZER_REVISION CODE_REVISION
   MODEL_PROVENANCE_URL MODEL_LICENSE_ID MODEL_WEIGHT_FORMAT MODEL_QUANTIZATION CHAT_TEMPLATE_SHA256
   GB10_ROOT GB10_RUNTIME_UID GB10_RUNTIME_GID GB10_BIND_ADDRESS COMPUTE_HOST_PORTS
-  VLLM_HOST_PORT EMBEDDING_HOST_PORT VISION_HOST_PORT STT_HOST_PORT TTS_HOST_PORT AUTOMATION_HOST_PORT WYOMING_TTS_HOST_PORT PLAPRE_WYOMING_PORT HVISKE_WYOMING_PORT GATEWAY_CIDR
+  VLLM_HOST_PORT EMBEDDING_HOST_PORT VISION_HOST_PORT STT_HOST_PORT TTS_HOST_PORT AUTOMATION_HOST_PORT FLASH_NEXT_HOST_PORT WYOMING_TTS_HOST_PORT PLAPRE_WYOMING_PORT HVISKE_WYOMING_PORT GATEWAY_CIDR
   HF_TOKEN_FILE VLLM_API_KEY_FILE MIN_FREE_DISK_GIB VLLM_MAX_MODEL_LEN VLLM_MAX_NUM_SEQS
   VLLM_MAX_BATCHED_TOKENS VLLM_GPU_MEMORY_UTILIZATION VLLM_SHM_SIZE
   VLLM_ATTENTION_BACKEND VLLM_MOE_BACKEND VLLM_REASONING_PARSER VLLM_TOOL_CALL_PARSER
@@ -36,6 +36,18 @@ COMPUTE_CONFIG_KEYS=(
   NVIDIA_AUTOMATION_MAX_BATCHED_TOKENS NVIDIA_AUTOMATION_GPU_MEMORY_UTILIZATION NVIDIA_AUTOMATION_ATTENTION_BACKEND
   NVIDIA_AUTOMATION_MOE_BACKEND NVIDIA_AUTOMATION_REASONING_PARSER NVIDIA_AUTOMATION_TOOL_CALL_PARSER
   NVIDIA_AUTOMATION_SPECULATIVE_CONFIG NVIDIA_AUTOMATION_DEFAULT_CHAT_TEMPLATE_KWARGS
+  FLASH_NEXT_SOURCE_URL FLASH_NEXT_SOURCE_REVISION FLASH_NEXT_MODEL_ID FLASH_NEXT_MODEL_REVISION
+  FLASH_NEXT_BASE_IMAGE FLASH_NEXT_IMAGE FLASH_NEXT_HF_CACHE FLASH_NEXT_STATE_DIR FLASH_NEXT_HOST_PORT
+  FLASH_NEXT_SERVED_MODEL_NAME FLASH_NEXT_MODE FLASH_NEXT_CTX FLASH_NEXT_YARN FLASH_NEXT_MTP
+  FLASH_NEXT_SEQS FLASH_NEXT_GPU_MEM FLASH_NEXT_PREFIX_CACHE FLASH_NEXT_DET_TOPK FLASH_NEXT_EFFORT_ALIAS
+  FLASH_NEXT_KV_DTYPE FLASH_NEXT_EXTRA FLASH_NEXT_REASONING_EFFORT FLASH_NEXT_ENABLE_THINKING
+  FLASH_ULTRAFAST_SOURCE_URL FLASH_ULTRAFAST_SOURCE_REVISION FLASH_ULTRAFAST_MODEL_ID FLASH_ULTRAFAST_MODEL_REVISION
+  FLASH_ULTRAFAST_PLE_MODEL_ID FLASH_ULTRAFAST_PLE_REVISION FLASH_ULTRAFAST_BASE_IMAGE FLASH_ULTRAFAST_IMAGE
+  FLASH_ULTRAFAST_MODELS_ROOT FLASH_ULTRAFAST_STATE_DIR FLASH_ULTRAFAST_HOST_PORT FLASH_ULTRAFAST_HOST_BIND
+  FLASH_ULTRAFAST_NAME FLASH_ULTRAFAST_SERVED_MODEL_NAME FLASH_ULTRAFAST_CTX FLASH_ULTRAFAST_SEQS
+  FLASH_ULTRAFAST_GPU_MEM FLASH_ULTRAFAST_KV_BYTES FLASH_ULTRAFAST_MTP FLASH_ULTRAFAST_PREFIX_CACHE
+  FLASH_ULTRAFAST_DRAFT_VOCAB_SIZE FLASH_ULTRAFAST_MTP_TIER FLASH_ULTRAFAST_MTP_GROUP_SIZE
+  FLASH_ULTRAFAST_TOOL_CALL_PARSER FLASH_ULTRAFAST_REASONING_PARSER FLASH_ULTRAFAST_EXTRA
   EMBEDDING_MODEL_ID EMBEDDING_MODEL_REVISION EMBEDDING_MODEL_LICENSE_ID EMBEDDING_GPU_MEMORY_UTILIZATION
   VISION_MODEL_ID VISION_MODEL_REVISION VISION_MODEL_LICENSE_ID VISION_GPU_MEMORY_UTILIZATION
   STT_MODEL_ID STT_MODEL_REVISION STT_MODEL_LICENSE_ID STT_GPU_MEMORY_UTILIZATION
@@ -91,9 +103,9 @@ parse_options() {
   done
 }
 config_needs_migration() {
-  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_nvidia_automation=false saw_plapre=false saw_hviske=false saw_model_deployment=false
+  local line saw_ports=false saw_budget=false saw_template_defaults=false saw_automation=false saw_automation_quantization=false saw_nvidia_automation=false saw_plapre=false saw_hviske=false saw_model_deployment=false saw_flash_next=false
   while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ "$line" != COMPUTE_HOST_PORTS=* ]] || saw_ports=true
+    [[ "$line" != COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300 ]] || saw_ports=true
     [[ "$line" != HF_CACHE_MAX_BYTES=* ]] || saw_budget=true
     [[ "$line" != VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS=* ]] || saw_template_defaults=true
     [[ "$line" != AUTOMATION_MODEL_ID=* ]] || saw_automation=true
@@ -102,9 +114,10 @@ config_needs_migration() {
     [[ "$line" != PLAPRE_WYOMING_PORT=* ]] || saw_plapre=true
     [[ "$line" != HVISKE_WYOMING_PORT=* ]] || saw_hviske=true
     [[ "$line" != MODEL_DEPLOYMENT_ID=* ]] || saw_model_deployment=true
+    [[ "$line" != FLASH_NEXT_HOST_PORT=* ]] || saw_flash_next=true
     [[ "$line" != FIREWALL_CONFIRMED=* ]] || return 0
   done <"$ENV_FILE"
-  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_automation_quantization" == false || "$saw_nvidia_automation" == false || "$saw_plapre" == false || "$saw_hviske" == false || "$saw_model_deployment" == false ]]
+  [[ "$saw_ports" == false || "$saw_budget" == false || "$saw_template_defaults" == false || "$saw_automation" == false || "$saw_automation_quantization" == false || "$saw_nvidia_automation" == false || "$saw_plapre" == false || "$saw_hviske" == false || "$saw_model_deployment" == false || "$saw_flash_next" == false ]]
 }
 migrate_config_if_needed() {
   local temporary
@@ -142,7 +155,7 @@ validate_compute_ports() {
   local -a port_names=(
     VLLM_HOST_PORT EMBEDDING_HOST_PORT VISION_HOST_PORT STT_HOST_PORT
     TTS_HOST_PORT AUTOMATION_HOST_PORT WYOMING_TTS_HOST_PORT
-    PLAPRE_WYOMING_PORT HVISKE_WYOMING_PORT
+    PLAPRE_WYOMING_PORT HVISKE_WYOMING_PORT FLASH_NEXT_HOST_PORT
   )
   require_env_value COMPUTE_HOST_PORTS
   for name in "${port_names[@]}"; do
@@ -155,7 +168,7 @@ validate_compute_ports() {
     previous=$number; expected+="${expected:+,}$port"
   done
   [[ "$COMPUTE_HOST_PORTS" == "$expected" ]] ||
-    die "COMPUTE_HOST_PORTS must exactly match the nine ordered listener ports"
+    die "COMPUTE_HOST_PORTS must exactly match the ten ordered listener ports"
 }
 file_mode() { stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"; }
 file_links() { stat -c '%h' "$1" 2>/dev/null || stat -f '%l' "$1"; }

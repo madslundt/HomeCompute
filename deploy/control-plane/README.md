@@ -38,11 +38,11 @@ python3 scripts/model_registry.py render
 
 The renderer changes only the `model_list` block. Key scopes, authentication,
 privacy/logging, database configuration, retries, and transport remain explicit
-and reviewed. The current generated routes include `automation` and `home`,
-retain the separately authorized `automation-moe` migration route, and retain
-the isolated `assistant-canary`. Disabled aliases backed by the stopped
-Qwen3.8 service are omitted. The cold CPU automation standby is not included in
-ordinary routing; its existing start/switch procedure remains an operator-run
+and reviewed. The `automation` and `automation-moe` aliases currently route to
+the owner-directed Flash-Next trial; the artifact remains marked candidate
+because its quality qualification is incomplete. The isolated
+`assistant-canary` remains separate. Disabled aliases backed by stopped models
+are omitted. The cold CPU automation standby remains an operator-run
 maintenance action.
 
 Home and automation have per-deployment request budgets of 20 and 120 seconds.
@@ -50,6 +50,15 @@ Those values are initial budgets, not final p95/p99-based SLOs. Verify timeout
 behavior against the pinned LiteLLM 1.99.1 image with synthetic refused,
 non-responsive, error, and streaming upstreams before promoting the generated
 config. Model generation does not create, broaden, or revoke any virtual key.
+
+The candidate `plapre` model is exposed through OpenAI-compatible
+`POST /v1/audio/speech` with `model: "plapre"`, `voice: "danish-default"`,
+and `response_format: "wav"`. The `plapre-openai-tts` shim translates that
+request to the private Wyoming relay; clients use the gateway base URL
+(`https://ai.home.arpa/v1`) and do not connect to the raw Wyoming port. Start
+the speech profile with `--build` so Compose builds the local adapter image.
+The alias remains a candidate pending the voice, latency, and pronunciation
+qualification gates.
 
 Caddy remains in this project while it fronts only this gateway. The official
 image starts as root, but it listens on unprivileged container port 8443, has
@@ -79,6 +88,28 @@ forbidden.
   this network.
 - LiteLLM listens on `0.0.0.0:4000` only inside its container namespace. This
   narrow exception is necessary for Caddy to reach it and is not a host bind.
+
+The approved LAN/Tailscale inference API is keyless. Caddy supplies a restricted
+virtual key when a client sends no credentials or an unrecognized/expired key;
+valid explicit client keys retain their scopes. Credential checks use a GET
+probe so inference bodies remain untouched. Provision the key with
+`sudo python3 scripts/setup-network-inference.py` after LiteLLM is healthy and
+before starting the new Caddy entrypoint. Full host deployment does this in that
+order. The root-owned 0600 key lives at
+`/srv/state/control-plane/caddy-data/network-inference-key`; back it up with the
+LiteLLM database. Missing/empty state prevents Caddy from starting. Browser CORS
+allows all origins without cookies and handles OPTIONS on the API base and
+exposed model-listing/inference paths, including bare checks and trailing
+slashes. It includes private-network approval for clients that request it.
+Actual request methods remain restricted; management routes remain unexposed.
+
+`https://home-core.tail479ad.ts.net:8443/v1` uses a public Let's Encrypt
+certificate for phone/browser clients. `ai.home.arpa` retains the private CA.
+Before Caddy startup, run `sudo python3 scripts/renew-gateway-certificate.py --no-restart`;
+normal host deployment does this automatically. The Nix-owned
+`homecompute-gateway-certificate.timer` renews the certificate daily as needed
+and restarts Caddy only for a changed certificate or a pending retry. Certificate
+files stay in the existing `/data` mount; the host Tailscale socket is not mounted.
 
 These networks are coarse membership controls, not per-port or egress policy.
 The installer requires Docker Engine 28+ and Compose 2.33.1+. It also sets the
@@ -112,7 +143,9 @@ It forwards only these `home-spark` loopback listeners:
 
 | Edge client | Host-side tunnel endpoint | Remote loopback destination |
 | --- | --- | --- |
-| LiteLLM `172.28.200.3` | `172.28.200.1:18005` | `127.0.0.1:8005` (automation MoE) |
+| LiteLLM `172.28.200.3` | `172.28.200.1:18003` | `127.0.0.1:8003` (Hviske HTTP transcription relay) |
+| LiteLLM `172.28.200.3` | `172.28.200.1:18005` | `127.0.0.1:18300` (Flash-Next behind the `automation-moe` alias) |
+| LiteLLM `172.28.200.3` | `172.28.200.1:18007` | `127.0.0.1:8007` (Whisper Turbo transcription relay) |
 | LiteLLM `172.28.200.3` | `172.28.200.1:18006` | `127.0.0.1:8006` (Home Assistant fast model) |
 | Plapre relay `172.28.200.4` | `172.28.200.1:18201` | `127.0.0.1:10201` |
 | Hviske relay `172.28.200.5` | `172.28.200.1:18301` | `127.0.0.1:10301` |
@@ -168,10 +201,10 @@ The K15 deployment is recorded in [control-plane-deployment.md](../../docs/contr
 Its gateway uses `home-core.tail479ad.ts.net` on the Tailscale address, and
 `/etc/homecompute/control-plane.env` holds the resolved production settings.
 Backups remain deferred by the operator. The restricted SSH transport is live
-for `automation-moe`, `home-fast`, Plapre, and Hviske. The direct Qwen3.8 text
-endpoint is stopped, so the remaining semantic aliases are configured but not
-available; gateway health and model listing alone do not establish inference
-availability.
+for `automation-moe`, `home-fast`, Plapre, and Hviske. It forwards the
+`automation-moe` alias to Qwen3.8 Flash-Next on home-spark loopback port 18300;
+the listener is not exposed on the LAN. The Qwen3.8-27B endpoint remains
+stopped.
 
 The gateway has local backends only. `auto` is initially another served name
 for the single resident workhorse, not a prompt classifier. The gateway never
@@ -248,7 +281,7 @@ healthy:
 sudo docker compose --profile speech-proxies \
   --env-file /etc/homecompute/control-plane.env \
   -f /srv/homecompute/current/deploy/control-plane/compose.yaml \
-  up -d --wait plapre-wyoming-proxy hviske-wyoming-proxy
+  up -d --build --wait plapre-wyoming-proxy plapre-openai-tts hviske-wyoming-proxy
 ```
 
 The intended Home Assistant endpoints are `192.168.30.122:10201` for Plapre
@@ -271,17 +304,88 @@ container image IDs.
 
 ## TLS, keys, and state
 
+### Metadata-only token usage
+
+The dashboard is at `https://ai.home.arpa/usage/` on the LAN and
+`https://home-core.tail479ad.ts.net:8443/usage/` over Tailscale. Homepage's
+**Token usage** link selects the appropriate address. Daily, weekly, and
+monthly charts support model and date filters, exact period tables, and
+shareable filter URLs. The page refreshes every minute and identifies stale
+snapshots. Before tracking began, dates are unknown rather than zero usage.
+
+`homecompute-token-usage.timer` publishes an aggregate-only JSON snapshot once
+per minute. The existing Caddy container serves the assets and snapshot from
+`/srv/state/control-plane/caddy-data/token-usage`, under an exact read-only
+route allowlist. The browser receives only dates, aliases, and counts, with no
+database access, credentials, raw usage rows, or client identifiers. No new
+port or application container is introduced. The Nix module owns the refresh
+unit and timer; the deployment script installs the static assets.
+
+LiteLLM records input, output, and total tokens in PostgreSQL. Prompt/response
+storage and error logging remain disabled. Apply `token-usage.sql` before
+enabling spend logs on an existing installation; `deploy-home-core.sh` does
+this automatically. A database trigger also empties message, response,
+request-body, free-form metadata, tags, and client-content fields on every
+insert/update. It retains timestamps, model identifiers, numeric usage,
+status/timing, hashed key identifiers, and one validated numeric cached-input
+count extracted from LiteLLM's usage metadata. All other metadata is removed.
+No external telemetry service is used.
+
+The dashboard reports cached input, cache reuse, and coverage separately.
+Missing cache counts (including historical requests) are unknown, not zero.
+vLLM text servers enable `--enable-prompt-tokens-details`; the database trigger
+keeps only `homecompute_cached_input_tokens` from the provider usage details.
+Zero is retained when explicitly reported. Other runtimes or older versions
+that omit these details continue to contribute usage with unknown cache status.
+
+Expand **Model pricing and comparison** to enter input, cached-input, and
+output rates per million tokens. Rates and currency are saved in local browser
+storage for the current origin; LAN and Tailscale addresses have separate
+settings. Blank cached rates use the input rate; blank input/output rates leave
+that model unpriced, and incomplete cost totals are labeled partial. Unknown
+cache usage is estimated at the uncached input rate. Cached tokens are already
+part of input, so they are not charged twice. Rates apply to the entire selected
+range and estimate equivalent token cost, not actual invoices or electricity.
+The comparison column applies each model's rates to the same selected token
+volume; additional comparison models need not have gateway usage. Changing
+currency only changes the label and does not convert entered rates.
+
+On home-core, query completed requests with:
+
+```bash
+sudo /usr/local/bin/homecompute-token-usage --period day
+sudo /usr/local/bin/homecompute-token-usage --period week --by-model
+sudo /usr/local/bin/homecompute-token-usage --period month --since 2026-10-01
+sudo /usr/local/bin/homecompute-token-usage --since 2026-10-21 --until 2026-10-22 --json
+```
+
+Reports default to the last 30 calendar days in `Europe/Copenhagen`, handling
+daylight-saving changes. Weeks start Monday. `--since` is inclusive and
+`--until` exclusive; boundary weeks/months include only the selected date
+range. Use an earlier `--since` for longer history. No usage rows are aged out
+by this configuration. Recent requests may take about a minute to flush.
+History starts when tracking is installed; earlier usage cannot be recovered.
+Only calls through LiteLLM are covered. Requests without reported token usage
+(for example some speech backends) can have zero tokens. Tokens measure usage,
+not electricity costs, and cached input is included in the backend's input
+count. Shared keyless clients remain one identity. Administration stays private;
+this does not expose LiteLLM's admin UI or PostgreSQL to the network.
+
 `ai.home.arpa` uses Caddy's internal CA. The smoke test reads that CA and uses
 normal certificate validation; it never uses `curl --insecure`. Install the
 root only on approved clients. The online CA private key is in `caddy-data`, so
 compromise can mint trusted certificates; encrypt its off-host backup and
 limit client trust to devices that need this service.
 
-Caddy exposes only `/v1/*` and `/healthz`. It intentionally returns 404 for the
+Caddy exposes approved `/v1/*` inference routes, `/healthz`, and the read-only
+`/usage/` dashboard. It intentionally returns 404 for the
 LiteLLM admin UI and key-management API on the AI gateway host. It also serves
 the separately named `chat.home.arpa` and `models.home.arpa` virtual hosts to
-Open WebUI and the model manager on `clients`. All three use Caddy's internal
-CA. Install that CA on approved clients before opening those pages.
+Open WebUI and the model manager on `clients`, and `hermes.home.arpa` to the
+authenticated Hermes dashboard through its dedicated host bridge listener. The
+Hermes listener is reachable only from the control-plane Docker bridge. These
+virtual hosts use Caddy's internal CA. Install that CA on approved clients
+before opening those pages.
 
 Provision and revoke virtual keys from an administrator shell inside LiteLLM's
 container namespace; do not distribute the master key to clients or publish the
@@ -297,7 +401,12 @@ TCP 22 to `192.168.30.126`; other outbound traffic and non-established return
 traffic are rejected. The deployment script also requires operator-provisioned
 model-manager credentials, the pinned host key, and an explicit forced-command
 readiness flag before it builds or starts the UI.
-Embedding, vision, STT, and TTS candidates are also absent from the production
+The `embedding` alias now routes to Harrier 0.6B on home-core through the private
+clients network. Its OpenAI-compatible `/v1/embeddings` endpoint uses the same
+gateway admission, optional credentials, and CORS policy as the other APIs.
+The network key scope is expanded explicitly with
+`sudo python3 scripts/setup-network-inference.py --enable-embedding`.
+Vision, English STT, and TTS candidates are also absent from the production
 LiteLLM model list and Caddy route allow-list while staged. Qualify one modality
 at a time against its direct private listener; add a gateway alias only through
 an explicit promotion change with route, quota, monitoring, and rollback tests.
@@ -308,3 +417,30 @@ virtual keys exist. The NixOS backup module remains disabled until its real
 off-host repository and runtime password path are configured. Image updates
 are manual and require backup plus release-note and vulnerability review; no
 automatic container updater is installed.
+
+### Spark transcription over the HTTPS gateway
+
+The network model `stt-danish` routes `/v1/audio/transcriptions` to the running
+Spark Hviske v5.3 GPU service. Run `scripts/setup-compute-hviske-stt.sh http-up` to build/start only the
+logging-free `hviske-http` profile; it publishes `127.0.0.1:8003` and needs no
+primary model restart. Its isolated Python/FFmpeg image converts phone audio
+to PCM WAV, with 10 MB/60 second/4 concurrent request bounds. The dedicated forwarding-only SSH account must allow
+`127.0.0.1:8003`. Home-core maps it to `172.28.200.1:18003`, admitting only
+LiteLLM at `172.28.200.3`. Set `COMPUTE_STT_DANISH_BASE_URL` to that `/v1` URL.
+When migrating an existing reviewed text-only network key, run
+`scripts/setup-network-inference.py --enable-stt` on home-core after adding the
+model; ordinary provisioning verifies scope without widening existing keys.
+The common HTTPS base works without client credentials and permits browser
+preflight. The `whisper-turbo` alias serves the separate pinned Spark Whisper Large-v3
+Turbo container through `172.28.200.1:18007` to `127.0.0.1:8007`, admitting
+only LiteLLM. Use `COMPUTE_STT_MULTILINGUAL_BASE_URL` for that `/v1` URL.
+Migrate an existing reviewed Danish+text network key with
+`scripts/setup-network-inference.py --enable-whisper`.
+
+The isolated `deploy/whisper-stt/compose.yaml` uses the existing compute runtime
+identity and shared upstream key paths from `/etc/gb10-ai/hviske.env`. Run its
+`whisper-fetch` and `whisper-accept` services with the `prepare` profile before
+starting `whisper-primary` and `whisper-http` with `up -d --build --wait`.
+Acceptance verifies the pinned upstream weight SHA-256 and records a private
+manifest; startup verifies it offline. Only the relay publishes a loopback port.
+The forwarding-only Spark account must permit `127.0.0.1:8007`.

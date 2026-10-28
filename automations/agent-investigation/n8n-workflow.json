@@ -1,0 +1,115 @@
+{
+  "name": "HomeCompute synthetic investigation (inactive approval scaffold)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual",
+      "name": "Manual synthetic incident",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {project: 'synthetic-demo', issue_key: 'synthetic:arithmetic:1', summary: 'Simulated arithmetic defect', context: 'Synthetic data only. Investigate why add(2,3) returns the wrong result. Submit a coding task; execution requires operator approval.'}}];"
+      },
+      "id": "incident",
+      "name": "Fixed synthetic incident",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openclaw-private-event-endpoint.invalid/hooks/agent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.project + \":\" + $json.issue_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({message: \"Investigate this synthetic incident and submit one task with the same project and issue_key: \" + JSON.stringify($json), name: \"HomeCompute simulated incident\", agentId: \"assistant\", sessionMode: \"isolated\", wakeMode: \"now\", deliver: false}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "event",
+      "name": "Approved private OpenClaw event endpoint",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        0
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json: {status: 'scaffold-only', notification: 'No workflow has been enabled or notification delivered. Enable the event node only after approved private ingress and dedicated hook authentication. Hook admission does not prove investigation completion; poll broker task metadata and reuse existing n8n notification deduplication.'}}];"
+      },
+      "id": "status",
+      "name": "Report scaffold status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual synthetic incident": {
+      "main": [
+        [
+          {
+            "node": "Fixed synthetic incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fixed synthetic incident": {
+      "main": [
+        [
+          {
+            "node": "Approved private OpenClaw event endpoint",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved private OpenClaw event endpoint": {
+      "main": [
+        [
+          {
+            "node": "Report scaffold status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

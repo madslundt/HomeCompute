@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "flash-next-quality-vs-ultrafast",
+  "version": "0.1.0",
+  "trials": 10,
+  "random_seed": 20260930,
+  "cases": [
+    "../fixtures/smoke/structured-extraction.json",
+    "../fixtures/flash-next/danish-structured-extraction.json",
+    "../fixtures/flash-next/exact-tool-selection.json"
+  ],
+  "candidates": [
+    {
+      "id": "flash-quality-blazux-nvidia",
+      "adapter": "openai_compatible",
+      "model": "automation-qualification",
+      "base_url_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "api_key_env": "VLLM_API_KEY",
+      "artifact_ref": "flash-quality-blazux-nvidia",
+      "request": {
+        "temperature": 0,
+        "reasoning_effort": "xhigh",
+        "chat_template_kwargs": {"enable_thinking": true},
+        "tools": [
+          {"type": "function", "function": {"name": "aula_find_events", "description": "Find Aula events for one child and date.", "parameters": {"type": "object", "properties": {"child_name": {"type": "string"}, "date": {"type": "string"}, "language": {"type": "string", "enum": ["da", "en"]}}, "required": ["child_name", "date", "language"], "additionalProperties": false}}},
+          {"type": "function", "function": {"name": "aula_find_messages", "description": "Find Aula messages for one child and date.", "parameters": {"type": "object", "properties": {"child_name": {"type": "string"}, "date": {"type": "string"}, "language": {"type": "string", "enum": ["da", "en"]}}, "required": ["child_name", "date", "language"], "additionalProperties": false}}}
+        ]
+      }
+    },
+    {
+      "id": "flash-ultrafast-dime-autoround",
+      "adapter": "openai_compatible",
+      "model": "automation-qualification",
+      "base_url_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "api_key_env": "VLLM_API_KEY",
+      "artifact_ref": "flash-ultrafast-dime-autoround",
+      "request": {
+        "temperature": 0,
+        "reasoning_effort": "high",
+        "chat_template_kwargs": {"enable_thinking": true},
+        "tools": [
+          {"type": "function", "function": {"name": "aula_find_events", "description": "Find Aula events for one child and date.", "parameters": {"type": "object", "properties": {"child_name": {"type": "string"}, "date": {"type": "string"}, "language": {"type": "string", "enum": ["da", "en"]}}, "required": ["child_name", "date", "language"], "additionalProperties": false}}},
+          {"type": "function", "function": {"name": "aula_find_messages", "description": "Find Aula messages for one child and date.", "parameters": {"type": "object", "properties": {"child_name": {"type": "string"}, "date": {"type": "string"}, "language": {"type": "string", "enum": ["da", "en"]}}, "required": ["child_name", "date", "language"], "additionalProperties": false}}}
+        ]
+      }
+    }
+  ]
+}

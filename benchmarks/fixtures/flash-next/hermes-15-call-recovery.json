@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "id": "hermes-15-call-aula-recovery-synthetic",
+  "track": "agent-tool-loop",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are running a read-only synthetic Aula investigation. First list children. For each child, search messages, events, and posts for September 2026. Open every returned record with aula_get_record_details. If a tool reports a temporary error, retry that exact lookup once. Do not invent facts. Return a concise JSON summary with child IDs and every relevant record ID."
+    },
+    {
+      "role": "user",
+      "content": "Prepare a September activity briefing for both children. Make the required sequence of 15 or more read-only tool calls and include records discovered in every source."
+    }
+  ],
+  "tools": [
+    {"type": "function", "function": {"name": "aula_list_children", "description": "List child profiles available in Aula.", "parameters": {"type": "object", "properties": {}, "additionalProperties": false}}},
+    {"type": "function", "function": {"name": "aula_search_messages", "description": "Search messages for one child and date range.", "parameters": {"type": "object", "properties": {"child_id": {"type": "string"}, "date_range": {"type": "string"}}, "required": ["child_id", "date_range"], "additionalProperties": false}}},
+    {"type": "function", "function": {"name": "aula_search_events", "description": "Search calendar events for one child and date range.", "parameters": {"type": "object", "properties": {"child_id": {"type": "string"}, "date_range": {"type": "string"}}, "required": ["child_id", "date_range"], "additionalProperties": false}}},
+    {"type": "function", "function": {"name": "aula_search_posts", "description": "Search school posts for one child and date range.", "parameters": {"type": "object", "properties": {"child_id": {"type": "string"}, "date_range": {"type": "string"}}, "required": ["child_id", "date_range"], "additionalProperties": false}}},
+    {"type": "function", "function": {"name": "aula_get_record_details", "description": "Open one known Aula message, event, or post ID.", "parameters": {"type": "object", "properties": {"record_id": {"type": "string"}}, "required": ["record_id"], "additionalProperties": false}}}
+  ],
+  "required_tool_calls": [
+    {"name": "aula_list_children", "arguments": {}},
+    {"name": "aula_search_messages", "arguments": {"child_id": "C1", "date_range": "2026-09-01/2026-09-30"}},
+    {"name": "aula_search_messages", "arguments": {"child_id": "C2", "date_range": "2026-09-01/2026-09-30"}},
+    {"name": "aula_search_events", "arguments": {"child_id": "C1", "date_range": "2026-09-01/2026-09-30"}},
+    {"name": "aula_search_events", "arguments": {"child_id": "C1", "date_range": "2026-09-01/2026-09-30"}},
+    {"name": "aula_search_events", "arguments": {"child_id": "C2", "date_range": "2026-09-01/2026-09-30"}},
+    {"name": "aula_search_posts", "arguments": {"child_id": "C1", "date_range": "2026-09-01/2026-09-30"}},
+    {"name": "aula_search_posts", "arguments": {"child_id": "C2", "date_range": "2026-09-01/2026-09-30"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "M1"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "M2"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "M3"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "M4"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "E1"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "E2"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "P1"}},
+    {"name": "aula_get_record_details", "arguments": {"record_id": "P2"}}
+  ],
+  "tool_results": {
+    "aula_list_children": {"children": [{"id": "C1", "name": "Child One"}, {"id": "C2", "name": "Child Two"}]},
+    "aula_search_messages": [
+      {"record_ids": ["M1", "M2"]},
+      {"record_ids": ["M3", "M4"]}
+    ],
+    "aula_search_events": [
+      {"error": "temporary_timeout", "retryable": true},
+      {"record_ids": ["E1"]},
+      {"record_ids": ["E2"]}
+    ],
+    "aula_search_posts": [
+      {"record_ids": ["P1"]},
+      {"record_ids": ["P2"]}
+    ],
+    "aula_get_record_details": [
+      {"id": "M1", "fact": "synthetic message for child C1"},
+      {"id": "M2", "fact": "synthetic follow-up message for child C1"},
+      {"id": "M3", "fact": "synthetic message for child C2"},
+      {"id": "M4", "fact": "synthetic follow-up message for child C2"},
+      {"id": "E1", "fact": "synthetic event after retry for child C1"},
+      {"id": "E2", "fact": "synthetic event for child C2"},
+      {"id": "P1", "fact": "synthetic post for child C1"},
+      {"id": "P2", "fact": "synthetic post for child C2"}
+    ]
+  },
+  "tool_loop_assertions": {"minimum_calls": 15, "maximum_calls": 30, "minimum_sequential_rounds": 15, "minimum_tool_errors": 1},
+  "objective_checks": [
+    {"id": "final-json", "type": "valid_json", "weight": 2},
+    {"id": "include-retried-event", "type": "contains", "value": "E1", "weight": 2},
+    {"id": "include-both-children", "type": "contains", "value": "C1", "weight": 1},
+    {"id": "include-second-child", "type": "contains", "value": "C2", "weight": 1}
+  ],
+  "rubric": [
+    {"id": "evidence-fidelity", "description": "Final summary includes only facts grounded in the synthetic tool results.", "weight": 3},
+    {"id": "error-recovery", "description": "Retries the transient event lookup and uses the successful result rather than claiming it failed permanently.", "weight": 3},
+    {"id": "completion", "description": "Completes all child/source searches and opens the returned records before summarizing.", "weight": 3}
+  ]
+}

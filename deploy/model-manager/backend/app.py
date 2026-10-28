@@ -19,7 +19,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 
-APP_ROOT = Path(__file__).resolve().parents[1]
+# The Docker image copies this file to /app/app.py and the frontend build to
+# /app/dist. Resolve the directory containing this file so StaticFiles mounts
+# the UI in the runtime image as well as during local development.
+APP_ROOT = Path(__file__).resolve().parent
 CATALOG_PATH = Path(os.environ.get("MODEL_MANAGER_CATALOG", "/app/config/model-catalog.json"))
 SSH_KEY = Path(os.environ.get("MODEL_MANAGER_SSH_KEY", "/run/secrets/model_manager_ssh_key"))
 KNOWN_HOSTS = Path(os.environ.get("MODEL_MANAGER_KNOWN_HOSTS", "/run/secrets/model_manager_known_hosts"))

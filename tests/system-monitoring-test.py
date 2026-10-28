@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""Monitoring boundaries, deduplication, stale evidence and failure recovery."""
+import copy
+from datetime import datetime, timedelta, timezone
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+SPEC = importlib.util.spec_from_file_location("system_monitoring", ROOT / "scripts/observe-homecompute.py")
+MONITOR = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MONITOR)
+NOW = datetime(2026, 10, 9, 12, tzinfo=timezone.utc)
+
+
+def registry():
+    return MONITOR.validate_registry(json.loads((ROOT / "config/system-monitoring.json").read_text()))
+
+
+def snapshot(system, *, failing=False):
+    return {"schema_version": 1, "host": system["target"], "failed_units": [],
+            "n8n_workflow_health": {"schema_version": 1, "generated_at": MONITOR.iso(NOW),
+                                    "window_seconds": 900, "failure_count": 0},
+            "unit_states": {u["name"]: {"LoadState": "loaded", "ActiveState": "active" if u["kind"] == "persistent" else "inactive",
+                             "SubState": "running" if u["kind"] == "persistent" else "dead", "Result": "success",
+                             "ExecMainStatus": "0", "ExecMainStartTimestampMonotonic": "1"} for u in system["units"]},
+            "containers": [{"name": s["name"], "status": "Restarting (1) 3 seconds ago" if failing else "Up 8 days (healthy)"}
+                           for s in system["containers"]],
+            "platform_updates": None,
+            "host_update_report": {"schema_version": 1, "host": system["target"], "generated_at": MONITOR.iso(NOW),
+                "items": [{"component": "fixture", "kind": "packages", "status": "current"}], "summary": {"current": 1}},
+            "mcp_update_report": {"schema_version": 1, "host": "home-core", "generated_at": MONITOR.iso(NOW),
+                "components": [{"component": c, "status": "current"} for c in ("aula-mcp", "tilbudstrolden-mcp")]},
+            "maintenance_report": {"schema_version": 1, "mode": "observe-only", "host": system["target"],
+                "generated_at": MONITOR.iso(NOW),
+                "package_updates": {"status": "current", "candidate_count": 0},
+                "docker_image_updates": {"images": [{"container": "fixture", "state": "current"}]}},
+            "model_update_report": {"schema_version": 1, "mode": "review-only", "generated_at": MONITOR.iso(NOW),
+                                    "summary": {"changed": 0, "pin_drift": 0, "source_errors": 0, "outperforms_active": 0}}}
+
+
+def fixtures(reg):
+    return {s["id"]: snapshot(s) for s in reg["systems"] if s["collector"] == "homecompute-status"}
+
+
+class MonitoringTest(unittest.TestCase):
+    def test_workflow_failure_monitor_catches_pruned_errors_and_deduplicates_counts(self):
+        reg = registry(); data = fixtures(reg)
+        data['home-core']['n8n_workflow_health']['failure_count'] = 1
+        first = MONITOR.make_report(reg, data, NOW)
+        row = next(x for x in first['observations'] if x['check_id'] == 'n8n-workflow-failures')
+        self.assertEqual((row['status'], row['evidence']), ('degraded', {'failed': True}))
+        data['home-core']['n8n_workflow_health']['failure_count'] = 20
+        second = MONITOR.make_report(reg, data, NOW + timedelta(seconds=10), first)
+        self.assertFalse(any(x['stable_key'].endswith('n8n-workflow-failures') for x in second['changes']))
+        data['home-core']['n8n_workflow_health']['failure_count'] = 0
+        recovered = MONITOR.make_report(reg, data, NOW + timedelta(seconds=20), second)
+        self.assertTrue(any(x['stable_key'].endswith('n8n-workflow-failures') and x['transition'] == 'resolved'
+                            for x in recovered['changes']))
+
+    def test_registry_cannot_supply_commands_hosts_or_automatic_actions(self):
+        for mutation in (lambda r: r["systems"][0].update(command="sudo reboot"),
+                         lambda r: r["systems"][0].update(target="-oProxyCommand=bad"),
+                         lambda r: r.update(automatic_actions=True),
+                         lambda r: r.update(physical_device_actions=True),
+                         lambda r: r["systems"][2].update(target="http://evil")):
+            reg = registry(); mutation(reg)
+            with self.assertRaises(ValueError): MONITOR.validate_registry(reg)
+
+    def test_projection_omits_secrets_logs_and_unlisted_services(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"].update(api_key="SECRET", logs="PRIVATE", household="OCCUPANCY")
+        data["home-core"]["containers"].append({"name": "PRIVATE", "status": "PRIVATE"})
+        data["home-core"]["model_update_report"].update(changes=[{"credential": "SECRET"}])
+        report = MONITOR.make_report(reg, data, NOW)
+        serialized = json.dumps(report)
+        for secret in ("SECRET", "PRIVATE", "OCCUPANCY"):
+            self.assertNotIn(secret, serialized)
+        self.assertFalse(report["automatic_actions"])
+        self.assertFalse(report["physical_device_actions"])
+
+    def test_unchanged_findings_are_quiet_and_have_same_episode(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"] = snapshot(reg["systems"][0], failing=True)
+        first = MONITOR.make_report(reg, data, NOW)
+        next_report = MONITOR.make_report(reg, data, NOW + timedelta(minutes=1), first)
+        self.assertEqual(next_report["changes"], [])
+        self.assertEqual([x["episode_key"] for x in first["findings"]],
+                         [x["episode_key"] for x in next_report["findings"]])
+
+    def test_collection_failure_cannot_resolve_known_incidents(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"] = snapshot(reg["systems"][0], failing=True)
+        first = MONITOR.make_report(reg, data, NOW)
+        data["home-core"] = None
+        failed = MONITOR.make_report(reg, data, NOW + timedelta(minutes=20), first)
+        old = [x for x in first["findings"] if x["status"] == "degraded"]
+        carried = {x["stable_key"]: x for x in failed["findings"]}
+        for finding in old:
+            self.assertEqual(carried[finding["stable_key"]], finding)
+        self.assertFalse(any(x["transition"] == "resolved" for x in failed["changes"]))
+
+    def test_recovery_resolves_and_recurrence_opens_new_episode(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"] = snapshot(reg["systems"][0], failing=True)
+        first = MONITOR.make_report(reg, data, NOW)
+        recovered = MONITOR.make_report(reg, fixtures(reg), NOW + timedelta(minutes=1), first)
+        self.assertTrue(any(x["transition"] == "resolved" for x in recovered["changes"]))
+        recurrence = MONITOR.make_report(reg, data, NOW + timedelta(minutes=2), recovered)
+        original = {x["stable_key"]: x for x in first["findings"]}
+        for finding in recurrence["findings"]:
+            if finding["status"] == "degraded":
+                self.assertNotEqual(finding["episode_key"], original[finding["stable_key"]]["episode_key"])
+
+    def test_stale_update_report_is_unknown_not_upgrade_or_current(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"]["model_update_report"]["generated_at"] = "2026-09-01T12:00:00Z"
+        report = MONITOR.make_report(reg, data, NOW)
+        observation = next(x for x in report["observations"] if x["check_id"] == "model-update-report")
+        self.assertEqual(observation["status"], "unknown")
+        self.assertEqual(observation["evidence"], {"reason": "stale"})
+
+    def test_unknown_schema_does_not_claim_health(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"]["schema_version"] = 77
+        report = MONITOR.make_report(reg, data, NOW)
+        core = [x for x in report["observations"] if x["system_id"] == "home-core"]
+        self.assertFalse(any(x["status"] == "healthy" for x in core))
+        self.assertEqual(next(x for x in core if x["check_id"] == "collection")["status"], "unknown")
+        self.assertTrue(all(x["status"] == "degraded" for x in core if x["check_id"].endswith(".coverage")))
+
+    def test_update_health_separate_and_no_latest_tag_comparison(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"]["model_update_report"]["summary"]["changed"] = 7
+        for service in data["home-core"]["containers"]: service["image"] = "application:latest"
+        report = MONITOR.make_report(reg, data, NOW)
+        check = next(x for x in report["observations"] if x["check_id"] == "model-update-report.changed")
+        self.assertEqual(check["category"], "updates")
+        self.assertEqual(check["evidence"], {"count": 7, "source_report_generated_at": MONITOR.iso(NOW)})
+        self.assertEqual(check["expires_at"], MONITOR.iso(NOW + timedelta(seconds=691200)))
+        self.assertTrue(all(x["status"] == "healthy" for x in report["observations"] if x["check_id"].startswith("container.") and x["system_id"] == "home-core"))
+        self.assertNotIn("latest", json.dumps(report))
+
+    def test_empty_cached_apt_inventory_remains_unknown(self):
+        # Legacy cached source remains advisory; deployed monitoring uses fresh reports.
+        reg = registry()
+        reg["systems"][1]["updates"].append("cached-apt-candidates")
+        report = MONITOR.make_report(reg, fixtures(reg), NOW)
+        check = next(x for x in report["observations"] if x["check_id"] == "cached-apt-candidates")
+        self.assertEqual(check["status"], "unknown")
+        self.assertEqual(check["evidence"]["reason"], "cached_inventory_only")
+
+    def test_ha_projection_only_version_update_and_unavailable_counters(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-assistant"] = {"schema_version": 1, "host": "home-assistant", "installed_version": "2026.10.1",
+                                  "generated_at": MONITOR.iso(NOW),
+                                  "update_available_count": 2, "unavailable_count": 3,
+                                  "states": [{"state": "OCCUPANCY", "attributes": {"token": "SECRET"}}]}
+        report = MONITOR.make_report(reg, data, NOW)
+        serialized = json.dumps(report)
+        self.assertNotIn("OCCUPANCY", serialized); self.assertNotIn("SECRET", serialized)
+        checks = [x for x in report["observations"] if x["system_id"] == "home-assistant"]
+        self.assertEqual(len(checks), 4)
+        self.assertTrue(any(x["check_id"] == "unavailable_count" and x["evidence"] == {"count": 3} for x in checks))
+
+    def test_previous_report_rejects_unprojected_data(self):
+        reg = registry(); data = fixtures(reg)
+        prior = MONITOR.make_report(reg, data, NOW)
+        for key, value in (("evidence", {"attributes": "SECRET"}), ("system_id", "SECRET"), ("episode_key", "SECRET")):
+            hostile = copy.deepcopy(prior); hostile["findings"][0][key] = value
+            with self.assertRaises(ValueError): MONITOR.make_report(reg, data, NOW, hostile)
+
+    def test_live_collector_reuses_fixed_ssh_and_narrow_unit_projection(self):
+        system = registry()["systems"][0]
+        calls = []
+        def runner(argv, **kwargs):
+            calls.append((argv, kwargs))
+            return subprocess.CompletedProcess(argv, 0, json.dumps({"schema_version": 1}), "SECRET")
+        with patch.object(MONITOR.homecompute, "remote_status", return_value=snapshot(system)):
+            raw = MONITOR.collect(system, runner)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][0][-2:], ["home-core", "python3 -"])
+        self.assertIn("StrictHostKeyChecking=yes", calls[0][0])
+        self.assertIn("homecompute-agents-vm.service", calls[0][1]["input_text"])
+        self.assertIn("systemctl','show'", calls[0][1]["input_text"])
+        self.assertIn("homecompute-maintenance/report.json", calls[0][1]["input_text"])
+        self.assertNotIn("SECRET", json.dumps(raw))
+
+    def test_disabled_ha_never_uses_transport(self):
+        def forbidden(*args, **kwargs): raise AssertionError("HA transport invoked")
+        self.assertIsNone(MONITOR.collect(registry()["systems"][2], forbidden))
+
+    def test_disabled_ha_has_not_provisioned_reason(self):
+        report = MONITOR.make_report(registry(), {}, NOW)
+        row = next(x for x in report["observations"] if x["system_id"] == "home-assistant")
+        self.assertEqual(row["evidence"], {"reason": "not_provisioned"})
+
+    def test_ha_metadata_requires_fresh_source_time_and_cannot_recover_from_stale(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-assistant"] = {"schema_version": 1, "host": "home-assistant", "generated_at": MONITOR.iso(NOW),
+                                  "installed_version": "2026.10.1", "update_available_count": 2, "unavailable_count": 3}
+        first = MONITOR.make_report(reg, data, NOW)
+        data["home-assistant"]["unavailable_count"] = 0
+        for generated in (MONITOR.iso(NOW - timedelta(hours=1)), MONITOR.iso(NOW + timedelta(minutes=2)), "invalid"):
+            data["home-assistant"]["generated_at"] = generated
+            second = MONITOR.make_report(reg, data, NOW, first)
+            rows = [r for r in second["observations"] if r["system_id"] == "home-assistant"]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["evidence"], {"reason": "stale"})
+            self.assertFalse(any(r["transition"] == "resolved" and r["stable_key"].startswith("home-assistant:") for r in second["changes"]))
+
+    def test_ha_private_transport_is_fixed_bounded_and_drops_unexpected_fields(self):
+        system = registry()["systems"][2]; system["enabled"] = True
+        raw = {"schema_version": 1, "host": "home-assistant", "generated_at": MONITOR.iso(NOW),
+               "installed_version": "2026.10.1", "update_available_count": 2, "unavailable_count": 3}
+        with tempfile.TemporaryDirectory() as directory:
+            token = Path(directory) / "token"; token.write_text("a" * 32 + "FIELDSTOKEN"); token.chmod(0o600)
+            calls = []
+            def runner(argv, **kwargs):
+                calls.append((argv, kwargs))
+                return subprocess.CompletedProcess(argv, 0, json.dumps(raw), "PRIVATE_ERROR")
+            cfg = {"schema_version": 1, "token_file": str(token)}
+            self.assertEqual(MONITOR.collect(system, runner, ha_transport=cfg), raw)
+            self.assertEqual(calls[0][0][-2:], ["home-core", "python3 -"])
+            self.assertIn("StrictHostKeyChecking=yes", calls[0][0])
+            source = calls[0][1]["input_text"]
+            self.assertIn('token="' + "a" * 32 + 'FIELDSTOKEN"', source)
+            self.assertIn("http://127.0.0.1:15678/webhook/homecompute-openclaw-ha-metadata", source)
+            self.assertIn("method='GET'", source); self.assertIn("NoRedirect", source)
+            self.assertIn("response.read(65537)", source)
+            self.assertEqual(calls[0][1]["timeout"], 4)
+            for change in ({"states": "PRIVATE"}, {"installed_version": "PRIVATE"}, {"unavailable_count": True}, {"generated_at": None}):
+                old = dict(raw); raw.update(change)
+                self.assertIsNone(MONITOR.collect(system, runner, ha_transport=cfg))
+                raw.clear(); raw.update(old)
+            with self.assertRaises(ValueError): MONITOR.collect(system, runner, ha_transport={**cfg, "url": "http://evil"})
+            self.assertIsNone(MONITOR.collect(system, runner))
+            token.chmod(0o644)
+            with self.assertRaises(ValueError): MONITOR.collect(system, runner, ha_transport=cfg)
+            token.chmod(0o600)
+            alias = Path(directory) / "alias"; alias.symlink_to(token)
+            with self.assertRaises(OSError): MONITOR.collect(system, runner, ha_transport={**cfg, "token_file": str(alias)})
+            fifo = Path(directory) / "fifo"; os.mkfifo(fifo, 0o600)
+            with self.assertRaises(ValueError): MONITOR.collect(system, runner, ha_transport={**cfg, "token_file": str(fifo)})
+
+    def test_ha_config_rejects_external_endpoint_fields_and_nonprivate_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            cfg = {"schema_version": 1, "token_file": "/private/token"}
+            path.write_text(json.dumps(cfg)); path.chmod(0o600)
+            self.assertEqual(MONITOR.load_ha_transport(path), cfg)
+            for mutation in ({"url": "http://evil"}, {"token_file": "relative"}, {"schema_version": 2}):
+                path.write_text(json.dumps({**cfg, **mutation}))
+                with self.assertRaises(ValueError): MONITOR.load_ha_transport(path)
+            path.write_text(json.dumps(cfg)); path.chmod(0o644)
+            with self.assertRaises(ValueError): MONITOR.load_ha_transport(path)
+
+    def test_no_failed_units_does_not_prove_stopped_vm_is_healthy(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"]["unit_states"]["homecompute-agents-vm.service"]["ActiveState"] = "inactive"
+        report = MONITOR.make_report(reg, data, NOW)
+        row = next(x for x in report["observations"] if x["check_id"] == "unit.homecompute-agents-vm.service")
+        self.assertEqual(row["status"], "degraded")
+        del data["home-core"]["unit_states"]
+        report = MONITOR.make_report(reg, data, NOW)
+        row = next(x for x in report["observations"] if x["check_id"] == "unit.homecompute-agents-vm.service")
+        self.assertEqual(row["status"], "unknown")
+
+    def test_oneshot_never_run_or_running_is_unknown(self):
+        reg = registry(); data = fixtures(reg)
+        unit = data["home-core"]["unit_states"]["homecompute-model-update-monitor.service"]
+        unit["ExecMainStartTimestampMonotonic"] = "0"
+        report = MONITOR.make_report(reg, data, NOW)
+        row = next(x for x in report["observations"] if x["check_id"] == "unit.homecompute-model-update-monitor.service")
+        self.assertEqual(row["evidence"], {"reason": "never_started"})
+        unit.update(ExecMainStartTimestampMonotonic="1", ActiveState="activating")
+        report = MONITOR.make_report(reg, data, NOW)
+        row = next(x for x in report["observations"] if x["check_id"] == "unit.homecompute-model-update-monitor.service")
+        self.assertEqual(row["status"], "unknown")
+
+    def test_new_upstream_report_with_same_count_is_not_suppressed(self):
+        reg = registry(); data = fixtures(reg)
+        data["home-core"]["model_update_report"]["summary"]["changed"] = 7
+        first = MONITOR.make_report(reg, data, NOW)
+        data["home-core"]["model_update_report"]["generated_at"] = MONITOR.iso(NOW + timedelta(minutes=1))
+        second = MONITOR.make_report(reg, data, NOW + timedelta(minutes=1), first)
+        change = next(x for x in second["changes"] if x["stable_key"] == "home-core:model-update-report.changed")
+        self.assertEqual(change["transition"], "changed")
+
+
+if __name__ == "__main__":
+    unittest.main()

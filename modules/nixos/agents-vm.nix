@@ -27,6 +27,9 @@ let
     iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -p tcp -m multiport --dports 80,443 -j ACCEPT
     iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -p udp --dport 123 -j ACCEPT
   '';
+  cloudContent = text: lib.concatMapStringsSep "\n" (line: "          ${line}") (lib.splitString "\n" text);
+  publicDnsController = cloudContent (builtins.readFile ../../scripts/openclaw-public-dns.py);
+  publicDnsUnit = cloudContent (builtins.readFile ../../deploy/openclaw/nemoclaw/homecompute-public-dns.service);
 
   userData = pkgs.writeText "agents-vm-user-data" ''
     #cloud-config
@@ -51,8 +54,20 @@ let
           PasswordAuthentication no
           PermitRootLogin no
           AllowUsers ${cfg.operatorUser}
+      - path: /etc/homecompute-public-dns/openclaw-public-dns.py
+        owner: root:root
+        permissions: '0555'
+        content: |
+    ${publicDnsController}
+      - path: /etc/systemd/system/homecompute-public-dns.service
+        owner: root:root
+        permissions: '0644'
+        content: |
+    ${publicDnsUnit}
     runcmd:
       - [systemctl, restart, ssh.service]
+      - [systemctl, daemon-reload]
+      - [sh, -c, 'if [ -f /etc/homecompute-public-dns/identity.json ]; then systemctl enable --now homecompute-public-dns.service; fi']
   '';
 
   metaData = pkgs.writeText "agents-vm-meta-data" ''
@@ -218,8 +233,11 @@ in
       {
         assertion = lib.any (
           path: path == "/srv/state" || path == statePath
-        ) config.homecompute.backups.paths;
-        message = "homecompute.backups.paths must include /srv/state or the agents VM state directory";
+        ) (if config.homecompute.backups.enable then
+          lib.concatMap (source: source.paths) (builtins.attrValues config.homecompute.backups.sources)
+        else
+          config.homecompute.backups.paths);
+        message = "an enabled backup source must include /srv/state or the agents VM state directory";
       }
       {
         assertion = lib.hasPrefix "https://cloud-images.ubuntu.com/" cfg.image.url;
@@ -244,6 +262,7 @@ in
         53
         443
         inferenceBridgePort
+        18789
       ];
       allowedUDPPorts = [ 53 ];
     };
@@ -359,6 +378,7 @@ in
             bind ${hostAddress}
             hosts {
               ${hostAddress} ai.home.arpa
+              ${hostAddress} homecompute-capabilities.home.arpa
               fallthrough
             }
             forward . /etc/resolv.conf
@@ -434,7 +454,7 @@ in
       script = ''
         if docker inspect --format '{{.State.Running}}' \
           homecompute-control-plane-automation-backup-1 2>/dev/null | grep -qx true; then
-          echo "automation-backup is running; refusing to start the 16 GiB agents VM" >&2
+          echo "automation-backup is running; refusing to start the ${toString cfg.resources.memoryMiB} MiB agents VM" >&2
           exit 1
         fi
       '';
@@ -511,7 +531,9 @@ in
         User = "homecompute-agents-vm";
         Group = "homecompute-agents-vm";
         SupplementaryGroups = [ "kvm" ];
-        Restart = "on-failure";
+        # A guest shutdown or reboot can make QEMU exit successfully. Explicit
+        # operator stops (including backups) still suppress automatic restart.
+        Restart = "always";
         RestartSec = "10s";
         TimeoutStopSec = "2m";
         # Only used after the bounded ACPI/QMP shutdown wait above expires.

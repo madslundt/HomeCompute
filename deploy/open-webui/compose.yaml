@@ -25,6 +25,20 @@ services:
       ENABLE_OPENAI_API: "true"
       OPENAI_API_BASE_URLS: http://litellm:4000/v1
       OPENAI_API_KEYS: ""
+      ENABLE_RAG_HYBRID_SEARCH: "true"
+      RAG_EMBEDDING_ENGINE: openai
+      RAG_EMBEDDING_MODEL: embedding
+      RAG_OPENAI_API_BASE_URL: http://litellm:4000/v1
+      RAG_EMBEDDING_BATCH_SIZE: "16"
+      RAG_EMBEDDING_CONCURRENT_REQUESTS: "1"
+      RAG_EMBEDDING_MODEL_AUTO_UPDATE: "false"
+      RAG_EMBEDDING_MODEL_TRUST_REMOTE_CODE: "false"
+      RAG_EMBEDDING_QUERY_PREFIX: "Instruct: Given a question, retrieve relevant document passages that answer the question\nQuery: "
+      RAG_EMBEDDING_CONTENT_PREFIX: ""
+      # Character splitting bounds even four-byte Unicode to <=2048 UTF-8 bytes.
+      RAG_TEXT_SPLITTER: ""
+      CHUNK_SIZE: "512"
+      CHUNK_OVERLAP: "64"
       OLLAMA_BASE_URL: ""
       OLLAMA_API_BASE_URL: ""
       SAFE_MODE: "true"
@@ -34,6 +48,7 @@ services:
     secrets:
       - litellm_api_key
       - webui_secret_key
+      - embedding_api_key
     volumes:
       - ${OPEN_WEBUI_STATE_ROOT:?Set OPEN_WEBUI_STATE_ROOT}/data:/app/backend/data
       - ./open-webui-entrypoint.sh:/opt/homecompute/open-webui-entrypoint.sh:ro
@@ -48,7 +63,8 @@ services:
         max-size: 10m
         max-file: "3"
     networks:
-      clients: {}
+      clients:
+        ipv4_address: ${OPEN_WEBUI_CLIENT_IP:-172.28.210.5}
 
 networks:
   clients:
@@ -60,3 +76,5 @@ secrets:
     file: ${OPEN_WEBUI_LITELLM_API_KEY_FILE:?Set OPEN_WEBUI_LITELLM_API_KEY_FILE to a least-privilege LiteLLM virtual-key file}
   webui_secret_key:
     file: ${OPEN_WEBUI_SECRET_KEY_FILE:?Set OPEN_WEBUI_SECRET_KEY_FILE to a stable random secret file}
+  embedding_api_key:
+    file: ${OPEN_WEBUI_EMBEDDING_API_KEY_FILE:?Set OPEN_WEBUI_EMBEDDING_API_KEY_FILE to an embedding-only LiteLLM virtual-key file}

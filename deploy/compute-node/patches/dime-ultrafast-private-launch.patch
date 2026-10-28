@@ -1,0 +1,40 @@
+--- a/recipe/config/v16b/serve.sh
++++ b/recipe/config/v16b/serve.sh
+@@ -5,6 +5,7 @@
+ NAME="${NAME:-qwen38-flash}"
+ IMAGE="${IMAGE:-qwen38-flash-dgx}"
+ MODEL_DIR="${MODEL_DIR:-/models/Qwen3.8-Flash-Next-W4A16-AutoRound-hybrid-mtpdense-g32}"
++HOST_BIND="${HOST_BIND:-127.0.0.1}"
+ TABLE_DIR="${TABLE_DIR:-/models/ple-table-fp8}"
+ PORT="${PORT:-18300}"
+ CTX="${CTX:-262144}"
+@@ -89,9 +90,10 @@
+ # The four flag strings below intentionally expand into separate argv words;
+ # the promoted env supplies fixed, whitespace-separated flags.
+ # shellcheck disable=SC2206
+-DOCKER_RUN=(docker run -d --name "$NAME" --restart unless-stopped \
+-  --gpus all --ipc=host --shm-size 16g -p "${PORT}:8000" \
++DOCKER_RUN=(docker run -d --name "$NAME" \
++  --gpus all --ipc=host --shm-size 16g -p "${HOST_BIND}:${PORT}:8000" \
+   -v "$MODEL_DIR:/model:ro" -v "$TABLE_DIR:/ple-table:ro" \
++  --label homecompute.managed=flash-next --label "homecompute.profile=${HOME_COMPUTE_PROFILE:-ultrafast}" \
+   -e VLLM_PLE_MMAP=1 -e VLLM_PLE_MMAP_WORKERS="${WORKERS:-32}" -e VLLM_PLE_MMAP_PREWARM="$PREWARM" -e VLLM_PLE_MMAP_PREFETCH="${PLE_PREFETCH:-0}" \
+   -e VLLM_PLE_MMAP_MADV_RANDOM="${PLE_MADV_RANDOM:-0}" \
+   "${PLE_ARGS[@]}" \
+@@ -120,11 +122,15 @@
+ [ $# -le 1 ] || { echo "serve.sh: too many arguments" >&2; exit 64; }
+ case "${1:-}" in
+   --print) printf '%q\n' "${DOCKER_RUN[@]}"; exit 0 ;;
++  --check) docker image inspect "$IMAGE" >/dev/null; exit 0 ;;
+   "") ;;
+   *) echo "serve.sh: unknown argument '$1'" >&2; exit 64 ;;
+ esac
+ 
+-docker rm -f "$NAME" >/dev/null 2>&1 || true
++if docker container inspect "$NAME" >/dev/null 2>&1; then
++  echo "serve.sh: refusing to replace existing container '$NAME'; use the HomeCompute lifecycle" >&2
++  exit 73
++fi
+ "${DOCKER_RUN[@]}"
+ 
+ echo ">> $NAME starting on :$PORT (ctx $CTX, mtp=$MTP, seqs=$SEQS, gpu_mem=$GPU_MEM)"

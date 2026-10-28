@@ -1,0 +1,59 @@
+# Disabled candidate for a DEDICATED Ubuntu worker VM; never install on home-core
+# or the existing agents/Hermes guest. No [Install] section: manual canary only.
+# Requires a qualified dedicated 12 GiB filesystem at /srv/codex-work, reviewed
+# VM egress that permits only the fixed broker and CONNECT proxy, distro bwrap
+# with its scoped AppArmor profile, and the locked 0.145.0 CLI in /opt/worker.
+[Unit]
+Description=HomeCompute bounded Codex worker (dedicated VM candidate)
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/srv/codex-work
+ConditionPathExists=/etc/homecompute-codex/ENABLED
+ConditionPathExists=/etc/homecompute-codex/projects.json
+
+[Service]
+Type=simple
+User=codex-controller
+Group=codex-controller
+WorkingDirectory=/opt/worker
+Environment=PATH=/opt/worker/node_modules/.bin:/usr/bin:/bin
+Environment=CODEX_WORKER_ROOT=/srv/codex-work
+Environment=CODEX_WORKER_PROJECTS=/etc/homecompute-codex/projects.json
+# Operator installs this root-owned mode-0600 file only after choosing and
+# qualifying the broker TLS origin/private CA and CONNECT proxy IP/port.
+# Fixed CODEX_WORKER_BROKER and proxy variables must not come from a task.
+EnvironmentFile=/etc/homecompute-codex/worker.env
+LoadCredential=worker_token:/etc/homecompute-codex/secrets/worker_token
+LoadCredential=codex_api_key:/etc/homecompute-codex/secrets/codex_api_key
+# Public approved repositories clone without authentication. A future reviewed
+# private project must add its own read-only github_checkout_token LoadCredential.
+ExecStartPre=/usr/bin/python3 /opt/worker/qualify_native.py
+ExecStart=/usr/bin/python3 /opt/worker/worker.py
+# Normal single-job exits restart into a fresh cgroup; qualification/startup
+# failure stays stopped for operator review rather than spinning on a blocker.
+Restart=on-success
+RestartSec=5s
+KillMode=control-group
+TimeoutStopSec=15s
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_KILL
+AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_DAC_OVERRIDE CAP_KILL
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/srv/codex-work
+InaccessiblePaths=/etc/homecompute-codex/secrets
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=4G
+MemorySwapMax=0
+CPUQuota=200%
+TasksMax=512
+LimitCORE=0
+StandardOutput=journal
+StandardError=journal

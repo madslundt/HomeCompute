@@ -1,0 +1,23 @@
+[Unit]
+Description=Preserve OpenClaw state before agents VM shutdown
+After=docker.service user@1000.service network.target ssh.service systemd-logind.service systemd-user-sessions.service
+Requires=docker.service user@1000.service
+ConditionPathExists=/etc/homecompute-openclaw/supervisor-identity.env
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+User=hermes-operator
+Environment=HOME=/home/hermes-operator
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=PATH=/home/hermes-operator/.local/bin:/home/hermes-operator/.nvm/versions/node/v22.23.3/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/etc/homecompute-openclaw/agent-openclaw.env
+ExecStart=/usr/bin/systemctl --user start homecompute-openclaw-supervisor.service
+ExecStop=/usr/bin/python3 /etc/homecompute-openclaw/stop-openclaw-before-shutdown.py
+TimeoutStopSec=160
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-09T17:34:47.567732+00:00",
+  "scope": "credential_free_disposable_synthetic_surrogates",
+  "passed": true,
+  "controller_process_id": 64629,
+  "checks": {
+    "production_project_allowlist_empty": true,
+    "operator_cloud_classification_required": true,
+    "unknown_project_denied": true,
+    "model_supplied_argv_denied": true,
+    "pending_cannot_claim": true,
+    "assistant_cannot_approve": true,
+    "assistant_cannot_claim": true,
+    "assistant_cannot_result": true,
+    "assistant_cannot_publish": true,
+    "assistant_cannot_review": true,
+    "worker_cannot_approve": true,
+    "worker_cannot_publish": true,
+    "cancelled_cannot_reapprove": true,
+    "cancelled_not_claimed": true,
+    "single_worker_claim": true,
+    "cancelled_result_denied": true,
+    "cancelled_heartbeat_denied": true,
+    "public_status_redacted": true,
+    "wrong_digest_denied_before_publish": true,
+    "completed_publish_not_repeated": true,
+    "draft_commit_preserves_base": true,
+    "no_merge_deploy_transport": true,
+    "deduplicated_completed_or_failed": true,
+    "dedupe_survives_restart": true,
+    "cancellation_audit_survives_restart": true,
+    "terminal_task_not_requeued": true
+  },
+  "task": {
+    "id": "92438ecf-07c0-4f5d-b3ba-332bab6b03b9",
+    "project": "synthetic-demo",
+    "issue_key": "synthetic:arithmetic:1",
+    "state": "completed",
+    "created": 1791567287.077089,
+    "updated": 1791567287.529243,
+    "session_id": "synthetic-session-92438ecf-07c0-4f5d-b3ba-332bab6b03b9",
+    "pr_url": "https://github.invalid/example/synthetic/pull/1",
+    "error": null,
+    "commit": "3c5f43f3cb4cb7dd18de781f6e6995ee45d7d385"
+  },
+  "worker": {
+    "fixed_backend_called": true,
+    "baseline_exit": 1,
+    "investigation": "Generated fixture add() subtracts; baseline confirms 2 + 3 returns -1.",
+    "postcheck_exit": 0,
+    "baseline_log": "F\n======================================================================\nFAIL: test_adds_positive_and_negative_operands (test_calc.AdditionTests.test_adds_positive_and_negative_operands)\n----------------------------------------------------------------------\nTraceback (most recent call last):\n  File \"/private/var/folders/ml/gx4bl37501d1q939c90zwvs80000gn/T/homecompute-action-flow-s59ggla2/work/92438ecf-07c0-4f5d-b3ba-332bab6b03b9/worktree/tests/test_calc.py\", line 9, in test_adds_positive_and_negative_operands\n    self.assertEqual(add(2, 3), 5)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^\nAssertionError: -1 != 5\n\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nFAILED (failures=1)\n",
+    "postcheck_log": ".\n----------------------------------------------------------------------\nRan 1 test in 0.000s\n\nOK\n",
+    "session_events": "{\"type\": \"thread.started\", \"thread_id\": \"synthetic-session-92438ecf-07c0-4f5d-b3ba-332bab6b03b9\"}\n{\"type\": \"synthetic.fixed_result\", \"authenticated_Codex\": false}\n",
+    "process_id": 64658,
+    "session_id": "synthetic-session-92438ecf-07c0-4f5d-b3ba-332bab6b03b9",
+    "ok": true,
+    "runner": "fixture_only_fixed_result_surrogate"
+  },
+  "states": [
+    "pending",
+    "queued",
+    "running",
+    "review",
+    "publishing",
+    "completed"
+  ],
+  "review": {
+    "task": {
+      "id": "92438ecf-07c0-4f5d-b3ba-332bab6b03b9",
+      "project": "synthetic-demo",
+      "issue_key": "synthetic:arithmetic:1",
+      "state": "review",
+      "created": 1791567287.077089,
+      "updated": 1791567287.4075048,
+      "session_id": "synthetic-session-92438ecf-07c0-4f5d-b3ba-332bab6b03b9",
+      "pr_url": null,
+      "error": null,
+      "commit": null
+    },
+    "result": {
+      "ok": true,
+      "session_id": "synthetic-session-92438ecf-07c0-4f5d-b3ba-332bab6b03b9",
+      "files": [
+        {
+          "path": "src/calc.py",
+          "content": "ZGVmIGFkZChhLCBiKToKICAgIHJldHVybiBhICsgYgo="
+        }
+      ]
+    },
+    "result_sha256": "4fee0e18eae65b728a0569218fdebc28f9646c2950a56fd66864bc45d624420e"
+  },
+  "draft_payload": {
+    "title": "[Draft] Investigate synthetic:arithmetic:1",
+    "head": "codex/repair-92438ecf-07c0-4f5d-b3ba-332bab6b03b9",
+    "base": "main",
+    "draft": true,
+    "body": "Isolated Codex proposal. Task: 92438ecf-07c0-4f5d-b3ba-332bab6b03b9\n\nWorker reports the fixed test command passed. This is untrusted test evidence; independent CI and human review are required before merge or deployment.\n\nBase commit: 74a01baebd4fa797b3ab966cba04d8f754aa5067"
+  },
+  "local_git": {
+    "base_commit": "74a01baebd4fa797b3ab966cba04d8f754aa5067",
+    "proposed_commit": "3c5f43f3cb4cb7dd18de781f6e6995ee45d7d385",
+    "proposed_content": "def add(a, b):\n    return a + b\n",
+    "parent_commit": "74a01baebd4fa797b3ab966cba04d8f754aa5067"
+  },
+  "publisher_methods": [
+    "GET",
+    "GET",
+    "POST",
+    "POST",
+    "POST",
+    "POST",
+    "POST"
+  ],
+  "external_calls": {
+    "paid_model_calls": 0,
+    "GitHub_writes": 0
+  },
+  "capabilities": {
+    "real_broker_HTTP": true,
+    "real_worker_controller_and_collector": true,
+    "real_fixture_tests": true,
+    "real_publisher_payloads": true,
+    "authenticated_Codex": false,
+    "namespace_isolation": false,
+    "live_OpenClaw_integration": false,
+    "real_GitHub_PR": false
+  },
+  "surrogates": [
+    "sandbox preflight and UID/chown runner",
+    "local checkout transport",
+    "fixed-result Codex backend and synthetic session",
+    "local GitHub transport and .invalid PR"
+  ],
+  "source_sha256": {
+    "broker.py": "81dcff6597dbf1e7b9554271b96c56e8c3f707f1f23491a7805857581d5e7043",
+    "worker.py": "034021f3c33b69ac57b9591536533d220513035b09e487f6a4a8f93e32bf37f1",
+    "policy.py": "b87658df0f28dd5851d3e171bc45e2abb369a3d903679e60a93a653737148bb5",
+    "publisher.py": "b75baa9b8c37ba3ebcf35a69e57d02b8c65bbd7918f8785110c82fede0c073aa"
+  },
+  "fixture": {
+    "baseline_content": "def add(a, b):\n    return a - b\n",
+    "tests": "import sys\nfrom pathlib import Path\nimport unittest\nsys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))\nfrom calc import add\n\nclass AdditionTests(unittest.TestCase):\n    def test_adds_positive_and_negative_operands(self):\n        self.assertEqual(add(2, 3), 5)\n        self.assertEqual(add(-2, 3), 1)\n        self.assertEqual(add(2, -3), -1)\n",
+    "committed_classification": "cloud_allowed",
+    "policy": {
+      "repository": "example/synthetic",
+      "base_sha": "74a01baebd4fa797b3ab966cba04d8f754aa5067",
+      "base_branch": "main",
+      "classification": "cloud_allowed",
+      "tests": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests"
+      ],
+      "write_prefixes": [
+        "src/",
+        "tests/"
+      ]
+    }
+  },
+  "production_services_changed": false,
+  "auth_files_read": false
+}

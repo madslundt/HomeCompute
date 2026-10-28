@@ -1,0 +1,7 @@
+{
+  "id": "homecompute-safety",
+  "name": "HomeCompute browser safety",
+  "description": "Restrict the isolated browser to public research without page interactions.",
+  "activation": { "onStartup": true },
+  "configSchema": { "type": "object", "additionalProperties": false }
+}

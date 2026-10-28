@@ -43,6 +43,8 @@ if rg -n 'homeConfigurations' "$REPO_ROOT/flake.nix"; then
 fi
 
 shell_files=(
+  "$REPO_ROOT/scripts/setup-compute-flash-next.sh"
+  "$REPO_ROOT/scripts/prepare-qwen-image-comfyui-spark.sh"
   "$REPO_ROOT/scripts/lib/config.sh"
   "$REPO_ROOT/scripts/configure-compute-firewall.sh"
   "$REPO_ROOT/scripts/setup-compute-node.sh"
@@ -54,7 +56,12 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
+  "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
+  "$REPO_ROOT/scripts/immich-db-backup.sh"
+  "$REPO_ROOT/scripts/set-synology-immich-secret.sh"
+  "$REPO_ROOT/scripts/import-google-photos.sh"
+  "$REPO_ROOT/scripts/restore-immich.sh"
   "$REPO_ROOT/scripts/deploy-home-spark.sh"
   "$REPO_ROOT/scripts/validate-repository.sh"
   "$REPO_ROOT/scripts/homecompute"
@@ -62,26 +69,147 @@ shell_files=(
 )
 
 printf '[validate] Bash syntax\n'
-bash -n "${shell_files[@]}"
-sh -n \
+for shell_file in "${shell_files[@]}"; do
+  bash -n "$shell_file"
+done
+for shell_file in \
+  "$REPO_ROOT/deploy/control-plane/caddy-entrypoint.sh" \
   "$REPO_ROOT/deploy/control-plane/litellm-entrypoint.sh" \
-  "$REPO_ROOT/deploy/control-plane/postgres-init.sh"
+  "$REPO_ROOT/deploy/control-plane/postgres-init.sh"; do
+  sh -n "$shell_file"
+done
 
 printf '[validate] ShellCheck\n'
 shellcheck "${shell_files[@]}"
+# Keep the wizard skill's immutable library verbatim. Its known SC1087 and
+# unused-helper SC2329 diagnostics are upstream-only; a test pins that prefix.
+bash -n "$REPO_ROOT/scripts/spark-rollout-wizard.sh"
+shellcheck --exclude=SC1087,SC2329 "$REPO_ROOT/scripts/spark-rollout-wizard.sh"
 
 printf '[validate] configuration-loader tests\n'
 bash "$REPO_ROOT/tests/config-loader-test.sh"
 printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
+python3 "$REPO_ROOT/tests/tailscale-module-test.py"
+python3 "$REPO_ROOT/tests/nas-recovery-backup-test.py"
+python3 "$REPO_ROOT/tests/home-core-service-recovery-test.py"
+python3 "$REPO_ROOT/tests/platform-health-test.py"
+python3 "$REPO_ROOT/tests/platform-observability-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-machine-snapshot-test.py"
+python3 "$REPO_ROOT/tests/n8n-observations-test.py"
+python3 "$REPO_ROOT/tests/nas-backup-credentials-test.py"
+python3 "$REPO_ROOT/tests/nas-recovery-setup-test.py"
+python3 "$REPO_ROOT/tests/speech-boundary-test.py"
+python3 "$REPO_ROOT/tests/speech-rollback-test.py"
+python3 "$REPO_ROOT/tests/speech-cutover-firewall-test.py"
+python3 "$REPO_ROOT/tests/spark-rollout-test.py"
+python3 "$REPO_ROOT/tests/approved-speech-capacity-test.py"
+python3 "$REPO_ROOT/tests/speech-startup-diagnostic-test.py"
+python3 "$REPO_ROOT/tests/speech-boundary-container-test.py"
+python3 "$REPO_ROOT/tests/speech-capacity-test.py"
+python3 "$REPO_ROOT/tests/speech-capacity-benchmark-test.py"
+python3 "$REPO_ROOT/tests/application-recovery-test.py"
+python3 "$REPO_ROOT/tests/application-recovery-engine-test.py"
+python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
+printf '[validate] OpenClaw task broker and plugin tests\n'
+python3 "$REPO_ROOT/tests/openclaw-worker-test.py"
+python3 "$REPO_ROOT/tests/openclaw-nemoclaw-test.py"
+python3 "$REPO_ROOT/tests/openclaw-tools-test.py"
+python3 "$REPO_ROOT/tests/openclaw-mcp-test.py"
+python3 "$REPO_ROOT/tests/openclaw-actions-test.py"
+python3 "$REPO_ROOT/tests/openclaw-action-api-test.py"
+python3 "$REPO_ROOT/tests/openclaw-action-flow-test.py"
+python3 "$REPO_ROOT/tests/system-monitoring-test.py"
+python3 "$REPO_ROOT/tests/homeassistant-observations-test.py"
+python3 "$REPO_ROOT/tests/homeassistant-actions-test.py"
+python3 "$REPO_ROOT/tests/native-capabilities-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-public-dns-launcher-test.py"
+python3 "$REPO_ROOT/tests/openclaw-public-dns-wire-test.py"
+python3 "$REPO_ROOT/tests/openclaw-chat-test.py"
+python3 "$REPO_ROOT/tests/openclaw-communication-test.py"
+python3 "$REPO_ROOT/tests/openclaw-services-test.py"
+python3 "$REPO_ROOT/tests/openclaw-services-wiring-test.py"
+python3 "$REPO_ROOT/tests/openclaw-integrations-test.py"
+python3 "$REPO_ROOT/tests/openclaw-integration-policy-test.py"
+python3 "$REPO_ROOT/tests/openclaw-integration-instructions-test.py"
+python3 "$REPO_ROOT/tests/openclaw-household-test.py"
+python3 "$REPO_ROOT/tests/openclaw-ha-websocket-test.py"
+python3 "$REPO_ROOT/tests/openclaw-household-shopping-test.py"
+python3 "$REPO_ROOT/tests/openclaw-household-storage-test.py"
+python3 "$REPO_ROOT/tests/openclaw-calendar-test.py"
+python3 "$REPO_ROOT/tests/openclaw-calendar-workflow-test.py"
+python3 "$REPO_ROOT/tests/openclaw-calendar-setup-test.py"
+python3 "$REPO_ROOT/tests/workflow-retrieval-test.py"
+python3 "$REPO_ROOT/tests/workflow-calendar-semantic-test.py"
+python3 "$REPO_ROOT/tests/workflow-school-embeddings-test.py"
+python3 "$REPO_ROOT/tests/workflow-research-embeddings-test.py"
+python3 "$REPO_ROOT/tests/workflow-battery-embeddings-test.py"
+python3 "$REPO_ROOT/tests/homepage-maintenance-test.py"
+python3 "$REPO_ROOT/tests/homepage-update-check-test.py"
+python3 "$REPO_ROOT/tests/openclaw-maintenance-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-update-policy-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-maintenance-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-maintenance-integration-test.py"
+python3 "$REPO_ROOT/tests/infrastructure-maintenance-operator-test.py"
+python3 "$REPO_ROOT/tests/spark-maintenance-preparation-test.py"
+python3 "$REPO_ROOT/tests/docker-maintenance-preparation-test.py"
+python3 "$REPO_ROOT/tests/homeassistant-maintenance-test.py"
+python3 "$REPO_ROOT/tests/core-maintenance-preparation-test.py"
+python3 "$REPO_ROOT/tests/maintenance-plan-preparation-test.py"
+python3 "$REPO_ROOT/tests/mcp-maintenance-test.py"
+python3 "$REPO_ROOT/tests/mcp-maintenance-setup-test.py"
+python3 "$REPO_ROOT/tests/docker-maintenance-test.py"
+python3 "$REPO_ROOT/tests/host-maintenance-test.py"
+python3 "$REPO_ROOT/tests/host-maintenance-setup-test.py"
+python3 "$REPO_ROOT/tests/core-update-build-test.py"
+python3 "$REPO_ROOT/tests/container-maintenance-test.py"
+python3 "$REPO_ROOT/tests/openclaw-task-feed-test.py"
+python3 "$REPO_ROOT/tests/openclaw-worker-api-test.py"
+python3 "$REPO_ROOT/tests/codex-guest-bootstrap-test.py"
+python3 "$REPO_ROOT/tests/openclaw-infrastructure-test.py"
+python3 "$REPO_ROOT/tests/openclaw-telegram-test.py"
+python3 "$REPO_ROOT/tests/mattermost-service-test.py"
+python3 "$REPO_ROOT/tests/mattermost-bootstrap-test.py"
+python3 "$REPO_ROOT/tests/mattermost-organization-test.py"
+python3 "$REPO_ROOT/tests/mattermost-agent-accounts-test.py"
+python3 "$REPO_ROOT/tests/mattermost-atlas-membership-test.py"
+python3 "$REPO_ROOT/tests/mattermost-team-verification-test.py"
+python3 "$REPO_ROOT/tests/mattermost-n8n-test.py"
+python3 "$REPO_ROOT/tests/openclaw-team-test.py"
+python3 "$REPO_ROOT/tests/openclaw-team-recovery-test.py"
+python3 "$REPO_ROOT/tests/agent-office-ingress-test.py"
+python3 "$REPO_ROOT/tests/openclaw-child-results-test.py"
+python3 "$REPO_ROOT/tests/openclaw-yield-acknowledgment-test.py"
+python3 "$REPO_ROOT/tests/openclaw-team-calendar-test.py"
+python3 "$REPO_ROOT/tests/openclaw-mattermost-test.py"
+python3 "$REPO_ROOT/tests/agent-roster-test.py"
+if command -v node >/dev/null 2>&1; then
+  node --test "$REPO_ROOT/tests/agent-office.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-broker-plugin.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-n8n-communication.test.mjs"
+  node --test "$REPO_ROOT/tests/system-monitoring-ha-workflow.test.mjs"
+  node --test "$REPO_ROOT/tests/homeassistant-action-workflow.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-safety-plugin.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-public-dns.test.mjs"
+  node --test "$REPO_ROOT/tests/native-llm-queue.test.mjs"
+  node --test "$REPO_ROOT/tests/openclaw-native-loader.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-shopping-semantic.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-calendar-caller.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-research-embeddings.test.mjs"
+  node --test "$REPO_ROOT/tests/workflow-battery-embeddings.test.mjs"
+  node --test "$REPO_ROOT/tests/token-usage-dashboard.test.mjs"
+else
+  printf '[validate] Node unavailable; OpenClaw plugin tests require Node on CI\n'
+fi
 printf '[validate] compute configuration migration tests\n'
 python3 "$REPO_ROOT/tests/migrate-compute-config-test.py"
 printf '[validate] bounded model-cache acquisition tests\n'
 python3 "$REPO_ROOT/tests/model-cache-integrity-test.py"
 printf '[validate] compute edge relay tests\n'
 python3 "$REPO_ROOT/tests/tcp-edge-proxy-test.py"
+python3 "$REPO_ROOT/tests/openai-stt-relay-test.py"
 printf '[validate] Hviske Wyoming adapter tests\n'
 python3 "$REPO_ROOT/tests/wyoming-openai-stt-test.py"
 printf '[validate] Plapre deployment and Wyoming adapter tests\n'
@@ -101,11 +229,36 @@ python3 "$REPO_ROOT/tests/model-update-check-test.py"
 python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/speech-routing-policy-test.py"
 python3 "$REPO_ROOT/tests/model-registry-test.py"
+python3 "$REPO_ROOT/tests/flash-next-lifecycle-test.py"
+python3 "$REPO_ROOT/tests/comfyui-lifecycle-test.py"
+python3 "$REPO_ROOT/tests/comfyui-media-lifecycle-test.py"
+python3 "$REPO_ROOT/tests/comfyui-model-controls-setup-test.py"
+python3 "$REPO_ROOT/tests/qwen-image21-prepare-test.py"
+python3 "$REPO_ROOT/tests/ltx25-prepare-test.py"
+python3 "$REPO_ROOT/tests/ltx25-comfyui-stage-test.py"
+python3 "$REPO_ROOT/tests/ltx25-workflow-test.py"
+python3 "$REPO_ROOT/tests/ltx25-generation-test.py"
+python3 "$REPO_ROOT/tests/comfyui-progress-test.py"
+node "$REPO_ROOT/tests/comfyui-controls-test.mjs"
+node "$REPO_ROOT/tests/homepage-model-controls-test.mjs"
+python3 "$REPO_ROOT/tests/comfyui-access-test.py"
+python3 "$REPO_ROOT/tests/llm-admission-test.py"
+python3 "$REPO_ROOT/tests/llm-workflow-activity-test.py"
+python3 "$REPO_ROOT/tests/llm-workflow-queue-test.py"
+python3 "$REPO_ROOT/tests/llm-queue-budget-repair-test.py"
+python3 "$REPO_ROOT/tests/image-chat-test.py"
+python3 "$REPO_ROOT/tests/open-webui-videos-test.py"
+python3 "$REPO_ROOT/tests/open-webui-video-images-test.py"
+python3 "$REPO_ROOT/tests/open-webui-videos-setup-test.py"
+python3 "$REPO_ROOT/tests/video-api-service-test.py"
+python3 "$REPO_ROOT/tests/video-api-setup-test.py"
+python3 "$REPO_ROOT/tests/native-llm-activity-test.py"
 python3 "$REPO_ROOT/tests/modelctl-test.py"
 python3 "$REPO_ROOT/tests/homecompute-cli-test.py"
 python3 "$REPO_ROOT/tests/client-model-access-test.py"
 python3 "$REPO_ROOT/tests/litellm-routing-integration-test.py"
 python3 "$REPO_ROOT/tests/control-plane-routing-test.py"
+python3 "$REPO_ROOT/tests/token-usage-test.py"
 python3 "$REPO_ROOT/scripts/gb10_model_roster.py" \
   --roster "$REPO_ROOT/config/gb10-model-roster.json"
 python3 "$REPO_ROOT/scripts/model_registry.py" validate
@@ -115,6 +268,12 @@ python3 "$REPO_ROOT/scripts/speech_routing_policy.py" \
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/smoke.json" \
   --release "$REPO_ROOT/benchmarks/manifests/release.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/flash-next-profile-ab.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/flash-next-profile-ab.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/flash-next-hermes-loop-ab.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/flash-next-hermes-loop-ab.example.json"
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/n8n-smoke.example.json" \
   --release "$REPO_ROOT/benchmarks/manifests/n8n-openrouter.example.json"
@@ -140,15 +299,19 @@ if command -v ruby >/dev/null 2>&1; then
   printf '[validate] YAML syntax\n'
   ruby -e 'require "yaml"; ARGV.each { |path| YAML.safe_load(File.read(path), permitted_classes: [], permitted_symbols: [], aliases: true) }' \
     "$REPO_ROOT/deploy/control-plane/compose.yaml" \
+    "$REPO_ROOT/deploy/openclaw/compose.yaml" \
+    "$REPO_ROOT/deploy/codex-worker/compose.yaml" \
     "$REPO_ROOT/deploy/control-plane/litellm-config.yaml" \
     "$REPO_ROOT/deploy/compute-node/compose.yaml" \
     "$REPO_ROOT/deploy/compute-node/plapre/compose.yaml" \
     "$REPO_ROOT/deploy/hviske-stt/compose.yaml" \
+    "$REPO_ROOT/deploy/whisper-stt/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
     "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" \
     "$REPO_ROOT/deploy/ttlock-webhook/home-assistant-automation.yaml" \
     "$REPO_ROOT/deploy/wyoming-stt/compose.yaml" \
+    "$REPO_ROOT/deploy/immich/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/config/services.yaml" \
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
     "$REPO_ROOT/deploy/homepage/config/widgets.yaml" \
@@ -176,13 +339,14 @@ GB10_ROOT=$temporary_root/runtime
 GB10_RUNTIME_UID=1000
 GB10_RUNTIME_GID=1000
 GB10_BIND_ADDRESS=127.0.0.1
-COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301
+COMPUTE_HOST_PORTS=8000,8001,8002,8003,8004,8005,10200,10201,10301,18300
 VLLM_HOST_PORT=8000
 EMBEDDING_HOST_PORT=8001
 VISION_HOST_PORT=8002
 STT_HOST_PORT=8003
 TTS_HOST_PORT=8004
 AUTOMATION_HOST_PORT=8005
+FLASH_NEXT_HOST_PORT=18300
 WYOMING_TTS_HOST_PORT=10200
 PLAPRE_WYOMING_PORT=10201
 HVISKE_WYOMING_PORT=10301
@@ -275,6 +439,37 @@ VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS='{"enable_thinking":false}'
 EOF
 
 printf '[validate] Compose rendering\n'
+assistant_env="$temporary_root/openclaw.env"
+cat >"$assistant_env" <<EOF
+OPENCLAW_SECRET_GID=992
+OPENCLAW_STATE_ROOT=$temporary_root/assistant-state
+OPENCLAW_WORK_ROOT=$temporary_root/assistant-work
+OPENCLAW_CONFIG_FILE=$REPO_ROOT/config/openclaw.json
+OPENCLAW_GATEWAY_TOKEN_FILE=$secret_file
+OPENCLAW_MODEL_KEY_FILE=$secret_file
+OPENCLAW_BROKER_TOKEN_FILE=$secret_file
+OPENCLAW_MODEL_CA_FILE=$secret_file
+CODEX_PROJECTS_FILE=$REPO_ROOT/config/codex-projects.json
+CODEX_WORKER_TOKEN_FILE=$secret_file
+CODEX_OPERATOR_TOKEN_FILE=$secret_file
+CODEX_SNAPSHOT_TOKEN_FILE=$secret_file
+CODEX_GITHUB_TOKEN_FILE=$secret_file
+CODEX_GITHUB_CHECKOUT_TOKEN_FILE=$secret_file
+CODEX_API_KEY_FILE=$secret_file
+EOF
+docker compose --env-file "$assistant_env" --profile assistant \
+  -f "$REPO_ROOT/deploy/openclaw/compose.yaml" config --format json >"$temporary_root/assistant.json"
+jq -e '
+  ((.services | keys) == ["broker", "codex-worker", "egress", "model-relay", "openclaw"]) and
+  all(.services[]; .read_only == true and (.cap_drop | index("ALL") != null) and
+    (.security_opt | index("no-new-privileges:true") != null) and
+    (.privileged // false) == false and (.network_mode // "") != "host") and
+  (.networks.assistant.internal == true) and (.networks.worker.internal == true) and
+  ((.services.openclaw.networks | keys) == ["assistant"]) and
+  ((.services["codex-worker"].networks | keys) == ["worker"]) and
+  ([.services[].ports[]?.host_ip] | unique == ["127.0.0.1"]) and
+  (.services["codex-worker"].secrets | map(.source) | sort == ["codex_api_key", "github_checkout_token", "worker_token"])
+' "$temporary_root/assistant.json" >/dev/null
 docker compose --env-file "$compose_env" \
   -f "$REPO_ROOT/deploy/compute-node/compose.yaml" config --quiet
 docker compose --env-file "$compose_env" --profile prepare \
@@ -377,6 +572,9 @@ CADDY_EDGE_IP=172.28.200.2
 LITELLM_EDGE_IP=172.28.200.3
 PLAPRE_PROXY_EDGE_IP=172.28.200.4
 HVISKE_PROXY_EDGE_IP=172.28.200.5
+CONTROL_PLANE_CLIENTS_SUBNET=172.28.210.0/24
+CADDY_CLIENTS_IP=172.28.210.2
+LITELLM_CLIENTS_IP=172.28.210.3
 CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=127.0.0.1
 CONTROL_PLANE_LAN_BIND_ADDRESS=127.0.0.2
 CONTROL_PLANE_TAILSCALE_HTTPS_PORT=8443
@@ -385,10 +583,15 @@ AI_FQDN=ai.home.arpa
 AI_LEGACY_FQDN=home-core.invalid
 N8N_FQDN=n8n.home.arpa
 N8N_UPSTREAM=http://192.168.30.122:15678
+HERMES_FQDN=hermes.home.arpa
+HERMES_UPSTREAM=http://172.28.200.1:18790
+CHAT_FQDN=chat.home.arpa
+MODELS_FQDN=models.home.arpa
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
 SPEECH_PROXY_IMAGE=example.invalid/python@sha256:0000000000000000000000000000000000000000000000000000000000000000
+PLAPRE_OPENAI_TTS_IMAGE=homecompute/plapre-openai-tts:validate
 AUTOMATION_BACKUP_IMAGE=ghcr.io/ggml-org/llama.cpp:server@sha256:b74a168a10b13129ce8973582a5c699fadecde45945a8b8b004b79e34f4ff1ab
 AUTOMATION_BACKUP_STATE_ROOT=/srv/state/automation-backup
 AUTOMATION_BACKUP_THREADS=8
@@ -398,13 +601,14 @@ AUTOMATION_BACKUP_CPUS=8.0
 AUTOMATION_BACKUP_MEMORY_LIMIT=28g
 COMPUTE_OPENAI_BASE_URL=https://10.77.10.10:8000/v1
 COMPUTE_AUTOMATION_BASE_URL=https://10.77.10.10:8005/v1
+COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=https://10.77.10.10:18300/v1
 COMPUTE_HOME_BASE_URL=https://10.77.10.10:8006/v1
 COMPUTE_TRANSPORT=dedicated-link
 PLAPRE_WYOMING_UPSTREAM_HOST=10.77.10.10
-PLAPRE_WYOMING_UPSTREAM_PORT=10201
+PLAPRE_WYOMING_UPSTREAM_PORT=8004
 PLAPRE_WYOMING_LAN_PORT=10201
 HVISKE_WYOMING_UPSTREAM_HOST=10.77.10.10
-HVISKE_WYOMING_UPSTREAM_PORT=10301
+HVISKE_WYOMING_UPSTREAM_PORT=8003
 HVISKE_WYOMING_LAN_PORT=10301
 COMPUTE_EMBEDDING_BASE_URL=http://10.77.10.10:8001/v1
 COMPUTE_VISION_BASE_URL=http://10.77.10.10:8002/v1
@@ -428,9 +632,10 @@ jq -e '
   ([.services[].volumes[]? | select(.type == "bind" and .read_only != true) | .target] | sort) ==
     ["/config", "/data", "/var/lib/postgresql/data"] and
   ([.services[].volumes[]? | select(.type == "bind") | .target] | sort) ==
-    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/litellm-entrypoint.sh", "/var/lib/postgresql/data"] and
-  (.services.caddy.ports | length == 2) and
-  ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2"]) and
+    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/var/lib/postgresql/data"] and
+  (.services.caddy.ports | length == 3) and
+  ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2", "127.0.0.2"]) and
+  ([.services.caddy.ports[] | select(.host_ip == "127.0.0.2" and .published == "80" and .target == 8080)] | length == 1) and
   (all(.services.caddy.ports[]; .protocol == "tcp")) and
   (.services.litellm.ports == null) and
   (.services.postgres.ports == null) and
@@ -439,6 +644,7 @@ jq -e '
   (.services.postgres.cap_drop | index("ALL") != null) and
   (.services.caddy.cap_add == ["NET_BIND_SERVICE"]) and
   (.networks.edge.ipam.config[0].gateway == "172.28.200.1") and
+  (.networks.edge.driver_opts["com.docker.network.bridge.name"] == "br-hc-ctrl") and
   (.networks.state.internal == true) and
   (.services.caddy.networks.state == null) and
   (.services.postgres.networks.edge == null)
@@ -447,9 +653,16 @@ control_plane_speech_json="$temporary_root/control-plane-speech.json"
 docker compose --profile speech-proxies --env-file "$control_plane_env" \
   -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --format json >"$control_plane_speech_json"
 jq -e '
-  ((.services | keys) == ["caddy", "hviske-wyoming-proxy", "litellm", "plapre-wyoming-proxy", "postgres"]) and
+  ((.services | keys) == ["caddy", "hviske-wyoming-proxy", "litellm", "plapre-openai-tts", "plapre-wyoming-proxy", "postgres"]) and
   (.services["plapre-wyoming-proxy"].profiles == ["speech-proxies"]) and
   (.services["hviske-wyoming-proxy"].profiles == ["speech-proxies"]) and
+  (.services["plapre-openai-tts"].profiles == ["speech-proxies"]) and
+  (.services["plapre-openai-tts"].ports == null) and
+  (.services["plapre-openai-tts"].expose == ["8004"]) and
+  (.services["plapre-openai-tts"].networks | has("edge")) and
+  ([.services["plapre-openai-tts"].secrets[].source] == ["compute_api_key"]) and
+  (.services["plapre-openai-tts"].environment.TTS_MODEL_ALIAS == "plapre") and
+  (.services["plapre-openai-tts"].environment.WYOMING_URI == "tcp://172.28.200.4:10201") and
   (.services["plapre-wyoming-proxy"].ports[0].host_ip == "127.0.0.2") and
   (.services["plapre-wyoming-proxy"].ports[0].published == "10201") and
   (.services["plapre-wyoming-proxy"].ports[0].target == 10201) and
@@ -461,22 +674,44 @@ jq -e '
   (.services["plapre-wyoming-proxy"].read_only == true and .services["hviske-wyoming-proxy"].read_only == true) and
   (.services["plapre-wyoming-proxy"].cap_drop | index("ALL") != null) and
   (.services["hviske-wyoming-proxy"].cap_drop | index("ALL") != null) and
-  (all(.services["plapre-wyoming-proxy"].volumes[]; .read_only == true)) and
-  (all(.services["hviske-wyoming-proxy"].volumes[]; .read_only == true))
+  ((.services["plapre-wyoming-proxy"].volumes // []) | length == 0) and
+  ((.services["hviske-wyoming-proxy"].volumes // []) | length == 0) and
+  (.services["plapre-wyoming-proxy"].entrypoint == ["python3", "/opt/homecompute/plapre-wyoming.py"]) and
+  (.services["hviske-wyoming-proxy"].entrypoint == ["python3", "/opt/homecompute/wyoming-openai-stt.py"]) and
+  (.services["plapre-wyoming-proxy"].environment.PLAPRE_UPSTREAM_URL == "http://10.77.10.10:8004") and
+  (.services["hviske-wyoming-proxy"].environment.STT_UPSTREAM_URL == "http://10.77.10.10:8003/v1/audio/transcriptions") and
+  (.services["plapre-wyoming-proxy"].command | index("--tempo=1.20") != null) and
+  (.services["plapre-wyoming-proxy"].command | index("--voice-alias=danish-default") != null) and
+  (.services["hviske-wyoming-proxy"].secrets | map(.source) == ["compute_api_key"]) and
+  (.services["hviske-wyoming-proxy"].environment.STT_MAX_AUDIO_SECONDS == "60") and
+  ([.services["plapre-wyoming-proxy"], .services["hviske-wyoming-proxy"]] |
+    all(.[]; .build.dockerfile == "deploy/control-plane/Dockerfile.speech-adapters" and
+      .deploy.resources.reservations.devices == null and
+      .healthcheck.test[2] == "/opt/homecompute/speech-adapter-health.py"))
 ' "$control_plane_speech_json" >/dev/null
 rg -F 'iptables -w -A HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RETURN' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 rg -F 'iptables -w -A HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
+rg -F 'networking.firewall.interfaces."br-hc-ctrl".allowedTCPPorts = [ 18790 ];' \
+  "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
+rg -F 'TCP-LISTEN:18790,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18789' \
+  "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
+rg -F 'speech_gateway=(docker compose --profile speech-proxies' \
+  "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null
+rg -F '"${speech_gateway[@]}" down' \
+  "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null
 rg -F 'for port in 10201 10301; do' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
-rg -F 'HC-COMPUTE-V2 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10201' \
+rg -F 'HC-COMPUTE-V3 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 8004' \
   "$REPO_ROOT/modules/nixos/compute-link.nix" >/dev/null
-rg -F 'HC-COMPUTE-V2 -s 172.28.200.5/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10301' \
+rg -F 'HC-COMPUTE-V3 -s 172.28.200.5/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 8003' \
   "$REPO_ROOT/modules/nixos/compute-link.nix" >/dev/null
 rg -F 'homecompute.computeSshTunnel.enable = lib.mkDefault true;' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
 rg -F 'COMPUTE_AUTOMATION_BASE_URL=http://172.28.200.1:18005/v1' \
+  "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
+rg -F 'COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=http://172.28.200.1:18005/v1' \
   "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
 rg -F 'COMPUTE_HOME_BASE_URL=http://172.28.200.1:18006/v1' \
   "$REPO_ROOT/modules/nixos/application-config.nix" >/dev/null
@@ -490,15 +725,15 @@ rg -F -- '-o ServerAliveInterval=15' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 rg -F -- 'exec ssh -F /dev/null -N -T' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-rg -F -- '-L "$bind_address:18005:127.0.0.1:8005"' \
+rg -F -- '-L "$bind_address:18005:127.0.0.1:18400"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 rg -F -- '-L "$bind_address:18006:127.0.0.1:8006"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-rg -F -- '-L "$bind_address:18201:127.0.0.1:10201"' \
+rg -F -- '-L "$bind_address:18201:127.0.0.1:8004"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-rg -F -- '-L "$bind_address:18301:127.0.0.1:10301"' \
+rg -F -- '-L "$bind_address:18301:127.0.0.1:8003"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-[[ $(rg -c '^[[:space:]]+-L ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix") == 4 ]]
+[[ $(rg -c '^[[:space:]]+-L ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix") == 6 ]]
 if rg -n '^[[:space:]]+-(D|R) ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix"; then
   printf '[validate] compute SSH fallback contains an unapproved dynamic or remote forward\n' >&2
   exit 1
@@ -536,12 +771,47 @@ jq -e '
   (.services.homepage.read_only == true) and
   (.services.homepage.cap_drop | index("ALL") != null) and
   (.services.homepage.security_opt | index("no-new-privileges:true") != null) and
-  (.services.homepage.ports | length == 3) and
-  ([.services.homepage.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"]) and
+  (.services.homepage.ports | length == 2) and
+  ([.services.homepage.ports[].host_ip] | sort == ["100.110.248.102", "127.0.0.1"]) and
   all(.services.homepage.ports[]; .published == "80" and .target == 3000 and .protocol == "tcp") and
   all(.services.homepage.volumes[]; .type == "bind" and .read_only == true) and
   (.services.homepage.mem_limit > 0 and .services.homepage.cpus > 0 and .services.homepage.pids_limit > 0)
 ' "$homepage_json" >/dev/null
+printf '[validate] Immich deployment boundary\n'
+immich_json="$temporary_root/immich-compose.json"
+DB_PASSWORD=validation-only docker compose \
+  --env-file "$REPO_ROOT/config/immich.env.example" \
+  -f "$REPO_ROOT/deploy/immich/compose.yaml" config --format json >"$immich_json"
+jq -e '
+  ((.services | keys) == ["database", "immich-machine-learning", "immich-server", "redis"]) and
+  all(.services[];
+    (.image | test("@sha256:[0-9a-f]{64}$")) and
+    (.restart == "unless-stopped") and
+    (.security_opt | index("no-new-privileges:true") != null) and
+    (.cap_drop | index("ALL") != null) and
+    (.cpus != null and .mem_limit != null and .pids_limit != null) and
+    (.logging.driver == "local") and
+    (.logging.options["max-size"] == "10m") and
+    (.logging.options["max-file"] == "3") and
+    ((.privileged // false) == false) and
+    ((.network_mode // "") != "host") and
+    ((.pid // "") != "host") and
+    ((.ipc // "") != "host") and
+    ([.volumes[]?.source] | all(contains("docker.sock") | not))
+  ) and
+  ([.services[].ports[]?.host_ip] | sort == ["100.110.248.102", "127.0.0.1", "192.168.30.122"]) and
+  (.services["immich-server"].ports | length == 3) and
+  (.services.database.ports == null) and
+  (.services.redis.ports == null) and
+  (.services["immich-machine-learning"].ports == null) and
+  (.services.database.mem_limit == "2147483648") and
+  (.services.redis.mem_limit == "536870912") and
+  (any(.services["immich-server"].volumes[]; .source == "/srv/state/immich/library" and .target == "/data")) and
+  (any(.services.database.volumes[]; .source == "/srv/state/immich/database" and .target == "/var/lib/postgresql/data")) and
+  (all(.services[]; .networks | has("backend"))) and
+  (.services["immich-server"].environment.DB_PASSWORD == "validation-only") and
+  (.services.database.environment.POSTGRES_PASSWORD == "validation-only")
+' "$immich_json" >/dev/null
 
 ttlock_json="$temporary_root/ttlock-webhook.json"
 docker compose --env-file "$REPO_ROOT/config/ttlock-webhook.env.example" \
@@ -702,25 +972,100 @@ jq -e '
 
 hviske_json="$temporary_root/hviske-stt.json"
 docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
-  --profile prepare --profile hviske \
+  --profile prepare --profile hviske --profile hviske-http \
   -f "$REPO_ROOT/deploy/hviske-stt/compose.yaml" config --format json >"$hviske_json"
 jq -e '
-  ((.services | keys) == ["hviske-fetch", "hviske-primary", "hviske-wyoming"]) and
+  ((.services | keys) == ["hviske-fetch", "hviske-http", "hviske-primary"]) and
   (.services["hviske-primary"].ports == null) and
   (.services["hviske-primary"].read_only == true) and
   (.services["hviske-primary"].cap_drop | index("ALL") != null) and
   (.services["hviske-primary"].environment.HF_HUB_OFFLINE == "1") and
   (.services["hviske-primary"].command | join(" ") | contains("--served-model-name stt-danish") and contains("--no-enable-log-requests")) and
+  (.services["hviske-fetch"].ports == null) and
+  (.networks.inference.internal == true) and
+  (.networks["artifact-fetch"].internal != true)
+' "$hviske_json" >/dev/null
+# Legacy Wyoming is available only for an explicit rollback, never normal up.
+hviske_legacy_json="$temporary_root/hviske-stt-legacy.json"
+docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  --profile hviske --profile legacy-wyoming \
+  -f "$REPO_ROOT/deploy/hviske-stt/compose.yaml" config --format json >"$hviske_legacy_json"
+jq -e '
+  ((.services | keys) == ["hviske-primary", "hviske-wyoming"]) and
+  (.services["hviske-wyoming"].profiles == ["legacy-wyoming"]) and
   (.services["hviske-wyoming"].ports[0].host_ip == "127.0.0.1") and
   (.services["hviske-wyoming"].ports[0].published == "10301") and
   (.services["hviske-wyoming"].ports[0].target == 10301) and
   (.services["hviske-wyoming"].environment.STT_LANGUAGE == "da") and
   (.services["hviske-wyoming"].environment.STT_MAX_AUDIO_SECONDS == "60") and
-  (.services["hviske-wyoming"].read_only == true) and
-  (.services["hviske-fetch"].ports == null) and
-  (.networks.inference.internal == true) and
-  (.networks["artifact-fetch"].internal != true)
-' "$hviske_json" >/dev/null
+  (.services["hviske-wyoming"].read_only == true)
+' "$hviske_legacy_json" >/dev/null
+
+hviske_http_json="$temporary_root/hviske-http.json"
+docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  --profile hviske-http -f "$REPO_ROOT/deploy/hviske-stt/compose.yaml" \
+  config --format json >"$hviske_http_json"
+jq -e '
+  ((.services | keys) == ["hviske-http"]) and
+  (.services["hviske-http"].ports[0].host_ip == "127.0.0.1") and
+  (.services["hviske-http"].ports[0].published == "8003") and
+  (.services["hviske-http"].read_only == true) and
+  (.services["hviske-http"].cap_drop | index("ALL") != null) and
+  (.services["hviske-http"].environment.STT_MAX_UPLOAD_BYTES == "10000000") and
+  (.services["hviske-http"].environment.STT_MAX_AUDIO_SECONDS == "60") and
+  (.services["hviske-http"].deploy.resources.reservations.devices == null) and
+  (.networks.inference.internal == true)
+' "$hviske_http_json" >/dev/null
+
+whisper_json="$temporary_root/whisper-stt.json"
+docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  -f "$REPO_ROOT/deploy/whisper-stt/compose.yaml" config --format json >"$whisper_json"
+jq -e '
+  (.services["whisper-primary"].ports == null) and
+  (.services["whisper-primary"].read_only == true) and
+  (.services["whisper-primary"].cap_drop | index("ALL") != null) and
+  (.services["whisper-primary"].environment.HF_HUB_OFFLINE == "1") and
+  (.services["whisper-primary"].command | join(" ") | contains("--gpu-memory-utilization 0.04") and contains("--max-num-seqs 1")) and
+  (.services["whisper-http"].ports[0].host_ip == "127.0.0.1") and
+  (.services["whisper-http"].ports[0].published == "8007") and
+  (.services["whisper-http"].read_only == true) and
+  (.services["whisper-http"].environment.STT_MAX_CONNECTIONS == "1") and
+  (.networks.inference.internal == true)
+' "$whisper_json" >/dev/null
+
+printf '[validate] approved trusted communication relay boundary\n'
+communication_json="$temporary_root/openclaw-communication.json"
+COMMUNICATION_TLS_CERT=/validation/communication.crt COMMUNICATION_TLS_KEY=/validation/communication.key \
+  docker compose -f "$REPO_ROOT/deploy/openclaw/communication/compose.yaml" \
+  --profile approved-synthetic-communication config --format json >"$communication_json"
+jq -e --arg relay_config "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" '
+  (.services | keys == ["private-relay"]) and
+  (.services["private-relay"] |
+    (.profiles == ["approved-synthetic-communication"]) and
+    (.image == "caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f") and
+    (.pull_policy == "never" and .restart == "always") and
+    (.user == "1000:1000" and .read_only == true) and
+    (.cap_drop == ["ALL"] and .cap_add == null) and
+    (.security_opt == ["no-new-privileges:true"]) and
+    ((.privileged // false) == false) and
+    (.network_mode == "host" and .ports == null and .pid == null and .ipc == null) and
+    (.cpus == 0.25 and .mem_limit == "134217728" and .pids_limit == 32) and
+    (.environment == null) and
+    (.entrypoint == ["/bin/sh", "-ec"]) and
+    (.command == ["cp /usr/bin/caddy /runtime/caddy; exec /runtime/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]) and
+    (.volumes | length == 3) and
+    ([.volumes[].target] | sort == ["/etc/caddy/Caddyfile", "/run/tls/communication.crt", "/run/tls/communication.key"]) and
+    (any(.volumes[]; .target == "/etc/caddy/Caddyfile" and .source == $relay_config)) and
+    (any(.volumes[]; .target == "/run/tls/communication.crt" and .source == "/validation/communication.crt")) and
+    (any(.volumes[]; .target == "/run/tls/communication.key" and .source == "/validation/communication.key")) and
+    (all(.volumes[]; .type == "bind" and .read_only == true)))
+' "$communication_json" >/dev/null
+# Pin the exact already-reviewed listener/source/path contract for this narrow
+# host-network exception; changing it requires reviewing this gate too.
+python3 - "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" <<'PY'
+import hashlib, pathlib, sys
+assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "5e91b6a74b97032a252bf024cf59d9cd580a3694eef3001707ba9fd901d84b74"
+PY
 
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
 # per-project container controls are the only boundary left between them. Each
@@ -728,9 +1073,42 @@ jq -e '
 # scan covers every deployment directory instead of only the gateway. It is
 # restricted to Compose files so prose describing these risks does not trip it.
 if rg -n -g '*.yaml' \
-  'docker\.sock|privileged:[[:space:]]*true|network_mode:[[:space:]]*host|pid:[[:space:]]*host|ipc:[[:space:]]*host' \
+  'docker\.sock|privileged:[[:space:]]*true|pid:[[:space:]]*host|ipc:[[:space:]]*host' \
   "$REPO_ROOT/deploy"; then
   printf '[validate] forbidden capability, namespace, or socket reference under deploy/\n' >&2
+  exit 1
+fi
+# The fixed Mattermost TLS proxy needs host loopback to the dedicated app.
+# Its only external listener is the exact tailnet address. Pin its routes and
+# validate its services before allowing this additional host-network exception.
+mattermost_json="$temporary_root/mattermost.json"
+docker compose --env-file "$REPO_ROOT/config/mattermost.env.example" \
+  -f "$REPO_ROOT/deploy/mattermost/compose.yaml" config --format json >"$mattermost_json"
+jq -e '
+  (.services | keys) == ["mattermost", "postgres", "proxy"] and
+  .services.proxy.network_mode == "host" and
+  (.services.proxy.ports // [] | length) == 0 and
+  .services.proxy.read_only == true and
+  .services.proxy.cap_drop == ["ALL"] and
+  .services.proxy.cap_add == ["NET_BIND_SERVICE"] and
+  (.services.proxy.security_opt | index("no-new-privileges:true")) != null and
+  (.services.proxy.volumes | all(.read_only == true)) and
+  .services.proxy.environment.MATTERMOST_TAILSCALE_ADDRESS == "100.110.248.102" and
+  .services.mattermost.ports[0].host_ip == "127.0.0.1" and
+  .services.mattermost.ports[0].published == "18065" and
+  (.services.mattermost.ports | length) == 1 and
+  (.services.postgres.ports // [] | length) == 0 and
+  .networks.database.internal == true
+' "$mattermost_json" >/dev/null
+python3 - "$REPO_ROOT/deploy/mattermost/Caddyfile" <<'PY'
+import hashlib, pathlib, sys
+assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "319eafea4208a3366fac753179e47b4960a1e804681db35f45eb398dad831ccc"
+PY
+# The communication relay is separately constrained above. Every other
+# deployment retains the host-network denial.
+if rg -n -g '*.yaml' -g '!**/openclaw/communication/compose.yaml' -g '!**/mattermost/compose.yaml' \
+  'network_mode:[[:space:]]*host' "$REPO_ROOT/deploy"; then
+  printf '[validate] unapproved host networking under deploy/\n' >&2
   exit 1
 fi
 
@@ -742,7 +1120,9 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer compute-node control-plane hermes hviske-stt homepage piper-tts ttlock-webhook wyoming-stt | LC_ALL=C sort)"
+# Optional agent office runs inside the existing sandbox, not a host container.
+[[ ! -e "$REPO_ROOT/deploy/agent-office/compose.yaml" ]]
+expected_deployment_projects="$(printf '%s\n' agent-office automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
@@ -770,6 +1150,9 @@ if command -v nix >/dev/null 2>&1; then
   nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
     "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
+  nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
+    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
+    >/dev/null
 else
   printf '[validate] Nix flake evaluation (containerized)\n'
   docker run --rm \
@@ -778,7 +1161,8 @@ else
     nixos/nix:2.34.1@sha256:1d59121e0c361076b4f23c158d236702f2f045b3b477b51075b81ceb6188d34a \
     sh -ec \
       'nix --extra-experimental-features "nix-command flakes" flake check path:/src --no-build --all-systems
-       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
 fi
 
 printf '[validate] PASS\n'

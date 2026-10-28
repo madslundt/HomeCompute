@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "destination": "replace-selected-authorized-destination",
+  "conversations": ["operator"],
+  "projects": [],
+  "actions": {},
+  "timezone": "Europe/Copenhagen",
+  "quiet_start_hour": 22,
+  "quiet_end_hour": 7,
+  "cooldown_seconds": 1800
+}

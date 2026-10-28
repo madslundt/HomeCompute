@@ -386,6 +386,83 @@ class ModelUpdateCheckTest(unittest.TestCase):
         with self.assertRaises(ValidationError):
             CHECKER.load_selection(path)
 
+    def test_committed_watchlist_executes_offline_and_operator_pins_override_defaults(self) -> None:
+        committed = CHECKER.load_watchlist(ROOT / "automations/update-check/watchlist.json", PUBLIC_RESOLVER)
+        self.assertTrue(any(s["kind"] == "github_pull_requests" for s in committed["sources"]))
+        self.watchlist_path.write_text(json.dumps(committed))
+        sources = {s["request_url"]: s for s in committed["sources"]}
+        def fetcher(url, kind, resolver):
+            source = sources[url]
+            revision = source.get("installed_revision", "a" * 40)
+            return {"huggingface_model": {"sha": revision}, "huggingface_search": [],
+                    "github_file": [{"sha": revision}], "github_release": {"tag_name": "v1.2.3"},
+                    "github_pull_requests": [{"number": 1, "state": "open", "title": "PRIVATE-PR-TITLE",
+                                              "updated_at": "2026-10-09T12:00:00Z", "user": {"login": "dependabot[bot]"},
+                                              "head": {"ref": "dependabot/docker/n8n"}, "body": "PRIVATE-PR-BODY"}]}[kind]
+        report = CHECKER.execute(self.watchlist_path, self.state_path, self.report_path,
+                                 fetcher=fetcher, resolver=PUBLIC_RESOLVER, clock=NOW)
+        self.assertEqual(report["summary"]["source_errors"], 0)
+        self.assertEqual(report["summary"]["baselined"], len(committed["sources"]))
+        self.assertEqual(report["pin_drift"], [])
+        self.assertNotIn("PRIVATE-PR-TITLE", self.report_path.read_text() + self.state_path.read_text())
+        self.assertNotIn("PRIVATE-PR-BODY", self.report_path.read_text() + self.state_path.read_text())
+        pins = self.directory / "override.json"
+        pins.write_text(json.dumps({"schema_version": 1, "pins": {"aula-mcp": "0" * 40}}))
+        report = CHECKER.execute(self.watchlist_path, self.state_path, self.report_path, pins,
+                                 fetcher=fetcher, resolver=PUBLIC_RESOLVER, clock=NOW)
+        self.assertEqual([(x["source_id"], x["installed_revision"]) for x in report["pin_drift"]], [("aula-mcp", "0" * 40)])
+
+    def test_default_installed_revision_is_validated_before_writing(self) -> None:
+        for revision in ("", "not-a-commit", "a" * 39, "../secret", "a" * 40 + "\n", True):
+            document = watchlist(); document["sources"][0]["installed_revision"] = revision
+            self.watchlist_path.write_text(json.dumps(document))
+            with self.assertRaises(ValidationError): self.run_check()
+        self.assertFalse(self.state_path.exists()); self.assertFalse(self.report_path.exists())
+
+    def test_pr_endpoint_rejects_unbounded_or_altered_queries(self) -> None:
+        url = "https://api.github.com/repos/madslundt/HomeCompute/pulls?state=open&per_page=100&sort=updated&direction=desc"
+        self.assertEqual(validate_request_url(url, "github_pull_requests", PUBLIC_RESOLVER), url)
+        for bad in (url.replace("state=open", "state=all"), url.replace("per_page=100", "per_page=101"),
+                    url + "&page=2", url + "&state=open", url.replace("/pulls?", "/issues?"),
+                    url.replace("api.github.com", "github.com"), url.replace("direction=desc", "direction=asc")):
+            with self.assertRaises(ValidationError): validate_request_url(bad, "github_pull_requests", PUBLIC_RESOLVER)
+        with self.assertRaises(ValidationError):
+            validate_request_url(url, "github_pull_requests", lambda _: ["192.168.0.1"])
+
+    def test_pr_marker_filters_sorts_and_detects_selected_changes(self) -> None:
+        source = {"kind": "github_pull_requests"}
+        bot = {"number": 2, "state": "open", "title": "Dependencies", "updated_at": "2026-10-09T12:00:00Z", "user": {"login": "dependabot[bot]"}, "head": {"ref": "dependabot/docker/n8n"}}
+        flake = {**bot, "number": 3, "user": {"login": "github-actions[bot]"}, "head": {"ref": "automation/nix-flake-update"}}
+        human = {**bot, "number": 4, "user": {"login": "owner"}}
+        original = CHECKER.normalize(source, [bot, flake, human])
+        self.assertEqual(original, CHECKER.normalize(source, [flake, bot, {**human, "title": "Changed unrelated PR"}]))
+        self.assertNotEqual(original, CHECKER.normalize(source, [{**bot, "title": "Updated dependencies"}, flake]))
+        self.assertNotEqual(original, CHECKER.normalize(source, [bot, {**flake, "updated_at": "2026-10-09T12:01:00Z"}]))
+        self.assertEqual(CHECKER.normalize(source, [human, {**bot, "state": "closed"}]), CHECKER.normalize(source, []))
+        for payload in ([bot] * 101, [bot, bot], [{**bot, "number": True}], [{**bot, "updated_at": "SECRET"}],
+                        [{}], [{**bot, "state": None}], [{**bot, "user": "bad"}], [{**bot, "head": None}], [None], {"message": "error"}):
+            with self.assertRaises(SourceError): CHECKER.normalize(source, payload)
+
+    def test_malformed_pr_inventory_does_not_erase_last_success(self) -> None:
+        document = watchlist()
+        document["sources"].append({"id": "dependency-prs", "kind": "github_pull_requests", "label": "PR review", "role": "review",
+                                    "request_url": "https://api.github.com/repos/madslundt/HomeCompute/pulls?state=open&per_page=100&sort=updated&direction=desc",
+                                    "project_url": "https://github.com/madslundt/HomeCompute/pulls"})
+        self.watchlist_path.write_text(json.dumps(document))
+        payload = [{"number": 1, "state": "open", "title": "Dependency", "updated_at": "2026-10-09T12:00:00Z",
+                    "user": {"login": "dependabot[bot]"}, "head": {"ref": "dependabot/docker/n8n"}}]
+        def fetcher(url, kind, resolver):
+            return payload if kind == "github_pull_requests" else self.fetcher(url, kind, resolver)
+        def execute():
+            return CHECKER.execute(self.watchlist_path, self.state_path, self.report_path,
+                                   fetcher=fetcher, resolver=PUBLIC_RESOLVER, clock=NOW)
+        execute()
+        before = json.loads(self.state_path.read_text())["sources"]["dependency-prs"]
+        payload = [{}]
+        report = execute()
+        self.assertEqual(report["source_errors"][0]["source_id"], "dependency-prs")
+        self.assertEqual(before, json.loads(self.state_path.read_text())["sources"]["dependency-prs"])
+
 
 if __name__ == "__main__":
     unittest.main()

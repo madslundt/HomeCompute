@@ -1,0 +1,84 @@
+#!/usr/bin/python3
+"""Finite local CLI operations; no arbitrary program, script, or shell input."""
+from __future__ import annotations
+
+import ast
+import hashlib
+import json
+import operator
+from pathlib import Path
+import subprocess
+import sys
+
+WORKSPACE = Path('/sandbox/.openclaw/workspace')
+OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+       ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod}
+
+
+def calculate(text: str) -> int | float:
+    if len(text) > 256:
+        raise ValueError('expression budget')
+    tree = ast.parse(text, mode='eval')
+    if sum(1 for _ in ast.walk(tree)) > 64:
+        raise ValueError('expression budget')
+
+    def value(node: ast.AST) -> int | float:
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            result = node.value
+        elif isinstance(node, ast.BinOp) and type(node.op) in OPS:
+            result = OPS[type(node.op)](value(node.left), value(node.right))
+        elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            result = value(node.operand) * (-1 if isinstance(node.op, ast.USub) else 1)
+        else:
+            raise ValueError('only bounded numeric arithmetic is supported')
+        if not -1e100 < result < 1e100:
+            raise ValueError('numeric budget')
+        return result
+
+    return value(tree.body)
+
+
+def path(text: str, root: Path = WORKSPACE) -> Path:
+    candidate = (root / text).resolve()
+    if not candidate.is_relative_to(root.resolve()):
+        raise ValueError('workspace path required')
+    return candidate
+
+
+def main(args: list[str]) -> object:
+    if args == ['versions']:
+        return {name: subprocess.run(command, capture_output=True, text=True, timeout=3,
+                env={'PATH': '/usr/bin:/usr/local/bin:/bin'}).stdout.splitlines()[0]
+                for name, command in {'python': ['/usr/bin/python3', '--version'],
+                    'git': ['/usr/bin/git', '--version'], 'node': ['/usr/local/bin/node', '--version'],
+                    'curl': ['/usr/bin/curl', '--version']}.items()}
+    if len(args) == 2 and args[0] == 'calculate':
+        return {'value': calculate(args[1])}
+    if len(args) in (1, 2) and args[0] == 'files':
+        folder = path(args[1] if len(args) == 2 else '.')
+        rows = list(folder.iterdir())
+        if len(rows) > 100:
+            raise ValueError('directory budget')
+        # Do not follow symlinks or read file contents during a directory listing.
+        return {'files': sorted(item.name for item in rows if not item.is_symlink())}
+    if len(args) == 2 and args[0] == 'digest':
+        file = path(args[1])
+        with file.open('rb') as source:
+            data = source.read(1048577)
+        if len(data) > 1048576:
+            raise ValueError('file budget')
+        return {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
+    if args == ['json-format']:
+        raw = sys.stdin.read(65537)
+        if len(raw) > 65536:
+            raise ValueError('input budget')
+        return {'formatted': json.dumps(json.loads(raw), indent=2, ensure_ascii=False)}
+    raise ValueError('use versions, calculate EXPRESSION, files [DIRECTORY], digest FILE, or json-format')
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv[1:]), ensure_ascii=False))
+    except (ValueError, OSError, SyntaxError, ArithmeticError, subprocess.SubprocessError):
+        print(json.dumps({'error': 'command rejected or bounded input unavailable'}))
+        raise SystemExit(2)

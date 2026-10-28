@@ -224,3 +224,23 @@ at production workflows.
 
 Use [PREPARATION.md](PREPARATION.md) as the collection checklist for real coding
 and automation fixtures.
+
+## Flash-Next quality baseline and challenger
+
+The pinned Blazux/NVIDIA profile is the quality-first reference. The dime
+UltraFast profile is a separate AutoRound target and must pass the same
+HomeCompute quality and reliability gates before speed or memory improvements
+can be considered. They share the private `automation-qualification` endpoint
+and must be cold-swapped; never run both model profiles resident together.
+
+The starter A/B plan uses the same synthetic structured-output, Danish, and
+exact tool-selection fixtures for ten trials. A separate tool-loop plan runs a
+synthetic 16-call Aula-style sequence with a retried transient tool error three
+times. Run each candidate separately
+with `--candidate`, after selecting the matching operator-only route, then
+compare the two private result directories with
+[`compare_flash_profile_runs.py`](compare_flash_profile_runs.py). The report
+validates matching plans, fixtures, and trial coverage and emits aggregate
+correctness and duration deltas. It does not approve a model or replace the
+required Aula, offers, shopping, Hermes-loop, coding, long-context, mixed-load,
+and soak evidence. See the [qualification report](../docs/benchmarks/qwen36-vs-flash-next-automation.md).

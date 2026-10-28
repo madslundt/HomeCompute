@@ -6,7 +6,7 @@ they do not use them as production configuration in place.
 
 | File | Used by | Purpose |
 | --- | --- | --- |
-| `compute-node.env.example` | `setup-compute-node.sh`, `setup-compute-modalities.sh` | Immutable text and staged modality artifact tuples, exact private ports, bind policy, and compute limits |
+| `compute-node.env.example` | Compute-node and model lifecycle scripts | Current Qwen3.6 rollback tuple, pinned isolated Flash-Next candidate, private ports, bind policy, and resource limits |
 | `plapre-tts.env.example` | `setup-compute-plapre.sh` | Pinned Plapre/Kanade/HiFT tuple, Danish voice gate, resource bounds, and Wyoming publication policy |
 | `hviske-stt.env.example` | `setup-compute-hviske-stt.sh` | Pinned Hviske v5.3 tuple, license decision, bounded transcription, and Wyoming publication policy |
 | `model-catalog.json` | `scripts/model_registry.py` and the LiteLLM renderer | Immutable text artifacts, supported runtime profiles, deployment identities, endpoint environment names, lifecycle, and qualification evidence |
@@ -18,6 +18,7 @@ they do not use them as production configuration in place.
 | `open-webui.env.example` | `deploy/open-webui/compose.yaml` | Pinned Open WebUI image, persistent state path, and runtime LiteLLM/WebUI secret-file paths |
 | `model-manager.env.example` | `deploy/model-manager/compose.yaml` | Local build tag, exact public origin, fixed Spark SSH target, and external secret-file paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
+| `immich.env.example` | `modules/nixos/immich.nix`, `deploy/immich/compose.yaml` | Digest-pinned Immich services, configurable state/library paths, and explicit LAN/Tailscale bindings |
 | `wyoming-stt.env.example` | `deploy/wyoming-stt/compose.yaml` | Pinned CPU STT image, Danish `small-int8` settings, explicit LAN binding, and bounded resources |
 | `books_importer.env.example` | `deploy/books_importer/compose.yaml` | Pinned book service images; compare with source deployment digests before migration |
 | `books_importer-secrets.env.example` | `deploy/books_importer/compose.yaml` | Reference for the encrypted SOPS books_importer/environment entry |

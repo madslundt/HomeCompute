@@ -5,6 +5,16 @@
 
   systemd.tmpfiles.rules = [
     "d /srv/state 0750 root homecompute-state - -"
+    "d /srv/state/immich 0750 root homecompute-state - -"
+    # Immich's official PostgreSQL 14 image uses the standard postgres UID/GID.
+    # Keep its files on the local NVMe; the library path is independently configurable.
+    "d /srv/state/immich/database 0700 999 999 - -"
+    "d /srv/state/immich/library 0750 root homecompute-state - -"
+    "d /srv/state/immich/model-cache 0750 1000 1000 - -"
+    "d /srv/state/immich/redis 0750 999 999 - -"
+    "d /srv/state/immich/db-backups 0700 root root - -"
+    "d /srv/state/immich/import 0700 root root - -"
+    "d /var/lib/homecompute/backup-status 0700 root root - -"
     "d /srv/state/control-plane 0750 root homecompute-state - -"
     "d /srv/state/control-plane/caddy-data 0750 root homecompute-state - -"
     "d /srv/state/control-plane/caddy-config 0750 root homecompute-state - -"

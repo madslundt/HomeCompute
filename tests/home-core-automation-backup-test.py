@@ -60,7 +60,7 @@ class HomeCoreAutomationBackupTest(unittest.TestCase):
         self.assertEqual(
             service["image"],
             "ghcr.io/ggml-org/llama.cpp:server@sha256:"
-            "b74a168a10b13129ce8973582a5c699fadecde45945a8b8b004b79e34f4ff1ab",
+            "f8f71e3be397e868cdddfb9c404e3a263d9697f82fd7205f4737ac981feea4b8",
         )
         command = service["command"]
         joined = " ".join(command)

@@ -1,0 +1,10 @@
+ARG BASE_IMAGE=python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+FROM ${BASE_IMAGE}
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN apt-get update && apt-get install --no-install-recommends -y ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m pip install --no-cache-dir --no-compile wyoming==1.10.2
+COPY scripts/wyoming-openai-stt.py /opt/homecompute/wyoming-openai-stt.py
+COPY deploy/compute-node/plapre/wyoming_adapter.py /opt/homecompute/plapre-wyoming.py
+COPY scripts/speech-adapter-health.py /opt/homecompute/speech-adapter-health.py
+USER 65532:65532

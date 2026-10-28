@@ -1,5 +1,5 @@
 {
-  "name": "HomeCompute - weekly setup update check",
+  "name": "HomeCompute - weekly software update review",
   "nodes": [
     {
       "parameters": {},
@@ -7,7 +7,10 @@
       "name": "Run manually",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [-920, 180]
+      "position": [
+        -920,
+        180
+      ]
     },
     {
       "parameters": {
@@ -15,7 +18,9 @@
           "interval": [
             {
               "field": "weeks",
-              "triggerAtDay": [1],
+              "triggerAtDay": [
+                1
+              ],
               "triggerAtHour": 9,
               "triggerAtMinute": 7
             }
@@ -26,7 +31,10 @@
       "name": "Every Monday at 09:07",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-920, -20]
+      "position": [
+        -920,
+        -20
+      ]
     },
     {
       "parameters": {
@@ -58,8 +66,11 @@
       "name": "Configuration",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [-700, 80],
-      "notes": "Repository model and recipe pins are loaded automatically. Use pinned_overrides_json only for runtime pins or temporary overrides. Configure the webhook URL only if using the disabled generic notifier. Repository URLs are fixed in HTTP nodes so untrusted workflow input cannot redirect them."
+      "position": [
+        -700,
+        80
+      ],
+      "notes": "Repository model and recipe pins are loaded automatically. MCP installed revisions are declared in the repository watchlist beside their upstream source. The workflow also tracks open Dependabot and Nix flake update pull requests. Use pinned_overrides_json only for runtime pins or temporary overrides. Configure the webhook URL only if using the disabled generic notifier. Repository URLs are fixed in HTTP nodes so untrusted workflow input cannot redirect them."
     },
     {
       "parameters": {
@@ -78,7 +89,10 @@
       "name": "Load repository watchlist",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-250, 80],
+      "position": [
+        -250,
+        80
+      ],
       "onError": "continueRegularOutput"
     },
     {
@@ -98,19 +112,25 @@
       "name": "Load repository model roster",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-470, 80],
+      "position": [
+        -470,
+        80
+      ],
       "onError": "continueRegularOutput",
       "notes": "Loads the public repository's authoritative model IDs and pinned revisions."
     },
     {
       "parameters": {
-        "jsCode": "const watchlist = $json;\nif (watchlist.schema_version !== 1 || !Array.isArray(watchlist.sources)) {\n  throw new Error('Unsupported or invalid HomeCompute update-check watchlist');\n}\nif (watchlist.sources.length === 0 || watchlist.sources.length > 100) {\n  throw new Error('Watchlist must contain between 1 and 100 sources');\n}\n\nconst roster = $('Load repository model roster').first().json;\nif (roster.schema_version !== 2 || !roster.text_models || !roster.services) {\n  throw new Error('Unsupported or invalid HomeCompute model roster');\n}\nconst rosterPins = new Map();\nconst addModelPin = (entry, label) => {\n  if (!entry || typeof entry.model_id !== 'string' || typeof entry.revision !== 'string') {\n    throw new Error(`Model roster entry is missing model_id or revision: ${label}`);\n  }\n  rosterPins.set(`https://huggingface.co/${entry.model_id}`, entry.revision);\n};\naddModelPin(roster.text_models.primary, 'text_models.primary');\naddModelPin(roster.text_models.heavy, 'text_models.heavy');\nfor (const [id, service] of Object.entries(roster.services)) addModelPin(service, `services.${id}`);\nconst performance = roster.text_models.primary.runtime_profiles?.performance;\nif (performance?.draft_model_id || performance?.draft_revision) {\n  addModelPin({ model_id: performance.draft_model_id, revision: performance.draft_revision }, 'text_models.primary.runtime_profiles.performance draft');\n}\nconst recipe = roster.text_models.heavy.recipe;\nif (!recipe || typeof recipe.url !== 'string' || typeof recipe.revision !== 'string') {\n  throw new Error('Model roster heavy recipe is missing url or revision');\n}\nrosterPins.set(recipe.url, recipe.revision);\n\nconst allowedKinds = new Set(['huggingface_model', 'huggingface_search', 'github_file', 'github_release']);\nconst allowedHosts = new Set(['huggingface.co', 'api.github.com']);\nfor (const source of watchlist.sources) {\n  if (!source || typeof source.id !== 'string' || typeof source.label !== 'string') {\n    throw new Error('Every watchlist source requires string id and label fields');\n  }\n  if (!allowedKinds.has(source.kind)) {\n    throw new Error(`Unsupported source kind for ${source.id}: ${source.kind}`);\n  }\n  let requestUrl;\n  try {\n    requestUrl = new URL(source.request_url);\n  } catch {\n    throw new Error(`Invalid request URL for ${source.id}`);\n  }\n  if (requestUrl.protocol !== 'https:' || !allowedHosts.has(requestUrl.hostname)) {\n    throw new Error(`Request URL is outside the HTTPS host allow-list for ${source.id}`);\n  }\n}\n\nconst config = $('Configuration').first().json;\nlet overrides;\ntry {\n  overrides = JSON.parse(config.pinned_overrides_json || '{}');\n} catch (error) {\n  throw new Error(`pinned_overrides_json must be valid JSON: ${error.message}`);\n}\nif (!overrides || Array.isArray(overrides) || typeof overrides !== 'object') {\n  throw new Error('pinned_overrides_json must be a JSON object');\n}\n\nreturn watchlist.sources.map((source) => {\n  const repositoryPin = rosterPins.get(source.project_url) || '';\n  return {\n    json: {\n      ...source,\n      pinned_marker: overrides[source.id] || repositoryPin,\n      pin_source: overrides[source.id] ? 'configuration_override' : (repositoryPin ? 'repository_roster' : 'none'),\n      checked_at: new Date().toISOString()\n    }\n  };\n});"
+        "jsCode": "const watchlist = $json;\nif (watchlist.schema_version !== 1 || !Array.isArray(watchlist.sources)) {\n  throw new Error('Unsupported or invalid HomeCompute update-check watchlist');\n}\nif (watchlist.sources.length === 0 || watchlist.sources.length > 100) {\n  throw new Error('Watchlist must contain between 1 and 100 sources');\n}\n\nconst roster = $('Load repository model roster').first().json;\nif (roster.schema_version !== 2 || !roster.text_models || !roster.services) {\n  throw new Error('Unsupported or invalid HomeCompute model roster');\n}\nconst rosterPins = new Map();\nconst addModelPin = (entry, label) => {\n  if (!entry || typeof entry.model_id !== 'string' || typeof entry.revision !== 'string') {\n    throw new Error(`Model roster entry is missing model_id or revision: ${label}`);\n  }\n  rosterPins.set(`https://huggingface.co/${entry.model_id}`, entry.revision);\n};\naddModelPin(roster.text_models.primary, 'text_models.primary');\naddModelPin(roster.text_models.heavy, 'text_models.heavy');\nfor (const [id, service] of Object.entries(roster.services)) addModelPin(service, `services.${id}`);\nconst performance = roster.text_models.primary.runtime_profiles?.performance;\nif (performance?.draft_model_id || performance?.draft_revision) {\n  addModelPin({ model_id: performance.draft_model_id, revision: performance.draft_revision }, 'text_models.primary.runtime_profiles.performance draft');\n}\nconst recipe = roster.text_models.heavy.recipe;\nif (!recipe || typeof recipe.url !== 'string' || typeof recipe.revision !== 'string') {\n  throw new Error('Model roster heavy recipe is missing url or revision');\n}\nrosterPins.set(recipe.url, recipe.revision);\n\nconst allowedKinds = new Set(['huggingface_model', 'huggingface_search', 'github_file', 'github_release', 'github_pull_requests']);\nconst allowedHosts = new Set(['huggingface.co', 'api.github.com']);\nfor (const source of watchlist.sources) {\n  if (!source || typeof source.id !== 'string' || typeof source.label !== 'string') {\n    throw new Error('Every watchlist source requires string id and label fields');\n  }\n  if (!allowedKinds.has(source.kind)) {\n    throw new Error(`Unsupported source kind for ${source.id}: ${source.kind}`);\n  }\n  let requestUrl;\n  try {\n    requestUrl = new URL(source.request_url);\n  } catch {\n    throw new Error(`Invalid request URL for ${source.id}`);\n  }\n  if (requestUrl.protocol !== 'https:' || !allowedHosts.has(requestUrl.hostname)) {\n    throw new Error(`Request URL is outside the HTTPS host allow-list for ${source.id}`);\n  }\n}\n\nconst config = $('Configuration').first().json;\nlet overrides;\ntry {\n  overrides = JSON.parse(config.pinned_overrides_json || '{}');\n} catch (error) {\n  throw new Error(`pinned_overrides_json must be valid JSON: ${error.message}`);\n}\nif (!overrides || Array.isArray(overrides) || typeof overrides !== 'object') {\n  throw new Error('pinned_overrides_json must be a JSON object');\n}\n\nreturn watchlist.sources.map((source) => {\n  const rosterPin = rosterPins.get(source.project_url) || '';\n  const configuredPin = source.installed_revision || '';\n  const pinnedMarker = overrides[source.id] || rosterPin || configuredPin;\n  const pinSource = overrides[source.id] ? 'configuration_override' : (rosterPin ? 'repository_roster' : (configuredPin ? 'repository_watchlist' : 'none'));\n  return {\n    json: {\n      ...source,\n      pinned_marker: pinnedMarker,\n      pin_source: pinSource,\n      checked_at: new Date().toISOString()\n    }\n  };\n});"
       },
       "id": "ac8eb4e9-28a9-475e-b341-3625aad36801",
       "name": "Prepare checks",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-10, 80]
+      "position": [
+        -10,
+        80
+      ]
     },
     {
       "parameters": {
@@ -142,19 +162,25 @@
       "name": "Fetch upstream state",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [230, 80],
+      "position": [
+        230,
+        80
+      ],
       "alwaysOutputData": true,
       "onError": "continueRegularOutput"
     },
     {
       "parameters": {
-        "jsCode": "const sources = $('Prepare checks').all().map((item) => item.json);\nconst responses = $input.all();\n\nreturn sources.map((source, index) => {\n  const response = responses[index]?.json;\n  const fail = (message) => ({\n    json: { ...source, ok: false, error: String(message || 'Unknown upstream response error') }\n  });\n\n  if (!response || response.error) {\n    return fail(response?.error?.message || response?.message || 'No response');\n  }\n\n  let marker;\n  let observedVersion;\n  let inventory;\n  let detail;\n\n  if (source.kind === 'huggingface_model') {\n    marker = response.sha;\n    observedVersion = response.sha ? response.sha.slice(0, 12) : '';\n    detail = response.lastModified || response.createdAt || '';\n  } else if (source.kind === 'huggingface_search') {\n    if (!Array.isArray(response)) return fail('Expected a Hugging Face model array');\n    inventory = response\n      .filter((model) => model && model.id)\n      .map((model) => ({ id: model.id, sha: model.sha || '', lastModified: model.lastModified || '' }))\n      .sort((a, b) => a.id.localeCompare(b.id));\n    marker = JSON.stringify(inventory.map((model) => [model.id, model.sha]));\n    observedVersion = `${inventory.length} matching models`;\n    detail = inventory\n      .slice()\n      .sort((a, b) => b.lastModified.localeCompare(a.lastModified))\n      .slice(0, 5)\n      .map((model) => model.id)\n      .join(', ');\n  } else if (source.kind === 'github_file') {\n    if (!Array.isArray(response) || !response[0]?.sha) return fail('Expected a GitHub commit array');\n    marker = response[0].sha;\n    observedVersion = response[0].sha.slice(0, 12);\n    detail = response[0].commit?.author?.date || '';\n  } else if (source.kind === 'github_release') {\n    marker = response.tag_name;\n    observedVersion = response.tag_name || '';\n    detail = response.published_at || response.created_at || '';\n  } else {\n    return fail(`Unsupported source kind: ${source.kind}`);\n  }\n\n  if (!marker) return fail('The upstream response did not contain a revision marker');\n  return {\n    json: { ...source, ok: true, marker, observed_version: observedVersion, detail, inventory }\n  };\n});"
+        "jsCode": "const sources = $('Prepare checks').all().map((item) => item.json);\nconst responses = $input.all();\n\nreturn sources.map((source, index) => {\n  const response = responses[index]?.json;\n  const fail = (message) => ({\n    json: { ...source, ok: false, error: String(message || 'Unknown upstream response error') }\n  });\n\n  if (!response || response.error) {\n    return fail(response?.error?.message || response?.message || 'No response');\n  }\n\n  let marker;\n  let observedVersion;\n  let inventory;\n  let detail;\n\n  if (source.kind === 'huggingface_model') {\n    marker = response.sha;\n    observedVersion = response.sha ? response.sha.slice(0, 12) : '';\n    detail = response.lastModified || response.createdAt || '';\n  } else if (source.kind === 'huggingface_search') {\n    if (!Array.isArray(response)) return fail('Expected a Hugging Face model array');\n    inventory = response\n      .filter((model) => model && model.id)\n      .map((model) => ({ id: model.id, sha: model.sha || '', lastModified: model.lastModified || '' }))\n      .sort((a, b) => a.id.localeCompare(b.id));\n    marker = JSON.stringify(inventory.map((model) => [model.id, model.sha]));\n    observedVersion = `${inventory.length} matching models`;\n    detail = inventory\n      .slice()\n      .sort((a, b) => b.lastModified.localeCompare(a.lastModified))\n      .slice(0, 5)\n      .map((model) => model.id)\n      .join(', ');\n  } else if (source.kind === 'github_file') {\n    if (!Array.isArray(response) || !response[0]?.sha) return fail('Expected a GitHub commit array');\n    marker = response[0].sha;\n    observedVersion = response[0].sha.slice(0, 12);\n    detail = response[0].commit?.author?.date || '';\n  } else if (source.kind === 'github_release') {\n    marker = response.tag_name;\n    observedVersion = response.tag_name || '';\n    detail = response.published_at || response.created_at || '';\n  } else if (source.kind === 'github_pull_requests') {\n    if (!Array.isArray(response)) return fail('Expected a GitHub pull request array');\n    inventory = response\n      .filter((pr) => pr && ((pr.user?.login || '') === 'dependabot[bot]' || (pr.head?.ref || '') === 'automation/nix-flake-update'))\n      .map((pr) => ({\n        number: pr.number,\n        title: pr.title || '',\n        url: pr.html_url || '',\n        updated_at: pr.updated_at || '',\n        author: pr.user?.login || ''\n      }))\n      .sort((a, b) => a.number - b.number);\n    marker = JSON.stringify(inventory.map((pr) => [pr.number, pr.title, pr.updated_at]));\n    observedVersion = `${inventory.length} open dependency update PR(s)`;\n    detail = inventory.map((pr) => `#${pr.number} ${pr.title} ${pr.url}`).join('; ') || 'No open dependency update pull requests';\n  } else {\n    return fail(`Unsupported source kind: ${source.kind}`);\n  }\n\n  if (!marker) return fail('The upstream response did not contain a revision marker');\n  return {\n    json: { ...source, ok: true, marker, observed_version: observedVersion, detail, inventory }\n  };\n});"
       },
       "id": "c28e6c39-c68b-489e-9e94-79307eef5890",
       "name": "Normalize upstream state",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [470, 80]
+      "position": [
+        470,
+        80
+      ]
     },
     {
       "parameters": {
@@ -164,7 +190,10 @@
       "name": "Compare with previous run and pins",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [710, 80],
+      "position": [
+        710,
+        80
+      ],
       "notes": "Uses n8n workflow static data. The first published trigger execution records a baseline. Editor/test executions do not persist static data in n8n."
     },
     {
@@ -196,7 +225,10 @@
       "name": "Anything to report?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [950, 80]
+      "position": [
+        950,
+        80
+      ]
     },
     {
       "parameters": {
@@ -213,7 +245,10 @@
       "name": "NOTIFICATION PLACEHOLDER - configure and enable",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1200, -20],
+      "position": [
+        1200,
+        -20
+      ],
       "disabled": true,
       "notes": "Disabled deliberately. Replace this node with Email, Slack, Discord, Gotify, ntfy, or another notifier, or set the webhook URL in Configuration and enable this node. Do not commit a configured secret webhook URL."
     },
@@ -223,42 +258,129 @@
       "name": "No changes - finish",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1200, 180]
+      "position": [
+        1200,
+        180
+      ]
     }
   ],
   "pinData": {},
   "connections": {
     "Run manually": {
-      "main": [[{"node": "Configuration", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Every Monday at 09:07": {
-      "main": [[{"node": "Configuration", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Configuration": {
-      "main": [[{"node": "Load repository model roster", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Load repository model roster",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Load repository model roster": {
-      "main": [[{"node": "Load repository watchlist", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Load repository watchlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Load repository watchlist": {
-      "main": [[{"node": "Prepare checks", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Prepare checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Prepare checks": {
-      "main": [[{"node": "Fetch upstream state", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Fetch upstream state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Fetch upstream state": {
-      "main": [[{"node": "Normalize upstream state", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Normalize upstream state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Normalize upstream state": {
-      "main": [[{"node": "Compare with previous run and pins", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Compare with previous run and pins",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Compare with previous run and pins": {
-      "main": [[{"node": "Anything to report?", "type": "main", "index": 0}]]
+      "main": [
+        [
+          {
+            "node": "Anything to report?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Anything to report?": {
       "main": [
-        [{"node": "NOTIFICATION PLACEHOLDER - configure and enable", "type": "main", "index": 0}],
-        [{"node": "No changes - finish", "type": "main", "index": 0}]
+        [
+          {
+            "node": "NOTIFICATION PLACEHOLDER - configure and enable",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No changes - finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },

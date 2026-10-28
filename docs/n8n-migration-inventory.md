@@ -1,5 +1,31 @@
 # n8n source inventory
 
+## Model qualification state (2026-09-29)
+
+**CURRENT:** production consumers use the LiteLLM `automation-moe` semantic
+alias. On 2026-09-30 its backend was switched to the owner-directed Qwen3.8
+Flash-Next quality trial. The n8n nodes and credential continue using the
+alias; Flash-Next quality qualification remains incomplete.
+
+**CANDIDATES:** the isolated `automation-qualification` LiteLLM route selects
+one operator-on-demand profile at a time: Blazux/NVIDIA NVFP4 is the
+quality-first Flash-Next baseline; dime UltraFast is the AutoRound performance
+challenger. Neither is a production route or production-qualified.
+
+**TARGET:** keep model identity in the LiteLLM deployment mapping so consumers
+can remain on a stable alias as the backend changes. Qwen3.6 remains cached for
+rollback. Qwen3.8-27B remains a
+smaller cold fallback/workhorse artifact; no future route is hard-coded.
+Priority benchmark workloads are Aula, Find Offers/Tilbudstrolden, and Shopping list category
+synchronization. Notion is optional and not a promotion gate.
+
+The repo's benchmark harness supports private result retention. Replay corpus
+and live tool traces still need operator-curated cases; no household payload
+belongs in Git. A qualification-only n8n workflow must stay unpublished, use
+read-only tools, and block every write and notification.
+
+---
+
 ## Local model cutover complete (2026-09-26)
 
 The following active workflows were updated and published through the n8n MCP:

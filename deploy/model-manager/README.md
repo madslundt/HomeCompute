@@ -51,8 +51,10 @@ eligibility check at execution time.
    `homecompute-control-plane_clients` network. This Compose project creates a
    dedicated `br-hc-mm-ssh` bridge with address `172.28.205.2`; the
    host firewall must restrict it to `192.168.30.126:22` only.
-2. Provision four secret files on home-core: manager username, manager
-   password, dedicated Spark SSH private key, and pinned Spark `known_hosts`.
+2. Provision four SOPS-managed secret values on home-core: manager username,
+   manager password, dedicated Spark SSH private key, and pinned Spark
+   `known_hosts`. They are materialized under `/run/secrets/model-manager/`;
+   do not create these files manually because `/run` is ephemeral.
    Configure the SSH public key on Spark with the adapter as its forced command
    and no other SSH capability. Set the readiness flag to `1` only after the
    forced-command path and sudo allowlist have been verified; the example keeps

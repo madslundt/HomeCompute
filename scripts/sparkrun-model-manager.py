@@ -196,7 +196,7 @@ def generated_recipe(deployment_id: str, item: dict[str, Any], artifact: dict[st
                  "--max-num-batched-tokens", str(rc["max_batched_tokens"]),
                  "--gpu-memory-utilization", str(rc["gpu_memory_utilization"])])
     args.extend(["--kv-cache-dtype", "fp8", "--enable-chunked-prefill", "--async-scheduling",
-                 "--enable-prefix-caching", "--load-format", "fastsafetensors"])
+                 "--enable-prefix-caching", "--enable-prompt-tokens-details", "--load-format", "fastsafetensors"])
     if rc.get("attention_backend"):
         args.extend(["--attention-backend", str(rc["attention_backend"])])
     if rc.get("moe_backend"):
