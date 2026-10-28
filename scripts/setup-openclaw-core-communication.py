@@ -451,7 +451,9 @@ def install(files: dict[str, bytes]) -> None:
     write(TMPFILES, f'd {REPORTS} 0755 root root -\n'.encode())
     call('systemd-tmpfiles', '--create', str(TMPFILES))
     protected_directory(REPORTS, 0, False)
-    call('systemd-analyze', 'verify', *(str(UNIT_DIR / (PREFIX + name + '.service')) for name in NAMES),
+    # The retired inbound receiver can be intentionally masked by its owner.
+    # Verify every supported service, preserving that stronger retirement fence.
+    call('systemd-analyze', 'verify', *(str(UNIT_DIR / (PREFIX + name + '.service')) for name in NAMES if name != 'telegram'),
          *(str(UNIT_DIR / (PREFIX + name + '.timer')) for name in TIMERS))
     call('systemctl', 'daemon-reload')
 
