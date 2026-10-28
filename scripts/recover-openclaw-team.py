@@ -41,15 +41,19 @@ def digest(data):
 def retained_config(old, native):
     """Retain every operator setting; only fresh native ownership may change."""
     result = copy.deepcopy(old)
-    for key in ('models', 'proxy'):
-        result[key] = copy.deepcopy(native[key])
+    result['proxy'] = copy.deepcopy(native['proxy'])
+    # Inference is native-owned. Other providers (for example the deployed
+    # speech integration) are retained operator settings, not onboarding input.
+    result['models']['providers']['inference'] = copy.deepcopy(native['models']['providers']['inference'])
     result['gateway']['auth'] = copy.deepcopy(native['gateway']['auth'])
     # Both source and replacement must retain the same local inference contract.
     for config in (old, native):
         providers = config.get('models', {}).get('providers', {})
-        if (set(providers) != {'inference'} or providers['inference'].get('apiKey') != 'unused'
+        if ('inference' not in providers or providers['inference'].get('apiKey') != 'unused'
                 or providers['inference'].get('baseUrl') != 'https://inference.local/v1'):
             raise ValueError('managed-inference-mismatch')
+    if set(native['models']['providers']) != {'inference'}:
+        raise ValueError('unexpected-native-provider')
     if old.get('plugins', {}).get('entries', {}).get('nemoclaw', {}).get('enabled') is not True:
         raise ValueError('native-plugin-required')
     # The pinned native plugin is replaced by the same version. Preserve other
@@ -127,6 +131,36 @@ class RetainedTransaction(BASE.Transaction):
         # Config is intentionally merged with fresh native auth. All other files
         # are checked byte-for-byte before any replacement is started.
         return {k: v for k, v in complete_hashes(directory).items() if k != 'openclaw.json'}
+
+    def resume(self):
+        record = json.loads(self.path.read_bytes())
+        root = Path(record.get('backup', ''))
+        if root.is_symlink() or root.resolve().parent != self.ctx.state.resolve():
+            raise ValueError('resume-backup-path-refused')
+        candidate = root / 'restored-config.json'
+        # A merge refusal can occur after native creation but before a candidate
+        # exists. Resume that exact pristine replacement after verifying its
+        # recorded native ownership; never destroy/create again or clear a fence.
+        if not candidate.exists():
+            if record.get('status') != 'failed' or record.get('failedStage') != 'replacement-created':
+                raise ValueError('exact-pre-restore-checkpoint-required')
+            self.ctx.uuid = str(__import__('uuid').UUID(record['newId']))
+            self.ctx.generation = str(__import__('uuid').UUID(record['newGeneration']))
+            self.ctx.container = f'openshell-default--{BASE.NAME}-{self.ctx.uuid}'
+            self.ctx.check_registry()
+            self.inspect()
+            current = root / 'resume-before-restore-native.json'
+            self.command(['/usr/bin/docker','cp',self.ctx.container+':/sandbox/.openclaw/openclaw.json',str(current)], 'resume-pristine-native-check')
+            native = json.loads((root/'replacement-native.json').read_bytes())
+            actual = json.loads(current.read_bytes())
+            if (any(actual.get(key)!=native.get(key) for key in ('models','proxy','agents','channels','tools','plugins'))
+                    or actual.get('gateway',{}).get('auth')!=native.get('gateway',{}).get('auth')):
+                raise ValueError('replacement-no-longer-pristine')
+            self.verify_backup(root/'.openclaw')
+            BASE.atomic_json(candidate,self.merge_config(json.loads((root/'.openclaw/openclaw.json').read_bytes()),native))
+            code,_=self.ctx.run([self.ctx.cli,BASE.NAME,'stop'],'resume-pristine-native-stop',timeout=180)
+            if self.ctx.observe()!='Stopped':raise ValueError('resume-positive-stopped-required')
+        return super().resume()
 
     def merge_config(self, old, native):
         self.policy = retained_config(old, native)
@@ -244,6 +278,13 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
                      'rebind-existing-native-public-dns', timeout=120)
         self.command(['sudo', 'systemctl', 'daemon-reload'], 'dns-unit-reload')
         self.command(['sudo', 'systemctl', 'restart', 'homecompute-public-dns.service'], 'dns-replacement-start')
+        self.stage('restore-declared-native-network')
+        self.command([self.ctx.cli, BASE.NAME, 'mcp', 'restart', 'homecompute'], 'restore-existing-mcp-binding', timeout=240)
+        for file, host in [('deploy/openclaw/tools/browser-policy.yaml','172.18.0.1'),
+                           ('deploy/openclaw/mattermost-policy.yaml','home-core.tail479ad.ts.net'),
+                           ('deploy/openclaw/nemoclaw/retained-service-routes.json','homecompute-capabilities.home.arpa')]:
+            self.command([self.ctx.cli, BASE.NAME, 'policy', 'add', '--from-file', str(ROOT/file),
+                          '--trusted-private-host',host,'--yes'], 'restore-retained-network-preset', timeout=180)
         after = backup_root / 'verification-ready/.openclaw'
         observed = complete_hashes(after)
         for role in json.loads((backup / 'openclaw.json').read_text())['agents']['entries']:

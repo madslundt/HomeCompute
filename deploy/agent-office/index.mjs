@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { OfficeActivity } from './activity.mjs';
 import { officeServer } from './server.mjs';
 import { readAuth } from './auth.mjs';
+import { projectRoster } from './catalog.mjs';
 
 export default {
   id: 'homecompute-agent-office',
@@ -19,7 +20,13 @@ export default {
     api.registerService({
       id: 'homecompute-agent-office',
       async start() {
-        const roster = JSON.parse(await readFile(new URL('./roster.json', import.meta.url), 'utf8'));
+        const bundled = JSON.parse(await readFile(new URL('./roster.json', import.meta.url), 'utf8'));
+        // Native config is already supplied by the trusted plugin API. Project
+        // only known role IDs and bounded display names; no instructions,
+        // credentials, channel settings or tool policies enter the snapshot.
+        const entries = api.config?.agents?.entries;
+        const roster = entries && typeof entries === 'object' && !Array.isArray(entries)
+          ? projectRoster({ agents: entries }) : bundled;
         activity = new OfficeActivity(roster);
         const publicOrigin = api.pluginConfig?.publicOrigin;
         const auth = publicOrigin ? await readAuth('/sandbox/.openclaw/agent-office-auth.json') : undefined;

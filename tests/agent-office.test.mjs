@@ -27,6 +27,18 @@ test('roster comes from canonical agent names without instructions or channel ID
   assert.ok(roster.every(agent => Object.keys(agent).sort().join(',') === 'color,id,name,role,sprite'));
 });
 
+test('native roster projects all supported roles while excluding private config and unknown identities', () => {
+  const projected = projectRoster({ agents: {
+    cook: { name: 'Hestia', instructions: 'private synthetic instruction', tools: { allow: ['private-tool'] } },
+    administrator: { name: 'Themis' }, finance: { name: 'Plutus' }, family: { name: 'Gaia' },
+    unknown: { name: 'Unsupported private agent' },
+  } });
+  assert.deepEqual(projected.map(agent => agent.name), ['Hestia', 'Themis', 'Plutus', 'Gaia']);
+  assert.ok(projected.every(agent => Object.keys(agent).sort().join(',') === 'color,id,name,role,sprite'));
+  assert.ok(!JSON.stringify(projected).includes('private'));
+  assert.equal(projectRoster({ agents: { cook: { name: 'invalid\nname' } } })[0].name, 'Meals');
+});
+
 test('unobserved and expired activity are unknown; a live heartbeat cannot renew a run', () => {
   let now = 1000;
   const activity = new OfficeActivity(roster, () => now);

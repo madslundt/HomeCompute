@@ -286,3 +286,54 @@ Browser verification must also cover agent
 selection from characters and the side menu, selection highlighting, filters,
 directional walking, motion controls, and narrow
 viewports. Synthetic tests do not establish live gateway readiness.
+
+## Scoped rollout with existing host maintenance overrides
+
+When the normal host release is guarded by unrelated live image or Homepage
+maintenance, preserve those markers and use the office's dedicated lifecycle.
+`scripts/setup-agent-office-ingress.py` requires a root-owned clean checkout at
+`/srv/homecompute/releases/FULL_SHA`, with that revision published on
+`origin/master`. Its default is a read-only plan of the actual Caddy/Homepage
+mounts and exact before/after hashes:
+
+```bash
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-agent-office-ingress.py \
+  --revision FULL_SHA
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-agent-office-ingress.py \
+  --revision FULL_SHA --expected-caddy-sha256 REVIEWED_CADDY_SHA256 \
+  --expected-homepage-sha256 REVIEWED_HOMEPAGE_SHA256 --apply
+```
+
+The installer builds only the canonical Nix proxy/firewall unit derivations,
+retains their Nix GC roots and installs source-backed attached unit links. It
+validates the candidate against the existing Caddy container's environment and
+imports before adding only the office HTTPS/redirect blocks and Homepage card.
+It preserves file-bind-mount inodes, retains exact private preimages and locks
+deployment/automatic Docker maintenance. Caddy and Homepage are restarted with
+their existing IDs, images, mounts, networks and other settings. Existing links,
+native OpenClaw routes, retired-service choices, maintenance overrides and full
+host revision markers are preserved. No full NixOS switch or VM restart occurs.
+The guest units, operator credential and observer installation still use the
+sandbox procedure above; this path does not substitute demo activity.
+
+Private ingress receipts and rollback files are stored under
+`/var/lib/homecompute-agent-office/ingress-*`. A failed write/restart restores
+both configuration preimages. If a later health check fails, compare current
+hashes with the receipt before restoring those exact preimages in place and
+restarting the same containers. Stop only the office proxy/firewall and guest
+units when retiring this workload. Retain its credential, native configuration
+backup and immutable bundles until recovery is accepted.
+
+A future normal NixOS release owns the same canonical units. Once their loaded
+unit contents match, remove only the office's attached links and their
+`multi-user.target.wants` link through this documented reconciliation, reload
+systemd and verify the Nix-owned units remain active before retiring old GC
+roots. Reconcile existing general maintenance overrides separately; a scoped
+office rollout does not claim global host synchronization.
+
+On the native plugin path, the roster uses `api.config.agents.entries` from the
+verified OpenClaw plugin API. It projects only supported role IDs and bounded
+display names. This includes the currently registered 12-agent team without
+changing the team policy or copying instructions, tool grants, channel IDs or
+credentials into the browser. Standalone preview/bundle generation continues
+to use the canonical source roster.

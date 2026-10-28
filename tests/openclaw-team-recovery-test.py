@@ -45,6 +45,26 @@ class TeamRecoveryTests(unittest.TestCase):
         self.assertEqual(candidate['agents'],original['agents'])
         self.assertTrue(original['channels']['mattermost']['enabled'])
 
+    def test_additional_speech_provider_survives_native_merge(self):
+        old=self.config();native=self.config()
+        old['models']['providers']['openai']={'baseUrl':'http://127.0.0.1:18800/speech','apiKey':'synthetic-placeholder'}
+        merged=m.retained_config(old,native)
+        self.assertEqual(merged['models']['providers']['openai'],old['models']['providers']['openai'])
+        native['models']['providers']['other']={}
+        with self.assertRaises(ValueError):m.retained_config(old,native)
+
+    def test_restored_private_routes_keep_exact_address_provider_method_and_paths(self):
+        routes=json.loads((ROOT/'deploy/openclaw/nemoclaw/retained-service-routes.json').read_text())['network_policies']
+        expected={'/v1/embeddings','/v1/audio/transcriptions','/v1/audio/speech'}
+        self.assertEqual({x['endpoints'][0]['path'] for x in routes.values()},expected)
+        for entry in routes.values():
+            self.assertEqual(entry['binaries'],[{'path':'/usr/local/bin/node'}])
+            endpoint=entry['endpoints'][0]
+            self.assertEqual(endpoint['allowed_ips'],['10.77.20.1'])
+            self.assertEqual(endpoint['host'],'homecompute-capabilities.home.arpa')
+            self.assertEqual(endpoint['credential_binding'],{'provider':'agent-openclaw-mcp-homecompute'})
+            self.assertEqual(endpoint['rules'],[{'allow':{'method':'POST','path':endpoint['path']}}])
+
     def test_managed_inference_and_plugin_required(self):
         for mutation in (lambda c:c['models']['providers']['inference'].update(apiKey='private'),
                          lambda c:c['models']['providers']['inference'].update(baseUrl='https://example.com'),
