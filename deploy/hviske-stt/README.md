@@ -21,7 +21,7 @@ has been materialized from GitHub on both hosts, run the commands there:
 sudo python3 scripts/setup-speech-boundary.py spark-prepare --revision "$RELEASE_SHA"
 # On home-core: build CPU adapters and stage the dynamic tunnel owner.
 sudo python3 scripts/setup-speech-boundary.py core-stage --revision "$RELEASE_SHA"
-# Drain active text/voice requests before the shared tunnel restart.
+# Confirm speech models are idle; HTTP requests drain automatically.
 sudo python3 scripts/setup-speech-boundary.py core-apply --revision "$RELEASE_SHA" --tunnel-idle-confirmed
 sudo python3 scripts/setup-speech-boundary.py core-smoke --revision "$RELEASE_SHA"
 # Only after synthetic STT and TTS pass on core, retire the three old adapters.
@@ -37,6 +37,39 @@ restarts the drained tunnel and only the two core adapters; readiness requires
 both Wyoming Describe and the inference dependency's HTTP health. `core-smoke`
 uses a short synthetic silence clip and fixed Danish phrase, retaining neither
 transcript nor audio. Verify the real Home Assistant canary separately.
+
+`core-apply` holds the normal deployment lock throughout drain, cutover and
+rollback, excluding NAS cold preparation and normal deployments. Its temporary
+`HC-SPEECH-CUTOVER` chain in mangle PREROUTING drops only new TCP connections from
+`172.28.200.3` to `172.28.200.1` on ports `18003,18005,18006,18007`; existing
+connections continue through the unchanged firewall policy. The earlier mangle
+hook keeps this gate effective when the canonical tunnel startup rebuilds or
+prepends filter INPUT rules. Clients opening new connections wait for their
+normal TCP timeout/retry delay while maintenance is active. The installer
+requires three consecutive samples with no active sockets on those HTTP
+forwards before changing the active runner or restarting the tunnel. Persistent
+Wyoming connections on `18201/18301` are excluded: the explicit confirmation
+still requires speech model activity to be checked separately.
+
+The default drain deadline is 120 seconds; `--drain-timeout 600` allows at most
+ten minutes. A busy deadline aborts before tunnel changes and never terminates
+requests. Failure, SIGTERM, SIGINT and SIGHUP remove only the exact temporary
+jump and chain; interrupted cutovers attempt rollback while the gate remains
+in place. SIGKILL or power loss requires inspecting a surviving gate before
+retrying; an existing chain is refused rather than overwritten. When selecting
+a new installer release, rerun `core-stage` for that same SHA before applying,
+even if the CPU image was already built by an older release.
+
+The real firewall regression runs entirely inside disposable local Docker
+namespaces, with no host network, Docker socket or writable host mount. It
+keeps an established synthetic TCP stream alive while rebuilding and prepending
+the canonical filter rules, proves the old INPUT placement could be bypassed,
+and proves the mangle gate still blocks new connections:
+
+```bash
+docker build -t homecompute/speech-cutover-test -f tests/fixtures/Dockerfile.speech-cutover tests/fixtures
+python3 tests/speech-cutover-firewall-test.py
+```
 
 For rollback, first run `spark-rollback` on Spark to restore the saved legacy
 containers, drain requests, then run `core-rollback --tunnel-idle-confirmed` on

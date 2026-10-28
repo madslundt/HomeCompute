@@ -7,11 +7,14 @@ verify, spark-retire. core-rollback restores the saved pre-migration adapters.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 from pathlib import Path
 import pwd
 import re
+import signal
 import socket
 import subprocess
 import sys
@@ -19,6 +22,7 @@ import time
 
 SOURCE = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute/speech-boundary')
+DEPLOY_LOCK = Path('/var/lib/homecompute/deploy.lock')
 INSTALL = Path('/opt/homecompute/speech-boundary')
 UNITS = Path('/etc/systemd/system.attached')
 DROPIN = UNITS / 'homecompute-compute-ssh-tunnel.service.d/40-homecompute-speech-boundary.conf'
@@ -27,6 +31,9 @@ CORE_SERVICES = ('plapre-wyoming-proxy', 'hviske-wyoming-proxy')
 SPARK_LEGACY = ('homecompute-plapre-plapre-edge-1', 'homecompute-plapre-plapre-wyoming-1', 'gb10-hviske-wyoming')
 BIN = '/run/current-system/sw/bin'
 FAILURE_PREFIX = 'SPEECH_BOUNDARY_FAILURE '
+MAINTENANCE_CHAIN = 'HC-SPEECH-CUTOVER'
+MAIN_HTTP_PORTS = (18003, 18005, 18006, 18007)
+MAINTENANCE_SCOPES = (('172.28.200.3', MAIN_HTTP_PORTS),)
 
 
 class OperationError(RuntimeError):
@@ -50,8 +57,8 @@ def failure_reason(output: str) -> str:
     return 'operation-failed'
 
 
-def run(args: list[str], *, output: bool = False) -> str:
-    result = subprocess.run(args, check=False, capture_output=True, text=True)
+def run(args: list[str], *, output: bool = False, timeout: int = 600) -> str:
+    result = subprocess.run(args, check=False, capture_output=True, text=True, timeout=timeout)
     if result.returncode:
         # Never relay Docker inspect/env output or HTTP response bodies.
         raise OperationError(failure_reason(result.stderr), result.returncode)
@@ -274,28 +281,121 @@ for attempt in range(6):
         run(['docker','exec','homecompute-control-plane-'+service+'-1','python3','-c',code])
 
 
-def core_apply(idle_confirmed: bool) -> None:
+def main_http_connections(table: str) -> int:
+    rows = table.splitlines()
+    if not rows or 'local_address' not in rows[0] or 'st' not in rows[0]:
+        raise ValueError('Main tunnel connection inspection unavailable')
+    count = 0
+    for row in rows[1:]:
+        fields = row.split()
+        if len(fields) < 4 or not re.fullmatch(r'[0-9A-Fa-f]{8}:[0-9A-Fa-f]{4}', fields[1]) or not re.fullmatch(r'[0-9A-Fa-f]{2}', fields[3]):
+            raise ValueError('Unknown main tunnel connection state')
+        address, port = fields[1].split(':')
+        # ssh explicitly binds IPv4 172.28.200.1. LISTEN, TIME_WAIT and CLOSED
+        # cannot carry an active request; every other socket state defers us.
+        if (socket.inet_ntoa(bytes.fromhex(address)[::-1]) == '172.28.200.1'
+                and int(port, 16) in MAIN_HTTP_PORTS and fields[3].upper() not in {'06', '07', '0A'}):
+            count += 1
+    return count
+
+
+def drain_main_http(timeout: int) -> None:
+    deadline, quiet = time.monotonic() + timeout, 0
+    while time.monotonic() < deadline:
+        count = main_http_connections(Path('/proc/net/tcp').read_text())
+        quiet = quiet + 1 if count == 0 else 0
+        if quiet >= 3:
+            print('Main inference HTTP sockets drained across three consecutive samples.')
+            return
+        time.sleep(1)
+    raise ValueError('Main inference HTTP is still active; tunnel was not restarted')
+
+
+@contextmanager
+def deployment_lock():
+    with DEPLOY_LOCK.open('a') as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+
+
+@contextmanager
+def core_maintenance(timeout: int):
+    if not 3 <= timeout <= 600:
+        raise ValueError('Drain timeout must be between 3 and 600 seconds')
+    rules = run(['iptables', '-w', '5', '-t', 'mangle', '-S'], output=True, timeout=10)
+    if '-N ' + MAINTENANCE_CHAIN in rules.splitlines():
+        raise ValueError('An earlier speech cutover gate requires inspection')
+    signals = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+    previous = {event: signal.getsignal(event) for event in signals}
+    def interrupted(*_):
+        raise InterruptedError('Speech cutover interrupted; restoring its own maintenance gate')
+    created, jumps = False, []
+    for event in signals: signal.signal(event, interrupted)
+    try:
+        # Record successful mutations before delivering a pending signal. The
+        # bounded iptables child may inherit the mask; its timeout uses SIGKILL.
+        masked = signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+        try:
+            run(['iptables', '-w', '5', '-t', 'mangle', '-N', MAINTENANCE_CHAIN], timeout=10); created = True
+        finally: signal.pthread_sigmask(signal.SIG_SETMASK, masked)
+        for address, ports in MAINTENANCE_SCOPES:
+            scope = ['-s', address + '/32', '-d', '172.28.200.1/32', '-p', 'tcp',
+                     '-m', 'multiport', '--dports', ','.join(map(str, ports))]
+            run(['iptables', '-w', '5', '-t', 'mangle', '-A', MAINTENANCE_CHAIN, *scope,
+                 '-m', 'conntrack', '--ctstate', 'NEW', '-j', 'DROP'], timeout=10)
+        run(['iptables', '-w', '5', '-t', 'mangle', '-A', MAINTENANCE_CHAIN, '-j', 'RETURN'], timeout=10)
+        for address, ports in MAINTENANCE_SCOPES:
+            jump = ['-s', address + '/32', '-d', '172.28.200.1/32', '-p', 'tcp',
+                    '-m', 'multiport', '--dports', ','.join(map(str, ports)), '-j', MAINTENANCE_CHAIN]
+            masked = signal.pthread_sigmask(signal.SIG_BLOCK, signals)
+            try:
+                run(['iptables', '-w', '5', '-t', 'mangle', '-I', 'PREROUTING', '1', *jump], timeout=10)
+                jumps.append(jump)
+            finally: signal.pthread_sigmask(signal.SIG_SETMASK, masked)
+        drain_main_http(timeout)
+        yield
+    finally:
+        # Cleanup is bounded. A second terminal signal must not strand a
+        # half-removed gate; SIGKILL/power loss still require explicit recovery.
+        for event in signals: signal.signal(event, signal.SIG_IGN)
+        failures = []
+        commands = [['iptables', '-w', '5', '-t', 'mangle', '-D', 'PREROUTING', *jump] for jump in reversed(jumps)]
+        if created:
+            commands += [['iptables', '-w', '5', '-t', 'mangle', '-F', MAINTENANCE_CHAIN],
+                         ['iptables', '-w', '5', '-t', 'mangle', '-X', MAINTENANCE_CHAIN]]
+        try:
+            for command in commands:
+                try: run(command, timeout=10)
+                except BaseException: failures.append(command[5])
+        finally:
+            for event, handler in previous.items(): signal.signal(event, handler)
+        if failures:
+            raise RuntimeError('Could not completely remove this speech cutover gate; inspect ' + MAINTENANCE_CHAIN)
+
+
+def core_apply(idle_confirmed: bool, drain_timeout: int = 120) -> None:
     if not idle_confirmed:
-        raise ValueError('Drain active text/voice requests, then pass --tunnel-idle-confirmed')
+        raise ValueError('Confirm speech models are idle, then pass --tunnel-idle-confirmed; main HTTP drains automatically')
     pending = STATE / 'tunnel.pending.conf'
     runner = STATE / 'runner.pending.py'
     if not pending.exists() or not runner.exists() or not (STATE / 'before.json').exists():
         raise ValueError('Run core-stage first')
     if runner.read_bytes() != Path(__file__).read_bytes():
         raise ValueError('Staged runner differs from the selected release; stage again')
-    INSTALL.mkdir(parents=True, exist_ok=True)
-    trusted(INSTALL, directory=True)
-    write(INSTALL / 'setup-speech-boundary.py', runner.read_text(), 0o755)
-    write(DROPIN, pending.read_text(), 0o644)
-    try:
-        run(['systemctl', 'daemon-reload'])
-        run(['systemctl', 'restart', 'homecompute-compute-ssh-tunnel.service'])
-        raw_upstreams_ready()
-        run(core_compose() + ['up', '-d', '--no-deps', '--no-build', '--wait', '--wait-timeout', '120', *CORE_SERVICES])
-        verify_core()
-    except Exception:
-        core_rollback(idle_confirmed)
-        raise
+    with deployment_lock(), core_maintenance(drain_timeout):
+        try:
+            INSTALL.mkdir(parents=True, exist_ok=True)
+            trusted(INSTALL, directory=True)
+            write(INSTALL / 'setup-speech-boundary.py', runner.read_text(), 0o755)
+            write(DROPIN, pending.read_text(), 0o644)
+            run(['systemctl', 'daemon-reload'])
+            run(['systemctl', 'restart', 'homecompute-compute-ssh-tunnel.service'])
+            raw_upstreams_ready()
+            run(core_compose() + ['up', '-d', '--no-deps', '--no-build', '--wait', '--wait-timeout', '120', *CORE_SERVICES])
+            verify_core()
+        except BaseException:
+            core_rollback(idle_confirmed)
+            raise
 
 
 def core_rollback(idle_confirmed: bool) -> None:
@@ -381,6 +481,8 @@ def main() -> None:
     parser.add_argument('--revision')
     parser.add_argument('--tunnel-idle-confirmed', action='store_true')
     parser.add_argument('--core-verified', action='store_true')
+    parser.add_argument('--drain-timeout', type=int, default=120,
+                        help='Main HTTP drain deadline in seconds (3..600); existing requests are never killed')
     args = parser.parse_args()
     expected = 'home-spark' if args.command.startswith('spark-') else 'home-core'
     if os.geteuid() != 0 or socket.gethostname() != expected:
@@ -393,7 +495,7 @@ def main() -> None:
     trusted(STATE, directory=True)
     if args.command == 'spark-prepare': spark_prepare()
     elif args.command == 'core-stage': core_stage(args.revision)
-    elif args.command == 'core-apply': core_apply(args.tunnel_idle_confirmed)
+    elif args.command == 'core-apply': core_apply(args.tunnel_idle_confirmed, args.drain_timeout)
     elif args.command == 'verify': verify_core()
     elif args.command == 'core-smoke': core_smoke()
     elif args.command == 'core-rollback': core_rollback(args.tunnel_idle_confirmed)

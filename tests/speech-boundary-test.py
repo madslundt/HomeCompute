@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from contextlib import nullcontext
 import io
 import json
 import subprocess
@@ -170,6 +171,8 @@ class SpeechBoundaryTest(unittest.TestCase):
             with patch.object(INSTALLER,'STATE',state),patch.object(INSTALLER,'INSTALL',state/'installed'), \
                  patch.object(INSTALLER,'DROPIN',state/'active.conf'),patch.object(INSTALLER,'trusted'), \
                  patch.object(INSTALLER,'write'),patch.object(INSTALLER,'run') as run, \
+                 patch.object(INSTALLER,'deployment_lock',return_value=nullcontext()), \
+                 patch.object(INSTALLER,'core_maintenance',return_value=nullcontext()), \
                  patch.object(INSTALLER,'raw_upstreams_ready',side_effect=RuntimeError('forward denied')), \
                  patch.object(INSTALLER,'core_rollback') as rollback:
                 with self.assertRaisesRegex(RuntimeError,'forward denied'): INSTALLER.core_apply(True)
@@ -177,6 +180,113 @@ class SpeechBoundaryTest(unittest.TestCase):
                 self.assertIn(['systemctl','restart','homecompute-compute-ssh-tunnel.service'],
                               [call.args[0] for call in run.call_args_list])
                 self.assertFalse(any(call.args[0][:2]==['docker','compose'] for call in run.call_args_list))
+
+    def test_connection_inspection_counts_active_main_http_but_ignores_wyoming(self):
+        header='  sl  local_address rem_address st\n'
+        def row(port,state='01',address='01C81CAC'):
+            return f' 0: {address}:{port:04X} 03C81CAC:1234 {state}\n'
+        table=header+row(18005)+row(18003,'08')+row(18006,'03')+row(18201)+row(18301)+row(18005,'0A')+row(18007,'06')+row(18005,address='0100007F')
+        self.assertEqual(INSTALLER.main_http_connections(table),3)
+        for table in ('',header+'invalid row',header+'0: 01C81CAC:4655 peer UNKNOWN'):
+            with self.assertRaises(ValueError):INSTALLER.main_http_connections(table)
+
+    def test_drain_restarts_quiet_counter_if_late_active_traffic_appears(self):
+        header='sl local_address rem_address st\n'
+        active=header+'0: 01C81CAC:4655 03C81CAC:1234 01\n'
+        values=[active,header,header,active,header,header,header]
+        with patch.object(INSTALLER.Path,'read_text',side_effect=values) as read, \
+             patch.object(INSTALLER.time,'monotonic',side_effect=range(10)),patch.object(INSTALLER.time,'sleep'):
+            INSTALLER.drain_main_http(10)
+        self.assertEqual(read.call_count,7)
+
+    def test_active_main_http_times_out_instead_of_claiming_a_drain(self):
+        active='sl local_address rem_address st\n0: 01C81CAC:4655 03C81CAC:1234 01\n'
+        with patch.object(INSTALLER.Path,'read_text',return_value=active), \
+             patch.object(INSTALLER.time,'monotonic',side_effect=range(5)),patch.object(INSTALLER.time,'sleep'):
+            with self.assertRaisesRegex(ValueError,'tunnel was not restarted'):INSTALLER.drain_main_http(3)
+
+    def test_maintenance_scopes_only_new_main_http_and_preserves_existing_policy(self):
+        calls=[]
+        def run(args,**kwargs):calls.append(args);return ''
+        with patch.object(INSTALLER,'run',side_effect=run),patch.object(INSTALLER,'drain_main_http'):
+            with INSTALLER.core_maintenance(120):
+                self.assertFalse(any('-D' in c for c in calls))
+        rejects=[c for c in calls if '-A' in c and c[-1]=='DROP']
+        self.assertEqual(len(rejects),1)
+        rule=rejects[0]
+        for value in ('172.28.200.3/32','172.28.200.1/32','18003,18005,18006,18007','NEW'):
+            self.assertIn(value,rule)
+        self.assertNotIn('ESTABLISHED',rule)
+        self.assertIn('mangle',rule)
+        self.assertFalse(any('INPUT' in c for c in calls))
+        self.assertFalse(any('HC-COMPUTE-TUNNEL' in c for c in calls))
+        self.assertEqual([c[5] for c in calls[-3:]],['-D','-F','-X'])
+        self.assertTrue(all(c[-1]==INSTALLER.MAINTENANCE_CHAIN for c in calls[-3:]))
+
+    def test_signal_during_successful_jump_install_removes_that_jump_and_restores_handlers(self):
+        import signal
+        calls=[]; original=signal.getsignal(signal.SIGTERM)
+        def run(args,**kwargs):
+            calls.append(args)
+            if '-I' in args:signal.raise_signal(signal.SIGTERM)
+            return ''
+        with patch.object(INSTALLER,'run',side_effect=run),patch.object(INSTALLER,'drain_main_http') as drain:
+            with self.assertRaises(InterruptedError):
+                with INSTALLER.core_maintenance(120):self.fail('cannot enter cutover after SIGTERM')
+        drain.assert_not_called()
+        self.assertEqual([c[5] for c in calls[-3:]],['-D','-F','-X'])
+        self.assertEqual(signal.getsignal(signal.SIGTERM),original)
+
+    def test_busy_drain_does_not_install_reload_restart_or_rollback(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as temporary:
+            state=Path(temporary)
+            (state/'before.json').write_text('{}')
+            (state/'runner.pending.py').write_bytes(Path(INSTALLER.__file__).read_bytes())
+            (state/'tunnel.pending.conf').write_text('pending')
+            calls=[]
+            def run(args,**kwargs):calls.append(args);return ''
+            with patch.object(INSTALLER,'STATE',state),patch.object(INSTALLER,'DEPLOY_LOCK',state/'deploy.lock'), \
+                 patch.object(INSTALLER,'run',side_effect=run),patch.object(INSTALLER,'write') as write, \
+                 patch.object(INSTALLER,'core_rollback') as rollback, \
+                 patch.object(INSTALLER,'drain_main_http',side_effect=ValueError('still active')):
+                with self.assertRaisesRegex(ValueError,'still active'):INSTALLER.core_apply(True,3)
+            write.assert_not_called();rollback.assert_not_called()
+            self.assertTrue(all(c[0]=='iptables' for c in calls))
+            self.assertEqual([c[5] for c in calls[-3:]],['-D','-F','-X'])
+
+    def test_deploy_lock_contention_refuses_before_maintenance_mutation(self):
+        import tempfile,fcntl
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'deploy.lock'
+            with path.open('a') as held,patch.object(INSTALLER,'DEPLOY_LOCK',path):
+                fcntl.flock(held,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                with self.assertRaises(BlockingIOError):
+                    with INSTALLER.deployment_lock():self.fail('must not overlap a deployment or backup')
+
+    def test_interrupted_apply_rolls_back_before_releasing_maintenance_gate(self):
+        import tempfile
+        from contextlib import contextmanager
+        events=[]
+        @contextmanager
+        def maintenance(_):
+            events.append('gated-and-drained')
+            try:yield
+            finally:events.append('gate-removed')
+        with tempfile.TemporaryDirectory() as temporary:
+            state=Path(temporary)
+            (state/'before.json').write_text('{}')
+            (state/'runner.pending.py').write_bytes(Path(INSTALLER.__file__).read_bytes())
+            (state/'tunnel.pending.conf').write_text('pending')
+            with patch.object(INSTALLER,'STATE',state),patch.object(INSTALLER,'DEPLOY_LOCK',state/'deploy.lock'), \
+                 patch.object(INSTALLER,'INSTALL',state/'installed'),patch.object(INSTALLER,'trusted'), \
+                 patch.object(INSTALLER,'write'),patch.object(INSTALLER,'run'), \
+                 patch.object(INSTALLER,'core_maintenance',side_effect=maintenance), \
+                 patch.object(INSTALLER,'raw_upstreams_ready'), \
+                 patch.object(INSTALLER,'verify_core',side_effect=InterruptedError('synthetic signal')), \
+                 patch.object(INSTALLER,'core_rollback',side_effect=lambda _:events.append('rollback')):
+                with self.assertRaises(InterruptedError):INSTALLER.core_apply(True)
+        self.assertEqual(events,['gated-and-drained','rollback','gate-removed'])
 
 
 class SpeechReadinessTest(unittest.TestCase):
