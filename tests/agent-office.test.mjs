@@ -10,8 +10,9 @@ import { projectRoster, toolActivity } from '../deploy/agent-office/catalog.mjs'
 import { officeServer } from '../deploy/agent-office/server.mjs';
 import plugin from '../deploy/agent-office/index.mjs';
 import { configPatch } from '../deploy/agent-office/config-patch.mjs';
-import { ROLE_DESTINATIONS, FURNITURE_BOUNDS, WALKWAY_SEGMENTS, resolveDestination, findPath, isWalkable } from '../deploy/agent-office/scene-layout.mjs';
-import { WALK_SHEETS, walkSpriteFrame, walkDirection } from '../deploy/agent-office/public/walking.mjs';
+import { ROLE_DESTINATIONS, FURNITURE_BOUNDS, WALKWAY_SEGMENTS, resolveDestination, findPath, isWalkable, projectToScene } from '../deploy/agent-office/scene-layout.mjs';
+import { WALK_SHEETS, WORK_SHEETS, robotSpriteFrame, walkSpriteFrame, walkDirection } from '../deploy/agent-office/public/walking.mjs';
+import { characterPresence } from '../deploy/agent-office/public/presence.mjs';
 import { passwordRecord, readAuth } from '../deploy/agent-office/auth.mjs';
 import { verifyBundle } from '../scripts/setup-agent-office.mjs';
 
@@ -163,15 +164,33 @@ test('every standing destination and corridor stays clear of furniture, includin
   assert.ok(ROLE_DESTINATIONS.main[1] > bottom, 'Atlas stands on floor below the table and chairs');
   assert.equal(isWalkable([(left + right) / 2, (top + bottom) / 2]), false);
   assert.deepEqual(findPath([(left + right) / 2, (top + bottom) / 2], ROLE_DESTINATIONS.main), []);
-  assert.deepEqual(findPath(ROLE_DESTINATIONS.family, ROLE_DESTINATIONS.main), [], 'Gaia uses a separate visual garden graph');
+  assert.deepEqual(findPath(ROLE_DESTINATIONS.family, ROLE_DESTINATIONS.main), [], 'Gaia uses a separate visual atrium graph');
   const roles = Object.keys(ROLE_DESTINATIONS);
   for (let i = 0; i < roles.length; i++) for (let j = i + 1; j < roles.length; j++) {
-    for (const first of ['unknown', 'idle', 'working']) for (const second of ['unknown', 'idle', 'working']) {
-      const a = resolveDestination({ id: roles[i], status: first, activity: 'thinking' });
-      const b = resolveDestination({ id: roles[j], status: second, activity: 'thinking' });
+    for (const activity of ['thinking', 'research']) for (const first of ['unknown', 'idle', 'working']) for (const second of ['unknown', 'idle', 'working']) {
+      const a = resolveDestination({ id: roles[i], status: first, activity });
+      const b = resolveDestination({ id: roles[j], status: second, activity });
       assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) > 8, `${roles[i]}/${first} and ${roles[j]}/${second} stand separately`);
     }
   }
+});
+
+test('only stationary working robots deploy tools, with distinct static state cues', () => {
+  const symbols = new Set();
+  for (const status of ['working', 'waiting', 'idle', 'unknown', 'error']) {
+    symbols.add(characterPresence(status).symbol);
+    for (let sprite = 0; sprite < 12; sprite++) {
+      const planted = robotSpriteFrame(sprite, { status });
+      assert.equal(WORK_SHEETS.includes(planted.asset), status === 'working');
+      const traveling = robotSpriteFrame(sprite, { status, traveling: true });
+      assert.ok(WALK_SHEETS.includes(traveling.asset), 'Travel never deploys work tools');
+      assert.ok(traveling.column < 8);
+    }
+  }
+  assert.equal(symbols.size, 5);
+  assert.deepEqual(characterPresence('invalid'), characterPresence('unknown'));
+  assert.deepEqual(projectToScene([50, 0]), [50, 20]);
+  assert.deepEqual(projectToScene([50, 100]), [50, 98]);
 });
 
 test('all 12 characters have distinct leg phases and four directional planted poses', async () => {
@@ -188,10 +207,15 @@ test('all 12 characters have distinct leg phases and four directional planted po
     assert.ok(idle.column >= 8 && idle.column < 12);
     assert.equal(first.row, sprite % 3);
     assert.equal(first.asset, WALK_SHEETS[Math.floor(sprite / 3)]);
+    const workA = robotSpriteFrame(sprite, { direction, status: 'working', timeMs: 0 });
+    const workB = robotSpriteFrame(sprite, { direction, status: 'working', timeMs: 450 });
+    assert.notEqual(workA.column, workB.column);
+    assert.equal(workA.asset, WORK_SHEETS[Math.floor(sprite / 3)]);
+    assert.equal(workA.row, first.row);
   }
-  for (const asset of WALK_SHEETS) {
+  for (const asset of [...WALK_SHEETS, ...WORK_SHEETS]) {
     const png = await readFile(new URL(`deploy/agent-office/public${asset}`, root));
-    assert.equal(png.readUInt32BE(16), 1536);
+    assert.equal(png.readUInt32BE(16), WORK_SHEETS.includes(asset) ? 1024 : 1536);
     assert.equal(png.readUInt32BE(20), 480);
     assert.equal(png[25], 6, 'Directional atlas keeps RGBA transparency');
   }
@@ -227,7 +251,10 @@ test('HTTP server is loopback-only, read-only and rejects cross-site/rebinding/p
   assert.equal((await http(port, '/catalog.mjs')).status, 200);
   assert.equal((await http(port, '/scene-layout.mjs')).status, 200);
   assert.equal((await http(port, '/walking.mjs')).status, 200);
-  for (const asset of WALK_SHEETS) assert.equal((await http(port, asset)).status, 200);
+  assert.equal((await http(port, '/presence.mjs')).status, 200);
+  assert.equal((await http(port, '/favicon.svg')).headers['content-type'], 'image/svg+xml');
+  assert.equal((await http(port, '/rooms.mjs')).status, 200);
+  for (const asset of [...WALK_SHEETS, ...WORK_SHEETS]) assert.equal((await http(port, asset)).status, 200);
 });
 
 test('published origin requires operator credentials for UI, assets, and metadata', async t => {
@@ -316,6 +343,8 @@ test('bundle is reproducible, includes only projected roster, and refuses overwr
     assert.deepEqual(built, roster);
     const verified = await verifyBundle(first);
     assert.ok(verified.files.has('auth.mjs'));
+    assert.ok(verified.files.has('public/presence.mjs'));
+    assert.ok(verified.files.has('public/favicon.svg'));
     const { writeFile, chmod } = await import('node:fs/promises');
     await writeFile(join(second, 'index.mjs'), 'tampered\n');
     await assert.rejects(() => verifyBundle(second), /digest mismatch/);
