@@ -32,7 +32,7 @@ class RolloutTest(unittest.TestCase):
     def test_actual_release_library_imports_create_no_bytecode(self):
         import shutil
         scripts=self.directory/'scripts'; scripts.mkdir()
-        for name in ('spark-rollout.py','qualify-speech-capacity.py','speech_capacity.py'):
+        for name in ('spark-rollout.py','qualify-speech-capacity.py','speech_capacity.py','speech_startup_diagnostics.py'):
             shutil.copy2(ROOT/'scripts'/name,scripts/name)
         code='''import runpy,importlib.util,sys
 from pathlib import Path

@@ -27,6 +27,7 @@ import time
 # Imports from the immutable release must never create runtime artifacts there.
 sys.dont_write_bytecode = True
 from speech_capacity import FAILURE_PREFIX as CAPACITY_FAILURE_PREFIX, failure_metadata
+from speech_startup_diagnostics import ATTEMPT_PREFIX, attempt_metadata
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute-spark-rollout')
@@ -57,7 +58,8 @@ print(json.dumps(result))
 
 
 class CapacityOperationFailure(RuntimeError):
-    def __init__(self, diagnostic: dict):
+    def __init__(self, diagnostic: dict, attempt=None):
+        self.attempt = attempt_metadata(attempt)
         self.diagnostic = failure_metadata(diagnostic)
         if self.diagnostic is None:
             raise ValueError('Invalid capacity failure category')
@@ -71,11 +73,16 @@ def run(arguments: list[str], *, timeout=240, missing=False) -> str | None:
         if missing: return None
         operation=Path(arguments[1]).name if Path(arguments[0]).name.startswith('python') and len(arguments)>1 else ' '.join(arguments[:2])
         if operation == 'qualify-speech-capacity.py':
+            attempt = None
+            for line in result.stderr.splitlines():
+                if line.startswith(ATTEMPT_PREFIX):
+                    try: attempt = attempt_metadata(json.loads(line.removeprefix(ATTEMPT_PREFIX)))
+                    except ValueError: pass
             for line in result.stderr.splitlines():
                 if not line.startswith(CAPACITY_FAILURE_PREFIX): continue
                 try: diagnostic=failure_metadata(json.loads(line.removeprefix(CAPACITY_FAILURE_PREFIX)))
                 except ValueError: continue
-                if diagnostic is not None: raise CapacityOperationFailure(diagnostic)
+                if diagnostic is not None: raise CapacityOperationFailure(diagnostic, attempt)
         if operation == 'setup-speech-boundary.py':
             for line in result.stderr.splitlines():
                 if not line.startswith('SPEECH_BOUNDARY_FAILURE '): continue
@@ -341,6 +348,10 @@ def trial(directory: Path, confirmer=confirm_plan, measure=benchmark) -> dict:
         return result
     except BaseException as error:
         result['error']=type(error).__name__
+        attempt = attempt_metadata(getattr(error, 'attempt', None))
+        if attempted and attempt and attempt['plan_sha256'] == result.get('plan_sha256'):
+            result['startup_attempt'] = attempt
+            result['state'] = 'baseline-restored' if attempt['rollback_state'] == 'restored' else 'rollback-incomplete'
         if attempted and CAPACITY_STATE.exists():
             try:
                 idle(restoring=True); helper('qualify-speech-capacity.py','rollback','--speech-idle',timeout=2000)
@@ -399,6 +410,10 @@ def public_result(directory: Path | None, revision: str, state: str, failure=Non
             if name == 'orchestration-failure.json':
                 report['failure']=failure_metadata(json.loads(path.read_text()).get('failure'))
             break
+    result_path = directory / 'result.json'
+    if result_path.is_file():
+        attempt = attempt_metadata(json.loads(result_path.read_text()).get('startup_attempt'))
+        if attempt is not None: report['startup_attempt'] = attempt
     return report
 
 

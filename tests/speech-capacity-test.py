@@ -168,7 +168,7 @@ class CapacityTest(unittest.TestCase):
                 self.assertEqual(result,{'profile':'unrecognized','healthy':False})
 
     def test_failed_apply_keeps_marker_for_stale_health_wrong_image_or_unreadable_state(self):
-        original=fixtures();staged=m.candidate(original);plan={'plan_sha256':'a'*64}
+        original=fixtures();staged=m.candidate(original);plan={'plan_sha256':'a'*64,'source_revision':'b'*40}
         observed={q.CONTAINERS[key]:{'Image':value['services'][m.SERVICES[key]]['image'],
                     'Config':{'Cmd':m.engine_command(value['services'][m.SERVICES[key]]['command'])},
                     'State':{'Running':True,'Health':{'Status':'healthy'}}} for key,value in original.items()}

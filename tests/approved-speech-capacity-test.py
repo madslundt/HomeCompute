@@ -25,7 +25,7 @@ class ApprovedCapacityTest(unittest.TestCase):
     def setUp(self):
         self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup)
         self.root=Path(self.temporary.name).resolve();self.source=self.root/'qualification';scripts=self.source/'scripts';scripts.mkdir(parents=True)
-        for name in ('spark-rollout.py','speech_capacity.py'):shutil.copy2(ROOT/'scripts'/name,scripts/name)
+        for name in ('spark-rollout.py','speech_capacity.py','speech_startup_diagnostics.py'):shutil.copy2(ROOT/'scripts'/name,scripts/name)
         self.original_path=list(sys.path);self.original_capacity=sys.modules.pop('speech_capacity',None)
         self.addCleanup(self.restore_imports)
         with patch.object(c,'QUALIFICATION_ROOT',self.source):self.pinned=c.load_pinned()

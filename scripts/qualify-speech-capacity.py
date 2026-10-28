@@ -17,10 +17,15 @@ import socket
 import stat
 import subprocess
 import sys
+import signal
+import time
+import uuid
 
 sys.dont_write_bytecode = True
 from speech_capacity import (BUDGETS, CONTAINERS, SERVICES, FAILURE_PREFIX, BaselineMismatch,
                              activate, activation_approved, candidate, engine_command, failure_metadata, verify_baseline)
+
+from speech_startup_diagnostics import ATTEMPT_PREFIX, attempt_metadata, bounded_process, classify, snapshot
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute-speech-capacity')
@@ -46,12 +51,18 @@ def guarded(stage: str, service: str | None, reason: str, action):
         raise PlanFailure(stage, service, reason) from None
 
 
+class OperationFailure(RuntimeError):
+    def __init__(self, code, reason):
+        self.exit_code, self.reason = code, reason
+        super().__init__('Bounded Docker operation failed')
+
+
 def run(args: list[str], timeout=60) -> str:
-    # Suppress Docker's launch command and environment in exception messages.
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
-    if result.returncode:
-        raise RuntimeError(f'{args[0]} operation failed (exit {result.returncode})')
-    return result.stdout
+    result = bounded_process(args, timeout=timeout)
+    if result is None: raise OperationFailure(None, 'startup-operation')
+    code, output, errors = result
+    if code: raise OperationFailure(code, classify(errors + '\n' + output[-262144:]))
+    return output
 
 
 def digest(value) -> str:
@@ -143,8 +154,31 @@ def write(path: Path, value) -> None:
 def start(directory: Path, key: str, profile: str) -> None:
     path = directory / (key + '-' + profile + '.json')
     protected(path)
-    run(['docker', 'compose', '-f', str(path), 'up', '-d', '--no-build', '--no-deps',
-         '--pull', 'never', '--wait', '--wait-timeout', '900', SERVICES[key]], timeout=960)
+    started = time.monotonic()
+    try:
+        run(['docker', 'compose', '-f', str(path), 'up', '-d', '--no-build', '--no-deps',
+             '--pull', 'never', '--wait', '--wait-timeout', '900', SERVICES[key]], timeout=960)
+    except BaseException as error:
+        # Capture BEFORE activate() restores this service and deletes its failed
+        # container. Failure to capture evidence must never prevent restoration.
+        reason = 'startup-operation'
+        try:
+            expected = json.loads(path.read_text())['services'][SERVICES[key]]
+            evidence = snapshot(CONTAINERS[key], expected)
+            reason = evidence['reason']
+            if reason in ('startup-operation', 'startup-container-exit', 'startup-identity') and isinstance(error, OperationFailure):
+                if error.reason != 'startup-operation': reason = error.reason
+            evidence['reason'] = reason
+            write(directory / ('start-' + uuid.uuid4().hex + '.json'), {
+                'schema_version': 1, 'source_revision': ROOT.name, 'service': key, 'profile': profile,
+                'plan_sha256': directory.name if re.fullmatch('[0-9a-f]{64}', directory.name) else None,
+                'compose_sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                'elapsed_seconds': round(time.monotonic() - started, 3),
+                'operation_exit_code': error.exit_code if isinstance(error, OperationFailure) else None, **evidence})
+        except BaseException:
+            pass
+        if isinstance(error, (KeyboardInterrupt, SystemExit)): raise
+        raise PlanFailure('startup', key, reason) from None
 
 
 def validate_active() -> tuple[Path, dict]:
@@ -177,6 +211,9 @@ def restore() -> dict:
             failures.append(key)
     if failures:
         raise RuntimeError('Speech baseline restoration failed: ' + ', '.join(failures))
+    original = {key: json.loads((directory / (key + '-baseline.json')).read_text()) for key in SERVICES}
+    if not baseline_restored(original):
+        raise RuntimeError('Speech baseline restoration could not be verified')
     (STATE / 'active.json').unlink()
     return {'restored': 'baseline', 'plan_sha256': data['plan_sha256'], 'accepted': False}
 
@@ -214,9 +251,55 @@ def baseline_restored(original: dict) -> bool:
     return True
 
 
+
+def perform_attempt(directory: Path, plan: dict, original: dict, diagnose=False) -> dict:
+    failure = None
+    try:
+        activate(lambda key, profile: start(directory, key, profile))
+        if not diagnose:
+            return {'candidate_active': True, 'accepted': False,
+                    'plan_sha256': plan['plan_sha256'], 'state': 'qualification-required'}
+    except BaseException as error:
+        failure = error
+    # activate() already restored attempted services on a startup failure. A
+    # successful startup-only probe always restores BOTH before returning.
+    if failure is None:
+        for key in reversed(SERVICES):
+            try: start(directory, key, 'baseline')
+            except BaseException as error:
+                if failure is None: failure = error
+    restored = baseline_restored(original)
+    primary = failure
+    for _ in range(3):
+        if isinstance(primary, PlanFailure) or primary is None or primary.__cause__ is None: break
+        primary = primary.__cause__
+    evidence = {'schema_version': 1, 'source_revision': plan['source_revision'],
+                'plan_sha256': plan['plan_sha256'], 'rollback_state': 'restored' if restored else 'incomplete',
+                'service': getattr(primary, 'diagnostic', {}).get('service'),
+                'reason': getattr(primary, 'diagnostic', {}).get('reason'),
+                'startup_only': bool(diagnose), 'capacity_qualified': False, 'accepted': False,
+                'full_voice_accepted': False, 'start_receipts': []}
+    for path in sorted(directory.glob('start-*.json')):
+        evidence['start_receipts'].append({'name': path.name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()})
+    # The terminal receipt is immutable and exists before the active marker can
+    # be retired. If its write fails, retain that marker and surface uncertainty.
+    write(directory / 'attempt-result.json', evidence)
+    metadata = attempt_metadata({key: evidence[key] for key in ('plan_sha256','rollback_state','service','reason')} |
+                               {'attempt_sha256': hashlib.sha256((directory / 'attempt-result.json').read_bytes()).hexdigest()})
+    if restored: (STATE / 'active.json').unlink()
+    if failure is not None:
+        failure.attempt = metadata
+        raise failure
+    if not restored:
+        failure = PlanFailure('startup', None, 'startup-operation'); failure.attempt = metadata
+        raise failure
+    return {**metadata, 'startup_only': True, 'capacity_qualified': False,
+            'accepted': False, 'full_voice_accepted': False}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['plan', 'apply', 'status', 'rollback'])
+    parser.add_argument('action', choices=['plan', 'apply', 'status', 'rollback', 'diagnose'])
     parser.add_argument('--plan-sha256')
     parser.add_argument('--speech-idle', action='store_true',
                         help='Coordinator has paused speech intake and verified no active speech request')
@@ -252,16 +335,7 @@ def main() -> None:
             write(directory / (key + '-baseline.json'), original[key])
             write(directory / (key + '-candidate.json'), staged[key])
         write(STATE / 'active.json', plan)
-        try:
-            activate(lambda key, profile: start(directory, key, profile))
-        except Exception:
-            # activate() attempted both restorations. Verify again and retain
-            # the marker if either baseline is not healthy; never hide drift.
-            if baseline_restored(original):
-                (STATE / 'active.json').unlink()
-            raise
-        print(json.dumps({'candidate_active': True, 'accepted': False,
-                          'plan_sha256': plan['plan_sha256'], 'state': 'qualification-required'}))
+        print(json.dumps(perform_attempt(directory, plan, original, diagnose=args.action == 'diagnose')))
 
 
 if __name__ == '__main__':
@@ -270,5 +344,8 @@ if __name__ == '__main__':
     except Exception as error:
         diagnostic = error.diagnostic if isinstance(error, PlanFailure) else {
             'stage': 'operation', 'service': None, 'reason': 'guard-or-operation'}
+        attempt = attempt_metadata(getattr(error, 'attempt', None))
+        if attempt is not None:
+            print(ATTEMPT_PREFIX + json.dumps(attempt, sort_keys=True), file=sys.stderr)
         print(FAILURE_PREFIX + json.dumps(diagnostic, sort_keys=True), file=sys.stderr)
         raise SystemExit(1) from None

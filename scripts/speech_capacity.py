@@ -12,11 +12,12 @@ CONTAINERS = {'hviske': 'gb10-hviske-primary', 'plapre': 'homecompute-plapre-pla
 BUDGETS = {'baseline': {'hviske': '0.10', 'plapre': '0.06'},
            'candidate': {'hviske': '0.05', 'plapre': '0.05'}}
 FAILURE_PREFIX = 'SPEECH_CAPACITY_FAILURE '
-FAILURE_STAGES = {'release', 'inspect', 'approval', 'render', 'image', 'baseline', 'candidate', 'operation'}
+FAILURE_STAGES = {'release', 'inspect', 'approval', 'render', 'image', 'baseline', 'candidate', 'operation', 'startup'}
 FAILURE_REASONS = {'release-untrusted', 'inspect-unavailable', 'baseline-unhealthy', 'approval-required',
                    'protected-path', 'render-failed', 'service-missing', 'image-unavailable',
                    'project-mismatch', 'image-mismatch', 'command-mismatch', 'budget-unrecognized',
-                   'guard-or-operation'}
+                   'guard-or-operation', 'startup-memory', 'startup-cuda-oom', 'startup-host-oom', 'startup-identity', 'startup-permission',
+                   'startup-command', 'startup-mount', 'startup-image', 'startup-port', 'startup-health-timeout', 'startup-container-exit', 'startup-operation'}
 
 
 def failure_metadata(value) -> dict | None:
@@ -106,12 +107,12 @@ def activate(start) -> None:
         for key in SERVICES:
             attempted.append(key)
             start(key, 'candidate')
-    except Exception as original:
+    except BaseException as original:
         failed = []
         for key in reversed(attempted):
             try:
                 start(key, 'baseline')
-            except Exception:
+            except BaseException:
                 failed.append(key)
         if failed:
             raise RuntimeError('Speech capacity activation and rollback failed: ' + ', '.join(failed)) from original
