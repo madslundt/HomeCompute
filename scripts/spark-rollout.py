@@ -141,11 +141,30 @@ def pinned_corpus(archive: Path, destination: Path) -> dict:
     return {'archive_sha256': pin['archive_sha256'], 'revision': pin['revision'], 'danish_fixtures': len(rows)}
 
 
-def idle(timeout=60) -> None:
+def container_inventory() -> set[str]:
+    rows=run(['docker','ps','-a','--format','{{.Names}}']).splitlines()
+    if len(rows)!=len(set(rows)) or any(not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*',name) for name in rows):
+        raise ValueError('Unknown Docker inventory')
+    return set(rows)
+
+
+def model_running(name: str, existing: set[str]) -> bool:
+    if name not in existing: return False
+    running=run(['docker','inspect',name,'--format','{{.State.Running}}'])
+    if running not in {'true','false'}: raise ValueError('Unknown speech model state')
+    return running=='true'
+
+
+def idle(timeout=60, *, restoring=False) -> None:
     deadline, quiet = time.monotonic()+timeout, 0
     while time.monotonic() < deadline:
         values = []
+        existing=container_inventory() if restoring else None
         for name, port in MODELS.items():
+            # A failed replacement can leave no running process to exec.
+            # Only rollback may treat authoritative stopped/absent state as
+            # idle; a running model always needs the strict activity probe.
+            if restoring and not model_running(name,existing): continue
             python = 'python3' if port==8000 else '/opt/plapre/venv/bin/python'
             value = json.loads(run(['docker','exec',name,python,'-c',IDLE_PROBE,str(port)], timeout=10))
             if set(value) != {'connections','running','waiting'} or any(type(v) is not int or v<0 for v in value.values()):
@@ -158,19 +177,23 @@ def idle(timeout=60) -> None:
 
 
 @contextmanager
-def paused_ingress():
+def paused_ingress(*, restoring=False):
     # Reject NEW model-bound connections while existing requests finish; the
     # model-local benchmark uses container loopback and cannot cross this gate.
     addresses = []
+    existing=container_inventory() if restoring else None
     for name, port in MODELS.items():
+        if restoring and not model_running(name,existing): continue
         networks = json.loads(run(['docker','inspect',name,'--format','{{json .NetworkSettings.Networks}}']))
+        if not isinstance(networks,dict) or not networks:
+            raise ValueError('Unknown speech inference network')
         for network in networks.values():
             address = ipaddress.IPv4Address(network['IPAddress'])
             if not address.is_private: raise ValueError('Unexpected speech inference network')
             addresses.append((str(address),port))
     if run(['iptables','-w','-L',CHAIN,'-n'], missing=True) is not None:
         raise ValueError('A prior speech rollout gate exists; inspect its recovery receipt')
-    existing=set(run(['docker','ps','-a','--format','{{.Names}}']).splitlines())
+    existing=container_inventory()
     active=[]
     for name in INGRESS:
         if name not in existing: continue
@@ -185,7 +208,8 @@ def paused_ingress():
                  '-m','conntrack','--ctstate','NEW','-j','REJECT'])
         run(['iptables','-w','-A',CHAIN,'-j','RETURN'])
         run(['iptables','-w','-I','DOCKER-USER','1','-j',CHAIN]); attached=True
-        idle()
+        if restoring: idle(restoring=True)
+        else: idle()
         for name in active:
             stopped.append(name)
             run(['docker','stop','--time','30',name],timeout=40)
@@ -319,7 +343,7 @@ def trial(directory: Path, confirmer=confirm_plan, measure=benchmark) -> dict:
         result['error']=type(error).__name__
         if attempted and CAPACITY_STATE.exists():
             try:
-                idle(); helper('qualify-speech-capacity.py','rollback','--speech-idle',timeout=2000)
+                idle(restoring=True); helper('qualify-speech-capacity.py','rollback','--speech-idle',timeout=2000)
                 result['state']='baseline-restored'
             except BaseException:
                 result['state']='rollback-incomplete'
@@ -444,8 +468,8 @@ def main() -> None:
                      'failure':failure_metadata(getattr(error,'diagnostic',None))}
             if CAPACITY_STATE.exists():
                 try:
-                    with paused_ingress():
-                        idle(); helper('qualify-speech-capacity.py','rollback','--speech-idle',timeout=2000)
+                    with paused_ingress(restoring=True):
+                        idle(restoring=True); helper('qualify-speech-capacity.py','rollback','--speech-idle',timeout=2000)
                     outcome['state']='baseline-restored'
                 except BaseException: outcome['state']='rollback-incomplete'
             elif (directory/'result.json').exists():

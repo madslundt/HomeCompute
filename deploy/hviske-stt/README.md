@@ -297,3 +297,10 @@ an engine. Fixed stage/service/reason categories survive privileged subprocesses
 into the finite public failure report, without raw commands, env values or Docker
 output. Current license/voice approval, exact runtime identity and all capacity
 qualification gates remain required.
+
+Rollback alone may recognize an authoritatively stopped or absent model as idle
+after an interrupted replacement. It first verifies Docker inventory and exact
+running-state booleans; every running model still needs the strict activity
+probe. The rollback intake gate also tolerates those stopped/absent endpoints,
+then restores only the saved baseline images/configs. Unknown Docker state or
+unreadable running activity keeps recovery unverified and retains the marker.

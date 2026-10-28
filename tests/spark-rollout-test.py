@@ -107,6 +107,61 @@ assert not list(path.rglob('__pycache__'))
         self.assertEqual(report['failure'],diagnostic)
         self.assertNotIn('private',str(caught.exception))
         self.assertFalse(report['accepted']); self.assertFalse(report['full_voice_accepted'])
+    def test_rollback_idle_allows_only_authoritatively_stopped_or_absent_models(self):
+        names=list(m.MODELS)
+        def run(arguments,**kwargs):
+            if arguments[:3]==['docker','ps','-a']: return names[0]
+            if arguments[:2]==['docker','inspect']: return 'false'
+            self.fail('Stopped/absent models must not be exec-probed')
+        with patch.object(m,'run',side_effect=run),patch.object(m.time,'sleep'):
+            m.idle(restoring=True)
+    def test_rollback_idle_refuses_unknown_docker_state_and_probes_running_models(self):
+        names=list(m.MODELS)
+        for state in ['unknown','true']:
+            def run(arguments,**kwargs):
+                if arguments[:3]==['docker','ps','-a']: return '\n'.join(names)
+                if arguments[:2]==['docker','inspect']: return state
+                if arguments[:2]==['docker','exec']:
+                    raise ValueError('unknown running activity')
+                self.fail('Unreviewed operation')
+            with self.subTest(state=state),patch.object(m,'run',side_effect=run),self.assertRaises(ValueError):
+                m.idle(restoring=True)
+        with patch.object(m,'run',side_effect=RuntimeError('Docker unavailable')),self.assertRaises(RuntimeError):
+            m.idle(restoring=True)
+    def test_rollback_ingress_gate_handles_stopped_absent_models_and_restores_intake(self):
+        model=next(iter(m.MODELS)); ingress=m.INGRESS[0]; calls=[]
+        def run(arguments,**kwargs):
+            calls.append(arguments)
+            if arguments[:3]==['docker','ps','-a']: return model+'\n'+ingress
+            if arguments[:2]==['docker','inspect']:
+                self.assertNotIn('Networks',arguments[-1])
+                return 'false' if arguments[2]==model else 'true'
+            if arguments[:3]==['iptables','-w','-L']: return None
+            return ''
+        with patch.object(m,'run',side_effect=run),patch.object(m,'idle') as idle:
+            with m.paused_ingress(restoring=True): pass
+        idle.assert_called_once_with(restoring=True)
+        self.assertIn(['docker','stop','--time','30',ingress],calls)
+        self.assertIn(['docker','start',ingress],calls)
+        self.assertIn(['iptables','-w','-D','DOCKER-USER','-j',m.CHAIN],calls)
+    def test_interrupted_startup_restores_baseline_when_a_model_is_stopped_or_absent(self):
+        model=next(iter(m.MODELS)); original=self.helper
+        def helper(name,*arguments,**kwargs):
+            result=original(name,*arguments,**kwargs)
+            if arguments[0]=='apply': raise InterruptedError('interrupted startup')
+            return result
+        def run(arguments,**kwargs):
+            if arguments[:2]==['docker','exec']:
+                return json.dumps({'connections':0,'running':0,'waiting':0})
+            if arguments[:3]==['docker','ps','-a']: return model
+            if arguments[:2]==['docker','inspect']: return 'false'
+            self.fail('Unreviewed operation')
+        with patch.object(m,'CAPACITY_STATE',self.marker),patch.object(m,'helper',side_effect=helper), \
+                patch.object(m,'run',side_effect=run),patch.object(m.time,'sleep'),self.assertRaises(InterruptedError):
+            m.trial(self.directory,confirmer=lambda _:True,measure=lambda *_:self.baseline())
+        self.assertEqual(self.calls,['plan','plan','apply','rollback'])
+        self.assertFalse(self.marker.exists())
+        self.assertEqual(json.loads((self.directory/'result.json').read_text())['state'],'baseline-restored')
     def test_interrupted_candidate_is_restored(self):
         def measure(label,_):
             if label=='baseline': return self.baseline()
