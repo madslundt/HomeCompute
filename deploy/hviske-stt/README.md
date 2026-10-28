@@ -287,3 +287,13 @@ and capacity replacement. Inspect actual service health and the finite result
 before retrying from a new staging directory with a reviewed release. The
 rendered ingress tmpfs is also checked with an isolated Docker create/remove
 test, because Compose rendering alone accepts malformed relative mount paths.
+
+Capacity planning explicitly enables only the `hviske` profile for read-only
+Compose rendering; inactive model/legacy profiles keep their existing admission
+rules. The wizard verifies a read-only, approval-gated plan during preflight and
+again before measuring the baseline, then requires the same plan after the
+baseline. A rejected plan cannot consume an expensive speech benchmark or replace
+an engine. Fixed stage/service/reason categories survive privileged subprocesses
+into the finite public failure report, without raw commands, env values or Docker
+output. Current license/voice approval, exact runtime identity and all capacity
+qualification gates remain required.

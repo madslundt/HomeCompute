@@ -9,12 +9,14 @@ import io
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'scripts'))
 def module(name,path):
     spec=importlib.util.spec_from_file_location(name,path)
     value=importlib.util.module_from_spec(spec); spec.loader.exec_module(value); return value
@@ -78,18 +80,40 @@ assert not list(path.rglob('__pycache__'))
     def test_approval_timeout_cannot_replace_an_engine(self):
         with self.mocked(),self.assertRaises(ValueError):
             m.trial(self.directory,confirmer=lambda _:False,measure=lambda *_:self.baseline())
-        self.assertEqual(self.calls,['plan']); self.assertFalse(self.marker.exists())
-    def test_invalid_baseline_fails_before_plan_or_replacement(self):
+        self.assertEqual(self.calls,['plan','plan']); self.assertFalse(self.marker.exists())
+    def test_invalid_baseline_fails_before_replacement(self):
         with self.mocked(),self.assertRaises(ValueError):
             m.trial(self.directory,confirmer=lambda _:True,measure=lambda *_:{'asr':{'failures':1}})
-        self.assertEqual(self.calls,[])
+        self.assertEqual(self.calls,['plan'])
+    def test_failed_preflight_never_runs_an_expensive_baseline(self):
+        with patch.object(m,'helper',side_effect=m.CapacityOperationFailure(
+                {'stage':'render','service':'hviske','reason':'service-missing'})), \
+                patch.object(m,'benchmark') as benchmark, self.assertRaises(m.CapacityOperationFailure):
+            m.trial(self.directory,measure=benchmark)
+        benchmark.assert_not_called()
+    def test_changed_plan_after_baseline_cannot_prompt_or_replace_an_engine(self):
+        with patch.object(m,'helper',side_effect=[{'plan_sha256':'a'*64},{'plan_sha256':'b'*64}]), \
+                patch.object(m,'confirm_plan') as confirm, self.assertRaisesRegex(ValueError,'changed during'):
+            m.trial(self.directory,confirmer=confirm,measure=lambda *_:self.baseline())
+        confirm.assert_not_called()
+    def test_qualifier_diagnostic_survives_subprocess_and_public_report_without_private_output(self):
+        diagnostic={'stage':'render','service':'hviske','reason':'service-missing'}
+        result=subprocess.CompletedProcess([],1,'private stdout',
+            'private environment\n'+m.CAPACITY_FAILURE_PREFIX+json.dumps(diagnostic))
+        with patch.object(m.subprocess,'run',return_value=result):
+            with self.assertRaises(m.CapacityOperationFailure) as caught:
+                m.run(['python3','/published/scripts/qualify-speech-capacity.py','plan'])
+        report=m.public_result(None,'a'*40,'failed-preflight',caught.exception.diagnostic)
+        self.assertEqual(report['failure'],diagnostic)
+        self.assertNotIn('private',str(caught.exception))
+        self.assertFalse(report['accepted']); self.assertFalse(report['full_voice_accepted'])
     def test_interrupted_candidate_is_restored(self):
         def measure(label,_):
             if label=='baseline': return self.baseline()
             raise InterruptedError('synthetic interruption')
         with self.mocked(),self.assertRaises(InterruptedError):
             m.trial(self.directory,confirmer=lambda _:True,measure=measure)
-        self.assertEqual(self.calls,['plan','apply','rollback']); self.assertFalse(self.marker.exists())
+        self.assertEqual(self.calls,['plan','plan','apply','rollback']); self.assertFalse(self.marker.exists())
     def test_capacity_pass_does_not_accept_voice_or_canonical_promotion(self):
         def measure(label,_):
             return self.baseline() if label=='baseline' else {'capacity_qualified':True,

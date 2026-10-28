@@ -2,16 +2,22 @@
 """Capacity candidates preserve the serving contract and restore partial failures."""
 from copy import deepcopy
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 SPEC = importlib.util.spec_from_file_location('capacity', ROOT / 'scripts/speech_capacity.py')
 m = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(m)
+QUALIFIER_SPEC = importlib.util.spec_from_file_location('qualifier', ROOT / 'scripts/qualify-speech-capacity.py')
+q = importlib.util.module_from_spec(QUALIFIER_SPEC)
+QUALIFIER_SPEC.loader.exec_module(q)
 
 
 def fixtures():
@@ -29,6 +35,49 @@ def fixtures():
 
 
 class CapacityTest(unittest.TestCase):
+    def test_real_render_includes_only_the_explicit_hviske_profile(self):
+        # Exercise the same Compose filtering as the root plan without needing
+        # GPU images or reading a real secret/activation environment.
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = Path(temporary) / 'hviske.env'
+            template = (ROOT / 'config/hviske-stt.env.example').read_text()
+            environment.write_text(template.replace('HVISKE_LICENSE_DECISION=review-required',
+                                                     'HVISKE_LICENSE_DECISION=personal-noncommercial'))
+            def run(arguments, **kwargs):
+                if arguments[:3] == ['docker', 'image', 'inspect']:
+                    return json.dumps([{'Id': 'sha256:' + 'a' * 64}])
+                return subprocess.check_output(arguments, text=True)
+            with patch.object(q, 'PATHS', {'hviske': ('deploy/hviske-stt/compose.yaml', str(environment))}), \
+                    patch.object(q, 'protected'), patch.object(q, 'run', side_effect=run):
+                rendered = q.render('hviske')
+            self.assertIn('hviske-primary', rendered['services'])
+            self.assertEqual(rendered['services']['hviske-primary']['profiles'], ['hviske'])
+            self.assertEqual(set(rendered['services']), {'hviske-primary'})
+
+    def test_failure_metadata_is_finite_and_rejects_private_or_malformed_fields(self):
+        good = {'stage': 'approval', 'service': 'hviske', 'reason': 'approval-required'}
+        self.assertEqual(m.failure_metadata(good), good)
+        for value in [None, [], {**good, 'output': 'private'}, {**good, 'stage': []},
+                      {**good, 'service': {}}, {**good, 'reason': 'private environment value'}]:
+            self.assertIsNone(m.failure_metadata(value))
+        with self.assertRaises(q.PlanFailure) as caught:
+            q.guarded('approval', 'hviske', 'approval-required',
+                      lambda: (_ for _ in ()).throw(ValueError('private token and environment')))
+        self.assertEqual(caught.exception.diagnostic, good)
+        self.assertNotIn('private', str(caught.exception))
+
+    def test_real_render_still_requires_current_activation_approval(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            environment = Path(temporary) / 'revoked.env'
+            environment.write_text('HVISKE_LICENSE_DECISION=review-required\nPRIVATE=do-not-relay\n')
+            with patch.object(q, 'PATHS', {'hviske': ('deploy/hviske-stt/compose.yaml', str(environment))}), \
+                    patch.object(q, 'protected'), patch.object(q, 'run') as run:
+                with self.assertRaises(q.PlanFailure) as caught:
+                    q.render('hviske')
+            self.assertEqual(caught.exception.diagnostic,
+                             {'stage': 'approval', 'service': 'hviske', 'reason': 'approval-required'})
+            run.assert_not_called()
+
     def test_capacity_activation_preserves_existing_license_and_voice_gates(self):
         for decision in ['personal-noncommercial', 'syvai-commercial-license-approved']:
             m.activation_approved('hviske', f'HVISKE_LICENSE_DECISION="{decision}" # reviewed\n')

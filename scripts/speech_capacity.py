@@ -11,6 +11,29 @@ SERVICES = {'hviske': 'hviske-primary', 'plapre': 'plapre-primary'}
 CONTAINERS = {'hviske': 'gb10-hviske-primary', 'plapre': 'homecompute-plapre-plapre-primary-1'}
 BUDGETS = {'baseline': {'hviske': '0.10', 'plapre': '0.06'},
            'candidate': {'hviske': '0.05', 'plapre': '0.05'}}
+FAILURE_PREFIX = 'SPEECH_CAPACITY_FAILURE '
+FAILURE_STAGES = {'release', 'inspect', 'approval', 'render', 'image', 'baseline', 'candidate', 'operation'}
+FAILURE_REASONS = {'release-untrusted', 'inspect-unavailable', 'baseline-unhealthy', 'approval-required',
+                   'protected-path', 'render-failed', 'service-missing', 'image-unavailable',
+                   'project-mismatch', 'image-mismatch', 'command-mismatch', 'budget-unrecognized',
+                   'guard-or-operation'}
+
+
+def failure_metadata(value) -> dict | None:
+    """Only finite categories cross privileged subprocess/report boundaries."""
+    if (not isinstance(value, dict) or set(value) != {'stage', 'service', 'reason'} or
+            not isinstance(value.get('stage'), str) or not isinstance(value.get('reason'), str) or
+            value.get('service') is not None and not isinstance(value.get('service'), str) or
+            value.get('stage') not in FAILURE_STAGES or
+            value.get('service') not in {None, *SERVICES} or value.get('reason') not in FAILURE_REASONS):
+        return None
+    return {key: value[key] for key in ('stage', 'service', 'reason')}
+
+
+class BaselineMismatch(ValueError):
+    def __init__(self, service: str, field: str):
+        super().__init__(f'{service} actual {field} differs from the rendered source baseline')
+        self.service, self.field = service, field
 
 
 def activation_approved(key: str, environment: str) -> None:
@@ -55,8 +78,9 @@ def candidate(original: dict) -> dict:
 def verify_baseline(original: dict, running: dict) -> None:
     for key, service in SERVICES.items():
         expected = original[key]['services'][service]
-        if any(running[key][field] != expected[field] for field in ('image', 'command')):
-            raise ValueError(f'{key} actual image/command differs from the rendered source baseline')
+        for field in ('image', 'command'):
+            if running[key][field] != expected[field]:
+                raise BaselineMismatch(key, field)
 
 
 def activate(start) -> None:

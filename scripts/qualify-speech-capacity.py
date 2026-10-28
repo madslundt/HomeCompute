@@ -16,13 +16,34 @@ import re
 import socket
 import stat
 import subprocess
+import sys
 
-from speech_capacity import BUDGETS, CONTAINERS, SERVICES, activate, activation_approved, candidate, verify_baseline
+sys.dont_write_bytecode = True
+from speech_capacity import (BUDGETS, CONTAINERS, SERVICES, FAILURE_PREFIX, BaselineMismatch,
+                             activate, activation_approved, candidate, failure_metadata, verify_baseline)
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute-speech-capacity')
 PATHS = {'hviske': ('deploy/hviske-stt/compose.yaml', '/etc/gb10-ai/hviske.env'),
          'plapre': ('deploy/compute-node/plapre/compose.yaml', '/etc/gb10-ai/plapre-tts.env')}
+RENDER_PROFILES = {'hviske': ('hviske',), 'plapre': ()}
+
+
+class PlanFailure(RuntimeError):
+    def __init__(self, stage: str, service: str | None, reason: str):
+        self.diagnostic = failure_metadata({'stage': stage, 'service': service, 'reason': reason})
+        if self.diagnostic is None:
+            raise ValueError('Invalid failure category')
+        super().__init__('Speech capacity guard failed: ' + stage + '/' + reason)
+
+
+def guarded(stage: str, service: str | None, reason: str, action):
+    try:
+        return action()
+    except PlanFailure:
+        raise
+    except Exception:
+        raise PlanFailure(stage, service, reason) from None
 
 
 def run(args: list[str], timeout=60) -> str:
@@ -65,32 +86,44 @@ def inspect(name: str) -> dict:
 
 def render(key: str) -> dict:
     relative, environment = PATHS[key]
-    protected(ROOT / relative)
-    protected(Path(environment))
-    activation_approved(key, Path(environment).read_text())
-    value = json.loads(run(['docker', 'compose', '--env-file', environment, '-f',
-                           str(ROOT / relative), 'config', '--format', 'json']))
-    service = value['services'][SERVICES[key]]
+    guarded('render', key, 'protected-path', lambda: protected(ROOT / relative))
+    guarded('approval', key, 'protected-path', lambda: protected(Path(environment)))
+    guarded('approval', key, 'approval-required',
+            lambda: activation_approved(key, Path(environment).read_text()))
+    arguments = ['docker', 'compose', '--env-file', environment, '-f', str(ROOT / relative)]
+    for profile in RENDER_PROFILES[key]:
+        arguments += ['--profile', profile]
+    value = guarded('render', key, 'render-failed',
+                    lambda: json.loads(run([*arguments, 'config', '--format', 'json'])))
+    if not isinstance(value, dict):
+        raise PlanFailure('render', key, 'render-failed')
+    service = value.get('services', {}).get(SERVICES[key])
+    if not isinstance(service, dict):
+        raise PlanFailure('render', key, 'service-missing')
     # Resolve the configured immutable/local pinned tag to the installed image;
     # neither staging nor restoration may pull a replacement image.
-    service['image'] = json.loads(run(['docker', 'image', 'inspect', service['image']]))[0]['Id']
+    service['image'] = guarded('image', key, 'image-unavailable',
+        lambda: json.loads(run(['docker', 'image', 'inspect', service['image']]))[0]['Id'])
     return value
 
 
 def prepare(revision: str) -> tuple[dict, dict, dict]:
     original, running, identities = {}, {}, {}
     for key, name in CONTAINERS.items():
-        data = inspect(name)
+        data = guarded('inspect', key, 'inspect-unavailable', lambda: inspect(name))
         if not data['State']['Running'] or data['State'].get('Health', {}).get('Status') != 'healthy':
-            raise ValueError('A healthy running speech baseline is required: ' + key)
+            raise PlanFailure('baseline', key, 'baseline-unhealthy')
         original[key] = render(key)
         labels = data['Config']['Labels']
         if labels.get('com.docker.compose.project') != original[key]['name']:
-            raise ValueError('The source and actual Compose project differ: ' + key)
+            raise PlanFailure('baseline', key, 'project-mismatch')
         running[key] = {'image': data['Image'], 'command': data['Config']['Cmd']}
         identities[key] = data['Id']
-    verify_baseline(original, running)
-    staged = candidate(original)
+    try:
+        verify_baseline(original, running)
+    except BaselineMismatch as error:
+        raise PlanFailure('baseline', error.service, error.field + '-mismatch') from None
+    staged = guarded('candidate', None, 'budget-unrecognized', lambda: candidate(original))
     plan = {'schema_version': 1, 'profile': 'speech-05-05-candidate', 'state': 'qualification-required',
             'source_revision': revision, 'budgets': BUDGETS, 'container_ids': identities,
             'baseline_sha256': digest(original), 'candidate_sha256': digest(staged),
@@ -168,7 +201,7 @@ def main() -> None:
     parser.add_argument('--speech-idle', action='store_true',
                         help='Coordinator has paused speech intake and verified no active speech request')
     args = parser.parse_args()
-    revision = release()
+    revision = guarded('release', None, 'release-untrusted', release)
     if args.action == 'plan':
         print(json.dumps(prepare(revision)[0], sort_keys=True))
         return
@@ -214,4 +247,10 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as error:
+        diagnostic = error.diagnostic if isinstance(error, PlanFailure) else {
+            'stage': 'operation', 'service': None, 'reason': 'guard-or-operation'}
+        print(FAILURE_PREFIX + json.dumps(diagnostic, sort_keys=True), file=sys.stderr)
+        raise SystemExit(1) from None

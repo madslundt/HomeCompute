@@ -26,6 +26,8 @@ import time
 
 # Imports from the immutable release must never create runtime artifacts there.
 sys.dont_write_bytecode = True
+from speech_capacity import FAILURE_PREFIX as CAPACITY_FAILURE_PREFIX, failure_metadata
+
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute-spark-rollout')
 CAPACITY_STATE = Path('/var/lib/homecompute-speech-capacity/active.json')
@@ -54,12 +56,26 @@ print(json.dumps(result))
 '''
 
 
+class CapacityOperationFailure(RuntimeError):
+    def __init__(self, diagnostic: dict):
+        self.diagnostic = failure_metadata(diagnostic)
+        if self.diagnostic is None:
+            raise ValueError('Invalid capacity failure category')
+        super().__init__('Speech capacity guard failed: ' + diagnostic['stage'] + '/' + diagnostic['reason'])
+
+
 def run(arguments: list[str], *, timeout=240, missing=False) -> str | None:
     result = subprocess.run(arguments, capture_output=True, text=True, timeout=timeout,
                             env={**os.environ, 'PYTHONDONTWRITEBYTECODE':'1'})
     if result.returncode:
         if missing: return None
         operation=Path(arguments[1]).name if Path(arguments[0]).name.startswith('python') and len(arguments)>1 else ' '.join(arguments[:2])
+        if operation == 'qualify-speech-capacity.py':
+            for line in result.stderr.splitlines():
+                if not line.startswith(CAPACITY_FAILURE_PREFIX): continue
+                try: diagnostic=failure_metadata(json.loads(line.removeprefix(CAPACITY_FAILURE_PREFIX)))
+                except ValueError: continue
+                if diagnostic is not None: raise CapacityOperationFailure(diagnostic)
         if operation == 'setup-speech-boundary.py':
             for line in result.stderr.splitlines():
                 if not line.startswith('SPEECH_BOUNDARY_FAILURE '): continue
@@ -275,11 +291,15 @@ def trial(directory: Path, confirmer=confirm_plan, measure=benchmark) -> dict:
             'synthetic_llm_streams':2,'state':'baseline','capacity_qualified':False}
     attempted=False
     try:
+        preflight=helper('qualify-speech-capacity.py','plan')
+        receipt(directory/'preflight-plan.json',preflight)
         baseline=measure('baseline',directory)
         if (baseline.get('asr',{}).get('failures') != 0 or baseline.get('asr',{}).get('trials') != 18 or
                 baseline.get('tts_model_local',{}).get('failures') != 0 or baseline.get('tts_model_local',{}).get('trials',0) < 20):
             raise ValueError('Complete error-free baseline evidence is required before replacement')
         plan=helper('qualify-speech-capacity.py','plan')
+        if plan.get('plan_sha256') != preflight.get('plan_sha256'):
+            raise ValueError('The speech plan changed during the baseline; obtain fresh evidence')
         receipt(directory/'plan.json',plan)
         result['plan_sha256']=plan['plan_sha256']
         if not confirmer(plan): raise ValueError('Plan was not approved before timeout')
@@ -320,12 +340,12 @@ def staging_result(archive: Path) -> Path:
     return target
 
 
-def public_result(directory: Path | None, revision: str, state: str) -> dict:
+def public_result(directory: Path | None, revision: str, state: str, failure=None) -> dict:
     report={'schema_version':1,'source_revision':revision,'state':state,
             'accepted':False,'full_voice_accepted':False,'baseline':None,'candidate':None,
             'rollback_state':'restored' if state=='baseline-restored' else
                 'incomplete' if state=='rollback-incomplete' else 'not-required',
-            'private_receipt':None}
+            'private_receipt':None,'failure':failure_metadata(failure)}
     if directory is None: return report
     for label in ['baseline','candidate']:
         path=directory/(label+'.json')
@@ -352,6 +372,8 @@ def public_result(directory: Path | None, revision: str, state: str) -> dict:
         path=directory/name
         if path.is_file():
             report['private_receipt']={'path':str(path),'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
+            if name == 'orchestration-failure.json':
+                report['failure']=failure_metadata(json.loads(path.read_text()).get('failure'))
             break
     return report
 
@@ -395,7 +417,13 @@ def main() -> None:
         pin=json.loads((ROOT/'config/spark-rollout-corpus.json').read_text())
         with args.corpus_archive.open('rb') as f:
             if hashlib.file_digest(f,'sha256').hexdigest()!=pin['archive_sha256']: raise ValueError('Corpus hash differs')
-        print(json.dumps({'source_revision':args.revision,'corpus_sha256':pin['archive_sha256'],'accepted':False})); return
+        try:
+            plan=helper('qualify-speech-capacity.py','plan')
+        except CapacityOperationFailure as error:
+            publish_result(shared,public_result(None,args.revision,'failed-preflight',error.diagnostic))
+            raise
+        print(json.dumps({'source_revision':args.revision,'corpus_sha256':pin['archive_sha256'],
+                          'plan_sha256':plan['plan_sha256'],'accepted':False})); return
     for event in [signal.SIGINT,signal.SIGTERM,signal.SIGHUP]:
         signal.signal(event,interrupted)
     STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -412,7 +440,8 @@ def main() -> None:
             publish_result(shared,public_result(directory,args.revision,result['state']))
         except BaseException as error:
             outcome={'state':'failed-before-candidate','error':type(error).__name__,
-                     'accepted':False,'full_voice_accepted':False}
+                     'accepted':False,'full_voice_accepted':False,
+                     'failure':failure_metadata(getattr(error,'diagnostic',None))}
             if CAPACITY_STATE.exists():
                 try:
                     with paused_ingress():
