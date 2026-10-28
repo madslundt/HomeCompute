@@ -834,7 +834,7 @@ jq -e '
 ' "$ttlock_json" >/dev/null
 python3 -m py_compile "$REPO_ROOT/deploy/ttlock-webhook/app/"*.py \
   "$REPO_ROOT/deploy/ttlock-webhook/healthcheck.py"
-rg -F 'FROM python:3.12.12-slim-bookworm@sha256:' \
+rg -F 'FROM python:3.15.0-slim-bookworm@sha256:' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
 rg -F 'pip install --no-compile --require-hashes -r requirements.lock' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null

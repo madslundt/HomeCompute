@@ -89,6 +89,20 @@ Production and test transitive dependencies are fully pinned with package hashes
 in `requirements.lock` and `requirements-test.lock`. Regenerate them with
 `uv pip compile --generate-hashes` when intentionally updating dependencies.
 
+The container uses Python 3.15 and requires the locked Pydantic 2.14.1 /
+`pydantic-core` 2.50.1 pair for compatible binary wheels. Before changing the
+interpreter, build the image and run the synthetic tests using that image's
+Python, in addition to the workstation and CI test environments:
+
+```sh
+docker build -t homecompute/ttlock-webhook:review .
+docker run --rm -v "$PWD:/review:ro" --entrypoint sh \
+  homecompute/ttlock-webhook:review -c \
+  'python -m venv /tmp/test-venv &&
+   /tmp/test-venv/bin/pip install --require-hashes -r /review/requirements-test.lock &&
+   PYTHONPATH=/app /tmp/test-venv/bin/pytest -p no:cacheprovider /review/tests'
+```
+
 The checked-in example deliberately contains invalid placeholders and is only for
 Compose rendering. Create a real encrypted dotenv document containing at least:
 
