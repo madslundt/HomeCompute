@@ -5,11 +5,28 @@ from __future__ import annotations
 from copy import deepcopy
 import math
 import re
+import shlex
 
 SERVICES = {'hviske': 'hviske-primary', 'plapre': 'plapre-primary'}
 CONTAINERS = {'hviske': 'gb10-hviske-primary', 'plapre': 'homecompute-plapre-plapre-primary-1'}
 BUDGETS = {'baseline': {'hviske': '0.10', 'plapre': '0.06'},
            'candidate': {'hviske': '0.05', 'plapre': '0.05'}}
+
+
+def activation_approved(key: str, environment: str) -> None:
+    """A running baseline is not permission to bypass a revoked runtime gate."""
+    if key not in SERVICES:
+        raise ValueError('Unknown speech service')
+    setting, allowed = (
+        ('HVISKE_LICENSE_DECISION', {'personal-noncommercial', 'syvai-commercial-license-approved'})
+        if key == 'hviske' else ('PLAPRE_VOICE_APPROVAL', {'approved-household-use'}))
+    values = []
+    for line in environment.splitlines():
+        name, separator, value = line.partition('=')
+        if separator and name.strip() == setting:
+            values.append(shlex.split(value, comments=True))
+    if len(values) != 1 or len(values[0]) != 1 or values[0][0] not in allowed:
+        raise ValueError('Existing speech activation approval is required: ' + key)
 
 
 def candidate(original: dict) -> dict:

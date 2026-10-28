@@ -29,6 +29,16 @@ def fixtures():
 
 
 class CapacityTest(unittest.TestCase):
+    def test_capacity_activation_preserves_existing_license_and_voice_gates(self):
+        for decision in ['personal-noncommercial', 'syvai-commercial-license-approved']:
+            m.activation_approved('hviske', f'HVISKE_LICENSE_DECISION="{decision}" # reviewed\n')
+        m.activation_approved('plapre', 'PLAPRE_VOICE_APPROVAL=approved-household-use\n')
+        for key, setting in [('hviske', 'HVISKE_LICENSE_DECISION'), ('plapre', 'PLAPRE_VOICE_APPROVAL')]:
+            for invalid in ['', f'{setting}=review-required', f'{setting}=$(unsafe-command)',
+                            f'{setting}=review-required\n{setting}=approved-household-use']:
+                with self.assertRaises(ValueError):
+                    m.activation_approved(key, invalid)
+
     def test_only_the_two_gpu_budgets_change(self):
         original = fixtures()
         saved = deepcopy(original)

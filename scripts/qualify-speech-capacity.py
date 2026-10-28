@@ -17,7 +17,7 @@ import socket
 import stat
 import subprocess
 
-from speech_capacity import BUDGETS, CONTAINERS, SERVICES, activate, candidate, verify_baseline
+from speech_capacity import BUDGETS, CONTAINERS, SERVICES, activate, activation_approved, candidate, verify_baseline
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute-speech-capacity')
@@ -67,6 +67,7 @@ def render(key: str) -> dict:
     relative, environment = PATHS[key]
     protected(ROOT / relative)
     protected(Path(environment))
+    activation_approved(key, Path(environment).read_text())
     value = json.loads(run(['docker', 'compose', '--env-file', environment, '-f',
                            str(ROOT / relative), 'config', '--format', 'json']))
     service = value['services'][SERVICES[key]]
