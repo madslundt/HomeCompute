@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from openclaw_integration_policy import TOOLS as INTEGRATION_TOOLS, candidate as _integration_candidate, present as _integration_present
+
 ROSTER = ('main', 'personal', 'researcher', 'engineer', 'operator', 'shopper', 'keeper', 'travel')
 LEAVES = ROSTER[1:]
 ORCHESTRATION = {'agents_list', 'sessions_spawn', 'sessions_yield', 'subagents'}
@@ -180,7 +182,7 @@ def retained_capabilities(before: dict[str, Any], *, enable_calendar_upgrade: bo
         if not isinstance(child, dict) or set(child) - {'allow', 'deny'}:
             raise TeamRefused('finite-child-tool-policy-required')
         child_allow = finite(child.get('allow', []))
-        if not child_allow <= WORKSPACE_TOOLS | COORDINATOR_DOMAIN_TOOLS:
+        if not child_allow <= WORKSPACE_TOOLS | COORDINATOR_DOMAIN_TOOLS | INTEGRATION_TOOLS:
             raise TeamRefused('unreviewed-child-capability-refused')
         calendar_upgrade(before, child_allow, finite(child.get('deny', [])), enabled=enable_calendar_upgrade)
         allowed |= child_allow - finite(child.get('deny', [])) - denied
@@ -205,6 +207,9 @@ def isolated_memory_search(config: dict[str, Any]) -> dict[str, Any]:
 def candidate(before: dict[str, Any], team: dict[str, Any], *, state_root: Path,
               enable_calendar_upgrade: bool = False, enable_retrieval_upgrade: bool = False) -> dict[str, Any]:
     try:
+        preserve_integrations = _integration_present(before, finite)
+        if preserve_integrations:
+            _integration_candidate(before, finite=finite, refused=TeamRefused)
         providers = before['models']['providers']
         if (set(providers) != {'inference'} or providers['inference']['apiKey'] != 'unused'
                 or providers['inference']['baseUrl'] != 'https://inference.local/v1'
@@ -286,6 +291,18 @@ def candidate(before: dict[str, Any], team: dict[str, Any], *, state_root: Path,
         for section in PROTECTED:
             if result.get(section) != before.get(section):
                 raise TeamRefused('managed-ownership-drift-refused')
+        if preserve_integrations:
+            # The intact prior grant was checked before role reconstruction.
+            # Remove only this feature's old ceilings, then reapply its exact
+            # reviewed roles without treating a revoked grant as new consent.
+            key = 'allow' if result['tools'].get('allow') else 'alsoAllow'
+            result['tools'][key] = sorted(finite(result['tools'][key]) - INTEGRATION_TOOLS)
+            result['tools']['subagents']['tools']['allow'] = sorted(
+                finite(result['tools']['subagents']['tools']['allow']) - INTEGRATION_TOOLS)
+            for entry in result['agents']['entries'].values():
+                for field in ('allow', 'deny'):
+                    entry['tools'][field] = sorted(finite(entry['tools'].get(field, [])) - INTEGRATION_TOOLS)
+            result = _integration_candidate(result, finite=finite, refused=TeamRefused, enable=True)
         return result
     except (KeyError, TypeError, AttributeError):
         raise TeamRefused('managed-runtime-contract-refused') from None

@@ -172,6 +172,8 @@ def core_snapshot(system: dict[str, Any]) -> dict[str, Any] | None:
             or not isinstance(snapshot.get("unit_states"), dict) or len(snapshot["unit_states"]) > 1000):
         raise ValueError("snapshot metadata is unbounded")
     raw = {key: snapshot[key] for key in ("schema_version", "host", "generated_at", "containers", "unit_states")}
+    if system['id'] == 'home-core':
+        raw['n8n_workflow_health'] = snapshot.get('n8n_workflow_health')
     try:
         raw["maintenance_report"] = (read_report(MAINTENANCE_REPORT) if system["id"] == "home-core"
                                      else snapshot.get("maintenance_report"))

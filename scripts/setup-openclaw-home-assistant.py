@@ -73,6 +73,69 @@ def validate_template(flow: dict[str, Any]) -> None:
         raise ValueError('closed source gate and no payload retention required')
 
 
+def projection_update(live: dict[str, Any], template: dict[str, Any]) -> dict[str, Any]:
+    """Replace only the finite projector; retain live authentication and read nodes."""
+    validate_template(template)
+    candidate = json.loads(json.dumps(live))
+    closed = json.loads(json.dumps(live))
+    closed['active'] = False
+    gate = closed['nodes'][1]['parameters']['jsCode']
+    if 'configured=true' not in gate:
+        raise ValueError('existing route must have its reviewed active gate')
+    closed['nodes'][1]['parameters']['jsCode'] = gate.replace('configured=true', 'configured=false', 1)
+    validate_template(closed)
+    candidate['nodes'][4]['parameters']['jsCode'] = template['nodes'][4]['parameters']['jsCode']
+    return candidate
+
+
+def reconcile_projection(template: Path, *, defer_restart: bool = False) -> dict[str, Any]:
+    """Back up and publish one existing route without replacing private credentials."""
+    if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-core':
+        raise ValueError('root on home-core required')
+    os.umask(0o077)
+    source = json.loads(template.read_text())
+    with sqlite3.connect('file:' + str(DATABASE) + '?mode=ro', uri=True) as db:
+        db.row_factory = sqlite3.Row
+        row = db.execute('SELECT * FROM workflow_entity WHERE id=?', (WORKFLOW,)).fetchone()
+        if not row or not row['active'] or row['versionId'] != row['activeVersionId']:
+            raise ValueError('published route must match its draft before reconciliation')
+        live = {key: row[key] for key in ('id', 'name', 'nodes', 'connections', 'settings', 'staticData', 'pinData')}
+        for key in ('nodes', 'connections', 'settings', 'staticData', 'pinData'):
+            if isinstance(live[key], str):
+                live[key] = json.loads(live[key])
+        live['active'] = True
+        candidate = projection_update(live, source)
+        before = metadata(db)
+        credentials = [tuple(r) for r in db.execute('SELECT id,name,type,updatedAt FROM credentials_entity ORDER BY id')]
+        project = db.execute('SELECT projectId FROM shared_workflow WHERE workflowId=?', (WORKFLOW,)).fetchone()[0]
+        backup = Path('/srv/backups/openclaw-ha-projector-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ'))
+        backup.mkdir(mode=0o700, parents=True)
+        with sqlite3.connect(backup / 'n8n-before.sqlite3') as destination:
+            db.backup(destination)
+        (backup / 'workflow-before.json').write_text(json.dumps(live))
+        candidate['active'] = False
+        path = '/tmp/hc-openclaw-ha-projector.json'
+        try:
+            container_file(Path(path).name, [candidate])
+            call(['docker', 'exec', CONTAINER, 'n8n', 'import:workflow', '--input=' + path, '--projectId=' + project])
+            call(['docker', 'exec', CONTAINER, 'n8n', 'publish:workflow', '--id=' + WORKFLOW])
+        finally:
+            call(['docker', 'exec', CONTAINER, 'node', '-e', 'require("fs").rmSync(' + json.dumps(path) + ',{force:true})'])
+        after = metadata(db)
+        if after != before | {WORKFLOW: after.get(WORKFLOW)}:
+            raise ValueError('unrelated workflow metadata changed during reconciliation')
+        if credentials != [tuple(r) for r in db.execute('SELECT id,name,type,updatedAt FROM credentials_entity ORDER BY id')]:
+            raise ValueError('credentials changed during reconciliation')
+        row = db.execute('SELECT active,versionId,activeVersionId,nodes FROM workflow_entity WHERE id=?', (WORKFLOW,)).fetchone()
+        if not row[0] or row[1] != row[2] or json.loads(row[3]) != candidate['nodes']:
+            raise ValueError('projection publication not verified')
+    if not defer_restart:
+        call(['docker', 'restart', CONTAINER])
+    return {'projection_reconciled': True, 'workflow': WORKFLOW, 'backup': str(backup),
+            'existing_workflows_preserved': len(before) - 1, 'credentials_preserved': len(credentials),
+            'restart_required': defer_restart, 'ha_writes': 0, 'telegram_messages': 0}
+
+
 def provision(template: Path) -> dict[str, Any]:
     if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-core':
         raise ValueError('root on home-core required')
@@ -152,9 +215,14 @@ def provision(template: Path) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--template', type=Path, required=True)
+    parser.add_argument('--reconcile-projection', action='store_true')
+    parser.add_argument('--defer-restart', action='store_true')
     args = parser.parse_args()
     try:
-        print(json.dumps(provision(args.template)))
+        if args.defer_restart and not args.reconcile_projection:
+            raise ValueError('deferred restart is only supported for projection reconciliation')
+        result = reconcile_projection(args.template, defer_restart=args.defer_restart) if args.reconcile_projection else provision(args.template)
+        print(json.dumps(result))
         return 0
     except (OSError, ValueError, KeyError, TypeError, sqlite3.Error, subprocess.SubprocessError):
         print('HA route setup incomplete; preserve credentials, workflow state and backup for reconciliation.', file=sys.stderr)

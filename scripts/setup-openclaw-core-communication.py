@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
-"""Stage home-core communication services; activation is explicit and separate.
-
---install copies only trusted code and enables adapter/feeds for boot, without
-starting processes. Private configuration, SSH identity and retained transport
-state must be migrated separately. --activate-services publishes machine status
-before starting the adapter/feeds and timers. --activate-telegram additionally requires an unpaused retained cursor
-and no admission guard. No cursor, token, receipt or native session is reset.
-"""
+"""Stage or activate core communication, preserving private credentials, cursors and receipts."""
 from __future__ import annotations
 
 import argparse
@@ -22,7 +15,6 @@ import subprocess
 import sys
 import tempfile
 from typing import Any
-
 DEST = Path('/opt/homecompute/openclaw-communication')
 HOME = Path('/var/lib/homecompute-openclaw')
 CONFIG = HOME / 'config'
@@ -34,19 +26,27 @@ USER = 'homecompute-openclaw'
 PREFIX = 'homecompute-openclaw-'
 PYTHON = Path('/run/current-system/sw/bin/python3')
 FILES = (
-    'scripts/embedding_client.py', 'scripts/semantic_retrieval.py',
-    'scripts/semantic_sources.py', 'scripts/semantic_operations.py',
-    'scripts/semantic-index.py',
-    'docs/openclaw-operations.md', 'docs/openclaw-tools.md',
+    'scripts/embedding_client.py', 'scripts/openclaw_speech.py', 'scripts/wyoming_tts_client.py',
+    'scripts/semantic_retrieval.py', 'scripts/semantic_sources.py', 'scripts/semantic_operations.py',
+    'scripts/semantic-index.py', 'docs/openclaw-operations.md', 'docs/openclaw-tools.md',
     'docs/homecompute-operations.md', 'docs/local-model-access.md',
     'docs/operations/shelfmark-direct-download-repair.md',
     'scripts/openclaw-communication.py', 'scripts/openclaw-telegram.py',
     'scripts/openclaw-chat.py', 'scripts/openclaw_notifications.py',
     'scripts/openclaw_machine_notifications.py', 'scripts/openclaw_tasks.py',
-    'scripts/openclaw_maintenance.py',
+    'scripts/openclaw_maintenance.py', 'scripts/openclaw_access_bridge.py',
+    'scripts/openclaw_site_registry.py', 'scripts/openclaw_bitwarden.py',
     'scripts/openclaw_capabilities.py', 'scripts/openclaw_services.py', 'scripts/homeassistant_actions.py',
+    'scripts/openclaw_integrations.py', 'scripts/openclaw_integration_policy.py', 'scripts/openclaw_places.py',
+    'scripts/openclaw_hotels.py',
+    'scripts/openclaw_integration_http.py',
+    'config/openclaw-integrations.json', 'docs/openclaw-integrations.md',
     'scripts/openclaw_household.py', 'scripts/openclaw_household_requests.py',
     'scripts/openclaw_household_shopping.py', 'scripts/openclaw_household_storage.py',
+    'scripts/openclaw_household_tasks.py', 'scripts/openclaw-household-task-reminders.py',
+    'scripts/openclaw_family_task_projection.py', 'scripts/openclaw_task_location.py',
+    'scripts/openclaw_location_policy.py', 'scripts/openclaw_location_transport.py',
+    'scripts/openclaw_mail.py', 'scripts/openclaw_outlook.py', 'scripts/setup-openclaw-outlook.py',
     'scripts/openclaw_calendar.py', 'scripts/openclaw_calendar_events.py',
     'scripts/openclaw_ha_websocket.py',
     'scripts/infrastructure_maintenance.py', 'scripts/infrastructure_update_policy.py',
@@ -54,18 +54,18 @@ FILES = (
     'deploy/codex-worker/mcp_adapter.py', 'deploy/codex-worker/policy.py',
     'scripts/openclaw_infrastructure.py', 'scripts/openclaw-observation-feed.py',
     'scripts/observe-homecompute.py', 'scripts/homecompute.py',
+    'scripts/n8n_observations.py',
     'scripts/maintenance_observations.py', 'config/system-monitoring.json',
     'scripts/openclaw-machine-snapshot.py', 'scripts/homeassistant_observations.py',
     'scripts/setup-openclaw-core-communication.py', 'scripts/setup-openclaw-home-assistant.py',
 )
-NAMES = ('adapter', 'telegram', 'task-feed', 'update-feed', 'machine-status')
-TIMERS = ('machine-status', 'update-feed')
-
-
+NAMES = ('adapter', 'telegram', 'task-feed', 'update-feed', 'machine-status', 'household-task-reminders', 'family-task-reminders')
+TIMERS = ('machine-status', 'update-feed', 'household-task-reminders', 'family-task-reminders')
+def timer_configured(name: str) -> bool:
+    return (CONFIG / {'household-task-reminders': 'household-tasks.json',
+                      'family-task-reminders': 'family-tasks.json'}[name]).exists() if name.endswith('task-reminders') else True
 def call(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(args, capture_output=True, text=True, check=check)
-
-
 def commands(python: Path = PYTHON) -> dict[str, list[str]]:
     scripts = DEST / 'scripts'
     registry = CONFIG / 'system-monitoring.json' if (CONFIG / 'system-monitoring.json').exists() else DEST / 'config/system-monitoring.json'
@@ -74,8 +74,16 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
     mcp_args = ['--mcp-tokens', str(CONFIG / 'native-mcp-tokens.json')] if (CONFIG / 'native-mcp-tokens.json').exists() else []
     ha_action_args = ['--ha-actions'] if mcp_args and Path('/etc/systemd/system.attached/homecompute-ha-actions.service').is_file() else []
     service_args = ['--services', str(CONFIG / 'services.json')] if mcp_args and (CONFIG / 'services.json').exists() else []
+    integration_args = ['--integrations', str(DEST / 'config/openclaw-integrations.json')] if service_args else []
     household_args = ['--household', str(CONFIG / 'household.json')] if service_args and (CONFIG / 'household.json').exists() else []
     calendar_args = ['--calendar', str(CONFIG / 'calendar.json')] if service_args and (CONFIG / 'calendar.json').exists() else []
+    task_args = ['--household-tasks', str(CONFIG / 'household-tasks.json')] if service_args and (CONFIG / 'household-tasks.json').exists() else []
+    family_args = ['--family-tasks', str(CONFIG / 'family-tasks.json')] if service_args and (CONFIG / 'family-tasks.json').exists() else []
+    # Mail is optional and currently retired. Retained private files cannot
+    # silently reconnect a mailbox when the communication bundle is reapplied.
+    mail_args: list[str] = []
+    access_args = ['--access-config', str(CONFIG / 'access-requests.json')] if mcp_args and (CONFIG / 'access-requests.json').exists() else []
+    site_args = ['--site-config', str(CONFIG / 'site-operations.json')] if access_args and (CONFIG / 'site-operations.json').exists() else []
     return {
         'adapter': [str(python), str(scripts / 'openclaw-communication.py'),
                     '--config', str(CONFIG / 'communication.json'),
@@ -84,7 +92,8 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                     '--task-transport', str(CONFIG / 'codex-task-transport.json'),
                     '--registry', str(registry),
                     '--infrastructure-registry', str(registry),
-                    '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args, *service_args, *household_args, *calendar_args],
+                    '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args, *service_args,
+                    *integration_args, *household_args, *calendar_args, *task_args, *family_args, *mail_args, *access_args, *site_args],
         'telegram': [str(python), str(scripts / 'openclaw-telegram.py'), 'run',
                      '--config', str(CONFIG / 'telegram.json'),
                      '--tokens', str(CONFIG / 'telegram-tokens.json'),
@@ -99,9 +108,12 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                         '--tokens', str(CONFIG / 'transport-tokens.json'),
                         '--state', str(STATE / 'update-feed'), '--core-host-mode', *ha_args],
         'machine-status': [str(python), str(scripts / 'openclaw-machine-snapshot.py'), '--publish-core'],
+        'household-task-reminders': [str(python), str(scripts / 'openclaw-household-task-reminders.py'),
+                                    '--config', str(CONFIG / 'household-tasks.json'), '--state', str(STATE / 'adapter')],
+        'family-task-reminders': [str(python), str(scripts / 'openclaw-household-task-reminders.py'),
+                                 '--config', str(CONFIG / 'family-tasks.json'), '--state', str(STATE / 'adapter'),
+                                 '--scope', 'family', '--project-home-assistant'],
     }
-
-
 def service(name: str, python: Path = PYTHON) -> str:
     if name == 'machine-status':
         return machine_service(python)
@@ -109,14 +121,16 @@ def service(name: str, python: Path = PYTHON) -> str:
     after = ('network-online.target homecompute-agents-vm.service ' + PREFIX + 'machine-status.service' if name == 'adapter'
              else PREFIX + 'adapter.service network-online.target')
     wants = 'network-online.target' + (' ' + PREFIX + 'machine-status.service' if name == 'adapter' else '')
-    restart = 'on-failure' if name in {'telegram', 'update-feed'} else 'always'
-    kind = 'oneshot' if name == 'update-feed' else 'simple'
+    restart = 'no' if name.endswith('task-reminders') else 'on-failure' if name in {'telegram', 'update-feed'} else 'always'
+    kind = 'oneshot' if name == 'update-feed' or name.endswith('task-reminders') else 'simple'
+    task_config = {'household-task-reminders': 'household-tasks.json', 'family-task-reminders': 'family-tasks.json'}.get(name)
+    condition = f'ConditionPathExists={CONFIG}/{task_config}\n' if task_config else ''
     pre = (f'ExecStartPre=+{python} {DEST}/scripts/openclaw-observation-feed.py --project-core-model\n'
            if name == 'update-feed' else '')
     writable = f'{HOME} {REPORTS}' if name == 'update-feed' else str(HOME)
     return f'''[Unit]
 Description=HomeCompute OpenClaw {name}
-After={after}
+{condition}After={after}
 Wants={wants}
 StartLimitIntervalSec=0
 [Service]
@@ -156,8 +170,6 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 '''
-
-
 def machine_service(python: Path = PYTHON) -> str:
     return f'''[Unit]
 Description=HomeCompute finite public machine status projection
@@ -182,7 +194,7 @@ ProtectKernelModules=yes
 ProtectKernelTunables=yes
 ProtectClock=yes
 ProtectControlGroups=yes
-CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
 AmbientCapabilities=
 RestrictAddressFamilies=AF_UNIX
 ReadWritePaths={REPORTS}
@@ -192,10 +204,9 @@ LimitCORE=0
 StandardOutput=journal
 StandardError=journal
 '''
-
-
 def timer(name: str = 'update-feed') -> str:
-    boot, interval = ('5s', '30s') if name == 'machine-status' else ('30s', '300s')
+    boot, interval = (('5s', '30s') if name == 'machine-status' else
+                      ('60s', '60s') if name.endswith('task-reminders') else ('30s', '300s'))
     return f'''[Unit]
 Description=HomeCompute OpenClaw {name} observations
 [Timer]
@@ -206,8 +217,6 @@ Unit={PREFIX}{name}.service
 [Install]
 WantedBy=timers.target
 '''
-
-
 def protected_directory(path: Path, uid: int, private: bool, create: bool = False,
                         gid: int | None = None) -> None:
     if any(parent.is_symlink() for parent in (path, *path.parents)):
@@ -219,7 +228,6 @@ def protected_directory(path: Path, uid: int, private: bool, create: bool = Fals
     prohibited = 0o077 if private else 0o022
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != uid or info.st_mode & prohibited:
         raise ValueError('directory owner or permissions differ from service boundary')
-
 
 def private_file(path: Path, uid: int, *, json_object: bool = True) -> dict[str, Any]:
     if any(parent.is_symlink() for parent in path.parents):
@@ -263,6 +271,18 @@ def validate_ready(uid: int, telegram: bool = False) -> None:
         private_file(CONFIG / name, uid)
     if (CONFIG / 'native-mcp-tokens.json').exists():
         private_file(CONFIG / 'native-mcp-tokens.json', uid)
+    for filename, port, token_name in (('access-requests.json', 18812, 'access-request-token'),
+                                       ('site-operations.json', 18816, 'site-operation-token')):
+        if not (CONFIG / filename).exists():
+            continue
+        expected = {'schema_version': 1, 'principal': 'openclaw', 'endpoint': f'http://127.0.0.1:{port}',
+                    'token_file': str(CONFIG / token_name)}
+        actual = private_file(CONFIG / filename, uid)
+        if (actual != expected or type(actual.get('schema_version')) is not int
+                or not (CONFIG / 'native-mcp-tokens.json').exists()
+                or filename == 'site-operations.json' and not (CONFIG / 'access-requests.json').exists()):
+            raise ValueError('fixed authenticated account bridge configuration required')
+        private_file(CONFIG / token_name, uid, json_object=False)
     if (CONFIG / 'services.json').exists():
         services = private_file(CONFIG / 'services.json', uid)
         if services != {'schema_version': 1, 'tavily_token_file': str(CONFIG / 'tavily-search-token')}:
@@ -280,6 +300,46 @@ def validate_ready(uid: int, telegram: bool = False) -> None:
         if not (CONFIG / 'services.json').exists() or not (CONFIG / 'native-mcp-tokens.json').exists():
             raise ValueError('calendar tools require authenticated native service transport')
         private_file(CONFIG / 'calendar-route-token', uid, json_object=False)
+    for scope, filename in (('household', 'household-tasks.json'), ('family', 'family-tasks.json')):
+        if not (CONFIG / filename).exists():
+            continue
+        tasks = private_file(CONFIG / filename, uid)
+        token_file = CONFIG / (scope + '-task-mattermost-token')
+        if (set(tasks) != {'schema_version', 'channel_id', 'bot_id', 'token_file'}
+                or type(tasks['schema_version']) is not int or tasks['schema_version'] != 1
+                or tasks['token_file'] != str(token_file)
+                or any(not isinstance(tasks[k], str) or len(tasks[k]) != 26
+                       or not tasks[k].isascii() or not tasks[k].isalnum() or tasks[k] != tasks[k].lower()
+                       for k in ('channel_id', 'bot_id'))):
+            raise ValueError('fixed private household task configuration required')
+        required = ('services.json', 'native-mcp-tokens.json') + (('household.json',) if scope == 'family' else ())
+        if any(not (CONFIG / name).exists() for name in required):
+            raise ValueError('household task tools require authenticated service transport')
+        private_file(token_file, uid, json_object=False)
+    if (CONFIG / 'mail.json').exists():
+        mail = private_file(CONFIG / 'mail.json', uid)
+        if (type(mail.get('schema_version')) is not int
+                or mail['principal_scope'] != 'owner' or mail['data_domain'] != 'personal'
+                or mail['accounts'] not in ([], ['outlook_mads'])):
+            raise ValueError('fixed private mail configuration required')
+        if not (CONFIG / 'services.json').exists() or not (CONFIG / 'native-mcp-tokens.json').exists():
+            raise ValueError('mail tools require authenticated native service transport')
+        if mail['schema_version'] == 2:
+            if (set(mail) != {'schema_version', 'provider', 'outlook_config_file', 'principal_scope', 'data_domain', 'accounts'}
+                    or mail['provider'] != 'outlook-direct'
+                    or mail['outlook_config_file'] != str(CONFIG / 'outlook-owner/client.json')):
+                raise ValueError('fixed direct Outlook configuration required')
+            if mail['accounts']:
+                private_file(CONFIG / 'outlook-owner/client.json', uid)
+                private_file(CONFIG / 'outlook-owner/token.json', uid)
+        elif mail['schema_version'] == 1:
+            if (set(mail) != {'schema_version', 'bridge_token_file', 'principal_scope', 'data_domain', 'accounts'}
+                    or mail['bridge_token_file'] != str(CONFIG / 'mail-owner-route-token')):
+                raise ValueError('fixed private mail configuration required')
+            if mail['accounts']:
+                private_file(CONFIG / 'mail-owner-route-token', uid, json_object=False)
+        else:
+            raise ValueError('unsupported mail configuration')
     if (CONFIG / 'home-assistant.json').exists():
         ha = private_file(CONFIG / 'home-assistant.json', uid)
         token_path = Path(ha.get('token_file', ''))
@@ -386,7 +446,7 @@ def install(files: dict[str, bytes]) -> None:
         enable(name, name in {'adapter', 'task-feed'})
     for name in TIMERS:
         write(UNIT_DIR / (PREFIX + name + '.timer'), timer(name).encode())
-        enable(name, True, timer_unit=True)
+        enable(name, timer_configured(name), timer_unit=True)
     protected_directory(TMPFILES.parent, 0, False)
     write(TMPFILES, f'd {REPORTS} 0755 root root -\n'.encode())
     call('systemd-tmpfiles', '--create', str(TMPFILES))
@@ -404,9 +464,11 @@ def validate_units(unit_names: list[str]) -> None:
 
 
 def activate(telegram: bool = False) -> None:
+    if telegram:
+        raise ValueError('Telegram is outbound-only; inbound receiver activation is retired')
     validate_ready(account().pw_uid, telegram)
     selected = ('telegram',) if telegram else ('machine-status', 'adapter', 'task-feed', 'update-feed')
-    timers = () if telegram else TIMERS
+    timers = () if telegram else tuple(name for name in TIMERS if timer_configured(name))
     validate_units([name + '.service' for name in selected] + [name + '.timer' for name in timers])
     for name in selected:
         if name not in {'update-feed', 'machine-status'}:
@@ -425,7 +487,7 @@ def main(argv: list[str] | None = None) -> int:
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument('--install', action='store_true', help='stage and enable adapter/feeds; start nothing; Telegram disabled')
     actions.add_argument('--activate-services', action='store_true', help='start adapter/task/update feeds after migration')
-    actions.add_argument('--activate-telegram', action='store_true', help='enable/start receiver only after reconciliation')
+    actions.add_argument('--activate-telegram', action='store_true', help='retired: Telegram is outbound-only')
     parser.add_argument('--source', type=Path, help='trusted checkout containing scripts/config; required for install')
     args = parser.parse_args(argv)
     try:
@@ -446,7 +508,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             activate(args.activate_telegram)
             result = {'started': ['telegram'] if args.activate_telegram else
-                      ['machine-status', 'adapter', 'task-feed', 'update-feed', 'machine-status.timer', 'update-feed.timer']}
+                      ['machine-status', 'adapter', 'task-feed', 'update-feed',
+                       *[name + '.timer' for name in TIMERS if timer_configured(name)]]}
         print(json.dumps(result))
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError):
