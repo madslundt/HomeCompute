@@ -212,6 +212,17 @@ unchanged. The normal configuration remains the rollback baseline until the
 candidate has measured evidence and is reconciled into the canonical settings.
 This does not change Flash or move speech inference to the CPU.
 
+Identity checks project Compose's serialized `$$` into the single `$` received
+by Docker's Engine command, exactly once on the expected declaration. This
+preserves the existing file-based API-key assignment. Observed commands remain
+untouched, and every other byte, model flag, authentication path and image must
+still match. The regression creates and inspects stopped public fixture
+containers from both original and rendered Compose documents; it runs no model
+or fixture shell command and removes its unique test project afterward.
+Recovery-marker cleanup also requires a running, healthy container with the
+exact saved image and projected command. Stale health on a stopped container,
+an unrecognized image or unreadable state keeps the marker for recovery.
+
 Run from a reviewed, published immutable release on `home-spark`, with root
 access. Use the pinned public FLEURS corpus prepared by
 `benchmarks/whisper_cpu_benchmark.py`; the capacity benchmark accepts only its

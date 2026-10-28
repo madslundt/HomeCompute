@@ -20,7 +20,7 @@ import sys
 
 sys.dont_write_bytecode = True
 from speech_capacity import (BUDGETS, CONTAINERS, SERVICES, FAILURE_PREFIX, BaselineMismatch,
-                             activate, activation_approved, candidate, failure_metadata, verify_baseline)
+                             activate, activation_approved, candidate, engine_command, failure_metadata, verify_baseline)
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute-speech-capacity')
@@ -188,10 +188,30 @@ def actual_profiles(directory: Path) -> dict:
         profile = 'unrecognized'
         for label in ['baseline', 'candidate']:
             service = json.loads((directory / (key + '-' + label + '.json')).read_text())['services'][SERVICES[key]]
-            if data['Image'] == service['image'] and data['Config']['Cmd'] == service['command']:
+            if data['Image'] == service['image'] and data['Config']['Cmd'] == engine_command(service['command']):
                 profile = label
-        result[key] = {'profile': profile, 'healthy': data['State'].get('Health', {}).get('Status') == 'healthy'}
+        result[key] = {'profile': profile, 'healthy': profile != 'unrecognized' and runtime_healthy(data)}
     return result
+
+
+def runtime_healthy(data: dict) -> bool:
+    state = data.get('State', {})
+    return state.get('Running') is True and state.get('Health', {}).get('Status') == 'healthy'
+
+
+def baseline_restored(original: dict) -> bool:
+    # A stopped container may retain its old healthy result. A failed or
+    # unreadable restoration must keep the recovery marker, not hide drift.
+    try:
+        for key, name in CONTAINERS.items():
+            data = inspect(name)
+            expected = original[key]['services'][SERVICES[key]]
+            if (not runtime_healthy(data) or data['Image'] != expected['image'] or
+                    data['Config']['Cmd'] != engine_command(expected['command'])):
+                return False
+    except Exception:
+        return False
+    return True
 
 
 def main() -> None:
@@ -237,9 +257,7 @@ def main() -> None:
         except Exception:
             # activate() attempted both restorations. Verify again and retain
             # the marker if either baseline is not healthy; never hide drift.
-            if all(inspect(name)['State'].get('Health', {}).get('Status') == 'healthy'
-                   and inspect(name)['Config']['Cmd'] == original[key]['services'][SERVICES[key]]['command']
-                   for key, name in CONTAINERS.items()):
+            if baseline_restored(original):
                 (STATE / 'active.json').unlink()
             raise
         print(json.dumps({'candidate_active': True, 'accepted': False,

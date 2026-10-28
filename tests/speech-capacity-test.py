@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,6 +122,99 @@ class CapacityTest(unittest.TestCase):
             changed['hviske'][field] = 'unexpected'
             with self.assertRaisesRegex(ValueError, 'differs'):
                 m.verify_baseline(original, changed)
+
+    def test_expected_compose_dollar_projection_preserves_every_other_byte(self):
+        original=fixtures()
+        rendered='export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"\n'
+        original['hviske']['services']['hviske-primary']['command'][0]=rendered+original['hviske']['services']['hviske-primary']['command'][0]
+        running={key:{'image':value['services'][m.SERVICES[key]]['image'],
+                      'command':list(value['services'][m.SERVICES[key]]['command'])} for key,value in original.items()}
+        running['hviske']['command'][0]=running['hviske']['command'][0].replace('$$(cat','$(cat')
+        m.verify_baseline(original,running)
+        valid=running['hviske']['command'][0]
+        for changed in [valid.replace('$(cat','$$(cat'),valid.replace('vllm_api_key','other_key'),
+                        valid.replace('"4"','"8"'),valid.replace('"0.10"','"0.05"'),valid+' ',
+                        valid.replace('--revision pinned','--revision different')]:
+            running['hviske']['command']=[changed]
+            with self.subTest(changed=changed[-25:]),self.assertRaises(m.BaselineMismatch):
+                m.verify_baseline(original,running)
+        self.assertEqual(m.engine_command(['$$$$','$$','$']),['$$','$','$'])
+
+    def test_actual_profile_uses_engine_projection_for_baseline_and_candidate(self):
+        original=fixtures()
+        original['hviske']['services']['hviske-primary']['command'][0]='export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"\n'+original['hviske']['services']['hviske-primary']['command'][0]
+        staged=m.candidate(original)
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary)
+            for label,values in [('baseline',original),('candidate',staged)]:
+                for key,value in values.items():(directory/(key+'-'+label+'.json')).write_text(json.dumps(value))
+            for label,values in [('baseline',original),('candidate',staged)]:
+                observed={}
+                for key,value in values.items():
+                    service=value['services'][m.SERVICES[key]]
+                    command=list(service['command'])
+                    if key=='hviske':command[0]=command[0].replace('$$(cat','$(cat')
+                    observed[q.CONTAINERS[key]]={'Image':service['image'],'Config':{'Cmd':command},'State':{'Running':True,'Health':{'Status':'healthy'}}}
+                with patch.object(q,'inspect',side_effect=lambda name:observed[name]):
+                    result=q.actual_profiles(directory)
+                self.assertEqual({row['profile'] for row in result.values()},{label})
+                observed[q.CONTAINERS['hviske']]['State']['Running']=False
+                with patch.object(q,'inspect',side_effect=lambda name:observed[name]):
+                    self.assertFalse(q.actual_profiles(directory)['hviske']['healthy'])
+                observed[q.CONTAINERS['hviske']]['State']['Running']=True
+                observed[q.CONTAINERS['hviske']]['Image']='sha256:'+'f'*64
+                with patch.object(q,'inspect',side_effect=lambda name:observed[name]):
+                    result=q.actual_profiles(directory)['hviske']
+                self.assertEqual(result,{'profile':'unrecognized','healthy':False})
+
+    def test_failed_apply_keeps_marker_for_stale_health_wrong_image_or_unreadable_state(self):
+        original=fixtures();staged=m.candidate(original);plan={'plan_sha256':'a'*64}
+        observed={q.CONTAINERS[key]:{'Image':value['services'][m.SERVICES[key]]['image'],
+                    'Config':{'Cmd':m.engine_command(value['services'][m.SERVICES[key]]['command'])},
+                    'State':{'Running':True,'Health':{'Status':'healthy'}}} for key,value in original.items()}
+        for case in ['healthy','stopped','wrong-image','unreadable']:
+            with self.subTest(case=case),tempfile.TemporaryDirectory() as temporary:
+                data=deepcopy(observed)
+                if case=='stopped':data[q.CONTAINERS['hviske']]['State']['Running']=False
+                if case=='wrong-image':data[q.CONTAINERS['hviske']]['Image']='sha256:'+'f'*64
+                def inspect(name):
+                    if case=='unreadable':raise RuntimeError('inspection unavailable')
+                    return data[name]
+                state=Path(temporary)/'state'
+                with patch.object(q,'STATE',state),patch.object(q,'release',return_value='b'*40), \
+                        patch.object(q,'protected'),patch.object(q,'prepare',return_value=(plan,original,staged)), \
+                        patch.object(q,'activate',side_effect=RuntimeError('activation failed')), \
+                        patch.object(q,'inspect',side_effect=inspect), \
+                        patch.object(sys,'argv',['qualifier','apply','--plan-sha256','a'*64,'--speech-idle']):
+                    with self.assertRaisesRegex(RuntimeError,'activation failed'):q.main()
+                self.assertEqual((state/'active.json').exists(),case!='healthy')
+
+    def test_real_compose_create_projects_dollars_once_for_original_and_rendered_json(self):
+        image='homecompute/speech-adapters:wyoming-1.10.2'
+        if subprocess.run(['docker','image','inspect',image],capture_output=True).returncode:
+            self.skipTest('Build the pinned CPU speech test image first')
+        with tempfile.TemporaryDirectory() as temporary:
+            directory=Path(temporary);project='hc-capacity-projection-'+uuid.uuid4().hex[:12]
+            declaration={'name':project,'services':{'fixture':{'image':image,'entrypoint':['/bin/sh','-ec'],
+                'command':['PUBLIC_VALUE="$$(printf fixture)"; printf "%s" "$$PUBLIC_VALUE"; printf "%s" \'$$$$\''],
+                'network_mode':'none','read_only':True,'cap_drop':['ALL'],'user':'65532:65532',
+                'mem_limit':'32m','pids_limit':16}}}
+            source=directory/'source.json';source.write_text(json.dumps(declaration))
+            def compose(path,*args):
+                return subprocess.check_output(['docker','compose','--project-name',project,'--env-file','/dev/null','-f',str(path),*args],text=True,stderr=subprocess.PIPE,timeout=30)
+            rendered=json.loads(compose(source,'config','--format','json'))
+            copy=directory/'rendered.json';copy.write_text(json.dumps(rendered))
+            try:
+                for path in (source,copy):
+                    compose(path,'create','--no-build','--pull','never','--force-recreate','fixture')
+                    identifier=compose(path,'ps','-a','-q','fixture').strip()
+                    self.assertRegex(identifier,r'^[0-9a-f]{64}$')
+                    actual=json.loads(subprocess.check_output(['docker','inspect',identifier]))[0]
+                    self.assertEqual(actual['State']['Status'],'created')
+                    self.assertFalse(actual['State']['Running'])
+                    self.assertEqual(actual['Config']['Cmd'],m.engine_command(rendered['services']['fixture']['command']))
+            finally:
+                compose(source,'down','--remove-orphans')
 
     def test_partial_activation_rolls_back_every_started_candidate(self):
         events = []

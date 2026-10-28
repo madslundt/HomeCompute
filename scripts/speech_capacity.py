@@ -75,11 +75,27 @@ def candidate(original: dict) -> dict:
     return result
 
 
+def engine_command(rendered: list[str] | None) -> list[str] | None:
+    """Project Compose's serialized literal dollars to the Engine API command.
+
+    `compose config` preserves $$ so its output can be used as Compose input.
+    Container Config.Cmd contains the single-dollar value after that boundary.
+    Project the expected declaration once; never normalize the observed value.
+    All quotes, whitespace, flags, model pins and authentication paths stay exact.
+    """
+    if rendered is None:
+        return None
+    if not isinstance(rendered, list) or any(not isinstance(word, str) for word in rendered):
+        raise ValueError('A rendered command must be an argument list')
+    return [word.replace('$$', '$') for word in rendered]
+
+
 def verify_baseline(original: dict, running: dict) -> None:
     for key, service in SERVICES.items():
         expected = original[key]['services'][service]
         for field in ('image', 'command'):
-            if running[key][field] != expected[field]:
+            declared = engine_command(expected[field]) if field == 'command' else expected[field]
+            if running[key][field] != declared:
                 raise BaselineMismatch(key, field)
 
 
