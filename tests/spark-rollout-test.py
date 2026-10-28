@@ -142,10 +142,10 @@ class RolloutTest(unittest.TestCase):
              patch.object(b,'verify',side_effect=ValueError('dirty')),patch.object(b,'run') as run:
             with self.assertRaises(ValueError): b.materialize('a'*40)
             run.assert_not_called(); self.assertTrue((releases/('a'*40)).is_dir())
-    def test_wizard_library_is_unchanged_and_cli_help_is_noninteractive(self):
+    def test_reviewed_wizard_library_and_noninteractive_cli_help(self):
         script=ROOT/'scripts/spark-rollout-wizard.sh'
         prefix=script.read_text().split('run_wizard() {',1)[0]
-        self.assertEqual(hashlib.sha256(prefix.encode()).hexdigest(),'0394d53662b5aa17057d3f58f15ac25a26a6f62baef227e4e86618759f43c510')
+        self.assertEqual(hashlib.sha256(prefix.encode()).hexdigest(),'19be94ff8fdb41ad0a34bc66d6a3b638a46f31ddd3da1376fdbc4cd1f02e7183')
         result=subprocess.run(['bash',str(script),'--help'],capture_output=True,text=True,timeout=5)
         self.assertEqual(result.returncode,0); self.assertIn('published release',result.stdout)
     def test_corpus_pin_is_exactly_the_reviewed_public_danish_selection(self):

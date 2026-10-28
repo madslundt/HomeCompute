@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import subprocess
 import threading
 import time
 from typing import Any
@@ -23,7 +24,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from openclaw_services import NoRedirect, private, rpc_result
+from openclaw_services import private, rpc_result
+from openclaw_integration_http import Opener
 
 PROVIDERS = ('context7', 'maps', 'hotels', 'immich', 'n8n')
 CONFIG_ROOT = Path('/var/lib/homecompute-openclaw/config')
@@ -141,7 +143,7 @@ class Integrations:
     def __init__(self, catalog: Path, state: Path):
         self.config = configuration(catalog)
         self.tools = copy.deepcopy(TOOLS)
-        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        self.opener = Opener()
         self.lock = threading.Lock()
         self._places_lock, self._places_next = threading.Lock(), 0.0
         if any(p.is_symlink() for p in (state, *state.parents)):
@@ -199,9 +201,19 @@ class Integrations:
         req = urllib.request.Request(url, data=json.dumps(body, allow_nan=False).encode() if body is not None else None,
                                      headers={'Content-Type': 'application/json', **headers}, method=method)
         with self.opener.open(req, timeout=remaining) as response:
-            raw = response.read(MAX_BYTES + 1)
-            if response.status not in {200, 202, 204} or len(raw) > MAX_BYTES or time.monotonic() > deadline:
+            if response.status not in {200, 202, 204}:
                 raise ValueError('Integration response refused')
+            chunks, size = [], 0
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0: raise TimeoutError
+                chunk = response.read1(min(65536, MAX_BYTES + 1 - size))
+                size += len(chunk)
+                if size > MAX_BYTES or time.monotonic() > deadline:
+                    raise ValueError('Integration response refused')
+                if not chunk: break
+                chunks.append(chunk)
+            raw = b''.join(chunks)
             return raw, response.headers
 
     def _mcp(self, provider: str, name: str, arguments: dict, token: str | None, deadline: float) -> Any:
@@ -307,7 +319,7 @@ class Integrations:
                     'retrieved_at': datetime.now(timezone.utc).isoformat(), 'untrusted_content': True,
                     'archive_status': 'not_archived',
                     'limitations': 'Bounded source evidence. Hotel recommendations are not matching quotes or bookings. Preserve source attribution.'}
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError, RecursionError, OverflowError, sqlite3.Error) as error:
+        except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError, RecursionError, OverflowError, sqlite3.Error, subprocess.TimeoutExpired) as error:
             from openclaw_places import AmbiguousPlace
             if isinstance(error, AmbiguousPlace):
                 return {'provider': provider, 'status': 'clarification_required', 'candidates': evidence(error.candidates, token)}

@@ -258,7 +258,8 @@ def weekly_letter_page(payload: Any, offset: int) -> dict[str, Any]:
 
 class Services:
     def __init__(self, config: Path, household: Any = None, calendar: Any = None, *, ranker: Any = None,
-                 school_index: Any = None, research_index: Any = None):
+                 school_index: Any = None, research_index: Any = None, household_tasks: Any = None, mail: Any = None,
+                 family_tasks: Any = None):
         try:
             cfg=json.loads(private(config,4096))
             if (not isinstance(cfg,dict) or set(cfg)!={'schema_version','tavily_token_file'}
@@ -275,12 +276,19 @@ class Services:
         self._search_lock = threading.Lock()
         self.household=household
         self.calendar=calendar
+        self.household_tasks=household_tasks
+        self.family_tasks=family_tasks
+        self.mail=mail
         self.ranker=ranker if ranker is not None else SemanticRanker()
         # The caller's query can never select a path, namespace, or data domain.
         self._retrieval_root=config.parent.resolve() / 'retrieval'
         self._indexes={'school':school_index,'research':research_index}
         self._archive_lock=threading.Lock()
-        self.tools=copy.deepcopy(TOOLS) + (household.tools if household is not None else []) + (calendar.tools if calendar is not None else [])
+        self.tools=(copy.deepcopy(TOOLS) + (household.tools if household is not None else [])
+                    + (calendar.tools if calendar is not None else [])
+                    + (household_tasks.tools if household_tasks is not None else [])
+                    + (family_tasks.tools if family_tasks is not None else [])
+                    + (mail.tools if mail is not None else []))
 
     def _index(self, domain: str) -> Any:
         with self._archive_lock:
@@ -329,6 +337,9 @@ class Services:
                 'evidence_policy':'No search results have been retrieved. Navigate, snapshot, then close only your returned targetId. Cite observed source URLs; stop on CAPTCHA or policy refusal.'}
 
     def validate(self, operation: str, args: Any) -> dict[str, Any]:
+        for facade in (getattr(self, 'household_tasks', None), getattr(self, 'family_tasks', None), getattr(self, 'mail', None)):
+            if facade is not None and operation in {tool['name'] for tool in facade.tools}:
+                return facade.validate(operation,args)
         if self.calendar is not None and operation in {tool['name'] for tool in self.calendar.tools}:
             return self.calendar.validate(operation,args)
         if self.household is not None and operation in {tool['name'] for tool in self.household.tools}:
@@ -415,6 +426,9 @@ class Services:
                 except (OSError,ValueError): pass
 
     def request(self, operation: str, args: Any) -> dict[str, Any]:
+        for facade in (getattr(self, 'household_tasks', None), getattr(self, 'family_tasks', None), getattr(self, 'mail', None)):
+            if facade is not None and operation in {tool['name'] for tool in facade.tools}:
+                return facade.request(operation,args)
         if self.calendar is not None and operation in {tool['name'] for tool in self.calendar.tools}:
             return self.calendar.request(operation,args)
         if self.household is not None and operation in {tool['name'] for tool in self.household.tools}:

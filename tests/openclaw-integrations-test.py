@@ -5,9 +5,13 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
+import threading
+import time
 import unittest
 import urllib.error
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +115,50 @@ class IntegrationsTest(unittest.TestCase):
         second = integrations.Integrations(self.catalog, self.root / 'state'); second.opener = Mock()
         self.assertEqual(second.request('homecompute_docs_resolve', {'library': 'Python', 'query': 'pathlib'})['status'], 'hourly_budget_exhausted')
         second.opener.open.assert_not_called()
+
+    def test_http_deadline_stops_a_trickling_body(self):
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                self.send_response(200); self.send_header('Content-Length', '20'); self.end_headers()
+                try:
+                    for _ in range(20):
+                        self.wfile.write(b'x'); self.wfile.flush(); time.sleep(0.06)
+                except (BrokenPipeError, ConnectionResetError): pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True)
+        thread.start()
+        try:
+            started = time.monotonic()
+            with self.assertRaises((TimeoutError, ValueError, OSError, subprocess.TimeoutExpired)):
+                self.service._http('http://127.0.0.1:' + str(server.server_port), None, {}, started + 0.15)
+            self.assertLess(time.monotonic() - started, 0.5)
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=1)
+
+    def test_http_deadline_includes_chunk_framing_and_initial_response_headers(self):
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args): pass
+            def do_GET(self):
+                try:
+                    if self.path == '/headers':
+                        content = b'HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n'
+                    else:
+                        self.send_response(200); self.send_header('Transfer-Encoding', 'chunked'); self.end_headers()
+                        content = b'0000000001\r\nx\r\n0\r\n\r\n'
+                    for byte in content:
+                        self.wfile.write(bytes([byte])); self.wfile.flush(); time.sleep(0.06)
+                except (BrokenPipeError, ConnectionResetError): pass
+        server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, kwargs={'poll_interval': 0.01}, daemon=True); thread.start()
+        try:
+            for path in ('/headers', '/chunks'):
+                started = time.monotonic()
+                with self.subTest(path=path), self.assertRaises((TimeoutError, ValueError, OSError, subprocess.TimeoutExpired)):
+                    self.service._http('http://127.0.0.1:' + str(server.server_port) + path, None, {}, started + 0.2)
+                self.assertLess(time.monotonic() - started, 0.6)
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=1)
 
     def test_upstream_errors_and_redirects_cannot_expose_keys_or_trigger_retries(self):
         self.credential('context7')

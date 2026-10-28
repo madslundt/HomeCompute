@@ -219,9 +219,19 @@ Harrier document embedding route.
    existing managed sandbox tooling procedure. No automatic gateway restart
    occurs. Reapplying the team installer preserves an intact integration grant;
    a partial or revoked grant is refused rather than restored.
-4. Reconcile the updated managed skills and identity instructions through the
-   existing team installer with its source/config/skill hash checks. Restart
-   through the supported native lifecycle and refresh MCP discovery.
+4. Preserve the installed roster, which can be newer than the original team
+   manifest. Stage the selected release's `setup-openclaw-integration-instructions.py`,
+   `openclaw_integration_policy.py`, `config/openclaw-integration-instructions.json`
+   and the three changed managed skills under their source-relative paths in a
+   protected native staging directory. Run the instruction installer as the native
+   config owner with `--source STAGING` (default dry-run). Review its exact file
+   hashes, then apply with `--apply --expected-plan-sha256 HASH`. It changes only
+   a separate integration block in the six specialists' identity files and the
+   three selected skills already assigned by native configuration. It preserves
+   the full current native config, existing team blocks, extra roles and unrelated
+   skill-ledger entries, and retains private before copies. Do not reapply the old
+   eight-role team manifest over the installed twelve-role roster.
+   Restart through the supported native lifecycle and refresh MCP discovery.
 5. From actual specialist sessions, check `integration_status`, then one
    permitted call. Verify an unrelated specialist and Family cannot invoke
    that tool, and Atlas delegates. Test an unavailable key without disclosing
@@ -229,7 +239,10 @@ Harrier document embedding route.
    establish a successful provider request.
 
 Requests use fixed origins, no proxy environment or redirects, finite inputs,
-bounded responses and one deadline. The SQLite hourly ledger stores only
+bounded responses and one deadline. Provider HTTP runs in at most two isolated
+workers; the parent kills/reaps an overdue worker, including stalled DNS, TLS,
+headers, chunk framing and bodies. Keys travel through private anonymous pipes,
+never worker command arguments or diagnostics. The SQLite hourly ledger stores only
 provider name, UTC hour and call count; budgets survive adapter restarts.
 Failed provider attempts consume budget too. No request text, key, response
 or vector is stored there. No provider output enters the research archive.
@@ -280,8 +293,8 @@ Geoapify, Immich and n8n credentials were not provisioned by this task. Native
 activation, provider access and post-release role denials still require the
 qualified rollout above.
 
-Focused provider, grant, team, installer, transport and roster checks passed
-(76 tests). The repository validator passed its test phase after correcting a
+Focused provider, grant, instruction, team, installer, transport and roster
+checks passed. The repository validator passed its test phase after correcting a
 stale existing Lyra research-search assertion, then stopped at an unrelated
 compute SSH tunnel guard: the untouched source forwards automation to port
 18400 while the validator expects 18300. That mismatch was reproduced on the
@@ -296,3 +309,22 @@ and the expected timezone. The new provider and existing policy/installer
 checks passed (73 focused tests). Geoapify live qualification still requires
 its dedicated key; no production
 rollout or key copying was performed by this change.
+
+## Review and deployment preparation — 2026-10-28
+
+Review found and fixed a total HTTP deadline gap and an instruction rollout that
+would reject the newer live roster. Regression checks cover slow body/header/chunk
+streams, twelve-role preservation and instruction hash fences. One ephemeral
+pre-release hotel check on home-core returned five Google Hotels leads with the
+requested dates, two adults, child ages 4/7 and DKK; results were not archived.
+This verifies the provider contract, not a Lyra session or an installed release.
+The owner's SerpApi file was verified private, accepted and active.
+
+The communication bundle also contained already-deployed, pending source for
+household/Family tasks, reminders, speech, finite access/site bridges and paused
+mail/Telegram replies. Runtime source hashes were compared before reconciliation;
+these dependencies are retained to avoid reverting them during installation.
+The bounded metadata reader and its HA workflow projection/fixtures are reconciled
+with that existing contract. Host declarations, model choices and native roster
+reconstruction are outside this release. The broader host revision marker remains
+separate from this workload's dedicated communication lifecycle.

@@ -9,11 +9,13 @@ import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
+import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from openclaw_notifications import Outbox
+from openclaw_household_tasks import FamilyTasks, HouseholdTasks
 import openclaw_services
 spec = importlib.util.spec_from_file_location('communication', ROOT / 'scripts/openclaw-communication.py')
 communication = importlib.util.module_from_spec(spec)
@@ -21,6 +23,29 @@ spec.loader.exec_module(communication)
 
 
 class ServiceWiringTests(unittest.TestCase):
+    def test_family_task_tools_dispatch_to_isolated_store_and_cannot_impersonate_owner(self):
+        from uuid import uuid4
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); root.chmod(0o700)
+            token = root / 'token'; token.write_text('tvly-synthetic-not-live'); token.chmod(0o600)
+            config = root / 'services.json'
+            config.write_text(json.dumps({'schema_version': 1, 'tavily_token_file': str(token)})); config.chmod(0o600)
+            owner = HouseholdTasks(root)
+            owner.request('homecompute_household_task_create', {'title': 'Private task', 'request_id': str(uuid4())})
+            family = FamilyTasks(root)
+            with patch.object(openclaw_services, 'TOKEN_PATH', token):
+                services = openclaw_services.Services(config, family_tasks=family)
+            names = {tool['name'] for tool in services.tools}
+            self.assertIn('homecompute_family_task_create', names)
+            self.assertNotIn('homecompute_household_task_list', names)
+            args = {'title': 'Shared task', 'request_id': str(uuid4())}
+            self.assertEqual(services.validate('homecompute_family_task_create', args), args)
+            self.assertEqual(services.request('homecompute_family_task_create', args)['source'], 'shared-family-tasks')
+            result = services.request('homecompute_family_task_list', {})
+            self.assertEqual([t['title'] for t in result['tasks']], ['Shared task'])
+            with self.assertRaises(ValueError): services.request('homecompute_household_task_list', {})
+            with self.assertRaises(ValueError): services.validate('homecompute_family_task_list', {'scope': 'owner'})
+
     def test_calendar_composes_with_existing_services_and_routes_typed_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -78,13 +103,19 @@ class ServiceWiringTests(unittest.TestCase):
                     return json.loads(response.read())
             try:
                 self.assertIn(name, [tool['name'] for tool in rpc('tools/list')['result']['tools']])
-                self.assertNotIn(name, [tool['name'] for tool in rpc('tools/list', actor='hermes')['result']['tools']])
+                with self.assertRaises(urllib.error.HTTPError) as denied:
+                    rpc('tools/list', actor='hermes')
+                self.assertEqual(denied.exception.code, 401)
+                denied.exception.close()
                 arguments = {'query': 'synthetic'}
                 result = rpc('tools/call', {'name': name, 'arguments': arguments})
                 self.assertFalse(result['result']['isError'])
                 services.request.assert_called_once_with(name, arguments)
-                for tool, args, actor in ((name, arguments, 'hermes'),
-                    (name, {**arguments, 'url': 'http://private'}, 'openclaw'),
+                with self.assertRaises(urllib.error.HTTPError) as denied:
+                    rpc('tools/call', {'name': name, 'arguments': arguments}, 'hermes')
+                self.assertEqual(denied.exception.code, 401)
+                denied.exception.close()
+                for tool, args, actor in ((name, {**arguments, 'url': 'http://private'}, 'openclaw'),
                     ('homecompute_school_send_message', {}, 'openclaw')):
                     result = rpc('tools/call', {'name': tool, 'arguments': args}, actor)
                     self.assertEqual(result['error']['code'], -32602)

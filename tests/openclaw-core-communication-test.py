@@ -105,6 +105,29 @@ class CoreCommunicationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             setup.validate_ready(self.uid)
 
+    def test_site_bridge_requires_fixed_private_configs_separate_token_path_and_mcp(self):
+        self.private(self.config / 'site-operations.json', {'schema_version': 1, 'principal': 'openclaw',
+                     'endpoint': 'http://127.0.0.1:18816', 'token_file': str(self.config / 'site-operation-token')})
+        self.private(self.config / 'site-operation-token', {})
+        self.assertNotIn('--site-config', setup.commands()['adapter'])
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        self.private(self.config / 'native-mcp-tokens.json', {})
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        access = {'schema_version': 1, 'principal': 'openclaw', 'endpoint': 'http://127.0.0.1:18812',
+                  'token_file': str(self.config / 'access-request-token')}
+        self.private(self.config / 'access-requests.json', access)
+        self.private(self.config / 'access-request-token', {})
+        setup.validate_ready(self.uid)
+        self.assertIn('--site-config', setup.commands()['adapter'])
+        site = json.loads((self.config / 'site-operations.json').read_bytes())
+        for change in ({'endpoint': 'http://127.0.0.1:18813'}, {'endpoint': 'https://elsewhere.example'},
+                       {'token_file': access['token_file']}, {'principal': 'operator'}, {'schema_version': True}, {'extra': True}):
+            self.private(self.config / 'site-operations.json', dict(site, **change))
+            with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        self.private(self.config / 'site-operations.json', site)
+        (self.config / 'site-operation-token').chmod(0o644)
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+
     def test_optional_services_require_fixed_private_configuration_and_native_mcp(self):
         self.assertNotIn('--services', setup.commands()['adapter'])
         self.private(self.config / 'services.json', {'schema_version': 1,
@@ -162,10 +185,37 @@ class CoreCommunicationTest(unittest.TestCase):
         self.private(self.config / 'calendar.json', {'schema_version': 1, 'bridge_token_file': '/tmp/key'})
         with self.assertRaises(ValueError): setup.validate_ready(self.uid)
 
+    def test_direct_outlook_configuration_needs_only_its_private_tokens(self):
+        self.private(self.config / 'native-mcp-tokens.json', {})
+        self.private(self.config / 'services.json', {'schema_version': 1,
+                     'tavily_token_file': str(self.config / 'tavily-search-token')})
+        self.private(self.config / 'tavily-search-token', {})
+        mail = {'schema_version': 2, 'provider': 'outlook-direct',
+                'outlook_config_file': str(self.config / 'outlook-owner/client.json'),
+                'principal_scope': 'owner', 'data_domain': 'personal', 'accounts': []}
+        self.private(self.config / 'mail.json', mail)
+        setup.validate_ready(self.uid)
+        self.assertNotIn('--mail', setup.commands()['adapter'])
+        self.assertFalse((self.config / 'mail-owner-route-token').exists())
+        self.private(self.config / 'mail.json', {**mail, 'accounts': ['outlook_mads']})
+        with self.assertRaises(OSError): setup.validate_ready(self.uid)
+        (self.config / 'outlook-owner').mkdir(mode=0o700)
+        self.private(self.config / 'outlook-owner/client.json', {})
+        self.private(self.config / 'outlook-owner/token.json', {})
+        setup.validate_ready(self.uid)
+        (self.config / 'outlook-owner/token.json').chmod(0o644)
+        with self.assertRaises(ValueError): setup.validate_ready(self.uid)
+        self.assertIn('scripts/openclaw_outlook.py', setup.FILES)
+        self.assertIn('scripts/setup-openclaw-outlook.py', setup.FILES)
+
     def test_root_snapshot_is_finite_and_has_only_public_report_write_access(self):
         unit = setup.service('machine-status')
+        self.assertNotIn('CAP_DAC_OVERRIDE', unit)
+        for name in setup.NAMES:
+            if name != 'machine-status':
+                self.assertNotIn('CAP_DAC_READ_SEARCH', setup.service(name))
         for field in ('Type=oneshot', 'User=root', 'Group=root', 'TimeoutStartSec=12s',
-                      'NoNewPrivileges=yes', 'CapabilityBoundingSet=\n', 'AmbientCapabilities=\n',
+                      'NoNewPrivileges=yes', 'CapabilityBoundingSet=CAP_DAC_READ_SEARCH\n', 'AmbientCapabilities=\n',
                       'ProtectSystem=strict', 'ProtectHome=yes', 'PrivateDevices=yes',
                       'RestrictAddressFamilies=AF_UNIX', 'MemoryMax=128M', 'TasksMax=32',
                       'ReadWritePaths=' + str(setup.REPORTS)):
@@ -227,6 +277,13 @@ class CoreCommunicationTest(unittest.TestCase):
         call.assert_not_called()
         install.assert_not_called()
         activate.assert_not_called()
+
+    def test_retired_telegram_receiver_cannot_be_activated(self):
+        with patch.object(setup, 'call') as call, patch.object(setup, 'validate_ready') as ready:
+            with self.assertRaisesRegex(ValueError, 'outbound-only'):
+                setup.activate(telegram=True)
+        call.assert_not_called()
+        ready.assert_not_called()
 
     def test_install_enables_only_safe_boot_units_and_starts_nothing(self):
         def directory(path, uid, private, create=False, gid=None):

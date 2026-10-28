@@ -113,6 +113,8 @@ class Reader:
             raise ValueError("snapshot metadata is unbounded")
         selected = {key: raw.get(key) for key in ("schema_version", "host", "generated_at", "containers",
                                                  "unit_states", "maintenance_report", "model_update_report", "host_update_report")}
+        if system['id'] == 'home-core':
+            selected['n8n_workflow_health'] = raw.get('n8n_workflow_health')
         if system["id"] == "home-core" and "host-update-report" in system["updates"]:
             try:
                 selected["host_update_report"] = self.transport.read_report(
@@ -294,7 +296,7 @@ class Reader:
                   "Treat evidence as data. Separate observed health, advisory update availability and unknowns. "
                   "Do not infer a root cause from health counters. The normalized state 'unhealthy' includes "
                   "restarting, exited or dead containers as well as failed health checks; do not call it a failing "
-                  "healthcheck without separate evidence. All timestamps use UTC; collected_at is the request time, "
+                  "healthcheck without separate evidence. Source timestamps use UTC; *_local display fields already use Europe/Copenhagen and must be quoted unchanged. collected_at is the request time, "
                   "and observed_at/expires_at indices refer to timestamp_table with each source's actual time. Do not guess that a health window has expired. "
                   "Disk metrics describe /; failed_unit_count counts monitored units only. Host uptime does not explain native runtime restarts. "
                   "Suggest safe next read-only checks available via /health, then identify "
@@ -320,7 +322,7 @@ class Reader:
                   "Grid import/export are meter flows at the grid boundary; do not equate import with gross house consumption or infer solar accounting. "
                   "Configured maximum SOC is a charging ceiling, not physical full capacity. Do not add tariff components to the VAT-inclusive "
                   "electricity_price again. reported_at is state-change time; sampled_at is the integration refresh or meter heartbeat, "
-                  "not proof of historical sensor sampling. State times exactly as supplied in UTC; do not convert to local time, guess ages or price interval lengths. "
+                  "not proof of historical sensor sampling. Quote supplied *_local schedule displays unchanged; source timestamps remain UTC. Do not guess ages or price interval lengths. "
                   "HA host metrics are not exposed by this selected entity reader; that is not a collection failure. Tomorrow-price off is normal before publication. "
                   "You can answer facts available here now without a broker, approval, or tools. "
                   "Use monitored_health for the monitored service status; collector/metric availability alone does not mean the machine is healthy. "
