@@ -69,14 +69,22 @@ shell_files=(
 )
 
 printf '[validate] Bash syntax\n'
-bash -n "${shell_files[@]}"
-sh -n \
+for shell_file in "${shell_files[@]}"; do
+  bash -n "$shell_file"
+done
+for shell_file in \
   "$REPO_ROOT/deploy/control-plane/caddy-entrypoint.sh" \
   "$REPO_ROOT/deploy/control-plane/litellm-entrypoint.sh" \
-  "$REPO_ROOT/deploy/control-plane/postgres-init.sh"
+  "$REPO_ROOT/deploy/control-plane/postgres-init.sh"; do
+  sh -n "$shell_file"
+done
 
 printf '[validate] ShellCheck\n'
 shellcheck "${shell_files[@]}"
+# Keep the wizard skill's immutable library verbatim. Its known SC1087 and
+# unused-helper SC2329 diagnostics are upstream-only; a test pins that prefix.
+bash -n "$REPO_ROOT/scripts/spark-rollout-wizard.sh"
+shellcheck --exclude=SC1087,SC2329 "$REPO_ROOT/scripts/spark-rollout-wizard.sh"
 
 printf '[validate] configuration-loader tests\n'
 bash "$REPO_ROOT/tests/config-loader-test.sh"
@@ -84,6 +92,19 @@ printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
 python3 "$REPO_ROOT/tests/tailscale-module-test.py"
 python3 "$REPO_ROOT/tests/nas-recovery-backup-test.py"
+python3 "$REPO_ROOT/tests/home-core-service-recovery-test.py"
+python3 "$REPO_ROOT/tests/platform-health-test.py"
+python3 "$REPO_ROOT/tests/platform-observability-setup-test.py"
+python3 "$REPO_ROOT/tests/openclaw-machine-snapshot-test.py"
+python3 "$REPO_ROOT/tests/n8n-observations-test.py"
+python3 "$REPO_ROOT/tests/nas-backup-credentials-test.py"
+python3 "$REPO_ROOT/tests/speech-boundary-test.py"
+python3 "$REPO_ROOT/tests/spark-rollout-test.py"
+python3 "$REPO_ROOT/tests/speech-boundary-container-test.py"
+python3 "$REPO_ROOT/tests/speech-capacity-test.py"
+python3 "$REPO_ROOT/tests/speech-capacity-benchmark-test.py"
+python3 "$REPO_ROOT/tests/application-recovery-test.py"
+python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
 printf '[validate] OpenClaw task broker and plugin tests\n'
@@ -572,10 +593,10 @@ COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=https://10.77.10.10:18300/v1
 COMPUTE_HOME_BASE_URL=https://10.77.10.10:8006/v1
 COMPUTE_TRANSPORT=dedicated-link
 PLAPRE_WYOMING_UPSTREAM_HOST=10.77.10.10
-PLAPRE_WYOMING_UPSTREAM_PORT=10201
+PLAPRE_WYOMING_UPSTREAM_PORT=8004
 PLAPRE_WYOMING_LAN_PORT=10201
 HVISKE_WYOMING_UPSTREAM_HOST=10.77.10.10
-HVISKE_WYOMING_UPSTREAM_PORT=10301
+HVISKE_WYOMING_UPSTREAM_PORT=8003
 HVISKE_WYOMING_LAN_PORT=10301
 COMPUTE_EMBEDDING_BASE_URL=http://10.77.10.10:8001/v1
 COMPUTE_VISION_BASE_URL=http://10.77.10.10:8002/v1
@@ -629,7 +650,7 @@ jq -e '
   (.services["plapre-openai-tts"].networks | has("edge")) and
   ([.services["plapre-openai-tts"].secrets[].source] == ["compute_api_key"]) and
   (.services["plapre-openai-tts"].environment.TTS_MODEL_ALIAS == "plapre") and
-  (.services["plapre-openai-tts"].environment.WYOMING_URI == "tcp://plapre-wyoming-proxy:10201") and
+  (.services["plapre-openai-tts"].environment.WYOMING_URI == "tcp://172.28.200.4:10201") and
   (.services["plapre-wyoming-proxy"].ports[0].host_ip == "127.0.0.2") and
   (.services["plapre-wyoming-proxy"].ports[0].published == "10201") and
   (.services["plapre-wyoming-proxy"].ports[0].target == 10201) and
@@ -641,8 +662,20 @@ jq -e '
   (.services["plapre-wyoming-proxy"].read_only == true and .services["hviske-wyoming-proxy"].read_only == true) and
   (.services["plapre-wyoming-proxy"].cap_drop | index("ALL") != null) and
   (.services["hviske-wyoming-proxy"].cap_drop | index("ALL") != null) and
-  (all(.services["plapre-wyoming-proxy"].volumes[]; .read_only == true)) and
-  (all(.services["hviske-wyoming-proxy"].volumes[]; .read_only == true))
+  ((.services["plapre-wyoming-proxy"].volumes // []) | length == 0) and
+  ((.services["hviske-wyoming-proxy"].volumes // []) | length == 0) and
+  (.services["plapre-wyoming-proxy"].entrypoint == ["python3", "/opt/homecompute/plapre-wyoming.py"]) and
+  (.services["hviske-wyoming-proxy"].entrypoint == ["python3", "/opt/homecompute/wyoming-openai-stt.py"]) and
+  (.services["plapre-wyoming-proxy"].environment.PLAPRE_UPSTREAM_URL == "http://10.77.10.10:8004") and
+  (.services["hviske-wyoming-proxy"].environment.STT_UPSTREAM_URL == "http://10.77.10.10:8003/v1/audio/transcriptions") and
+  (.services["plapre-wyoming-proxy"].command | index("--tempo=1.20") != null) and
+  (.services["plapre-wyoming-proxy"].command | index("--voice-alias=danish-default") != null) and
+  (.services["hviske-wyoming-proxy"].secrets | map(.source) == ["compute_api_key"]) and
+  (.services["hviske-wyoming-proxy"].environment.STT_MAX_AUDIO_SECONDS == "60") and
+  ([.services["plapre-wyoming-proxy"], .services["hviske-wyoming-proxy"]] |
+    all(.[]; .build.dockerfile == "deploy/control-plane/Dockerfile.speech-adapters" and
+      .deploy.resources.reservations.devices == null and
+      .healthcheck.test[2] == "/opt/homecompute/speech-adapter-health.py"))
 ' "$control_plane_speech_json" >/dev/null
 rg -F 'iptables -w -A HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RETURN' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
@@ -652,17 +685,15 @@ rg -F 'networking.firewall.interfaces."br-hc-ctrl".allowedTCPPorts = [ 18790 ];'
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
 rg -F 'TCP-LISTEN:18790,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18789' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
-rg -F 'HERMES_UPSTREAM=http://172.28.200.1:18790' \
-  "$REPO_ROOT/config/control-plane.env.example" >/dev/null
 rg -F 'speech_gateway=(docker compose --profile speech-proxies' \
   "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null
 rg -F '"${speech_gateway[@]}" down' \
   "$REPO_ROOT/scripts/deploy-home-core.sh" >/dev/null
 rg -F 'for port in 10201 10301; do' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
-rg -F 'HC-COMPUTE-V2 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10201' \
+rg -F 'HC-COMPUTE-V3 -s 172.28.200.4/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 8004' \
   "$REPO_ROOT/modules/nixos/compute-link.nix" >/dev/null
-rg -F 'HC-COMPUTE-V2 -s 172.28.200.5/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 10301' \
+rg -F 'HC-COMPUTE-V3 -s 172.28.200.5/32 -d 10.77.10.10/32 -o enp45s0 -p tcp --dport 8003' \
   "$REPO_ROOT/modules/nixos/compute-link.nix" >/dev/null
 rg -F 'homecompute.computeSshTunnel.enable = lib.mkDefault true;' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
@@ -682,13 +713,13 @@ rg -F -- '-o ServerAliveInterval=15' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 rg -F -- 'exec ssh -F /dev/null -N -T' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-rg -F -- '-L "$bind_address:18005:127.0.0.1:18300"' \
+rg -F -- '-L "$bind_address:18005:127.0.0.1:18400"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 rg -F -- '-L "$bind_address:18006:127.0.0.1:8006"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-rg -F -- '-L "$bind_address:18201:127.0.0.1:10201"' \
+rg -F -- '-L "$bind_address:18201:127.0.0.1:8004"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
-rg -F -- '-L "$bind_address:18301:127.0.0.1:10301"' \
+rg -F -- '-L "$bind_address:18301:127.0.0.1:8003"' \
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 [[ $(rg -c '^[[:space:]]+-L ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix") == 6 ]]
 if rg -n '^[[:space:]]+-(D|R) ' "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix"; then
@@ -929,25 +960,34 @@ jq -e '
 
 hviske_json="$temporary_root/hviske-stt.json"
 docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
-  --profile prepare --profile hviske \
+  --profile prepare --profile hviske --profile hviske-http \
   -f "$REPO_ROOT/deploy/hviske-stt/compose.yaml" config --format json >"$hviske_json"
 jq -e '
-  ((.services | keys) == ["hviske-fetch", "hviske-primary", "hviske-wyoming"]) and
+  ((.services | keys) == ["hviske-fetch", "hviske-http", "hviske-primary"]) and
   (.services["hviske-primary"].ports == null) and
   (.services["hviske-primary"].read_only == true) and
   (.services["hviske-primary"].cap_drop | index("ALL") != null) and
   (.services["hviske-primary"].environment.HF_HUB_OFFLINE == "1") and
   (.services["hviske-primary"].command | join(" ") | contains("--served-model-name stt-danish") and contains("--no-enable-log-requests")) and
+  (.services["hviske-fetch"].ports == null) and
+  (.networks.inference.internal == true) and
+  (.networks["artifact-fetch"].internal != true)
+' "$hviske_json" >/dev/null
+# Legacy Wyoming is available only for an explicit rollback, never normal up.
+hviske_legacy_json="$temporary_root/hviske-stt-legacy.json"
+docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  --profile hviske --profile legacy-wyoming \
+  -f "$REPO_ROOT/deploy/hviske-stt/compose.yaml" config --format json >"$hviske_legacy_json"
+jq -e '
+  ((.services | keys) == ["hviske-primary", "hviske-wyoming"]) and
+  (.services["hviske-wyoming"].profiles == ["legacy-wyoming"]) and
   (.services["hviske-wyoming"].ports[0].host_ip == "127.0.0.1") and
   (.services["hviske-wyoming"].ports[0].published == "10301") and
   (.services["hviske-wyoming"].ports[0].target == 10301) and
   (.services["hviske-wyoming"].environment.STT_LANGUAGE == "da") and
   (.services["hviske-wyoming"].environment.STT_MAX_AUDIO_SECONDS == "60") and
-  (.services["hviske-wyoming"].read_only == true) and
-  (.services["hviske-fetch"].ports == null) and
-  (.networks.inference.internal == true) and
-  (.networks["artifact-fetch"].internal != true)
-' "$hviske_json" >/dev/null
+  (.services["hviske-wyoming"].read_only == true)
+' "$hviske_legacy_json" >/dev/null
 
 hviske_http_json="$temporary_root/hviske-http.json"
 docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
@@ -1050,7 +1090,7 @@ jq -e '
 ' "$mattermost_json" >/dev/null
 python3 - "$REPO_ROOT/deploy/mattermost/Caddyfile" <<'PY'
 import hashlib, pathlib, sys
-assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "884808911be3ee856aa9defe88d61be9ada5994a7c286b0c13508685ea7f4863"
+assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "319eafea4208a3366fac753179e47b4960a1e804681db35f45eb398dad831ccc"
 PY
 # The communication relay is separately constrained above. Every other
 # deployment retains the host-network denial.
@@ -1068,7 +1108,7 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker compute-node control-plane hermes hviske-stt homepage immich mattermost model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

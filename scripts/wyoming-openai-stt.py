@@ -310,7 +310,11 @@ def load_config() -> Config:
     )
     if config.bind_address != "0.0.0.0" or config.port != 10301:
         raise SystemExit("adapter listener must be 0.0.0.0:10301 inside its container")
-    if config.upstream_url != "http://hviske-primary:8000/v1/audio/transcriptions":
+    if config.upstream_url not in {
+        "http://hviske-primary:8000/v1/audio/transcriptions",  # rollback profile
+        "http://172.28.200.1:18301/v1/audio/transcriptions",
+        "http://10.77.10.10:8003/v1/audio/transcriptions",
+    }:
         raise SystemExit("unexpected transcription upstream")
     if config.model != "stt-danish" or config.language != "da":
         raise SystemExit("adapter supports only the pinned Danish model alias")

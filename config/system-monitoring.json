@@ -35,6 +35,66 @@
         {
           "name": "homecompute-automation-n8n-1",
           "require_health": true
+        },
+        {
+          "name": "homecompute-immich-immich-server-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-immich-immich-machine-learning-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-immich-database-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-immich-redis-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-mattermost-mattermost-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-mattermost-postgres-1",
+          "require_health": true
+        },
+        {
+          "name": "home-core-embeddings",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-open-webui-open-webui-1",
+          "require_health": true
+        },
+        {
+          "name": "home-core-piper-tts",
+          "require_health": true
+        },
+        {
+          "name": "home-core-wyoming-stt",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-plapre-wyoming-proxy-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-hviske-wyoming-proxy-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-plapre-openai-tts-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-ttlock-webhook-gateway-1",
+          "require_health": true
+        },
+        {
+          "name": "home-core-moss-tts",
+          "require_health": true
         }
       ],
       "units": [
@@ -57,6 +117,34 @@
         {
           "name": "homecompute-agents-vm.service",
           "kind": "persistent"
+        },
+        {
+          "name": "homecompute-compute-ssh-tunnel.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "homecompute-codex-vm.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "homecompute-mattermost.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "ttlock-webhook.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "ttlock-funnel.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "restic-backups-agents-vm-bootstrap.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-service-recovery.service",
+          "kind": "oneshot"
         }
       ],
       "updates": [

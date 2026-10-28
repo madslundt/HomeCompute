@@ -66,6 +66,10 @@ in
           passwordFile = cfg.passwordFile;
           paths = [ source ];
           backupPrepareCommand = ''
+            if [ -e /run/homecompute/application-recovery-in-progress ]; then
+              echo "application recovery snapshot is using the VM; local backup deferred" >&2
+              exit 1
+            fi
             if [ ! -d ${repository} ] || [ -L ${repository} ]; then
               echo "local bootstrap repository must be a real directory" >&2
               exit 1

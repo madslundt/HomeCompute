@@ -25,8 +25,6 @@ services:
       DAYTHREAD_UPSTREAM: ${DAYTHREAD_UPSTREAM:-omi-local-backend-1:8787}
       DAYTHREAD_CLIENT_IP: ${DAYTHREAD_CLIENT_IP:-172.28.210.6}
       OPEN_WEBUI_CLIENT_IP: ${OPEN_WEBUI_CLIENT_IP:-172.28.210.5}
-      HERMES_FQDN: ${HERMES_FQDN:?Set HERMES_FQDN}
-      HERMES_UPSTREAM: ${HERMES_UPSTREAM:?Set HERMES_UPSTREAM}
       CHAT_FQDN: ${CHAT_FQDN:?Set CHAT_FQDN}
       MODELS_FQDN: ${MODELS_FQDN:?Set MODELS_FQDN}
       CADDY_HTTPS_PORT: "8443"
@@ -209,9 +207,15 @@ services:
     networks:
       automation-backup: {}
 
+  # Service names/IPs remain stable so the HA firewall and callers do not move.
   plapre-wyoming-proxy:
     profiles: [speech-proxies]
-    image: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to an immutable image digest}
+    image: ${SPEECH_ADAPTER_IMAGE:-homecompute/speech-adapters:wyoming-1.10.2}
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.speech-adapters
+      args:
+        BASE_IMAGE: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to a pinned Python image}
     restart: unless-stopped
     init: true
     user: "65532:65532"
@@ -219,24 +223,30 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
-      EDGE_LISTEN_PORT: "10201"
-      EDGE_UPSTREAM_HOST: ${PLAPRE_WYOMING_UPSTREAM_HOST:-10.77.10.10}
-      EDGE_UPSTREAM_PORT: ${PLAPRE_WYOMING_UPSTREAM_PORT:-10201}
-    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
+      PLAPRE_UPSTREAM_URL: http://${PLAPRE_WYOMING_UPSTREAM_HOST:-10.77.10.10}:${PLAPRE_WYOMING_UPSTREAM_PORT:-8004}
+    entrypoint: [python3, /opt/homecompute/plapre-wyoming.py]
+    command:
+      - --uri=tcp://0.0.0.0:10201
+      - --upstream-url=http://${PLAPRE_WYOMING_UPSTREAM_HOST:-10.77.10.10}:${PLAPRE_WYOMING_UPSTREAM_PORT:-8004}
+      - --voice-alias=danish-default
+      - --speaker-id=tor
+      - --tempo=1.20
+      - --max-input-chars=2000
+      - --max-pcm-bytes=48000000
+      - --timeout-seconds=300
+      - --samples-per-chunk=4096
     ports:
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${PLAPRE_WYOMING_LAN_PORT:-10201}:10201/tcp
-    volumes:
-      - ../../scripts/tcp-edge-proxy.py:/opt/homecompute/tcp-edge-proxy.py:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532,mode=0700
     healthcheck:
-      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      test: [CMD, python3, /opt/homecompute/speech-adapter-health.py, tts]
       interval: 15s
-      timeout: 7s
+      timeout: 12s
       retries: 4
       start_period: 15s
-    cpus: 0.25
-    mem_limit: 64m
+    cpus: 1.0
+    mem_limit: 512m
     pids_limit: 64
     logging:
       driver: local
@@ -264,7 +274,7 @@ services:
     environment:
       GB10_BIND_ADDRESS: 0.0.0.0
       TTS_HOST_PORT: "8004"
-      WYOMING_URI: tcp://plapre-wyoming-proxy:10201
+      WYOMING_URI: tcp://${PLAPRE_PROXY_EDGE_IP:?Set PLAPRE_PROXY_EDGE_IP}:10201
       TTS_API_KEY_FILE: /run/secrets/compute_api_key
       TTS_MODEL_ALIAS: plapre
       TTS_VOICE_ALIAS: danish-default
@@ -295,32 +305,45 @@ services:
 
   hviske-wyoming-proxy:
     profiles: [speech-proxies]
-    image: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to an immutable image digest}
+    image: ${SPEECH_ADAPTER_IMAGE:-homecompute/speech-adapters:wyoming-1.10.2}
+    build:
+      context: ../..
+      dockerfile: deploy/control-plane/Dockerfile.speech-adapters
+      args:
+        BASE_IMAGE: ${SPEECH_PROXY_IMAGE:?Set SPEECH_PROXY_IMAGE to a pinned Python image}
     restart: unless-stopped
     init: true
     user: "65532:65532"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
-      EDGE_LISTEN_PORT: "10301"
-      EDGE_UPSTREAM_HOST: ${HVISKE_WYOMING_UPSTREAM_HOST:-10.77.10.10}
-      EDGE_UPSTREAM_PORT: ${HVISKE_WYOMING_UPSTREAM_PORT:-10301}
-    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
+      WYOMING_BIND_ADDRESS: 0.0.0.0
+      WYOMING_PORT: "10301"
+      STT_UPSTREAM_URL: http://${HVISKE_WYOMING_UPSTREAM_HOST:-10.77.10.10}:${HVISKE_WYOMING_UPSTREAM_PORT:-8003}/v1/audio/transcriptions
+      STT_API_KEY_FILE: /run/secrets/compute_api_key
+      STT_MODEL: stt-danish
+      STT_LANGUAGE: da
+      STT_MAX_AUDIO_BYTES: "10000000"
+      STT_MAX_AUDIO_SECONDS: "60"
+      STT_UPSTREAM_TIMEOUT_SECONDS: "120"
+      STT_MAX_CONNECTIONS: "4"
+    entrypoint: [python3, /opt/homecompute/wyoming-openai-stt.py]
+    secrets: [compute_api_key]
     ports:
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${HVISKE_WYOMING_LAN_PORT:-10301}:10301/tcp
-    volumes:
-      - ../../scripts/tcp-edge-proxy.py:/opt/homecompute/tcp-edge-proxy.py:ro
     tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=8m,uid=65532,gid=65532,mode=0700
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700
     healthcheck:
-      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      test: [CMD, python3, /opt/homecompute/speech-adapter-health.py, stt]
       interval: 15s
-      timeout: 7s
+      timeout: 12s
       retries: 4
       start_period: 15s
-    cpus: 0.25
-    mem_limit: 64m
+    cpus: 1.0
+    mem_limit: 512m
     pids_limit: 64
     logging:
       driver: local
