@@ -20,6 +20,7 @@ import sqlite3
 import stat
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,6 +74,18 @@ def paused(config):
     return result
 
 
+def native_auth_rotation(expected, actual, previous_auth):
+    """Only native startup authentication may differ from the verified policy."""
+    auth=actual.get('gateway',{}).get('auth',{})
+    token=auth.get('token')
+    candidate=copy.deepcopy(expected)
+    candidate['gateway']['auth']=copy.deepcopy(auth)
+    if (candidate!=actual or set(auth)!={'token'} or not isinstance(token,str)
+            or not 16<=len(token)<=1024 or any(ord(c)<32 for c in token) or auth==previous_auth):
+        raise ValueError('native-startup-policy-or-auth-drift')
+    return auth
+
+
 def safe_link(relative, target):
     if target.startswith('/usr/local/lib/nemoclaw/openclaw-runtime/node_modules/openclaw'):
         return target == '/usr/local/lib/nemoclaw/openclaw-runtime/node_modules/openclaw' or target.startswith('/usr/local/lib/nemoclaw/openclaw-runtime/node_modules/openclaw/')
@@ -124,10 +137,16 @@ class RetainedTransaction(BASE.Transaction):
         self.expected = expected
         self.allowed_configs = {expected}
         self.policy = None
+        self.previous_auth = None
 
     def verify_backup(self, directory):
-        if digest((directory / 'openclaw.json').read_bytes()) not in self.allowed_configs:
-            raise ValueError('retained-config-hash-mismatch')
+        raw=(directory/'openclaw.json').read_bytes()
+        if digest(raw) not in self.allowed_configs:
+            if self.policy is None:raise ValueError('retained-config-hash-mismatch')
+            actual=json.loads(raw)
+            auth=native_auth_rotation(paused(self.policy),actual,self.previous_auth)
+            self.policy['gateway']['auth']=copy.deepcopy(auth)
+            self.allowed_configs.add(digest(raw))
         # Config is intentionally merged with fresh native auth. All other files
         # are checked byte-for-byte before any replacement is started.
         return {k: v for k, v in complete_hashes(directory).items() if k != 'openclaw.json'}
@@ -163,6 +182,7 @@ class RetainedTransaction(BASE.Transaction):
         return super().resume()
 
     def merge_config(self, old, native):
+        self.previous_auth=copy.deepcopy(old['gateway']['auth'])
         self.policy = retained_config(old, native)
         value = paused(self.policy)
         self.allowed_configs.add(digest((json.dumps(value, sort_keys=True) ).encode()))
@@ -273,6 +293,53 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         # The base path verifies every restored file before start, read-only
         # readiness, stable main conversation state, and the exact native CLI.
         result = super().complete_restore(backup_root, backup, candidate, hashes, conversations)
+        return self.finish_active(backup_root,backup,hashes,result)
+
+    def finish(self):
+        """Finish a verified paused restoration without copying agent data again."""
+        self.record=json.loads(self.path.read_bytes())
+        if self.record.get('status')!='failed' or not self.record.get('newId'):
+            raise ValueError('failed-replacement-journal-required')
+        backup_root=Path(self.record['backup'])
+        if backup_root.is_symlink() or backup_root.resolve().parent!=self.ctx.state.resolve():
+            raise ValueError('finish-backup-path-refused')
+        history={x.get('stage') for x in self.record.get('history',[])}
+        if not {'offline-data-verified','native-start-starting'}<=history:
+            raise ValueError('verified-offline-restoration-required')
+        backup=backup_root/'.openclaw'
+        hashes=self.verify_backup(backup)
+        native=json.loads((backup_root/'replacement-native.json').read_bytes())
+        self.merge_config(json.loads((backup/'openclaw.json').read_bytes()),native)
+        self.ctx.uuid=str(__import__('uuid').UUID(self.record['newId']))
+        self.ctx.generation=str(__import__('uuid').UUID(self.record['newGeneration']))
+        self.ctx.container=f'openshell-default--{BASE.NAME}-{self.ctx.uuid}'
+        self.ctx.check_registry();self.inspect()
+        if self.ctx.observe()!='Ready' or not self.ctx.ready():raise ValueError('paused-native-ready-required')
+        current=backup_root/('finish-current-'+str(time.time_ns())+'.json')
+        self.command(['/usr/bin/docker','cp',self.ctx.container+':/sandbox/.openclaw/openclaw.json',str(current)],'finish-actual-policy')
+        actual=json.loads(current.read_bytes())
+        verified=backup_root/'verification-ready/.openclaw'
+        self.verify_backup(verified)
+        self.policy['gateway']['auth']=copy.deepcopy(native_auth_rotation(paused(self.policy),actual,self.previous_auth))
+        if BASE.logical_conversations(verified)!=BASE.logical_conversations(backup):
+            raise ValueError('immutable-conversation-or-session-drift')
+        module('approve-native-openclaw-cli').ensure_cli(self.ctx)
+        self.commit_identity()
+        try:
+            return self.finish_active(backup_root,backup,hashes,(self.ctx.uuid,self.ctx.generation))
+        except Exception as error:
+            self.record['failedStage']=self.record.get('stage')
+            self.record['failureCode']=str(error) if isinstance(error,(ValueError,BASE.RecoveryRefused)) else type(error).__name__
+            self.stage('finish-failed','failed')
+            raise
+
+    def finish_active(self,backup_root,backup,hashes,result):
+        after = backup_root / 'verification-ready/.openclaw'
+        observed = complete_hashes(after)
+        for role in json.loads((backup / 'openclaw.json').read_text())['agents']['entries']:
+            prefix = 'workspace/' if role == 'main' else 'workspace-' + role + '/'
+            if any(observed.get(k) != v for k,v in hashes.items() if k.startswith(prefix)):
+                raise ValueError('retained-workspace-drift')
         self.command(['sudo', '/usr/bin/python3', str(ROOT / 'scripts/setup-openclaw-public-dns.py'),
                       '--replacement-id', self.ctx.uuid, '--replacement-generation', self.ctx.generation],
                      'rebind-existing-native-public-dns', timeout=120)
@@ -285,13 +352,6 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
                            ('deploy/openclaw/nemoclaw/retained-service-routes.json','homecompute-capabilities.home.arpa')]:
             self.command([self.ctx.cli, BASE.NAME, 'policy', 'add', '--from-file', str(ROOT/file),
                           '--trusted-private-host',host,'--yes'], 'restore-retained-network-preset', timeout=180)
-        after = backup_root / 'verification-ready/.openclaw'
-        observed = complete_hashes(after)
-        for role in json.loads((backup / 'openclaw.json').read_text())['agents']['entries']:
-            # Include every role's workspace, not just the original canary.
-            prefix = 'workspace/' if role == 'main' else 'workspace-' + role + '/'
-            if any(observed.get(k) != v for k,v in hashes.items() if k.startswith(prefix)):
-                raise ValueError('retained-workspace-drift')
         final = backup_root / 'restored-active-config.json'
         BASE.atomic_json(final, self.policy)
         code, _ = self.ctx.run([self.ctx.cli, BASE.NAME, 'stop'], 'verified-team-stop', timeout=180)
@@ -322,6 +382,7 @@ def main():
     parser.add_argument('--expected-config-sha256',required=True)
     parser.add_argument('--apply',action='store_true')
     parser.add_argument('--resume',action='store_true',help='Resume only a journaled, stopped replacement')
+    parser.add_argument('--finish',action='store_true',help='Finish an already restored, Ready, paused team without restoring data again')
     args=parser.parse_args()
     source_release(args.revision)
     if socket.gethostname() != 'agents' or os.getuid() != 1000 or not re.fullmatch('[0-9a-f]{64}',args.expected_config_sha256):
@@ -331,12 +392,14 @@ def main():
         for line in SUPERVISOR.private_file(Path('/etc/homecompute-openclaw')/name).decode().splitlines():
             if line and not line.startswith('#'):
                 key,value=line.split('=',1);env[key]=value.strip('"')
-    ctx=SUPERVISOR.Supervisor(env, operator_resume=args.resume)
+    if args.resume and args.finish:raise ValueError('choose-one-continuation-mode')
+    ctx=SUPERVISOR.Supervisor(env, operator_resume=args.resume or args.finish)
     tx=RetainedTransaction(ctx,args.expected_config_sha256)
-    if not args.resume:
+    if not args.resume and not args.finish:
         tx.preflight()
     if not args.apply:
-        print(json.dumps({'revision':args.revision,'sandbox_id':ctx.uuid,'phase':'Error','expected_config_sha256':args.expected_config_sha256,'apply':False}))
+        record=json.loads(tx.path.read_bytes()) if (args.resume or args.finish) else {}
+        print(json.dumps({'revision':args.revision,'recorded_sandbox_id':record.get('newId',ctx.uuid),'checkpoint':record.get('stage','Error'),'expected_config_sha256':args.expected_config_sha256,'apply':False}))
         return
     # Preserve the supported managed gateway process when pausing the watchdog.
     subprocess.run(['systemctl','--user','stop','homecompute-openclaw-supervisor.service'],check=True)
@@ -344,7 +407,7 @@ def main():
     import fcntl
     try:
         fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        result=tx.resume() if args.resume else tx.execute()
+        result=tx.finish() if args.finish else tx.resume() if args.resume else tx.execute()
     finally:
         os.close(fd)
     subprocess.run(['systemctl','--user','start','homecompute-openclaw-supervisor.service'],check=True)

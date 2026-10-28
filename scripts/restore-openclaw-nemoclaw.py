@@ -419,6 +419,11 @@ print("config-owner-mode-verified")'''
         except pairing.PairingRefused as exc:
             raise RecoveryRefused(str(exc)) from None
         self.stage("verified-before-identity-commit")
+        self.commit_identity()
+        self.stage("complete", "complete")
+        return self.ctx.uuid, self.ctx.generation
+
+    def commit_identity(self) -> None:
         identity = Path("/etc/homecompute-openclaw/supervisor-identity.env")
         temporary = identity.with_suffix(".tmp")
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
@@ -427,8 +432,6 @@ print("config-owner-mode-verified")'''
             handle.flush(); os.fsync(handle.fileno())
         temporary.replace(identity)
         fsync_directory(identity.parent)
-        self.stage("complete", "complete")
-        return self.ctx.uuid, self.ctx.generation
 
     def resume(self) -> tuple[str, str]:
         """Operator-only continuation; automatic failed-transaction retries stop."""
