@@ -297,6 +297,10 @@ class CoreCommunicationTest(unittest.TestCase):
                      else b'{}' if name.endswith('.json') else b'VALUE = 1\n' for name in setup.FILES}
             setup.install(files)
         self.assertFalse(any(c.args[:2] == ('systemctl', 'start') for c in call.call_args_list))
+        verified = next(c.args[2:] for c in call.call_args_list if c.args[:2] == ('systemd-analyze', 'verify'))
+        self.assertNotIn(str(setup.UNIT_DIR / 'homecompute-openclaw-telegram.service'), verified)
+        for name in set(setup.NAMES) - {'telegram'}:
+            self.assertIn(str(setup.UNIT_DIR / (setup.PREFIX + name + '.service')), verified)
         wants = setup.UNIT_DIR / 'multi-user.target.wants'
         self.assertTrue((wants / 'homecompute-openclaw-adapter.service').is_symlink())
         self.assertTrue((wants / 'homecompute-openclaw-task-feed.service').is_symlink())
