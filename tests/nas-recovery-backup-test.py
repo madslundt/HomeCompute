@@ -60,6 +60,20 @@ class NASBackupTest(unittest.TestCase):
                 backup.initialize()
             restic.assert_not_called()
 
+    def test_initialization_never_generates_or_replaces_a_password(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(backup, 'REPOSITORY', root / 'new-repository'), \
+                    patch.object(backup, 'PASSWORD', root / 'missing-password'), \
+                    patch.object(backup, 'root_directory'), \
+                    patch.object(backup, 'private_file', side_effect=ValueError('password absent')) as custody, \
+                    patch.object(backup, 'restic') as restic:
+                with self.assertRaisesRegex(ValueError, 'password absent'): backup.initialize()
+                custody.assert_called_once_with(root / 'missing-password')
+                self.assertFalse((root / 'missing-password').exists())
+                self.assertFalse((root / 'new-repository').exists())
+                restic.assert_not_called()
+
     def test_symlinked_repo_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as temporary:
             link = Path(temporary) / "repo"
@@ -95,6 +109,10 @@ class NASBackupTest(unittest.TestCase):
             directory = Path(temporary)
             state = directory / "private"
             repository = directory / "repo"
+            state.mkdir(mode=0o700)
+            password = state / "restic-password"
+            password.write_text("synthetic-test-password\n")
+            password.chmod(0o600)
             with patch.object(backup, "STATE", state), patch.object(backup, "PASSWORD", state / "restic-password"), \
                     patch.object(backup, "REPOSITORY", repository):
                 backup.initialize()

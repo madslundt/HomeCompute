@@ -7,18 +7,33 @@ let
   service = command: {
     requires = [ "network-online.target" ];
     after = [ "network-online.target" ];
-    unitConfig.RequiresMountsFor = mount;
+    unitConfig = {
+      RequiresMountsFor = mount;
+      ConditionPathExists = "${state}/backup-authorized";
+    };
     path = [ pkgs.restic pkgs.util-linux pkgs.docker pkgs.systemd ];
+    environment = {
+      HOME = state;
+      DOCKER_HOST = "unix:///var/run/docker.sock";
+      DOCKER_CONFIG = "${state}/docker";
+      PYTHONDONTWRITEBYTECODE = "1";
+    };
     serviceConfig = {
       Type = "oneshot";
       User = "root";
       UMask = "0077";
+      UnsetEnvironment = [ "DOCKER_CONTEXT" "HTTP_PROXY" "HTTPS_PROXY" "ALL_PROXY" "http_proxy" "https_proxy" "all_proxy" "SSH_AUTH_SOCK" ];
       ExecStartPre = lib.optionals (command == "backup" && cfg.includeApplicationState) [
         "${runner} validate"
         "${pkgs.python3}/bin/python3 ${../../scripts/application-recovery.py} prepare"
       ];
       ExecStart = "${runner} ${command}";
+      ExecStopPost = lib.optionals (command == "backup" && cfg.includeApplicationState) [
+        "${pkgs.python3}/bin/python3 ${../../scripts/application-recovery.py} resume"
+      ];
       TimeoutStartSec = "2h";
+      TimeoutStopSec = "10min";
+      KillMode = "mixed";
       MemoryMax = "1G";
       CPUQuota = "50%";
       IOSchedulingClass = "idle";
@@ -60,7 +75,7 @@ in {
     };
   };
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ pkgs.qemu_kvm ];
+    environment.systemPackages = [ pkgs.qemu_kvm pkgs.cifs-utils ];
     assertions = [
       { assertion = cfg.share != null && cfg.credentialsFile != null;
         message = "NAS recovery backups need a separate known share and root-only account credential."; }

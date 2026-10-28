@@ -27,6 +27,30 @@ class RolloutTest(unittest.TestCase):
         self.temporary=tempfile.TemporaryDirectory(); self.addCleanup(self.temporary.cleanup)
         self.directory=Path(self.temporary.name); self.marker=self.directory/'active.json'
         self.calls=[]
+    def test_actual_release_library_imports_create_no_bytecode(self):
+        import shutil
+        scripts=self.directory/'scripts'; scripts.mkdir()
+        for name in ('spark-rollout.py','qualify-speech-capacity.py','speech_capacity.py'):
+            shutil.copy2(ROOT/'scripts'/name,scripts/name)
+        code='''import runpy,importlib.util,sys
+from pathlib import Path
+path=Path(sys.argv[1]); sys.path.insert(0,str(path))
+runpy.run_path(str(path/'spark-rollout.py'),run_name='import_regression')
+spec=importlib.util.spec_from_file_location('capacity_setup',path/'qualify-speech-capacity.py')
+module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+assert not list(path.rglob('*.pyc'))
+assert not list(path.rglob('__pycache__'))
+'''
+        result=subprocess.run(['python3','-c',code,str(scripts)],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+    def test_boundary_failure_propagates_only_allowlisted_reason(self):
+        failure=subprocess.CompletedProcess([],1,'private output',
+            'secret=do-not-relay\nSPEECH_BOUNDARY_FAILURE '+json.dumps(
+                {'reason':'invalid-mount','error':'OperationError','exit_code':1}))
+        with patch.object(m.subprocess,'run',return_value=failure):
+            with self.assertRaisesRegex(RuntimeError,'invalid-mount') as caught:
+                m.run(['python3','/published/scripts/setup-speech-boundary.py','spark-prepare'])
+        self.assertNotIn('do-not-relay',str(caught.exception))
     def baseline(self):
         return {'asr':{'trials':18,'failures':0},'tts_model_local':{'trials':20,'failures':0}}
     def helper(self,name,*args,**kwargs):

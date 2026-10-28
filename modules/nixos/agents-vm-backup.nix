@@ -57,6 +57,8 @@ in
           "d ${repository} 0700 root root - -"
           "d /run/homecompute 0755 root root - -"
         ];
+        systemd.services.restic-backups-agents-vm-bootstrap.serviceConfig.ExecCondition =
+          "${pkgs.coreutils}/bin/test ! -e /run/homecompute/application-recovery-in-progress";
       }
 
       (lib.mkIf (cfg.passwordFile != null) {

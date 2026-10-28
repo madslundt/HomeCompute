@@ -54,9 +54,20 @@ class SpeechBoundaryTest(unittest.TestCase):
         self.assertEqual(set(plapre['services']), {'plapre-primary', 'plapre-http'})
         self.assertIn('@sha256:', plapre['services']['plapre-http']['image'])
         self.assertEqual(plapre['services']['plapre-http']['ports'][0]['host_ip'], '127.0.0.1')
+        self.assertEqual(plapre['services']['plapre-http']['tmpfs'],
+                         ['/tmp:rw,noexec,nosuid,nodev,size=8m'])
         hviske = compose('deploy/hviske-stt/compose.yaml', 'config/hviske-stt.env.example', 'hviske', 'hviske-http')
         self.assertNotIn('hviske-wyoming', hviske['services'])
         self.assertIn('hviske-http', hviske['services'])
+
+    def test_prepare_errors_classify_without_relaying_private_docker_output(self):
+        result = subprocess.CompletedProcess([], 1, '',
+            "private-token=do-not-relay invalid mount path: 'nodev' mount path must be absolute")
+        with patch.object(INSTALLER.subprocess, 'run', return_value=result):
+            with self.assertRaises(INSTALLER.OperationError) as caught:
+                INSTALLER.run(['docker', 'compose', 'up'])
+        self.assertEqual(caught.exception.reason, 'invalid-mount')
+        self.assertNotIn('do-not-relay', str(caught.exception))
 
     def test_legacy_profiles_remain_explicit_for_rollback(self):
         plapre = compose('deploy/compute-node/plapre/compose.yaml', 'config/plapre-tts.env.example', 'legacy-wyoming')
