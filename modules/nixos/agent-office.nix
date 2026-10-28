@@ -27,7 +27,7 @@ in
       after = [ "docker.service" "homecompute-agents-vm.service" "homecompute-agent-office-firewall.service" ];
       unitConfig.StartLimitIntervalSec = 0;
       serviceConfig = {
-        ExecStart = "${pkgs.socat}/bin/socat TCP4-LISTEN:18802,bind=172.28.200.1,reuseaddr,fork TCP4:10.77.20.2:18802";
+        ExecStart = "${pkgs.socat}/bin/socat TCP4-LISTEN:18802,bind=172.28.200.1,reuseaddr,fork TCP4:10.77.20.2:18803";
         Restart = "on-failure";
         RestartSec = "5s";
         NoNewPrivileges = true;

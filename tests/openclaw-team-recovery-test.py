@@ -117,6 +117,22 @@ class TeamRecoveryTests(unittest.TestCase):
             value=copy.deepcopy(actual);change(value)
             with self.assertRaises(ValueError):m.native_auth_rotation(expected,value,previous)
 
+    def test_mcp_refresh_accepts_only_same_native_resolver_key_and_preserves_latest_handle(self):
+        expected=m.paused(self.config());previous={'token':'old-native-token-1234'}
+        expected['mcp']={'servers':{'homecompute':{'url':'https://homecompute-capabilities.home.arpa:19445/mcp','headers':{'Authorization':'Bearer openshell:resolve:env:v123_HOMECOMPUTE_OPENCLAW_MCP_TOKEN'}}}}
+        actual=copy.deepcopy(expected);actual['gateway']['auth']={'token':'fresh-native-token-1234'}
+        actual['mcp']['servers']['homecompute']['headers']['Authorization']='Bearer openshell:resolve:env:v456_HOMECOMPUTE_OPENCLAW_MCP_TOKEN'
+        self.assertEqual(m.native_auth_rotation(expected,actual,previous),actual['gateway']['auth'])
+        retained=copy.deepcopy(expected);m.retain_mcp_handle(retained,actual)
+        self.assertEqual(retained['mcp'],actual['mcp'])
+        self.assertNotEqual(expected['mcp'],actual['mcp'])
+        for change in (lambda x:x['mcp']['servers']['homecompute'].update(url='https://foreign.invalid/mcp'),
+                       lambda x:x['mcp']['servers']['homecompute']['headers'].update(Extra='unapproved'),
+                       lambda x:x['mcp']['servers']['homecompute']['headers'].update(Authorization='Bearer opaque-secret-value'),
+                       lambda x:x['mcp']['servers']['homecompute']['headers'].update(Authorization='Bearer openshell:resolve:env:v456_OTHER_KEY')):
+            value=copy.deepcopy(actual);change(value)
+            with self.assertRaises(ValueError):m.native_auth_rotation(expected,value,previous)
+
     def test_symlinks_must_remain_inside_state_or_fixed_pinned_sdk(self):
         for path,target in [('npm/project/.bin/tool','../tool/bin.js'),('plugin-skills/browser','/usr/local/lib/nemoclaw/openclaw-runtime/node_modules/openclaw/dist/browser')]:
             self.assertTrue(m.safe_link(path,target))
