@@ -284,31 +284,43 @@ retrieval files. Successful off-host backup and restore of these indexes and
 the source/deletion records remain unverified. No backup job or disruptive
 restore drill was run in this task.
 
-## Verification status
+## Verification status — 2026-10-28
 
-The new adapter completed live anonymous Context7 library resolution and a
-public Python documentation query from the workstation on 2026-10-28. This
-verifies the remote adapter path, not installed specialist sessions. SerpApi,
-Geoapify, Immich and n8n credentials were not provisioned by this task. Native
-activation, provider access and post-release role denials still require the
-qualified rollout above.
+PR #25 and the two retired-receiver rollout fixes (#26/#27) are merged. Their
+GitHub validation passed; full local repository validation also passed, including
+containerized Nix flake evaluation. The communication bundle was installed through
+its guarded lifecycle from `f93621749be422df804a8e4b2355bf63096a6379`; all 64
+installed files matched source and were rechecked after the separate VM stop/start.
+Native grants/instructions were staged from the reviewed PR #25 source
+`f58877dedc23f8412a5d415e4436941ab9b65f31`. The scoped lifecycle retained all
+twelve native roles; fourteen instruction/skill files changed, with the native
+configuration preserved by the instruction updater. The retired inbound Telegram
+receiver remains masked and mail remains paused.
 
-Focused provider, grant, instruction, team, installer, transport and roster
-checks passed. The repository validator passed its test phase after correcting a
-stale existing Lyra research-search assertion, then stopped at an unrelated
-compute SSH tunnel guard: the untouched source forwards automation to port
-18400 while the validator expects 18300. That mismatch was reproduced on the
-pristine base revision. Later validation stages were not reached. No production
-rollout was performed.
+Lyra completed an actual native session on the existing local
+`inference/automation-moe` route. Its receipt shows integration status plus exactly
+one hotel search, two tool calls and zero tool failures, in 36.37 seconds. The
+provider response in that fresh synthetic session's history contains five DKK
+leads with the requested child ages and unconfirmed price labels. No booking,
+message, memory write or private calendar/photo read occurred. The finite native
+grant policy was revalidated after the VM boot. Family's actual availability
+turn reported no hotel tool and made no hotel/photo call; its failed own-file read
+is not a forced MCP denial test. A generic HTTP tools/invoke probe was inconclusive
+for MCP tools and is not used as authorization evidence.
 
-Maps replacement follow-up: Google Maps transport was removed from the source.
-Synthetic checks cover Geoapify geocoding, bounded POI lookup, routing,
-ambiguity refusal, credential redaction and isolated Open-Meteo requests.
-A live unauthenticated Open-Meteo request returned current Copenhagen data
-and the expected timezone. The new provider and existing policy/installer
-checks passed (73 focused tests). Geoapify live qualification still requires
-its dedicated key; no production
-rollout or key copying was performed by this change.
+The owner's SerpApi key is private and qualified through this hosted path.
+The Immich key is present but a live private-library query was not part of this
+verification. Geoapify and n8n still need their qualified dedicated credentials.
+Earlier anonymous Context7 and Open-Meteo checks remain workstation/provider
+checks, not claims that every specialist/provider path has been live-qualified.
+
+An independent NAS recovery backup paused the VM before the first Lyra connection,
+which sent no agent command. The backup later reported an exit-code failure and
+restored the VM/services; its recovery marker was preserved. No backup repair,
+marker removal, full host release or Spark/model change was performed by this
+rollout. Broader host revision drift and the separate pending full-team manifest
+remain outside this workload reconciliation. See the sanitized
+[rollout receipt](operations/openclaw-integrations-rollout-2026-10-28.json).
 
 ## Review and deployment preparation — 2026-10-28
 
