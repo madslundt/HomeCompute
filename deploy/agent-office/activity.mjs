@@ -32,6 +32,15 @@ export class OfficeActivity {
     // Expired runs are removed, not kept active by the dashboard's heartbeat.
     for (const [key, run] of this.runs) if (now - run.observed_at > STALE_MS) this.runs.delete(key);
     const previous = this.runs.get(identity.key);
+    if (kind === 'model_end') {
+      // A request can run outside an agent harness (for example native
+      // post-run maintenance), so it may never emit agent_end. Retire only
+      // its matching provisional model phase, never a tool/continuation or
+      // another outstanding request. This does not invent an agent outcome.
+      if (!previous?.model_calls?.delete(event?.callId)) return;
+      if (!previous.model_calls.size && previous.phase === 'model') this.runs.delete(identity.key);
+      return;
+    }
     let activity = 'thinking';
     let status = 'working';
     if (kind === 'end') {
@@ -41,9 +50,15 @@ export class OfficeActivity {
       this.finished.set(identity.agent, { status, activity, observed_at: now, started_at: previous?.started_at ?? now });
     } else {
       if (!previous && this.runs.size >= MAX_RUNS) return;
+      const model_calls = previous?.model_calls ?? new Set();
+      if (kind === 'model' && typeof event?.callId === 'string' && event.callId.length > 0 && event.callId.length <= 256) {
+        if (!model_calls.has(event.callId) && model_calls.size >= 32) return;
+        model_calls.add(event.callId);
+      }
       if (kind === 'tool') activity = toolActivity(ctx.toolName);
       if (activity === 'waiting') status = 'waiting';
-      this.runs.set(identity.key, { agent: identity.agent, status, activity, observed_at: now, started_at: previous?.started_at ?? now });
+      this.runs.set(identity.key, { agent: identity.agent, status, activity, observed_at: now, started_at: previous?.started_at ?? now,
+        phase: kind, model_calls });
     }
     if (!previous || previous.activity !== activity || kind === 'end') {
       this.events.unshift({ id: ++this.sequence, agent: identity.agent, activity, status, at: now });

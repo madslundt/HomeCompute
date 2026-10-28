@@ -18,8 +18,9 @@ export default {
     // bodies, tool arguments/results, session files, or workspace content.
     const observe = kind => (event, ctx) => { runtime().activity?.observe(kind, event, ctx); };
     api.on('model_call_started', observe('model'));
+    api.on('model_call_ended', observe('model_end'));
     api.on('before_tool_call', observe('tool'), { priority: -2000000 });
-    api.on('after_tool_call', observe('model'));
+    api.on('after_tool_call', observe('continuation'));
     api.on('agent_end', observe('end'));
     api.registerService({
       id: 'homecompute-agent-office',

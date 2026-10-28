@@ -98,6 +98,42 @@ test('sparse native model context derives only a known agent from its trusted se
   assert.ok(!JSON.stringify(activity.snapshot()).includes('synthetic-native-model'));
 });
 
+test('auxiliary native model completion clears provisional work without inventing an agent outcome', () => {
+  let now = 1000;
+  const activity = new OfficeActivity(roster, () => now);
+  const context = ctx('auxiliary-native-request', 'engineer');
+  activity.observe('model', { callId: 'private-call-one' }, context);
+  activity.observe('model_end', { callId: 'wrong-call' }, context);
+  assert.equal(activity.snapshot().agents.find(a => a.id === 'engineer').status, 'working');
+  activity.observe('model_end', { callId: 'private-call-one' }, context);
+  assert.equal(activity.snapshot().agents.find(a => a.id === 'engineer').status, 'unknown');
+  activity.observe('end', { success: true }, ctx('actual-agent-turn', 'engineer'));
+  now = 2000;
+  activity.observe('model', { callId: 'private-call-two' }, context);
+  activity.observe('model_end', { callId: 'private-call-two' }, context);
+  const agent = activity.snapshot().agents.find(a => a.id === 'engineer');
+  assert.equal(agent.status, 'idle');
+  assert.equal(agent.observed_at, 1000, 'only the actual agent end establishes the completed outcome');
+  assert.ok(!JSON.stringify(activity.snapshot()).includes('private-call'));
+});
+
+test('request completion cannot clear another model request or native tool continuation', () => {
+  const activity = new OfficeActivity(roster);
+  const context = ctx('native-run', 'engineer');
+  activity.observe('model', { callId: 'one' }, context);
+  activity.observe('model', { callId: 'two' }, context);
+  activity.observe('model_end', { callId: 'one' }, context);
+  assert.equal(activity.snapshot().agents.find(a => a.id === 'engineer').active_runs, 1);
+  activity.observe('tool', {}, { ...context, toolName: 'unknown-native-tool' });
+  activity.observe('model_end', { callId: 'two' }, context);
+  assert.equal(activity.snapshot().agents.find(a => a.id === 'engineer').status, 'working');
+  activity.observe('continuation', {}, context);
+  activity.observe('model_end', { callId: 'two' }, context);
+  assert.equal(activity.snapshot().agents.find(a => a.id === 'engineer').status, 'working');
+  activity.observe('end', { success: true }, context);
+  assert.equal(activity.snapshot().agents.find(a => a.id === 'engineer').status, 'idle');
+});
+
 test('event retention is bounded and demo feed is explicitly synthetic', () => {
   const activity = new OfficeActivity(roster);
   for (let i = 0; i < 200; i++) {
@@ -230,7 +266,7 @@ test('plugin registers observation hooks without modifying agent policies', () =
   const handlers = new Map();
   let service;
   plugin.register({ on: (name, fn) => handlers.set(name, fn), registerService: value => service = value });
-  assert.deepEqual([...handlers.keys()], ['model_call_started', 'before_tool_call', 'after_tool_call', 'agent_end']);
+  assert.deepEqual([...handlers.keys()], ['model_call_started', 'model_call_ended', 'before_tool_call', 'after_tool_call', 'agent_end']);
   for (const handler of handlers.values()) assert.equal(handler({ params: { private: 'data' } }, ctx()), undefined);
   assert.equal(service.id, 'homecompute-agent-office');
 });

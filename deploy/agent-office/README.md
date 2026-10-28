@@ -73,7 +73,7 @@ for the privacy boundaries.
 
 ## Activity contract
 
-The optional plugin registers `model_call_started`, `before_tool_call`,
+The optional plugin registers `model_call_started`, `model_call_ended`, `before_tool_call`,
 `after_tool_call`, and `agent_end` observations. These are based on the
 [pinned OpenClaw hook contract](https://github.com/openclaw/openclaw/blob/v2026.9.9/src/plugins/hook-types.ts),
 with [hook permissions documented upstream](https://docs.openclaw.ai/plugins/hooks).
@@ -83,10 +83,15 @@ prefix and rejects a conflicting explicit agent. Request-scoped plugin
 registrations share the gateway service's in-memory activity, including when
 the native loader evaluates another module instance. Unstarted request services
 cannot stop that gateway-owned listener.
-The plugin reads only native agent/session/run identity for in-memory
+The plugin reads only native agent/session/run/request identity for in-memory
 correlation, fixed tool identifiers for categorization, and the end success
 boolean. It never inspects conversation content or a tool's inputs/outputs.
 Public snapshots omit native identity and raw tool identifiers.
+
+Native auxiliary model requests may not emit `agent_end`. A matching
+`model_call_ended` retires their provisional model phase without creating an
+Idle/Error outcome. Outstanding model requests and tool continuations remain
+active; only a native agent end establishes a completed agent outcome.
 
 Unobserved characters stand separately near their role's floor area. Their
 status stays Unknown; their placement does not invent activity or imply a
