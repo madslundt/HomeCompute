@@ -277,13 +277,26 @@ refuses while the underlying units still reference older source. This accounts
 for the temporary deployment overlay instead of leaving an unexplained host
 override.
 
-The intended first off-host destination is a **separate Synology backup share**.
-Hetzner is deferred. Neither the Immich media share/account nor Omi's NFS export
-is a backup destination. Before enabling `homecompute.nasRecoveryBackup`, supply
-its actual `share` and a dedicated root-only, externally provisioned
-`credentialsFile`. Declare those non-secret settings in the host module and keep
-the credential in SOPS. An absent destination remains a blocked backup, never a
-silent same-host fallback.
+The first off-host destination is the dedicated Synology SMB3.1.1 share
+`//192.168.30.236/homecompute-backups`; Hetzner is deferred. The reproducible
+external NAS policy is `config/synology-backup.json`. In DSM, create the Btrfs
+share on Volume 1 with data checksums, both hide options enabled and no recycle
+bin. Create `homecompute-backup` in the normal `users` group, with SMB as its
+only allowed application. Explicitly deny DSM, AFP, FTP, File Station, SFTP,
+Universal Search and rsync, and deny the existing `homeassistant`,
+`immich-library` and `omi` shares. On the new share, grant read/write to the
+backup account and administrator, and explicitly deny `guest`, `homeassistant`
+and `immich-svc`. Read back these settings before admitting a credential.
+
+Provision the SMB password only through
+`scripts/provision-nas-backup-credentials.py provision` in the operator's
+private terminal. Its root-owned mode-0600 file is
+`/etc/homecompute/nas-recovery-backup.credentials`; the password remains in the
+owner's password manager and never enters source, commands or logs. Restic uses
+the existing SOPS-managed `/run/secrets/restic/password`, creating no additional
+local-only encryption secret. Neither the Immich account/media share nor Omi's
+NFS export is reused. An absent or different mount never falls back to local
+storage.
 
 The NAS module's `includeApplicationState = true` default prepares an
 application-consistent recovery archive before Restic transfer. It stops the
@@ -293,6 +306,9 @@ previously active resources even if preparation fails. Active private browser
 sessions defer the job. Preparation and deployments share a lock; the local VM
 backup and recovery preparation also exclude each other. The NAS schedule starts
 at 03:15 local host time, outside the local VM snapshot's midnight window.
+The private resume journal and `ExecStopPost` recovery also cover interrupted
+preparation. Successful preparation resumes applications before uploading the
+uncompressed archive through encrypted Restic.
 
 Preparation requires measured space for source files plus 100 GiB headroom and
 retains two completed application archives. Archives are root-only on local
@@ -300,31 +316,54 @@ storage and encrypted by Restic on the NAS. Original Immich media stays outside
 this archive and requires an independent media backup. The host age identity and
 Restic recovery password need separate offline custody. Generated Nix store
 symlinks are rebuilt from the release instead of copied into a recovery archive.
+The agents VM's exact immutable NoCloud seed is an exception: preparation derives
+it from the owning unit's bounded startup script, validates the Nix-store ISO,
+and archives it as `state/agents-vm/seed.iso` with its SHA-256 in the manifest.
+It never writes a seed into the live VM directory. Restore verification requires
+that archived seed and its manifest hash; no external seed fallback is assumed.
 
-After deploying the reviewed configuration, validate and initialize the new
-repository once, then run transport and application backup checks:
+`scripts/setup-nas-recovery-backup.py` is the targeted lifecycle when a full
+NixOS rollout would revert unrelated pending application work. It requires a
+published release SHA and reviewed bundle hash, installs only immutable recovery
+tools, source-declared mount/automount, gated units/timers, and the local VM
+exclusion guard, and verifies exact mount and unit precedence. It backs up its
+previous configuration for rollback. It never replaces an existing NAS
+repository or modifies credentials, keys, prepared archives or repository data
+on configuration rollback.
+
+Stage the reviewed configuration and initialize the new repository explicitly:
 
 ```bash
-sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py validate
-sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py init
-sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py proof
-sudo systemctl start homecompute-nas-recovery-backup.service
-sudo systemctl start homecompute-nas-recovery-check.service
+nas_tool=/srv/homecompute/releases/FULL_SHA/scripts/setup-nas-recovery-backup.py
+nas_bundle_hash=REVIEWED_BUNDLE_HASH
+sudo python3 "$nas_tool" plan
+sudo python3 "$nas_tool" apply --revision FULL_SHA --expected-hash "$nas_bundle_hash"
+sudo python3 "$nas_tool" initialize --expected-hash "$nas_bundle_hash"
+sudo python3 "$nas_tool" proof --expected-hash "$nas_bundle_hash"
 ```
 
 `proof` verifies only encryption, NAS write/read and a synthetic byte restore.
-It does not prove application recovery. For a completed application's exact
-snapshot ID and archive name, restore into a new scratch directory and verify
-the archive into a second new scratch directory:
+It does not prove application recovery. Staging does not start a cold backup.
+Schedules remain gated until the first backup and isolated application
+verification succeed. After coordinating an idle worker and closing private
+browser sessions, explicitly run the first cold backup. Use its full snapshot
+ID and exact `homecompute-applications-…tar` name for isolated verification:
 
 ```bash
-sudo python3 /srv/homecompute/current/scripts/nas-recovery-backup.py restore-application \
+sudo python3 "$nas_tool" backup-now --expected-hash "$nas_bundle_hash" --acknowledge-pause
+sudo python3 "$nas_tool" restore-verify --expected-hash "$nas_bundle_hash" \
   --snapshot FULL_64_CHARACTER_SNAPSHOT_ID --archive EXACT_APPLICATION_ARCHIVE_NAME \
   --target /srv/restore-tests/nas-archive-YYYYMMDD
-sudo python3 /srv/homecompute/current/scripts/application-recovery.py verify \
-  /srv/restore-tests/nas-archive-YYYYMMDD/srv/backups/agent-recovery/EXACT_APPLICATION_ARCHIVE_NAME \
-  /srv/restore-tests/application-verify-YYYYMMDD
+sudo python3 "$nas_tool" enable-schedule --expected-hash "$nas_bundle_hash"
 ```
+
+`restore-verify` extracts the archive into a second new scratch directory beside
+the first. Scheduling requires matching snapshot/verification receipts and does
+not imply that PostgreSQL import or VM boot has passed. `resume` retries a
+retained fixed-resource journal even if the NAS is offline; `rollback` restores
+only the pre-installation configuration. Use `retire` after the normal NixOS
+generation supplies matching canonical units, source and mount settings, removing
+the managed attached units without deleting backup data.
 
 Verification checks restored SQLite integrity, compressed dump checksums and all
 three qcow2 disks without touching production paths. It explicitly leaves

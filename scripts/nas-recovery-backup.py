@@ -17,7 +17,7 @@ import tempfile
 MOUNT = Path("/mnt/homecompute-backups")
 STATE = Path("/var/lib/homecompute/nas-recovery-backup")
 SOURCE = Path("/srv/backups/agent-recovery")
-PASSWORD = STATE / "restic-password"
+PASSWORD = Path("/run/secrets/restic/password")
 REPOSITORY = MOUNT / "restic-homecompute-agent-recovery"
 CONFIG = Path("/etc/homecompute/nas-recovery-backup.json")
 RESTORE_ROOT = Path("/srv/restore-tests")
@@ -98,14 +98,10 @@ def initialize() -> None:
     if REPOSITORY.exists() or REPOSITORY.is_symlink():
         raise ValueError("repository path already exists; initialization refused")
     root_directory(STATE, create=True)
-    if not PASSWORD.exists():
-        descriptor = os.open(PASSWORD, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        with os.fdopen(descriptor, "w") as handle:
-            handle.write(secrets.token_urlsafe(48) + "\n")
     private_file(PASSWORD)
     REPOSITORY.mkdir(mode=0o700)
     restic(["init", "--json"])
-    print(f"Encrypted repository initialized. Export {PASSWORD} securely for disaster recovery.")
+    print("Encrypted repository initialized using the existing SOPS-managed Restic password.")
 
 
 def backup() -> None:
