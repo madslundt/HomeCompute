@@ -58,6 +58,10 @@ files are refused. The QEMU process runs as `nobody` with only the KVM
 supplementary group, in a new network namespace with no virtual NIC or host
 ports. Its CPU time, address space, serial-log size and wall time are bounded.
 The helper terminates only the exact child process it started.
+VM file writes have a 512 MiB per-file kernel limit so normal ephemeral COW
+overlays can grow beyond the log budget. Both private serial and error logs
+are separately checked against 16 MiB on every boot-proof poll; SQL logger
+children retain the 16 MiB kernel file limit. Original VM inputs remain read-only.
 
 A VM passes only when its fresh private serial log contains a Linux kernel,
 systemd userspace and the expected hostname's serial login prompt. A running

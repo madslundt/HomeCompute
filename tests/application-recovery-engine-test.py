@@ -149,7 +149,7 @@ class RecoveryEngineTest(unittest.TestCase):
     def test_child_drops_production_identity_and_isolates_network_before_uid(self):
         calls=[]
         with patch.object(engine.os,'unshare',lambda flag:calls.append('network'),create=True),patch.object(engine.os,'CLONE_NEWNET',123,create=True), \
-                patch.object(engine,'bounded_output'),patch.object(engine.resource,'setrlimit'), \
+                patch.object(engine,'bounded_output') as limits,patch.object(engine.resource,'setrlimit'), \
                 patch.object(engine.os,'sched_setaffinity',lambda *args:None,create=True), \
                 patch.object(engine.os,'sched_getaffinity',lambda *args:{0,1},create=True), \
                 patch.object(engine.os,'setgroups',lambda values:calls.append(('groups',values))), \
@@ -157,6 +157,36 @@ class RecoveryEngineTest(unittest.TestCase):
                 patch.object(engine.os,'setuid',lambda value:calls.append(('uid',value))):
             engine.vm_child(65534,65534,302)
         self.assertEqual(calls,['network',('groups',[302]),('gid',65534),('uid',65534)])
+        limits.assert_called_once_with(512*1024**2)
+
+    def test_real_owned_child_can_grow_cow_beyond_log_limit_but_not_vm_file_bound(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path=Path(temporary)/'synthetic-cow'
+            code='''import errno,json,sys
+with open(sys.argv[1],'wb') as f:
+ f.truncate(20*1024**2)
+ try: f.truncate(513*1024**2)
+ except OSError as error:
+  if error.errno!=errno.EFBIG:raise
+  print(json.dumps({'normal_cow_write':True,'file_bound_enforced':True}))
+ else:raise RuntimeError('file bound missing')
+'''
+            with engine.owned_process([sys.executable,'-c',code,str(path)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                                      preexec_fn=lambda:engine.bounded_output(engine.MAX_VM_FILE)) as process:
+                output,errors=process.communicate(timeout=10)
+                self.assertEqual(process.returncode,0,errors.decode())
+            self.assertEqual(json.loads(output),{'normal_cow_write':True,'file_bound_enforced':True})
+            self.assertEqual(path.stat().st_size,20*1024**2)
+
+    def test_serial_and_error_logs_each_keep_explicit_sixteen_mib_bound(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);serial=root/'serial';error=root/'error';serial.touch();error.touch()
+            engine.private_logs_bounded(serial,error)
+            for path in [serial,error]:
+                with path.open('wb') as stream:stream.truncate(16*1024**2+1)
+                with self.assertRaisesRegex(engine.VerificationError,'private-log-size-bound'):engine.private_logs_bounded(serial,error)
+                path.write_bytes(b'')
+        self.assertEqual(engine.bounded_output.__defaults__,(16*1024**2,))
 
     def test_errors_expose_categories_without_sql_or_stderr(self):
         error=subprocess.CalledProcessError(1,['private'],output=b'private SQL',stderr=b'private values')

@@ -33,6 +33,7 @@ VM_DISKS = {'agents-vm': ['agents.qcow2'], 'codex-vm': ['root.qcow2', 'work.qcow
 LABEL = 'org.homecompute.recovery-test'
 MAX_SQL = 8 * 1024**3
 MAX_LOG = 16 * 1024**2
+MAX_VM_FILE = 512 * 1024**2
 ENV = {'PATH': '/run/current-system/sw/bin', 'DOCKER_HOST': 'unix:///var/run/docker.sock',
        'DOCKER_CONFIG': '/var/empty', 'HOME': '/var/empty', 'LANG': 'C', 'LC_ALL': 'C'}
 TERMINAL_SIGNALS = {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
@@ -286,14 +287,16 @@ def vm_identity(item: dict):
     return account, kvm.gr_gid
 
 
-def bounded_output() -> None:
+def bounded_output(file_limit: int = MAX_LOG) -> None:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_LOG, MAX_LOG))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))
 
 
 def vm_child(uid: int, gid: int, kvm_gid: int) -> None:
     os.unshare(os.CLONE_NEWNET)
-    bounded_output()
+    # RLIMIT_FSIZE also governs temporary COW disks, not just the log FDs.
+    # Keep SQL/import output at 16 MiB, but allow bounded normal guest writes.
+    bounded_output(MAX_VM_FILE)
     resource.setrlimit(resource.RLIMIT_CPU, (360, 360))
     resource.setrlimit(resource.RLIMIT_AS, (4 * 1024**3, 4 * 1024**3))
     os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
@@ -308,6 +311,11 @@ def stop_owned(process: subprocess.Popen):
             process.kill()
             try: process.wait(timeout=10)
             except subprocess.TimeoutExpired as error: raise CleanupError('owned-vm-cleanup-timeout') from error
+
+
+def private_logs_bounded(*paths: Path) -> None:
+    if any(path.stat().st_size > MAX_LOG for path in paths):
+        raise VerificationError('vm-private-log-size-bound-exceeded')
 
 
 @contextmanager
@@ -356,8 +364,7 @@ def vm_verify(scope: str, item: dict, target: Path, work: Path) -> dict:
                            pass_fds=descriptors, preexec_fn=lambda: vm_child(account.pw_uid, account.pw_gid, kvm_gid)) as process:
             deadline = time.monotonic() + 300
             while time.monotonic() < deadline:
-                if log.stat().st_size > MAX_LOG:
-                    raise VerificationError('vm-serial-size-bound-exceeded')
+                private_logs_bounded(log, errors)
                 if boot_proven(log.read_bytes(), item['hostname']):
                     return {'verified': True, 'kernel_userspace_login_prompt': True, 'network': False,
                             'vcpus': 1, 'memory_mib': 2048, 'application_services_verified': False}
