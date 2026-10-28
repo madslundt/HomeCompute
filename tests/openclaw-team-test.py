@@ -26,6 +26,19 @@ def reviewed_setup(*args, **kwargs):
 
 
 class TeamSetupTest(unittest.TestCase):
+    def test_reapply_preserves_intact_specialist_integrations_and_refuses_revocation(self):
+        import openclaw_integration_policy as integrations
+        from openclaw_team_policy import finite
+        before = reviewed_candidate(self.before, self.team)
+        before = integrations.candidate(before, finite=finite, refused=setup.TeamRefused, enable=True)
+        after = setup.candidate(before, self.team)
+        for role, entry in after['agents']['entries'].items():
+            self.assertEqual(set(entry['tools']['allow']) & integrations.TOOLS, integrations.ROLE_TOOLS.get(role, set()))
+        self.assertEqual(after, setup.candidate(after, self.team))
+        before['agents']['entries']['engineer']['tools']['allow'].remove(integrations.PREFIX + 'docs_query')
+        with self.assertRaises(setup.TeamRefused): setup.candidate(before, self.team)
+
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.directory = Path(self.tmp.name).resolve()

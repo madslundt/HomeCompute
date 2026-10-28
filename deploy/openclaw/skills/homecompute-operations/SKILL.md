@@ -5,6 +5,17 @@ description: Read HomeCompute service health and Home Assistant energy observati
 
 # HomeCompute operations
 
+For public package, API or infrastructure documentation, use granted
+`homecompute__homecompute_docs_resolve` then `homecompute__homecompute_docs_query`
+with the resolved library ID and exact version. Send only the public technical
+question. Check `homecompute__homecompute_integration_status` with provider
+`context7` first; provider failures end the attempt. GitHub work stays in the
+coding broker's authorized `gh` workflow.
+
+For registered public workflow health, use granted
+`homecompute__homecompute_automation_status`. It returns recent execution
+metadata, not report contents, delivery receipts or authority to run jobs.
+
 `home-core` runs household services and orchestration; `home-spark` runs model
 and speech workloads. n8n owns workflow execution and notification delivery;
 the coding broker owns job state, approval boundaries and durable receipts.
