@@ -182,6 +182,9 @@ class ProxyTests(unittest.TestCase):
         with self.post('/v1/responses') as response:
             self.assertEqual(response.status, 502)
         self.assertEqual(self.backend_count, 0)
+        # Headers reach the client before the server thread's finally block.
+        # Await actual cleanup; a leaked lease still fails the bounded wait.
+        self.wait(lambda: self.controller.gate.status()['active_requests'] == 0)
         self.assertEqual(self.controller.gate.status()['active_requests'], 0)
 
 
