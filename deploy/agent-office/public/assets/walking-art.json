@@ -1,0 +1,71 @@
+{
+  "generator": "Built-in image_gen tool",
+  "sourceReference": "agents.png",
+  "layout": {
+    "columns": 12,
+    "rows": 3,
+    "frameWidth": 128,
+    "frameHeight": 160,
+    "baselineY": 154,
+    "frameOrder": [
+      "south-stride",
+      "south-passing",
+      "west-stride",
+      "west-passing",
+      "east-stride",
+      "east-passing",
+      "north-stride",
+      "north-passing",
+      "south-standing",
+      "west-standing",
+      "east-standing",
+      "north-standing"
+    ]
+  },
+  "groups": [
+    {
+      "asset": "walk-coordination.png"
+    },
+    {
+      "asset": "walk-operations.png"
+    },
+    {
+      "asset": "walk-household.png"
+    },
+    {
+      "asset": "walk-planning.png"
+    }
+  ],
+  "normalization": {
+    "method": "Fixed-cell atlas packing with per-strip shared scale, upper-body horizontal anchor, and bottom-center ground baseline.",
+    "maximumCharacterHeight": 144,
+    "minimumCharacterHeight": 141,
+    "standingAndWalkingUseIndependentSourceScale": true,
+    "corrections": [
+      "Ceres east passing pose mirrors the west passing pose to correct the generated facing direction."
+    ],
+    "alpha": "True RGBA transparency retained from generated sources.",
+    "rows": [
+      [
+        "Atlas",
+        "Luna",
+        "Nova"
+      ],
+      [
+        "Apollo",
+        "Orion",
+        "Vega"
+      ],
+      [
+        "Ceres",
+        "Lyra",
+        "Hestia"
+      ],
+      [
+        "Themis",
+        "Plutus",
+        "Gaia"
+      ]
+    ]
+  }
+}

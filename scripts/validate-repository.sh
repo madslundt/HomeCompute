@@ -181,6 +181,7 @@ python3 "$REPO_ROOT/tests/openclaw-team-calendar-test.py"
 python3 "$REPO_ROOT/tests/openclaw-mattermost-test.py"
 python3 "$REPO_ROOT/tests/agent-roster-test.py"
 if command -v node >/dev/null 2>&1; then
+  node --test "$REPO_ROOT/tests/agent-office.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-broker-plugin.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-n8n-communication.test.mjs"
   node --test "$REPO_ROOT/tests/system-monitoring-ha-workflow.test.mjs"
@@ -1114,7 +1115,9 @@ fi
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
+# Optional agent office runs inside the existing sandbox, not a host container.
+[[ ! -e "$REPO_ROOT/deploy/agent-office/compose.yaml" ]]
+expected_deployment_projects="$(printf '%s\n' agent-office automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
