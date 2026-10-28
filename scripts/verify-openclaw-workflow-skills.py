@@ -27,22 +27,27 @@ def write(path, value):
     path.chmod(0o600)
 
 
-def verify(role, output):
+def verify(role, output, *, state_root=Path('/sandbox/.openclaw'), runner=subprocess.run):
     os.umask(0o077)
     if any(p.is_symlink() for p in (output, *output.parents)):
         raise ValueError('Private output symlink refused')
     output.mkdir(mode=0o700)
     if output.stat().st_uid != os.geteuid():
         raise ValueError('Owned output directory required')
-    root = Path('/sandbox/.openclaw')
+    root = state_root
     skill = WORKFLOWS[role][0]
     path = root / ('workspace-' + role) / 'skills' / skill / 'SKILL.md'
     content = path.read_bytes()
     session = str(uuid.uuid4())
     db_path = root / 'agents' / role / 'agent/openclaw-agent.sqlite'
-    db = sqlite3.connect('file:' + str(db_path) + '?mode=ro', uri=True)
-    if db.execute('SELECT count(*) FROM transcript_events WHERE session_id=?', (session,)).fetchone()[0]:
-        raise ValueError('Fresh verification session required')
+    # Native OpenClaw creates a role's database on its first real turn. Absence
+    # is valid here; do not initialize or modify its store from this verifier.
+    if db_path.exists():
+        db = sqlite3.connect('file:' + str(db_path) + '?mode=ro', uri=True)
+        prior = db.execute('SELECT count(*) FROM transcript_events WHERE session_id=?', (session,)).fetchone()[0]
+        db.close()
+        if prior:
+            raise ValueError('Fresh verification session required')
     message = ('This is a synthetic read-only qualification, not an action request. '
                'First use read to load your own installed workflow skill at ' + str(path) + '. '
                'Then apply that skill to the supplied fixture. Use only read for the skill file; '
@@ -50,14 +55,17 @@ def verify(role, output):
                'Use supplied fixture evidence only and explain the proposed result in English.\n\n' + FIXTURES[role])
     prompt = output / 'prompt.txt'
     write(prompt, message)
-    result = subprocess.run(['openclaw', 'agent', '--agent', role, '--session-id', session,
+    result = runner(['openclaw', 'agent', '--agent', role, '--session-id', session,
                              '--message-file', str(prompt), '--timeout', '180', '--json'],
                             capture_output=True, text=True, timeout=210)
     write(output / 'native-result.json', result.stdout)
     write(output / 'native-stderr.txt', result.stderr)
-    events = [json.loads(row[0]) for row in db.execute(
-        'SELECT event_json FROM transcript_events WHERE session_id=? ORDER BY seq LIMIT 1000', (session,))]
-    db.close()
+    events = []
+    if db_path.exists():
+        db = sqlite3.connect('file:' + str(db_path) + '?mode=ro', uri=True)
+        events = [json.loads(row[0]) for row in db.execute(
+            'SELECT event_json FROM transcript_events WHERE session_id=? ORDER BY seq LIMIT 1000', (session,))]
+        db.close()
     calls, reads, failures, answers = [], [], [], []
     heading = next(line for line in content.decode().splitlines() if line.startswith('# '))
     for event in events:

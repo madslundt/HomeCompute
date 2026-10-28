@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-28",
+  "pull_requests": [
+    40,
+    42
+  ],
+  "skills_applied_revision": "19131206e8c28a86336a6368cadcf5682a3c1704",
+  "first_use_qualification_helper_revision": "9609afc633f95603655e4a07a684359a72cec9b3",
+  "backup_directory": "/sandbox/.openclaw/workflow-skill-backups/5cb3afe2-68f7-4e16-8455-0b80f3676947",
+  "validation": {
+    "access_bridge_tests_passed": 21,
+    "scoped_workflow_tests_passed": 7,
+    "full_working_tree_validation": "passed",
+    "full_isolated_release_validation": "passed",
+    "first_use_fix_full_validation": "passed",
+    "pull_request_ci": "passed for both PRs",
+    "environment_dependent_skips": "reported by the repository validator; synthetic evidence is distinct from live qualification"
+  },
+  "deployment": {
+    "native_role_count": 12,
+    "native_schema_dry_run_passed": true,
+    "changed_files": 13,
+    "changed_native_settings": "six assigned skill lists only at apply; exact config readback matched candidate",
+    "managed_gateway_restart": "passed",
+    "native_gateway_phase": "Ready",
+    "inference_healthy": true,
+    "normal_host_release_invoked": false,
+    "new_tool_or_provider_grants": false
+  },
+  "roles": {
+    "administrator": {
+      "role": "administrator",
+      "skill": "household-paperwork",
+      "session_id": "6c9fae48-1c28-471c-b6af-3aba161d5ef7",
+      "native_exit": 0,
+      "skill_sha256": "df4f4e52cfb4df017fd4331dcc0f98a067f0f7c84f768d19407f9891e0340afb",
+      "transcript_event_count": 8,
+      "skill_read_requested": true,
+      "skill_body_read": true,
+      "tool_names": [
+        "read"
+      ],
+      "tool_failures": [],
+      "answer_present": true,
+      "synthetic_only": true,
+      "delivery_requested": false,
+      "read_only_probe_passed": true,
+      "eligible": true,
+      "behavior_review": "passed",
+      "behavior_evidence": "Calculated the synthetic notice date as 2027-01-02 with page references, assumptions and missing-evidence limits; created no reminder."
+    },
+    "cook": {
+      "role": "cook",
+      "skill": "meal-planning",
+      "session_id": "244f2bbe-33ff-4590-8e61-06ff8279bdef",
+      "native_exit": 0,
+      "skill_sha256": "6f98b486a09f7cfce87aa3b77a406774b273d5817d09f75fe2c88ea383dd8b42",
+      "transcript_event_count": 8,
+      "skill_read_requested": true,
+      "skill_body_read": true,
+      "tool_names": [
+        "read"
+      ],
+      "tool_failures": [],
+      "answer_present": true,
+      "synthetic_only": true,
+      "delivery_requested": false,
+      "read_only_probe_passed": true,
+      "eligible": true,
+      "behavior_review": "passed",
+      "behavior_evidence": "Scaled the meal to four diners, retained unknown stock/prices and routed proposed list/stock writes to Vega/Ceres."
+    },
+    "family": {
+      "role": "family",
+      "skill": "tasks-and-reminders",
+      "session_id": "97114fa8-d080-41a3-86dd-6d349ef7ccf2",
+      "native_exit": 0,
+      "skill_sha256": "5aba3c196c392159e7d675975c9b93c3b952aa5322674fc07bf5aa34cd83518e",
+      "transcript_event_count": 8,
+      "skill_read_requested": true,
+      "skill_body_read": true,
+      "tool_names": [
+        "read"
+      ],
+      "tool_failures": [],
+      "answer_present": true,
+      "synthetic_only": true,
+      "delivery_requested": false,
+      "read_only_probe_passed": true,
+      "eligible": true,
+      "behavior_review": "passed",
+      "behavior_evidence": "Selected shared Family task scope without private adult sources/delegation; explained reminder and recurrence limits."
+    },
+    "finance": {
+      "role": "finance",
+      "skill": "budget-analysis",
+      "session_id": "5fd51bb1-b9d4-4772-811d-b384a32f67ee",
+      "native_exit": 0,
+      "skill_sha256": "f01712a0aaba3c730b50b8f67907dfb96be384e6677b0fbfb52f3578c68578b8",
+      "transcript_event_count": 8,
+      "skill_read_requested": true,
+      "skill_body_read": true,
+      "tool_names": [
+        "read"
+      ],
+      "tool_failures": [],
+      "answer_present": true,
+      "synthetic_only": true,
+      "delivery_requested": false,
+      "read_only_probe_passed": true,
+      "eligible": true,
+      "behavior_review": "passed",
+      "behavior_evidence": "Reported 200 DKK confirmed expenses and kept the unresolved 150 DKK repayment separate; inferred no balances."
+    },
+    "operator": {
+      "role": "operator",
+      "skill": "tasks-and-reminders",
+      "session_id": "2b9772e6-4fc2-4c78-8705-8f341ba1a661",
+      "native_exit": 0,
+      "skill_sha256": "5aba3c196c392159e7d675975c9b93c3b952aa5322674fc07bf5aa34cd83518e",
+      "transcript_event_count": 8,
+      "skill_read_requested": true,
+      "skill_body_read": true,
+      "tool_names": [
+        "read"
+      ],
+      "tool_failures": [],
+      "answer_present": true,
+      "synthetic_only": true,
+      "delivery_requested": false,
+      "read_only_probe_passed": true,
+      "eligible": true,
+      "behavior_review": "passed",
+      "behavior_evidence": "Selected owner-private maintenance task scope, Copenhagen offset and no implied reminder; preserved action authority limits."
+    },
+    "personal": {
+      "role": "personal",
+      "skill": "tasks-and-reminders",
+      "session_id": "c387669c-f5dd-4468-85a9-68934495af0c",
+      "native_exit": 0,
+      "skill_sha256": "5aba3c196c392159e7d675975c9b93c3b952aa5322674fc07bf5aa34cd83518e",
+      "transcript_event_count": 8,
+      "skill_read_requested": true,
+      "skill_body_read": true,
+      "tool_names": [
+        "read"
+      ],
+      "tool_failures": [],
+      "answer_present": true,
+      "synthetic_only": true,
+      "delivery_requested": false,
+      "read_only_probe_passed": true,
+      "eligible": true,
+      "behavior_review": "passed",
+      "behavior_evidence": "Selected owner-private task scope, 2027-01-15T18:00:00+01:00 and no implied reminder; explained recurrence and zone limits."
+    }
+  },
+  "final_scope_audit": {
+    "role_count": 12,
+    "bundle_files_matching_source": 6,
+    "identity_files_matching_applied_plan": 6,
+    "only_six_skill_lists_changed_in_native_config": false,
+    "changed_top_level_sections": [
+      "plugins"
+    ],
+    "idempotent_changed_files": 0,
+    "idempotent_config_changed": false,
+    "native_config_sha256": "7f173edc9f851f0f11788b9ae87b29124f9ca828e86700afab9efb04ff96fd5d"
+  },
+  "remaining_differences": [
+    {
+      "scope": "native Agent Office plugin",
+      "observed_change": "plugins.load.paths changed after the skill rollout backup; the added and removed paths both identify homecompute-agent-office",
+      "action": "preserved; no plugin permissions changed in this difference; independent plugin rollout provenance is outside this skill qualification",
+      "details": {
+        "added": [
+          {
+            "directory_name": "3e66348fe08d8f6274152866b11c0d4368f812188fd5b125ebdd57fe6dc4ba3d",
+            "plugin_id": "homecompute-agent-office",
+            "directory_exists": true
+          }
+        ],
+        "removed": [
+          {
+            "directory_name": "aad8fd1528122d8b1f8b51d707272fec01d108ab1868ea5a38f86aa23d013ebc",
+            "plugin_id": "homecompute-agent-office",
+            "directory_exists": true
+          }
+        ]
+      }
+    },
+    {
+      "scope": "host releases",
+      "home_core_revision": "33ec2557a3897be54aecd0d0f54d6f7164fe6ebc",
+      "home_spark_revision": "d87c99eed446f51146daeab8d382a2e8f4c08426",
+      "status": "pre-existing host revision drift remains; no failed units observed; Spark passwordless sudo remains unavailable"
+    },
+    {
+      "scope": "full-team bootstrap",
+      "status": "older eight-role published bootstrap not reapplied; scoped lifecycle preserved the twelve-role native roster"
+    }
+  ],
+  "notes": [
+    "All six actual native sessions used synthetic fixtures, read their assigned installed skill and made no other tool call. No message delivery or live household writes were requested.",
+    "Private prompts, answers and native raw results remain outside Git. Only sanitized receipts and behavior conclusions are recorded.",
+    "The initial Themis helper attempt stopped before sending an agent turn because its native store did not yet exist. PR 42 fixed the first-use precondition and the subsequent native first turn passed.",
+    "Some management attempts waited or timed out on an active portable-host lock before any agent invocation. The lock was preserved and calls were serialized after it released."
+  ]
+}

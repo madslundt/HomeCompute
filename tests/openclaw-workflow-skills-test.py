@@ -1,9 +1,12 @@
 """Scoped native workflow installation, preservation, fencing and access-policy regression."""
 import copy
+from contextlib import redirect_stdout
+import io
 import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -16,6 +19,9 @@ from openclaw_workflow_skills import WORKFLOWS, SKILLS
 spec = importlib.util.spec_from_file_location('workflow_setup', ROOT / 'scripts/setup-openclaw-workflow-skills.py')
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+verify_spec = importlib.util.spec_from_file_location('workflow_verify', ROOT / 'scripts/verify-openclaw-workflow-skills.py')
+verifier = importlib.util.module_from_spec(verify_spec)
+verify_spec.loader.exec_module(verifier)
 
 
 class WorkflowTests(unittest.TestCase):
@@ -167,6 +173,38 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(), self.original)
         self.assertFalse((self.root / 'workspace-cook/skills/meal-planning/SKILL.md').exists())
         self.assertEqual(json.loads(self.ledger.read_text()), {'workspace/skills/retained/SKILL.md': 'a' * 64})
+
+    def test_qualification_handles_a_roles_first_native_turn_without_creating_its_database(self):
+        for tool_name in ('read', 'write'):
+            with self.subTest(tool_name=tool_name):
+                state = self.root / ('state-' + tool_name)
+                skill = state / 'workspace-administrator/skills/household-paperwork/SKILL.md'
+                skill.parent.mkdir(parents=True)
+                skill.write_text('---\nname: household-paperwork\ndescription: Fixture\n---\n\n# Paperwork fixture\n')
+                database = state / 'agents/administrator/agent/openclaw-agent.sqlite'
+                def first_turn(argv, **kwargs):
+                    self.assertFalse(database.exists())
+                    self.assertNotIn('--deliver', argv)
+                    session = argv[argv.index('--session-id') + 1]
+                    # Simulate the native agent owning initial database creation.
+                    database.parent.mkdir(parents=True)
+                    db = sqlite3.connect(database)
+                    db.execute('CREATE TABLE transcript_events(session_id TEXT,seq INTEGER,event_json TEXT)')
+                    events = [
+                        {'message': {'role': 'assistant', 'content': [{'type': 'toolCall', 'name': tool_name, 'arguments': {'path': str(skill)}}]}},
+                        {'message': {'role': 'toolResult', 'toolName': 'read', 'content': [{'type': 'text', 'text': '# Paperwork fixture'}]}},
+                        {'message': {'role': 'assistant', 'content': [{'type': 'text', 'text': 'Synthetic explanation.'}]}},
+                    ]
+                    for i, event in enumerate(events):
+                        db.execute('INSERT INTO transcript_events VALUES(?,?,?)', (session, i, json.dumps(event)))
+                    # Evidence from unrelated history cannot affect the receipt.
+                    db.execute('INSERT INTO transcript_events VALUES(?,?,?)', ('unrelated', 0, json.dumps({'message': {'role': 'toolResult', 'toolName': 'write', 'isError': True}})))
+                    db.commit()
+                    db.close()
+                    return subprocess.CompletedProcess(argv, 0, stdout='{}', stderr='')
+                with redirect_stdout(io.StringIO()):
+                    passed = verifier.verify('administrator', self.root / ('probe-' + tool_name), state_root=state, runner=first_turn)
+                self.assertEqual(passed, tool_name == 'read')
 
 
 if __name__ == '__main__':

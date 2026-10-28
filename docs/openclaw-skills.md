@@ -1,6 +1,6 @@
 # HomeCompute OpenClaw skills
 
-## Team workflow skills (source change, 2026-10-28)
+## Team workflow skills (verified rollout, 2026-10-28)
 
 The scoped assignment source adds four instruction-only bundles to existing roles:
 
@@ -83,9 +83,26 @@ Rollback restores only the affected skill lists/files/ledger, removes new bundle
 files and refuses later native or affected-file edits. Retain the prior source
 release and backup; investigate partial failures before retrying.
 
-Deployment and skill-use evidence will be recorded separately from the static
-checks. The older canary evidence below does not establish these four bundles'
-readiness. See the newer [tool runbook](openclaw-tools.md) and
+The managed rollout from `19131206e8c28a86336a6368cadcf5682a3c1704` passed
+schema validation, retained its private backup, and restarted successfully. All
+six assigned roles reported their skill eligible and completed fresh native
+synthetic turns with one successful skill-file read and no other tool calls.
+Their answers were reviewed against the fixtures: meal quantities/unknown prices,
+sourced paperwork deadlines, transfer-safe budget totals, and private versus
+shared tasks with Copenhagen times and no inferred reminders. The first-use
+verifier correction was published in
+`9609afc633f95603655e4a07a684359a72cec9b3` before qualifying Themis and Plutus.
+
+Final checks found all six bundle files matching source, all six managed
+instruction files matching the applied plan, and a zero-change installer
+preview. The native gateway was Ready with healthy local inference. A separate
+Agent Office plugin load-path change observed after the rollout backup was
+preserved; broad host revision drift and the older full-team bootstrap remain
+outside this scoped reconciliation. See the sanitized
+[rollout receipt](operations/openclaw-workflow-skills-rollout-2026-10-28.json).
+These synthetic turns do not establish real mailbox/document/bank connectivity
+or live reminder delivery. The older canary evidence below is historical; use
+the [tool runbook](openclaw-tools.md) and
 [integration status](openclaw-integrations.md) for their respective scope.
 
 ## Original canary bundles and historical verification (2026-10-09)
