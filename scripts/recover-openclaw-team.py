@@ -374,7 +374,15 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         for file, host in [('deploy/openclaw/tools/browser-policy.yaml','172.18.0.1'),
                            ('deploy/openclaw/mattermost-policy.yaml','home-core.tail479ad.ts.net'),
                            ('deploy/openclaw/nemoclaw/retained-service-routes.json','homecompute-capabilities.home.arpa')]:
-            self.command([self.ctx.cli, BASE.NAME, 'policy', 'add', '--from-file', str(ROOT/file),
+            preset=ROOT/file
+            if preset.suffix=='.json':
+                # Native preset admission requires a YAML filename. Keep JSON
+                # as the tracked declaration and render its identical YAML
+                # subset into the private recovery directory.
+                rendered=backup_root/(preset.stem+'.yaml')
+                BASE.atomic_json(rendered,json.loads(preset.read_bytes()))
+                preset=rendered
+            self.command([self.ctx.cli, BASE.NAME, 'policy', 'add', '--from-file', str(preset),
                           '--trusted-private-host',host,'--yes'], 'restore-retained-network-preset', timeout=180)
         final = backup_root / 'restored-active-config.json'
         BASE.atomic_json(final, self.policy)
