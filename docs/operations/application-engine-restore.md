@@ -42,7 +42,12 @@ versions and extension versions. Missing images fail; no image is pulled.
 Temporary containers have no network, published ports or host storage mounts,
 run as the image's non-root PostgreSQL UID, drop all capabilities, and use a
 read-only root filesystem plus bounded private tmpfs. Each has one CPU, 1 GiB
-memory and a process limit. A unique bootstrap superuser/database lets the
+memory and a process limit.
+Immich additionally has a fixed 1 MiB private `/etc/postgresql` tmpfs owned
+by its PostgreSQL UID: its pinned vendor entrypoint writes the public config
+template there before delegating to the standard entrypoint. The image root
+stays read-only, and no host path or extra network access is introduced.
+A unique bootstrap superuser/database lets the
 `pg_dumpall --clean` stream recreate the original roles and databases. The
 import uses `ON_ERROR_STOP`, then checks nonempty table counts and exact
 extension metadata. SQL and command output remain private. Ownership is checked
@@ -90,9 +95,14 @@ Focused tests run without production services:
 ```bash
 python3 tests/application-recovery-engine-test.py
 HOMECOMPUTE_SYNTHETIC_POSTGRES=1 python3 tests/application-recovery-engine-test.py
+HOMECOMPUTE_EXACT_IMMICH_STARTUP=1 python3 tests/application-recovery-engine-test.py ExactImmichStartupTest
 ```
 
 The optional second command starts only new local PostgreSQL clusters under a
 temporary private directory, with Unix sockets and TCP disabled, to test clean
 role/database recreation. It never connects to an existing PostgreSQL server.
 This synthetic result is separate from the real NAS engine receipt.
+The third command needs the pinned local Immich image and Docker. It tests
+only vendor startup and visibility of the immutable config template using a
+new private configuration tmpfs, with no restored SQL or host binds. Startup
+output remains private, and the owned container is removed on every exit.

@@ -65,6 +65,26 @@ class RecoveryEngineTest(unittest.TestCase):
         with patch.object(engine,'run',return_value=SimpleNamespace(stdout=json.dumps(bad).encode())),self.assertRaises(engine.VerificationError):
             engine.container_isolated(identifier,item,'nonce')
 
+    def test_only_immich_vendor_config_gets_one_mib_private_tmpfs(self):
+        for scope,item in engine.policy()['postgres'].items():
+            command=engine.pg_command(item,'synthetic','nonce','bootstrap')
+            values=[command[index+1] for index,value in enumerate(command) if value=='--tmpfs']
+            vendor=[value for value in values if value.startswith('/etc/postgresql:')]
+            if scope=='immich':
+                self.assertEqual(vendor,['/etc/postgresql:rw,nosuid,nodev,noexec,size=1048576,mode=0700,uid=999,gid=999'])
+            else:self.assertEqual(vendor,[])
+            self.assertIn('--read-only',command)
+        item=engine.policy()['postgres']['immich'];identifier='a'*64
+        value={'Id':identifier,'Image':item['image_id'],'Config':{'User':'999:999','Labels':{engine.LABEL:'nonce'}},
+               'HostConfig':{'NetworkMode':'none','ReadonlyRootfs':True,'Privileged':False,'CapDrop':['ALL'],
+                             'PortBindings':{},'PublishAllPorts':False,'Binds':[],
+                             'Tmpfs':{'/var/lib/postgresql/data':'private','/var/run/postgresql':'private','/tmp':'private','/etc/postgresql':'private'}},'Mounts':[]}
+        with patch.object(engine,'run',return_value=SimpleNamespace(stdout=json.dumps(value).encode())):
+            engine.container_isolated(identifier,item,'nonce')
+        del value['HostConfig']['Tmpfs']['/etc/postgresql']
+        with patch.object(engine,'run',return_value=SimpleNamespace(stdout=json.dumps(value).encode())),self.assertRaises(engine.VerificationError):
+            engine.container_isolated(identifier,item,'nonce')
+
     def test_ambiguous_create_timeout_can_cleanup_only_exact_nonce_owned_container(self):
         item={'Id':'a'*64,'Config':{'Labels':{engine.LABEL:'nonce'}}}
         with patch.object(engine,'run',side_effect=[SimpleNamespace(returncode=0,stdout=json.dumps(item).encode()),SimpleNamespace(returncode=0)]) as run:
@@ -271,6 +291,33 @@ with open(sys.argv[1],'wb') as f:
             with patch.object(engine,'run',return_value=SimpleNamespace(stdout=json.dumps([{'Id':item['image_id']}]).encode())) as run:
                 with self.assertRaises(gzip.BadGzipFile):engine.postgres_verify('control-plane',item,root,root)
             self.assertEqual(run.call_count,1)
+
+
+class ExactImmichStartupTest(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get('HOMECOMPUTE_EXACT_IMMICH_STARTUP')=='1',
+                         'explicit isolated exact-image startup fixture; no restored/private SQL')
+    def test_vendor_entrypoint_starts_with_only_private_config_tmpfs(self):
+        item=engine.policy()['postgres']['immich'];nonce=uuid.uuid4().hex
+        name='homecompute-restore-pg-'+nonce;bootstrap='hc_restore_'+nonce;identifier=None
+        with tempfile.TemporaryDirectory(prefix='hc-immich-startup-') as temporary:
+            root=Path(temporary)
+            try:
+                created=engine.run(engine.pg_command(item,name,nonce,bootstrap)).stdout.decode().strip()
+                self.assertRegex(created,'^[0-9a-f]{64}$');identifier=created
+                engine.container_isolated(identifier,item,nonce)
+                with (root/'startup.stdout').open('xb') as output,(root/'startup.stderr').open('xb') as errors:
+                    with engine.owned_process(['docker','start','--attach',identifier],stdout=output,stderr=errors,
+                                              env=engine.ENV,preexec_fn=engine.bounded_output) as process:
+                        deadline=time.monotonic()+60
+                        while time.monotonic()<deadline:
+                            if engine.run(['docker','exec',identifier,'pg_isready','-q','-U',bootstrap,'-d',bootstrap],check=False).returncode==0:break
+                            if process.poll() is not None:self.fail('exact vendor startup exited; private fixture logs were not exposed')
+                            time.sleep(1)
+                        else:self.fail('exact vendor startup timed out')
+                        engine.run(['docker','exec',identifier,'sh','-ceu',
+                                    'test -s /etc/postgresql/postgresql.conf && test -r /var/postgresql-conf-tpl/postgresql.ssd.conf'])
+            finally:
+                with engine.defer_terminal_signals():engine.remove_owned(name,identifier,nonce)
 
 
 class RealSyntheticPostgresTest(unittest.TestCase):

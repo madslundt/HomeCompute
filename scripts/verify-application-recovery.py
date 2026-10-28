@@ -158,12 +158,17 @@ def restored_input(target: Path, snapshot: str, archive: str) -> str:
 
 def pg_command(item: dict, name: str, nonce: str, bootstrap: str) -> list[str]:
     uid, gid = item['uid'], item['gid']
+    # Immich's pinned vendor entrypoint materializes its public config template
+    # here before starting PostgreSQL. Preserve that entrypoint with one small
+    # private tmpfs, rather than making the image root writable.
+    vendor_config = ['--tmpfs', f'/etc/postgresql:rw,nosuid,nodev,noexec,size=1048576,mode=0700,uid={uid},gid={gid}'] if item['major'] == 14 else []
     return ['docker', 'create', '--name', name, '--label', LABEL + '=' + nonce,
             '--pull=never', '--network=none', '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
             '--user', f'{uid}:{gid}', '--read-only', '--memory=1g', '--memory-swap=1g', '--cpus=1', '--pids-limit=128',
             '--log-driver=none', '--tmpfs', f'/var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=805306368,mode=0700,uid={uid},gid={gid}',
             '--tmpfs', f'/var/run/postgresql:rw,nosuid,nodev,noexec,size=16777216,mode=0700,uid={uid},gid={gid}',
             '--tmpfs', f'/tmp:rw,nosuid,nodev,noexec,size=67108864,mode=0700,uid={uid},gid={gid}',
+            *vendor_config,
             '--env', 'PGDATA=/var/lib/postgresql/data', '--env', 'POSTGRES_USER=' + bootstrap,
             '--env', 'POSTGRES_DB=' + bootstrap, '--env', 'POSTGRES_HOST_AUTH_METHOD=trust',
             item['image_id'], 'postgres', '-c', 'listen_addresses=', '-c', 'max_connections=20',
@@ -188,6 +193,8 @@ def remove_owned(name: str, identifier: str | None, nonce: str) -> None:
 def container_isolated(identifier: str, item: dict, nonce: str) -> None:
     value = json.loads(run(['docker', 'inspect', identifier, '--format', '{{json .}}']).stdout)
     host = value.get('HostConfig', {}); config = value.get('Config', {})
+    tmpfs = {'/var/lib/postgresql/data', '/var/run/postgresql', '/tmp'}
+    if item['major'] == 14: tmpfs.add('/etc/postgresql')
     if (value.get('Id') != identifier or value.get('Image') != item['image_id'] or
             config.get('User') != f"{item['uid']}:{item['gid']}" or config.get('Labels', {}).get(LABEL) != nonce or
             host.get('NetworkMode') != 'none' or host.get('ReadonlyRootfs') is not True or
@@ -195,7 +202,7 @@ def container_isolated(identifier: str, item: dict, nonce: str) -> None:
             host.get('PortBindings') not in (None, {}) or host.get('PublishAllPorts') is not False or
             host.get('Binds') not in (None, []) or
             any(mount.get('Type') != 'tmpfs' for mount in value.get('Mounts', [])) or
-            set(host.get('Tmpfs', {})) != {'/var/lib/postgresql/data', '/var/run/postgresql', '/tmp'}):
+            set(host.get('Tmpfs', {})) != tmpfs):
         raise VerificationError('temporary-postgres-isolation-mismatch')
 
 
