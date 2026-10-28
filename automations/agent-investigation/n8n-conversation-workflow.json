@@ -1,5 +1,5 @@
 {
-  "name": "HomeCompute OpenClaw conversation route (inactive private sender scaffold)",
+  "name": "Retired Telegram conversation route \u2014 outbound notifications only",
   "active": false,
   "nodes": [
     {
@@ -13,11 +13,12 @@
       "position": [
         0,
         0
-      ]
+      ],
+      "disabled": true
     },
     {
       "parameters": {
-        "jsCode": "// Invoke only from the one existing, authenticated Telegram ingress router.\nconst cfg={configured:false,adapter_url:'https://openclaw-communication.home.arpa:19443',destination:'replace-selected-authorized-destination',chat_id:'replace-selected-private-chat-id',user_id:'replace-selected-operator-id'};\nif (!cfg.configured || !/^[0-9]+$/.test(cfg.chat_id) || !/^[0-9]+$/.test(cfg.user_id)) throw new Error('Selected private chat and sender approval required');\nconst update=$json; const msg=update.message;\nif (!Number.isSafeInteger(update.update_id) || !msg || msg.chat?.type!=='private' || String(msg.chat.id)!==cfg.chat_id || String(msg.from?.id)!==cfg.user_id || msg.from?.is_bot || typeof msg.text!=='string' || msg.text.length>4000 || !msg.text.startsWith('/openclaw ')) return [];\nreturn [{json:{adapter_url:cfg.adapter_url,conversation:'operator',destination:cfg.destination,request_id:'telegram:'+update.update_id,text:msg.text.slice(10)}}];"
+        "jsCode": "throw new Error('Telegram conversations are retired. Use Mattermost; Telegram is outbound notifications only.');"
       },
       "id": "validate-private-sender-and-command",
       "name": "Validate private sender and command",
@@ -54,7 +55,8 @@
           "name": "OpenClaw dedicated conversation transport (select after approval)"
         }
       },
-      "retryOnFail": false
+      "retryOnFail": false,
+      "disabled": true
     },
     {
       "parameters": {
@@ -70,41 +72,7 @@
       ]
     }
   ],
-  "connections": {
-    "Trusted existing Telegram router": {
-      "main": [
-        [
-          {
-            "node": "Validate private sender and command",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate private sender and command": {
-      "main": [
-        [
-          {
-            "node": "Conversation with durable request identity",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Conversation with durable request identity": {
-      "main": [
-        [
-          {
-            "node": "Return processing status",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
+  "connections": {},
   "settings": {
     "executionOrder": "v1",
     "timezone": "Europe/Copenhagen",

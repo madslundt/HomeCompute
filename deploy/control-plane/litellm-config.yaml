@@ -9,9 +9,9 @@ model_list:
       stream_timeout: 600
   - model_name: "home"
     litellm_params:
-      model: "openai/home-fast"
+      model: "openai/automation-qualification"
       order: 1
-      api_base: "os.environ/COMPUTE_HOME_BASE_URL"
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 20
       stream_timeout: 20
@@ -31,14 +31,6 @@ model_list:
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 600
       stream_timeout: 600
-  - model_name: "assistant-canary"
-    litellm_params:
-      model: "openai/automation-qualification"
-      order: 1
-      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
-      api_key: os.environ/COMPUTE_API_KEY
-      timeout: 120
-      stream_timeout: 120
   - model_name: "automation-qualification"
     litellm_params:
       model: "openai/automation-qualification"

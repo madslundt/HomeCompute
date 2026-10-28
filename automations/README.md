@@ -11,6 +11,7 @@ currently active in a production n8n instance.
 | [Weekly HomeCompute software update review](update-check/README.md) | Watch model/runtime/NixOS sources and pinned production MCP commits; pair with GitHub Dependabot pull requests for repository-managed images and packages |
 | [Weekly family holiday bargains](travel/n8n-workflow.ts) | Monday 09:00 Copenhagen search for family packages with checked totals, optional all-inclusive prices and sunny 25°C weather; forecasts or labelled five-year seasonal averages qualify offers before delivery to Mattermost Travel |
 | [Isolated model benchmark](model-benchmark/README.md) | Replay cases through different OpenRouter models using real read-only Aula MCP and public Tavily search, without schedules, notifications, or production writes |
+| [Read-only personal and work mail bridges](../scripts/openclaw_mail_workflow.py) | Separate prepared n8n routes for Mads's Outlook, Kristina's Outlook, and approved work Gmail. OAuth setup and isolated principal runtimes are required before publication; no mailbox has been read by these staged routes. |
 | [Synthetic investigation scaffold](agent-investigation/n8n-workflow.json) | Inactive manual-only incident adapter; HTTP event node is disabled and uses a deliberately invalid endpoint until private ingress and dedicated hook authentication are approved |
 
 Scheduled embedding integrations are maintained as sanitized patch builders in

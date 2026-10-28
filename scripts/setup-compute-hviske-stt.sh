@@ -38,8 +38,8 @@ Commands:
   prepare    Fetch and atomically accept the pinned model cache
   install    Pull, prepare, start, smoke-test, and record a staged release
   http-up    Build/start only the loopback HTTP relay for the running model
-  up         Start only the opt-in Hviske and Wyoming services
-  smoke      Exercise Wyoming Describe and a bounded silent transcription
+  up         Start the Hviske model and private HTTP inference ingress
+  smoke      Exercise a bounded silent HTTP transcription
   status     Show only the Hviske project state
   logs       Show the last 200 lines from the Hviske project
   down       Stop only the Hviske project; retain cache and manifest
@@ -165,7 +165,7 @@ validate_config() {
   docker compose version >/dev/null
   compose --profile prepare --profile hviske config --quiet
   services="$(compose --profile prepare --profile hviske config --services)"
-  for key in hviske-fetch hviske-primary hviske-wyoming; do
+  for key in hviske-fetch hviske-primary; do
     [[ $'\n'"$services"$'\n' == *$'\n'"$key"$'\n'* ]] || die "Compose render is missing $key"
   done
   log "Pinned vLLM 0.19, model, license gate, request bounds, and Compose profile are valid"
@@ -228,63 +228,51 @@ prepare() {
   log "Pinned Hviske cache is prepared; no service was activated"
 }
 wait_ready() {
-  local service container state deadline=$((SECONDS + WAIT_SECONDS))
-  for service in hviske-primary hviske-wyoming; do
-    state=missing
-    while ((SECONDS < deadline)); do
-      container="$(compose --profile hviske ps -q "$service")"
-      [[ -z "$container" ]] || state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")"
-      [[ "$state" != healthy ]] || break
-      [[ "$state" != exited && "$state" != dead ]] || die "$service stopped before readiness"
-      sleep 5
-    done
-    [[ "$state" == healthy ]] || die "Timed out waiting for $service"
+  local service=hviske-primary container state=missing deadline=$((SECONDS + WAIT_SECONDS))
+  while ((SECONDS < deadline)); do
+    container="$(compose --profile hviske ps -q "$service")"
+    [[ -z "$container" ]] || state="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")"
+    [[ "$state" != healthy ]] || break
+    [[ "$state" != exited && "$state" != dead ]] || die "$service stopped before readiness"
+    sleep 5
   done
+  [[ "$state" == healthy ]] || die "Timed out waiting for $service"
 }
+
 start() {
   require_root; validate_config; license_allows_activation; verify_manifest; verify_runtime_programs
   if [[ "$GB10_BIND_ADDRESS" == 10.77.10.10 && "$HVISKE_PRIVATE_INGRESS_CONFIRMED" != true ]]; then
     die "Private activation requires a verified 10.77.10.2/32 -> 10.77.10.10:10301 ingress rule"
   fi
   verify_private_firewall
-  compose --profile hviske up -d hviske-primary hviske-wyoming
+  compose --profile hviske up -d hviske-primary
   wait_ready
-  log "Hviske is staged on $GB10_BIND_ADDRESS:$HVISKE_WYOMING_PORT; production routing remains a separate gate"
+  compose --profile hviske-http up -d --build --no-deps --wait --wait-timeout 60 hviske-http
+  log "Hviske HTTP inference is staged on loopback:8003; Wyoming runs on home-core"
 }
 smoke() {
   validate_config
-  python3 - "$GB10_BIND_ADDRESS" "$HVISKE_WYOMING_PORT" <<'PY'
-import json, socket, struct, sys
-
-def event(kind, data=None, payload=b''):
-    data_bytes = json.dumps(data or {}, separators=(',', ':')).encode() if data else b''
-    header = {'type': kind, 'version': '1.10.2'}
-    if data_bytes: header['data_length'] = len(data_bytes)
-    if payload: header['payload_length'] = len(payload)
-    return json.dumps(header, separators=(',', ':')).encode() + b'\n' + data_bytes + payload
-
-def receive(stream):
-    header = json.loads(stream.readline(65537))
-    if header.get('data_length'): header['data'] = json.loads(stream.read(header['data_length']))
-    if header.get('payload_length'): stream.read(header['payload_length'])
-    return header
-
-with socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=10) as sock:
-    stream = sock.makefile('rb')
-    sock.sendall(event('describe'))
-    info = receive(stream)
-    if info.get('type') != 'info' or not info.get('data', {}).get('asr'): raise SystemExit('Describe failed')
-    sock.sendall(event('transcribe', {'name':'stt-danish','language':'da'}))
-    audio_format = {'rate':16000,'width':2,'channels':1}
-    sock.sendall(event('audio-start', audio_format))
-    sock.sendall(event('audio-chunk', audio_format, struct.pack('<h', 0) * 8000))
-    sock.sendall(event('audio-stop'))
-    result = receive(stream)
-    if result.get('type') != 'transcript' or not isinstance(result.get('data', {}).get('text'), str):
-        raise SystemExit('Transcription failed')
-PY
-  log "Wyoming Describe and bounded transcription smoke passed"
+  compose --profile hviske exec -T hviske-primary python3 - <<'PYTHON'
+import io, json, urllib.request, wave
+key = open('/run/secrets/vllm_api_key', 'rb').read().strip().decode()
+audio = io.BytesIO()
+with wave.open(audio, 'wb') as wav:
+    wav.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+    wav.writeframes(b'\0\0' * 8000)
+boundary = 'homecompute-hviske-smoke'
+body = (f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nstt-danish\r\n'
+        f'--{boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\nda\r\n'
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
+        'Content-Type: audio/wav\r\n\r\n').encode() + audio.getvalue() + f'\r\n--{boundary}--\r\n'.encode()
+request = urllib.request.Request('http://127.0.0.1:8000/v1/audio/transcriptions', body,
+    {'Authorization': 'Bearer '+key, 'Content-Type': 'multipart/form-data; boundary='+boundary})
+with urllib.request.urlopen(request, timeout=120) as response:
+    value=json.load(response)
+assert isinstance(value.get('text'), str)
+PYTHON
+  log "Bounded authenticated HTTP transcription smoke passed; no transcript logged"
 }
+
 write_release_record() {
   local timestamp temporary digest record
   timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -297,7 +285,7 @@ write_release_record() {
     printf 'HVISKE_MODEL_REVISION=%q\n' "$HVISKE_MODEL_REVISION"
     printf 'HVISKE_MODEL_LICENSE_ID=%q\n' "$HVISKE_MODEL_LICENSE_ID"
     printf 'HVISKE_LICENSE_DECISION=%q\n' "$HVISKE_LICENSE_DECISION"
-    printf 'WYOMING_LISTENER=%q\n' "$GB10_BIND_ADDRESS:$HVISKE_WYOMING_PORT"
+    printf 'INFERENCE_LISTENER=%q\n' '127.0.0.1:8003'
     printf 'CACHE_MANIFEST_SHA256=%q\n' "$(sha256_file "$MANIFEST")"
     printf 'ADAPTER_SHA256=%q\n' "$(sha256_file "$GB10_ROOT/runtime/wyoming-openai-stt.py")"
   } >"$temporary"

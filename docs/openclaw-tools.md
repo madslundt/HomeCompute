@@ -58,6 +58,219 @@ The CLI exit waiter timed out after the terminal reply was saved; successful
 tool results and the final report were independently checked in the canonical
 transcript, and a native read confirmed that no verification run remained active.
 
+## Bitwarden custody and private access requests (2026-10-27)
+
+The operator created a separate `openclaw` Bitwarden organization/project and
+approved read-only project access for `openclaw-credential-service`. The web
+vault holds the Hotels.com password. No Bitwarden values belong in OpenClaw's
+workspace, model context, tool output, logs, repository or browser CDP profile.
+
+`scripts/provision-openclaw-bitwarden.py` accepts a machine token and sign-in
+email through a hidden, interactive root terminal on home-core. It stores an
+exact-ID account mapping and token in `/var/lib/homecompute-credential-secrets`
+with directory mode 0700 and file modes 0600, refusing symlinks and overwrites.
+It starts no service and grants no agent access. Its companion provider only
+executes a qualified Nix-store `bws`, retrieves the configured password UUID,
+verifies organization/project/key, discards CLI stderr, suppresses raw error
+details and uses private temporary CLI state. Tests use synthetic credentials.
+
+The custody helpers are staged root-only under
+`/opt/homecompute/openclaw-credentials` on home-core. The official static
+`bws 2.1.0` Linux x86_64 MUSL release is stored immutably in Nix with a GC root
+at `bws-package` in that directory. Its release ZIP SHA-256 is
+`f59ee150e42b82128d437087e9bac920053c6bfddcb960d20ce9386e5ac9bba6`;
+the installed binary SHA-256 is
+`c1e62be60735e71a82699bb7286043c6cb8b525a70f838d1fc81f10bc83f40b1`.
+The root-private `bws-artifact.json` records provenance. The native CLI version,
+argument schema and executable custody guard were checked. The operator installed
+the machine token through the hidden terminal, and an exact-ID password retrieval
+succeeded without displaying the value. Private file modes were verified.
+The operator selected private Mattermost notifications linking to a private
+authenticated approval page for each grant.
+The operator chose a non-expiring, revocable Bitwarden service token; individual
+agent grants retain independently enforced durations. A vault token lifetime is
+not an agent session lifetime, and monthly service-token replacement is not part
+of the intended workflow.
+
+The first interactive bootstrap failed before the first prompt because Python's
+buffered `r+` update mode cannot open the non-seekable `/dev/tty`. The prompt
+stream now uses write mode while getpass owns its separate read handle. A root
+Linux controlling-PTY regression drives the actual CLI with synthetic inputs,
+checks that no values are echoed, checks private output file modes and confirms
+that mismatched token confirmation creates no credential files. Fixed refusal
+diagnostics now retain their safe reason rather than always suggesting a partial
+installation. Terminal-mode restoration remains enforced on every exit.
+
+The installed `scripts/openclaw_access_grants.py` ledger and
+`scripts/openclaw-access.py` service separate authenticated assistant requests
+from owner decisions. Requests name an operator-registered account, a scope
+allowed by that profile, a duration of 1–1440 minutes and an idempotency key.
+The finite scopes are `search`, `read`, `prepare_booking` and `prepare_purchase`;
+each website allows only its reviewed subset. Trusted configuration supplies
+the shared `openclaw` identity; callers cannot choose an actor. Native policy
+grants `homecompute_access_request`, `homecompute_access_status`,
+`homecompute_site_run` and `homecompute_site_status` only to `travel` (Lyra)
+and `shopper` (Vega). This role restriction is not a separate cryptographic
+identity. None of these tools can approve access, retrieve secrets, view the
+private sign-in screen, book or pay.
+
+The canonical owner page is `https://mattermost.home.arpa:18814/`, on the
+admitted home network and through Tailscale when away. Restricted DNS for
+`home.arpa` already points to `192.168.30.1`, and the `192.168.30.0/24` subnet
+route is already approved. Away from home, the device must connect to Tailscale
+and use that DNS and route. The device must also trust the existing home private
+CA certificate. Both routes use the same hostname and existing Mattermost web
+sign-in cookie; logging in through the native Mattermost app alone does not
+create the browser cookie. New notifications contain one review link.
+The previous `https://home-core.tail479ad.ts.net:18814/` URL remains supported
+with that hostname's existing Mattermost sign-in cookie.
+Sessions are checked against Mattermost on every request and must match the
+configured owner ID; bot accounts and Basic/bearer fallback are rejected.
+There is no new approval password. Decisions require an exact origin, the
+immutable request digest and a single-use action-bound CSRF challenge. Active
+grants can be revoked, and expired/denied/revoked grants cannot be revived.
+Mattermost notifications go only to the verified owner/delivery-bot private
+conversation. Notification delivery has durable deduplication; uncertain sends
+are not retried automatically. Replies in Mattermost do not grant access.
+
+`scripts/setup-openclaw-access.py` installs attached NixOS units for the
+loopback backend, dedicated HTTPS Caddy proxy and certificate-renewal watcher.
+It never modifies the primary Mattermost proxy. The HTTPS listeners bind only
+the host's specific LAN/tailnet addresses, with dedicated firewall admission.
+The backend has no capabilities, no request logging, no external IP access
+except Mattermost's inspected application /24 (needed after Docker DNAT), and
+filesystem denial of the vault directory, Mattermost bootstrap/admin state and
+OpenClaw state. It holds the notifier bot credential, exact owner ID and a
+separate root-only browser-control key. That control key cannot match the
+request, operation or native MCP identities and is never copied to the core adapter. The adapter holds
+separate assistant request and finite-operation credentials. Neither service
+receives the Bitwarden token or Hotels.com password. Caddy mounts only the leaf
+certificates and TLS configuration; the LAN CA private key is not mounted.
+
+`scripts/setup-openclaw-access-native.py` applies only the four finite
+travel/shopper grants after native schema validation and an exact source-config
+hash check, keeps a
+private backup and verifies protected configuration sections are unchanged.
+The core adapter's pre-change source and attached unit are backed up root-only
+under `/opt/homecompute/openclaw-credentials/adapter-backup-*`. The access
+installer can reconcile its own units; after a Mattermost application-network
+change, rerun it to inspect and update the narrow network allowance.
+
+An earlier native travel-agent request/status smoke test recorded a five-minute
+search request with a verified Mattermost delivery receipt and left it pending
+for the owner. HTTPS sign-in, owner access, anonymous and bot rejection, and the
+service's hidden vault mount were checked live. The four-tool native policy is
+now applied to travel and shopper; managed gateway discovery refresh remains
+pending. That earlier request/status check does not verify the new tool inventory.
+
+**Not yet verified:** signing in to the real Hotels.com account and running an
+authenticated Hotels search. A pending private 15-minute read request is the
+owner handoff. Adapter availability describes its reviewed implementation;
+it does not claim that the account is signed in. Purchases and bookings require
+separate approval, and no transaction finalizer is enabled. The existing public
+research browser remains separate and restricted.
+
+## Private registered-site worker (2026-10-27)
+
+`scripts/setup-openclaw-sites.py` installs the generic framework under
+`/opt/homecompute/openclaw-credentials`: the site service, executor, registry,
+drivers, worker, owner-session worker and transport modules, `site-seccomp.json`
+and the hostname policy. Root-private runtime and transport configuration lives
+in `/var/lib/homecompute-sites/config`; finite operation metadata lives in
+`/var/lib/homecompute-sites/operations`. Attached units are
+`homecompute-openclaw-sites.service` and `homecompute-openclaw-site-egress.service`.
+The assistant-facing service binds only `127.0.0.1:18816`.
+
+The trusted registry is `/var/lib/homecompute-access/config/sites.json`.
+Profiles specify exact domains, allowed scopes/actions, bounded operation
+parameters, reviewed selectors and explicit network rules. Another website
+requires its own root-reviewed profile and private Bitwarden account mapping.
+`login_mode` is either `automatic` or `owner`; old profiles without the field
+remain automatic. Qualification describes the reviewed implementation for that
+mode, with a separate deployed-worker readiness check. Models cannot supply URLs,
+selectors, credentials, browser code, login modes or profile overrides.
+
+Hotels uses owner mode with the fixed `https://da.hotels.com/login` entry point.
+The installer marks this mode available only after a real headful Chromium
+sandbox fixture succeeds; it does not fetch credentials or sign in to Hotels.
+A grant starts a private, memory-only browser session that lasts at most until
+that grant expires or is revoked. Cookies and authenticated browser state stay
+inside that session's disposable worker, separate from the public research
+browser. The owner opens the private page through their existing owner-only
+Mattermost cookie authentication. A distinct root-only backend key protects
+start, Fill, Ready, close, viewer assets and the VNC socket; the model's request
+and operation keys cannot use those routes.
+
+The owner's Fill action retrieves the exact mapped Bitwarden credentials only
+under an active grant and fills a document-bound field at the registered HTTPS
+origin through a private process pipe. It never clicks Continue or submits
+sign-in. The owner handles One Key prompts, MFA, legal terms, CAPTCHA and account
+recovery directly on the private canvas. Ready is an explicit owner attestation,
+not a guessed automatic login result. Neither this chat nor any model tool can
+view the canvas, receive its images, type a password or request a verification
+code. Passwords are absent from command arguments, environment variables and
+host files.
+
+On phones, select a field in the private screen and choose Show keyboard. The
+owner-only input control forwards keys over the existing viewer socket and
+clears its temporary buffer after input, on disconnect and when leaving the
+page. It never sends typed text in an HTTP request, form, log or model tool.
+Fill reports zero, one or two filled fields. Email-first sign-in may require
+Continue followed by another Fill action. Visible verification prompts do not
+prevent filling eligible email/password fields, but codes, recovery fields,
+consent and submission remain entirely under the owner's control.
+
+For sign-in failures, the trusted operator can request a bounded network-health
+report through the root-only browser-control API during owner sign-in. It
+contains domain categories, resource types, HTTP status, MIME categories and
+fixed network-error codes. Unknown hostnames lose their subdomains. Cookies,
+full URLs, headers, page contents and image data never enter this report. It is
+not available through native agent tools and is cleared at Ready or close.
+
+MFA codes are entered only into the private website screen; push approvals stay
+on the owner's trusted device. Codes, recovery codes and authenticator seeds
+must never be sent to the agent or Mattermost. A detected challenge during an
+operation pauses queued automation and returns the session to private owner
+control. Ready refuses a visible challenge; the owner completes verification
+and explicitly resumes. This handoff does not extend the grant or bypass
+revocation, and does not authorize a purchase or booking.
+
+Owner-session containers run without root or capabilities, with a read-only
+filesystem, temporary memory storage, no host profile mounts and no published
+ports. VNC port 6080 is reachable from the host only as UID 0. Two fixed GUI slots
+can reach only their own exact-domain TLS proxy: GUI `.20` to proxy `.10`, and
+GUI `.21` to proxy `.11`. Sibling sessions and private destinations are blocked;
+only established reply traffic returns to the host. The proxy pins public DNS
+answers. The approved owner page relays the authenticated viewer; the browser
+port is never exposed directly to the LAN, tailnet or model.
+
+After Ready, the same private session can run finite registered read/search or
+preparation operations under readonly network policy; no financial finalizers
+are installed. `homecompute_site_run` otherwise returns `human_sign_in_required`; the model
+receives only fixed state fields and a bounded result count, never credentials,
+cookies, page text, screenshots, sign-in URLs or viewer access. Automatic-mode
+sites retain disposable per-operation workers. Each operation is bounded to 45
+seconds. Grant checks run before private credential retrieval, browser actions
+and results, and during the session lifetime. Expiry, revocation or a changed
+grant closes the worker and suppresses its result. Installer/profile changes
+invalidate old pending and active grants before publishing new capabilities.
+
+A credential-free public Example.com fixture passed against the installed
+private viewer: vendor assets returned 200, the VNC WebSocket upgraded with 101,
+and the headful Chromium sandbox ran. Revocation closed the fixture in about
+200 ms. This used the actual root unit's `UMask=0077`, empty capability set,
+`ProtectSystem=strict`, private-range IP denials and explicit browser-subnet
+allowance. These checks qualify the private GUI mechanism, not Hotels account
+sign-in or authenticated search. Real-browser tests have explicit dependency
+and opt-in gates; a skipped test is not evidence of a working browser.
+
+The owner-only `/transactions/review/<uuid>` page displays an exact account,
+payee, amount/currency, items, terms and expiry, bound to an immutable digest and
+one-use CSRF challenge. No transaction finalizer is qualified, and no assistant
+endpoint can create or claim a transaction. The framework cannot currently buy
+or book. Unknown external outcomes require operator reconciliation rather than
+a retry.
+
 ## Earlier installation and recovery record
 
 The following records the original installation and unfinished activation during
@@ -108,8 +321,10 @@ record and qualify the resulting image before deploying it.
 
 The browser container runs as UID 10001 with a read-only root, dropped
 capabilities, no new privileges, a dedicated profile volume, one CPU and 4 GiB
-RAM, with no additional swap allowance. The approved guest allocation is 24 GiB,
-with 8 GiB limits for each of OpenClaw and Hermes. The browser's separate egress
+RAM, with no additional swap allowance. Since Hermes retirement on 2026-10-27,
+the approved guest allocation is 16 GiB: 8 GiB for OpenClaw, 4 GiB for the browser
+and 4 GiB for guest services. OpenClaw has a two-CPU ceiling within the four-vCPU
+guest; the browser retains its one-CPU ceiling. The browser's separate egress
 proxy and ingress relay retain their 128 MiB and 64 MiB limits. Browser containers
 use `unless-stopped` restart policies, and Docker preserves an updated memory
 limit across their restarts. Compose and the standalone installer both specify

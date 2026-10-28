@@ -24,7 +24,7 @@ PRIVATE = Path("/srv/state/mattermost/private")
 CONTAINER = "homecompute-mattermost-mattermost-1"
 CHANNELS = {
     "inbox": ("Inbox", "Start a task here. Continue its discussion in the reply thread."),
-    "personal": ("Personal", "Planning, drafts, and personal assistance. One thread per task."),
+    "personal": ("Planning", "Plans, calendars, household tasks, reminders, and correspondence drafts with Luna. School updates belong in Aula; shared Gaia tasks in Family."),
     "research": ("Research", "Questions, comparisons, and findings with sources."),
     "engineering": ("Engineering", "Coding requests and project work. One thread per task."),
     "home-operations": ("Infrastructure", "HomeCompute servers, services, incidents, and maintenance. Household devices belong in Home; energy plans belong in Energy."),
@@ -37,12 +37,16 @@ AGENT_ACCOUNTS = {
     "engineer": ("engineer", "apollo", "engineering"),
     "operator": ("operator", "orion", "home-operations"),
     "shopper": ("shopper", "vega", "shopping"),
-    "keeper": ("keeper", "ceres", "storage"),
+    "keeper": ("keeper", "ceres", "shopping"),
     "travel": ("travel", "lyra", "travel"),
+    "cook": ("cook", "hestia", "meals"),
+    "administrator": ("administrator", "themis", "household-admin"),
+    "finance": ("finance", "plutus", "finances"),
+    "family": ("family", "gaia", "family"),
 }
 AGENT_DISPLAY_NAMES = dict(zip(AGENT_ACCOUNTS, ["Atlas · Coordinator", "Luna · Personal", "Nova · Research",
     "Apollo · Engineering", "Orion · Home operations", "Vega · Shopping & discounts", "Ceres · Storage",
-    "Lyra · Travel & adventures"]))
+    "Lyra · Travel & adventures", "Hestia · Meals", "Themis · Household admin", "Plutus · Finances", "Gaia · Family"]))
 
 
 class BootstrapError(Exception):
@@ -202,13 +206,17 @@ def bootstrap_locked(directory: Path) -> dict[str, Any]:
     if members is None:
         api.request("POST", f"/teams/{team_id}/members", {"team_id": team_id, "user_id": owner})
     channels = {}
+    household_access = directory / 'household-access.json'
+    household_admitted = household_access.exists() or household_access.is_symlink()
     for name, (display, purpose) in CHANNELS.items():
         channel, _ = api.request("GET", f"/teams/{team_id}/channels/name/{name}", missing=True)
+        created = channel is None
         if channel is None:
             channel, _ = api.request("POST", "/channels", {"team_id": team_id, "name": name,
-                                                           "display_name": display, "type": "P" if name == "openclaw" else "O", "header": purpose})
-        if name == "openclaw" and (channel.get("type") != "P" or channel.get("team_id") != team_id or channel.get("delete_at", 0) != 0):
-            raise BootstrapError("OpenClaw management channel privacy or identity differs")
+                                                           "display_name": display, "type": "P", "header": purpose})
+        if (channel.get("team_id") != team_id or channel.get("delete_at", 0) != 0
+                or (created or household_admitted or name == 'openclaw') and channel.get("type") != "P"):
+            raise BootstrapError("managed owner channel privacy or identity differs")
         channel_id = identity(channel, "channel")
         channels[name] = channel_id
         member, _ = api.request("GET", f"/channels/{channel_id}/members/{owner}", missing=True)

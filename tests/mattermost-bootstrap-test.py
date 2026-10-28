@@ -150,12 +150,35 @@ class BootstrapTests(unittest.TestCase):
         channel = self.server.channels['openclaw']
         self.assertEqual(channel['type'], 'P')
         self.assertIn('routing', channel['header']); self.assertIn('skills', channel['header'])
-        self.assertTrue(all(value['type'] == 'O' for name, value in self.server.channels.items() if name != 'openclaw'))
+        self.assertTrue(all(value['type'] == 'P' for value in self.server.channels.values()))
         channel['type'] = 'O'
         count = self.server.token_creations
         with self.assertRaisesRegex(module.BootstrapError, 'privacy'):
             self.invoke()
         self.assertEqual(self.server.token_creations, count)
+
+    def test_household_admission_refuses_retained_public_owner_room(self):
+        self.invoke()
+        module.save(self.directory / 'household-access.json', {'schema_version': 1})
+        self.server.channels['personal']['type'] = 'O'
+        count = self.server.token_creations
+        with self.assertRaisesRegex(module.BootstrapError, 'owner channel privacy'):
+            self.invoke()
+        self.assertEqual(self.server.token_creations, count)
+        self.assertEqual(self.server.channels['personal']['type'], 'O')
+
+    def test_missing_owner_room_is_recreated_private_after_household_admission(self):
+        self.invoke()
+        module.save(self.directory / 'household-access.json', {'schema_version': 1})
+        del self.server.channels['personal']
+        self.invoke()
+        self.assertEqual(self.server.channels['personal']['type'], 'P')
+
+    def test_legacy_public_owner_room_remains_reconcilable_before_household_admission(self):
+        self.invoke()
+        self.server.channels['personal']['type'] = 'O'
+        self.invoke()
+        self.assertEqual(self.server.channels['personal']['type'], 'O')
 
     def test_retained_legacy_login_url_migrates_without_replacing_credentials_or_bot_transport(self):
         self.invoke()
@@ -294,7 +317,7 @@ class RoleServer:
             bot_id = path.split('/')[2]
             token = 'token-' + bot_id
             self.tokens[token] = bot_id
-            return {'id': 'k' * 25 + str(self.token_creations), 'token': token, 'user_id': bot_id}, {}
+            return {'id': str(self.token_creations).zfill(26), 'token': token, 'user_id': bot_id}, {}
         if path.startswith('/users/'):
             bid = path.rsplit('/', 1)[-1]
             name = next(n for n, b in self.bots.items() if b['user_id'] == bid)
@@ -347,8 +370,8 @@ class RoleAccountTests(unittest.TestCase):
         manifest = json.loads((self.directory / 'agent-accounts.json').read_text())
         self.assertEqual(set(manifest), {'base_url', 'accounts'})
         self.assertTrue(json.loads((self.directory / 'agent-account-state.json').read_text())['provisioning_complete'])
-        self.assertEqual(self.server.token_creations, 7)
-        self.assertEqual(len({x['token'] for x in manifest['accounts']}), 8)
+        self.assertEqual(self.server.token_creations, len(module.AGENT_ACCOUNTS) - 1)
+        self.assertEqual(len({x['token'] for x in manifest['accounts']}), len(module.AGENT_ACCOUNTS))
         self.assertEqual(manifest['accounts'][0]['token'], 'x' * 26)
         self.assertNotIn('token-', json.dumps(first))
         self.assertEqual(stat.S_IMODE((self.directory / 'agent-accounts.json').stat().st_mode), 0o600)
@@ -391,7 +414,7 @@ class RoleAccountTests(unittest.TestCase):
         module.save(path, manifest)
         with self.assertRaisesRegex(module.BootstrapError, 'bot identity'):
             self.invoke()
-        self.assertEqual(self.server.token_creations, 7)
+        self.assertEqual(self.server.token_creations, len(module.AGENT_ACCOUNTS) - 1)
 
 
 if __name__ == '__main__':

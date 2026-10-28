@@ -1,0 +1,17 @@
+{
+  "preset": {"name": "homecompute-retained-services", "description": "Restore the existing private embedding and speech paths after native replacement"},
+  "network_policies": {
+    "homecompute_embeddings": {
+      "name": "homecompute_embeddings", "binaries": [{"path": "/usr/local/bin/node"}],
+      "endpoints": [{"host": "homecompute-capabilities.home.arpa", "port": 19445, "path": "/v1/embeddings", "allowed_ips": ["10.77.20.1"], "protocol": "rest", "enforcement": "enforce", "credential_binding": {"provider": "agent-openclaw-mcp-homecompute"}, "rules": [{"allow": {"method": "POST", "path": "/v1/embeddings"}}]}]
+    },
+    "homecompute_transcription": {
+      "name": "homecompute_transcription", "binaries": [{"path": "/usr/local/bin/node"}],
+      "endpoints": [{"host": "homecompute-capabilities.home.arpa", "port": 19445, "path": "/v1/audio/transcriptions", "allowed_ips": ["10.77.20.1"], "protocol": "rest", "enforcement": "enforce", "credential_binding": {"provider": "agent-openclaw-mcp-homecompute"}, "rules": [{"allow": {"method": "POST", "path": "/v1/audio/transcriptions"}}]}]
+    },
+    "homecompute_speech": {
+      "name": "homecompute_speech", "binaries": [{"path": "/usr/local/bin/node"}],
+      "endpoints": [{"host": "homecompute-capabilities.home.arpa", "port": 19445, "path": "/v1/audio/speech", "allowed_ips": ["10.77.20.1"], "protocol": "rest", "enforcement": "enforce", "credential_binding": {"provider": "agent-openclaw-mcp-homecompute"}, "rules": [{"allow": {"method": "POST", "path": "/v1/audio/speech"}}]}]
+    }
+  }
+}

@@ -28,7 +28,7 @@ PRIMARY_SITE = 'https://mattermost.home.arpa'
 PYTHON = '/run/current-system/sw/bin/python3'
 HELPERS = ('setup-mattermost.py', 'bootstrap-mattermost.py', 'mattermost_agent_accounts.py',
            'setup-mattermost-n8n.py', 'verify-mattermost-team.py', 'sync-mattermost-atlas.py',
-           'organize-mattermost.py')
+           'organize-mattermost.py', 'setup-mattermost-household.py')
 DEFAULTS = {
     'MATTERMOST_IMAGE': 'mattermost/mattermost-team-edition:11.7.14@sha256:6c15d74ded3cbec1e4fa4e27587a3341315405b58956e344d9d329f5c6367de5',
     'POSTGRES_IMAGE': 'postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea',

@@ -26,6 +26,7 @@ def load(name: str, path: Path):
 
 
 dns = load('public_dns_controller', ROOT / 'scripts/openclaw-public-dns.py')
+OWNS_LISTENERS = dns.owns_gateway_listeners
 setup = load('public_dns_setup', ROOT / 'scripts/setup-openclaw-public-dns.py')
 IDENTITY = {'sandbox_id': setup.SANDBOX_ID, 'generation': setup.GENERATION, 'module_sha256': 'b' * 64}
 
@@ -52,6 +53,7 @@ class ControllerTest(unittest.TestCase):
                         patch.object(dns, 'trusted_file', return_value=self.env),
                         patch.object(dns, 'SUPERVISOR_IDENTITY', self.root / 'supervisor.env'),
                         patch.object(dns, 'process_identity', return_value=(99, 200, 300, 400)),
+                        patch.object(dns, 'owns_gateway_listeners', return_value=True),
                         patch.object(dns, 'command', side_effect=self.command),
                         patch.object(Path, 'read_text', return_value='head\n0: 00000000:4967 x 0A\n1: 0100007F:4970 x 0A\n')]
         for item in self.patches: item.start()
@@ -96,6 +98,22 @@ class ControllerTest(unittest.TestCase):
         self.top = b'PID UID COMMAND\n100 998 openclaw-gatewa\n'
         with patch.object(Path, 'read_text', return_value='head\n0: 00000000:4967 x 0A\n'):
             with self.assertRaises(dns.Refused): dns.observe(IDENTITY)
+
+    def test_cli_process_with_same_title_cannot_replace_the_listener_owner(self):
+        self.top+=b'101 998 openclaw-gatewa\n'
+        with patch.object(dns,'owns_gateway_listeners',side_effect=lambda pid:pid==100):
+            self.assertEqual(dns.observe(IDENTITY).gateway_pid,100)
+
+    def test_listener_ownership_requires_both_socket_inodes_in_the_selected_pid(self):
+        base=self.root/'proc/100';(base/'fd').mkdir(parents=True);(base/'net').mkdir()
+        (base/'fd/4').symlink_to('socket:[101]');(base/'fd/5').symlink_to('socket:[102]')
+        table='head\n0: 00000000:4967 remote 0A q q q q q 101\n1: 0100007F:4970 remote 0A q q q q q 102\n'
+        with (base/'net/tcp').open('w') as stream:stream.write(table)
+        # The surrounding controller fixture patches this helper; exercise its
+        # real implementation through the original function retained by patch.
+        self.assertTrue(OWNS_LISTENERS(100,proc_root=self.root/'proc'))
+        (base/'fd/5').unlink()
+        self.assertFalse(OWNS_LISTENERS(100,proc_root=self.root/'proc'))
 
     def test_manifest_allows_only_canonical_operator_identity_and_digest(self):
         for value in ({**IDENTITY, 'url': 'http://elsewhere'}, {**IDENTITY, 'generation': 'bad'},
@@ -143,6 +161,19 @@ class ControllerTest(unittest.TestCase):
 
 
 class InstallerTest(unittest.TestCase):
+    def test_rebind_waits_for_cli_exit_but_keeps_cardinality_and_identity_fences(self):
+        controller=SimpleNamespace(Refused=dns.Refused,observe=Mock(side_effect=[dns.Refused('gateway-cardinality'),'verified']))
+        with patch.object(setup.time,'sleep'):
+            self.assertEqual(setup.observe_ready(controller,IDENTITY),'verified')
+        controller.observe=Mock(side_effect=dns.Refused('registry-identity-drift'))
+        with patch.object(setup.time,'sleep') as sleep:
+            with self.assertRaises(dns.Refused):setup.observe_ready(controller,IDENTITY)
+            sleep.assert_not_called()
+        controller.observe=Mock(side_effect=dns.Refused('gateway-cardinality'))
+        with patch.object(setup.time,'sleep'):
+            with self.assertRaises(dns.Refused):setup.observe_ready(controller,IDENTITY)
+        self.assertEqual(controller.observe.call_count,30)
+
     def test_fixed_staging_idempotent_and_backs_up_without_launch_or_dns_changes(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / 'config'

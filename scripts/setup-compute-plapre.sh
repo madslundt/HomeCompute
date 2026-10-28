@@ -31,8 +31,8 @@ Usage: setup-compute-plapre.sh COMMAND [--env FILE]
 Commands:
   validate  Validate exact pins, bounds, publication topology, and opt-in gates
   build     Build the pinned derived image; do not start it
-  up        Start only the isolated Plapre/Wyoming project
-  smoke     Synthesize one fixed Danish phrase over Wyoming
+  up        Start the Plapre model and private HTTP inference ingress
+  smoke     Synthesize one fixed Danish phrase through the model HTTP API
   status    Show only this project's containers
   logs      Show the last 200 service log lines
   down      Stop only this project; retain its local image
@@ -94,7 +94,7 @@ validate_config() {
   docker compose version >/dev/null
   compose config --quiet
   services="$(compose config --services)"
-  for service in plapre-primary plapre-wyoming plapre-edge; do
+  for service in plapre-primary plapre-http; do
     [[ $'\n'"$services"$'\n' == *$'\n'"$service"$'\n'* ]] || die "Compose render is missing $service"
   done
   log "Pinned image, sources, artifacts, resource bounds, voice alias, and topology are valid"
@@ -124,40 +124,25 @@ start_services() {
   validate_config
   activation_gates
   docker image inspect "$PLAPRE_LOCAL_IMAGE" >/dev/null 2>&1 || die "Local image is missing; run build first"
-  compose up -d --no-build --wait --wait-timeout 1200
-  log "Plapre Wyoming is staged on $PLAPRE_BIND_ADDRESS:$PLAPRE_WYOMING_PORT"
+  install -m 0444 -o root -g root "$SCRIPT_DIR/tcp-edge-proxy.py" /srv/gb10-ai/runtime/tcp-edge-proxy.py
+  compose up -d --no-build --wait --wait-timeout 1200 plapre-primary plapre-http
+  log "Plapre HTTP inference is staged on loopback:8004; Wyoming runs on home-core"
 }
 
 smoke() {
   validate_config
   activation_gates
-  compose exec -T plapre-wyoming /opt/plapre/venv/bin/python - "$PLAPRE_VOICE_ALIAS" <<'PY'
-import asyncio
-import sys
-from wyoming.audio import AudioChunk, AudioStop
-from wyoming.client import AsyncClient
-from wyoming.error import Error
-from wyoming.tts import Synthesize, SynthesizeVoice
-
-async def main():
-    total = 0
-    client = AsyncClient.from_uri("tcp://127.0.0.1:10201", connect_timeout=5, read_timeout=300)
-    async with client:
-        await client.write_event(Synthesize(text="Hej fra Home Assistant.", voice=SynthesizeVoice(name=sys.argv[1])).event())
-        while True:
-            event = await client.read_event()
-            if event is None or Error.is_type(event.type):
-                raise SystemExit("Wyoming synthesis failed")
-            if AudioChunk.is_type(event.type):
-                total += len(AudioChunk.from_event(event).audio)
-            if AudioStop.is_type(event.type):
-                break
-    if total <= 0 or total % 2:
-        raise SystemExit("Wyoming returned invalid PCM")
-
-asyncio.run(main())
-PY
-  log "Wyoming synthesis smoke returned non-empty 24 kHz mono PCM"
+  compose exec -T plapre-primary /opt/plapre/venv/bin/python - <<'PYTHON'
+import json, urllib.request
+request = urllib.request.Request('http://127.0.0.1:8004/v1/audio/speech',
+    json.dumps({'text': 'Hej fra Home Assistant.', 'speaker': 'tor'}).encode(),
+    {'Content-Type': 'application/json'})
+with urllib.request.urlopen(request, timeout=300) as response:
+    assert response.headers.get('X-Sample-Rate') == '24000'
+    audio=response.read(48000001)
+assert 0 < len(audio) <= 48000000 and len(audio)%2 == 0
+PYTHON
+  log "Model HTTP synthesis returned bounded non-empty 24 kHz PCM; no audio logged"
 }
 
 case "$COMMAND" in

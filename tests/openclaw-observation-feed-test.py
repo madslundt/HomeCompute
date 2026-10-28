@@ -82,7 +82,8 @@ class CoreFeedTests(unittest.TestCase):
         with patch.object(feed, "read_report", side_effect=read) as reader, \
              patch.object(feed, "bounded_command", side_effect=AssertionError("core is local")):
             raw = feed.core_snapshot(self.core)
-        self.assertEqual([call.args[0] for call in reader.call_args_list], [feed.MAINTENANCE_REPORT, feed.MODEL_REPORT])
+        self.assertEqual([call.args[0] for call in reader.call_args_list],
+                         [feed.MAINTENANCE_REPORT, feed.HOST_REPORT, feed.MCP_REPORT, feed.MODEL_REPORT])
         self.assertNotIn("private", json.dumps(raw["model_update_report"]))
         self.assertEqual(set(raw["model_update_report"]["summary"]), {"changed", "pin_drift", "source_errors", "outperforms_active"})
 

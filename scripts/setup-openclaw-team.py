@@ -25,14 +25,14 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import openclaw_team_policy as _team_policy
 from openclaw_team_policy import (
-    ROSTER, LEAVES, ORCHESTRATION, WORKSPACE_TOOLS,
+    ROSTER, LEAVES, DELEGATES, ORCHESTRATION, WORKSPACE_TOOLS,
     MCP_PREFIX, ENGINEERING, OPERATIONS, WEB_SEARCH,
     SCHOOL_READ, SHOPPING_READ, SERVICE_READ, ROLE_SERVICE_READ,
     SHOPPING_RECORD_TOOLS, STORAGE_RECORD_TOOLS, REQUEST_STATUS, HOUSEHOLD_TOOLS,
     ROLE_HOUSEHOLD_TOOLS, SERVICE_TOOLS, COORDINATOR_DOMAIN_TOOLS, ROLE_SERVICE_TOOLS,
     MANAGED_SKILLS, REVIEWED_SKILLS, FORBIDDEN, PROTECTED,
     TeamRefused, digest, manifest, retained_capabilities, CALENDAR_TOOLS, CALENDAR_READ, LEGACY_SERVICE_TOOLS,
-    RETRIEVAL_TOOLS,)
+    RETRIEVAL_TOOLS, HOUSEHOLD_TASK_TOOLS, FAMILY_TASK_TOOLS, MAIL_TOOLS,)
 
 START = '<!-- homecompute-team:start -->'
 END = '<!-- homecompute-team:end -->'
@@ -53,10 +53,22 @@ When a tool reports an unavailable dependency or policy refusal, return the bloc
 
 
 def candidate(before: dict[str, Any], team: dict[str, Any], *,
-              enable_calendar_upgrade: bool = False, enable_retrieval_upgrade: bool = False) -> dict[str, Any]:
+              enable_calendar_upgrade: bool = False, enable_retrieval_upgrade: bool = False,
+              enable_household_task_upgrade: bool = False, enable_family_task_upgrade: bool = False,
+              enable_mail_upgrade: bool = False) -> dict[str, Any]:
     return _team_policy.candidate(before, team, state_root=STATE_ROOT,
                                   enable_calendar_upgrade=enable_calendar_upgrade,
-                                  enable_retrieval_upgrade=enable_retrieval_upgrade)
+                                  enable_retrieval_upgrade=enable_retrieval_upgrade,
+                                  enable_household_task_upgrade=enable_household_task_upgrade,
+                                  enable_family_task_upgrade=enable_family_task_upgrade,
+                                  enable_mail_upgrade=enable_mail_upgrade)
+
+
+
+def family_tasks_candidate(before: dict[str, Any], team: dict[str, Any], *,
+                           enable_family_task_upgrade: bool = False) -> dict[str, Any]:
+    return _team_policy.family_tasks_candidate(before, team, state_root=STATE_ROOT,
+                                               enable_family_task_upgrade=enable_family_task_upgrade)
 
 
 def batch(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:
@@ -106,7 +118,25 @@ def identity_text(existing: str, role: str, team: dict[str, Any]) -> str:
         routing = '\nTrusted Mattermost channel routes (ID is authoritative; name is a review label):\n'
         routing += '\n'.join(f'{key} ({row["name"]}) -> {row["agent"]}'
                              for key, row in sorted(team['channel_routes'].items())) + '\n'
-    block = f'{START}\n# {selected["name"]}\n\n{selected["instructions"]}\n{routing}\n{BOUNDARY}{END}\n'
+        energy = [key for key, row in sorted(team['channel_routes'].items())
+                  if row['name'] == 'energy' and row['agent'] == 'operator']
+        if energy:
+            routing += ('For native chat_id ' + ', '.join(energy) + ' (Energy), "the plan" means the battery operating plan. '
+                        'Delegate to Orion with agentId="operator", mode="run", context="isolated", and ask for '
+                        'homecompute__homecompute_system_read with system_id="home-assistant" first. '
+                        'Summarize availability, active/next blocks, battery state, freshness and modeled savings. '
+                        'Quote supplied start_local/end_local unchanged; they already include the Copenhagen timezone. '
+                        'State freshness with the absolute collected_at timestamp. '
+                        'Maintenance tools apply when the owner explicitly asks about software maintenance.\n')
+    boundary = BOUNDARY
+    if role == 'family':
+        boundary = '\n'.join(
+            line for line in boundary.splitlines()
+            if not line.startswith(('Atlas answers ', 'For delegated work, ', 'Answer the owner '))) + '\n'
+        boundary += ('You are the direct shared Family contact. Answer only within the invoking shared task thread. '
+                     'Never delegate to Atlas or private adult specialists, and never request their context. '
+                     'Read session status only for your current Family session.\n')
+    block = f'{START}\n# {selected["name"]}\n\n{selected["instructions"]}\n{routing}\n{boundary}{END}\n'
     return existing.rstrip() + ('\n\n' if existing.strip() else '') + block
 
 
@@ -181,10 +211,11 @@ def managed_skill_plan(config: Path, after: dict[str, Any], team: dict[str, Any]
 
 
 def workspace_plan(before: dict[str, Any], after: dict[str, Any], team: dict[str, Any],
-                   managed_names: set[str] | None = None) -> list[tuple[Path, bytes]]:
+                   managed_names: set[str] | None = None, *, roles: tuple[str, ...] = ROSTER,
+                   identity_only: bool = False) -> list[tuple[Path, bytes]]:
     planned = []
     main_workspace = Path(before['agents']['defaults']['workspace'])
-    for role in ROSTER:
+    for role in roles:
         directory = main_workspace if role == 'main' else Path(after['agents']['entries'][role]['workspace'])
         path = directory / 'AGENTS.md'
         if any(parent.is_symlink() for parent in path.parents):
@@ -195,7 +226,7 @@ def workspace_plan(before: dict[str, Any], after: dict[str, Any], team: dict[str
         content = identity_text(existing, role, team).encode()
         if not path.exists() or path.read_bytes() != content:
             planned.append((path, content))
-        if role == 'main':
+        if role == 'main' or identity_only:
             continue
         for name in team['agents'][role]['skills']:
             if name in (managed_names or set()):
@@ -237,6 +268,10 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
           skills_source: Path | None = None, expected_skills: dict[str, str] | None = None,
           expected_config_sha256: str | None = None, enable_calendar_upgrade: bool = False,
           enable_retrieval_upgrade: bool = False,
+          enable_household_task_upgrade: bool = False,
+          enable_family_task_upgrade: bool = False,
+          family_tasks_only: bool = False,
+          enable_mail_upgrade: bool = False,
           runner: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
     if config.is_symlink() or not config.is_file():
         raise TeamRefused('native-config-file-refused')
@@ -246,8 +281,17 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
                                                or expected_config_sha256 != source_digest):
         raise TeamRefused('reviewed-config-digest-mismatch')
     before = json.loads(raw)
-    after = candidate(before, team, enable_calendar_upgrade=enable_calendar_upgrade,
-                      enable_retrieval_upgrade=enable_retrieval_upgrade)
+    if family_tasks_only:
+        if skills_source is not None or expected_skills or any((enable_calendar_upgrade,
+                enable_retrieval_upgrade, enable_household_task_upgrade, enable_mail_upgrade)):
+            raise TeamRefused('family-only-unrelated-upgrade-refused')
+        after = family_tasks_candidate(before, team, enable_family_task_upgrade=enable_family_task_upgrade)
+    else:
+        after = candidate(before, team, enable_calendar_upgrade=enable_calendar_upgrade,
+                          enable_retrieval_upgrade=enable_retrieval_upgrade,
+                          enable_household_task_upgrade=enable_household_task_upgrade,
+                          enable_family_task_upgrade=enable_family_task_upgrade,
+                          enable_mail_upgrade=enable_mail_upgrade)
     changes = batch(before, after)
     native(changes, config, apply=False, runner=runner)
     expected_skills = expected_skills or {}
@@ -255,11 +299,15 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
             or any(not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value) for value in expected_skills.values())):
         raise TeamRefused('expected-skill-digest-refused')
     sources = reviewed_skill_sources(skills_source)
-    planned = workspace_plan(before, after, team, set(sources)) + managed_skill_plan(config, after, team, sources, expected_skills)
+    identity_roles = ('main', 'personal', 'operator', 'family') if family_tasks_only else ROSTER
+    planned = workspace_plan(before, after, team, set(sources), roles=identity_roles,
+                             identity_only=family_tasks_only)
+    if not family_tasks_only:
+        planned += managed_skill_plan(config, after, team, sources, expected_skills)
     planned_before = {path: path.read_bytes() if path.exists() else None for path, _ in planned}
     if output:
         private_write(output, (json.dumps(after, indent=2) + '\n').encode())
-    summary = {'agents': list(ROSTER), 'config_changed': bool(changes), 'workspace_files': len(planned),
+    summary = {'agents': list(identity_roles), 'config_changed': bool(changes), 'workspace_files': len(planned),
                'source_config_sha256': source_digest,
                'candidate_sha256': digest(after), 'schema_validated': True, 'applied': False,
                'restart_required': bool(changes or planned), 'model': team['model'],
@@ -282,6 +330,8 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
             private_write(path, content, replace=path.exists())
         native(changes, config, apply=True, runner=runner)
         actual = json.loads(config.read_text())
+        if family_tasks_only and actual != after:
+            raise TeamRefused('post-apply-family-task-scope-mismatch')
         if any(actual.get(section) != before.get(section) for section in PROTECTED):
             raise TeamRefused('post-apply-managed-ownership-drift')
         if any(actual.get(key) != after.get(key) for key in ('agents', 'tools', 'session')):
@@ -300,6 +350,10 @@ def main() -> None:
     parser.add_argument('--expected-config-sha256', help='fence application to the reviewed source config')
     parser.add_argument('--enable-calendar-upgrade', action='store_true', help='reviewed first additive calendar grant')
     parser.add_argument('--enable-retrieval-upgrade', action='store_true', help='reviewed additive school, research and operations retrieval grant')
+    parser.add_argument('--enable-household-task-upgrade', action='store_true', help='reviewed first additive household task grant for Luna and Orion')
+    parser.add_argument('--enable-family-task-upgrade', action='store_true', help='reviewed first additive shared family task grant for Gaia, Luna and Orion')
+    parser.add_argument('--family-tasks-only', action='store_true', help='change only shared task tool policy and the four related identity blocks')
+    parser.add_argument('--enable-mail-upgrade', action='store_true', help='reviewed first additive read-only mail grant for Luna')
     parser.add_argument('--expect-skill-sha256', action='append', default=[], metavar='NAME=SHA256',
                         help='reviewed prior bundle hash for the first managed update')
     parser.add_argument('--apply', action='store_true', help='apply only after native schema validation; no restart')
@@ -311,7 +365,11 @@ def main() -> None:
                                skills_source=args.skills_source, expected_skills=expected,
                                expected_config_sha256=args.expected_config_sha256,
                                enable_calendar_upgrade=args.enable_calendar_upgrade,
-                               enable_retrieval_upgrade=args.enable_retrieval_upgrade)))
+                               enable_retrieval_upgrade=args.enable_retrieval_upgrade,
+                               enable_household_task_upgrade=args.enable_household_task_upgrade,
+                               enable_family_task_upgrade=args.enable_family_task_upgrade,
+                               family_tasks_only=args.family_tasks_only,
+                               enable_mail_upgrade=args.enable_mail_upgrade)))
     except (TeamRefused, ValueError, OSError) as error:
         print(json.dumps({'ok': False, 'error': str(error) if isinstance(error, TeamRefused) else 'team-setup-input-refused'}))
         raise SystemExit(1) from None

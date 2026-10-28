@@ -1,5 +1,9 @@
 # Hermes practical use guide
 
+**Retired on 2026-10-27.** The owner chose OpenClaw as the active assistant and
+removed the unused Hermes runtime and dashboard. This guide records the earlier
+pilot; it is not a description of the current deployment.
+
 **Checked:** 2026-10-01  
 **Scope:** whether and how to begin using the configured HomeCompute Hermes deployment.
 

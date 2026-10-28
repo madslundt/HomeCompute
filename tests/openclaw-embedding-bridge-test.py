@@ -121,7 +121,7 @@ class EmbeddingBridgeTests(unittest.TestCase):
         self.assertEqual(status, 200)
         tool = next(t for t in listed['result']['tools'] if t['name'] == 'homecompute_operations_search')
         self.assertTrue(tool['annotations']['readOnlyHint'])
-        self.assertNotIn('homecompute_operations_search', {t['name'] for t in self.rpc('tools/list', actor='hermes')[1]['result']['tools']})
+        self.assertEqual(self.rpc('tools/list', actor='hermes'), (401, {'error': 'unauthorized'}))
         self.assertFalse(self.rpc('tools/call', {'name': tool['name'], 'arguments': {'query': 'n8n unhealthy'}})[1]['result']['isError'])
         self.operations.search.reset_mock()
         status, result = self.rpc('tools/call', {'name': tool['name'], 'arguments': {'query': 'n8n unhealthy', 'limit': 3}})
@@ -130,8 +130,8 @@ class EmbeddingBridgeTests(unittest.TestCase):
         self.operations.search.assert_called_once_with({'query': 'n8n unhealthy', 'limit': 3})
         for arguments in [{'query': 'n8n', 'actor': 'openclaw'}, {'query': 'n8n', 'limit': True}, {'query': 'n8n', 'limit': 11}]:
             self.assertEqual(self.rpc('tools/call', {'name': tool['name'], 'arguments': arguments})[1]['error']['code'], -32602)
-        denied = self.rpc('tools/call', {'name': tool['name'], 'arguments': {'query': 'n8n'}}, actor='hermes')[1]
-        self.assertEqual(denied['error']['code'], -32602)
+        self.assertEqual(self.rpc('tools/call', {'name': tool['name'], 'arguments': {'query': 'n8n'}}, actor='hermes'),
+                         (401, {'error': 'unauthorized'}))
         self.assertEqual(self.operations.search.call_count, 1); self.assertEqual(self.embedding.inputs, [])
         self.turn.assert_not_called()
 

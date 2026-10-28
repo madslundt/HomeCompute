@@ -2,6 +2,7 @@
 	admin off
 	auto_https disable_redirects
 	https_port {$CADDY_HTTPS_PORT}
+	default_sni 192.168.30.122
 	servers {
 		protocols h1 h2
 	}
@@ -123,6 +124,10 @@ http://:8080 {
 	@comfyui host comfyui.home.arpa
 	handle @comfyui {
 		redir https://comfyui.home.arpa{uri} 308
+	}
+	@agent_office host agents.home.arpa
+	handle @agent_office {
+		redir https://agents.home.arpa{uri} 308
 	}
 	@daythread host {$DAYTHREAD_FQDN:daythread.home.arpa}
 	handle @daythread {
@@ -340,6 +345,33 @@ import /config/video-api/Caddyfile
 	import ai_api
 }
 
+# Native OpenClaw dashboard on the home LAN. The IP origin is accepted by
+# OpenClaw's private same-origin checks; authentication and pairing stay native.
+192.168.30.122 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy 172.28.200.1:18792
+}
+
+agents.home.arpa {
+	tls internal
+	encode zstd gzip
+	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
+	handle @private {
+		# The observer still validates Origin and requires its own password.
+		# Its native listener and both relay hops remain on private interfaces.
+		reverse_proxy 172.28.200.1:18802 {
+			header_up Host 127.0.0.1:18802
+			header_up X-HomeCompute-Office-Origin https://agents.home.arpa
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10s
+			}
+		}
+	}
+	respond "Forbidden" 403
+}
+
 mattermost.home.arpa {
 	tls internal
 	encode zstd gzip
@@ -408,26 +440,6 @@ chessmate.home.arpa {
 			response_header_timeout 10m
 		}
 	}
-	log {
-		output stdout
-		format filter {
-			request>uri delete
-			request>headers delete
-		}
-	}
-}
-
-{$HERMES_FQDN} {
-	tls internal
-	encode zstd gzip
-
-	reverse_proxy {$HERMES_UPSTREAM} {
-		transport http {
-			dial_timeout 3s
-			response_header_timeout 10m
-		}
-	}
-
 	log {
 		output stdout
 		format filter {

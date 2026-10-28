@@ -25,6 +25,7 @@ GATEWAY = "nemoclaw-9123"
 IMAGE = "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:51d9fe7e0097931ce96f72f3c7dea522c129c569d91680d2e11989ea70a37d8a"
 VOLUME = "/var/lib/docker/volumes/nemoclaw-openclaw-state-v1-agent-openclaw/_data"
 MEMORY = 8 * 1024 ** 3
+CPUS = 2
 TOOLS = {"session_status", "memory_search", "memory_get", "write"}
 BLOCKED_TOOLS = TOOLS - {"session_status"}
 DENIES = {"homecompute_task_submit", "homecompute_task_status", "homecompute_task_cancel",
@@ -228,6 +229,12 @@ class Transaction:
         self.path = context.state / "error-recovery-transaction.json"
         self.record: dict[str, Any] = {}
 
+    def verify_backup(self, directory: Path) -> dict[str, str]:
+        return verify_backup(directory)
+
+    def merge_config(self, old: dict[str, Any], native: dict[str, Any]) -> dict[str, Any]:
+        return merge_managed_config(old, native)
+
     def preflight(self) -> None:
         if self.path.exists():
             previous = json.loads(self.path.read_bytes())
@@ -247,12 +254,13 @@ class Transaction:
         return output
 
     def inspect(self, *, old: bool = False) -> dict[str, Any]:
-        fields = '{"status":{{json .State.Status}},"image":{{json .Config.Image}},"memory":{{.HostConfig.Memory}},"swap":{{.HostConfig.MemorySwap}},"gpu":{{json .HostConfig.DeviceRequests}},"mounts":{{json .Mounts}}}'
+        fields = '{"status":{{json .State.Status}},"image":{{json .Config.Image}},"memory":{{.HostConfig.Memory}},"swap":{{.HostConfig.MemorySwap}},"cpus":{{.HostConfig.NanoCpus}},"gpu":{{json .HostConfig.DeviceRequests}},"mounts":{{json .Mounts}}}'
         data = json.loads(self.command(["/usr/bin/docker", "inspect", "--format", fields,
                                        self.ctx.container], "transaction-identity"))
         if (data["image"] not in (IMAGE, "sha256:" + IMAGE.rsplit("sha256:", 1)[1]) or
-                data["memory"] != MEMORY or data["swap"] != MEMORY or data["gpu"]):
-            raise RecoveryRefused("container-image-memory-gpu-mismatch")
+                data["memory"] != MEMORY or data["swap"] != MEMORY
+                or data["cpus"] != CPUS * 1_000_000_000 or data["gpu"]):
+            raise RecoveryRefused("container-image-cpu-memory-gpu-mismatch")
         mount = [item for item in data["mounts"] if item.get("Destination") == "/sandbox/.openclaw"]
         if len(mount) != 1 or mount[0].get("Type") != "volume" or mount[0].get("Source") != VOLUME:
             raise RecoveryRefused("exact-state-volume-required")
@@ -317,7 +325,7 @@ print("config-owner-mode-verified")'''
         self.command(["/usr/bin/docker", "cp", f"{self.ctx.container}:/sandbox/.openclaw",
                       str(backup_root)], "capture-complete-state", timeout=300)
         backup = backup_root / ".openclaw"
-        hashes = verify_backup(backup)
+        hashes = self.verify_backup(backup)
         atomic_json(backup_root / "conversation-hashes.json", hashes)
         old = json.loads((backup / "openclaw.json").read_bytes())
         conversations = logical_conversations(backup)
@@ -355,8 +363,8 @@ print("config-owner-mode-verified")'''
             self.ctx.check_registry()
             self.record.update(newId=new_id, newGeneration=generation)
             self.stage("replacement-created")
-            # Prevent any extra swap allowance in the newly created container.
-            self.command(["/usr/bin/docker", "update", "--memory", str(MEMORY),
+            # Restore the approved CPU/memory budget without extra swap allowance.
+            self.command(["/usr/bin/docker", "update", "--cpus", str(CPUS), "--memory", str(MEMORY),
                           "--memory-swap", str(MEMORY), self.ctx.container], "cap-replacement-memory")
             self.inspect()
             native_path = backup_root / "replacement-native.json"
@@ -364,7 +372,7 @@ print("config-owner-mode-verified")'''
                           str(native_path)], "capture-new-native-config")
             native = json.loads(native_path.read_bytes())
             candidate = backup_root / "restored-config.json"
-            atomic_json(candidate, merge_managed_config(old, native))
+            atomic_json(candidate, self.merge_config(old, native))
             return self.complete_restore(backup_root, backup, candidate, hashes, conversations)
         except Exception as exc:
             self.record["failedStage"] = self.record.get("stage")
@@ -383,7 +391,7 @@ print("config-owner-mode-verified")'''
         verify_root.mkdir(mode=0o700)
         self.command(["/usr/bin/docker", "cp", f"{self.ctx.container}:/sandbox/.openclaw",
                       str(verify_root)], "capture-offline-verification", timeout=300)
-        restored = verify_backup(verify_root / ".openclaw")
+        restored = self.verify_backup(verify_root / ".openclaw")
         if any(restored.get(key) != value for key, value in hashes.items()):
             raise RecoveryRefused("offline-conversation-or-workspace-hash-drift")
         self.stage("offline-data-verified")
@@ -399,7 +407,7 @@ print("config-owner-mode-verified")'''
         verify_root.mkdir(mode=0o700)
         self.command(["/usr/bin/docker", "cp", f"{self.ctx.container}:/sandbox/.openclaw",
                       str(verify_root)], "capture-restored-verification", timeout=300)
-        restored = verify_backup(verify_root / ".openclaw")
+        restored = self.verify_backup(verify_root / ".openclaw")
         if any(restored.get(key) != value for key, value in hashes.items() if key.startswith("workspace/")):
             raise RecoveryRefused("workspace-hash-drift")
         if logical_conversations(verify_root / ".openclaw") != conversations:
@@ -413,6 +421,11 @@ print("config-owner-mode-verified")'''
         except pairing.PairingRefused as exc:
             raise RecoveryRefused(str(exc)) from None
         self.stage("verified-before-identity-commit")
+        self.commit_identity()
+        self.stage("complete", "complete")
+        return self.ctx.uuid, self.ctx.generation
+
+    def commit_identity(self) -> None:
         identity = Path("/etc/homecompute-openclaw/supervisor-identity.env")
         temporary = identity.with_suffix(".tmp")
         fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
@@ -421,8 +434,6 @@ print("config-owner-mode-verified")'''
             handle.flush(); os.fsync(handle.fileno())
         temporary.replace(identity)
         fsync_directory(identity.parent)
-        self.stage("complete", "complete")
-        return self.ctx.uuid, self.ctx.generation
 
     def resume(self) -> tuple[str, str]:
         """Operator-only continuation; automatic failed-transaction retries stop."""
@@ -433,11 +444,11 @@ print("config-owner-mode-verified")'''
         if backup_root.is_symlink() or backup_root.resolve().parent != self.ctx.state.resolve():
             raise RecoveryRefused("resume-backup-path-refused")
         backup = backup_root / ".openclaw"
-        hashes = verify_backup(backup)
+        hashes = self.verify_backup(backup)
         conversations = logical_conversations(backup)
         native = json.loads((backup_root / "replacement-native.json").read_bytes())
         candidate = backup_root / "restored-config.json"
-        if json.loads(candidate.read_bytes()) != merge_managed_config(json.loads((backup / "openclaw.json").read_bytes()), native):
+        if json.loads(candidate.read_bytes()) != self.merge_config(json.loads((backup / "openclaw.json").read_bytes()), native):
             raise RecoveryRefused("resume-candidate-drift")
         self.ctx.uuid = str(uuid.UUID(self.record["newId"]))
         self.ctx.generation = str(uuid.UUID(self.record["newGeneration"]))

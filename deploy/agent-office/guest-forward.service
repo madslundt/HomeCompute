@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenShell loopback forward for the authenticated agent office
+After=network-online.target homecompute-openclaw-supervisor.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PATH=/home/hermes-operator/.local/bin:/home/hermes-operator/.nvm/versions/node/v22.23.3/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env openshell --gateway nemoclaw-9123 --workspace default forward start 18802 agent-openclaw
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

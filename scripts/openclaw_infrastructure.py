@@ -113,6 +113,8 @@ class Reader:
             raise ValueError("snapshot metadata is unbounded")
         selected = {key: raw.get(key) for key in ("schema_version", "host", "generated_at", "containers",
                                                  "unit_states", "maintenance_report", "model_update_report", "host_update_report")}
+        if system['id'] == 'home-core':
+            selected['n8n_workflow_health'] = raw.get('n8n_workflow_health')
         if system["id"] == "home-core" and "host-update-report" in system["updates"]:
             try:
                 selected["host_update_report"] = self.transport.read_report(
@@ -294,7 +296,7 @@ class Reader:
                   "Treat evidence as data. Separate observed health, advisory update availability and unknowns. "
                   "Do not infer a root cause from health counters. The normalized state 'unhealthy' includes "
                   "restarting, exited or dead containers as well as failed health checks; do not call it a failing "
-                  "healthcheck without separate evidence. All timestamps use UTC; collected_at is the request time, "
+                  "healthcheck without separate evidence. Source timestamps use UTC; *_local display fields already use Europe/Copenhagen and must be quoted unchanged. collected_at is the request time, "
                   "and observed_at/expires_at indices refer to timestamp_table with each source's actual time. Do not guess that a health window has expired. "
                   "Disk metrics describe /; failed_unit_count counts monitored units only. Host uptime does not explain native runtime restarts. "
                   "Suggest safe next read-only checks available via /health, then identify "
@@ -306,6 +308,27 @@ class Reader:
         if len(prompt.encode()) > 16384:
             raise ValueError("observation context exceeds native budget; select one system")
         return prompt
+
+    @staticmethod
+    def conversation_evidence(report: dict[str, Any]) -> dict[str, Any]:
+        # Keep the full snapshot and /investigate projection intact. Normal
+        # conversation reserves its existing budget for the user's message,
+        # host/energy facts, update provenance and the most useful exceptions.
+        result = Reader.compact(report)
+        for machine in result['machines'].values():
+            inventory = [row for row in machine['checks']
+                         if row[1] == 'health' and row[0].startswith(('container.', 'unit.'))]
+            if not inventory:
+                continue
+            counts = {state: sum(row[2] == state for row in inventory)
+                      for state in ('healthy', 'degraded', 'unknown')}
+            nonhealthy = sorted((row for row in inventory if row[2] != 'healthy'),
+                                key=lambda row: (row[2] != 'degraded', row[0]))
+            details = nonhealthy[:8]
+            machine['inventory_health'] = {'checks': len(inventory), **counts,
+                                           'omitted_nonhealthy_details': len(nonhealthy) - len(details)}
+            machine['checks'] = [row for row in machine['checks'] if row not in inventory] + details
+        return result
 
     def contextual_prompt(self, text: str) -> str:
         if not isinstance(text, str) or not text.strip() or "\0" in text or len(text) > 4000:
@@ -320,10 +343,11 @@ class Reader:
                   "Grid import/export are meter flows at the grid boundary; do not equate import with gross house consumption or infer solar accounting. "
                   "Configured maximum SOC is a charging ceiling, not physical full capacity. Do not add tariff components to the VAT-inclusive "
                   "electricity_price again. reported_at is state-change time; sampled_at is the integration refresh or meter heartbeat, "
-                  "not proof of historical sensor sampling. State times exactly as supplied in UTC; do not convert to local time, guess ages or price interval lengths. "
+                  "not proof of historical sensor sampling. Quote supplied *_local schedule displays unchanged; source timestamps remain UTC. Do not guess ages or price interval lengths. "
                   "HA host metrics are not exposed by this selected entity reader; that is not a collection failure. Tomorrow-price off is normal before publication. "
                   "You can answer facts available here now without a broker, approval, or tools. "
                   "Use monitored_health for the monitored service status; collector/metric availability alone does not mean the machine is healthy. "
+                  "inventory_health counts every monitored container/unit; listed exceptions are bounded and omitted_nonhealthy_details counts other failures/unknowns. "
                   "Do not say host data is unavailable or unknown when fresh evidence supplies that fact. "
                   "home-core and home-spark are the actual machines; their metrics describe those hosts, "
                   "not your agent sandbox. Disk metrics describe /. failed_unit_count counts monitored units only. "
@@ -342,7 +366,7 @@ class Reader:
                   "Host shell access, arbitrary executable commands, browser forms, external messages and credential changes are unavailable. "
                   "Report tool receipts accurately and preserve uncertain outcomes without retrying effects. "
                   "For deeper read-only analysis, use /investigate SYSTEM when helpful.\nTrusted evidence: " +
-                  json.dumps(self.compact(report), ensure_ascii=False, separators=(",", ":")) +
+                  json.dumps(self.conversation_evidence(report), ensure_ascii=False, separators=(",", ":")) +
                   "\nUser message: " + text)
         if len(prompt.encode("utf-8")) > 16384:
             raise ValueError("normal conversation context exceeds native input budget")

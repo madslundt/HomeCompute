@@ -35,6 +35,126 @@
         {
           "name": "homecompute-automation-n8n-1",
           "require_health": true
+        },
+        {
+          "name": "homecompute-immich-immich-server-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-immich-immich-machine-learning-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-immich-database-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-immich-redis-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-mattermost-mattermost-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-mattermost-postgres-1",
+          "require_health": true
+        },
+        {
+          "name": "home-core-embeddings",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-open-webui-open-webui-1",
+          "require_health": true
+        },
+        {
+          "name": "home-core-piper-tts",
+          "require_health": true
+        },
+        {
+          "name": "home-core-wyoming-stt",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-plapre-wyoming-proxy-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-hviske-wyoming-proxy-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-control-plane-plapre-openai-tts-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-ttlock-webhook-gateway-1",
+          "require_health": true
+        },
+        {
+          "name": "home-core-moss-tts",
+          "require_health": true
+        },
+        {
+          "name": "omi-local-backend-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-homepage-homepage-1",
+          "require_health": true
+        },
+        {
+          "name": "chessmate-frontend-1",
+          "require_health": true
+        },
+        {
+          "name": "chessmate-backend-1",
+          "require_health": true
+        },
+        {
+          "name": "chessmate-db-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-books_importer-shelfmark-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-books_importer-shelfmark-automated-1",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-books_importer-cwa-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-model-manager-model-manager-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-openclaw-access-proxy",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-native-mcp-relay",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-site-egress",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-codex-egress",
+          "require_health": false
+        },
+        {
+          "name": "homecompute-mattermost-proxy-1",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-openclaw-communication-private-relay-1",
+          "require_health": false
         }
       ],
       "units": [
@@ -57,6 +177,42 @@
         {
           "name": "homecompute-agents-vm.service",
           "kind": "persistent"
+        },
+        {
+          "name": "homecompute-compute-ssh-tunnel.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "homecompute-codex-vm.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "homecompute-mattermost.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "ttlock-webhook.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "ttlock-funnel.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "restic-backups-agents-vm-bootstrap.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-service-recovery.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-nas-recovery-backup.service",
+          "kind": "oneshot"
+        },
+        {
+          "name": "homecompute-nas-recovery-check.service",
+          "kind": "oneshot"
         }
       ],
       "updates": [
@@ -97,6 +253,10 @@
         },
         {
           "name": "gb10-hviske-http",
+          "require_health": true
+        },
+        {
+          "name": "homecompute-plapre-plapre-http-1",
           "require_health": true
         }
       ],

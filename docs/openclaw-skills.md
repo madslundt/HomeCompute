@@ -1,5 +1,61 @@
 # HomeCompute OpenClaw skills
 
+## Team workflow skills (source change, 2026-10-28)
+
+The team manifest in [`config/openclaw-team.json`](../config/openclaw-team.json)
+assigns four additional instruction-only bundles:
+
+| Skill | Assigned roles | Workflow |
+| --- | --- | --- |
+| [`meal-planning`](../deploy/openclaw/skills/meal-planning/SKILL.md) | Hestia (`cook`) | Plan meals from current stock and offers; propose shopping changes through Vega and stock changes through Ceres. |
+| [`household-paperwork`](../deploy/openclaw/skills/household-paperwork/SKILL.md) | Themis (`administrator`) | Extract sourced obligations/deadlines from supplied documents; route requested durable tasks to Luna. |
+| [`budget-analysis`](../deploy/openclaw/skills/budget-analysis/SKILL.md) | Plutus (`finance`) | Reconcile supplied expenses, transfers and budget assumptions without bank access. |
+| [`tasks-and-reminders`](../deploy/openclaw/skills/tasks-and-reminders/SKILL.md) | Luna (`personal`), Orion (`operator`), Gaia (`family`) | Maintain tasks, recurrence and timed/zone reminders within existing private/shared grants; verify delivery state. |
+
+Each assigned identity explicitly loads its skill before the workflow. Atlas
+continues to delegate these domains; Gaia uses only its existing shared Family
+tools without private adult sources or delegation. These bundles add no tools,
+credentials, schedules, service connections or execution authority. The full
+current source inventory also includes the household shopping/storage, discount,
+calendar, travel and public-research skills. `browser-automation` remains a
+separately qualified bundled skill, outside these managed instruction bundles.
+
+[`openclaw_team_policy.py`](../scripts/openclaw_team_policy.py) owns the finite
+managed skill allowlist. The existing
+[`setup-openclaw-team.py`](../scripts/setup-openclaw-team.py) lifecycle installs
+reviewed bundles into only the assigned workspaces, records their hashes in
+`team-skill-ownership.json`, preserves private memory and refuses unreviewed
+overwrites. Stage the selected published release's team manifest, installer,
+policy dependencies and `deploy/openclaw/skills/` through the supported managed
+upload path. First run the installer in the sandbox as the native config owner:
+
+```bash
+python3 scripts/setup-openclaw-team.py \
+  --manifest config/openclaw-team.json \
+  --skills-source deploy/openclaw/skills
+```
+
+Review the candidate, skill hashes and full role configuration against the
+actual installed roster before application. The team installer reconciles the
+full manifest; do not use an older roster to apply a skills-only change. For an
+already qualified team, rerun the reviewed command with `--apply` and
+`--expected-config-sha256 HASH`, using its dry-run `source_config_sha256`.
+Preserve existing tool revocations and independent qualification gates; new
+tool-upgrade flags are not needed for these instruction bundles. Apply startup
+changes through the supported gateway restart, then inspect `skills info` and
+`skills check` for each assigned agent and verify representative native turns,
+including Gaia's shared-only boundary. Retain the installer's private backup
+for rollback; restore only the reviewed affected config/identity/skill files
+and ownership ledger through the managed lifecycle, preserving later edits.
+
+This addition is source-only: installation, gateway discovery and model skill
+use have not been verified for these four bundles. The older canary evidence
+below does not establish their deployment. Use the newer
+[tool runbook](openclaw-tools.md) and [integration status](openclaw-integrations.md)
+for their respective recorded readiness; instructions alone establish neither.
+
+## Original canary bundles and historical verification (2026-10-09)
+
 The source bundles are under `deploy/openclaw/skills/`:
 
 | Skill | Purpose |

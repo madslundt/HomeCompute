@@ -40,6 +40,48 @@ callback URLs if enabled later; a Tailscale-only URL is not public webhook ingre
 
 ## Rollback
 
+### Telegram is outbound-only
+
+The former OpenClaw private Telegram reply workflow is retired. Family Gmail
+calendar intake is paused with all mail connectivity. Keep Telegram
+credentials and ordinary outbound notifications for Aula, battery reviews and
+news. Mattermost owns agent conversations. Preserve the retired workflow and
+its history; do not reactivate its delivery schedule or Telegram receivers.
+
+`scripts/retire_telegram_workflows.py` builds the reviewed family-calendar patch
+from a fresh private workflow snapshot. Apply its operations atomically and
+leave this workflow unpublished: Gmail and Telegram intake
+nodes are disabled and their exits into event extraction are disconnected.
+The script refuses unrelated workflows and never alters credentials.
+
+From the selected release on home-core, after preserving an owner-only workflow
+backup, unpublish the old reply schedule and family mail intake:
+
+```sh
+sudo python3 scripts/retire_telegram_workflows.py --unpublish-retired
+```
+
+The n8n CLI requires a coordinated n8n restart before in-memory schedules are
+removed. Combine this with any other approved n8n maintenance, then verify the
+workflows are inactive, no enabled mail or Telegram triggers remain, and new reply
+executions stop. Never run a production workflow to test retirement. Rollback
+requires an explicit decision to restore Telegram conversations; restoring the
+source release alone must not republish retired inputs.
+
+The two proven orphaned Aula parent waits can be cancelled only while n8n is
+stopped, using `sudo python3 scripts/retire_telegram_workflows.py --cancel-orphaned-waits`.
+The helper rechecks the missing child references, saves private original records,
+and uses a single transaction with conditional updates. It preserves execution
+history and refuses changed references or an active container. Three ambiguous
+legacy waits remain untouched.
+
+The same module's `read_retry_operations` builds bounded retries for the exact
+read-only HA kitchen and calendar-participation state reads. Existing bounded
+retries are preserved; a changed node type or write operation is refused. This
+covers short HA restarts without replaying calendar writes or notifications.
+
+### Original migration rollback
+
 For Aula MCP setup and rollback, see the section below. The following rollback
 procedure concerns the migrated n8n workflows.
 

@@ -127,7 +127,7 @@ class GatewayCorsTests(unittest.TestCase):
             self.assertEqual([item['id'] for item in json.load(response)['data']], ['automation-moe'])
         request = urllib.request.Request(BASE + '/v1/chat/completions',
             headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'},
-            data=json.dumps({'model': 'assistant-canary', 'messages': [{'role': 'user', 'content': 'Hi'}],
+            data=json.dumps({'model': 'automation-qualification', 'messages': [{'role': 'user', 'content': 'Hi'}],
                              'max_tokens': 1}).encode())
         with self.assertRaises(urllib.error.HTTPError) as caught:
             urllib.request.urlopen(request, context=tls_context(), timeout=15)

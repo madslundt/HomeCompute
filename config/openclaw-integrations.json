@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "providers": {
+    "context7": {"enabled": true, "calls_per_hour": 30},
+    "maps": {"enabled": true, "calls_per_hour": 20, "backend": "geoapify"},
+    "hotels": {"enabled": true, "calls_per_hour": 12, "backend": "serpapi"},
+    "immich": {"enabled": true, "calls_per_hour": 30},
+    "n8n": {"enabled": true, "calls_per_hour": 30}
+  },
+  "public_workflows": {
+    "travel": null,
+    "sweet_deals": null,
+    "news": null
+  }
+}

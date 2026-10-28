@@ -99,7 +99,8 @@ class MattermostN8nTests(unittest.TestCase):
         setup.bootstrap.save(self.directory / 'credentials.json', {'operator_id': OWNER, 'operator_session': 'operator'})
         self.agents = {'default': 'c' * 26, 'personal': 'p' * 26, 'researcher': 'r' * 26,
                        'engineer': 'e' * 26, 'operator': 'q' * 26, 'shopper': 's' * 26, 'keeper': 'k' * 26,
-                       'travel': 'v' * 26}
+                       'travel': 'v' * 26, 'cook': 'h' * 26, 'administrator': 'j' * 26, 'finance': 'f' * 26,
+                       'family': 'g' * 26}
         setup.bootstrap.save(self.directory / 'agent-accounts.json', {'accounts': [
             {'accountId': name, 'bot_id': identifier} for name, identifier in self.agents.items()]})
         self.server = Server()
@@ -153,7 +154,11 @@ class MattermostN8nTests(unittest.TestCase):
         for slug, (_, specialist, _) in setup.TOPICS.items():
             channel = self.server.channels[slug]
             self.assertEqual(channel['type'], 'P')
-            expected = {OWNER, BOT, self.agents['default'], self.agents[specialist]}
+            expected = {OWNER, BOT, self.agents[specialist]}
+            if slug != 'family':
+                expected.add(self.agents['default'])
+            if slug == 'shopping':
+                expected.add(self.agents['keeper'])
             if slug in setup.ADDITIONAL_SPECIALISTS:
                 expected.add(self.agents[setup.ADDITIONAL_SPECIALISTS[slug]])
             self.assertEqual(self.server.members[channel['id']], expected)
@@ -163,6 +168,14 @@ class MattermostN8nTests(unittest.TestCase):
         for name in ['n8n-integration.json', 'n8n-channels.json']:
             self.assertEqual(stat.S_IMODE((self.directory / name).stat().st_mode), 0o600)
         self.assertFalse(any(path.startswith('/posts') for _, path in self.server.methods))
+
+    def test_consolidated_topics_share_delivery_identity_without_recreating_retired_rooms(self):
+        mapping = self.invoke()['channels']
+        for source, target in setup.ALIASES.items():
+            self.assertEqual(mapping[source], mapping[target])
+            self.assertNotIn(source, self.server.channels)
+        self.assertNotEqual(mapping['travel'], mapping['shopping'])
+        self.assertIn(self.agents['keeper'], self.server.members[mapping['shopping']])
 
     def test_travel_specialist_joins_existing_private_topic_without_removing_luna(self):
         before = {key: value for key, value in setup.ADDITIONAL_SPECIALISTS.items() if key != 'travel'}
@@ -176,6 +189,48 @@ class MattermostN8nTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(self.server.members[channel], audience | {self.agents['travel']})
         self.assertEqual(self.server.tokens, 1)
+
+    def test_retained_shared_adult_receipt_adds_only_explicitly_approved_topics_and_replays(self):
+        mapping = self.invoke()
+        partner = 'u' * 26
+        approved = {mapping['channels'][name] for name in ('family', 'shopping', 'tasks', 'finances')}
+        receipt = {'schema_version': 1, 'owner_id': OWNER, 'partner_id': partner,
+                   'partner_username': 'kristina', 'team_id': TEAM,
+                   'family_channel_id': mapping['channels']['family'],
+                   'audience_policy': 'all-except-systems', 'shared_channel_ids': sorted(approved),
+                   'system_channel_ids': ['x' * 26, 'y' * 26]}
+        setup.bootstrap.save(self.directory / 'household-access.json', receipt)
+        before = {name: values.copy() for name, values in self.server.members.items()}
+        self.invoke()
+        for identifier, members in self.server.members.items():
+            self.assertEqual(members, before[identifier] | ({partner} if identifier in approved else set()))
+        self.server.methods.clear()
+        self.invoke()
+        self.assertTrue(all(method == 'GET' for method, _ in self.server.methods))
+        self.assertEqual(self.server.tokens, 1)
+        self.assertEqual(setup.bootstrap.read_private(self.directory / 'household-access.json'), receipt)
+
+    def test_shared_receipt_with_system_channel_overlap_is_rejected(self):
+        mapping = self.invoke()
+        identifier = mapping['channels']['shopping']
+        setup.bootstrap.save(self.directory / 'household-access.json', {
+            'schema_version': 1, 'owner_id': OWNER, 'partner_id': 'u' * 26, 'team_id': TEAM,
+            'family_channel_id': mapping['channels']['family'], 'audience_policy': 'all-except-systems',
+            'shared_channel_ids': [identifier], 'system_channel_ids': [identifier]})
+        self.server.methods.clear()
+        with self.assertRaisesRegex(setup.bootstrap.BootstrapError, 'audience policy'):
+            self.invoke()
+        self.assertTrue(all(method == 'GET' for method, _ in self.server.methods))
+
+    def test_legacy_adult_receipt_remains_family_only(self):
+        mapping = self.invoke()
+        partner = 'u' * 26
+        setup.bootstrap.save(self.directory / 'household-access.json', {
+            'schema_version': 1, 'owner_id': OWNER, 'partner_id': partner, 'team_id': TEAM,
+            'family_channel_id': mapping['channels']['family']})
+        self.invoke()
+        for slug, channel in mapping['channels'].items():
+            self.assertEqual(partner in self.server.members[channel], slug == 'family')
 
     def test_uncertain_delivery_token_is_not_created_twice(self):
         self.server.uncertain = True

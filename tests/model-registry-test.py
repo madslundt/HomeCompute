@@ -19,6 +19,17 @@ ROUTES = REGISTRY.load_json(ROOT / "config/capability-routes.json")
 
 
 class ModelRegistryTests(unittest.TestCase):
+    def test_home_reuses_resident_assist_backend_without_claiming_full_qualification(self) -> None:
+        route = ROUTES['routes']['home']
+        self.assertEqual(route['deployments'], ROUTES['routes']['automation-moe']['deployments'])
+        self.assertEqual(route['state'], 'candidate')
+        self.assertEqual(route['timeout_profile'], 'home')
+        self.assertEqual(route['privacy'], 'local_only')
+        rendered = REGISTRY.render_model_list(CATALOG, ROUTES).split('model_name: "home"', 1)[1].split('  - model_name:', 1)[0]
+        self.assertIn('openai/automation-qualification', rendered)
+        self.assertIn('timeout: 20', rendered)
+        self.assertNotIn('COMPUTE_HOME_BASE_URL', rendered)
+
     def test_video_is_pinned_on_demand_and_renders_the_native_video_api(self) -> None:
         item = CATALOG["video_deployments"]["ltx25-spark"]
         self.assertEqual(item["upstream_model_id"], "Lightricks/LTX-2.5")
@@ -337,7 +348,7 @@ class ModelRegistryTests(unittest.TestCase):
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
         self.assertIn('model_name: "automation"', rendered)
         self.assertIn('model_name: "home"', rendered)
-        self.assertIn('model_name: "assistant-canary"', rendered)
+        self.assertNotIn('model_name: "assistant-canary"', rendered)
         self.assertIn('model_name: "automation-qualification"', rendered)
         for alias in ("coding", "research", "meeting", 'model_name: "assistant"', 'model_name: "auto"'):
             self.assertNotIn(alias, rendered)

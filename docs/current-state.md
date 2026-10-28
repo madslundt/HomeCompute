@@ -1,5 +1,49 @@
 # Current-state analysis
 
+## Operational repairs (2026-10-28)
+
+Live inspection and scoped repairs verified Home Assistant Core 2026.10.4,
+n8n 2.46.0, and the twelve-role OpenClaw deployment. The September and early
+October records below are historical, including statements that Hermes runs
+or household tools and semantic memory are disabled.
+
+- Home Assistant's two conversation integrations failed because its running
+  process retained certificate trust from before installation of the gateway CA.
+  Reloading integrations did not help; restarting Core cleared the repair issue.
+  Both local Danish text conversation canaries then passed in about six seconds.
+- The preferred pipeline is now `Home AI` using the bounded `home` alias; the
+  `automation-moe` pipeline remains `Home AI legacy`. A synthetic Danish
+  recognition/conversation/speech chain passed without playback or device actions:
+  recognition 1.50 s, conversation 6.48 s, reply synthesis 4.37 s. Plapre still
+  misses the first-audio target: its upstream generates/vocodes the whole sentence
+  before returning PCM (direct first audio about 5.5 s). The configured 1.20 tempo
+  is enforced; changing proxy chunk size does not remove upstream buffering.
+  The installed Danish Piper generated the same reply in 0.94 s; the owner
+  explicitly chose to retain Plapre as the preferred voice.
+- The `home` alias pointed to a retired `home-fast` endpoint. Source registry and
+  the live gateway now route it to the same running local backend as
+  `automation-moe`, retaining the 20-second home budget. Candidate status is
+  retained rather than claiming full home/voice qualification.
+- Telegram conversation reply polling and host intake are retired. n8n's family
+  mail/calendar intake is unpublished, while existing outbound Telegram send
+  nodes, credentials and execution history are retained. OpenClaw mail access is
+  disabled; retained private configuration is reversible operator backup material.
+- Two legacy parent executions with confirmed missing child executions were
+  backed up and cancelled. Three ambiguous old waits remain for investigation.
+  Aula's read-only participation fetch has bounded retries; write steps are not
+  replayed. Subsequent scheduled weather and Aula runs succeeded after HA recovery.
+- Finite HA monitoring now includes the configured conversation, STT and TTS
+  dependencies. n8n workflow health reads only recent nonmanual failure metadata,
+  including soft-deleted errors, without reading execution bodies or credentials.
+  It alerts on failure presence rather than each changing failure count.
+
+OpenClaw's memory, household tools, Mattermost, task/location reminders and speech
+configuration are deployed. Long workflow durations include deliberate model
+availability waits; they are not inference latency measurements. Automatic model
+failover, complete voice/load qualification and off-host restore acceptance remain
+open. The local agents-VM backup succeeded on October 28; it does not cover loss
+of home-core. No off-host destination has been provisioned for this repair.
+
 ## OpenClaw discovery addendum (2026-10-09)
 
 Read-only live inspection found `home-core` is the GMKtec K15 with Intel
@@ -19,7 +63,7 @@ Discovery details and evidence limits are in
 The September snapshots below remain historical records. Source model catalog
 and qualification procedures were not promoted or deployed during discovery.
 
-> **Model-current snapshot:** the 2026-10-09 addendum above is the newest live observation. `Model replacement qualification` below retains the 2026-09-29 handoff; earlier dated statements remain historical snapshots.
+> **Historical model snapshot:** the operational repairs above contain the newest live observations. `Model replacement qualification` below retains the 2026-09-29 handoff.
 
 ## Immich and photo backup status (2026-09-29)
 

@@ -21,7 +21,8 @@ class AgentRosterTests(unittest.TestCase):
         chat = load('native_chat', 'setup-openclaw-mattermost.py')
         bootstrap = load('bootstrap_roster', 'bootstrap-mattermost.py')
         names = {'main': 'Atlas', 'personal': 'Luna', 'researcher': 'Nova', 'engineer': 'Apollo',
-                 'operator': 'Orion', 'shopper': 'Vega', 'keeper': 'Ceres', 'travel': 'Lyra'}
+                 'operator': 'Orion', 'shopper': 'Vega', 'keeper': 'Ceres', 'travel': 'Lyra',
+                 'cook': 'Hestia', 'administrator': 'Themis', 'finance': 'Plutus', 'family': 'Gaia'}
         self.assertEqual(set(team), set(names))
         self.assertEqual(set(native.ROSTER), set(names))
         self.assertEqual(len(bootstrap.AGENT_ACCOUNTS), len(names))
@@ -35,7 +36,8 @@ class AgentRosterTests(unittest.TestCase):
     def test_topic_specialists_match_their_finite_capabilities(self):
         native = load('native_roles', 'setup-openclaw-team.py')
         topics = load('topic_roster', 'setup-mattermost-n8n.py')
-        expected = {'shopping': 'shopper', 'storage': 'keeper', 'travel': 'travel'}
+        expected = {'shopping': 'shopper', 'travel': 'travel',
+                    'meals': 'cook', 'household-admin': 'administrator', 'finances': 'finance', 'family': 'family'}
         for channel, role in expected.items():
             members = {topics.TOPICS[channel][1]}
             extra = getattr(topics, 'ADDITIONAL_SPECIALISTS', {}).get(channel)
@@ -49,7 +51,7 @@ class AgentRosterTests(unittest.TestCase):
         self.assertFalse(services['shopper'] & {prefix + name for name in ('school_posts', 'storage_list', 'web_search')})
         self.assertFalse(services['keeper'] & {prefix + name for name in ('school_posts', 'shopping_add', 'web_search')})
         self.assertEqual(services['travel'], {prefix + name for name in
-                         ('web_search', 'calendar_list', 'calendar_events', 'calendar_availability')})
+                         ('web_search', 'research_search', 'calendar_list', 'calendar_events', 'calendar_availability')})
 
 
 if __name__ == '__main__':

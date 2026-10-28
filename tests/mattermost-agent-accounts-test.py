@@ -21,7 +21,7 @@ class MigrationTests(fixtures.RoleAccountTests):
             self.invoke()
         return b.read_private(self.directory / 'agent-account-state.json')
 
-    def test_existing_five_migrate_by_id_and_create_exactly_three_new_bots(self):
+    def test_existing_five_migrate_by_id_and_create_only_the_new_bots(self):
         before = self.seed_legacy(); old = {x['accountId']: x for x in before['accounts']}
         initial_bots = self.server.bot_creations; initial_tokens = self.server.token_creations
         project = '/channels/' + 'p' * 26 + '/members/' + old['personal']['bot_id']
@@ -30,8 +30,8 @@ class MigrationTests(fixtures.RoleAccountTests):
         after = b.read_private(self.directory / 'agent-account-state.json')
         accounts = {x['accountId']: x for x in after['accounts']}
         self.assertEqual(set(accounts), set(b.AGENT_ACCOUNTS))
-        self.assertEqual(self.server.bot_creations - initial_bots, 3)
-        self.assertEqual(self.server.token_creations - initial_tokens, 3)
+        self.assertEqual(self.server.bot_creations - initial_bots, len(b.AGENT_ACCOUNTS) - len(LEGACY))
+        self.assertEqual(self.server.token_creations - initial_tokens, len(b.AGENT_ACCOUNTS) - len(LEGACY))
         for key, row in old.items():
             for field in ('bot_id', 'token', 'token_id', 'agentId'):
                 self.assertEqual(accounts[key][field], row[field])
@@ -82,7 +82,8 @@ class MigrationTests(fixtures.RoleAccountTests):
         after = {x['accountId']: x for x in b.read_private(self.directory / 'agent-account-state.json')['accounts']}
         self.assertEqual(after['default']['bot_id'], before['accounts'][0]['bot_id'])
         self.assertFalse((self.directory / 'agent-name-default-pending.json').exists())
-        self.assertEqual((self.server.bot_creations - initial[0], self.server.token_creations - initial[1]), (3, 3))
+        created = len(b.AGENT_ACCOUNTS) - len(LEGACY)
+        self.assertEqual((self.server.bot_creations - initial[0], self.server.token_creations - initial[1]), (created, created))
 
     def test_wrong_existing_token_blocks_every_name_change(self):
         self.seed_legacy(); path = self.directory / 'agent-account-state.json'; data = b.read_private(path)
@@ -117,7 +118,7 @@ class MigrationTests(fixtures.RoleAccountTests):
         self.server.request = request
         self.invoke()
         rows = {x['accountId']: x for x in b.read_private(self.directory / 'agent-account-state.json')['accounts']}
-        for role, slug in [('shopper', 'shopping'), ('keeper', 'storage'), ('travel', 'travel')]:
+        for role, slug in [('shopper', 'shopping'), ('keeper', 'shopping'), ('travel', 'travel')]:
             self.assertIn('/channels/' + topic[slug] + '/members/' + rows[role]['bot_id'], self.server.members)
 
     def test_coordinator_joins_all_active_owner_rooms_and_preserves_specialists(self):
@@ -154,6 +155,13 @@ class MigrationTests(fixtures.RoleAccountTests):
         with self.assertRaisesRegex(b.BootstrapError, 'identity'):
             self.invoke()
         self.assertEqual((self.server.renames, self.server.bot_creations, self.server.token_creations), initial)
+
+    def test_shared_family_contact_does_not_admit_atlas_to_the_family_room(self):
+        family_id = 'q' * 26
+        b.save(self.directory / 'n8n-channels.json', {'channels': {'family': family_id}})
+        self.server.owner_channels.append({'id': family_id, 'type': 'P', 'team_id': fixtures.TEAM})
+        self.invoke(activate=True)
+        self.assertNotIn('/channels/' + family_id + '/members/' + fixtures.BOT, self.server.members)
 
 
 if __name__ == '__main__': unittest.main()

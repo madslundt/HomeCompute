@@ -38,14 +38,14 @@ python3 scripts/model_registry.py render
 
 The renderer changes only the `model_list` block. Key scopes, authentication,
 privacy/logging, database configuration, retries, and transport remain explicit
-and reviewed. The `automation` and `automation-moe` aliases currently route to
-the owner-directed Flash-Next trial; the artifact remains marked candidate
-because its quality qualification is incomplete. The isolated
-`assistant-canary` remains separate. Disabled aliases backed by stopped models
+and reviewed. The `automation`, `automation-moe` and `home` aliases currently
+route to the running local Flash-Next backend. On 2026-10-28, `home` was repaired
+to stop targeting the retired `home-fast` endpoint. The artifact remains marked
+candidate because its full quality qualification is incomplete. Disabled aliases backed by stopped models
 are omitted. The cold CPU automation standby remains an operator-run
 maintenance action.
 
-Home and automation have per-deployment request budgets of 20 and 120 seconds.
+Home and automation have per-deployment request budgets of 20 and 600 seconds.
 Those values are initial budgets, not final p95/p99-based SLOs. Verify timeout
 behavior against the pinned LiteLLM 1.99.1 image with synthetic refused,
 non-responsive, error, and streaming upstreams before promoting the generated
@@ -381,10 +381,9 @@ Caddy exposes approved `/v1/*` inference routes, `/healthz`, and the read-only
 `/usage/` dashboard. It intentionally returns 404 for the
 LiteLLM admin UI and key-management API on the AI gateway host. It also serves
 the separately named `chat.home.arpa` and `models.home.arpa` virtual hosts to
-Open WebUI and the model manager on `clients`, and `hermes.home.arpa` to the
-authenticated Hermes dashboard through its dedicated host bridge listener. The
-Hermes listener is reachable only from the control-plane Docker bridge. These
-virtual hosts use Caddy's internal CA. Install that CA on approved clients
+Open WebUI and the model manager on `clients`. Hermes and its dedicated
+dashboard listeners were retired on 2026-10-27. These virtual hosts use
+Caddy's internal CA. Install that CA on approved clients
 before opening those pages.
 
 Provision and revoke virtual keys from an administrator shell inside LiteLLM's

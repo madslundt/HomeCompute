@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 SPEC = importlib.util.spec_from_file_location("snapshot", ROOT / "scripts/openclaw-machine-snapshot.py")
 SNAP = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SNAP)

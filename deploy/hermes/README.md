@@ -1,5 +1,9 @@
 # Hermes guest runtime
 
+**Retired on 2026-10-27.** Hermes is no longer deployed. OpenClaw retains the
+shared agents VM, operator account and NemoClaw/OpenShell tooling. The following
+instructions are retained as historical deployment and recovery references.
+
 This directory documents the guest-side deployment boundary for the first,
 synthetic Hermes canary. The NixOS configuration creates and isolates the
 Ubuntu `agents` guest; the helper in this repository runs **inside that guest**

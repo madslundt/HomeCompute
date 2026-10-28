@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 LABELS = {"package-update-report": "Packages", "docker-image-report": "Container images",
+          "n8n-workflow-failures": "n8n production workflow failures (last 15 minutes)",
           "mcp-update-report": "MCP update review", "mcp-update-report.coverage": "MCP update coverage",
           "host-update-report": "Host software updates", "host-update-report.coverage": "Host update coverage",
           "package-update-report.coverage": "Package update coverage",
