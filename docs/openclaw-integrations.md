@@ -43,8 +43,49 @@ mode 0600, single regular file, with no symlinks. Do not paste keys into chat,
 commit them or pass them on command lines. The facade never returns key paths
 or values. An absent Context7 key permits its anonymous service; other
 providers require their own keys. Use an owner-specific Immich key limited to
-asset search/read, and an n8n key with only the workflow/execution reads the
-installed edition permits. Neither provider receives another provider's key.
+`asset.read`. Neither provider receives another provider's key.
+
+### Create credentials in this order
+
+Start with Immich; the other providers do not all need new keys now:
+
+1. Open the [local Immich account](http://192.168.30.122:2283/), sign in as the
+   owner whose library Luna may search, then select the top-right user menu,
+   **Account Settings**, and **API Keys**. Create a key named
+   `HomeCompute OpenClaw photo search` with only `asset.read`. The pinned
+   [smart-search controller](https://github.com/immich-app/immich/blob/v3.2.4/server/src/controllers/search.controller.ts)
+   requires that permission; image downloads, uploads, writes and administrative
+   permissions are unnecessary. Save the displayed value directly in the
+   owner's password manager under a distinct entry with that name. Account
+   keys are created in [user settings](https://docs.immich.app/features/user-settings/).
+2. For n8n, first check whether **Settings → n8n API → Create an API key**
+   offers scoped permissions. If it does, a dedicated key for this facade needs
+   `workflow:read` and `execution:list`, with an explicit expiration. Current
+   [n8n documentation](https://docs.n8n.io/connect/n8n-api/authentication.md)
+   limits API-key scopes to Enterprise; non-Enterprise keys have the account's
+   full capabilities. If scope selection is absent, leave this adapter
+   unprovisioned. Do not create an owner-wide key for status reads or upgrade
+   the plan just for this tool. Existing trusted infrastructure observations
+   remain available; a separate finite local status bridge would be the next
+   implementation option.
+3. Defer Expedia until access to the specific recommendation API is confirmed.
+   The current [developer AI page](https://developers.expediagroup.com/docs/ai-solutions)
+   directs prospective users through a partner/account-manager conversation.
+   Self-service personal access to this adapter's endpoint is unverified.
+   A Hotels.com login, RapidAPI subscription or unrelated Expedia Rapid key
+   does not establish access to that endpoint.
+
+Context7 already passed anonymous requests; an account key is optional for
+its limits. Maps stays deferred behind the retention/billing qualification
+below. Harrier uses the existing private embedding route and needs no new
+provider key for this change.
+
+Creating a password-manager entry does not automatically connect it to the
+facade. On the reviewed rollout, provision the selected secret through a
+private terminal/custody flow into its fixed token file. For Immich that is
+`/var/lib/homecompute-openclaw/config/integration-immich-token`, with the owner
+and mode specified above. Share only the entry name or external secret
+reference in chat, never the displayed API-key value.
 
 Maps is disabled by default. Before setting `enabled` in source, qualify its
 [content retention, attribution and compatible-model requirements](https://developers.google.com/maps/ai/grounding-lite).
