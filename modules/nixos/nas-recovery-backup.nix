@@ -14,6 +14,7 @@ let
       User = "root";
       UMask = "0077";
       ExecStartPre = lib.optionals (command == "backup" && cfg.includeApplicationState) [
+        "${runner} validate"
         "${pkgs.python3}/bin/python3 ${../../scripts/application-recovery.py} prepare"
       ];
       ExecStart = "${runner} ${command}";
@@ -23,7 +24,10 @@ let
       IOSchedulingClass = "idle";
       Nice = 10;
       NoNewPrivileges = true;
-      CapabilityBoundingSet = "";
+      # Root must read private application/VM directories owned by their
+      # service UIDs; grant read/search, never write/ownership overrides.
+      CapabilityBoundingSet = lib.optional (command == "backup" && cfg.includeApplicationState) "CAP_DAC_READ_SEARCH";
+      AmbientCapabilities = lib.optional (command == "backup" && cfg.includeApplicationState) "CAP_DAC_READ_SEARCH";
       PrivateTmp = true;
       ProtectSystem = "strict";
       ProtectHome = true;

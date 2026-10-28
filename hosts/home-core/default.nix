@@ -38,6 +38,11 @@
   networking.hostName = "home-core";
   homecompute.mattermost.enable = true;
   homecompute.serviceRecovery.enable = true;
+  homecompute.nasRecoveryBackup = {
+    enable = true;
+    share = "homecompute-backups";
+    credentialsFile = "/etc/homecompute/nas-recovery-backup.credentials";
+  };
 
   # Preserve the installed DHCP connection while bootstrapping over LAN SSH.
   # enp44s0 (84:47:09:79:58:b1) is cabled; enp45s0 is reserved for GB10.

@@ -232,6 +232,51 @@ Keep deliberately retired services out of the required inventory. The expanded
 core inventory includes Immich, Mattermost, embeddings, speech adapters and CPU
 fallbacks, TTLock, the compute tunnel, Codex VM, and local backup status.
 
+For an authorized repair that must preserve unrelated live application state,
+`scripts/setup-platform-observability.py` installs only readiness, the finite
+machine collector and their approved registry from an exact published release.
+It does not reinstall the communication bundle or change household tools,
+credentials, channels, containers or inference settings. Its default prints the
+reviewable bundle hash without writing anything:
+
+```bash
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-platform-observability.py
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-platform-observability.py \
+  --revision FULL_SHA --expected-hash REVIEWED_BUNDLE_HASH --apply
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-platform-observability.py --status
+```
+
+The release checkout must match its committed files and be contained in
+`origin/master`; a dirty checkout or unpushed commit is refused. Installation
+retains an immutable version under `/opt/homecompute/observability/releases`,
+backs up the exact previous registry and unit drop-ins, and pauses only the two
+metadata collectors while applying. Existing Home Assistant admission is
+preserved. The native adapter is restarted to reload the registry, while its
+existing code and private state stay in place.
+
+On NixOS, `/etc/systemd/system` resolves into the immutable store. This lifecycle
+therefore uses reviewed `90-homecompute-observability.conf` drop-ins below
+`/etc/systemd/system.attached/<unit>.service.d/`. Drop-ins are collected even
+when a higher-priority Nix base unit is selected; installation verifies the
+effective paths, UNIX socket access and timeouts before running fresh probes.
+A real degraded dependency is reported, rather than rolling back truthful
+monitoring. Installation failures restore the previous files automatically.
+
+The receipt records the exact revision, bundle hash and private backup ID.
+An explicit rollback restores that saved pre-installation state:
+
+```bash
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-platform-observability.py \
+  --expected-hash INSTALLED_BUNDLE_HASH --rollback
+```
+
+After the normal NixOS and communication lifecycles reconcile the same probe,
+collector, workflow-health dependency and inventory, remove the managed
+overlays with `--retire --expected-hash INSTALLED_BUNDLE_HASH`. Retirement
+refuses while the underlying units still reference older source. This accounts
+for the temporary deployment overlay instead of leaving an unexplained host
+override.
+
 The intended first off-host destination is a **separate Synology backup share**.
 Hetzner is deferred. Neither the Immich media share/account nor Omi's NFS export
 is a backup destination. Before enabling `homecompute.nasRecoveryBackup`, supply

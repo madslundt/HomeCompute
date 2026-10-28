@@ -27,12 +27,19 @@ in
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
     path = [ pkgs.curl pkgs.docker ];
+    environment = {
+      PYTHONDONTWRITEBYTECODE = "1";
+      DOCKER_HOST = "unix:///var/run/docker.sock";
+      DOCKER_CONFIG = "/run/homecompute-platform-health/docker";
+      HOME = "/run/homecompute-platform-health";
+    };
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pkgs.python3}/bin/python3 ${../../scripts/platform-health.py}";
       TimeoutStartSec = "20s";
       RuntimeDirectory = "homecompute-platform-health";
       RuntimeDirectoryMode = "0700";
+      UnsetEnvironment = [ "HTTP_PROXY" "HTTPS_PROXY" "ALL_PROXY" "http_proxy" "https_proxy" "all_proxy" "DOCKER_CONTEXT" "SSH_AUTH_SOCK" ];
       UMask = "0022";
 
       AmbientCapabilities = "";
@@ -50,6 +57,8 @@ in
       LockPersonality = true;
       MemoryDenyWriteExecute = true;
       MemoryMax = "128M";
+      TasksMax = 64;
+      LimitCORE = 0;
       NoNewPrivileges = true;
       PrivateDevices = true;
       PrivateTmp = true;
