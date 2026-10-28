@@ -15,6 +15,15 @@ The draft implementation now uses Geoapify plus Open-Meteo with the same
 finite agent grants; the Google candidate below is retained as assessment
 history, not the selected deployment.
 
+Hotel replacement follow-up: the owner has no Expedia partnership. The draft
+now uses self-service [SerpApi Google Hotels](https://serpapi.com/google-hotels-api)
+for bounded hotel discovery, with explicit adults, child ages, currency and
+separate nightly/stay tax labels. [Pricing](https://serpapi.com/pricing) currently
+lists 250 free searches/month; no paid plan is needed for initial qualification.
+This is Google Hotels data through SerpApi, not a Google Maps API dependency.
+The former Expedia candidate below remains historical; its endpoint and key
+are no longer used. SerpApi credentials and live behavior remain unverified.
+
 ## Recommendation
 
 HomeCompute can support additional MCP-backed capabilities through its existing

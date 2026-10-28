@@ -84,8 +84,8 @@ class IntegrationsTest(unittest.TestCase):
         self.service.opener = Mock()
         cases = [('homecompute_docs_query', {'library_id': '/python/cpython', 'query': 'x', 'url': 'http://private'}),
                  ('homecompute_docs_query', {'library_id': 'https://evil.test/', 'query': 'x'}),
-                 ('homecompute_hotel_search', {'destination': 'Paris', 'check_in': '2026-12-10', 'check_out': '2026-12-01', 'travelers': 4}),
-                 ('homecompute_hotel_search', {'destination': 'Paris', 'check_in': '2026-12-01', 'check_out': '2026-12-10', 'travelers': True}),
+                 ('homecompute_hotel_search', {'destination': 'Paris', 'check_in': '2026-12-10', 'check_out': '2026-12-01', 'adults': 2, 'child_ages': [], 'currency': 'DKK'}),
+                 ('homecompute_hotel_search', {'destination': 'Paris', 'check_in': '2026-12-01', 'check_out': '2026-12-10', 'adults': True, 'child_ages': [], 'currency': 'DKK'}),
                  ('homecompute_places_search', {'query': 'x\nAuthorization: secret'}),
                  ('homecompute_automation_status', {'workflow': '../../private'}),
                  ('homecompute_book_hotel', {})]
@@ -97,6 +97,7 @@ class IntegrationsTest(unittest.TestCase):
         self.service.opener = Mock()
         self.assertEqual(self.service.request('homecompute_places_search', {'query': 'parks in Copenhagen'})['status'], 'disabled')
         self.assertEqual(self.service.request('homecompute_photo_search', {'query': 'beach'})['status'], 'credential_required')
+        self.assertEqual(self.service.request('homecompute_hotel_search', self.hotel_arguments())['status'], 'credential_required')
         self.service.opener.open.assert_not_called()
         self.credential('immich'); self.tokens['immich'].chmod(0o644)
         self.assertEqual(self.service.status('immich')['status'], 'credential_invalid')
@@ -134,18 +135,93 @@ class IntegrationsTest(unittest.TestCase):
         self.assertEqual(request.full_url, 'http://127.0.0.1:2283/api/search/smart')
         self.assertEqual(json.loads(request.data), {'query': 'beach', 'size': 5, 'page': 1})
 
-    def test_expedia_is_a_bounded_direct_get_without_logging_or_auth_fallback(self):
-        self.credential('expedia')
-        self.service.opener = Mock(open=Mock(return_value=Response({'hotels': [{'name': 'Public hotel',
-            'authorization': 'secret', 'description': 'synthetic-private-key-123456'}]})))
-        result = self.service.request('homecompute_hotel_search', {'destination': 'Paris', 'check_in': '2026-12-01',
-            'check_out': '2026-12-08', 'travelers': 4})
+    @staticmethod
+    def hotel_arguments(**changes):
+        return {'destination': 'Paris', 'check_in': '2026-12-01', 'check_out': '2026-12-08',
+                'adults': 2, 'child_ages': [0, 7], 'currency': 'DKK', **changes}
+
+    @staticmethod
+    def hotel_payload(**changes):
+        return {'search_metadata': {'status': 'Success', 'processed_at': '2026-10-28 10:00:00 UTC'},
+                'search_parameters': {'engine': 'google_hotels', 'q': 'Paris', 'check_in_date': '2026-12-01',
+                    'check_out_date': '2026-12-08', 'adults': 2, 'children': 2, 'children_ages': '1,7',
+                    'currency': 'DKK', 'gl': 'dk', 'hl': 'en'},
+                'properties': [{'name': 'Public hotel', 'link': 'https://hotel.example/',
+                    'description': 'synthetic-private-key-123456',
+                    'rate_per_night': {'display_price': 'DKK 900', 'extracted_display_price': 900,
+                                       'after_taxes_fees': 'DKK 1000', 'extracted_after_taxes_fees': 1000},
+                    'total_rate': {'display_price': 'DKK 6300', 'extracted_display_price': 6300,
+                                   'after_taxes_fees': 'DKK 7000', 'extracted_after_taxes_fees': 7000},
+                    'serpapi_property_details_link': 'https://serpapi.com/search?api_key=private',
+                    'images': ['private'], 'instructions': 'private'}] * 8, **changes}
+
+    def test_serpapi_is_one_fixed_get_with_explicit_occupancy_and_separate_tax_labels(self):
+        import openclaw_hotels
+        self.credential('hotels')
+        self.service.opener = Mock(open=Mock(return_value=Response(self.hotel_payload())))
+        result = self.service.request('homecompute_hotel_search', self.hotel_arguments())
         self.assertEqual(result['status'], 'completed')
-        self.assertNotIn('synthetic-private', json.dumps(result)); self.assertNotIn('authorization', json.dumps(result))
+        self.assertEqual(self.service.status('hotels')['backend'], 'serpapi-google-hotels')
+        self.assertEqual(len(result['data']['hotels']), 5)
+        row = result['data']['hotels'][0]
+        self.assertEqual(row['rate_per_night']['extracted_display_price'], 900)
+        self.assertEqual(row['total_rate']['extracted_after_taxes_fees'], 7000)
+        self.assertEqual(row['price_status'], 'advertised_lead_unconfirmed')
+        self.assertEqual(row['url'], 'https://hotel.example/')
+        self.assertEqual(result['data']['search']['child_ages'], [0, 7])
+        self.assertEqual(result['data']['search']['submitted_child_ages'], [1, 7])
+        for excluded in ('synthetic-private', 'instructions', 'images', 'serpapi_property_details_link'):
+            self.assertNotIn(excluded, json.dumps(result))
         request = self.service.opener.open.call_args.args[0]
         self.assertEqual(request.get_method(), 'GET')
-        self.assertTrue(request.full_url.startswith(integrations.EXPEDIA + '?'))
-        self.assertIn('number_of_travelers=4', request.full_url)
+        self.assertEqual(request.headers, {'Content-type': 'application/json'})
+        self.assertTrue(request.full_url.startswith(openclaw_hotels.ENDPOINT + '?'))
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)
+        self.assertEqual(query['children_ages'], ['1,7']); self.assertEqual(query['children'], ['2'])
+        self.assertEqual(query['currency'], ['DKK']); self.assertEqual(query['adults'], ['2'])
+        self.assertNotIn('no_cache', query); self.assertNotIn('next_page_token', query)
+        self.assertEqual(self.service.opener.open.call_count, 1)
+
+    def test_hotel_occupancy_is_required_and_invalid_ages_fail_before_network(self):
+        self.service.opener = Mock()
+        invalid = [self.hotel_arguments(child_ages=v) for v in ([-1], [18], [True], ['7'], '7', [7] * 7)]
+        invalid += [self.hotel_arguments(adults=0), self.hotel_arguments(currency='XXX')]
+        missing = self.hotel_arguments(); del missing['child_ages']; invalid.append(missing)
+        invalid.append({'destination': 'Paris', 'check_in': '2026-12-01', 'check_out': '2026-12-08', 'travelers': 4})
+        for args in invalid:
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                self.service.request('homecompute_hotel_search', args)
+        self.service.opener.open.assert_not_called()
+
+    def test_hotel_errors_mismatched_stays_and_malformed_rows_are_unavailable(self):
+        self.credential('hotels')
+        samples = [self.hotel_payload(error='synthetic-private-key-123456'),
+                   self.hotel_payload(search_metadata={'status': 'Processing'}),
+                   self.hotel_payload(properties=None), self.hotel_payload(properties=[None])]
+        for key, value in [('check_out_date', '2026-12-09'), ('adults', 4), ('adults', True),
+                           ('children_ages', '7,7'), ('currency', 'USD'), ('q', 'London')]:
+            payload = self.hotel_payload(); payload['search_parameters'][key] = value; samples.append(payload)
+        for payload in samples:
+            with self.subTest(payload=payload):
+                self.service.opener = Mock(open=Mock(return_value=Response(payload)))
+                result = self.service.request('homecompute_hotel_search', self.hotel_arguments())
+                self.assertEqual(result['status'], 'unavailable')
+                self.assertNotIn('synthetic-private', json.dumps(result))
+                self.assertEqual(self.service.opener.open.call_count, 1)
+
+    def test_empty_hotel_page_is_partial_evidence_and_unsafe_links_are_not_returned(self):
+        self.credential('hotels')
+        payload = self.hotel_payload(properties=[])
+        payload['search_parameters']['children'] = 0; del payload['search_parameters']['children_ages']
+        self.service.opener = Mock(open=Mock(return_value=Response(payload)))
+        result = self.service.request('homecompute_hotel_search', self.hotel_arguments(child_ages=[]))
+        self.assertEqual(result['status'], 'completed'); self.assertEqual(result['data']['hotels'], [])
+        self.assertIn('partial', result['data']['completeness'])
+        import openclaw_hotels
+        for url in ('javascript:alert(1)', 'http://hotel.example/', 'https://serpapi.com/search?api_key=private',
+                    'https://user:password@hotel.example/', 'https://hotel.example/\nprivate'):
+            self.assertIsNone(openclaw_hotels.link(url))
+        self.assertIsNone(openclaw_hotels.rate({'extracted_display_price': float('nan')}))
 
     def test_n8n_only_reads_registered_workflow_and_execution_metadata(self):
         self.credential('n8n'); self.cfg['public_workflows']['travel'] = 'approved-travel'
@@ -234,9 +310,11 @@ class IntegrationsTest(unittest.TestCase):
         self.assertEqual(service._places_http.call_count, 1)
 
     def test_catalog_refuses_other_maps_backends_and_redacts_url_encoded_keys(self):
-        self.cfg['providers']['maps']['backend'] = 'google'
-        self.catalog.write_text(json.dumps(self.cfg))
-        with self.assertRaises(ValueError): integrations.Integrations(self.catalog, self.root / 'other-state')
+        for provider, backend in [('maps', 'google'), ('hotels', 'expedia')]:
+            cfg = json.loads(json.dumps(self.cfg)); cfg['providers'][provider]['backend'] = backend
+            self.catalog.write_text(json.dumps(cfg))
+            with self.subTest(provider=provider), self.assertRaises(ValueError):
+                integrations.Integrations(self.catalog, self.root / 'other-state')
         token = 'synthetic+private/key'
         payload = integrations.evidence({'text': 'url?apiKey=' + urllib.parse.quote_plus(token)}, token)
         self.assertNotIn('private', json.dumps(payload))

@@ -6,7 +6,7 @@ description: Research holidays, family outings, restaurants and experience deals
 # Travel and adventures
 
 When granted provider tools are relevant, first check
-`homecompute__homecompute_integration_status` for `maps` or `expedia`.
+`homecompute__homecompute_integration_status` for `maps` or `hotels`.
 `configured` means local prerequisites exist, not that a live request passed.
 Use `places_search` for explicit public locations, `places_route` for driving
 or walking comparisons, and `places_weather` for an explicit location/date;
@@ -18,9 +18,14 @@ before continuing. Keep private calendar text, birthdays and names out of querie
 An unavailable provider ends the attempt; use the existing approved research
 path and label the missing provider evidence.
 
-`homecompute__homecompute_hotel_search` returns Expedia recommendations for
-dates and traveler count. It does not price child ages, rooms, packages or
-member discounts. Apply the matching-quote rules below before confirming totals.
+`homecompute__homecompute_hotel_search` returns up to five Google Hotels price
+leads through SerpApi. Supply explicit dates, adults, `child_ages` (an empty
+list only for an adult-only request) and currency. Confirm ages at travel time;
+infants are submitted as age 1 per provider convention. Preserve nightly versus
+stay totals and displayed/before-tax/after-tax labels. Provider results may be
+cached for up to one hour; a retrieval timestamp does not prove a fresh quote.
+Room allocation, board, member discounts and final checkout totals remain
+unverified. Apply the matching-quote rules below before confirming totals.
 `homecompute__homecompute_automation_status` reads recent execution metadata
 for a registered public workflow; it neither retrieves the report nor reruns it.
 

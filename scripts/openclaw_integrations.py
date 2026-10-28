@@ -25,16 +25,16 @@ import urllib.request
 
 from openclaw_services import NoRedirect, private, rpc_result
 
-PROVIDERS = ('context7', 'maps', 'expedia', 'immich', 'n8n')
+PROVIDERS = ('context7', 'maps', 'hotels', 'immich', 'n8n')
 CONFIG_ROOT = Path('/var/lib/homecompute-openclaw/config')
 TOKENS = {name: CONFIG_ROOT / ('integration-' + name + '-token') for name in PROVIDERS}
 # Keep stable maps tool/status names, but never reuse an old Google credential.
 TOKENS['maps'] = CONFIG_ROOT / 'integration-geoapify-token'
+TOKENS['hotels'] = CONFIG_ROOT / 'integration-serpapi-token'
 MCP_ENDPOINTS = {'context7': 'https://mcp.context7.com/mcp'}
 IMMICH = 'http://127.0.0.1:2283'
 IMMICH_WEB = 'http://192.168.30.122:2283'
 N8N = 'http://127.0.0.1:15678/api/v1'
-EXPEDIA = 'https://apim.expedia.com/recommendations/hotels'
 MAX_BYTES, MAX_OUTPUT, TIMEOUT = 524288, 22000, 12
 PREFIX = 'homecompute_'
 
@@ -68,11 +68,14 @@ DEFINITIONS = [
                  {'origin': string(300), 'destination': string(300), 'mode': string(5, choices=['DRIVE', 'WALK'])}, ['origin', 'destination', 'mode'])),
     ('maps', tool('places_weather', 'maps', 'Read Open-Meteo weather for a Geoapify-resolved location and optional local calendar date. Preserve attribution.',
                  {'location': string(300), 'date': string(10, pattern=r'\d{4}-\d{2}-\d{2}')}, ['location'])),
-    ('expedia', tool('hotel_search', 'expedia', 'Discover hotel recommendations for dates and traveler count. Not a family quote, member rate, reservation or booking.',
+    ('hotels', tool('hotel_search', 'hotels', 'Find hotel price leads through SerpApi Google Hotels for explicit dates, adults, child ages and currency. Infants are submitted as age 1 per provider convention. No room allocation, member rate or booking.',
                     {'destination': string(200), 'check_in': string(10, pattern=r'\d{4}-\d{2}-\d{2}'),
                      'check_out': string(10, pattern=r'\d{4}-\d{2}-\d{2}'),
-                     'travelers': {'type': 'integer', 'minimum': 1, 'maximum': 16}},
-                    ['destination', 'check_in', 'check_out', 'travelers'])),
+                     'adults': {'type': 'integer', 'minimum': 1, 'maximum': 8},
+                     'child_ages': {'type': 'array', 'minItems': 0, 'maxItems': 6,
+                                    'items': {'type': 'integer', 'minimum': 0, 'maximum': 17}},
+                     'currency': string(3, choices=['DKK', 'EUR', 'USD', 'GBP', 'SEK', 'NOK'])},
+                    ['destination', 'check_in', 'check_out', 'adults', 'child_ages', 'currency'])),
     ('immich', tool('photo_search', 'immich', 'Search the explicitly authorized owner Immich library. Returns bounded metadata and asset links, never images or files.',
                    {'query': string(300), 'limit': {'type': 'integer', 'minimum': 1, 'maximum': 10}}, ['query'])),
     ('n8n', tool('automation_status', 'n8n', 'Read the status and recent execution metadata of a source-registered public workflow. Does not retrieve report contents or run jobs.',
@@ -91,9 +94,10 @@ def configuration(path: Path) -> dict:
             or set(cfg['public_workflows']) != {'travel', 'sweet_deals', 'news'}):
         raise ValueError('Integration catalog refused')
     for provider, item in cfg['providers'].items():
-        expected = {'enabled', 'calls_per_hour'} | ({'backend'} if provider == 'maps' else set())
+        expected = {'enabled', 'calls_per_hour'} | ({'backend'} if provider in {'maps', 'hotels'} else set())
         if (not isinstance(item, dict) or set(item) != expected
                 or provider == 'maps' and item['backend'] != 'geoapify'
+                or provider == 'hotels' and item['backend'] != 'serpapi'
                 or type(item['enabled']) is not bool or type(item['calls_per_hour']) is not int
                 or not 1 <= item['calls_per_hour'] <= 120):
             raise ValueError('Integration budget refused')
@@ -115,6 +119,9 @@ def validate(operation: str, arguments: Any) -> dict:
         rule = schema['properties'][key]
         if rule['type'] == 'integer':
             valid = type(value) is int and rule['minimum'] <= value <= rule['maximum']
+        elif rule['type'] == 'array':
+            valid = (isinstance(value, list) and rule['minItems'] <= len(value) <= rule['maxItems']
+                     and all(type(v) is int and rule['items']['minimum'] <= v <= rule['items']['maximum'] for v in value))
         else:
             valid = (isinstance(value, str) and rule['minLength'] <= len(value) <= rule['maxLength']
                      and value.strip() == value and not any(ord(c) < 32 for c in value)
@@ -170,7 +177,8 @@ class Integrations:
         except (OSError, ValueError, UnicodeError):
             return {'provider': provider, 'status': 'credential_invalid', 'live_verified': False}
         ready = credential is not None or provider == 'context7'
-        return {'provider': provider, **({'backend': 'geoapify+open-meteo'} if provider == 'maps' else {}),
+        return {'provider': provider, **({'backend': 'geoapify+open-meteo'} if provider == 'maps' else
+                                        {'backend': 'serpapi-google-hotels'} if provider == 'hotels' else {}),
                 'status': 'configured' if ready else 'credential_required',
                 'authentication': 'anonymous' if provider == 'context7' and credential is None else 'dedicated_key',
                 'live_verified': False}
@@ -239,12 +247,9 @@ class Integrations:
         if provider == 'maps':
             from openclaw_places import read
             return read(name, a, token, deadline, self._places_http)
-        if provider == 'expedia':
-            params = {'destination': a['destination'], 'check_in': a['check_in'], 'check_out': a['check_out'],
-                      'number_of_travelers': a['travelers'], 'user_input_in_english': 'Hotel recommendations in ' + a['destination'], 'keywords': 'Hotels|MCP'}
-            raw, _ = self._http(EXPEDIA + '?' + urllib.parse.urlencode(params), None,
-                                {'X-API-KEY': token, 'Authorization': 'Basic ' + token}, deadline)
-            return json.loads(raw)
+        if provider == 'hotels':
+            from openclaw_hotels import read
+            return read(a, token, deadline, self._http)
         if provider == 'immich':
             raw, _ = self._http(IMMICH + '/api/search/smart', {'query': a['query'], 'size': a.get('limit', 5), 'page': 1}, {'x-api-key': token}, deadline)
             payload = json.loads(raw)

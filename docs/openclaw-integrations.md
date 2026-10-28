@@ -2,7 +2,7 @@
 
 This implements the selected [assessment](research/mcp-and-skills-assessment-2026-10-28.md)
 through the existing authenticated HomeCompute MCP endpoint. Context7 uses its official remote MCP service. Places and routes use
-Geoapify, and weather uses Open-Meteo. Expedia, Immich and n8n use fixed,
+Geoapify, and weather uses Open-Meteo. SerpApi hotel search, Immich and n8n use fixed,
 read-only API routes in the trusted facade, avoiding redundant MCP services.
 GitHub stays in the coding broker's `gh` workflow. Paperless is deferred: no
 document-storage service or document corpus is connected by this change.
@@ -14,7 +14,7 @@ document-storage service or document corpus is connected by this change.
 | Apollo (`engineer`) | Public Context7 library resolution and documentation |
 | Orion (`operator`) | Context7 documentation and registered public n8n workflow status |
 | Nova (`researcher`) | Registered public n8n workflow status |
-| Lyra (`travel`) | Geoapify places/routes, Open-Meteo weather, Expedia hotel discovery and public workflow status |
+| Lyra (`travel`) | Geoapify places/routes, Open-Meteo weather, SerpApi hotel discovery and public workflow status |
 | Luna (`personal`) | Owner-private Immich photo search, metadata and asset links only |
 | Vega (`shopper`) | Geoapify places search for shops and opening information |
 | Atlas, Ceres, Hestia, Themis, Plutus, Gaia | No additional domain tools |
@@ -37,10 +37,10 @@ nodes, credentials, execution payloads or report contents. It runs no jobs.
 
 Dedicated provider tokens are external files under
 `/var/lib/homecompute-openclaw/config/integration-PROVIDER-token`, where
-`PROVIDER` is `context7`, `geoapify`, `expedia`, `immich` or `n8n`. The stable
-`maps` tool/status provider uses the Geoapify token file; an old Google Maps
-key is never reused or forwarded. Provision files
-through the operator's secret custody path, owned by `homecompute-openclaw`,
+`PROVIDER` is `context7`, `geoapify`, `serpapi`, `immich` or `n8n`. The stable
+`maps` tool/status provider uses the Geoapify token file, and `hotels` uses
+the SerpApi file. Old Google Maps and Expedia keys are never reused or forwarded.
+Provision files through the operator's secret custody path, owned by `homecompute-openclaw`,
 mode 0600, single regular file, with no symlinks. Do not paste keys into chat,
 commit them or pass them on command lines. The facade never returns key paths
 or values. An absent Context7 key permits its anonymous service; other
@@ -56,7 +56,7 @@ All files are on **home-core**, under
 | --- | --- |
 | Immich | `integration-immich-token` |
 | n8n (scoped key only) | `integration-n8n-token` |
-| Expedia (qualified endpoint access) | `integration-expedia-token` |
+| SerpApi (hotel search) | `integration-serpapi-token` |
 | Context7 (optional) | `integration-context7-token` |
 | Geoapify | `integration-geoapify-token` |
 | Open-Meteo | No key required for the non-commercial endpoint |
@@ -64,8 +64,8 @@ All files are on **home-core**, under
 Keep files owned by `homecompute-openclaw`, mode 0600. The hidden terminal
 entry procedure used for Immich applies to the other files by changing only
 the filename. Creating a file provisions a secret; it does not activate an
-unpublished adapter or bypass that provider's qualification. The n8n and
-Expedia prerequisites below still apply.
+unpublished adapter or bypass that provider's qualification. The n8n scope
+restriction below still applies.
 
 ### Create credentials in this order
 
@@ -90,12 +90,15 @@ Start with Immich; the other providers do not all need new keys now:
    the plan just for this tool. Existing trusted infrastructure observations
    remain available; a separate finite local status bridge would be the next
    implementation option.
-3. Defer Expedia until access to the specific recommendation API is confirmed.
-   The current [developer AI page](https://developers.expediagroup.com/docs/ai-solutions)
-   directs prospective users through a partner/account-manager conversation.
-   Self-service personal access to this adapter's endpoint is unverified.
-   A Hotels.com login, RapidAPI subscription or unrelated Expedia Rapid key
-   does not establish access to that endpoint.
+3. For hotel search, create a self-service [SerpApi account](https://serpapi.com/users/sign_up)
+   and copy its private API key from the dashboard to the owner's password manager.
+   This replaces the Expedia adapter; no Expedia partnership is needed.
+   [Current pricing](https://serpapi.com/pricing) lists 250 free searches per month.
+   Start with the free plan; do not enable paid automatic renewal for this tool.
+   The local 12-attempt hourly budget does not reserve or track the account's
+   monthly credits, which may also be consumed by other clients. Exhausted
+   credits end the attempt; the adapter neither retries nor buys capacity.
+   Save the key in `integration-serpapi-token` on home-core, as described below.
 
 Context7 already passed anonymous requests; an account key is optional for
 its limits. The maps tools now use Geoapify and Open-Meteo as described below; no
@@ -146,13 +149,50 @@ resolved coordinates and the requested local date, never the Geoapify key.
 Preserve Open-Meteo/CC BY attribution. Both providers are external services,
 not local computation. The facade still does not archive their responses.
 
-Expedia API eligibility, authentication and current inventory require a live
-check with the issued key. Its public MCP implementation is not installed:
-the facade implements only its documented hotel recommendation GET route with
-a deadline, no retries, no raw diagnostics and no request/header logging.
-Traveler count does not encode child ages, room occupancy or member pricing;
-recommendations are leads until a provider establishes a matching full quote.
-No booking, reservation, payment or account access tool exists.
+Hotel discovery uses the fixed [SerpApi Google Hotels API](https://serpapi.com/google-hotels-api)
+through `openclaw_hotels.py`. This uses Google Hotels search data through
+SerpApi, separately from Google Maps; it needs no Google API key. The stable
+provider ID is `hotels`, with source-selected backend `serpapi`. The old Expedia
+endpoint is removed; an `integration-expedia-token` file is never read.
+
+Hotel requests require dates (1–31 nights), adults, a list of child ages and a
+currency. Use `child_ages: []` only for an explicitly adult-only request. Infants
+(age 0) are submitted as age 1 per SerpApi's convention, and both requested and
+submitted ages are returned. Send only public destinations, date/count/age
+parameters; no names, birthdays, calendar contents or private prompts. SerpApi
+is an external search processor. Its default cache may be up to one hour old,
+and its documentation reserves no-storage ZeroTrace mode for Enterprise;
+this facade's no-archive policy does not imply upstream deletion.
+
+One GET returns at most five properties. There is no pagination or property-detail
+follow-up. Returned search parameters must match the requested stay and group.
+Nightly and stay rates retain separate displayed, before-tax and after-tax labels;
+a missing total remains unknown. Provider processing time is kept distinct from
+the facade's retrieval time. Search rates are advertised leads, never confirmed
+room allocation, board, member discounts or whole-family checkout quotes.
+Result links are untrusted HTTPS evidence and are not fetched by the facade.
+No booking, reservation, payment or account access tool exists. Errors, request
+URLs and the required query-string API key are never logged or returned.
+
+To provision the key without showing it in command history, connect to home-core
+and enter it at the hidden prompt. The command refuses to overwrite a file:
+
+```bash
+ssh home-core
+sudo -u homecompute-openclaw python3 -c '
+import getpass, os
+key = getpass.getpass("SerpApi API key: ").strip()
+if not key:
+    raise SystemExit("No key entered.")
+os.umask(0o077)
+with open("/var/lib/homecompute-openclaw/config/integration-serpapi-token", "x") as f:
+    f.write(key + "\n")
+print("Saved privately.")
+'
+```
+
+Provisioning does not deploy the adapter. Qualify one bounded search through
+the reviewed release before granting production readiness.
 
 The photo tool calls only the existing local Immich smart-search route. Its
 response excludes originals, EXIF, face information and file paths. Returned
@@ -235,13 +275,13 @@ restore drill was run in this task.
 
 The new adapter completed live anonymous Context7 library resolution and a
 public Python documentation query from the workstation on 2026-10-28. This
-verifies the remote adapter path, not installed specialist sessions. Expedia,
+verifies the remote adapter path, not installed specialist sessions. SerpApi,
 Geoapify, Immich and n8n credentials were not provisioned by this task. Native
 activation, provider access and post-release role denials still require the
 qualified rollout above.
 
 Focused provider, grant, team, installer, transport and roster checks passed
-(68 tests). The repository validator passed its test phase after correcting a
+(76 tests). The repository validator passed its test phase after correcting a
 stale existing Lyra research-search assertion, then stopped at an unrelated
 compute SSH tunnel guard: the untouched source forwards automation to port
 18400 while the validator expects 18300. That mismatch was reproduced on the

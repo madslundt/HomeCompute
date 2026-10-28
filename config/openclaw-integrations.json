@@ -3,7 +3,7 @@
   "providers": {
     "context7": {"enabled": true, "calls_per_hour": 30},
     "maps": {"enabled": true, "calls_per_hour": 20, "backend": "geoapify"},
-    "expedia": {"enabled": true, "calls_per_hour": 12},
+    "hotels": {"enabled": true, "calls_per_hour": 12, "backend": "serpapi"},
     "immich": {"enabled": true, "calls_per_hour": 30},
     "n8n": {"enabled": true, "calls_per_hour": 30}
   },
