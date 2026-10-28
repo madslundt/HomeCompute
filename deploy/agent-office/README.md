@@ -199,8 +199,11 @@ node scripts/setup-agent-office.mjs --bundle /absolute/staged-office-bundle \
 
 Apply requires root, validates bundle file hashes and credentials, installs an
 immutable version, uses native config validation, retains a private config
-backup, and checks the applied settings. It does not restart the gateway. Run
-the existing gateway restart lifecycle after review. Hook compatibility remains
+backup, and checks the applied settings. It does not restart the gateway.
+Native config validation and writes run as the existing gateway UID/GID 998;
+only immutable bundle installation and its backup require root. This retains
+runtime ownership when the native CLI atomically replaces its config file.
+Run the existing gateway restart lifecycle after review. Hook compatibility remains
 a live qualification gate: a gateway that does not emit the native hooks must
 show unknown activity rather than synthetic work. Do not edit the safety plugin,
 grant an agent tool, or change sandbox egress for this feature.

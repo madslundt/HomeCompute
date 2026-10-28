@@ -47,11 +47,13 @@ export async function setup(values) {
   const bundle = await verifyBundle(values.bundle);
   const bytes = await regular(CONFIG);
   const beforeDigest = sha(bytes);
+  const nativeOwner = await lstat(CONFIG);
   const installed = join(INSTALL, bundle.digest);
   const changes = configPatch(JSON.parse(bytes), installed);
   const report = { bundle_sha256: bundle.digest, config_sha256: beforeDigest, installed_path: installed, changes, applied: false };
   if (!values.apply) return report;
   if (process.getuid?.() !== 0 || values['expected-bundle-sha256'] !== bundle.digest || values['expected-config-sha256'] !== beforeDigest) throw new Error('Apply requires root and both reviewed input digests');
+  if (nativeOwner.uid !== 998 || nativeOwner.gid !== 998) throw new Error('Native configuration must retain its gateway runtime owner');
   await readAuth(AUTH); // Refuse publishing any listener without valid credentials.
   for (const path of ['/sandbox', '/sandbox/.openclaw', INSTALL]) {
     await mkdir(path, { recursive: true, mode: 0o755 });
@@ -80,6 +82,7 @@ export async function setup(values) {
     await rename(stage, installed);
   }
   const invoke = apply => execFileSync('openclaw', ['config', 'set', '--batch-json', JSON.stringify(changes), ...(apply ? [] : ['--dry-run'])], {
+    uid: nativeOwner.uid, gid: nativeOwner.gid,
     env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: '/sandbox', OPENCLAW_CONFIG_PATH: CONFIG },
     stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000,
   });
