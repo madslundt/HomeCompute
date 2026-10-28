@@ -1,5 +1,95 @@
 # HomeCompute OpenClaw skills
 
+## Team workflow skills (source change, 2026-10-28)
+
+The scoped assignment source adds four instruction-only bundles to existing roles:
+
+| Skill | Assigned roles | Workflow |
+| --- | --- | --- |
+| [`meal-planning`](../deploy/openclaw/skills/meal-planning/SKILL.md) | Hestia (`cook`) | Plan meals from current stock and offers; propose shopping changes through Vega and stock changes through Ceres. |
+| [`household-paperwork`](../deploy/openclaw/skills/household-paperwork/SKILL.md) | Themis (`administrator`) | Extract sourced obligations/deadlines from supplied documents; route requested durable tasks to Luna. |
+| [`budget-analysis`](../deploy/openclaw/skills/budget-analysis/SKILL.md) | Plutus (`finance`) | Reconcile supplied expenses, transfers and budget assumptions without bank access. |
+| [`tasks-and-reminders`](../deploy/openclaw/skills/tasks-and-reminders/SKILL.md) | Luna (`personal`), Orion (`operator`), Gaia (`family`) | Maintain tasks, recurrence and timed/zone reminders within existing private/shared grants; verify delivery state. |
+
+The finite assignments and load triggers live in
+[`openclaw_workflow_skills.py`](../scripts/openclaw_workflow_skills.py). Each
+assigned identity receives a separate managed instruction block. Atlas continues
+to delegate; Gaia uses only shared Family tools without private adult sources or
+delegation. These bundles add no tools, credentials, schedules or service access.
+
+The published full-team bootstrap manifest predates the twelve-role native
+roster. Use the scoped
+[`setup-openclaw-workflow-skills.py`](../scripts/setup-openclaw-workflow-skills.py)
+lifecycle for this change rather than reapplying that older full manifest.
+It appends only each assigned skill, preserves all other native configuration,
+identity blocks, private memory and unrelated ownership-ledger entries, and
+refuses unreviewed skill overwrites. The managed allowlist in
+[`openclaw_team_policy.py`](../scripts/openclaw_team_policy.py) also admits these
+four reviewed bundles. Its finite access-policy wrapper passes the explicit
+native roster to the extracted policy; it preserves grant/revocation checks.
+
+Publish a reviewed release on `origin/master`. Stage that release's scoped
+installer, assignment module and four source bundles through supported NemoClaw
+upload/exec as the native config owner. From the staged source directory:
+
+```bash
+python3 scripts/setup-openclaw-workflow-skills.py --source "$PWD"
+python3 scripts/setup-openclaw-workflow-skills.py --source "$PWD" \
+  --apply --expected-plan-sha256 HASH
+```
+
+Review the dry-run file hashes, six role assignments and `plan_sha256` before
+using that hash for apply. The installer dry-runs the native schema, checks
+inputs again, retains a private backup of configuration and changed files, and
+compares installed files/configuration with its exact candidate. It does not
+restart the gateway. Restart through the supported managed lifecycle:
+
+```bash
+NEMOCLAW_GATEWAY_PORT=9123 nemoclaw agent-openclaw gateway restart --quiet
+```
+
+Then inspect `openclaw skills info NAME --agent ROLE --json` and `openclaw skills
+check --agent ROLE --json` through managed exec, and verify fresh native turns
+for all six roles. Check actual skill reads and workflow-specific results;
+eligibility alone does not prove use. Use synthetic evidence and read-only
+proposals; never test by creating real tasks, sharing private content or sending
+messages. Keep private transcripts outside Git and record sanitized outcomes.
+
+The repository-owned
+[`verify-openclaw-workflow-skills.py`](../scripts/verify-openclaw-workflow-skills.py)
+runs one new synthetic session without `--deliver`, checks only that session's
+transcript for a successful skill read and refuses a passing result if other
+tool calls occur. Run sequentially for `cook`, `administrator`, `finance`,
+`personal`, `operator` and `family`, each with a new private output directory:
+
+```bash
+python3 scripts/verify-openclaw-workflow-skills.py \
+  --role cook --output /sandbox/workflow-qualification-cook-UNIQUE
+```
+
+Review each private `answer.txt` against its supplied fixture as well as the
+read-only receipt; a nonempty answer alone does not prove correct workflow use.
+
+Rollback uses the exact private `backup_directory` from apply. Preview first,
+then apply its own fenced plan and restart through the same lifecycle:
+
+```bash
+python3 scripts/setup-openclaw-workflow-skills.py --rollback BACKUP_DIRECTORY
+python3 scripts/setup-openclaw-workflow-skills.py --rollback BACKUP_DIRECTORY \
+  --apply --expected-plan-sha256 ROLLBACK_PLAN_HASH
+```
+
+Rollback restores only the affected skill lists/files/ledger, removes new bundle
+files and refuses later native or affected-file edits. Retain the prior source
+release and backup; investigate partial failures before retrying.
+
+Deployment and skill-use evidence will be recorded separately from the static
+checks. The older canary evidence below does not establish these four bundles'
+readiness. See the newer [tool runbook](openclaw-tools.md) and
+[integration status](openclaw-integrations.md) for their respective scope.
+
+## Original canary bundles and historical verification (2026-10-09)
+
 The source bundles are under `deploy/openclaw/skills/`:
 
 | Skill | Purpose |
