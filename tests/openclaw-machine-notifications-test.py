@@ -65,6 +65,23 @@ class MachineTests(unittest.TestCase):
         self.assertIn("Recovered", text)
         self.assertIn("Packages", text)
         self.assertNotIn("machine is healthy", text)
+        self.assertEqual(text.splitlines()[0], 'home-core: 1 check needs review; 1 check recovered. First: Packages.')
+        self.assertIn('\n\n**Needs review**\n\n- Packages:', text)
+        self.assertIn('\n\n**Recovered checks**\n\n- Recovered:', text)
+
+    def test_recovery_preview_and_long_batch_preserve_policy_and_exact_plan_caveats(self):
+        self.add('docker-image-report', kind='recovery')
+        recovery = self.store.claim(NOW)
+        self.assertEqual(recovery['text'].splitlines()[0], 'home-core: 1 check recovered.')
+        self.store.acknowledge(recovery['delivery_key'], recovery['claim'], 'test:recovered', NOW)
+        self.add('host-update-report', evidence={'candidate_count': 2, 'count': 1})
+        for n in range(100):
+            self.add('check-' + str(n) + 'x' * 90)
+        event = self.store.claim(NOW)
+        self.assertLessEqual(len(event['text'].splitlines()[0]), 220)
+        self.assertLessEqual(len(event['text']), 4000)
+        self.assertIn('maintenance_prepare a fresh exact plan', event['text'])
+        self.assertTrue(event['text'].endswith('Routine patch/minor updates deploy automatically after checks; major changes, uncertain results, and build gaps stay held for review and approval.'))
 
     def test_stale_cooldown_and_unhealthy_recovery_excluded(self):
         self.add("stale", expiry=NOW - 1)

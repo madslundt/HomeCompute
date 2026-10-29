@@ -23,6 +23,20 @@ MARKER = 'homecompute_household_task_reminder'
 FAMILY_MARKER = 'homecompute_family_task_reminder'
 
 
+def render_reminder(task: dict, scope: str) -> str:
+    title = task['title'].replace('@', '@\u200b')
+    due = instant(task['due_at']).astimezone(ZONE).strftime('%Y-%m-%d %H:%M %Z') if task['due_at'] else 'No due time'
+    label = 'Family task reminder' if scope == 'family' else 'Household task reminder'
+    summary = f'{label}: {" ".join(title.split())}'
+    if len(summary) > 180:
+        summary = summary[:179].rstrip() + '…'
+    summary += f' · {due}'
+    text = summary + '\n\n**Task**\n\n' + title + '\n\n**Details**\n\n- Due: ' + due
+    if task['assignee']:
+        text += '\n- Assigned to: ' + task['assignee'].replace('@', '@\u200b')
+    return text + '\n- Task ID: ' + task['task_id']
+
+
 class Mattermost:
     def __init__(self, config: dict, *, scope: str = 'owner'):
         if scope not in {'owner', 'family'}:
@@ -84,13 +98,7 @@ class Mattermost:
         return None
 
     def send(self, row: dict) -> str:
-        task = row['task']
-        title = task['title'].replace('@', '@\u200b')
-        due = instant(task['due_at']).astimezone(ZONE).strftime('%Y-%m-%d %H:%M %Z') if task['due_at'] else 'No due time'
-        label = 'Family task reminder' if getattr(self, 'scope', 'owner') == 'family' else 'Household task reminder'
-        text = f"{label}: {title}\nDue: {due}"
-        if task['assignee']: text += '\nAssigned to: ' + task['assignee'].replace('@', '@\u200b')
-        text += '\nTask ID: ' + task['task_id']
+        text = render_reminder(row['task'], getattr(self, 'scope', 'owner'))
         post = self.request('/posts', {'channel_id': self.config['channel_id'], 'message': text,
                                       'props': {getattr(self, 'marker', MARKER): row['key']}})
         return self.receipt(post, row['key'])

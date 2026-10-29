@@ -64,29 +64,39 @@ for (const offer of eligible) {
 }
 if (!deals.length) return [];
 const money=n=>Math.round(n).toLocaleString('da-DK');
-const blocks=deals.map(o=>{
+const markdown=v=>clean(v).replace(/([\\`*_~])/g,'\\$1');
+const blocks=deals.map((o,index)=>{
   const w=o.weather;
   const weather=(w.basis==='forecast'?'Vejrudsigt':'Sæsonestimat fra 5 års historiske data (ikke en vejrudsigt)')+
     `: dagmaks. ${w.minDailyHigh.toFixed(1)}–${w.maxDailyHigh.toFixed(1)} °C · mindst ${w.minSunshineHours.toFixed(1)} timers sol/dag · lidt regn`;
   const ai=o.allInclusive;
   const aiText=ai?.status==='included'?`All inclusive: inkluderet — ${money(o.total)} kr. for familien`:
-    ai?.status==='available'?`All inclusive, fly + hotel: ${money(ai.totalDKK)} kr. for familien`+(ai.roomChanged?` · andet værelse: ${clean(ai.roomName)}`:''):
+    ai?.status==='available'?`All inclusive, fly + hotel: ${money(ai.totalDKK)} kr. for familien`+(ai.roomChanged?` · andet værelse: ${markdown(ai.roomName)}`:''):
     ai?.status==='unavailable'?'All inclusive: tilbydes ikke på dette hotel for de valgte datoer':'All inclusive: pris kunne ikke kontrolleres';
   const change=o.previousPrice && o.total<o.previousPrice?` · faldet fra ${money(o.previousPrice)} kr.`:'';
-  return `### [${o.hotel}](${o.url}) — ${money(o.total)} kr. for alle fire${change}\n`+
-    `Fly + hotel · pris genberegnet hos ${o.supplier} ${o.supplierCheckedAt.slice(0,16).replace('T',' ')}\n`+
-    `${o.destination}, ${o.country} · ${o.stars}★ · gæster ${o.guestRating.toFixed(1)}/10\n`+
-    `København · ${o.departureDay} → ${o.returnDay} · ${o.nights} nætter · direkte fly\n`+
-    `2 voksne + børn på ${o.ages.join(' og ')} år ved hjemrejse · ${money(o.total/4/o.nights)} kr. pr. person pr. nat\n`+
-    `${o.room || 'Værelse og måltider ikke oplyst'} · ${o.supplier}\n${aiText}\n`+
-    `Pool og børnepool · strand ${o.beachMetres} m · lufthavn ${o.airportKm} km · ${weather}`;
+  const link=o.url.replace(/\(/g,'%28').replace(/\)/g,'%29');
+  return `### ${index+1}. [${markdown(o.hotel)}](${link})\n\n`+
+    `**${money(o.total)} kr. for alle fire**${change}\n\n`+
+    `- **Rejse:** ${o.departureDay} → ${o.returnDay} · ${o.nights} nætter · direkte fly fra København\n`+
+    `- **Familien:** 2 voksne + børn på ${o.ages.join(' og ')} år ved hjemrejse · ${money(o.total/4/o.nights)} kr. pr. person pr. nat\n`+
+    `- **Hotel:** ${markdown(o.destination)}, ${markdown(o.country)} · ${o.stars}★ · gæster ${o.guestRating.toFixed(1)}/10\n`+
+    `- **Værelse:** ${markdown(o.room) || 'Værelse og måltider ikke oplyst'}\n`+
+    `- ${aiText}\n`+
+    `- **Ved hotellet:** pool og børnepool · strand ${o.beachMetres} m · lufthavn ${o.airportKm} km\n`+
+    `- **Vejr:** ${weather}\n\n`+
+    `*Fly + hotel: pris genberegnet hos ${markdown(o.supplier)} ${o.supplierCheckedAt.slice(0,16).replace('T',' ')}.*`;
 });
-const message=`## Billige familieferier fra København\n\n${blocks.join('\n\n')}\n\n`+
-  `Fly + hotel: under ${money(p.maxTotalDKK)} kr. for familien og højst ${money(p.maxPerPersonNightDKK)} kr. pr. person pr. nat. `+
-  `All-inclusive-prisen er et valgfrit alternativ og kan overstige prisgrænsen. Måltider er kun inkluderet som angivet. Bagage, transfer, lokale afgifter og øvrige tillæg er ikke bekræftet. `+
-  `Prisen kan ændre sig inden bestilling. Kontrollér sæsonåbning af pools hos arrangøren.\n`+
-  `Fundet via afbudsrejser.dk og priskontrolleret hos Solfaktor. Andre udbydere udelades, indtil deres totalpris kan kontrolleres. `+
-  `Vejrfilter: mindst ${p.minDaytimeC} °C i dagmaks., ${p.minSunshineHours} timers sol/dag og lav regnrisiko. Vejret kan ændre sig. `+
-  `Vejrdata: Open-Meteo. Fleksible datoer de næste ${p.windowDays} dage.`;
+const minimum=Math.min(...deals.map(offer=>offer.total));
+const preview=`${deals.length} ${deals.length===1?'familieferie':'familieferier'} fra København: fly + hotel fra ${money(minimum)} kr. for alle fire.`;
+const message=`${preview}\n\n## Billige familieferier fra København\n\n${blocks.join('\n\n')}\n\n`+
+  `**Før bestilling**\n\n`+
+  `- Fly + hotel er under ${money(p.maxTotalDKK)} kr. for familien og højst ${money(p.maxPerPersonNightDKK)} kr. pr. person pr. nat.\n`+
+  `- All-inclusive-prisen er et valgfrit alternativ og kan overstige prisgrænsen. Måltider er kun inkluderet som angivet.\n`+
+  `- Bagage, transfer, lokale afgifter og øvrige tillæg er ikke bekræftet. Prisen kan ændre sig inden bestilling.\n`+
+  `- Kontrollér sæsonåbning af pools hos arrangøren.\n\n`+
+  `**Kilder og vejr**\n\n`+
+  `- Fundet via afbudsrejser.dk og priskontrolleret hos Solfaktor. Andre udbydere udelades, indtil deres totalpris kan kontrolleres.\n`+
+  `- Vejrfilter: mindst ${p.minDaytimeC} °C i dagmaks., ${p.minSunshineHours} timers sol/dag og lav regnrisiko. Vejret kan ændre sig.\n`+
+  `- Vejrdata: Open-Meteo. Fleksible datoer de næste ${p.windowDays} dage.`;
 return [{json:{message,deals,checkedAt:requests[0].checkedAt,
   truncated:responses.some(x=>x.json.n_search_results>x.json.offers.length)}}];

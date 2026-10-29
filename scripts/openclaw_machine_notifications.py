@@ -87,8 +87,23 @@ def summary_line(kind: str, observation: dict[str, Any]) -> str:
 
 
 def render(system: str, members: list[tuple[str, dict[str, Any]]]) -> str:
-    lines = [system + " — machine summary"]
-    lines.extend(summary_line(kind, body["observation"]) for kind, body in members)
+    incidents = [(kind, body) for kind, body in members if kind != "recovery"]
+    recoveries = [(kind, body) for kind, body in members if kind == "recovery"]
+    counts = []
+    if incidents:
+        counts.append(f"{len(incidents)} check{'s need' if len(incidents) != 1 else ' needs'} review")
+    if recoveries:
+        counts.append(f"{len(recoveries)} check{'s' if len(recoveries) != 1 else ''} recovered")
+    summary = system + ": " + "; ".join(counts) + "."
+    if incidents:
+        summary += " First: " + check_label(incidents[0][1]["observation"]["check_id"]) + "."
+    if len(summary) > 220:
+        summary = summary[:219].rstrip() + "…"
+    lines = [summary, "", "**Machine summary · " + system + "**"]
+    for heading, group in (("Needs review", incidents), ("Recovered checks", recoveries)):
+        if group:
+            lines.extend(("", "**" + heading + "**", ""))
+            lines.extend("- " + summary_line(kind, body["observation"])[2:] for kind, body in group)
     checks = [body["observation"]["check_id"] for _, body in members]
     footer = ("Routine patch/minor updates deploy automatically after checks; major changes, uncertain results, "
               "and build gaps stay held for review and approval."
@@ -96,5 +111,5 @@ def render(system: str, members: list[tuple[str, dict[str, Any]]]) -> str:
               else "MCP patch/minor updates deploy automatically after checks; major updates require approval."
               if any(check.startswith("mcp-update-report") for check in checks)
               else "Review only; actions require operator approval.")
-    lines.extend(("", footer))
+    lines.extend(("", "**Action policy**", "", footer))
     return "\n".join(lines)

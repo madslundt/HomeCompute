@@ -79,6 +79,39 @@ def canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
+def notification_lead(value: str) -> str:
+    value = " ".join(value.split()).replace("@", "@\u200b")
+    return value if len(value) <= 220 else value[:219].rstrip() + "…"
+
+
+def task_message(task: dict[str, Any], advice: str) -> str:
+    state = task["state"]
+    status = {"pending": "needs execution approval", "review": "needs proposal review"}.get(state, state)
+    lines = [notification_lead(f"HomeCompute task {status}: {task['project']}."), "",
+             "**Task details**", "", f"- Project: {task['project']}", f"- State: {state}",
+             f"- Task ID: {task['id']}", "", "**Next step**", "", advice]
+    if task.get("result"):
+        lines.extend(("", f"Proposed files: {task['result']['changed_files']}."))
+        if task["result"].get("proposal"):
+            lines.extend(("", "**Codex feedback (untrusted)**"))
+            for key, value in task["result"]["proposal"].items():
+                lines.extend(("", "**" + key.capitalize() + "**", ""))
+                # Keep advisory model text visibly quoted and prevent mentions.
+                lines.extend("> " + line.replace("@", "@\u200b") for line in value.splitlines())
+    if task.get("pr_url"):
+        lines.extend(("", "PR: " + task["pr_url"]))
+    lines.extend(("", "Chat replies do not approve actions."))
+    return "\n".join(lines)
+
+
+def action_message(item: dict[str, Any], advice: str) -> str:
+    status = "needs approval" if item["state"] == "pending" else item["state"].replace("_", " ")
+    return "\n".join((notification_lead(f"HomeCompute action {status}: {item['action_id']} on {item['target']}."),
+                      "", "**Action details**", "", f"- Action: {item['action_id']}",
+                      f"- Target: {item['target']}", f"- State: {item['state']}", f"- Request ID: {item['id']}",
+                      "", "**Next step**", "", advice, "", "Chat replies do not approve actions."))
+
+
 def quiet(now: float, settings: dict[str, Any]) -> bool:
     hour = datetime.fromtimestamp(now, ZoneInfo(settings["timezone"])).hour
     start, end = settings["quiet_start_hour"], settings["quiet_end_hour"]
@@ -282,16 +315,10 @@ class Outbox:
                               "completed": "Completed; check the owning broker for the PR and independent CI.",
                               "failed": "Failed; inspect private evidence and reconcile before any retry.",
                               "cancelled": "Cancelled."}[state]
-                    if task.get("result"):
-                        advice += f" Proposed files: {task['result']['changed_files']}."
-                        if task["result"].get("proposal"):
-                            advice += " Codex feedback (untrusted): " + json.dumps(task["result"]["proposal"], ensure_ascii=False)
-                    if task.get("pr_url"):
-                        advice += " PR: " + task["pr_url"]
                     marker = ":" + task["phase"] if task.get("progress") else ""
                     kind = "approval" if state in {"pending", "review"} else "terminal" if state in {"completed", "failed", "cancelled"} else "progress"
                     self.add(key + ":" + state + marker, key, kind,
-                             {"task": task, "text": f"HomeCompute task {tid} ({task['project']}): {advice} Chat replies do not approve actions."}, now)
+                             {"task": task, "text": task_message(task, advice)}, now)
                 self.db.execute("INSERT OR REPLACE INTO baseline VALUES(?,?)", (key, canonical(task)))
 
     def eligible(self, row: sqlite3.Row, now: float) -> bool:
@@ -383,7 +410,7 @@ class Outbox:
                               if state == "pending" else "Result: " + state + ". Check the owning action broker and postcheck evidence.")
                     self.add(key + ":" + state + ":" + hashlib.sha256(str(item["updated"]).encode()).hexdigest()[:16],
                              key, "approval" if state == "pending" else "terminal",
-                             {"action": item, "text": f"HomeCompute action {item['action_id']} on {item['target']}: {advice} Chat replies do not approve actions."}, now)
+                             {"action": item, "text": action_message(item, advice)}, now)
                 self.db.execute("INSERT OR REPLACE INTO baseline VALUES(?,?)", (key, canonical(item)))
 
     def acknowledge(self, key: str, claim: str, receipt: str, now: float) -> None:

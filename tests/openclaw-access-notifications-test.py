@@ -87,6 +87,23 @@ class NotificationTests(unittest.TestCase):
         self.assertIn('Agent: OpenClaw (openclaw)', self.calls[-1][2]['message'])
         self.assertNotIn('Lyra', self.calls[-1][2]['message'])
 
+    def test_push_lead_and_readable_body_keep_all_approval_limits(self):
+        text = render(self.item, self.config['review_origin'])
+        lead = text.splitlines()[0]
+        self.assertEqual(lead, 'Account access requested: Lyra needs your review for hotels.com (30 minutes).')
+        self.assertLessEqual(len(lead), 220)
+        self.assertIn('\n\n**Request details**\n\n- Agent:', text)
+        for caveat in ('Replies here do not approve access.',
+                       'Current setup records permissions; the site adapter is not connected or qualified yet.',
+                       'Access approval submits no order; bookings and payments require separate approval.'):
+            self.assertIn(caveat, text)
+        registry = type('Registry', (), {
+            'profile': lambda self, account: {'qualified': True},
+            'validate_scope': lambda self, account, scope: None})()
+        available = render(dict(self.item, account_execution_available=True), self.config['review_origin'], registry)
+        self.assertIn('A reviewed site adapter is available for this account and task.', available)
+        self.assertIn('This does not mean the account is signed in. A private owner sign-in step may be required.', available)
+
     def test_audience_or_admin_token_mismatch_never_posts(self):
         changes = [('/users/me', {'id': self.config['bot_id'], 'is_bot': True, 'roles': 'system_admin system_user'}),
                    ('/users/me', {'id': 'a' * 26, 'is_bot': True, 'roles': 'system_user'}),

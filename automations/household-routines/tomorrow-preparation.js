@@ -36,7 +36,7 @@ const seen = new Set();
 const add = (key, text, order) => {
   if (!text || seen.has(key)) return;
   seen.add(key);
-  entries.push({text, order});
+  entries.push({text, order, kind: key.split('|')[0]});
 };
 const declined = item => ['cancelled', 'canceled', 'completed'].includes(item.status)
   || ['not_attending', 'declined'].includes(item.participation_status)
@@ -107,11 +107,28 @@ const names = {calendar: 'kalender', school: 'Aula', family_tasks: 'familieopgav
 const missing = Object.entries(source_status).filter(([, status]) => status !== 'ok')
   .map(([key, status]) => names[key] + (status === 'stale' ? ' (forældet)' : status === 'partial' ? ' (delvis)' : ' (ukendt)'));
 const heading = '🌙 Klar til i morgen · ' + new Intl.DateTimeFormat('da-DK', {timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long'}).format(target);
+const summary = (missing.length ? 'Delvist overblik for i morgen: ' : 'I morgen: ')
+  + (entries.length ? `${entries.length} ${entries.length === 1 ? 'punkt' : 'punkter'} at forberede. ${entries[0].text}` : 'Ingen kendte daterede punkter i de tilgængelige kilder.');
+const summaryChars = Array.from(summary);
+const pushSummary = summaryChars.length <= 220 ? summary : summaryChars.slice(0, 219).join('').replace(/\s+\S*$/u, '') + '…';
 const coverage = missing.length ? '\n\nDatagrundlag: ' + missing.join(', ') + '.' : '';
 const lines = entries.slice(0, 8).map(row => row.text);
-const render = () => heading + '\n' + (lines.length ? lines.join('\n') : entries.length ? '' : 'Ingen kendte daterede punkter i de tilgængelige kilder.')
+const render = () => pushSummary + '\n\n' + heading + '\n' + lines.join('\n')
   + (entries.length > lines.length ? '\n+' + (entries.length - lines.length) + ' flere punkter i kalenderen, Aula og familieopgaver.' : '') + coverage;
-const full_message = render();
+const escape = value => String(value).replace(/&/gu, '&amp;').replace(/([\\`*_[\]<>~|])/gu, '\\$1');
+const shown = entries.slice(0, 24);
+const fullRender = () => {
+  const blocks = [escape(pushSummary), '### ' + heading];
+  for (const [kind, title] of [['family', '📌 Familieopgaver'], ['school', '🎒 Børnene'], ['event', '📅 Kalender']]) {
+    const rows = shown.filter(row => row.kind === kind);
+    if (rows.length) blocks.push(`**${title}**\n\n` + rows.map(row => '- ' + escape(row.text)).join('\n'));
+  }
+  if (entries.length > shown.length) blocks.push(`*+${entries.length - shown.length} flere punkter i kalenderen, Aula og familieopgaver.*`);
+  if (missing.length) blocks.push('**⚠️ Manglende oplysninger**\n\n' + missing.map(value => '- ' + escape(value)).join('\n'));
+  return blocks.join('\n\n');
+};
+let full_message = fullRender();
+while (full_message.length > 10000 && shown.length) { shown.pop(); full_message = fullRender(); }
 const encodedSize = text => {
   const json = JSON.stringify(text);
   return json.length + (json.match(/[^\x00-\x7f]/g) || []).length * 5;

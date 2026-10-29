@@ -156,6 +156,9 @@ class FeedTests(unittest.TestCase):
         for text in PROPOSAL.values():
             self.assertIn(text, review[0]["text"])
         self.assertIn("Chat replies do not approve", review[0]["text"])
+        self.assertIn('\n\n**Codex feedback (untrusted)**\n\n**Problem**\n\n> ', review[0]['text'])
+        self.assertNotIn('{"problem":', review[0]['text'])
+        self.assertLessEqual(len(review[0]['text'].splitlines()[0]), 220)
         for exposed in (result["reply"], json.dumps(review)):
             self.assertNotIn("private file contents", exposed)
             self.assertNotIn("content", exposed)

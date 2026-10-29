@@ -89,14 +89,18 @@ def render(item: dict, origin: str, registry: SiteRegistry | None = None) -> str
                     'This does not mean the account is signed in. A private owner sign-in step may be required. '
                     if item['account_execution_available'] else
                     'Current setup records permissions; the site adapter is not connected or qualified yet. ')
-    return ('**Account access requested**\n\n'
-            f'Agent: {ACTORS[item["actor"]]} ({item["actor"]})\n'
-            f'Account: {item["account"]}\n'
-            f'Task: {SCOPES[item["scope"]]}\n'
-            f'Requested duration: {item["requested_minutes"]} minutes\n\n'
+    summary = (f'Account access requested: {ACTORS[item["actor"]]} needs your review for '
+               f'{item["account"]} ({item["requested_minutes"]} minutes).')
+    if len(summary) > 220:
+        summary = summary[:219].rstrip() + '…'
+    return (summary + '\n\n**Request details**\n\n'
+            f'- Agent: {ACTORS[item["actor"]]} ({item["actor"]})\n'
+            f'- Account: {item["account"]}\n'
+            f'- Task: {SCOPES[item["scope"]]}\n'
+            f'- Requested duration: {item["requested_minutes"]} minutes\n\n'
             f'[Review request]({CANONICAL_REVIEW_ORIGIN}/review/{item["request_id"]})\n\n'
-            'Approve, deny or change the duration on the private page. Replies here do not approve access.\n'
-            + availability +
+            'Approve, deny or change the duration on the private page. Replies here do not approve access.\n\n'
+            '**Availability and limits**\n\n' + availability.rstrip() + '\n\n' +
             'Access approval submits no order; bookings and payments require separate approval.')
 
 

@@ -296,6 +296,8 @@ class TransportTests(unittest.TestCase):
         event = self.store.claim(NOW)
         self.assertEqual(event["kind"], "approval")
         self.assertIn("Chat replies do not approve", event["text"])
+        self.assertEqual(event['text'].splitlines()[0], 'HomeCompute task needs execution approval: synthetic-demo.')
+        self.assertIn('\n\n**Next step**\n\nExecution approval required: assistant-task.py approve ' + task['id'], event['text'])
         self.assertNotIn("token", event["text"])
         self.store.acknowledge(event["delivery_key"], event["claim"], "test:1", NOW)
         task["state"] = "running"
@@ -323,6 +325,8 @@ class TransportTests(unittest.TestCase):
         self.store.actions([action], NOW)
         self.store.actions([action], NOW)
         event = self.store.claim(NOW)
+        self.assertEqual(event['text'].splitlines()[0], 'HomeCompute action needs approval: synthetic.recover on synthetic-core.')
+        self.assertIn('\n\n**Next step**\n\nApproval required: assistant-action.py review ' + action['id'], event['text'])
         self.assertIn("exact reviewed digest", event["text"])
         self.assertNotIn("private", event["text"])
         self.store.acknowledge(event["delivery_key"], event["claim"], "test:action", NOW)

@@ -243,3 +243,32 @@ test('large Danish and emoji content stays inside pessimistic APNs encoded budge
     assert.match(json.message, /flere punkter/);
   }
 });
+
+test('tomorrow starts with a bounded factual push summary and groups the full Mattermost body', () => {
+  const nodes = sources();
+  nodes['Get shared family tasks'].attributes.tasks = [familyTask('Pack bag', '2026-10-28T08:00:00+01:00')];
+  nodes['Get tomorrow calendar'].attributes.events = [event('School visit', '2026-10-28T10:00:00+01:00', '2026-10-28T11:00:00+01:00')];
+  nodes['Get tomorrow school reminders'].state = 'active';
+  nodes['Get tomorrow school reminders'].attributes.summary_payload = {active: true, updated_at: at, tasks: [{title: 'Bring boots', child: 'Nora', requires_action: true, due_at: '2026-10-28'}]};
+  const {json} = run('tomorrow-preparation', nodes);
+  assert.match(json.message, /^I morgen: 3 punkter at forberede\./);
+  assert.ok(Array.from(json.message.split('\n')[0]).length <= 220);
+  assert.match(json.full_message, /^I morgen: 3 punkter at forberede\./);
+  for (const heading of ['📌 Familieopgaver', '🎒 Børnene', '📅 Kalender']) assert.ok(json.full_message.includes('**' + heading + '**\n\n- '));
+  assert.match(json.full_message, /Nora: Bring boots/);
+  assert.ok(size(json.message) <= 1500);
+});
+
+test('tomorrow source failures remain in the push opening and in a separate Mattermost warning section', () => {
+  const {json} = run('tomorrow-preparation', {});
+  assert.match(json.message, /^Delvist overblik for i morgen:/);
+  assert.match(json.full_message, /\*\*⚠️ Manglende oplysninger\*\*\n\n- kalender \(ukendt\)/);
+  assert.doesNotMatch(json.full_message, /Alle kilder|Alt er kontrolleret/);
+});
+
+test('the tomorrow SDK keeps the canonical presentation source embedded', () => {
+  const sdk = fs.readFileSync(path.join(root, 'automations/household-routines/n8n-workflow.ts'), 'utf8');
+  const line = sdk.split('\n').find(line => line.startsWith('const step4 = node('));
+  const compiled = JSON.parse(line.slice('const step4 = node('.length, -2));
+  assert.equal(compiled.config.parameters.jsCode, scripts['tomorrow-preparation']);
+});

@@ -37,3 +37,32 @@ workflow. Existing archives use a bounded 30-day working retention; school feeds
 the existing owner school archive. Run the installed `semantic-index.py` as
 `homecompute-openclaw` to inspect source IDs or delete a source and block replay;
 workflow archive names start with `workflow-`, while school uses `school`.
+
+## Notification presentation
+
+Mattermost notifications lead with a short, factual plain-text summary for the
+mobile push preview, followed by readable headings, short paragraphs and labeled
+lists. Preserve source links, missing-evidence qualifications and explicit action
+or approval requirements. Presentation changes must not alter selection,
+recipients, authorization, schedules or delivery receipts.
+
+News and weekly-review presentation is owned by
+`automations/semantic-research/news-mattermost.js`,
+`automations/battery-and-system-review/mattermost-report.js`, and the local
+`scripts/workflow_notification_presentation.py` patch builder. It wraps existing
+validated report formatters, preserving their original Telegram fields and live
+workflow graph. Travel and tomorrow preparation retain their existing canonical
+sources and generated JSON/TypeScript. Sanitized current runtime snapshots are
+maintained in the companion HA-automations `n8n/` directory. Live workflow
+inspection, updates and publication use n8n MCP; these builders are local source
+tools, not an alternate instance transport.
+
+Direct service messages use `scripts/openclaw_access_notifications.py`,
+`scripts/openclaw_machine_notifications.py`, `scripts/openclaw_notifications.py`
+and `scripts/openclaw-household-task-reminders.py`. Their presentation follows the
+same summary-first pattern while retaining private-page-only approval, sign-in,
+separate purchase/payment approval and operator-action caveats. These modules
+need their owning communication/access installers from a reviewed pushed release;
+an n8n publication or normal release marker alone does not install them. Inspect
+all files those installers replace and preserve prior service/timer states before
+rollout. Never replace unrelated live drift to apply a text-formatting change.

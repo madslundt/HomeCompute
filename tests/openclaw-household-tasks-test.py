@@ -44,6 +44,20 @@ class HouseholdTaskTests(unittest.TestCase):
         return self.call(operation, {'task_id': task['task_id'], 'expected_revision': task['revision'],
                                     'request_id': str(uuid4()), **fields})['task']
 
+    def test_reminder_preview_keeps_due_time_and_full_task_details(self):
+        task = self.create(title='@all ' + 'A' * 150, assignee='@owner', due_at='2026-10-27T12:00+01:00')
+        text = worker.render_reminder(task, 'owner')
+        lead = text.splitlines()[0]
+        self.assertLessEqual(len(lead), 220)
+        self.assertIn('2026-10-27 12:00 CET', lead)
+        self.assertNotIn('@all', text)
+        self.assertNotIn('@owner', text)
+        self.assertIn(task['title'].replace('@', '@\u200b'), text)
+        self.assertIn('\n\n**Details**\n\n- Due:', text)
+        self.assertIn('- Task ID: ' + task['task_id'], text)
+        task['due_at'] = None
+        self.assertIn('No due time', worker.render_reminder(task, 'family').splitlines()[0])
+
     def test_restart_replays_atomic_write_and_refuses_request_reuse(self):
         args = {'title': 'Pay synthetic invoice', 'request_id': str(uuid4()), 'assignee': 'Owner'}
         receipt = self.call('create', args)

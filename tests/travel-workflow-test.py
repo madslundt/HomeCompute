@@ -120,6 +120,19 @@ class TravelCodeTests(unittest.TestCase):
         self.assertNotIn('3.996 kr.', digest['message'])
         self.assertEqual(result['state'], {})
 
+    def test_summary_first_alert_keeps_structured_details_and_price_weather_qualifications(self):
+        text = select()['value'][0]['json']['message']
+        self.assertEqual(text.split('\n')[0], '1 familieferie fra København: fly + hotel fra 6.400 kr. for alle fire.')
+        self.assertIn('### 1. [Synthetic family hotel]', text)
+        self.assertIn('- **Rejse:** 2026-01-25 → 2026-02-01', text)
+        self.assertIn('- **Hotel:** Synthetic beach, Synthetic country', text)
+        self.assertIn('All inclusive, fly + hotel: 10.500 kr. for familien', text)
+        self.assertIn('**Før bestilling**\n\n- ', text)
+        self.assertIn('Bagage, transfer, lokale afgifter og øvrige tillæg er ikke bekræftet', text)
+        self.assertIn('**Kilder og vejr**\n\n- ', text)
+        o = offer(); o['weather']['basis'] = 'historical'
+        self.assertIn('Sæsonestimat fra 5 års historiske data (ikke en vejrudsigt)', select([o])['value'][0]['json']['message'])
+
     def test_weak_quality_missing_or_unknown_values_do_not_notify(self):
         changes = [('total_price', 10001), ('total_price', '6400'), ('distance_airport', 81),
                    ('distance_airport', None), ('distance_airport', -1),
