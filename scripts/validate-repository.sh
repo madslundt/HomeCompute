@@ -189,6 +189,7 @@ python3 "$REPO_ROOT/tests/openclaw-access-grants-test.py"
 python3 "$REPO_ROOT/tests/openclaw-access-auth-test.py"
 python3 "$REPO_ROOT/tests/openclaw-access-setup-test.py"
 python3 "$REPO_ROOT/tests/openclaw-access-notifications-test.py"
+python3 "$REPO_ROOT/tests/notification-presentation-refresh-test.py"
 python3 "$REPO_ROOT/tests/openclaw-access-bridge-test.py"
 python3 "$REPO_ROOT/tests/openclaw-access-native-test.py"
 printf '[validate] registered-site grants, private owner sessions and isolated workers\n'

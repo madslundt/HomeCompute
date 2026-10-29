@@ -62,7 +62,7 @@ Direct service messages use `scripts/openclaw_access_notifications.py`,
 and `scripts/openclaw-household-task-reminders.py`. Their presentation follows the
 same summary-first pattern while retaining private-page-only approval, sign-in,
 separate purchase/payment approval and operator-action caveats. These modules
-need their owning communication/access installers from a reviewed pushed release;
-an n8n publication or normal release marker alone does not install them. Inspect
-all files those installers replace and preserve prior service/timer states before
-rollout. Never replace unrelated live drift to apply a text-formatting change.
+use the [guarded presentation refresh](../docs/notification-presentation-refresh.md)
+from a reviewed pushed release. Its default plan and hash-bound apply target only
+these four modules, preserving unrelated bundle drift and service/timer states.
+An n8n publication or normal release marker alone does not install them.
