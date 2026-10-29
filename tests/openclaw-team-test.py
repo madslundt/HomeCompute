@@ -203,7 +203,8 @@ class TeamSetupTest(unittest.TestCase):
         routes = self.team['channel_routes']
         for name, role in {'aula': 'personal', 'shopping': 'shopper',
                            'home': 'operator', 'energy': 'operator', 'news': 'researcher',
-                           'engineering': 'engineer', 'openclaw': 'operator', 'travel': 'travel'}.items():
+                           'engineering': 'engineer', 'openclaw': 'operator', 'travel': 'travel',
+                           'general-shopping': 'researcher'}.items():
             self.assertEqual([row['agent'] for row in routes.values() if row['name'] == name], [role])
         self.assertTrue({'calendar', 'tasks', 'correspondence', 'storage'}.isdisjoint(row['name'] for row in routes.values()))
         self.assertIn('inventory (Ceres)', self.team['agents']['main']['instructions'])

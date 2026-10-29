@@ -179,6 +179,10 @@
     "39emimddxbr7irnbpuokxqgwor": {
       "name": "finances",
       "agent": "finance"
+    },
+    "a4xncn1xzjbsubefmajcockd4w": {
+      "name": "general-shopping",
+      "agent": "researcher"
     }
   }
 }
