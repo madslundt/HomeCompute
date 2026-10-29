@@ -153,7 +153,7 @@ def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url
             or len(set(family_users)) != len(family_users)
             or family_channel_id is not None and (not isinstance(family_channel_id, str)
                                                  or not IDENTIFIER.fullmatch(family_channel_id)
-                                                 or family_channel_id in channels.values())
+                                                 or family_channel_id in {value for name,value in channels.items() if name != 'personal'})
             or family_channel_id is None and family_users != [owner]):
         raise ValueError('explicit Family channel and authenticated member identities required')
     tokens = account_tokens(accounts, base_url)
@@ -208,8 +208,8 @@ def candidate(before: dict, owner: str, channels: dict, accounts: dict, base_url
     # a shared-only role on every family-account route, including its fallback.
     # No message on this account may fall through to the private system agent.
     family = channel['accounts']['family']
-    family.update({'enabled': family_channel_id is not None, 'dmPolicy': 'disabled', 'allowFrom': [],
-                   'groupPolicy': 'allowlist' if family_channel_id else 'disabled',
+    family.update({'enabled': False, 'dmPolicy': 'disabled', 'allowFrom': [],
+                   'groupPolicy': 'disabled',
                    'groupAllowFrom': sorted(family_users),
                    'groups': {'*': {'requireMention': True}}, 'chatmode': 'onmessage', 'requireMention': True})
     if family_channel_id:
@@ -322,6 +322,39 @@ def share_channels(owner: str, partner: str, allowed_ids: list[str], system_ids:
                        'channel_reload_required': apply, 'restart_required': apply})
 
 
+def family_coordinator_candidate(before: dict, owner: str, partner: str, family_id: str) -> tuple[dict, list]:
+    """Retire Gaia ingress while retaining Atlas's already approved adult audience."""
+    if (any(not isinstance(x, str) or not IDENTIFIER.fullmatch(x) for x in (owner, partner, family_id))
+            or owner == partner):
+        raise ValueError('Exact existing household identities required')
+    channel = before['channels']['mattermost']
+    atlas, gaia = channel['accounts']['default'], channel['accounts']['family']
+    audience = sorted([owner, partner])
+    if (sorted(channel['groupAllowFrom']) != audience or sorted(atlas['groupAllowFrom']) != audience
+            or atlas.get('allowFrom') != [owner] or atlas.get('dmPolicy') != 'allowlist'
+            or gaia.get('dmPolicy') != 'disabled' or gaia.get('allowFrom') != []
+            or sorted(gaia.get('groupAllowFrom', [])) != audience
+            or family_id not in gaia.get('groups', {})):
+        raise ValueError('Existing approved household boundary differs')
+    after = copy.deepcopy(before)
+    target = after['channels']['mattermost']['accounts']['family']
+    target.update(enabled=False, groupPolicy='disabled')
+    batch = [{'path': 'channels.mattermost.accounts.family.' + key, 'value': target[key]}
+             for key in ('enabled', 'groupPolicy') if gaia.get(key) != target[key]]
+    return after, batch
+
+
+def retire_family_contact(owner: str, partner: str, family_id: str, *, apply=False,
+                          expected_config_sha256=None, helper_sha256=None, runner=subprocess.run) -> dict:
+    raw = read_file(CONFIG, 2 * 1024 * 1024)
+    before = json.loads(raw)
+    after, changes = family_coordinator_candidate(before, owner, partner, family_id)
+    return publish(raw, before, after, changes, apply=apply, expected_config_sha256=expected_config_sha256,
+                   helper_sha256=helper_sha256, runner=runner,
+                   summary={'mode': 'family-coordinator', 'new_tool_grants': False,
+                            'private_dm_access_changed': False})
+
+
 def publish(raw: bytes, before: dict, after: dict, batch: list, *, apply: bool,
             expected_config_sha256: str | None, helper_sha256: str | None,
             runner, summary: dict | None = None) -> dict:
@@ -381,15 +414,21 @@ def main() -> int:
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--expected-config-sha256')
     parser.add_argument('--helper-sha256')
-    parser.add_argument('--family-channel-id', help='trusted private Family room; admits the separate shared-only Gaia account')
+    parser.add_argument('--family-channel-id', help='trusted private Family room; retains the disabled historical Gaia account')
     parser.add_argument('--family-user-id', action='append', help='explicit approved Family member IDs; include owner')
     parser.add_argument('--share-channel-access', action='store_true', help='reviewed additive Atlas channel sender grant; private DMs remain owner-only')
+    parser.add_argument('--retire-family-contact', action='store_true', help='disable Gaia ingress before consolidating the existing adult rooms under Atlas')
     parser.add_argument('--partner-id')
     parser.add_argument('--shared-channel-id', action='append')
     parser.add_argument('--system-channel-id', action='append', help='exact restricted Infrastructure/OpenClaw room IDs; membership is enforced separately')
     args = parser.parse_args()
     try:
-        if args.share_channel_access:
+        if args.retire_family_contact:
+            if args.share_channel_access or args.channels_json or args.accounts_json or args.shared_channel_id or args.system_channel_id:
+                raise ValueError('Family retirement cannot change other channel policy')
+            result = retire_family_contact(args.owner_id, args.partner_id, args.family_channel_id,
+                apply=args.apply, expected_config_sha256=args.expected_config_sha256, helper_sha256=args.helper_sha256)
+        elif args.share_channel_access:
             if (args.channels_json or args.accounts_json or args.family_channel_id or args.family_user_id
                     or args.base_url != BASE_URL):
                 raise ValueError('channel-sharing review cannot regenerate account configuration')

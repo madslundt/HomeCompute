@@ -22,17 +22,20 @@ SITE = "https://mattermost.home.arpa"
 TRANSPORT_SITE = "https://home-core.tail479ad.ts.net:9443"
 PRIVATE = Path("/srv/state/mattermost/private")
 CONTAINER = "homecompute-mattermost-mattermost-1"
+CHANNEL_ALIASES = {'calendar': 'family', 'tasks': 'family', 'correspondence': 'family',
+                   'personal': 'family', 'aula': 'family', 'storage': 'shopping', 'meals': 'shopping',
+                   'energy': 'home', 'household-admin': 'finances', 'news': 'research'}
 CHANNELS = {
     "inbox": ("Inbox", "Start a task here. Continue its discussion in the reply thread."),
-    "personal": ("Planning", "Plans, calendars, household tasks, reminders, and correspondence drafts with Luna. School updates belong in Aula; shared Gaia tasks in Family."),
-    "research": ("Research", "Questions, comparisons, and findings with sources."),
+    "personal": ("Family", "Family planning, school, calendars, tasks and reminders with Atlas and Luna. Private DMs remain separate."),
+    "research": ("Research & news", "Questions, comparisons, and findings with sources."),
     "engineering": ("Engineering", "Coding requests and project work. One thread per task."),
-    "home-operations": ("Infrastructure", "HomeCompute servers, services, incidents, and maintenance. Household devices belong in Home; energy plans belong in Energy."),
+    "home-operations": ("Infrastructure", "HomeCompute servers, services, incidents, and maintenance. Household devices belong in Home; energy plans belong in Home."),
     "openclaw": ("OpenClaw", "Manage Atlas and OpenClaw setup, routing, skills, and specialist requests for new projects."),
 }
 AGENT_ACCOUNTS = {
     "default": ("main", "atlas", "inbox"),
-    "personal": ("personal", "luna", "personal"),
+    "personal": ("personal", "luna", "family"),
     "researcher": ("researcher", "nova", "research"),
     "engineer": ("engineer", "apollo", "engineering"),
     "operator": ("operator", "orion", "home-operations"),
@@ -40,7 +43,7 @@ AGENT_ACCOUNTS = {
     "keeper": ("keeper", "ceres", "shopping"),
     "travel": ("travel", "lyra", "travel"),
     "cook": ("cook", "hestia", "shopping"),
-    "administrator": ("administrator", "themis", "household-admin"),
+    "administrator": ("administrator", "themis", "finances"),
     "finance": ("finance", "plutus", "finances"),
     "family": ("family", "gaia", "family"),
 }
@@ -209,10 +212,10 @@ def bootstrap_locked(directory: Path) -> dict[str, Any]:
     household_access = directory / 'household-access.json'
     household_admitted = household_access.exists() or household_access.is_symlink()
     for name, (display, purpose) in CHANNELS.items():
-        channel, _ = api.request("GET", f"/teams/{team_id}/channels/name/{name}", missing=True)
+        channel, _ = api.request("GET", f"/teams/{team_id}/channels/name/{CHANNEL_ALIASES.get(name, name)}", missing=True)
         created = channel is None
         if channel is None:
-            channel, _ = api.request("POST", "/channels", {"team_id": team_id, "name": name,
+            channel, _ = api.request("POST", "/channels", {"team_id": team_id, "name": CHANNEL_ALIASES.get(name, name),
                                                            "display_name": display, "type": "P", "header": purpose})
         if (channel.get("team_id") != team_id or channel.get("delete_at", 0) != 0
                 or (created or household_admitted or name == 'openclaw') and channel.get("type") != "P"):

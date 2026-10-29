@@ -156,12 +156,12 @@ class MigrationTests(fixtures.RoleAccountTests):
             self.invoke()
         self.assertEqual((self.server.renames, self.server.bot_creations, self.server.token_creations), initial)
 
-    def test_shared_family_contact_does_not_admit_atlas_to_the_family_room(self):
+    def test_consolidated_family_admits_atlas_with_existing_household_channels(self):
         family_id = 'q' * 26
         b.save(self.directory / 'n8n-channels.json', {'channels': {'family': family_id}})
         self.server.owner_channels.append({'id': family_id, 'type': 'P', 'team_id': fixtures.TEAM})
         self.invoke(activate=True)
-        self.assertNotIn('/channels/' + family_id + '/members/' + fixtures.BOT, self.server.members)
+        self.assertIn('/channels/' + family_id + '/members/' + fixtures.BOT, self.server.members)
 
 
 if __name__ == '__main__': unittest.main()

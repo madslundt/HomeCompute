@@ -119,9 +119,9 @@ def identity_text(existing: str, role: str, team: dict[str, Any]) -> str:
         routing += '\n'.join(f'{key} ({row["name"]}) -> {row["agent"]}'
                              for key, row in sorted(team['channel_routes'].items())) + '\n'
         energy = [key for key, row in sorted(team['channel_routes'].items())
-                  if row['name'] == 'energy' and row['agent'] == 'operator']
+                  if row['name'] in {'home', 'energy'} and row['agent'] == 'operator']
         if energy:
-            routing += ('For native chat_id ' + ', '.join(energy) + ' (Energy), "the plan" means the battery operating plan. '
+            routing += ('For native chat_id ' + ', '.join(energy) + ' (Home), an energy or battery "plan" means the battery operating plan. '
                         'Delegate to Orion with agentId="operator", mode="run", context="isolated", and ask for '
                         'homecompute__homecompute_system_read with system_id="home-assistant" first. '
                         'Summarize availability, active/next blocks, battery state, freshness and modeled savings. '
@@ -272,6 +272,7 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
           enable_family_task_upgrade: bool = False,
           family_tasks_only: bool = False,
           coordinator_identity_only: bool = False,
+          identity_roles: tuple[str, ...] | None = None,
           enable_mail_upgrade: bool = False,
           runner: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
     if config.is_symlink() or not config.is_file():
@@ -282,6 +283,9 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
                                                or expected_config_sha256 != source_digest):
         raise TeamRefused('reviewed-config-digest-mismatch')
     before = json.loads(raw)
+    if identity_roles is not None and (not coordinator_identity_only or not identity_roles
+            or len(set(identity_roles)) != len(identity_roles) or not set(identity_roles) <= set(ROSTER)):
+        raise TeamRefused('explicit-identity-only-roles-required')
     if coordinator_identity_only:
         if (family_tasks_only or skills_source is not None or expected_skills or any((enable_calendar_upgrade,
                 enable_retrieval_upgrade, enable_household_task_upgrade, enable_family_task_upgrade, enable_mail_upgrade))):
@@ -305,7 +309,7 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
             or any(not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value) for value in expected_skills.values())):
         raise TeamRefused('expected-skill-digest-refused')
     sources = reviewed_skill_sources(skills_source)
-    identity_roles = ('main',) if coordinator_identity_only else (
+    identity_roles = (identity_roles or ('main',)) if coordinator_identity_only else (
         ('main', 'personal', 'operator', 'family') if family_tasks_only else ROSTER)
     planned = workspace_plan(before, after, team, set(sources), roles=identity_roles,
                              identity_only=family_tasks_only or coordinator_identity_only)
@@ -361,6 +365,7 @@ def main() -> None:
     parser.add_argument('--enable-family-task-upgrade', action='store_true', help='reviewed first additive shared family task grant for Gaia, Luna and Orion')
     parser.add_argument('--family-tasks-only', action='store_true', help='change only shared task tool policy and the four related identity blocks')
     parser.add_argument('--coordinator-identity-only', action='store_true', help='refresh only Atlas instructions and trusted channel map; retain all native state')
+    parser.add_argument('--identity-role', action='append', choices=ROSTER, help='explicit existing identity to refresh with --coordinator-identity-only; default main')
     parser.add_argument('--enable-mail-upgrade', action='store_true', help='reviewed first additive read-only mail grant for Luna')
     parser.add_argument('--expect-skill-sha256', action='append', default=[], metavar='NAME=SHA256',
                         help='reviewed prior bundle hash for the first managed update')
@@ -378,6 +383,7 @@ def main() -> None:
                                enable_family_task_upgrade=args.enable_family_task_upgrade,
                                family_tasks_only=args.family_tasks_only,
                                coordinator_identity_only=args.coordinator_identity_only,
+                               identity_roles=tuple(args.identity_role) if args.identity_role else None,
                                enable_mail_upgrade=args.enable_mail_upgrade)))
     except (TeamRefused, ValueError, OSError) as error:
         print(json.dumps({'ok': False, 'error': str(error) if isinstance(error, TeamRefused) else 'team-setup-input-refused'}))

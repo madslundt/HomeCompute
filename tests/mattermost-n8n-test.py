@@ -155,8 +155,7 @@ class MattermostN8nTests(unittest.TestCase):
             channel = self.server.channels[slug]
             self.assertEqual(channel['type'], 'P')
             expected = {OWNER, BOT, self.agents[specialist]}
-            if slug != 'family':
-                expected.add(self.agents['default'])
+            expected.add(self.agents['default'])
             if slug == 'shopping':
                 expected.update({self.agents['keeper'], self.agents['cook']})
             if slug in setup.ADDITIONAL_SPECIALISTS:
@@ -230,7 +229,7 @@ class MattermostN8nTests(unittest.TestCase):
             'family_channel_id': mapping['channels']['family']})
         self.invoke()
         for slug, channel in mapping['channels'].items():
-            self.assertEqual(partner in self.server.members[channel], slug == 'family')
+            self.assertEqual(partner in self.server.members[channel], channel == mapping['channels']['family'])
 
     def test_uncertain_delivery_token_is_not_created_twice(self):
         self.server.uncertain = True
@@ -241,10 +240,10 @@ class MattermostN8nTests(unittest.TestCase):
         self.assertTrue((self.directory / 'n8n-token-pending.json').is_file())
 
     def test_existing_public_topic_or_additional_human_is_refused(self):
-        self.server.channels['aula'] = {'id': 'j' * 26, 'team_id': TEAM, 'type': 'O'}
+        self.server.channels['family'] = {'id': 'j' * 26, 'team_id': TEAM, 'type': 'O'}
         self.server.members['j' * 26] = {OWNER}
         with self.assertRaisesRegex(setup.bootstrap.BootstrapError, 'privacy'): self.invoke()
-        self.server.channels['aula']['type'] = 'P'
+        self.server.channels['family']['type'] = 'P'
         self.server.members['j' * 26].add('z' * 26)
         with self.assertRaisesRegex(setup.bootstrap.BootstrapError, 'audience'): self.invoke()
 

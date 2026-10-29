@@ -23,21 +23,17 @@ BOT_USERNAME = 'hermes'
 BOT_DISPLAY_NAME = 'Hermes · Updates'
 BOT_DESCRIPTION = 'Delivers automated workflow updates from n8n.'
 TOPICS = {
-    'personal': ('Planning', 'personal', 'Plans, calendars, household tasks, reminders and correspondence drafts with Luna. School updates belong in Aula; shared Gaia tasks in Family.'),
-    'aula': ('Aula', 'personal', 'School messages, family briefings, and Aula updates.'),
-    'news': ('News', 'researcher', 'News digests and research follow-up.'),
-    'home-operations': ('Infrastructure', 'operator', 'HomeCompute servers, services, incidents, alerts and weekly systems reviews. Household devices belong in Home; batteries in Energy.'),
-    'home': ('Home', 'operator', 'Household devices, Home Assistant automation, weather, and household reminders. Energy plans belong in Energy; server and service incidents in Infrastructure.'),
+    'research': ('Research & news', 'researcher', 'Research, source-backed investigations, news digests and follow-up with Nova.'),
+    'home-operations': ('Infrastructure', 'operator', 'HomeCompute servers, services, incidents, alerts and weekly systems reviews. Household devices and energy belong in Home.'),
+    'home': ('Home', 'operator', 'Household devices, Home Assistant automation, weather, and household reminders. Energy plans belong here; server and service incidents in Infrastructure.'),
     'shopping': ('Food & household supplies', 'personal', 'Meals, recipes, groceries, everyday household supplies, lists, offers and stock. Hestia plans meals; Vega handles lists and offers; Ceres handles inventory. Other purchases belong in Shopping.'),
     'general-shopping': ('Shopping', 'researcher', 'Research and compare electronics, clothing, furniture, gifts and other purchases with Atlas and Nova. Meals, everyday supplies and household stock belong in Food & household supplies.'),
-    'energy': ('Energy', 'operator', 'Battery plans, energy observations, and weekly reviews.'),
     'travel': ('Travel', 'personal', 'Family holidays, adventures, restaurants, and weekly holiday deals for two adults and two children.'),
-    'household-admin': ('Household Admin', 'administrator', 'Household paperwork, warranties, subscriptions, renewals, and document deadlines. Themis works from supplied evidence and explicitly connected sources.'),
-    'finances': ('Finances', 'finance', 'Private household budgeting, spending reviews, and subscription costs from supplied records. Plutus cannot access bank accounts or make payments.'),
-    'family': ('Family', 'family', 'Shared planning, tasks, reminders, shopping and inventory with Gaia. School updates belong in Aula; calendar and correspondence work in Planning. Private adult sources stay separate.'),
+    'finances': ('Money & paperwork', 'finance', 'Household budgets and expenses with Plutus; paperwork, warranties, subscriptions, renewals and deadlines with Themis. Work from supplied evidence; private DMs stay separate.'),
+    'family': ('Family', 'personal', 'Shared family planning, school updates, calendars, tasks and reminders with Atlas and Luna. Private adult DMs and memories remain separate; Gaia channel ingress is retired.'),
 }
-ALIASES = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping', 'meals': 'shopping'}
-ADDITIONAL_SPECIALISTS = {'shopping': 'shopper', 'travel': 'travel'}
+ALIASES = bootstrap.CHANNEL_ALIASES
+ADDITIONAL_SPECIALISTS = {'shopping': 'shopper', 'travel': 'travel', 'finances': 'administrator'}
 
 
 def delivery_bot(api: Any, owner: str, state: dict[str, Any]) -> str:
@@ -149,8 +145,7 @@ def provision(directory: Path = bootstrap.PRIVATE) -> dict[str, Any]:
                     or state.get('channels', {}).get(slug, channel_id) != channel_id):
                 raise bootstrap.BootstrapError('topic channel privacy or identity differs')
             expected = {owner, bot_id, account_ids[specialist]}
-            if slug != 'family':
-                expected.add(account_ids['default'])
+            expected.add(account_ids['default'])
             if (directory / 'household-access.json').exists():
                 access = bootstrap.read_private(directory / 'household-access.json')
                 if (access.get('owner_id') != owner or access.get('team_id') != team_id
@@ -172,12 +167,12 @@ def provision(directory: Path = bootstrap.PRIVATE) -> dict[str, Any]:
                 expected.add(account_ids[ADDITIONAL_SPECIALISTS[slug]])
             members, _ = api.request('GET', f'/channels/{channel_id}/members?page=0&per_page=200')
             actual = {x['user_id'] for x in members}
-            # The shared assistant has its own workspace and source boundary.
-            # Retire only Atlas's membership if its timer joined this new room
-            # before the trusted Family mapping was saved.
-            if slug == 'family' and account_ids['default'] in actual:
-                api.request('DELETE', f'/channels/{channel_id}/members/' + account_ids['default'])
-                actual.remove(account_ids['default'])
+            # Gaia ingress is disabled before this migration. Keep the retained
+            # account out of the combined school/calendar channel; Atlas and Luna
+            # use the same approved adult audience as the former source rooms.
+            if slug == 'family' and account_ids['family'] in actual:
+                api.request('DELETE', f'/channels/{channel_id}/members/' + account_ids['family'])
+                actual.remove(account_ids['family'])
             if actual - expected:
                 raise bootstrap.BootstrapError('topic channel audience requires explicit reconciliation')
             for user_id in sorted(expected - actual):
@@ -197,7 +192,12 @@ def provision(directory: Path = bootstrap.PRIVATE) -> dict[str, Any]:
         joined, _ = api.request('GET', f'/users/{bot_id}/teams/{team_id}/channels')
         # Mattermost may create a system-bot welcome DM automatically. Limit
         # shared-channel membership without trying to delete private DMs.
-        if {x['id'] for x in joined if x.get('type') in {'O', 'P'}} != set(channels.values()) | {bootstrap.identity(town, 'default channel')}:
+        retiring = set()
+        for alias in ALIASES:
+            old, _ = api.request('GET', f'/teams/{team_id}/channels/name/{alias}', missing=True)
+            if old and not old.get('delete_at', 0):
+                retiring.add(bootstrap.identity(old, 'retiring topic'))
+        if {x['id'] for x in joined if x.get('type') in {'O', 'P'}} - retiring != set(channels.values()) - retiring | {bootstrap.identity(town, 'default channel')}:
             raise bootstrap.BootstrapError('delivery bot must belong only to topic channels and mandatory Town Square')
         state.setdefault('credential_id', secrets.token_hex(8))
         state.update(credential_name=CREDENTIAL_NAME, base_url=bootstrap.SITE, team_id=team_id)

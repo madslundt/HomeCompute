@@ -28,7 +28,7 @@ class CategoryPlanTests(unittest.TestCase):
                          for index, name in enumerate(names, 1)]
         self.ids = {row['name']: row['id'] for row in self.channels}
         self.retired = ['r' * 25 + str(index) for index, _ in enumerate(organization.RETIRED)]
-        self.channels += [{'id': identifier, 'name': name, 'type': 'O', 'delete_at': 0}
+        self.channels += [{'id': identifier, 'name': name, 'type': 'P', 'delete_at': 0}
                           for identifier, name in zip(self.retired, organization.RETIRED)]
         self.channels += [{'id': 'a' * 26, 'name': 'old-project', 'type': 'P', 'delete_at': 123},
                           {'id': 'u' * 26, 'name': 'other-project', 'type': 'P', 'delete_at': 0},
@@ -52,7 +52,7 @@ class CategoryPlanTests(unittest.TestCase):
         self.assertTrue(set(self.retired + ['a' * 26]).isdisjoint(all_ids))
         by_name = {category['display_name']: category for category in planned}
         self.assertEqual(by_name['Favorites']['channel_ids'],
-                         [self.ids['inbox'], self.ids['town-square'], 'd' * 26])
+                         [self.ids['inbox'], 'd' * 26])
         for name, slugs in organization.GROUPS.items():
             category = by_name[name]
             self.assertEqual(category['channel_ids'], [self.ids[slug] for slug in slugs])
@@ -146,6 +146,10 @@ class OrganizationAPI:
             selected = next(index for index, row in enumerate(self.categories) if row['id'] == body['id'])
             self.categories[selected] = copy.deepcopy(body)
             result = body
+        elif path.startswith('/users/') and method == 'GET':
+            result = {'id': self.owner, 'is_bot': False}
+        elif path.startswith('/channels/') and '/members?' in path:
+            result = [{'user_id': self.owner}]
         elif path.startswith('/channels/'):
             identifier = path.split('/')[2]
             row = self.channels[identifier]
@@ -271,7 +275,7 @@ class OrganizationApplyTests(unittest.TestCase):
             organization.b.save(directory / 'channels.json', original_map)
             channel_export = {'owner_id': api.owner, 'channels': original_map, 'base_url': organization.b.TRANSPORT_SITE}
             organization.b.save(directory / 'openclaw-channel.json', channel_export)
-            delivery_map = {'team_id': api.team, 'channels': {'home': fixture.ids['home'], 'energy': fixture.ids['energy'],
+            delivery_map = {'team_id': api.team, 'channels': {'home': fixture.ids['home'], 'energy': original_map['energy'],
                            **{name: original_map[name] for name in organization.CONSOLIDATED}}}
             organization.b.save(directory / 'n8n-channels.json', delivery_map)
             expected_delivery = copy.deepcopy(delivery_map)
@@ -280,7 +284,8 @@ class OrganizationApplyTests(unittest.TestCase):
                 expected_delivery['channels'][source] = fixture.ids[target]
                 expected_delivery['channels'][target] = fixture.ids[target]
             access = {'owner_id': api.owner, 'team_id': api.team, 'audience_policy': 'all-except-systems',
-                      'shared_channel_ids': list(original_map.values())}
+                      'system_channel_ids': [fixture.ids['home-operations'], fixture.ids['openclaw']],
+                      'shared_channel_ids': [value for name,value in original_map.items() if name not in ('home-operations','openclaw')]}
             organization.b.save(directory / 'household-access.json', access)
             with patch.object(organization, 'load', return_value=sync), patch.object(sync, 'operator', return_value=api):
                 receipt = organization.organize(directory, apply=True)
@@ -292,8 +297,8 @@ class OrganizationApplyTests(unittest.TestCase):
                 self.assertFalse(any(row['display_name'] == 'Home' for row in api.categories))
                 self.assertEqual([next(row['display_name'] for row in api.categories if row['id'] == identifier)
                                   for identifier in api.order[:5]], ['Favorites', *organization.GROUPS])
-                expected_by_name = {'Favorites': [fixture.ids['inbox'], fixture.ids['town-square'], 'd' * 26],
-                                    'Channels': [], 'Direct Messages': ['d' * 26], 'Unrelated project': ['u' * 26]}
+                expected_by_name = {'Favorites': [fixture.ids['inbox'], 'd' * 26],
+                                    'Channels': [fixture.ids['town-square']], 'Direct Messages': ['d' * 26], 'Unrelated project': ['u' * 26]}
                 expected_by_name.update({name: [fixture.ids[slug] for slug in slugs]
                                          for name, slugs in organization.GROUPS.items()})
                 for row in api.categories:
@@ -304,7 +309,7 @@ class OrganizationApplyTests(unittest.TestCase):
                 retired_ids = {original_map[name] for name in organization.CONSOLIDATED}
                 actual_access = organization.b.read_private(directory / 'household-access.json')['shared_channel_ids']
                 self.assertFalse(set(actual_access) & retired_ids)
-                self.assertTrue({fixture.ids['personal'], fixture.ids['shopping']} <= set(actual_access))
+                self.assertTrue({fixture.ids['family'], fixture.ids['shopping']} <= set(actual_access))
                 expected_map = {name: identifier for name, identifier in original_map.items() if name not in organization.RETIRED}
                 self.assertEqual(organization.b.read_private(directory / 'channels.json'), expected_map)
                 self.assertEqual(organization.b.read_private(directory / 'openclaw-channel.json'),

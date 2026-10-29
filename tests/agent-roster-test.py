@@ -37,7 +37,7 @@ class AgentRosterTests(unittest.TestCase):
         native = load('native_roles', 'setup-openclaw-team.py')
         topics = load('topic_roster', 'setup-mattermost-n8n.py')
         expected = {'shopping': 'shopper', 'travel': 'travel',
-                    'general-shopping': 'researcher', 'household-admin': 'administrator', 'finances': 'finance', 'family': 'family'}
+                    'general-shopping': 'researcher', 'finances': 'finance', 'family': 'personal'}
         for channel, role in expected.items():
             members = {topics.TOPICS[channel][1]}
             extra = getattr(topics, 'ADDITIONAL_SPECIALISTS', {}).get(channel)

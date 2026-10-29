@@ -97,3 +97,73 @@ after checking for later instruction changes. Restore the directory post and
 receipt together. Archive the new Shopping room only after preserving any new
 threads and reconciling its consumers. A Git rollback alone does not reverse
 Mattermost API changes. Never delete channels or move/replay conversation posts.
+
+## Remaining channel consolidation
+
+The approved layout retains the existing destination IDs:
+
+| Retained channel | Archived sources | Contact |
+| --- | --- | --- |
+| Family (`family`) | Aula, Planning, Calendar, Tasks, Correspondence | Atlas coordinates Luna |
+| Home (`home`) | Energy, Home Assistant | Orion |
+| Money & paperwork (`finances`) | Household Admin | Plutus for budgets; Themis for documents |
+| Research & news (`research`) | News | Nova |
+| OpenClaw (`openclaw`) | Agent Playground | Orion and Apollo |
+
+Inbox remains the fallback; Town Square moves from Favorites to Channels.
+Historical posts stay in their original archived rooms, with replacement links
+and links back from retained channels. Follow-ups start in the retained room.
+
+Family, Aula and Planning already have the same two human members. This rollout
+consolidates that existing adult audience; it grants no access to private DMs,
+other agent workspaces, another adult's private sources or work data. Family
+uses Atlas/Luna, matching the former Aula/Planning contact. **Disable Gaia's
+native account before moving school/calendar delivery**, then remove Gaia's
+Family membership. Retain its disabled account, tool restrictions, workspace
+and historical task state. Shared family task records remain separate from
+owner task records. An explicitly shared task still uses the shared store.
+The existing household reminder destination moves from Planning to Family;
+its existing audience is unchanged. Private provider credentials and DM sender
+allowlists remain unchanged. OpenClaw retains its owner-only Systems audience;
+archiving Playground grants Kristina no Systems membership.
+
+Deploy from an exact published checkout, preserving the prior active workflow
+versions and private configuration backups. Use this order:
+
+1. Inspect affected channel audiences. `organize-mattermost.py` refuses a merge
+   unless each shared source and destination has the same human audience.
+2. In the native sandbox, plan `setup-openclaw-mattermost.py
+   --retire-family-contact --owner-id OWNER --partner-id PARTNER
+   --family-channel-id FAMILY`. Apply with the reviewed `--expected-config-sha256`
+   and `--helper-sha256`. This changes only Gaia's enabled/group-policy fields.
+3. Refresh Atlas and Luna with `setup-openclaw-team.py
+   --coordinator-identity-only --identity-role main --identity-role personal`,
+   reviewing the source configuration hash before `--apply`. Compare their old
+   managed blocks with the preceding published render. Use the supported native
+   reload lifecycle and confirm the disabled account before admitting school data.
+4. Run `setup-mattermost.py install`, then `setup-mattermost-n8n.py` to prepare
+   target bot memberships. The topic reconciler allows the explicitly retiring
+   topic memberships during this transition; unknown memberships still refuse.
+5. Apply `mattermost_channel_destinations.patch` to fresh n8n workflow details
+   through atomic `update_workflow` operations, then publish only previously
+   active workflows. Require draft and active versions to match before editing.
+   The finite registry covers Aula, weekly review, battery monitoring, daily
+   news and tomorrow preparation. Preserve credentials, message rendering,
+   schedules, retry rules, claim keys, private system-review routing and other
+   nodes. Do not run notification workflows as tests.
+6. Run `organize-mattermost.py --task-destination --apply` to update the existing
+   service-owned reminder configuration, preserving its owner, mode and token
+   path. Then run the organization, topic, household, partner-sidebar and
+   directory commands above. Destination changes precede channel archival.
+7. Verify source and published workflow graphs contain the new destination IDs,
+   both adults' authenticated access, Systems exclusion, archived history,
+   directory/sidebar readback and native account policy. Use a fresh synthetic
+   native routing check without delivery. Repeating identity/delivery plans
+   should report no changes. Report broader host health separately.
+
+The n8n version history retains each previous active graph for guarded recovery.
+Restore only after checking for later edits and pause the affected producer if
+its destination is unavailable. The reminder helper retains a private
+`task-destination-*.json` backup; restore its one destination field only after
+checking for subsequent configuration changes. Keep durable claims and task
+records; do not replay notifications or merge private conversation transcripts.

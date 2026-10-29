@@ -21,32 +21,27 @@ def load(name: str, filename: str) -> Any:
 
 
 b = load('mattermost_bootstrap', 'bootstrap-mattermost.py')
+TASK_CONFIG = Path('/var/lib/homecompute-openclaw/config/household-tasks.json')
 GROUPS = {
-    'Family & plans': ('family', 'personal', 'aula', 'travel'),
-    'Household': ('home', 'energy', 'shopping', 'general-shopping', 'household-admin', 'finances'),
-    'Research & projects': ('research', 'news', 'engineering', 'agent-playground'),
+    'Family & plans': ('family', 'travel'),
+    'Household': ('home', 'shopping', 'general-shopping', 'finances'),
+    'Research & projects': ('research', 'engineering'),
     'Systems': ('home-operations', 'openclaw'),
 }
-CONSOLIDATED = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping',
-                'meals': 'shopping'}
-RETIRED = {**CONSOLIDATED, 'home-assistant': 'home', 'alerts': 'home-operations', 'off-topic': 'town-square'}
+CONSOLIDATED = b.CHANNEL_ALIASES
+RETIRED = {**CONSOLIDATED, 'home-assistant': 'home', 'alerts': 'home-operations',
+           'off-topic': 'town-square', 'agent-playground': 'openclaw'}
 DETAILS = {
     'inbox': ('Inbox', 'Start here when you are unsure where a task belongs. Use a topic channel for ongoing work; keep follow-ups in its thread.'),
-    'family': ('Family', 'Shared planning, tasks, reminders, shopping and inventory with Gaia. School updates belong in Aula; calendar and correspondence work in Planning. Gaia has no access to private adult sources.'),
-    'personal': ('Planning', 'Plans, calendar events, household tasks, reminders, and correspondence drafts with Luna. School updates belong in Aula; shared Gaia tasks in Family; outings and holidays in Travel.'),
-    'aula': ('Aula', 'School and childcare messages, notices, and Aula briefings. Calendar changes and combined household preparation belong in Planning.'),
-    'travel': ('Travel', 'Holidays, local adventures, restaurants, date nights, and travel deals. Calendar event changes belong in Planning.'),
-    'household-admin': ('Household Admin', 'Paperwork, warranties, subscriptions, renewals, and document deadlines with Themis. Analysis uses supplied evidence and explicitly connected sources.'),
-    'finances': ('Finances', 'Private budgets, spending reviews, and subscription costs with Plutus, using supplied records. Bank access and payments are not enabled.'),
-    'home': ('Home', 'Devices, Home Assistant, weather, and house maintenance with Orion. Chores and reminders belong in Planning; electricity in Energy; servers in Infrastructure. Earlier threads: ' + b.SITE + '/homecompute/channels/home-assistant'),
-    'energy': ('Energy', 'Electricity, batteries, consumption, charging plans, and energy reviews. Other household devices belong in Home.'),
+    'family': ('Family', 'Shared family planning, school updates, calendars, tasks and reminders with Atlas and Luna. Use explicit shared tasks for family reminders. Private DMs and adult memories stay separate. Meals and household supplies have their own channel.'),
+    'travel': ('Travel', 'Holidays, local adventures, restaurants, date nights, and travel deals. Calendar event changes belong in Family.'),
+    'finances': ('Money & paperwork', 'Budgets, expenses and subscription costs with Plutus; paperwork, warranties, insurance, renewals and document deadlines with Themis. Use supplied records. Private documents stay in their originating thread; reminders belong in Family.'),
+    'home': ('Home', 'Home Assistant, devices, house maintenance, electricity, batteries, consumption and charging plans with Orion. Servers and service incidents belong in Infrastructure; shared planning and reminders in Family.'),
     'shopping': ('Food & household supplies', 'Meals, recipes, groceries, cleaning products, toiletries and household stock. Hestia plans meals; Vega handles lists and offers; Ceres handles stock. Electronics, clothing, gifts and furniture belong in Shopping. Keep each task in its thread.'),
     'general-shopping': ('Shopping', 'Research and compare electronics, clothing, furniture, gifts and other purchases with Atlas and Nova. Food, everyday household supplies, shopping lists and stock belong in Food & household supplies; holidays and outings in Travel.'),
-    'research': ('Research', 'Questions, comparisons, and investigations with sources. Automated news digests and their follow-up belong in News.'),
-    'news': ('News', 'Delivered news digests and discussion of those reports. New research questions belong in Research.'),
+    'research': ('Research & news', 'Research, comparisons, source-backed investigations, delivered news digests and follow-up with Nova. Keep each question or report discussion in its thread. Product comparisons belong in Shopping.'),
     'engineering': ('Engineering', 'Software implementation, bugs, and coding projects. Running services and incidents belong in Infrastructure; agent configuration in OpenClaw.'),
-    'agent-playground': ('Agent playground', 'Experiments and tests with the agent team. Atlas coordinates ordinary messages. Production agent configuration belongs in OpenClaw.'),
-    'home-operations': ('Infrastructure', 'HomeCompute servers, services, incidents, alerts, and maintenance. Household devices belong in Home; energy plans in Energy; agent configuration in OpenClaw.'),
+    'home-operations': ('Infrastructure', 'HomeCompute servers, services, incidents, alerts, and maintenance. Household devices belong in Home; energy plans in Home; agent configuration in OpenClaw.'),
     'openclaw': ('OpenClaw', 'Agent setup, specialists, routing, tools, skills, and new project channels. Server and service incidents belong in Infrastructure; application coding in Engineering.'),
     'town-square': ('Town Square', 'Workspace announcements and general conversation. Start tasks in Inbox or the relevant topic channel.'),
 }
@@ -59,13 +54,14 @@ def category_plan(categories: list[dict], channels: list[dict], *, excluded_chan
     active = {x['name']: x['id'] for x in channels
               if x.get('type') in {'O', 'P'} and not x.get('delete_at') and x['name'] not in RETIRED
               and x['id'] not in excluded}
-    desired = {'Favorites': [active[n] for n in ('inbox', 'town-square') if n in active]}
+    desired = {'Favorites': [active['inbox']] if 'inbox' in active else [],
+               'Channels': [active['town-square']] if 'town-square' in active else []}
     desired.update({name: [active[n] for n in slugs if n in active] for name, slugs in GROUPS.items()})
     managed = {identifier for ids in desired.values() for identifier in ids}
     old = {x['id'] for x in channels if x.get('delete_at') or x.get('name') in RETIRED} | excluded
     for category in result:
         category['channel_ids'] = [x for x in category['channel_ids'] if x not in managed | old]
-        key = 'Favorites' if category['type'] == 'favorites' else category['display_name']
+        key = {'favorites': 'Favorites', 'channels': 'Channels'}.get(category['type'], category['display_name'])
         if key in desired:
             category['channel_ids'] = desired[key] + category['channel_ids']
             category['sorting'] = 'manual'
@@ -90,6 +86,11 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
         if 'general-shopping' in by_name and (by_name['general-shopping'].get('type') != 'P'
                 or by_name['general-shopping'].get('delete_at')):
             raise b.BootstrapError('active private general Shopping channel required')
+        access_path = directory / 'household-access.json'
+        admission = b.read_private(access_path) if access_path.exists() else {}
+        approved_humans = {owner}
+        if admission.get('partner_id'):
+            approved_humans.add(b.identity({'id': admission['partner_id']}, 'approved partner'))
         for source, target in RETIRED.items():
             if source not in by_name or by_name[source].get('delete_at'):
                 continue
@@ -97,6 +98,11 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
                 raise b.BootstrapError('active consolidation destination required')
             if source in {'alerts', 'off-topic'} and by_name[source].get('total_msg_count', 0):
                 raise b.BootstrapError('expected empty redundant channel now contains messages')
+            if source in {'personal', 'aula', 'energy', 'household-admin', 'news'}:
+                if (by_name[source].get('type') != 'P' or by_name[target].get('type') != 'P'
+                        or human_audience(api, by_name[source]['id']) != approved_humans
+                        or human_audience(api, by_name[target]['id']) != approved_humans):
+                    raise b.BootstrapError('consolidation requires the same existing private adult audience')
         if by_name['home'].get('type') != 'P':
             raise b.BootstrapError('household channel must remain private')
         receipt = {'groups': {name: list(slugs) for name, slugs in GROUPS.items()},
@@ -129,8 +135,11 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
         for name, export in exports.items():
             cleaned = copy.deepcopy(export)
             if name == 'household-access.json':
-                cleaned['shared_channel_ids'] = sorted({retired_ids.get(value, value)
-                                                       for value in cleaned['shared_channel_ids']} | {general_id})
+                blocked = set(cleaned['system_channel_ids'])
+                removed = {by_name[name]['id'] for name in RETIRED if name in by_name}
+                cleaned['shared_channel_ids'] = sorted(({retired_ids.get(value, value)
+                    for value in cleaned['shared_channel_ids'] if value not in removed or value in retired_ids}
+                    | {general_id}) - blocked)
             elif name.startswith('n8n-'):
                 mapping = cleaned['channels']
                 mapping['general-shopping'] = general_id
@@ -143,12 +152,14 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
                 mapping['general-shopping'] = general_id
                 for source in RETIRED:
                     mapping.pop(source, None)
+                for target in set(CONSOLIDATED.values()):
+                    mapping[target] = by_name[target]['id']
             if cleaned != export:
                 b.save(directory / name, cleaned)
         for slug, (display, purpose) in DETAILS.items():
             row = by_name[slug]
             header = purpose
-            earlier = [source for source, target in CONSOLIDATED.items() if target == slug and source in by_name]
+            earlier = [source for source, target in RETIRED.items() if target == slug and source in by_name]
             if earlier:
                 header += ' Earlier threads: ' + ' · '.join('[' + by_name[source].get('display_name', source.title()) + '](' + b.SITE + '/homecompute/channels/' + source + ')' for source in earlier)
             if slug == 'inbox' and '[Agent directory]' in row.get('header', ''):
@@ -193,6 +204,56 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
                     raise b.BootstrapError('redundant channel archive readback differs')
         receipt['backup_file'] = str(backup)
         return receipt
+
+
+def human_audience(api: Any, channel_id: str) -> set[str]:
+    members, _ = api.request('GET', f'/channels/{channel_id}/members?page=0&per_page=200')
+    if not isinstance(members, list) or len(members) >= 200:
+        raise b.BootstrapError('bounded channel audience required')
+    humans = set()
+    for member in members:
+        person, _ = api.request('GET', '/users/' + b.identity({'id': member['user_id']}, 'channel member'))
+        if not person.get('is_bot'):
+            humans.add(b.identity(person, 'human member'))
+    return humans
+
+
+def reconcile_task_destination(*, apply: bool = False) -> dict:
+    """Retarget the existing reminder configuration, preserving its identity and token path."""
+    import pwd
+    import stat
+    import tempfile
+    path = TASK_CONFIG
+    if any(p.is_symlink() for p in (path, *path.parents)):
+        raise b.BootstrapError('canonical reminder configuration required')
+    info = path.stat()
+    if info.st_uid != pwd.getpwnam('homecompute-openclaw').pw_uid or stat.S_IMODE(info.st_mode) != 0o600:
+        raise b.BootstrapError('private service-owned reminder configuration required')
+    raw = path.read_bytes()
+    current = json.loads(raw)
+    expected = {'schema_version', 'channel_id', 'bot_id', 'token_file'}
+    if set(current) != expected or current['channel_id'] not in {'hrnwimmho7b4fkaa5xcm9d9i8h', 'fth7yi7ea7yutyscphhbjgehce'}:
+        raise b.BootstrapError('retained reminder destination differs')
+    after = {**current, 'channel_id': 'fth7yi7ea7yutyscphhbjgehce'}
+    result = {'changed': current != after, 'applied': apply}
+    if apply and current != after:
+        backup = b.PRIVATE / ('task-destination-' + uuid.uuid4().hex + '.json')
+        b.save(backup, current)
+        if path.read_bytes() != raw:
+            raise b.BootstrapError('reminder configuration changed during validation')
+        fd, temporary = tempfile.mkstemp(prefix='.channel-', dir=path.parent)
+        try:
+            os.fchown(fd, info.st_uid, info.st_gid)
+            with os.fdopen(fd, 'w') as stream:
+                json.dump(after, stream, indent=2)
+                stream.write('\n'); stream.flush(); os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+        if json.loads(path.read_bytes()) != after:
+            raise b.BootstrapError('reminder destination readback differs')
+        result['backup_file'] = str(backup)
+    return result
 
 
 def organize_partner(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
@@ -285,14 +346,16 @@ def main() -> None:
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--household-sidebar', action='store_true', help="organize Kristina's approved non-Systems rooms")
     parser.add_argument('--refresh-directory', action='store_true', help='update only the retained agent directory post from repository source')
+    parser.add_argument('--task-destination', action='store_true', help='retarget existing household reminders to the retained Family channel')
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')
     os.umask(0o077)
     try:
-        if args.household_sidebar and args.refresh_directory:
+        if sum((args.household_sidebar, args.refresh_directory, args.task_destination)) > 1:
             parser.error('choose household sidebar or directory refresh')
-        operation = refresh_directory if args.refresh_directory else (organize_partner if args.household_sidebar else organize)
+        operation = reconcile_task_destination if args.task_destination else (
+            refresh_directory if args.refresh_directory else (organize_partner if args.household_sidebar else organize))
         print(json.dumps(operation(apply=args.apply), indent=2))
     except (b.BootstrapError, OSError, ValueError, KeyError, TypeError):
         raise SystemExit('Workspace organization failed; inspect the protected backup before retrying.') from None

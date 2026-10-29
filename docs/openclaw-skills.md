@@ -14,7 +14,7 @@ The scoped assignment source adds four instruction-only bundles to existing role
 The finite assignments and load triggers live in
 [`openclaw_workflow_skills.py`](../scripts/openclaw_workflow_skills.py). Each
 assigned identity receives a separate managed instruction block. Atlas continues
-to delegate; Gaia uses only shared Family tools without private adult sources or
+to delegate. Gaia retains only shared tools as a disabled historical channel account, without private adult sources or
 delegation. These bundles add no tools, credentials, schedules or service access.
 
 The full-team bootstrap manifest now includes the twelve-role team and its

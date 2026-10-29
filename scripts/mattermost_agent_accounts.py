@@ -62,17 +62,6 @@ def provision(b: Any, directory: Path, *, activate: bool = False) -> dict[str, A
         team, _ = api.request('GET', '/teams/name/homecompute')
         team_id = b.identity(team, 'team')
         coordinator_channels = owner_channels(b, api, owner, team_id)
-        # Family uses its own shared contact and workspace. Only the trusted
-        # operator-owned channel receipt may exclude it from Atlas auto-join.
-        family_topics = directory / 'n8n-channels.json'
-        if family_topics.exists() or family_topics.is_symlink():
-            topic_receipt = b.read_private(family_topics)
-            topic_map = topic_receipt.get('channels') if isinstance(topic_receipt, dict) else None
-            if not isinstance(topic_map, dict):
-                raise b.BootstrapError('trusted topic channel inventory required')
-            if 'family' in topic_map:
-                family_id = b.identity({'id': topic_map['family']}, 'family channel')
-                coordinator_channels = [value for value in coordinator_channels if value != family_id]
         path, export = directory / 'agent-account-state.json', directory / 'agent-accounts.json'
         if path.exists():
             manifest = b.read_private(path)
@@ -202,7 +191,9 @@ def provision(b: Any, directory: Path, *, activate: bool = False) -> dict[str, A
                     channel_id = b.identity(topic, 'specialist topic')
             if channel_id:
                 member, _ = api.request('GET', f'/channels/{channel_id}/members/{bot_id}', missing=True)
-                if member is None: api.request('POST', f'/channels/{channel_id}/members', {'user_id': bot_id})
+                if account_id == 'family':
+                    if member is not None: api.request('DELETE', f'/channels/{channel_id}/members/{bot_id}')
+                elif member is None: api.request('POST', f'/channels/{channel_id}/members', {'user_id': bot_id})
             if account_id == 'default':
                 for channel_id in coordinator_channels:
                     member_path = f'/channels/{channel_id}/members/{bot_id}'

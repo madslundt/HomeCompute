@@ -201,8 +201,8 @@ class TeamSetupTest(unittest.TestCase):
 
     def test_channel_routing_map_is_validated_and_only_in_coordinator_identity(self):
         routes = self.team['channel_routes']
-        for name, role in {'aula': 'personal', 'shopping': 'shopper',
-                           'home': 'operator', 'energy': 'operator', 'news': 'researcher',
+        for name, role in {'family': 'personal', 'shopping': 'shopper',
+                           'home': 'operator', 'research': 'researcher',
                            'engineering': 'engineer', 'openclaw': 'operator', 'travel': 'travel',
                            'general-shopping': 'researcher'}.items():
             self.assertEqual([row['agent'] for row in routes.values() if row['name'] == name], [role])

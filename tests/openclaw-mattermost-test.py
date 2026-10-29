@@ -347,9 +347,9 @@ class MattermostSetupTest(unittest.TestCase):
                                    family_channel_id=family_id, family_user_ids=[self.owner, partner])
         accounts = after['channels']['mattermost']['accounts']
         family = accounts['family']
-        self.assertTrue(family['enabled'])
+        self.assertFalse(family['enabled'])
         self.assertEqual(family['dmPolicy'], 'disabled')
-        self.assertEqual(family['groupPolicy'], 'allowlist')
+        self.assertEqual(family['groupPolicy'], 'disabled')
         self.assertEqual(family['groupAllowFrom'], sorted([self.owner, partner]))
         self.assertEqual(family['groups'], {'*': {'requireMention': True}, family_id: {'requireMention': False}})
         family_routes = [r for r in after['bindings'] if r['match'].get('accountId') == 'family']

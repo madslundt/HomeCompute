@@ -160,25 +160,25 @@ class BootstrapTests(unittest.TestCase):
     def test_household_admission_refuses_retained_public_owner_room(self):
         self.invoke()
         module.save(self.directory / 'household-access.json', {'schema_version': 1})
-        self.server.channels['personal']['type'] = 'O'
+        self.server.channels['family']['type'] = 'O'
         count = self.server.token_creations
         with self.assertRaisesRegex(module.BootstrapError, 'owner channel privacy'):
             self.invoke()
         self.assertEqual(self.server.token_creations, count)
-        self.assertEqual(self.server.channels['personal']['type'], 'O')
+        self.assertEqual(self.server.channels['family']['type'], 'O')
 
     def test_missing_owner_room_is_recreated_private_after_household_admission(self):
         self.invoke()
         module.save(self.directory / 'household-access.json', {'schema_version': 1})
-        del self.server.channels['personal']
+        del self.server.channels['family']
         self.invoke()
-        self.assertEqual(self.server.channels['personal']['type'], 'P')
+        self.assertEqual(self.server.channels['family']['type'], 'P')
 
     def test_legacy_public_owner_room_remains_reconcilable_before_household_admission(self):
         self.invoke()
-        self.server.channels['personal']['type'] = 'O'
+        self.server.channels['family']['type'] = 'O'
         self.invoke()
-        self.assertEqual(self.server.channels['personal']['type'], 'O')
+        self.assertEqual(self.server.channels['family']['type'], 'O')
 
     def test_retained_legacy_login_url_migrates_without_replacing_credentials_or_bot_transport(self):
         self.invoke()

@@ -89,12 +89,12 @@ class AtlasTests(unittest.TestCase):
         self.channel('r', type='D'); self.channel('s', type='G')
         self.assertEqual(self.run_sync()['added'], 0); self.assertEqual(self.server.posts, [])
 
-    def test_trusted_family_channel_is_left_to_its_separate_assistant(self):
+    def test_family_joins_the_existing_atlas_household_audience(self):
         self.channel('f')
         self.channel('p')
         b.save(self.directory / 'n8n-channels.json', {'team_id': TEAM, 'channels': {'family': 'f' * 26}})
-        self.assertEqual(self.run_sync()['added'], 1)
-        self.assertNotIn('f' * 26, self.server.joined)
+        self.assertEqual(self.run_sync()['added'], 2)
+        self.assertIn('f' * 26, self.server.joined)
         self.assertIn('p' * 26, self.server.joined)
 
     def test_pinned_identity_drift_and_incomplete_state_refuse_before_membership_change(self):
