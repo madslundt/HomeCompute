@@ -93,3 +93,35 @@ python3 tests/openclaw-communication-test.py
 python3 tests/openclaw-task-feed-test.py
 git diff --check
 ```
+
+## Verified rollout, 29 October 2026
+
+Presentation sources were committed and pushed in `3066eb1`; the independently
+reviewed refresh lifecycle was committed and pushed in
+`7e38ae4254f6e6f707ed51a457c46a81779e8538`. Home-core prepared a clean, root-owned
+Git checkout at that exact revision. Its read-only plan found all four installed
+modules at the approved baseline, no sending claims or running turns, and no
+unsettled access/transaction operation.
+
+The reviewed plan `7f653a450a41a594c14c43c2b859a717542e7459c986c0f64816515badb096f3`
+was applied successfully. The verified module bundle is
+`e980c8f4123c7cde9852ad45c19e35d715b7d05dda8044a06ed21c1d13b44fc0`.
+Original files and the public plan are backed up under
+`/var/lib/homecompute-notification-presentation/backups/4ef6d581eab6442bb37b4c5888bdcba8`.
+A second read-only plan reported `changed: false` for every module; all 42
+preserved artifact entries matched the pre-apply plan exactly.
+
+The adapter and access backend were running afterward; the proxy and certificate
+watcher retained their successful active states. Machine-status and certificate
+oneshots returned to inactive. All four existing machine/update/household/family
+timers remained active and waiting; Telegram remained masked and inactive. The
+broader host release/current pointer was not changed by this component refresh.
+
+Validation included 92 existing focused notification/task tests, nine refresh
+tests (including rollback and interruption cases), Python compilation, shell
+syntax and `git diff --check`. The full repository validator had also passed for
+the presentation sources. Synthetic news was inspected in Mattermost's Markdown
+preview and its temporary draft cleared. No live notification was sent as a
+test. The eight companion n8n workflows were separately published and verified
+through n8n MCP; their exact versions are recorded in HA-automations
+`docs/n8n-workflows.md` at commit `4c56311`.
