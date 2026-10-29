@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-29",
+  "scope": "Meals, household supplies and the new general Shopping channel",
+  "applied_revisions": {
+    "mattermost_dedicated_lifecycle": "5a772083dfbc303fc05297a53be486446980d390",
+    "atlas_coordinator_identity": "0c9795b9a38aaa4a4731c22c64addd7508aa12ff"
+  },
+  "source": [
+    "scripts/organize-mattermost.py",
+    "scripts/setup-mattermost-n8n.py",
+    "scripts/bootstrap-mattermost.py",
+    "scripts/setup-openclaw-team.py",
+    "config/openclaw-team.json",
+    "deploy/mattermost/agent-directory.md"
+  ],
+  "runbook": "deploy/mattermost/README.md",
+  "channels": {
+    "food_and_household_supplies": "Retained shopping ID and URL; renamed and joined by Hestia",
+    "meals": "Archived with its history retained and a replacement link",
+    "general_shopping": "Private channel shared with the existing two approved adults; Atlas coordinates Nova"
+  },
+  "verification": {
+    "repository_validation_including_nix": "passed before initial publication",
+    "assigned_channel_id_followup_tests": "26 team tests and 2 roster tests passed",
+    "both_adults_authenticated_over_verified_https": true,
+    "exact_channel_audiences_and_both_sidebars": true,
+    "meals_archive_and_history_links": true,
+    "meals_and_storage_delivery_aliases_resolve_to_household_channel": true,
+    "saved_workflows_reference_old_meals_destination": false,
+    "installed_mattermost_helpers_and_compose_match_source": true,
+    "mattermost_healthy_and_image_matches_configured_digest": true,
+    "directory_matches_source_and_repeat_refresh_is_noop": true,
+    "atlas_old_managed_block_matched_previous_published_source": true,
+    "atlas_native_configuration_bytes_unchanged": true,
+    "atlas_repeat_identity_plan_has_zero_changes": true,
+    "fresh_native_routing_check": "Synthetic operator-only turn identified Nova, Hestia, Vega and Ceres correctly; no tools or message delivery",
+    "homecompute_status_services_doctor_drift": "inspected"
+  },
+  "recovery": {
+    "helper_backup": "/srv/state/mattermost/private/channel-layout-helpers-before-5a772083",
+    "organization_backup": "/srv/state/mattermost/private/organization-0f8e7a0762254577bbed2c58478a0166.json",
+    "partner_sidebar_backup": "/srv/state/mattermost/private/partner-sidebar-ebdd4586d10541f7bf6ffa05463014b6.json",
+    "directory_backup": "/srv/state/mattermost/private/organization-directory-637d2a4105b041a785112cc022efd610.json",
+    "atlas_identity_backup": "/sandbox/.openclaw/team-setup-backups/e75d55a6-197c-4409-9a6b-38b31cd15ac0"
+  },
+  "remaining_state": [
+    "Both host-wide release markers remain at 07740fb8a2c94ce7f2f7d06132035fd5ae8840e7; channel changes used the dedicated lifecycles above, so CLI revision drift is expected.",
+    "Doctor reports homecompute-nas-recovery-backup.service and homecompute-platform-health.service failed on home-core; this channel rollout does not establish overall platform health.",
+    "Spark lacks passwordless sudo; inventory was readable and Spark was not changed.",
+    "The existing home-core user checkout has a local home/agent/default.nix change; it was preserved. A separate exact published checkout was used.",
+    "Family/Aula/Planning, Home/Energy and the other proposed consolidations were not applied in this shopping rollout. Family school/calendar access still needs a separate decision."
+  ]
+}
