@@ -28,15 +28,15 @@ TOPICS = {
     'news': ('News', 'researcher', 'News digests and research follow-up.'),
     'home-operations': ('Infrastructure', 'operator', 'HomeCompute servers, services, incidents, alerts and weekly systems reviews. Household devices belong in Home; batteries in Energy.'),
     'home': ('Home', 'operator', 'Household devices, Home Assistant automation, weather, and household reminders. Energy plans belong in Energy; server and service incidents in Infrastructure.'),
-    'shopping': ('Shopping & inventory', 'personal', 'Shopping lists, product offers and household stock. Vega handles shopping; Ceres handles inventory. Holidays, restaurants and experience deals belong in Travel.'),
+    'shopping': ('Food & household supplies', 'personal', 'Meals, recipes, groceries, everyday household supplies, lists, offers and stock. Hestia plans meals; Vega handles lists and offers; Ceres handles inventory. Other purchases belong in Shopping.'),
+    'general-shopping': ('Shopping', 'researcher', 'Research and compare electronics, clothing, furniture, gifts and other purchases with Atlas and Nova. Meals, everyday supplies and household stock belong in Food & household supplies.'),
     'energy': ('Energy', 'operator', 'Battery plans, energy observations, and weekly reviews.'),
     'travel': ('Travel', 'personal', 'Family holidays, adventures, restaurants, and weekly holiday deals for two adults and two children.'),
-    'meals': ('Meals', 'cook', 'Meal plans, recipes, ingredients to use before expiry, and shopping-list proposals. Hestia plans; Vega handles requested shopping changes.'),
     'household-admin': ('Household Admin', 'administrator', 'Household paperwork, warranties, subscriptions, renewals, and document deadlines. Themis works from supplied evidence and explicitly connected sources.'),
     'finances': ('Finances', 'finance', 'Private household budgeting, spending reviews, and subscription costs from supplied records. Plutus cannot access bank accounts or make payments.'),
     'family': ('Family', 'family', 'Shared planning, tasks, reminders, shopping and inventory with Gaia. School updates belong in Aula; calendar and correspondence work in Planning. Private adult sources stay separate.'),
 }
-ALIASES = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping'}
+ALIASES = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping', 'meals': 'shopping'}
 ADDITIONAL_SPECIALISTS = {'shopping': 'shopper', 'travel': 'travel'}
 
 
@@ -167,7 +167,7 @@ def provision(directory: Path = bootstrap.PRIVATE) -> dict[str, Any]:
                 if slug == 'family' or access.get('audience_policy') == 'all-except-systems' and channel_id in approved:
                     expected.add(bootstrap.identity({'id': access['partner_id']}, 'partner'))
             if slug == 'shopping':
-                expected.add(account_ids['keeper'])
+                expected.update({account_ids['keeper'], account_ids['cook']})
             if slug in ADDITIONAL_SPECIALISTS:
                 expected.add(account_ids[ADDITIONAL_SPECIALISTS[slug]])
             members, _ = api.request('GET', f'/channels/{channel_id}/members?page=0&per_page=200')

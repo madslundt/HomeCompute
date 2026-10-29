@@ -37,13 +37,16 @@ class AgentRosterTests(unittest.TestCase):
         native = load('native_roles', 'setup-openclaw-team.py')
         topics = load('topic_roster', 'setup-mattermost-n8n.py')
         expected = {'shopping': 'shopper', 'travel': 'travel',
-                    'meals': 'cook', 'household-admin': 'administrator', 'finances': 'finance', 'family': 'family'}
+                    'general-shopping': 'researcher', 'household-admin': 'administrator', 'finances': 'finance', 'family': 'family'}
         for channel, role in expected.items():
             members = {topics.TOPICS[channel][1]}
             extra = getattr(topics, 'ADDITIONAL_SPECIALISTS', {}).get(channel)
             if extra:
                 members.add(extra)
             self.assertIn(role, members)
+        bootstrap = load('merged_cook_roster', 'bootstrap-mattermost.py')
+        self.assertEqual(bootstrap.AGENT_ACCOUNTS['cook'][2], 'shopping')
+        self.assertEqual(topics.ALIASES['meals'], 'shopping')
         services = native.ROLE_SERVICE_TOOLS
         prefix = native.MCP_PREFIX
         self.assertTrue({prefix + name for name in ('shopping_list', 'discount_watch', 'shopping_search')} <= services['shopper'])

@@ -158,7 +158,7 @@ class MattermostN8nTests(unittest.TestCase):
             if slug != 'family':
                 expected.add(self.agents['default'])
             if slug == 'shopping':
-                expected.add(self.agents['keeper'])
+                expected.update({self.agents['keeper'], self.agents['cook']})
             if slug in setup.ADDITIONAL_SPECIALISTS:
                 expected.add(self.agents[setup.ADDITIONAL_SPECIALISTS[slug]])
             self.assertEqual(self.server.members[channel['id']], expected)

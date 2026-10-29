@@ -14,7 +14,7 @@ Try: “Am I free tomorrow afternoon?” or “Create a dentist appointment on t
 ### Nova · Research and news — @nova
 Researches questions, compares options, and checks public sources through web search. Provides links and explains uncertainty.
 Try: “Compare these options and show me your sources.”
-[Message Nova](https://mattermost.home.arpa/homecompute/messages/@nova) · [Research](https://mattermost.home.arpa/homecompute/channels/research) · [News](https://mattermost.home.arpa/homecompute/channels/news)
+[Message Nova](https://mattermost.home.arpa/homecompute/messages/@nova) · [Shopping](https://mattermost.home.arpa/homecompute/channels/general-shopping) · [Research](https://mattermost.home.arpa/homecompute/channels/research) · [News](https://mattermost.home.arpa/homecompute/channels/news)
 
 ### Apollo · Coding — @apollo
 Turns ideas and bugs into clear coding tasks, submits isolated jobs in reviewed repositories, and follows their progress. Publishing, merging, and deployment use the existing approval process.
@@ -28,12 +28,12 @@ Also helps plan physical house maintenance, appliance servicing, and seasonal ch
 ### Vega · Shopping and discounts — @vega
 Manages the Home Assistant shopping list, finds Tilbudstrolden offers, and manages discount watches with optional unit-price limits. Existing Home Assistant and n8n flows handle offer refreshes and notifications.
 Try: “Add two cartons of milk” or “Show current coffee offers.”
-[Message Vega](https://mattermost.home.arpa/homecompute/messages/@vega) · [Shopping & inventory](https://mattermost.home.arpa/homecompute/channels/shopping)
+[Message Vega](https://mattermost.home.arpa/homecompute/messages/@vega) · [Food & household supplies](https://mattermost.home.arpa/homecompute/channels/shopping)
 
 ### Ceres · Storage inventory — @ceres
 Finds physical household stock and manages quantities, expiry dates, and items in existing storage locations. Ask Orion about computer disk space.
 Try: “Where is the rice stored?” or “We used one bag of rice from the pantry.”
-[Message Ceres](https://mattermost.home.arpa/homecompute/messages/@ceres) · [Shopping & inventory](https://mattermost.home.arpa/homecompute/channels/shopping)
+[Message Ceres](https://mattermost.home.arpa/homecompute/messages/@ceres) · [Food & household supplies](https://mattermost.home.arpa/homecompute/channels/shopping)
 
 ### Lyra · Travel and adventures — @lyra
 Finds family holidays, local adventures, restaurants, and date-night ideas. Checks current public sources through web search and compares total group prices, dates, age limits, and booking conditions. Can read a named connected calendar and check availability when asked. Luna handles requested calendar changes; purchases and bookings need your action.
@@ -43,7 +43,7 @@ Try: “Find three family activities near Copenhagen this weekend” or “Check
 ### Hestia · Meals and recipes — @hestia
 Plans meals around your preferences, available stock, expiry dates, and current offers. Reads shopping and inventory evidence and checks public recipe sources. Vega handles requested shopping-list changes; Ceres handles stock changes. A meal plan never implies ingredients were purchased or consumed.
 Try: “Plan five dinners using what we already have, prioritize food expiring soon, and show what we need to buy.”
-[Message Hestia](https://mattermost.home.arpa/homecompute/messages/@hestia) · [Meals](https://mattermost.home.arpa/homecompute/channels/meals)
+[Message Hestia](https://mattermost.home.arpa/homecompute/messages/@hestia) · [Food & household supplies](https://mattermost.home.arpa/homecompute/channels/shopping)
 
 ### Themis · Household administration — @themis
 Helps organize paperwork, warranties, subscriptions, renewals, and document deadlines. Analyzes the material you supply, distinguishes quoted terms from assumptions, and prepares questions or drafts. Ask Luna to save a resulting task or reminder. Document-store access needs an explicitly configured source; Themis cannot claim to have searched your private files.
@@ -70,9 +70,9 @@ Atlas remains your contact and delegates domain work to these specialists:
 | Research, News | Nova |
 | Engineering | Apollo |
 | Home (household devices), Energy (electricity and batteries), Infrastructure (servers, services and alerts) | Orion |
-| Shopping & inventory | Vega for purchases and lists; Ceres for stock, locations and expiry dates |
+| Food & household supplies | Hestia for meals and recipes; Vega for household lists and offers; Ceres for stock, locations and expiry dates |
+| Shopping | Nova for product research and comparisons |
 | Travel; adventures and travel requests in other channels | Lyra |
-| Meals | Hestia |
 | Household Admin | Themis |
 | Finances | Plutus |
 | Family | Gaia directly; private specialists stay outside this shared room |
@@ -80,7 +80,7 @@ Atlas remains your contact and delegates domain work to these specialists:
 
 Use [OpenClaw](https://mattermost.home.arpa/homecompute/channels/openclaw) to discuss agents, tools, skills, routing, and new project channels. For example: “Plan a private renovation channel with Orion, Nova, and Apollo as its expert team.” Atlas can prepare the setup and coordinate a reviewed implementation; adding agents or granting tools remains a configuration change.
 
-The sidebar groups **Family & plans** (Family, Planning, Aula, Travel), **Household** (Home, Energy, Meals, Shopping & inventory, Household Admin, Finances), **Research & projects** (Research, News, Engineering, Agent playground), and **Systems** (Infrastructure, OpenClaw). Inbox and Town Square are in Favorites. Home Assistant is consolidated into Home; Alerts into Infrastructure; Off-Topic into Town Square. Archived channels retain their earlier threads. News holds delivered digests; Research holds new investigations. Planning combines Personal, Calendar, Tasks and Correspondence; Shopping & inventory combines Shopping and Inventory. Their archived rooms retain earlier threads. Travel remains separate for holidays, restaurants and experience deals.
+The sidebar groups **Family & plans** (Family, Planning, Aula, Travel), **Household** (Home, Energy, Food & household supplies, Shopping, Household Admin, Finances), **Research & projects** (Research, News, Engineering, Agent playground), and **Systems** (Infrastructure, OpenClaw). Inbox and Town Square are in Favorites. Home Assistant is consolidated into Home; Alerts into Infrastructure; Off-Topic into Town Square. Archived channels retain their earlier threads. News holds delivered digests; Research holds new investigations. Planning combines Personal, Calendar, Tasks and Correspondence; Food & household supplies combines meals, household lists and inventory. Shopping covers electronics, clothing, furniture, gifts and other purchases; Atlas asks Nova for current product research and comparisons. Their archived rooms retain earlier threads. Travel remains separate for holidays, restaurants and experience deals.
 
 Mads and Kristina have access to every current channel outside **Systems**. **Infrastructure** and **OpenClaw** remain restricted to Mads. The other topic channels remain private household rooms, including their earlier threads. Direct-message histories stay separate, and mailbox connections retain their own account scopes. Task records are household records shared by the explicitly granted household specialists; keep private financial, correspondence, and document details out of task titles. Specialist workspaces separate roles. A channel name or new bot does not grant another person access.
 

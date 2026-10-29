@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check sidebar consolidation without changing channel or conversation identities."""
 import copy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -116,6 +117,9 @@ class OrganizationAPI:
             result = {'id': self.team}
         elif method == 'GET' and path == f'/users/{self.owner}/teams/{self.team}/channels?include_deleted=true':
             result = list(self.channels.values())
+        elif method == 'POST' and path == '/channels':
+            result = {'id': 's' * 26, 'delete_at': 0, 'creator_id': self.owner, **body}
+            self.channels[result['id']] = copy.deepcopy(result)
         elif path == self.prefix and method == 'GET':
             result = {'categories': self.categories, 'order': self.order}
         elif path == self.prefix and method == 'POST':
@@ -160,6 +164,67 @@ class OrganizationAPI:
 
 
 class OrganizationApplyTests(unittest.TestCase):
+    def test_directory_refresh_updates_only_retained_post_and_refuses_content_drift(self):
+        owner, bot, post_id, channel = 'o' * 26, 'b' * 26, 'p' * 26, 'c' * 26
+        post = {'id': post_id, 'user_id': bot, 'channel_id': channel, 'message': 'Previous directory.'}
+        calls = []
+        def request(method, path, body=None):
+            calls.append((method, path))
+            if path == '/users/me':
+                return {'id': bot, 'is_bot': True}, {}
+            self.assertEqual(path, '/posts/' + post_id)
+            if method == 'PUT':
+                post.update(body)
+            return copy.deepcopy(post), {}
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary).resolve() / 'private'
+            directory.mkdir(mode=0o700)
+            source = Path(temporary) / 'directory.md'
+            source.write_text('# Your agent team\nFood & household supplies and Shopping.\n')
+            organization.b.save(directory / 'credentials.json', {'operator_id': owner, 'bot_id': bot, 'bot_token': 'test-token'})
+            organization.b.save(directory / 'channels.json', {'inbox': channel})
+            organization.b.save(directory / 'agent-directory.json', {'post_id': post_id, 'channel_id': channel,
+                'content_sha256': hashlib.sha256(post['message'].encode()).hexdigest()})
+            with patch.object(organization.b, 'API') as api:
+                api.return_value.request.side_effect = request
+                organization.refresh_directory(directory, source=source)
+                self.assertTrue(all(method == 'GET' for method, _ in calls))
+                organization.refresh_directory(directory, source=source, apply=True)
+                self.assertEqual(post['message'], source.read_text())
+                self.assertFalse(organization.refresh_directory(directory, source=source, apply=True)['changed'])
+                post['message'] = 'Later external edit.'
+                with self.assertRaisesRegex(organization.b.BootstrapError, 'directory post drift'):
+                    organization.refresh_directory(directory, source=source, apply=True)
+            self.assertEqual(sum(method == 'PUT' for method, _ in calls), 1)
+
+    def test_missing_general_shopping_is_created_privately_and_retry_keeps_its_identity(self):
+        fixture = CategoryPlanTests()
+        fixture.setUp()
+        channels = [row for row in fixture.channels if row['name'] != 'general-shopping']
+        categories = copy.deepcopy(fixture.categories)
+        for category in categories:
+            category['channel_ids'] = [value for value in category['channel_ids']
+                                       if value != fixture.ids['general-shopping']]
+        for index, category in enumerate(categories, 1):
+            category.update(id=f'{index + 200:026d}', user_id=OrganizationAPI.owner, team_id=OrganizationAPI.team)
+        api = OrganizationAPI(self, channels, categories)
+        sync = organization.load('creation_test_sync', 'sync-mattermost-atlas.py')
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary).resolve() / 'private'
+            directory.mkdir(mode=0o700)
+            organization.b.save(directory / 'credentials.json', {'operator_id': api.owner})
+            organization.b.save(directory / 'channels.json', {row['name']: row['id'] for row in channels})
+            with patch.object(organization, 'load', return_value=sync), patch.object(sync, 'operator', return_value=api):
+                organization.organize(directory)
+                self.assertTrue(all(method == 'GET' for method, _, _ in api.calls))
+                organization.organize(directory, apply=True)
+                organization.organize(directory, apply=True)
+            created = [body for method, path, body in api.calls if (method, path) == ('POST', '/channels')]
+            self.assertEqual(len(created), 1)
+            self.assertEqual(created[0]['type'], 'P')
+            self.assertEqual(organization.b.read_private(directory / 'channels.json')['general-shopping'], 's' * 26)
+            self.assertTrue(all(path != '/posts' for _, path, _ in api.calls))
+
     def test_partner_sidebar_removes_archived_memberships_from_custom_groups(self):
         fixture = CategoryPlanTests()
         fixture.setUp()
@@ -210,10 +275,12 @@ class OrganizationApplyTests(unittest.TestCase):
                            **{name: original_map[name] for name in organization.CONSOLIDATED}}}
             organization.b.save(directory / 'n8n-channels.json', delivery_map)
             expected_delivery = copy.deepcopy(delivery_map)
+            expected_delivery['channels']['general-shopping'] = fixture.ids['general-shopping']
             for source, target in organization.CONSOLIDATED.items():
                 expected_delivery['channels'][source] = fixture.ids[target]
                 expected_delivery['channels'][target] = fixture.ids[target]
-            access = {'shared_channel_ids': list(original_map.values())}
+            access = {'owner_id': api.owner, 'team_id': api.team, 'audience_policy': 'all-except-systems',
+                      'shared_channel_ids': list(original_map.values())}
             organization.b.save(directory / 'household-access.json', access)
             with patch.object(organization, 'load', return_value=sync), patch.object(sync, 'operator', return_value=api):
                 receipt = organization.organize(directory, apply=True)

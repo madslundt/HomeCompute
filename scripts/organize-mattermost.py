@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -22,11 +23,12 @@ def load(name: str, filename: str) -> Any:
 b = load('mattermost_bootstrap', 'bootstrap-mattermost.py')
 GROUPS = {
     'Family & plans': ('family', 'personal', 'aula', 'travel'),
-    'Household': ('home', 'energy', 'meals', 'shopping', 'household-admin', 'finances'),
+    'Household': ('home', 'energy', 'shopping', 'general-shopping', 'household-admin', 'finances'),
     'Research & projects': ('research', 'news', 'engineering', 'agent-playground'),
     'Systems': ('home-operations', 'openclaw'),
 }
-CONSOLIDATED = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping'}
+CONSOLIDATED = {'calendar': 'personal', 'tasks': 'personal', 'correspondence': 'personal', 'storage': 'shopping',
+                'meals': 'shopping'}
 RETIRED = {**CONSOLIDATED, 'home-assistant': 'home', 'alerts': 'home-operations', 'off-topic': 'town-square'}
 DETAILS = {
     'inbox': ('Inbox', 'Start here when you are unsure where a task belongs. Use a topic channel for ongoing work; keep follow-ups in its thread.'),
@@ -34,12 +36,12 @@ DETAILS = {
     'personal': ('Planning', 'Plans, calendar events, household tasks, reminders, and correspondence drafts with Luna. School updates belong in Aula; shared Gaia tasks in Family; outings and holidays in Travel.'),
     'aula': ('Aula', 'School and childcare messages, notices, and Aula briefings. Calendar changes and combined household preparation belong in Planning.'),
     'travel': ('Travel', 'Holidays, local adventures, restaurants, date nights, and travel deals. Calendar event changes belong in Planning.'),
-    'meals': ('Meals', 'Meal plans, recipes, ingredients to use before expiry, and shopping proposals with Hestia. Vega handles shopping changes; Ceres handles stock changes in Shopping & inventory.'),
     'household-admin': ('Household Admin', 'Paperwork, warranties, subscriptions, renewals, and document deadlines with Themis. Analysis uses supplied evidence and explicitly connected sources.'),
     'finances': ('Finances', 'Private budgets, spending reviews, and subscription costs with Plutus, using supplied records. Bank access and payments are not enabled.'),
     'home': ('Home', 'Devices, Home Assistant, weather, and house maintenance with Orion. Chores and reminders belong in Planning; electricity in Energy; servers in Infrastructure. Earlier threads: ' + b.SITE + '/homecompute/channels/home-assistant'),
     'energy': ('Energy', 'Electricity, batteries, consumption, charging plans, and energy reviews. Other household devices belong in Home.'),
-    'shopping': ('Shopping & inventory', 'Shopping lists, product offers, discount watches, and household stock, locations, quantities and expiry dates. Vega handles purchases and lists; Ceres handles inventory. Holidays, restaurants and experience deals belong in Travel.'),
+    'shopping': ('Food & household supplies', 'Meals, recipes, groceries, cleaning products, toiletries and household stock. Hestia plans meals; Vega handles lists and offers; Ceres handles stock. Electronics, clothing, gifts and furniture belong in Shopping. Keep each task in its thread.'),
+    'general-shopping': ('Shopping', 'Research and compare electronics, clothing, furniture, gifts and other purchases with Atlas and Nova. Food, everyday household supplies, shopping lists and stock belong in Food & household supplies; holidays and outings in Travel.'),
     'research': ('Research', 'Questions, comparisons, and investigations with sources. Automated news digests and their follow-up belong in News.'),
     'news': ('News', 'Delivered news digests and discussion of those reports. New research questions belong in Research.'),
     'engineering': ('Engineering', 'Software implementation, bugs, and coding projects. Running services and incidents belong in Infrastructure; agent configuration in OpenClaw.'),
@@ -83,8 +85,11 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
         channels, _ = api.request('GET', f'/users/{owner}/teams/{team_id}/channels?include_deleted=true')
         categories, _ = api.request('GET', prefix)
         by_name = {x['name']: x for x in channels if x.get('type') in {'O', 'P'}}
-        if not set(DETAILS) <= set(by_name):
+        if not set(DETAILS) - {'general-shopping'} <= set(by_name):
             raise b.BootstrapError('complete workspace channel inventory required')
+        if 'general-shopping' in by_name and (by_name['general-shopping'].get('type') != 'P'
+                or by_name['general-shopping'].get('delete_at')):
+            raise b.BootstrapError('active private general Shopping channel required')
         for source, target in RETIRED.items():
             if source not in by_name or by_name[source].get('delete_at'):
                 continue
@@ -103,7 +108,21 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
         for name in ('channels.json', 'openclaw-channel.json', 'n8n-channels.json', 'n8n-integration.json', 'household-access.json'):
             if (directory / name).exists():
                 exports[name] = b.read_private(directory / name)
+        access = exports.get('household-access.json')
+        if access and (access.get('owner_id') != owner or access.get('team_id') != team_id
+                or access.get('audience_policy') != 'all-except-systems'):
+            raise b.BootstrapError('reviewed household audience required before adding Shopping')
         b.save(backup, {'channels': channels, 'categories': categories, 'exports': exports})
+        if 'general-shopping' not in by_name:
+            display, purpose = DETAILS['general-shopping']
+            row, _ = api.request('POST', '/channels', {'team_id': team_id, 'name': 'general-shopping',
+                'display_name': display, 'type': 'P', 'header': purpose, 'purpose': purpose})
+            b.identity(row, 'general Shopping channel')
+            if row.get('team_id') != team_id or row.get('type') != 'P' or row.get('name') != 'general-shopping':
+                raise b.BootstrapError('new Shopping channel readback differs; retain organization backup')
+            by_name['general-shopping'] = row
+            channels.append(row)
+        general_id = by_name['general-shopping']['id']
         # Persist delivery aliases before archiving a destination used by producers.
         retired_ids = {by_name[name]['id']: by_name[target]['id']
                        for name, target in CONSOLIDATED.items() if name in by_name}
@@ -111,15 +130,17 @@ def organize(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
             cleaned = copy.deepcopy(export)
             if name == 'household-access.json':
                 cleaned['shared_channel_ids'] = sorted({retired_ids.get(value, value)
-                                                       for value in cleaned['shared_channel_ids']})
+                                                       for value in cleaned['shared_channel_ids']} | {general_id})
             elif name.startswith('n8n-'):
                 mapping = cleaned['channels']
+                mapping['general-shopping'] = general_id
                 for source, target in CONSOLIDATED.items():
                     if source in mapping:
                         mapping[target] = by_name[target]['id']
                         mapping[source] = by_name[target]['id']
             else:
                 mapping = cleaned if name == 'channels.json' else cleaned['channels']
+                mapping['general-shopping'] = general_id
                 for source in RETIRED:
                     mapping.pop(source, None)
             if cleaned != export:
@@ -223,16 +244,55 @@ def organize_partner(directory: Path = b.PRIVATE, *, apply: bool = False) -> dic
         return {**result, 'applied': True, 'backup_file': str(backup)}
 
 
+def refresh_directory(directory: Path = b.PRIVATE, *, apply: bool = False,
+                      source: Path | None = None) -> dict:
+    """Update the retained directory post, refusing edits made outside its receipt."""
+    source = source or Path(__file__).resolve().parents[1] / 'deploy/mattermost/agent-directory.md'
+    desired = source.read_text()
+    if not desired.startswith('# Your agent team') or not 1 <= len(desired) <= 16000:
+        raise b.BootstrapError('reviewed agent directory source required')
+    with b.bootstrap_lock(directory):
+        credentials = b.read_private(directory / 'credentials.json')
+        receipt = b.read_private(directory / 'agent-directory.json')
+        channels = b.read_private(directory / 'channels.json')
+        api = b.API(credentials['bot_token'])
+        user, _ = api.request('GET', '/users/me')
+        if user.get('id') != credentials['bot_id'] or user.get('is_bot') is not True:
+            raise b.BootstrapError('retained directory author required')
+        post_id = b.identity({'id': receipt['post_id']}, 'directory post')
+        post, _ = api.request('GET', '/posts/' + post_id)
+        current = post['message']
+        if (post.get('user_id') != user['id'] or post.get('channel_id') != channels['inbox']
+                or receipt.get('channel_id') != channels['inbox'] or post.get('delete_at')
+                or hashlib.sha256(current.encode()).hexdigest() != receipt['content_sha256']):
+            raise b.BootstrapError('directory post drift requires review')
+        result = {'changed': current != desired, 'applied': apply, 'post_id': post_id}
+        if apply and current != desired:
+            backup = directory / ('organization-directory-' + uuid.uuid4().hex + '.json')
+            b.save(backup, {'post': post, 'receipt': receipt})
+            api.request('PUT', '/posts/' + post_id, {'id': post_id, 'message': desired})
+            actual, _ = api.request('GET', '/posts/' + post_id)
+            if actual.get('message') != desired:
+                raise b.BootstrapError('directory update readback differs; retain backup')
+            b.save(directory / 'agent-directory.json',
+                   {**receipt, 'content_sha256': hashlib.sha256(desired.encode()).hexdigest()})
+            result['backup_file'] = str(backup)
+        return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--household-sidebar', action='store_true', help="organize Kristina's approved non-Systems rooms")
+    parser.add_argument('--refresh-directory', action='store_true', help='update only the retained agent directory post from repository source')
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')
     os.umask(0o077)
     try:
-        operation = organize_partner if args.household_sidebar else organize
+        if args.household_sidebar and args.refresh_directory:
+            parser.error('choose household sidebar or directory refresh')
+        operation = refresh_directory if args.refresh_directory else (organize_partner if args.household_sidebar else organize)
         print(json.dumps(operation(apply=args.apply), indent=2))
     except (b.BootstrapError, OSError, ValueError, KeyError, TypeError):
         raise SystemExit('Workspace organization failed; inspect the protected backup before retrying.') from None

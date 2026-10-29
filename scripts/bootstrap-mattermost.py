@@ -39,7 +39,7 @@ AGENT_ACCOUNTS = {
     "shopper": ("shopper", "vega", "shopping"),
     "keeper": ("keeper", "ceres", "shopping"),
     "travel": ("travel", "lyra", "travel"),
-    "cook": ("cook", "hestia", "meals"),
+    "cook": ("cook", "hestia", "shopping"),
     "administrator": ("administrator", "themis", "household-admin"),
     "finance": ("finance", "plutus", "finances"),
     "family": ("family", "gaia", "family"),

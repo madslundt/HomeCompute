@@ -403,6 +403,31 @@ class TeamSetupTest(unittest.TestCase):
                              expected_config_sha256=dry['source_config_sha256'], runner=self.runner)
         self.assertTrue(result['applied'])
 
+    def test_coordinator_identity_only_preserves_every_native_setting_and_other_workspaces(self):
+        # An identity refresh must work without reapplying the broader team policy.
+        original = self.config.read_bytes()
+        memory = (self.state / 'workspace/MEMORY.md').read_bytes()
+        other = self.state / 'workspace-researcher'
+        other.mkdir(mode=0o700)
+        (other / 'AGENTS.md').write_text('Retained specialist instructions.')
+        dry = setup.setup(self.config, self.team, coordinator_identity_only=True, runner=self.runner)
+        self.assertEqual(dry['agents'], ['main'])
+        self.assertFalse(dry['config_changed'])
+        self.assertEqual(self.config.read_bytes(), original)
+        result = setup.setup(self.config, self.team, coordinator_identity_only=True, apply=True,
+                             expected_config_sha256=dry['source_config_sha256'], runner=self.runner)
+        self.assertTrue(result['applied'])
+        self.assertEqual(self.config.read_bytes(), original)
+        self.assertEqual((self.state / 'workspace/MEMORY.md').read_bytes(), memory)
+        self.assertEqual((other / 'AGENTS.md').read_text(), 'Retained specialist instructions.')
+        self.assertIn('Food & household supplies', (self.state / 'workspace/AGENTS.md').read_text())
+        self.assertEqual(self.commands, [])
+        retry = setup.setup(self.config, self.team, coordinator_identity_only=True, runner=self.runner)
+        self.assertEqual(retry['workspace_files'], 0)
+        with self.assertRaisesRegex(setup.TeamRefused, 'identity-only-unrelated-upgrade-refused'):
+            setup.setup(self.config, self.team, coordinator_identity_only=True,
+                        enable_calendar_upgrade=True, runner=self.runner)
+
     def test_first_skill_refresh_requires_reviewed_previous_hash_and_backs_up_old_bytes(self):
         source = self.skill_sources(('homecompute-operations',))
         path = self.state / 'workspace/skills/homecompute-operations/SKILL.md'; old = path.read_bytes()

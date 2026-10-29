@@ -271,6 +271,7 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
           enable_household_task_upgrade: bool = False,
           enable_family_task_upgrade: bool = False,
           family_tasks_only: bool = False,
+          coordinator_identity_only: bool = False,
           enable_mail_upgrade: bool = False,
           runner: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
     if config.is_symlink() or not config.is_file():
@@ -281,7 +282,12 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
                                                or expected_config_sha256 != source_digest):
         raise TeamRefused('reviewed-config-digest-mismatch')
     before = json.loads(raw)
-    if family_tasks_only:
+    if coordinator_identity_only:
+        if (family_tasks_only or skills_source is not None or expected_skills or any((enable_calendar_upgrade,
+                enable_retrieval_upgrade, enable_household_task_upgrade, enable_family_task_upgrade, enable_mail_upgrade))):
+            raise TeamRefused('identity-only-unrelated-upgrade-refused')
+        after = json.loads(raw)
+    elif family_tasks_only:
         if skills_source is not None or expected_skills or any((enable_calendar_upgrade,
                 enable_retrieval_upgrade, enable_household_task_upgrade, enable_mail_upgrade)):
             raise TeamRefused('family-only-unrelated-upgrade-refused')
@@ -299,10 +305,11 @@ def setup(config: Path, team: dict[str, Any], *, apply: bool = False, output: Pa
             or any(not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value) for value in expected_skills.values())):
         raise TeamRefused('expected-skill-digest-refused')
     sources = reviewed_skill_sources(skills_source)
-    identity_roles = ('main', 'personal', 'operator', 'family') if family_tasks_only else ROSTER
+    identity_roles = ('main',) if coordinator_identity_only else (
+        ('main', 'personal', 'operator', 'family') if family_tasks_only else ROSTER)
     planned = workspace_plan(before, after, team, set(sources), roles=identity_roles,
-                             identity_only=family_tasks_only)
-    if not family_tasks_only:
+                             identity_only=family_tasks_only or coordinator_identity_only)
+    if not family_tasks_only and not coordinator_identity_only:
         planned += managed_skill_plan(config, after, team, sources, expected_skills)
     planned_before = {path: path.read_bytes() if path.exists() else None for path, _ in planned}
     if output:
@@ -353,6 +360,7 @@ def main() -> None:
     parser.add_argument('--enable-household-task-upgrade', action='store_true', help='reviewed first additive household task grant for Luna and Orion')
     parser.add_argument('--enable-family-task-upgrade', action='store_true', help='reviewed first additive shared family task grant for Gaia, Luna and Orion')
     parser.add_argument('--family-tasks-only', action='store_true', help='change only shared task tool policy and the four related identity blocks')
+    parser.add_argument('--coordinator-identity-only', action='store_true', help='refresh only Atlas instructions and trusted channel map; retain all native state')
     parser.add_argument('--enable-mail-upgrade', action='store_true', help='reviewed first additive read-only mail grant for Luna')
     parser.add_argument('--expect-skill-sha256', action='append', default=[], metavar='NAME=SHA256',
                         help='reviewed prior bundle hash for the first managed update')
@@ -369,6 +377,7 @@ def main() -> None:
                                enable_household_task_upgrade=args.enable_household_task_upgrade,
                                enable_family_task_upgrade=args.enable_family_task_upgrade,
                                family_tasks_only=args.family_tasks_only,
+                               coordinator_identity_only=args.coordinator_identity_only,
                                enable_mail_upgrade=args.enable_mail_upgrade)))
     except (TeamRefused, ValueError, OSError) as error:
         print(json.dumps({'ok': False, 'error': str(error) if isinstance(error, TeamRefused) else 'team-setup-input-refused'}))
