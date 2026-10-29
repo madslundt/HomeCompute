@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-29",
+  "applied_revision": "0676513842343a24f1e3342fe09171dd17513fe3",
+  "lifecycle": "Dedicated Mattermost setup, native account/identity helpers, and source-built atomic n8n destination patches",
+  "runbook": "deploy/mattermost/README.md",
+  "source": [
+    "scripts/bootstrap-mattermost.py",
+    "scripts/organize-mattermost.py",
+    "scripts/setup-mattermost-n8n.py",
+    "scripts/mattermost_agent_accounts.py",
+    "scripts/sync-mattermost-atlas.py",
+    "scripts/setup-openclaw-mattermost.py",
+    "scripts/setup-openclaw-team.py",
+    "scripts/mattermost_channel_destinations.py",
+    "config/openclaw-team.json",
+    "deploy/mattermost/agent-directory.md",
+    "automations/household-routines/n8n-workflow.ts"
+  ],
+  "retired_channels": {
+    "personal": "family",
+    "aula": "family",
+    "energy": "home",
+    "household-admin": "finances",
+    "news": "research",
+    "agent-playground": "openclaw"
+  },
+  "active_channels_before": 18,
+  "active_channels_after": 12,
+  "audience": {
+    "shared_destination_humans": "Same two previously approved adults",
+    "openclaw_and_infrastructure": "Existing owner-only Systems membership retained",
+    "gaia": "Native account disabled, group policy disabled, runtime stopped, Family membership removed; credentials and workspace retained",
+    "private_dms_and_memories": "No imports or additional grants"
+  },
+  "native": {
+    "reload": "NEMOCLAW_GATEWAY_PORT=9123 nemoclaw agent-openclaw gateway restart --quiet",
+    "changed_config_paths": [
+      "channels.mattermost.accounts.family.enabled",
+      "channels.mattermost.accounts.family.groupPolicy"
+    ],
+    "other_native_configuration": "All other parsed native configuration values unchanged; no model, tool, credential, binding or DM policy changes",
+    "identities_refreshed": [
+      "main",
+      "personal"
+    ],
+    "prior_luna_block": "Reviewed difference from source: missing tasks skill trigger and already-versioned owner-private photo guidance; surrounding unmanaged blocks retained",
+    "reply_check": "Fresh synthetic operator-only turn passed with a 120-second budget after an initial 45-second timeout. It identified Luna, Orion and Themis, rejected private DM/Gaia-memory imports, and used no tools or external delivery."
+  },
+  "workflow_versions": {
+    "U2kI7V9EGcMc14Su": {
+      "before": "072857d0-5ba9-4125-a94f-4c0fcba8735a",
+      "after": "3253cb5f-d0ad-496a-8114-084b2ec41ca0"
+    },
+    "RjId1K2BPpv5lAVN": {
+      "before": "2792c335-fa5d-4e8b-9ee2-79a7743fb85d",
+      "after": "78e0fcda-8c8a-49bc-94ac-9dc739f5981b"
+    },
+    "86FmVCFIF86m8fLx": {
+      "before": "9611521f-4ffe-49f0-b756-c3b597d0a007",
+      "after": "dbcaf9f8-334e-4c8e-b8e5-a57e5241753a"
+    },
+    "FC7HqrZ9UGsMJKao": {
+      "before": "07313b82-eb8a-4473-859c-3b87935e9469",
+      "after": "5c54b7e1-cd0a-4df5-9efa-2f60a60849ea"
+    },
+    "WKu7Zv4dE4ztnaRY": {
+      "before": "8b501c29-bd31-4eb3-ada5-c2f13ef7a0fa",
+      "after": "757eded0-209d-4461-a3c7-8ce5d1787a11"
+    }
+  },
+  "verification": {
+    "repository_validation_including_nix": "passed",
+    "focused_channel_native_and_reminder_tests": "passed",
+    "published_workflows_match_source_operations_only": true,
+    "schedules_credentials_messages_connections_and_claim_keys_preserved": true,
+    "old_destination_ids_absent_from_all_five_active_graphs": true,
+    "both_adults_verified_https_and_retained_channel_access": true,
+    "partner_denied_both_systems_channels": true,
+    "six_archives_and_history_links": true,
+    "both_sidebars_and_directory": true,
+    "all_installed_mattermost_helpers_compose_and_running_image_digest": true,
+    "owner_and_shared_reminder_checks": "Both passed; sent 0",
+    "household_reminder_timer": "Original active state restored",
+    "repeat_directory_and_reminder_plans": "No changes",
+    "forced_notification_workflow_executions": 0,
+    "homecompute_status_services_doctor_drift": "inspected",
+    "repeat_atlas_and_luna_identity_plan": "Zero workspace changes and no native configuration changes"
+  },
+  "recovery": {
+    "helpers": "/srv/state/mattermost/private/consolidation-helpers-before-0676513",
+    "organization": "/srv/state/mattermost/private/organization-4a190cb02948498e965daaa13457888f.json",
+    "partner_sidebar": "/srv/state/mattermost/private/partner-sidebar-c79ec51d20c64c82bf9109605f465b0d.json",
+    "directory": "/srv/state/mattermost/private/organization-directory-4ec690922b0d41d48ba94155eae28bf1.json",
+    "reminder_configuration": "/srv/state/mattermost/private/task-destination-006bcf784eec4b84a81d8791e8d1f28e.json",
+    "native_configuration": "/sandbox/.openclaw/mattermost-setup/backup-254cba2420ab42ed80b628be1f4bcc02.json",
+    "native_identities": "/sandbox/.openclaw/team-setup-backups/fa85c3f7-35e5-4fe9-b96d-4f25c881a21f"
+  },
+  "remaining_state": [
+    "Four Aula executions (1874, 1887, 1896, 174534) were already held until year 2999/3000. They retain historical graph snapshots and were not resumed, replayed, cancelled or edited. Use a fresh authorized run of the new published graph for any future retry.",
+    "Archived synthetic workflow copies retain historical destinations; they remain inactive and archived.",
+    "The pre-existing homecompute-nas-recovery-backup.service and homecompute-platform-health.service failures remain unchanged.",
+    "Both host-wide release markers remain at 07740fb8a2c94ce7f2f7d06132035fd5ae8840e7. This dedicated channel rollout does not reconcile every host workload or make a platform-wide synchronization claim."
+  ]
+}

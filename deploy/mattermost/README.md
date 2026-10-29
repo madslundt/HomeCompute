@@ -20,8 +20,9 @@ household channel. Existing hard-coded grocery destinations stay valid.
 for electronics, clothes, gifts, furniture and other purchases. Atlas uses Nova
 for public product research and comparisons. Creating this room adds no tools,
 credentials, purchasing authority or new specialist. Mads and Kristina share it
-under the existing non-Systems audience policy. Family's separate identity and
-school/calendar privacy boundary are unaffected by this migration.
+under the existing non-Systems audience policy. The later Family consolidation
+below retires its separate channel contact while preserving the existing adult
+audience and private DM boundaries.
 
 ## Authorized channel rollout
 
@@ -32,6 +33,11 @@ receipt and workflow destination IDs first. Compare installed helper hashes
 with their owning release. Retain sanitized evidence of any difference before
 choosing what to reconcile. Neither a host code checkout nor these helpers
 changes the host-wide release marker.
+
+For a server still using separate Family/Aula/Planning channels, complete the
+ordered consolidation procedure below first. The following sequence is an
+organization refresh after producers and native ingress have been migrated;
+do not archive a destination that still has live producers.
 
 From that published checkout on `home-core`, run:
 
@@ -139,8 +145,13 @@ versions and private configuration backups. Use this order:
 3. Refresh Atlas and Luna with `setup-openclaw-team.py
    --coordinator-identity-only --identity-role main --identity-role personal`,
    reviewing the source configuration hash before `--apply`. Compare their old
-   managed blocks with the preceding published render. Use the supported native
-   reload lifecycle and confirm the disabled account before admitting school data.
+   managed blocks with the preceding published render. On the agents VM run
+   `NEMOCLAW_GATEWAY_PORT=9123 nemoclaw agent-openclaw gateway restart --quiet`.
+   Confirm `NEMOCLAW_GATEWAY_PORT=9123 nemoclaw agent-openclaw exec --
+   openclaw channels status --json` reports Gaia disabled and not running
+   before admitting school data. The inner `openclaw gateway restart` service
+   command does not own this custom-state sandbox; do not change HOME or bypass
+   its ownership refusal.
 4. Run `setup-mattermost.py install`, then `setup-mattermost-n8n.py` to prepare
    target bot memberships. The topic reconciler allows the explicitly retiring
    topic memberships during this transition; unknown memberships still refuse.
@@ -151,7 +162,10 @@ versions and private configuration backups. Use this order:
    news and tomorrow preparation. Preserve credentials, message rendering,
    schedules, retry rules, claim keys, private system-review routing and other
    nodes. Do not run notification workflows as tests.
-6. Run `organize-mattermost.py --task-destination --apply` to update the existing
+6. Pause the existing `homecompute-openclaw-household-task-reminders.timer` and
+   wait for its oneshot service to become idle. Preserve whether the timer was
+   active and restore that state even on failure. Run
+   `organize-mattermost.py --task-destination --apply` to update the existing
    service-owned reminder configuration, preserving its owner, mode and token
    path. Then run the organization, topic, household, partner-sidebar and
    directory commands above. Destination changes precede channel archival.
@@ -167,3 +181,8 @@ its destination is unavailable. The reminder helper retains a private
 `task-destination-*.json` backup; restore its one destination field only after
 checking for subsequent configuration changes. Keep durable claims and task
 records; do not replay notifications or merge private conversation transcripts.
+Keep already-held Aula executions on hold; their captured graphs retain their
+old destinations. A future authorized retry must use the new published graph,
+rather than resuming an old notification snapshot. Keep Gaia disabled through
+rollback until any newly delivered school/calendar content in Family has been
+reviewed; restoring configuration does not undo shared message history.
