@@ -1,0 +1,28 @@
+# Disposable runtime-only qualification on the operator workstation.
+# No application deployment, database, Docker socket, accounts or computer tools.
+name: homecompute-rakazo-comparison
+services:
+  runtime:
+    image: ghcr.io/elie222/rakazo/app@sha256:834d2dc044e827d4c6d7cbe00aae136da2811c49c43de0f024f8dce30fea7116
+    command: [pnpm, exec, tsx, /probe/rakazo-runtime.mts]
+    working_dir: /app
+    init: true
+    read_only: true
+    restart: "no"
+    mem_limit: 2g
+    cpus: 1
+    pids_limit: 128
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:size=128m,mode=1777"]
+    environment:
+      COMPARISON_CASE: ${COMPARISON_CASE:-}
+      COMPARISON_REASONING_CONTROL: ${COMPARISON_REASONING_CONTROL:-false}
+      LOG_LEVEL: "off"
+      RAKAZO_LIVE_MODEL_CATALOG: "off"
+      RAKAZO_OPENAI_COMPAT_ALLOW_PUBLIC: "0"
+      MODEL_STREAM_MAX_RETRIES: "0"
+      PI_SESSION_RECORDING: "off"
+    volumes:
+      - .:/probe:ro
+      - ${COMPARISON_EVIDENCE:?Set private absolute comparison evidence directory}:/evidence

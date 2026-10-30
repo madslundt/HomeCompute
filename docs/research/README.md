@@ -8,6 +8,7 @@ Start with these current synthesis documents:
 
 | Topic | Entry point |
 | --- | --- |
+| Rakazo versus the existing OpenClaw setup (2026-10-29) | [`rakazo-assessment-2026-10-29.md`](rakazo-assessment-2026-10-29.md); [Grok Bot experience plan](../openclaw-grok-bot-plan.md) |
 | MCP and skill additions (2026-10-28) | [`mcp-and-skills-assessment-2026-10-28.md`](mcp-and-skills-assessment-2026-10-28.md) |
 | Quality-first GB10 recommendations and Danish ASR additions (2026-09-05) | [`gb10-best-models-2026-09-05.md`](gb10-best-models-2026-09-05.md) |
 | Model installation order | [`llm-installation-recommendation.md`](llm-installation-recommendation.md) |

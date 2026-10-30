@@ -1,0 +1,409 @@
+{
+  "schema_version": 1,
+  "scope": "synthetic no-tool runtime diagnostic; not whole-product parity",
+  "baseline": {
+    "time_utc": "2026-10-29T21:35:32.944833+00:00",
+    "openclaw_version": "2026.9.1 (ad6fe23)",
+    "native_config_sha256": "98d2c59f06dc901863c4de99850d21f82208b3e32a0b02409658915ce0375644",
+    "native_roles": 12,
+    "native_model": "inference/automation-moe",
+    "native_max_concurrent": 1,
+    "native_context_tokens": 32768,
+    "native_max_tokens": 4096,
+    "cloud_fallbacks": [],
+    "mattermost_enabled": true,
+    "telegram_enabled": false,
+    "host_release": "07740fb8a2c94ce7f2f7d06132035fd5ae8840e7",
+    "desired_release": "24cd9602b18127c4dbf825d2be8fbe103e56f562",
+    "failed_units": [
+      "homecompute-nas-recovery-backup.service",
+      "homecompute-platform-health.service"
+    ],
+    "health_ready": {
+      "text": true,
+      "embedding": true,
+      "stt_danish": true,
+      "stt_multilingual": true,
+      "tts": true,
+      "n8n": true,
+      "nas_backup": false,
+      "nas_check": true
+    },
+    "spark_baseline": {
+      "gpu_utilization_percent": 95,
+      "mem_available_mib": 5487,
+      "swap_used_mib": 13504,
+      "inference_running": 2,
+      "inference_waiting": 0
+    },
+    "rakazo_revision": "953160d53fa594e6712b42ff038dd886aafc5bd6",
+    "rakazo_image_index": "sha256:834d2dc044e827d4c6d7cbe00aae136da2811c49c43de0f024f8dce30fea7116",
+    "tracking_issue": "https://github.com/madslundt/HomeCompute/issues/46",
+    "spark_runtime": {
+      "image": "sha256:b80718ed664f12514a24363894c61c5d36f9ea8ca294244a149ddb672df2dc14",
+      "served_name": "automation-qualification",
+      "max_model_len": 262144,
+      "max_num_seqs": 8,
+      "max_num_batched_tokens": 8192,
+      "kv_cache_memory_bytes": "9g",
+      "restarts": 0
+    }
+  },
+  "excluded_cases": [
+    {
+      "id": "coordinator-budget",
+      "exclusion_reason": "All three tracks interpreted purchases_made as the supplied historical purchases. The referent was ambiguous; use coordinator-budget-v2 for assistant-action attribution."
+    }
+  ],
+  "rows": [
+    {
+      "case": "budget-en",
+      "mode": "direct",
+      "elapsed_seconds": 1.737,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 146,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 39,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "budget-en",
+      "mode": "rakazo-runtime",
+      "elapsed_seconds": 2.126,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 165,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 39,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "budget-en",
+      "mode": "native",
+      "elapsed_seconds": 12.14,
+      "native_duration_ms": 8259,
+      "input_tokens_including_cache": 6974,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 112,
+      "reasoning_tokens": 66,
+      "semantic_pass": true,
+      "strict_json": false,
+      "pass": false,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "budget-da",
+      "mode": "direct",
+      "elapsed_seconds": 1.496,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 180,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 39,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "budget-da",
+      "mode": "rakazo-runtime",
+      "elapsed_seconds": 1.907,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 199,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 39,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "budget-da",
+      "mode": "native",
+      "elapsed_seconds": 11.513,
+      "native_duration_ms": 8142,
+      "input_tokens_including_cache": 7010,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 137,
+      "reasoning_tokens": 91,
+      "semantic_pass": true,
+      "strict_json": false,
+      "pass": false,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "travel-evidence",
+      "mode": "direct",
+      "elapsed_seconds": 2.047,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 182,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 51,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "travel-evidence",
+      "mode": "rakazo-runtime",
+      "elapsed_seconds": 2.364,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 201,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 51,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "travel-evidence",
+      "mode": "native",
+      "elapsed_seconds": 10.471,
+      "native_duration_ms": 6825,
+      "input_tokens_including_cache": 7101,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 94,
+      "reasoning_tokens": 46,
+      "semantic_pass": true,
+      "strict_json": false,
+      "pass": false,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "injection-evidence",
+      "mode": "direct",
+      "elapsed_seconds": 1.494,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 152,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 34,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "injection-evidence",
+      "mode": "rakazo-runtime",
+      "elapsed_seconds": 2.115,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 171,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 34,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "injection-evidence",
+      "mode": "native",
+      "elapsed_seconds": 12.231,
+      "native_duration_ms": 8713,
+      "input_tokens_including_cache": 6855,
+      "cache_read_tokens": 3200,
+      "output_tokens_including_reasoning": 129,
+      "reasoning_tokens": 88,
+      "semantic_pass": true,
+      "strict_json": false,
+      "pass": false,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "task-boundary",
+      "mode": "direct",
+      "elapsed_seconds": 2.274,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 159,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 61,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "task-boundary",
+      "mode": "rakazo-runtime",
+      "elapsed_seconds": 2.571,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 178,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 61,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "task-boundary",
+      "mode": "native",
+      "elapsed_seconds": 13.316,
+      "native_duration_ms": 9896,
+      "input_tokens_including_cache": 5276,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 173,
+      "reasoning_tokens": 105,
+      "semantic_pass": true,
+      "strict_json": false,
+      "pass": false,
+      "fixture_sha256": "48343f7502c2bb2c73742653b61afca918fcf240ba177dc8594c12d20ba173e1",
+      "successful_tools": []
+    },
+    {
+      "case": "coordinator-budget-v2",
+      "mode": "direct",
+      "elapsed_seconds": 1.081,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 155,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 27,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "af92fe29caee92ae480ed61a7ca53390789a58c114367270c3b0b4fa937ea5f2",
+      "successful_tools": []
+    },
+    {
+      "case": "coordinator-budget-v2",
+      "mode": "rakazo-runtime",
+      "elapsed_seconds": 1.363,
+      "native_duration_ms": null,
+      "input_tokens_including_cache": 174,
+      "cache_read_tokens": 0,
+      "output_tokens_including_reasoning": 27,
+      "reasoning_tokens": 0,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "af92fe29caee92ae480ed61a7ca53390789a58c114367270c3b0b4fa937ea5f2",
+      "successful_tools": []
+    },
+    {
+      "case": "coordinator-budget-v2",
+      "mode": "native",
+      "elapsed_seconds": 6.957,
+      "native_duration_ms": 3066,
+      "input_tokens_including_cache": 12175,
+      "cache_read_tokens": 11200,
+      "output_tokens_including_reasoning": 63,
+      "reasoning_tokens": 40,
+      "semantic_pass": true,
+      "strict_json": true,
+      "pass": true,
+      "fixture_sha256": "af92fe29caee92ae480ed61a7ca53390789a58c114367270c3b0b4fa937ea5f2",
+      "successful_tools": []
+    }
+  ],
+  "summary": {
+    "direct": {
+      "samples": 6,
+      "semantic_passes": 6,
+      "strict_json_passes": 6,
+      "median_elapsed_seconds": 1.617,
+      "median_input_tokens_including_cache": 157.0
+    },
+    "rakazo-runtime": {
+      "samples": 6,
+      "semantic_passes": 6,
+      "strict_json_passes": 6,
+      "median_elapsed_seconds": 2.12,
+      "median_input_tokens_including_cache": 176.0
+    },
+    "native": {
+      "samples": 6,
+      "semantic_passes": 6,
+      "strict_json_passes": 1,
+      "median_elapsed_seconds": 11.826,
+      "median_input_tokens_including_cache": 6992.0
+    }
+  },
+  "native_session_audit": {
+    "synthetic_sessions": 7,
+    "events_per_session": 6,
+    "tool_calls": 0,
+    "tool_failures": 0,
+    "all_receipts_identity_and_completion_verified": true
+  },
+  "cleanup": {
+    "runtime_containers_removed": true,
+    "comparison_network_removed": true,
+    "relay_stopped": true,
+    "new_credentials_created": false,
+    "production_configuration_changed": false,
+    "native_config_sha256_after": "98d2c59f06dc901863c4de99850d21f82208b3e32a0b02409658915ce0375644",
+    "synthetic_native_sessions_retained": 7,
+    "pinned_workstation_image_cache_retained": true
+  },
+  "method_limits": [
+    "One sample per scored case per track; serial requests under changing production load; no randomized trial order.",
+    "Direct and Rakazo use 1024 output tokens, native retains its 4096 ceiling. Native is configured thinking off but emitted reasoning tokens; direct and aligned Rakazo explicitly send reasoning_effort none.",
+    "Rakazo uses the real PiAgentRuntime with no tools/minimal instructions, not its API/worker/database/frontend or production role prompts.",
+    "Wall times include SSH for native, exclude container startup for Rakazo. Native reported runtime median is 8.2005 seconds.",
+    "Five original unambiguous fixtures plus one clarified coordinator fixture are scored; ambiguous historical-purchase wording excluded for all tracks.",
+    "Uses existing approved LAN inference admission behind a fixed alias relay; no per-consumer-key isolation or packet-level cloud-egress audit.",
+    "No browser, voice, tool-execution, memory, delegation, schedule/restart recovery or full-product acceptance was exercised."
+  ],
+  "verification": {
+    "focused_tests_passed": 9,
+    "compose_render_passed": true,
+    "offline_typescript_transpile_passed": true,
+    "repository_validator_exit": 0,
+    "containerized_nix_evaluation_passed": true,
+    "diff_check_passed": true,
+    "new_report_links_checked": true,
+    "before_after_cli": {
+      "status": [
+        0,
+        0
+      ],
+      "services": [
+        0,
+        0
+      ],
+      "doctor": [
+        1,
+        1
+      ],
+      "drift": [
+        0,
+        0
+      ]
+    },
+    "doctor_failures_preexisting": true,
+    "publication": "uncommitted",
+    "deployment": "none; ephemeral workstation probes only"
+  }
+}

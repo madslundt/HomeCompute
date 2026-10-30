@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "scope": "Read-only production metadata plus six serial synthetic no-tool requests; no optimization applied",
+  "date": "2026-10-29",
+  "desired_revision": "24cd9602b18127c4dbf825d2be8fbe103e56f562",
+  "deployed_revision_both_hosts": "07740fb8a2c94ce7f2f7d06132035fd5ae8840e7",
+  "runtime": {
+    "image_id": "sha256:b80718ed664f12514a24363894c61c5d36f9ea8ca294244a149ddb672df2dc14",
+    "vllm_version": "0.1.dev20073+g8e685d198",
+    "served_model": "automation-qualification",
+    "client_alias": "automation-moe",
+    "max_model_len": 262144,
+    "max_num_seqs": 8,
+    "max_num_batched_tokens": 8192,
+    "kv_cache_memory_bytes_argument": "9g",
+    "kv_dtype": "auto",
+    "prefix_caching": true,
+    "chunked_prefill": true,
+    "mtp_tokens": 3,
+    "tool_parser": "qwen3_xml",
+    "reasoning_parser": "qwen3",
+    "protected_build_manifest": "unreadable; source/model provenance join unverified"
+  },
+  "passive": {
+    "start_utc": "2026-10-29T21:48:57.742Z",
+    "end_utc": "2026-10-29T21:49:17.778Z",
+    "sample_count": 5,
+    "duration_seconds": 20.036789178848267,
+    "mem_total_gib": 121.62528610229492,
+    "mem_available_gib_range": [
+      5.371006011962891,
+      5.426296234130859
+    ],
+    "swap_used_gib": 13.185665130615234,
+    "vm_counter_deltas": {
+      "pswpin": 0,
+      "pswpout": 0,
+      "pgmajfault": 25,
+      "pgsteal_kswapd": 0,
+      "pgscan_kswapd": 0,
+      "oom_kill": 0
+    },
+    "running_range": [
+      1,
+      2
+    ],
+    "waiting_range": [
+      0,
+      0
+    ],
+    "kv_usage_fraction_range": [
+      0.10837438423645318,
+      0.21674876847290636
+    ],
+    "preemptions_lifetime": 285,
+    "preemptions_delta": 0,
+    "prefix_queries_delta": 6646,
+    "prefix_hits_delta": 6400,
+    "draft_steps_delta": 506,
+    "draft_tokens_delta": 1518,
+    "accepted_tokens_delta": 486,
+    "generation_tokens_delta": 990,
+    "completed_requests_delta": 1,
+    "completed_request_phase_deltas": {
+      "prompt_tokens": 7082,
+      "output_tokens": 1643,
+      "computed_prefill_tokens": 682,
+      "queue_seconds": 8.672010153532028e-06,
+      "prefill_seconds": 0.5450892229564488,
+      "decode_seconds": 35.67925963003654,
+      "e2e_seconds": 36.26743292808533
+    },
+    "limitation": "Foreign production traffic; global counters are not per-fixture traces. No p50/p95 inferred from one completed request."
+  },
+  "synthetic": {
+    "model": "automation-moe",
+    "temperature": 0,
+    "max_tokens": 128,
+    "reasoning_effort": "none",
+    "stream": true,
+    "concurrency_added": 1,
+    "admission": {
+      "minimum_available_gib": 4,
+      "maximum_existing_running": 2,
+      "maximum_waiting": 0
+    },
+    "rows": [
+      {
+        "fixture": "budget-en",
+        "repeat": 1,
+        "e2e_seconds": 1.3088,
+        "ttft_seconds": 0.4163,
+        "first_visible_seconds": 0.4163,
+        "prompt_tokens": 182,
+        "completion_tokens": 39,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+        "http_status": 200,
+        "finish_reason": "stop",
+        "strict_expected_json": true
+      },
+      {
+        "fixture": "budget-en",
+        "repeat": 2,
+        "e2e_seconds": 1.1826,
+        "ttft_seconds": 0.434,
+        "first_visible_seconds": 0.434,
+        "prompt_tokens": 182,
+        "completion_tokens": 39,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+        "http_status": 200,
+        "finish_reason": "stop",
+        "strict_expected_json": true
+      },
+      {
+        "fixture": "budget-en",
+        "repeat": 3,
+        "e2e_seconds": 1.1,
+        "ttft_seconds": 0.3733,
+        "first_visible_seconds": 0.3733,
+        "prompt_tokens": 182,
+        "completion_tokens": 39,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+        "http_status": 200,
+        "finish_reason": "stop",
+        "strict_expected_json": true
+      },
+      {
+        "fixture": "budget-da",
+        "repeat": 1,
+        "e2e_seconds": 1.3722,
+        "ttft_seconds": 0.3999,
+        "first_visible_seconds": 0.3999,
+        "prompt_tokens": 216,
+        "completion_tokens": 39,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+        "http_status": 200,
+        "finish_reason": "stop",
+        "strict_expected_json": true
+      },
+      {
+        "fixture": "budget-da",
+        "repeat": 2,
+        "e2e_seconds": 1.4191,
+        "ttft_seconds": 0.4836,
+        "first_visible_seconds": 0.4836,
+        "prompt_tokens": 216,
+        "completion_tokens": 39,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+        "http_status": 200,
+        "finish_reason": "stop",
+        "strict_expected_json": true
+      },
+      {
+        "fixture": "budget-da",
+        "repeat": 3,
+        "e2e_seconds": 1.3167,
+        "ttft_seconds": 0.4386,
+        "first_visible_seconds": 0.4386,
+        "prompt_tokens": 216,
+        "completion_tokens": 39,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0,
+        "http_status": 200,
+        "finish_reason": "stop",
+        "strict_expected_json": true
+      }
+    ],
+    "limitations": [
+      "Six short outputs only; no tool execution or native OpenClaw turn in this new sample.",
+      "Repeated resident-engine requests; cache counts zero, not a demonstrated cache-warm comparison.",
+      "No engine cold start, stress test, induced speech overlap or production reconfiguration."
+    ],
+    "fixture_file_sha256": "af92fe29caee92ae480ed61a7ca53390789a58c114367270c3b0b4fa937ea5f2"
+  },
+  "health": {
+    "doctor_exit": 1,
+    "preexisting_failed_units": [
+      "homecompute-nas-recovery-backup.service",
+      "homecompute-platform-health.service"
+    ],
+    "services_exit": 0,
+    "drift_exit": 0,
+    "drift_report": "both hosts revision-drifted",
+    "spark_failed_units": [],
+    "speech_metrics_snapshot": {
+      "hviske": {
+        "running": 0,
+        "waiting": 0,
+        "success_since_start": 0
+      },
+      "whisper": {
+        "running": 0,
+        "waiting": 0,
+        "success_since_start": 84
+      },
+      "plapre": "metrics unavailable; health healthy"
+    }
+  },
+  "publication": "uncommitted",
+  "deployment": "none"
+}

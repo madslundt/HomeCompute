@@ -162,6 +162,12 @@ writes. Workflow/task/delivery state remains in n8n/the broker.
 
 ## Operator-only recipe after approval
 
+For reasoning-control and browser prompt/schema experiments that keep the
+gateway running, use the isolated
+[performance qualification](../benchmarks/openclaw-optimization/README.md).
+The [2026-10-30 measurements](benchmarks/openclaw-performance-2026-10-30.md)
+retain a combined tool-loop failure; no candidate is applied by that harness.
+
 First inspect the VM's backup/network readiness, disk capacity, existing
 registries, free ports and pinned CLI/runtime versions. Provision the dedicated
 model key outside the sandbox and review the template. Do not run an installer
