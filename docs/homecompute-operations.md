@@ -365,6 +365,8 @@ after 30 minutes; successful completion, inspection errors, transfer failures
 and failed resumption do not restart automatically. Preparation runs in the
 backup unit's main command so systemd can distinguish its exit status. A
 deferred manual `backup-now` is not evidence of a completed fresh backup.
+The main command forwards a service-stop SIGTERM to preparation and waits for
+its recovery cleanup; a stop never begins archive transfer or schedules a retry.
 The private resume journal and `ExecStopPost` recovery also cover interrupted
 preparation. Successful preparation resumes applications before uploading the
 uncompressed archive through encrypted Restic.

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import signal
 import stat
 import subprocess
 import sys
@@ -127,10 +128,29 @@ def scheduled(preparer: Path) -> None:
     info = preparer.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
         raise ValueError("protected application recovery preparer required")
-    result = subprocess.run([sys.executable, "-I", str(preparer), "prepare"], check=False)
-    if result.returncode:
+    process = None
+    stopping = False
+    previous = signal.getsignal(signal.SIGTERM)
+    def stop(signum, _frame):
+        nonlocal stopping
+        stopping = True
+        if process is not None:
+            process.send_signal(signum)
+    # KillMode=mixed initially signals only this main process. Let preparation
+    # receive SIGTERM and finish its bounded resumption before we exit.
+    signal.signal(signal.SIGTERM, stop)
+    try:
+        process = subprocess.Popen([sys.executable, "-I", str(preparer), "prepare"])
+        if stopping:
+            process.send_signal(signal.SIGTERM)
+        status = process.wait()
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+    if stopping:
+        raise SystemExit(1)
+    if status:
         # Signals and unknown failures must not become the retryable status.
-        raise SystemExit(result.returncode if result.returncode > 0 else 1)
+        raise SystemExit(status if status > 0 else 1)
     backup()
 
 

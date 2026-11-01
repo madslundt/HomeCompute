@@ -5,8 +5,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +22,39 @@ CONFIG = {"address": "192.168.30.236", "share": "homecompute-backups",
 
 
 class NASBackupTest(unittest.TestCase):
+    def test_stopping_scheduled_backup_allows_preparer_to_resume_sources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); preparer = root / 'application-recovery.py'
+            ready = root / 'ready'; resumed = root / 'resumed'
+            preparer.write_text(
+                'import os, signal, time\nfrom pathlib import Path\n'
+                'def stop(*_):\n'
+                f' Path({str(resumed)!r}).write_text("sources resumed")\n'
+                ' raise SystemExit(1)\n'
+                'signal.signal(signal.SIGTERM, stop)\n'
+                f'Path({str(ready)!r}).write_text(str(os.getpid()))\n'
+                'time.sleep(30)\nraise SystemExit(1)\n')
+            preparer.chmod(0o644)
+            code = ('import importlib.util, sys; from pathlib import Path; '
+                    's=importlib.util.spec_from_file_location("nas",sys.argv[1]); '
+                    'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
+                    'm.backup=lambda: sys.exit(99); '
+                    'm.scheduled(Path(sys.argv[2]))')
+            parent = subprocess.Popen([sys.executable, '-I', '-c', code,
+                                       str(ROOT / 'scripts/nas-recovery-backup.py'), str(preparer)])
+            try:
+                deadline = time.monotonic() + 5
+                while not ready.exists() and time.monotonic() < deadline: time.sleep(0.02)
+                self.assertTrue(ready.exists(), 'preparer did not start')
+                parent.send_signal(signal.SIGTERM)
+                self.assertEqual(parent.wait(timeout=5), 1)
+                self.assertEqual(resumed.read_text(), 'sources resumed')
+            finally:
+                if parent.poll() is None: parent.kill(); parent.wait()
+                if ready.exists() and not resumed.exists():
+                    try: os.kill(int(ready.read_text()), signal.SIGKILL)
+                    except ProcessLookupError: pass
+
     def test_scheduled_backup_only_transfers_after_successful_preparation(self):
         with tempfile.TemporaryDirectory() as temporary:
             preparer = Path(temporary) / 'application-recovery.py'
@@ -26,8 +62,9 @@ class NASBackupTest(unittest.TestCase):
             preparer.chmod(0o644)
             for status in (0, 1, 75, -15):
                 with self.subTest(status=status), patch.object(backup.os, 'geteuid', return_value=preparer.stat().st_uid), \
-                        patch.object(backup.subprocess, 'run', return_value=subprocess.CompletedProcess([], status)) as run, \
+                        patch.object(backup.subprocess, 'Popen') as run, \
                         patch.object(backup, 'backup') as transfer:
+                    run.return_value.wait.return_value = status
                     if status:
                         with self.assertRaises(SystemExit) as result: backup.scheduled(preparer)
                         self.assertEqual(result.exception.code, status if status > 0 else 1)
@@ -43,7 +80,7 @@ class NASBackupTest(unittest.TestCase):
             preparer = Path(temporary) / 'application-recovery.py'
             preparer.write_text('untrusted')
             preparer.chmod(0o666)
-            with patch.object(backup.subprocess, 'run') as run, self.assertRaises(ValueError):
+            with patch.object(backup.subprocess, 'Popen') as run, self.assertRaises(ValueError):
                 backup.scheduled(preparer)
             run.assert_not_called()
 
