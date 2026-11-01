@@ -25,9 +25,15 @@ let
       UnsetEnvironment = [ "DOCKER_CONTEXT" "HTTP_PROXY" "HTTPS_PROXY" "ALL_PROXY" "http_proxy" "https_proxy" "all_proxy" "SSH_AUTH_SOCK" ];
       ExecStartPre = lib.optionals (command == "backup" && cfg.includeApplicationState) [
         "${runner} validate"
-        "${pkgs.python3}/bin/python3 ${../../scripts/application-recovery.py} prepare"
       ];
-      ExecStart = "${runner} ${command}";
+      ExecStart = if command == "backup" && cfg.includeApplicationState then
+        "${runner} scheduled --prepare-script ${../../scripts/application-recovery.py}"
+        else "${runner} ${command}";
+      # RestartForceExitStatus applies to the main process, not ExecStartPre.
+      # Keep TEMPFAIL unsuccessful: oneshot success statuses never restart.
+      Restart = "no";
+      RestartForceExitStatus = lib.optional (command == "backup" && cfg.includeApplicationState) 75;
+      RestartSec = "30min";
       ExecStopPost = lib.optionals (command == "backup" && cfg.includeApplicationState) [
         "${pkgs.python3}/bin/python3 ${../../scripts/application-recovery.py} resume"
       ];

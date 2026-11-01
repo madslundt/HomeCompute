@@ -155,8 +155,9 @@ WantedBy=multi-user.target
 ''',
     }
     for command in ('backup', 'check'):
-        before = (f'ExecStartPre={PYTHON} -I {DEST}/current/scripts/nas-recovery-backup.py validate\n'
-                  f'ExecStartPre={PYTHON} -I {DEST}/current/scripts/application-recovery.py prepare\n') if command == 'backup' else ''
+        before = f'ExecStartPre={PYTHON} -I {DEST}/current/scripts/nas-recovery-backup.py validate\n' if command == 'backup' else ''
+        action = f'scheduled --prepare-script {DEST}/current/scripts/application-recovery.py' if command == 'backup' else command
+        retry = 'Restart=no\nRestartForceExitStatus=75\nRestartSec=30min\n' if command == 'backup' else ''
         after = f'ExecStopPost={PYTHON} -I {DEST}/current/scripts/application-recovery.py resume\n' if command == 'backup' else ''
         capability = 'CAP_DAC_READ_SEARCH' if command == 'backup' else ''
         home_read = ('BindReadOnlyPaths=/home/mads/projects/chessmate/config/certificates '
@@ -179,8 +180,8 @@ Environment=DOCKER_HOST=unix:///var/run/docker.sock
 Environment=DOCKER_CONFIG={STATE}/docker
 Environment=PYTHONDONTWRITEBYTECODE=1
 UnsetEnvironment=DOCKER_CONTEXT HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy SSH_AUTH_SOCK
-{before}ExecStart={PYTHON} -I {DEST}/current/scripts/nas-recovery-backup.py {command}
-{after}TimeoutStartSec=2h
+{before}ExecStart={PYTHON} -I {DEST}/current/scripts/nas-recovery-backup.py {action}
+{after}{retry}TimeoutStartSec=2h
 TimeoutStopSec=10min
 KillMode=mixed
 MemoryMax=1G

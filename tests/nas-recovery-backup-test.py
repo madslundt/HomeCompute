@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -18,6 +19,34 @@ CONFIG = {"address": "192.168.30.236", "share": "homecompute-backups",
 
 
 class NASBackupTest(unittest.TestCase):
+    def test_scheduled_backup_only_transfers_after_successful_preparation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            preparer = Path(temporary) / 'application-recovery.py'
+            preparer.write_text('synthetic protected preparer')
+            preparer.chmod(0o644)
+            for status in (0, 1, 75, -15):
+                with self.subTest(status=status), patch.object(backup.os, 'geteuid', return_value=preparer.stat().st_uid), \
+                        patch.object(backup.subprocess, 'run', return_value=subprocess.CompletedProcess([], status)) as run, \
+                        patch.object(backup, 'backup') as transfer:
+                    if status:
+                        with self.assertRaises(SystemExit) as result: backup.scheduled(preparer)
+                        self.assertEqual(result.exception.code, status if status > 0 else 1)
+                        transfer.assert_not_called()
+                    else:
+                        backup.scheduled(preparer)
+                        transfer.assert_called_once_with()
+                    self.assertEqual(run.call_args.args[0][-2:], [str(preparer), 'prepare'])
+                    self.assertEqual(run.call_args.args[0][1], '-I')
+
+    def test_untrusted_scheduled_preparer_is_refused_before_execution(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            preparer = Path(temporary) / 'application-recovery.py'
+            preparer.write_text('untrusted')
+            preparer.chmod(0o666)
+            with patch.object(backup.subprocess, 'run') as run, self.assertRaises(ValueError):
+                backup.scheduled(preparer)
+            run.assert_not_called()
+
     def test_dedicated_share_validates(self):
         self.assertEqual(backup.configuration(CONFIG), CONFIG)
 

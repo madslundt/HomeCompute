@@ -12,6 +12,7 @@ import re
 import secrets
 import stat
 import subprocess
+import sys
 import tempfile
 
 MOUNT = Path("/mnt/homecompute-backups")
@@ -121,6 +122,18 @@ def backup() -> None:
     print("Encrypted archive snapshot completed.")
 
 
+def scheduled(preparer: Path) -> None:
+    """Preserve the preparer's temporary-deferral status before any transfer."""
+    info = preparer.stat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+        raise ValueError("protected application recovery preparer required")
+    result = subprocess.run([sys.executable, "-I", str(preparer), "prepare"], check=False)
+    if result.returncode:
+        # Signals and unknown failures must not become the retryable status.
+        raise SystemExit(result.returncode if result.returncode > 0 else 1)
+    backup()
+
+
 def proof() -> None:
     root_directory(STATE)
     with tempfile.TemporaryDirectory(prefix="restore-proof-", dir=STATE) as temporary:
@@ -162,11 +175,12 @@ def restore_application(snapshot: str, archive: str, target: Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("validate", "init", "backup", "proof", "check", "restore-application"))
+    parser.add_argument("command", choices=("validate", "init", "backup", "scheduled", "proof", "check", "restore-application"))
     parser.add_argument("--config", type=Path, default=CONFIG)
     parser.add_argument("--snapshot")
     parser.add_argument("--archive")
     parser.add_argument("--target", type=Path)
+    parser.add_argument("--prepare-script", type=Path)
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise PermissionError("trusted root operator required")
@@ -179,6 +193,10 @@ def main() -> None:
         initialize()
     elif args.command == "backup":
         backup()
+    elif args.command == "scheduled":
+        if not args.prepare_script:
+            parser.error("scheduled requires --prepare-script")
+        scheduled(args.prepare_script)
     elif args.command == "proof":
         proof()
     elif args.command == "restore-application":

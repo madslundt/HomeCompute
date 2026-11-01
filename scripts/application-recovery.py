@@ -18,6 +18,7 @@ import socket
 import sqlite3
 import stat
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -34,6 +35,12 @@ MAIN_HTTP_PORTS = {18003, 18005, 18006, 18007}
 MIN_FREE_BYTES = 100 * 1024**3
 MAX_ARCHIVE_BYTES = 512 * 1024**3
 MAX_ARCHIVE_ENTRIES = 100000
+
+
+class RecoveryDeferred(ValueError):
+    """Known temporary activity; retry only after all stopped sources resume."""
+
+
 CONTAINERS = ('homecompute-control-plane-caddy-1', 'homecompute-control-plane-litellm-1',
               'homecompute-automation-n8n-1', 'homecompute-mattermost-mattermost-1',
               'homecompute-immich-immich-server-1', 'homecompute-open-webui-open-webui-1',
@@ -205,13 +212,13 @@ def worker_idle() -> None:
     if states - {'pending', 'queued', 'running', 'claimed', 'publishing', 'review', 'completed', 'failed', 'cancelled'}:
         raise ValueError('broker contains an unreviewed worker state')
     if states & {'running', 'claimed', 'publishing'}:
-        raise ValueError('worker activity requires recovery preparation to defer')
+        raise RecoveryDeferred('worker activity requires recovery preparation to defer')
 
 
 def private_browsers_idle() -> None:
     active = run(['docker', 'ps', '--filter', 'name=homecompute-site-view-', '--format', '{{.Names}}'], text=True, timeout=10).stdout
     if active.strip():
-        raise ValueError('close active private browser sessions before cold recovery preparation')
+        raise RecoveryDeferred('close active private browser sessions before cold recovery preparation')
 
 
 def main_http_connections(table: str) -> int:
@@ -238,8 +245,10 @@ def main_http_idle() -> None:
     for attempt in range(3):
         with MAIN_HTTP_TABLE.open() as stream:
             table = stream.read(1024 * 1024 + 1)
-        if len(table) > 1024 * 1024 or main_http_connections(table):
-            raise ValueError('main HTTP activity requires recovery preparation to defer')
+        if len(table) > 1024 * 1024:
+            raise ValueError('main HTTP connection inspection exceeds its bounded budget')
+        if main_http_connections(table):
+            raise RecoveryDeferred('main HTTP activity requires recovery preparation to defer')
         if attempt < 2: time.sleep(1)
 
 
@@ -370,7 +379,10 @@ def prepare() -> Path:
     final = ARCHIVES / name
     temporary = ARCHIVES / (name + '.partial')
     with DEPLOY_LOCK.open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RecoveryDeferred('another deployment or recovery operation holds the preparation lock') from None
         validate_volumes()
         if shutil.disk_usage(ARCHIVES).free < space_required():
             raise ValueError('recovery needs space for all source files plus 100 GiB remaining headroom')
@@ -382,7 +394,7 @@ def prepare() -> Path:
             # cleanup cannot restart the VM halfway through this cold archive.
             local = run(['systemctl', 'show', LOCAL_VM_BACKUP, '-p', 'ActiveState'], text=True).stdout
             if any('ActiveState=' + state in local for state in ('active', 'activating', 'deactivating')):
-                raise ValueError('local VM backup is running; cold recovery preparation deferred')
+                raise RecoveryDeferred('local VM backup is running; cold recovery preparation deferred')
             with tempfile.TemporaryDirectory(prefix='.application-recovery-', dir=ARCHIVES) as staging, quiesced():
                 directory = Path(staging)
                 seed = agents_seed(); staged_seed = directory / 'agents-seed.iso'
@@ -531,7 +543,12 @@ def main() -> None:
         raise InterruptedError('recovery preparation interrupted; resuming sources')
     signal.signal(signal.SIGTERM, interrupted)
     if args.command == 'prepare':
-        print(json.dumps({'archive': str(prepare()), 'off_host_backup': False}))
+        try:
+            archive = prepare()
+        except RecoveryDeferred as exc:
+            print(str(exc), file=sys.stderr)
+            raise SystemExit(75)
+        print(json.dumps({'archive': str(archive), 'off_host_backup': False}))
     elif args.command == 'resume':
         if RESUME_FILE.exists() or RECOVERY_MARKER.exists():
             with DEPLOY_LOCK.open('a') as lock:

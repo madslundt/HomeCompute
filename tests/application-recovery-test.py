@@ -22,6 +22,28 @@ REAL_HTTP_IDLE = recovery.main_http_idle
 
 
 class ApplicationRecoveryTest(unittest.TestCase):
+    def test_busy_deployment_lock_defers_before_validation_or_source_changes(self):
+        with patch.object(recovery, 'private_directory'), patch.object(recovery, 'DEPLOY_LOCK', recovery.RESUME_FILE.parent / 'deploy.lock'), \
+                patch.object(recovery.fcntl, 'flock', side_effect=BlockingIOError()), \
+                patch.object(recovery, 'validate_volumes') as validate:
+            with self.assertRaises(recovery.RecoveryDeferred): recovery.prepare()
+            validate.assert_not_called()
+
+    def test_cli_marks_only_safe_deferral_as_retryable(self):
+        with patch.object(recovery.os, 'geteuid', return_value=0), patch('sys.argv', ['recovery', 'prepare']), \
+                patch.object(recovery, 'prepare', side_effect=recovery.RecoveryDeferred('busy')):
+            with self.assertRaises(SystemExit) as result: recovery.main()
+            self.assertEqual(result.exception.code, 75)
+        with patch.object(recovery.os, 'geteuid', return_value=0), patch('sys.argv', ['recovery', 'prepare']), \
+                patch.object(recovery, 'prepare', side_effect=ValueError('unknown state')):
+            with self.assertRaisesRegex(ValueError, 'unknown state'): recovery.main()
+
+    def test_failed_resume_overrides_retryable_deferral(self):
+        with patch.object(recovery, 'worker_idle', side_effect=recovery.RecoveryDeferred('busy')), \
+                patch.object(recovery, 'resume', side_effect=RuntimeError('could not resume')):
+            with self.assertRaisesRegex(RuntimeError, 'could not resume'):
+                with recovery.quiesced(): self.fail('busy')
+
     def setUp(self):
         self.journal_root = tempfile.TemporaryDirectory()
         self.journal_patch = patch.object(recovery, 'RESUME_FILE', Path(self.journal_root.name) / 'resume.json')
@@ -76,7 +98,7 @@ class ApplicationRecoveryTest(unittest.TestCase):
 
     def test_active_private_browser_defers_before_stopping_anything(self):
         with patch.object(recovery, 'run', return_value=subprocess.CompletedProcess([], 0, 'homecompute-site-view-synthetic\n', '')) as run:
-            with self.assertRaisesRegex(ValueError, 'browser sessions'):
+            with self.assertRaisesRegex(recovery.RecoveryDeferred, 'browser sessions'):
                 with recovery.quiesced(): self.fail('must not enter quiesced section')
         self.assertEqual(run.call_count, 1)
 
@@ -324,8 +346,10 @@ class ApplicationRecoveryTest(unittest.TestCase):
                 db.execute('DELETE FROM tasks');db.execute('INSERT INTO tasks VALUES(?)',(state,));db.commit()
             with self.subTest(state=state):
                 if state in {'pending','queued','review'}:recovery.worker_idle()
-                else:
+                elif state == 'unreviewed':
                     with self.assertRaises(ValueError):recovery.worker_idle()
+                else:
+                    with self.assertRaises(recovery.RecoveryDeferred):recovery.worker_idle()
 
     def test_worker_state_read_failure_never_creates_database(self):
         path=recovery.BROKER_DATABASE;path.unlink()
@@ -420,11 +444,13 @@ class ApplicationRecoveryTest(unittest.TestCase):
                 self.assertEqual(parser.call_count,3);self.assertEqual(sleep.call_count,2)
             for counts in [[1],[0,1],[0,0,1]]:
                 with patch.object(recovery,'MAIN_HTTP_TABLE',path),patch.object(recovery.time,'sleep'), \
-                        patch.object(recovery,'main_http_connections',side_effect=counts),self.assertRaises(ValueError):REAL_HTTP_IDLE()
+                        patch.object(recovery,'main_http_connections',side_effect=counts),self.assertRaises(recovery.RecoveryDeferred):REAL_HTTP_IDLE()
             path.write_text('malformed')
-            with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(ValueError):REAL_HTTP_IDLE()
+            with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(ValueError) as error:REAL_HTTP_IDLE()
+            self.assertNotIsInstance(error.exception, recovery.RecoveryDeferred)
             path.write_text('sl local_address rem_address st\n'+' '*1024**2)
-            with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(ValueError):REAL_HTTP_IDLE()
+            with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(ValueError) as error:REAL_HTTP_IDLE()
+            self.assertNotIsInstance(error.exception, recovery.RecoveryDeferred)
             path.unlink()
             with patch.object(recovery,'MAIN_HTTP_TABLE',path),self.assertRaises(FileNotFoundError):REAL_HTTP_IDLE()
 

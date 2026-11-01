@@ -348,6 +348,10 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
                 docker_count = len(item["containers"]) if item["containers"] is not None else None
                 print(f"{'✓' if docker_count else '⚠'} Docker containers observed: {docker_count if docker_count is not None else 'unknown (no access)'}")
                 for tool, present in item.get("required_tools", {}).items():
+                    if tool == "sudo-nopasswd":
+                        print("✓ sudo: noninteractive deployment available" if present else
+                              "ℹ sudo: interactive sudo required for deployment")
+                        continue
                     required = tool not in ("nix", "nixos-rebuild", "nvidia-smi", "nvidia-ctk", "nvidia-container-cli") or host == "home-core" and tool in ("nix", "nixos-rebuild") or host == "home-spark" and tool.startswith("nvidia-")
                     if required:
                         print(f"{'✓' if present else '✗'} {tool}: {'present' if present else 'missing'}")

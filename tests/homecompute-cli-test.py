@@ -15,6 +15,24 @@ SPEC.loader.exec_module(hc)
 
 
 class HomeComputeCliTests(unittest.TestCase):
+    def test_doctor_distinguishes_interactive_sudo_from_host_failure(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        failed = []
+        def runner(argv, **kwargs):
+            if argv[:3] == ['git', 'ls-remote', 'origin']:
+                return subprocess.CompletedProcess(argv, 0, 'a' * 40 + '\trefs/heads/master\n', '')
+            host = argv[-2]
+            payload = {'schema_version': 1, 'host': host, 'revision': 'a' * 40,
+                       'containers': [{'name': 'synthetic'}], 'failed_units': failed,
+                       'gpu': 'synthetic GPU', 'required_tools': {'sudo': True, 'sudo-nopasswd': False}}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), '')
+        output = StringIO()
+        with redirect_stdout(output): self.assertEqual(hc.main(['doctor'], runner), 0)
+        self.assertIn('interactive sudo required for deployment', output.getvalue())
+        failed.append('synthetic.service')
+        with redirect_stdout(StringIO()): self.assertEqual(hc.main(['doctor'], runner), 1)
+
     def test_sha_validation(self):
         good = "a" * 40
         self.assertEqual(hc.valid_sha(good), good)

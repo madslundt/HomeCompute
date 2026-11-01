@@ -206,6 +206,8 @@ host-key policy.
   package declaration for each tool; NixOS remains authoritative on home-core,
   while the guarded setup scripts validate Spark's vendor/runtime prerequisites
   at deployment time.
+  Password-protected sudo is reported as an interactive deployment requirement,
+  not a host health failure; deployment still requires sudo authentication.
 - Model actual running/installed state stays `unknown` until a safe live model
   inventory can be joined to catalog IDs. The existing guarded setup scripts
   remain authoritative for artifacts and model lifecycle.
@@ -246,7 +248,8 @@ within 36 hours, and a passed repository check within eight days. Missing,
 unsafe, malformed or future-dated evidence fails closed. These checks read only
 bounded private metadata and publish booleans; they never expose snapshot IDs,
 credentials or application content. A backup deferred because writers are busy
-must be retried before its freshness window expires.
+is retried automatically after 30 minutes. Freshness remains unready until a
+completed encrypted snapshot exists within the required window.
 
 For an authorized repair that must preserve unrelated live application state,
 `scripts/setup-platform-observability.py` installs readiness, the finite machine
@@ -349,12 +352,19 @@ snapshots, so a racing claim or browser launch also defers safely.
 Before stopping any source, preparation also requires three quiet one-second
 samples of the exact main HTTP tunnel endpoints (`172.28.200.1` ports 18003,
 18005, 18006 and 18007). Active, half-closed or idle keep-alive connections
-defer conservatively; unavailable or malformed inspection also defers. The
+defer conservatively; unavailable, malformed or oversized inspection fails
+closed and requires investigation. The
 scheduled job installs no firewall maintenance gate. This is an idle preflight;
 it does not reserve the window against requests arriving after those samples.
 Preparation and deployments share a lock; the local VM
 backup and recovery preparation also exclude each other. The NAS schedule starts
 at 03:15 local host time, outside the local VM snapshot's midnight window.
+Known worker, browser, main HTTP, deployment lock and local VM backup activity exits with
+temporary-deferral status 75. Only that preparation status schedules a retry
+after 30 minutes; successful completion, inspection errors, transfer failures
+and failed resumption do not restart automatically. Preparation runs in the
+backup unit's main command so systemd can distinguish its exit status. A
+deferred manual `backup-now` is not evidence of a completed fresh backup.
 The private resume journal and `ExecStopPost` recovery also cover interrupted
 preparation. Successful preparation resumes applications before uploading the
 uncompressed archive through encrypted Restic.
