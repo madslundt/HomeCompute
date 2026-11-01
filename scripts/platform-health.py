@@ -125,7 +125,10 @@ def nas_readiness(now: datetime | None = None) -> dict[str, bool]:
         return {}
     unavailable = {'nas_backup_ready': False, 'nas_check_ready': False}
     try:
-        if private_record(deployment).get('state') != 'scheduled':
+        # Retirement transfers an authorized schedule to canonical NixOS units.
+        # The live schedules, successful services and fresh receipts below
+        # remain mandatory for both supported ownership states.
+        if private_record(deployment).get('state') not in {'scheduled', 'retired'}:
             return unavailable
         permit = (NAS_STATE / 'backup-authorized').lstat()
         if (not stat.S_ISREG(permit.st_mode) or permit.st_uid != os.geteuid()

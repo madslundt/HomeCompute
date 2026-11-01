@@ -39,6 +39,13 @@ class PlatformHealthTest(unittest.TestCase):
             with patch.object(health, 'NAS_STATE', state), patch.object(health, 'NAS_CONFIG', config), \
                     patch.object(health.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, units(), '')) as call:
                 self.assertEqual(health.nas_readiness(now), {'nas_backup_ready': True, 'nas_check_ready': True})
+                for lifecycle in ('staged-first-backup-pending', 'configuration-rolled-back', 'unknown'):
+                    record('deployment.json', {'state': lifecycle})
+                    self.assertFalse(any(health.nas_readiness(now).values()))
+                # Retirement transfers ownership to canonical NixOS units; it
+                # does not withdraw authorization or bypass freshness checks.
+                record('deployment.json', {'state': 'retired'})
+                self.assertEqual(health.nas_readiness(now), {'nas_backup_ready': True, 'nas_check_ready': True})
                 record('last-backup.json', {'time': (now - timedelta(hours=37)).isoformat(), 'snapshot': 'a' * 64})
                 self.assertFalse(health.nas_readiness(now)['nas_backup_ready'])
                 self.assertTrue(health.nas_readiness(now)['nas_check_ready'])

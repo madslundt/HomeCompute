@@ -250,6 +250,9 @@ bounded private metadata and publish booleans; they never expose snapshot IDs,
 credentials or application content. A backup deferred because writers are busy
 is retried automatically after 30 minutes. Freshness remains unready until a
 completed encrypted snapshot exists within the required window.
+Readiness accepts a scheduled targeted installation or its retired receipt after
+canonical NixOS reconciliation. Retirement still requires authorization, active
+schedules, successful services and fresh backup/check receipts.
 
 For an authorized repair that must preserve unrelated live application state,
 `scripts/setup-platform-observability.py` installs readiness, the finite machine
