@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import tempfile
 import shutil
+import subprocess
+import sys
 import types
 import unittest
 from unittest.mock import patch
@@ -104,6 +106,12 @@ class PublicBrowserSetup(unittest.TestCase):
             raw = config.read_bytes()
             plan = module.refresh_instructions(config, ROOT)
             self.assertFalse(plan['applied'])
+            for seed in ('1', '2', '3'):
+                command = [sys.executable, str(ROOT / 'scripts/setup-openclaw-public-browser.py'),
+                           '--config', str(config), '--source', str(ROOT), '--refresh-instructions']
+                result = subprocess.run(command, env={**os.environ, 'PYTHONHASHSEED': seed},
+                                        capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(result.stdout)['plan_sha256'], plan['plan_sha256'])
             paths = [row['path'] for row in plan['files']]
             self.assertNotIn('workspace-family/AGENTS.md', paths)
             self.assertNotIn('workspace-personal/AGENTS.md', paths)

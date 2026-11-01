@@ -238,6 +238,7 @@ def refresh_instructions(config, source, *, apply=False, expected_plan_sha256=No
     sources = {name: (source / 'deploy/openclaw/skills' / name / 'SKILL.md').read_bytes()
                for name in ('public-web-research', 'travel-adventures', 'household-paperwork')}
     planned += team_setup.managed_skill_plan(config, before, team, sources, {})
+    planned.sort(key=lambda item: str(item[0]))
     previous = {}
     for path, _ in planned:
         if any(p.is_symlink() for p in (path, *path.parents)):
