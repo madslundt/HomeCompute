@@ -74,6 +74,17 @@ class PublicBrowserSetup(unittest.TestCase):
         self.assertEqual(before, original)
         self.assertEqual(module.candidate(after), after)
 
+    def test_both_tracked_legacy_paragraphs_migrate_but_unknown_edits_refuse(self):
+        canonical = (ROOT / 'deploy/openclaw/workspace-policy.md').read_text()
+        for old in (module.LEGACY_BROWSER_PARAGRAPH, module.LEGACY_BASE_BROWSER_PARAGRAPH):
+            text = module.browser_instructions('Keep these notes.\n' + old + '\nMore notes.', canonical)
+            self.assertIn('Keep these notes.', text)
+            self.assertIn('More notes.', text)
+            self.assertNotIn('Other hosts require operator review', text)
+            self.assertEqual(module.browser_instructions(text, canonical), text)
+        with self.assertRaises(ValueError):
+            module.browser_instructions(module.LEGACY_BASE_BROWSER_PARAGRAPH.replace('example.com,', 'custom.com,'), canonical)
+
     def test_instruction_upgrade_preserves_config_notes_and_unrelated_roles(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder).resolve()

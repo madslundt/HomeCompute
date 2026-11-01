@@ -181,14 +181,30 @@ def setup(config, source, *, apply=False, expected_config_sha256=None, runner=su
     return result
 
 
-LEGACY_BROWSER_PARAGRAPH = 'Browser access supports public research on these approved sources: example.com,\ndocs.openclaw.ai, docs.nvidia.com, docs.litellm.ai, docs.n8n.io,\nwww.home-assistant.io, developers.home-assistant.io, nixos.org, wiki.nixos.org,\nnix.dev, search.nixos.org, github.com, raw.githubusercontent.com, and\nduckduckgo.com and marginalia-search.com. Public travel research also permits www.afbudsrejser.dk,\nwww.solfaktor.dk, www.spies.dk, www.tui.dk, www.apollorejser.dk and www.sunweb.dk.\nNova and Lyra use this protected browser; Atlas delegates public research.\nOther hosts require operator review before being added.\nInteraction and form submission are blocked by the protected tool guard.\n'
+LEGACY_BROWSER_PARAGRAPH = """Browser access supports public research on these approved sources: example.com,
+docs.openclaw.ai, docs.nvidia.com, docs.litellm.ai, docs.n8n.io,
+www.home-assistant.io, developers.home-assistant.io, nixos.org, wiki.nixos.org,
+nix.dev, search.nixos.org, github.com, raw.githubusercontent.com, and
+duckduckgo.com and marginalia-search.com. Public travel research also permits www.afbudsrejser.dk,
+www.solfaktor.dk, www.spies.dk, www.tui.dk, www.apollorejser.dk and www.sunweb.dk.
+Nova and Lyra use this protected browser; Atlas delegates public research.
+Other hosts require operator review before being added.
+Interaction and form submission are blocked by the protected tool guard.
+"""
+LEGACY_BASE_BROWSER_PARAGRAPH = """Browser access supports public research on these approved sources: example.com,
+docs.openclaw.ai, docs.nvidia.com, docs.litellm.ai, docs.n8n.io,
+www.home-assistant.io, developers.home-assistant.io, nixos.org, wiki.nixos.org,
+nix.dev, search.nixos.org, github.com, raw.githubusercontent.com, and
+duckduckgo.com. Other hosts require operator review before being added.
+Interaction and form submission are blocked by the protected tool guard.
+"""
 
 def browser_instructions(existing, canonical):
     """Migrate only the known finite-browser paragraph; preserve all other notes."""
-    legacy = LEGACY_BROWSER_PARAGRAPH
     current = canonical[canonical.index('Browser access supports public HTTP(S)'):canonical.index('Preserve the distinction')]
-    if legacy in existing:
-        return existing.replace(legacy, current, 1)
+    for legacy in (LEGACY_BROWSER_PARAGRAPH, LEGACY_BASE_BROWSER_PARAGRAPH):
+        if legacy in existing:
+            return existing.replace(legacy, current, 1)
     if 'Other hosts require operator review before being added.' in existing:
         raise ValueError('Unrecognized retained browser instructions require review')
     return existing
