@@ -1,0 +1,5 @@
+# Derive from the inspected immutable browser image without package upgrades.
+ARG HOMECOMPUTE_BROWSER_BASE
+FROM ${HOMECOMPUTE_BROWSER_BASE}
+COPY browser_worker.py /opt/homecompute/browser_worker.py
+USER 10001:10001

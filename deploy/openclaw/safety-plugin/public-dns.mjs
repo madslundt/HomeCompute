@@ -5,16 +5,23 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-export const RESEARCH_HOSTS = Object.freeze([
-  'example.com', 'docs.openclaw.ai', 'docs.nvidia.com', 'docs.litellm.ai',
-  'docs.n8n.io', 'www.home-assistant.io', 'developers.home-assistant.io',
-  'nixos.org', 'wiki.nixos.org', 'nix.dev', 'search.nixos.org', 'github.com',
-  'raw.githubusercontent.com', 'duckduckgo.com',
-  'marginalia-search.com',
-  'www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
-  'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk',
-]);
-const HOSTS = new Set(RESEARCH_HOSTS);
+// Host syntax is admission only. Every DNS answer and every browser connection
+// must still pass public-address validation; a public-looking name is no grant.
+export function publicHostname(hostname) {
+  return typeof hostname === 'string' && hostname.length <= 253
+    && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(hostname)
+    && !/^[\d.]+$/.test(hostname)
+    && !/(?:^|\.)(?:localhost|local|internal|lan|home|arpa|test|invalid|example|onion)$/.test(hostname);
+}
+
+export function publicBrowserConfig(browser) {
+  const policy = browser?.ssrfPolicy;
+  return browser?.enabled === true && browser.evaluateEnabled === false
+    && browser.defaultProfile === 'homecompute'
+    && policy && Object.keys(policy).length === 1
+    && Array.isArray(policy.allowedHostnames) && policy.allowedHostnames.length === 1
+    && policy.allowedHostnames[0] === '127.0.0.1';
+}
 const privateIPv4 = new net.BlockList();
 const privateIPv6 = new net.BlockList();
 for (const [address, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10],
@@ -91,7 +98,7 @@ export function responsePacket(query, question, code = 0, addresses = [], ttl = 
 export function createWorkerLookup(token, transport = http) {
   if (typeof token !== 'string' || token.length < 32 || token.length > 256) throw new Error('Browser credential required');
   return hostname => new Promise((resolve, reject) => {
-    if (!HOSTS.has(hostname)) { reject(new Error('Research hostname required')); return; }
+    if (!publicHostname(hostname)) { reject(new Error('Public hostname required')); return; }
     const request = transport.get({ hostname: '127.0.0.1', port: 18800,
       path: '/json/public-dns?hostname=' + encodeURIComponent(hostname) + '&token=' + encodeURIComponent(token),
       timeout: 3000, agent: false }, response => {
@@ -123,6 +130,8 @@ export function createDnsEngine(lookup, now = Date.now) {
           || !value.addresses.length || value.addresses.length > 16
           || value.addresses.some(row => !row || ![4, 6].includes(row.family) || !publicAddress(row.address, row.family))) throw new Error('Public DNS response required');
       const entry = { addresses: value.addresses, expires: now() + 60000 };
+      // Previously the finite host list bounded this cache implicitly.
+      if (cache.size >= 256 && !cache.has(hostname)) cache.delete(cache.keys().next().value);
       cache.set(hostname, entry); return entry;
     }).finally(() => pending.delete(hostname));
     pending.set(hostname, operation); return operation;
@@ -132,7 +141,7 @@ export function createDnsEngine(lookup, now = Date.now) {
       let question;
       try { question = decodeQuestion(packet); }
       catch { return responsePacket(packet, undefined, 1); }
-      if (!HOSTS.has(question.hostname) || question.qclass !== 1 || ![1, 28].includes(question.type)) return responsePacket(packet, question, 3);
+      if (!publicHostname(question.hostname) || question.qclass !== 1 || ![1, 28].includes(question.type)) return responsePacket(packet, question, 3);
       try {
         const value = await resolve(question.hostname);
         return responsePacket(packet, question, 0, value.addresses.filter(row => row.family === (question.type === 1 ? 4 : 6)),
@@ -199,10 +208,7 @@ async function main() {
   const config = JSON.parse(fs.readFileSync('/sandbox/.openclaw/openclaw.json', 'utf8'));
   const url = new URL(config.browser.profiles.homecompute.cdpUrl);
   if (url.origin !== 'http://127.0.0.1:18800' || url.pathname !== '/' || [...url.searchParams.keys()].join() !== 'token'
-      || config.browser.ssrfPolicy.dangerouslyAllowPrivateNetwork !== false
-      || config.browser.ssrfPolicy.allowedHostnames.length !== RESEARCH_HOSTS.length + 1
-      || new Set(config.browser.ssrfPolicy.allowedHostnames).size !== RESEARCH_HOSTS.length + 1
-      || !config.browser.ssrfPolicy.allowedHostnames.every(host => host === '127.0.0.1' || HOSTS.has(host))) throw new Error('Reviewed browser configuration required');
+      || !publicBrowserConfig(config.browser)) throw new Error('Reviewed browser configuration required');
   const stop = await startInheritedDns(createDnsEngine(createWorkerLookup(url.searchParams.get('token'))));
   for (const signal of ['SIGTERM', 'SIGINT']) process.once(signal, () => { stop().finally(() => process.exit(0)); });
   console.log(JSON.stringify({ ready: true, service: 'homecompute-public-dns', uid: process.getuid(), gid: process.getgid() }));

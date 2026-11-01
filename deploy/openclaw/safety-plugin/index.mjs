@@ -2,9 +2,8 @@
 // model can expand this policy. The pinned gateway runs this policy hook before
 // browser effects and fails closed when a registered policy hook fails.
 import { createBrowserRelay } from './browser-relay.mjs';
-import { RESEARCH_HOSTS } from './public-dns.mjs';
+import { publicHostname } from './public-dns.mjs';
 import { registerLlmActivity } from './llm-queue.mjs';
-const RESEARCH = new Set(RESEARCH_HOSTS);
 const PROFILE = 'homecompute';
 const COMMON = ['action', 'profile', 'target'];
 const TAB = ['targetId', 'tabId', 'suggestedTargetId', 'label'];
@@ -14,8 +13,10 @@ const ACTIONS = {
   close: TAB,
   snapshot: [...TAB, 'snapshotFormat', 'refs', 'mode', 'limit', 'maxChars', 'interactive', 'compact', 'depth'],
   screenshot: [...TAB, 'fullPage', 'labels', 'type', 'ref', 'element'],
+  act: ['targetId', 'kind', 'ref', 'text', 'submit', 'slowly', 'key', 'values', 'fields',
+    'doubleClick', 'button', 'startRef', 'endRef', 'timeoutMs'],
 };
-const DENIED = { block: true, blockReason: 'Browser interaction requires a separately reviewed operator path. This browser permits public research only.' };
+const DENIED = { block: true, blockReason: 'Use public HTTP(S) URLs and bounded page actions in the isolated homecompute profile. Private destinations, scripts, files and account imports are blocked.' };
 const boundedString = value => typeof value === 'string' && value.length > 0 && value.length <= 256
   && !/[\x00-\x1f\x7f]/.test(value);
 
@@ -23,12 +24,50 @@ function publicUrl(value) {
   if (typeof value !== 'string' || value.length > 4096 || /[\x00-\x20\x7f]/.test(value)) return false;
   const url = new URL(value);
   const host = url.hostname.toLowerCase();
-  return url.protocol === 'https:' && !url.username && !url.password
-    && RESEARCH.has(host)
-    && (!url.port || url.port === '443')
-    && /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(host)
-    && !/^[\d.]+$/.test(host)
-    && !/(?:^|\.)(?:localhost|local|internal|lan|home|arpa|test|invalid|example)$/.test(host);
+  return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password
+    && !url.port && publicHostname(host);
+}
+
+const ACT_FIELDS = {
+  click: ['ref', 'doubleClick', 'button'], type: ['ref', 'text', 'submit', 'slowly'],
+  press: ['key'], hover: ['ref'], scrollIntoView: ['ref'],
+  drag: ['startRef', 'endRef'], select: ['ref', 'values'], fill: ['fields'],
+};
+const textValue = (value, max) => typeof value === 'string' && value.length <= max
+  && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value);
+
+function pageAction(params) {
+  if (typeof params.kind !== 'string' || !Object.hasOwn(ACT_FIELDS, params.kind)
+      || !boundedString(params.targetId)) return false;
+  const allowed = new Set([...COMMON, 'targetId', 'kind', 'timeoutMs', ...ACT_FIELDS[params.kind]]);
+  if (Object.keys(params).some(key => !allowed.has(key))) return false;
+  if (params.timeoutMs !== undefined && (!Number.isInteger(params.timeoutMs)
+      || params.timeoutMs < 1 || params.timeoutMs > 15000)) return false;
+  for (const key of ['doubleClick', 'submit', 'slowly']) {
+    if (params[key] !== undefined && typeof params[key] !== 'boolean') return false;
+  }
+  if (params.button !== undefined && !['left', 'right', 'middle'].includes(params.button)) return false;
+  if (ACT_FIELDS[params.kind].includes('ref') && !boundedString(params.ref)) return false;
+  if (params.kind === 'type' && !textValue(params.text, 8000)) return false;
+  // Named page keys only: do not expose browser/OS shortcut chords.
+  if (params.kind === 'press' && !['Enter', 'Tab', 'Escape', 'Space', 'Backspace', 'Delete',
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(params.key)) return false;
+  if (params.kind === 'drag' && (!boundedString(params.startRef) || !boundedString(params.endRef))) return false;
+  if (params.kind === 'select' && (!Array.isArray(params.values) || params.values.length < 1
+      || params.values.length > 40 || params.values.some(value => !textValue(value, 256)))) return false;
+  if (params.kind === 'fill') {
+    if (!Array.isArray(params.fields) || !params.fields.length || params.fields.length > 40) return false;
+    let size = 0;
+    for (const field of params.fields) {
+      if (!field || typeof field !== 'object' || Array.isArray(field)
+          || Object.keys(field).some(key => !['ref', 'type', 'value'].includes(key))
+          || !boundedString(field.ref) || !['text', 'checkbox', 'radio'].includes(field.type)) return false;
+      if (field.type === 'text' ? !textValue(field.value, 8000) : typeof field.value !== 'boolean') return false;
+      size += String(field.value).length;
+    }
+    if (size > 16000) return false;
+  }
+  return true;
 }
 
 export function browserPolicy(event) {
@@ -48,6 +87,7 @@ export function browserPolicy(event) {
       const urls = ['url', 'targetUrl'].filter(key => params[key] !== undefined);
       if (urls.length !== 1 || !publicUrl(params[urls[0]])) return { ...DENIED };
     }
+    if (params.action === 'act' && !pageAction(params)) return { ...DENIED };
     for (const key of ['fullPage', 'labels', 'interactive', 'compact']) {
       if (params[key] !== undefined && typeof params[key] !== 'boolean') return { ...DENIED };
     }

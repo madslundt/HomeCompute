@@ -152,6 +152,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-023](adr/023-n8n-automation-moe.md) | Opt-in Qwen3.6 MoE lane for Danish n8n tools; single-resident cold swap and no default Flash-Next |
 | [ADR-024](adr/024-model-artifact-deployment-capability-separation.md) | Separate artifacts, deployments, stable capability routes, and consumer authorization |
 | [ADR-025](adr/025-flash-next-primary-candidate.md) | Proposed Flash-Next primary-model candidate; qualification is pending |
+| [ADR-026](adr/026-openclaw-public-browser.md) | Public browser URLs and owner-requested page interaction; private-network and credential boundaries remain enforced |
 
 ## Research and model evidence
 

@@ -47,13 +47,14 @@ prices. This profile replaces the bundled browser-automation skill's generic
 setup loop: begin directly with `action: navigate`, profile `homecompute`, target
 `host` and the provider's HTTPS `targetUrl`. Status, tabs, open and start are
 unsupported here; they are not prerequisites for navigation. Use the returned
-`targetId` for a compact snapshot or screenshot. Approved travel hosts are www.afbudsrejser.dk,
-www.solfaktor.dk, www.spies.dk, www.tui.dk, www.apollorejser.dk and www.sunweb.dk.
+`targetId` for a compact snapshot or screenshot. Public provider domains no
+longer require an individual allowlist entry.
 Prefer provider links and prefilled search URLs discovered in current evidence.
 Read up to six provider pages per comparison, close your tabs afterwards, and
-report a blocked domain, cookie wall, CAPTCHA or interactive selector as a gap.
-The browser supports navigation and observation; search-form interaction,
-account access and booking actions require a separate operator integration.
+report a policy refusal, cookie wall or CAPTCHA as a gap.
+For explicitly requested public search-form interaction, follow public-web-research
+with current snapshot refs and the same targetId. Account access and booking
+actions retain their separate operator integration and approval path.
 
 Label price evidence as indexed, advertised on a live page, or a matching quote.
 A matching quote must confirm dates, departure airport, traveler counts and child

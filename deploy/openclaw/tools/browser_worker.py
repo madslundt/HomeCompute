@@ -23,20 +23,17 @@ PATH = re.compile(r"/(?:json(?:/(?:version|list)|/(?:close|activate)/[A-Za-z0-9-
 CLIENTS = threading.BoundedSemaphore(16)
 DNS_CLIENTS = threading.BoundedSemaphore(4)
 DNS_POOL = ThreadPoolExecutor(max_workers=4)
-PUBLIC_RESEARCH_HOSTS = frozenset([
-    'example.com', 'docs.openclaw.ai', 'docs.nvidia.com', 'docs.litellm.ai',
-    'docs.n8n.io', 'www.home-assistant.io', 'developers.home-assistant.io',
-    'nixos.org', 'wiki.nixos.org', 'nix.dev', 'search.nixos.org', 'github.com',
-    'raw.githubusercontent.com', 'duckduckgo.com',
-    'marginalia-search.com',
-    'www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
-    'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk',
-])
+def public_hostname(hostname: str) -> bool:
+    """Keep in step with publicHostname; address validation is separate."""
+    return (isinstance(hostname, str) and len(hostname) <= 253
+            and re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+', hostname) is not None
+            and re.fullmatch(r'[\d.]+', hostname) is None
+            and re.search(r'(?:^|\.)(?:localhost|local|internal|lan|home|arpa|test|invalid|example|onion)$', hostname) is None)
 
 
 def public_dns(hostname: str, resolver=socket.getaddrinfo) -> dict:
-    if hostname not in PUBLIC_RESEARCH_HOSTS:
-        raise ValueError('Public research hostname required')
+    if not public_hostname(hostname):
+        raise ValueError('Public hostname required')
     addresses = set()
     for family, _kind, _proto, _canon, sockaddr in resolver(hostname, None, type=socket.SOCK_STREAM):
         address = ipaddress.ip_address(sockaddr[0])
@@ -55,16 +52,16 @@ def authorized(path: str, token: str) -> bool:
     values = parse_qs(parsed.query, strict_parsing=True)
     if parsed.path == '/json/public-dns':
         return (set(values) == {'token', 'hostname'} and len(values['token']) == 1
-                and len(values['hostname']) == 1 and values['hostname'][0] in PUBLIC_RESEARCH_HOSTS
+                and len(values['hostname']) == 1 and public_hostname(values['hostname'][0])
                 and hmac.compare_digest(values['token'][0], token))
     return (bool(PATH.fullmatch(parsed.path)) and set(values) == {"token"}
             and len(values["token"]) == 1 and hmac.compare_digest(values["token"][0], token))
 
 
 def remote_public_dns(hostname: str, token: str) -> dict:
-    """Only the fixed DNS sidecar can resolve the reviewed public sources."""
-    if hostname not in PUBLIC_RESEARCH_HOSTS:
-        raise ValueError('Public research hostname required')
+    """Only the fixed DNS sidecar resolves public names; recheck every answer."""
+    if not public_hostname(hostname):
+        raise ValueError('Public hostname required')
     conn = http.client.HTTPConnection('browser-dns', 18802, timeout=3)
     try:
         conn.request('GET', '/json/public-dns?' + urlencode({'hostname': hostname, 'token': token}))

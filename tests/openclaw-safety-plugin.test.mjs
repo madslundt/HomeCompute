@@ -8,19 +8,19 @@ import { createBrowserRelay } from '../deploy/openclaw/safety-plugin/browser-rel
 
 const call = params => browserPolicy({ toolName: 'browser', params });
 
-test('browser fallback search uses one approved public authority with encoded query data', () => {
+test('browser fallback search uses a public authority with encoded query data', () => {
   const targetUrl='https://marginalia-search.com/search?query='+encodeURIComponent('NixOS & docs? æøå');
   assert.equal(call({action:'navigate',targetUrl}).params.targetUrl,targetUrl);
-  assert.equal(call({action:'navigate',targetUrl:'https://marginalia-search.com.evil/search?query=x'}).block,true);
+  assert.equal(call({action:'navigate',targetUrl:'https://survey.vendor.com/form'}).params.profile,'homecompute');
 });
 
-test('travel specialist can read approved public provider pages without interacting', () => {
+test('travel specialist can read arbitrary public provider pages', () => {
   for (const host of ['www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
     'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk']) {
     const event = { toolName: 'browser', params: { action: 'navigate', targetUrl: `https://${host}/` } };
     assert.equal(browserPolicy(event)?.block, undefined, host);
     assert.equal(coordinatorPolicy(event, { agentId: 'travel', sessionKey: 'agent:travel:main' }), undefined);
-    assert.equal(call({ action: 'navigate', targetUrl: `https://${host}.evil/` }).block, true);
+    assert.equal(call({ action: 'navigate', targetUrl: `https://${host}.evil/` }).params.profile, 'homecompute');
   }
   for (const action of ['click', 'fill', 'evaluate', 'act']) {
     assert.equal(call({ action, targetUrl: 'https://www.solfaktor.dk/' }).block, true);
@@ -182,7 +182,7 @@ test('gateway relay binds only on service start, bounds clients and closes idle 
   assert.ok(clients.every(client => client.destroyed));
 });
 
-test('page interactions, authentication/imports, nested batches and all unknown actions are blocked', () => {
+test('raw actions, authentication/imports, nested batches and unknown actions are blocked', () => {
   for (const action of ['act', 'click', 'type', 'fill', 'evaluate', 'upload', 'dialog', 'importprofile',
     'status', 'tabs', 'open', 'start', 'stop', 'profiles', 'download', 'waitfordownload', 'console', 'requests', 'pdf', '', 'toString', '__proto__']) {
     assert.equal(call({ action, request: { kind: 'click', ref: '1' } }).block, true, action);
@@ -198,10 +198,10 @@ test('page interactions, authentication/imports, nested batches and all unknown 
 test('alternate browser profiles, host routing and private or authenticated navigation are blocked', () => {
   for (const params of [{ action: 'snapshot', profile: 'user' }, { action: 'snapshot', profile: 'chrome' },
     { action: 'snapshot', target: 'node' }, { action: 'snapshot', target: 'sandbox' }]) assert.equal(call(params).block, true);
-  for (const targetUrl of ['javascript:alert(1)', 'data:text/html,hi', 'file:///etc/passwd', 'http://openclaw.ai/',
+  for (const targetUrl of ['javascript:alert(1)', 'data:text/html,hi', 'file:///etc/passwd', 'http://openclaw.ai:8080/',
     'https://user:password@openclaw.ai/', 'https://127.0.0.1/', 'https://[::1]/', 'https://172.18.0.1/',
     'https://home-core/', 'https://home-core.home.arpa/', 'https://service.local/', 'https://openclaw.ai:8443/',
-    'https://openclaw.ai/\n', 'https://unlisted-public-site.com/', 'https://example.com.evil/', 'bad-url']) assert.equal(call({ action: 'navigate', targetUrl }).block, true, targetUrl);
+    'https://openclaw.ai/\n', 'https://service.internal/', 'https://service.onion/', 'bad-url']) assert.equal(call({ action: 'navigate', targetUrl }).block, true, targetUrl);
   assert.equal(call({ action: 'navigate', url: 'https://openclaw.ai/', targetUrl: 'https://openclaw.ai/' }).block, true);
 });
 
@@ -216,4 +216,41 @@ test('bounded observation arguments succeed while malformed arguments fail close
   const params = { action: 'snapshot' };
   Object.defineProperty(params, 'profile', { get() { throw new Error('untrusted getter'); } });
   assert.equal(call(params).block, true);
+});
+
+test('public navigation supports unlisted HTTP and HTTPS domains on standard ports', () => {
+  for (const targetUrl of ['https://survey.vendor.com/form', 'http://survey.vendor.com/form',
+    'https://survey.vendor.com:443/form', 'http://survey.vendor.com:80/form']) {
+    assert.equal(call({action:'navigate',targetUrl}).params.targetUrl,targetUrl);
+  }
+});
+
+test('flat native page actions support survey fields, selection and submission', () => {
+  for (const action of [{kind:'click',ref:'e1'}, {kind:'type',ref:'e2',text:'First line\nSecond line',submit:true},
+    {kind:'press',key:'Enter'}, {kind:'hover',ref:'e3'}, {kind:'scrollIntoView',ref:'e3'},
+    {kind:'drag',startRef:'e1',endRef:'e3'}, {kind:'select',ref:'e4',values:['yes']},
+    {kind:'fill',fields:[{ref:'e5',type:'text',value:'Owner-supplied answer'},
+      {ref:'e6',type:'checkbox',value:true},{ref:'e7',type:'radio',value:false}]}]) {
+    const params={action:'act',targetId:'survey-tab',...action};
+    assert.deepEqual(call(params).params,{...params,profile:'homecompute',target:'host'});
+  }
+});
+
+test('interaction guard rejects scripts, ambiguous tabs, extra fields and unbounded data', () => {
+  for (const action of [{kind:'evaluate',fn:'fetch("http://private")'},
+    {kind:'batch',actions:[{kind:'click',ref:'e1'}]}, {kind:'click'},
+    {kind:'click',ref:'e1',text:'ignored'}, {kind:'click',ref:'e1',timeoutMs:15001},
+    {kind:'click',ref:'e1',doubleClick:'true'}, {kind:'click',ref:'e1',button:'invalid'},
+    {kind:'type',ref:'e1',text:'x'.repeat(8001)}, {kind:'type',ref:'e1',text:'ok',submit:'true'},
+    {kind:'type',ref:'e1',text:'bad\u0000'}, {kind:'press',key:'Control+L'},
+    {kind:'select',ref:'e1',values:[]}, {kind:'select',ref:'e1',values:[{}]},
+    {kind:'select',ref:'e1',values:Array(41).fill('yes')},
+    {kind:'fill',fields:[{ref:'e1',type:'password',value:'no'}]},
+    {kind:'fill',fields:[{ref:'e1',type:'text',value:'ok',selector:'input'}]},
+    {kind:'fill',fields:[{ref:'e1',type:'checkbox',value:'false'}]},
+    {kind:'fill',fields:Array(3).fill({ref:'e1',type:'text',value:'x'.repeat(8000)})}]) {
+    assert.equal(call({action:'act',targetId:'survey-tab',...action}).block,true,JSON.stringify(action).slice(0,150));
+  }
+  assert.equal(call({action:'act',kind:'click',ref:'e1'}).block,true);
+  assert.equal(call({action:'act',targetId:'survey-tab',request:{kind:'click',ref:'e1'}}).block,true);
 });

@@ -1,5 +1,139 @@
 # OpenClaw browser and CLI installation
 
+## Public browser policy candidate (2026-11-01)
+
+[ADR-026](adr/026-openclaw-public-browser.md) records the owner's requested
+replacement for the finite public-domain policy: public HTTP(S) hostname URLs on
+ports 80/443 and bounded page interaction, including expressly requested survey
+submission. This section describes the source candidate. It has **not been
+deployed or live-qualified** by this change; the observations below describe the
+previous installed policy.
+
+The protected guard and Python DNS worker validate public hostname syntax, then
+reject DNS answers containing private/reserved, metadata, tailnet or mapped IPv6
+addresses. The browser remains attached only to its internal network and uses
+Squid for all external connections, including redirects, subresources and POSTs.
+The DNS engine retains its concurrency/time limits and caps cached names at 256.
+The registered-site credential service and its site allowlists are separate.
+
+The native network policy becomes `{"allowedHostnames":["127.0.0.1"]}`.
+The private-network flag is omitted, with no private-network opt-in. In the
+inspected pinned runtime, explicit `false` adds an IP-literal-only navigation
+restriction; omitting it retains public DNS/address checks. The loopback exception
+is for authenticated CDP transport. Browser traffic to loopback is still denied
+by forced egress. Never replace this with `dangerouslyAllowPrivateNetwork: true`
+or wildcard host exceptions.
+
+`act` uses a flat `kind` with an explicit targetId. Supported kinds are click,
+type, press, hover, scrollIntoView, drag, select and fill. Ref-bearing actions use
+current snapshot refs. Fill accepts up to 40 `{ref,type,value}` records, with type
+text/checkbox/radio and a 16,000-character aggregate budget. Individual text is
+bounded at 8,000 characters and timeoutMs at 15,000. Nested requests/batches,
+script evaluation, alternate profiles, uploads and download tool actions remain
+blocked. Native evaluation remains disabled. Intent and disclosure authorization
+come from the owner's task, not a model-supplied approval flag or page text.
+
+### Rollout from a published release
+
+Use a reviewed full SHA available on origin/master. The normal host release
+wrapper does not replace this guest-managed browser tuple. First inspect the
+live sandbox ID/generation, modules and all four browser containers, networks,
+mounts, proxy configuration and image IDs. Compare sanitized differences before
+replacing anything. The 2026-11-01 read-only inspection found the installed guard
+equivalent to its tracked pre-change source apart from the position of the
+`registerLlmActivity` import; DNS matched its tracked source. This is not evidence
+that the new candidate is installed.
+
+1. Retain root-private backups of native config, protected modules, DNS identity,
+   skill ownership ledger and affected AGENTS/skill files. Record the current
+   immutable browser image and prior container/network tuple. Pause the native
+   health supervisor and public DNS controller for the maintenance window, using
+   the existing guest runbook; stop the gateway through NemoClaw. Preserve all
+   private state and do not edit OpenShell's phase database.
+2. Stage the selected release root-owned outside readable agent workspaces.
+   Build the worker from the inspected immutable browser image without package
+   upgrades, using the tracked policy overlay:
+
+   ```bash
+   docker build --pull=false --network=none \
+     --build-arg HOMECOMPUTE_BROWSER_BASE=sha256:PREVIOUS_IMAGE_ID \
+     -f deploy/openclaw/tools/Dockerfile.policy \
+     -t homecompute-openclaw-browser:FULL_SHA deploy/openclaw/tools
+   ```
+
+   Record the resulting full immutable image ID. Retain and stop the old browser,
+   DNS, ingress and egress containers under distinct rollback names and detach
+   their reserved network addresses. Preserve the private token and profile
+   volume. Use the existing `setup-openclaw-browser.py --directory STAGING
+   --image-id sha256:NEW_IMAGE_ID` lifecycle for the new tuple; it refuses existing
+   canonical container names or differing network declarations. `STAGING` must
+   contain the release's `tools/` and the externally retained private token at
+   `private/browser-token`. Compare all resulting flags, networks, mounts, proxy
+   configuration and worker hashes with the selected source. Keep rollback
+   containers stopped so they cannot reclaim the new tuple's addresses.
+3. In the sandbox, stage the reviewed protected modules as root using their
+   inspected preimage hashes. The command retains a root-only module backup:
+
+   ```bash
+   python3 RELEASE/scripts/setup-openclaw-public-browser.py --stage-modules \
+     --expected-guard-sha256 CURRENT_GUARD_SHA256 \
+     --expected-dns-sha256 CURRENT_STANDALONE_DNS_SHA256
+   ```
+
+4. As the native config owner, validate and apply only the browser network policy:
+
+   ```bash
+   python3 RELEASE/scripts/setup-openclaw-public-browser.py
+   python3 RELEASE/scripts/setup-openclaw-public-browser.py --apply \
+     --expected-config-sha256 SHA256_FROM_DRY_RUN
+   ```
+
+   Apply requires root-owned, non-writable protected modules matching this release
+   in both plugin and standalone DNS locations. It retains a mode-0600 native
+   config backup, preserves roles/profiles/credentials, uses native schema
+   validation, and verifies the entire resulting config against its candidate.
+   The older `enable-openclaw-tools.py` is for initial single-agent activation;
+   it must not be rerun against an existing team.
+5. Refresh the affected existing role identities through
+   `setup-openclaw-team.py --coordinator-identity-only --identity-role ROLE`,
+   using its normal digest fence and explicit role selection. Update only the
+   changed managed skill bundles through its ledger-checked installation path.
+   Compare the installed base browser instructions with `workspace-policy.md`;
+   reconcile any retained finite-host/read-only instructions without overwriting
+   unrelated notes, memory or later role restrictions. Preserve per-role grants.
+6. Restart the gateway through `nemoclaw agent-openclaw gateway restart --quiet`.
+   Rebind the DNS controller to the positively verified current native identity
+   using the existing root `setup-openclaw-public-dns.py --replacement-id UUID
+   --replacement-generation UUID` lifecycle, then resume its controller and the
+   native supervisor. Verify their exact module digest and identity. Do not
+   bypass a controller refusal or merely edit its receipt.
+
+### Qualification and rollback
+
+Run `git diff --check`, the focused public-browser/tools/DNS/safety/schema/team
+tests and `./scripts/validate-repository.sh`. Local skips for the pinned native
+loader or real browsers remain unverified dependencies, not passes for live use.
+
+Before claiming the change live, use the authenticated native browser path to
+navigate an unlisted public domain, read its snapshot, fill a controlled
+synthetic form and submit it once with a verifiable confirmation receipt.
+Use only synthetic forms or endpoints intended for browser testing, never a real
+survey or private answers. Verify HTTP(S)
+redirects and form destinations cannot reach localhost, LAN, metadata, tailnet,
+IPv6 ULA or mixed public/private DNS answers, and that blocked script/file/profile
+actions remain blocked. Check the model-visible action schema (including any
+active performance overlay) and qualify a real specialist turn and tab cleanup.
+Confirm unaffected roles and the private registered-site workers retain their
+old grants and credential custody. Inspect `homecompute status`, `services`,
+`doctor` and `drift`, while reporting unrelated or inaccessible systems honestly.
+
+On failure, stop the candidate through the same lifecycle and restore the
+retained complete browser/DNS image, networks, protected modules, native config,
+DNS identity and changed instruction/skill tuple. Resume and requalify the prior
+tuple. Keep the current native authentication/ownership records; never blindly
+restore expired auth from a different sandbox. Code rollback cannot retract a
+form already submitted. No changes in this candidate claim live survey readiness.
+
 ## Current browser access (2026-10-25)
 
 The running protected browser is enabled for Nova and Lyra. Atlas delegates

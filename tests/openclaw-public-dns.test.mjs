@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { RESEARCH_HOSTS, decodeQuestion, createDnsEngine, publicAddress, createWorkerLookup } from '../deploy/openclaw/safety-plugin/public-dns.mjs';
+import { publicHostname, publicBrowserConfig, decodeQuestion, createDnsEngine, publicAddress, createWorkerLookup } from '../deploy/openclaw/safety-plugin/public-dns.mjs';
 
 function query(host = 'example.com', type = 1, qclass = 1) {
   const head = Buffer.alloc(12); head.writeUInt16BE(0x1234); head.writeUInt16BE(0x100, 2); head.writeUInt16BE(1, 4);
@@ -11,7 +11,7 @@ function query(host = 'example.com', type = 1, qclass = 1) {
 const rcode = packet => packet.readUInt16BE(2) & 15;
 const dto = hostname => ({ hostname, ttl: 60, addresses: [{ family: 4, address: '93.184.216.34' }, { family: 6, address: '2606:4700::1111' }] });
 
-test('DNS wire accepts only reviewed A/AAAA IN names and never resolves CNAME or other questions', async () => {
+test('DNS wire accepts public A/AAAA IN names and never resolves CNAME or other questions', async () => {
   const looked = [];
   const engine = createDnsEngine(async hostname => { looked.push(hostname); return dto(hostname); }, () => 1000);
   for (const type of [1, 28]) {
@@ -21,16 +21,13 @@ test('DNS wire accepts only reviewed A/AAAA IN names and never resolves CNAME or
     assert.equal(packet.readUInt16BE(record + 2), type); assert.equal(packet.readUInt32BE(record + 6), 60);
   }
   assert.deepEqual(looked, ['example.com']);
-  for (const [host, type, qclass] of [['home-core',1,1],['10.77.20.1',1,1],['example.com.evil',1,1],['example.com',5,1],['example.com',255,1],['example.com',1,3]]) {
+  for (const [host, type, qclass] of [['home-core',1,1],['10.77.20.1',1,1],['service.home.arpa',1,1],['example.com',5,1],['example.com',255,1],['example.com',1,3]]) {
     assert.equal(rcode(await engine.handle(query(host,type,qclass))), 3);
   }
   assert.deepEqual(looked, ['example.com']);
-  assert.equal(new Set(RESEARCH_HOSTS).size, RESEARCH_HOSTS.length);
-  for (const host of ['www.afbudsrejser.dk', 'www.solfaktor.dk', 'www.spies.dk',
-    'www.tui.dk', 'www.apollorejser.dk', 'www.sunweb.dk']) {
-    assert.ok(RESEARCH_HOSTS.includes(host));
+  for (const host of ['survey.vendor.com', 'unlisted-public-site.com', 'example.com.evil', 'www.solfaktor.dk']) {
+    assert.equal(publicHostname(host), true);
     assert.equal(rcode(await engine.handle(query(host))), 0);
-    assert.equal(rcode(await engine.handle(query(host + '.evil'))), 3);
   }
 });
 
@@ -67,11 +64,11 @@ test('cache TTL and concurrent DNS budget remain finite even when worker lookup 
   now += 60000; await engine.handle(query());assert.equal(calls,2);
   const resolvers=[];
   const bounded=createDnsEngine(hostname=>new Promise(resolve=>resolvers.push(()=>resolve(dto(hostname)))));
-  const pending=RESEARCH_HOSTS.slice(0,4).map(host=>bounded.handle(query(host)));
-  const duplicate=bounded.handle(query(RESEARCH_HOSTS[0],28));
+  const pending=['one.com','two.com','three.com','four.com'].map(host=>bounded.handle(query(host)));
+  const duplicate=bounded.handle(query('one.com',28));
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(resolvers.length,4);
-  assert.equal(rcode(await bounded.handle(query(RESEARCH_HOSTS[4]))),2);
+  assert.equal(rcode(await bounded.handle(query('five.com'))),2);
   resolvers.forEach(resolve=>resolve());await Promise.all([...pending,duplicate]);
 });
 
@@ -90,4 +87,24 @@ test('worker lookup uses only the authenticated fixed loopback endpoint and boun
   assert.equal(new URL(requestOptions.path,'http://fixed').searchParams.get('hostname'),'example.com');
   await assert.rejects(lookup('home-core'));assert.equal(calls,1);
   assert.throws(()=>createWorkerLookup('short'));
+});
+
+test('public DNS configuration rejects private-network opt-ins and old host exceptions', () => {
+  const browser = {enabled:true, evaluateEnabled:false, defaultProfile:'homecompute',
+    ssrfPolicy:{allowedHostnames:['127.0.0.1']}};
+  assert.ok(publicBrowserConfig(browser));
+  for (const policy of [{}, {...browser.ssrfPolicy, dangerouslyAllowPrivateNetwork:true},
+    {...browser.ssrfPolicy, dangerouslyAllowPrivateNetwork:false},
+    {allowedHostnames:['127.0.0.1','example.com']}, {allowedHostnames:['*']}]) {
+    assert.ok(!publicBrowserConfig({...browser,ssrfPolicy:policy}));
+  }
+  assert.ok(!publicBrowserConfig({...browser,evaluateEnabled:true}));
+});
+
+test('DNS cache has a fixed bound with arbitrary public names', async () => {
+  let calls=0;
+  const engine=createDnsEngine(hostname=>{calls++;return dto(hostname);});
+  for(let i=0;i<257;i++) await engine.handle(query(`survey${i}.com`));
+  await engine.handle(query('survey256.com')); assert.equal(calls,257);
+  await engine.handle(query('survey0.com')); assert.equal(calls,258);
 });

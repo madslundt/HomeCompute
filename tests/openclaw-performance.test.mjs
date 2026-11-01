@@ -7,18 +7,21 @@ import { projectProtectedBrowserSchema, BROWSER_ACTION_FIELDS, PROTECTED_BROWSER
 import { browserPolicy } from '../deploy/openclaw/safety-plugin/index.mjs';
 
 const fields = ['action','profile','target',...Object.values(BROWSER_ACTION_FIELDS).flat(),
-  'text','submit','request','node','paths','accept','timeoutMs'];
+  'request','node','paths','accept','fn','actions'];
 const native = { type:'object', properties:Object.fromEntries(fields.map(f=>[f,{type:'string'}])),
   required:['action'] };
 native.properties.action.enum = [...Object.keys(BROWSER_ACTION_FIELDS),'act','upload','dialog'];
 
-test('projection omits forbidden actions and unused interactive schema fields',()=>{
+test('projection advertises bounded interaction and omits scripts and file fields',()=>{
   const projected=projectProtectedBrowserSchema(native);
   assert.deepEqual(projected.properties.action.enum,Object.keys(BROWSER_ACTION_FIELDS));
-  for(const field of ['text','submit','request','node','paths','accept','timeoutMs'])
+  for(const field of ['request','node','paths','accept','fn','actions'])
     assert.equal(projected.properties[field],undefined);
   assert.equal(projected.additionalProperties,false);
   assert.equal(native.properties.text.type,'string');
+  assert.ok(projected.properties.kind.enum.includes('fill'));
+  assert.ok(!projected.properties.kind.enum.includes('evaluate'));
+  assert.equal(projected.properties.fields.items.additionalProperties,false);
 });
 test('every currently permitted guard field survives projection',()=>{
   const projected=projectProtectedBrowserSchema(native);

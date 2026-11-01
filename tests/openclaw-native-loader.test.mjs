@@ -19,9 +19,11 @@ test('pinned native source-transform loader loads protected hook and DNS depende
   const policy = hooks[0][1];
   assert.equal(policy({ toolName: 'browser', params: { action: 'navigate', targetUrl: 'https://example.com/' } }).params.profile, 'homecompute');
   for (const params of [{ action: 'act', request: { kind: 'click', ref: 'nonexistent-qualification' } },
-    { action: 'navigate', targetUrl: 'https://unlisted-site.com/' }, { action: 'navigate', targetUrl: 'https://10.77.20.1/' }]) {
+    { action: 'act', targetId:'test', kind:'evaluate', fn:'1' }, { action: 'navigate', targetUrl: 'https://10.77.20.1/' }]) {
     assert.equal(policy({ toolName: 'browser', params }).block, true);
   }
+  assert.equal(policy({toolName:'browser',params:{action:'navigate',targetUrl:'https://unlisted-site.com/'}}).params.profile,'homecompute');
+  assert.equal(policy({toolName:'browser',params:{action:'act',targetId:'test',kind:'click',ref:'e1'}}).params.target,'host');
   const blocked = (event, role) => hooks.some(([, callback]) => callback(event,
     { agentId: role, sessionKey: `agent:${role}:main` })?.block === true);
   const event = { toolName: 'homecompute__homecompute_shopping_list', params: { agentId: 'shopper' } };

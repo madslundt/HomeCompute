@@ -104,42 +104,42 @@ class ToolsTest(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout),{'browser':'172.30.188.2',
             'browser-egress':'172.30.188.3','browser-ingress':'172.30.188.4','browser-dns':'172.30.188.5'})
 
-    def test_browser_hostname_exceptions_are_finite_and_keep_private_network_denied(self):
-        policy=activation['browser_ssrf_policy']()
-        self.assertIs(policy['dangerouslyAllowPrivateNetwork'],False)
-        hosts=policy['allowedHostnames']
-        self.assertIn('127.0.0.1',hosts)
-        self.assertIn('example.com',hosts)
-        self.assertIn('docs.openclaw.ai',hosts)
-        self.assertEqual(len(hosts),len(set(hosts)))
-        self.assertTrue(all('*' not in host for host in hosts))
-        self.assertEqual(set(hosts)-{'127.0.0.1'},BROWSER.PUBLIC_RESEARCH_HOSTS)
-        if shutil.which('node'):
-            result=subprocess.run(['node','--input-type=module','-e',
-                'import {RESEARCH_HOSTS} from "./deploy/openclaw/safety-plugin/public-dns.mjs"; console.log(JSON.stringify(RESEARCH_HOSTS));'],
-                cwd=ROOT,capture_output=True,text=True,check=True)
-            self.assertEqual(set(json.loads(result.stdout)),BROWSER.PUBLIC_RESEARCH_HOSTS)
-        self.assertFalse(any(host in hosts for host in ['home-core','169.254.169.254','10.77.20.1']))
+    def test_browser_policy_has_only_the_cdp_exception_and_public_name_parity(self):
+        self.assertEqual(activation['browser_ssrf_policy'](), {'allowedHostnames': ['127.0.0.1']})
+        policy = activation['browser_ssrf_policy']()
         policy['allowedHostnames'].append('unsafe.example')
-        self.assertNotIn('unsafe.example',activation['browser_ssrf_policy']()['allowedHostnames'])
+        self.assertEqual(activation['browser_ssrf_policy'](), {'allowedHostnames': ['127.0.0.1']})
+        cases = ['example.com', 'survey.vendor.com', 'unlisted-public-site.com', 'example.com.evil',
+                 'home-core', 'home.arpa', 'service.local', 'service.ts.net', '10.77.20.1',
+                 '169.254.169.254', 'example.com\n', '*.example.com', '-bad.com',
+                 'bad-.com', 'a' * 64 + '.com', 'example.com.', 'a.onion', 'EXAMPLE.COM']
+        expected = [BROWSER.public_hostname(host) for host in cases]
+        self.assertEqual(expected[:4], [True] * 4)
+        if shutil.which('node'):
+            result = subprocess.run(['node', '--input-type=module', '-e',
+                'import {publicHostname} from "./deploy/openclaw/safety-plugin/public-dns.mjs"; '
+                'console.log(JSON.stringify(JSON.parse(process.argv[1]).map(publicHostname)));', json.dumps(cases)],
+                cwd=ROOT, capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads(result.stdout), expected)
 
-    def test_public_dns_rejects_unknown_private_and_mixed_answers(self):
+    def test_public_dns_accepts_unlisted_domains_and_rejects_private_and_mixed_answers(self):
         calls=[]
         def resolver(hostname,_port,**_kwargs):
             calls.append(hostname)
             return [(socket.AF_INET,socket.SOCK_STREAM,0,'',('93.184.216.34',0)),
                     (socket.AF_INET6,socket.SOCK_STREAM,0,'',('2606:4700::1111',0,0,0))]
-        value=BROWSER.public_dns('example.com',resolver)
-        self.assertEqual({row['family'] for row in value['addresses']},{4,6})
-        self.assertEqual(value['ttl'],60)
-        for hostname in ['example.com.evil','10.77.20.1','169.254.169.254','example.com\n','*.example.com']:
+        for host in ['example.com', 'survey.vendor.com', 'example.com.evil']:
+            value=BROWSER.public_dns(host,resolver)
+            self.assertEqual({row['family'] for row in value['addresses']},{4,6})
+            self.assertEqual(value['ttl'],60)
+        for hostname in ['home-core', 'home.arpa','10.77.20.1','169.254.169.254','example.com\n','*.example.com']:
             with self.assertRaises(ValueError):BROWSER.public_dns(hostname,resolver)
-        self.assertEqual(calls,['example.com'])
+        self.assertEqual(calls,['example.com', 'survey.vendor.com', 'example.com.evil'])
         for private in ['127.0.0.1','10.77.20.1','169.254.169.254','::1','fd00::1','192.0.2.1','::ffff:10.77.20.1','::ffff:93.184.216.34']:
             def mixed(*args,**kwargs):
                 rows=resolver(*args,**kwargs)
                 return rows+[(socket.AF_INET6 if ':' in private else socket.AF_INET,socket.SOCK_STREAM,0,'',(private,0))]
-            with self.assertRaises(ValueError):BROWSER.public_dns('example.com',mixed)
+            with self.assertRaises(ValueError):BROWSER.public_dns('survey.vendor.com',mixed)
 
     def test_public_dns_http_requires_exact_authentication_and_scope_before_lookup(self):
         token='q'*48

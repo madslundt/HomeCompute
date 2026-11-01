@@ -12,16 +12,11 @@ MCP_TOOLS = {'homecompute__homecompute_'+name for name in
               'maintenance_list','maintenance_status','maintenance_run','maintenance_prepare','maintenance_preparation')}
 
 def browser_ssrf_policy():
- # Remote Chromium cannot enforce native DNS pinning. Exact public sources
- # are explicit exceptions; the browser's forced egress proxy still rejects
- # private IPv4/IPv6 destinations on every connection, including redirects.
- return {'dangerouslyAllowPrivateNetwork':False,'allowedHostnames':[
-  '127.0.0.1','example.com','docs.openclaw.ai','docs.nvidia.com',
-  'docs.litellm.ai','docs.n8n.io','www.home-assistant.io',
-  'developers.home-assistant.io','nixos.org','wiki.nixos.org','nix.dev',
-  'search.nixos.org','github.com','raw.githubusercontent.com','duckduckgo.com','marginalia-search.com',
-  'www.afbudsrejser.dk','www.solfaktor.dk','www.spies.dk',
-  'www.tui.dk','www.apollorejser.dk','www.sunweb.dk']}
+ # In the pinned native runtime, explicit false adds an IP-literal-only browser
+ # restriction. Omission keeps public DNS/IP checks, with no private-network
+ # opt-in. Only the authenticated CDP control endpoint needs a local exception.
+ # Forced Squid egress rejects private destinations on every connection.
+ return {'allowedHostnames':['127.0.0.1']}
 
 def protected_guard(guard, digests):
  assert not guard.is_symlink() and guard.stat().st_uid==0 and not guard.stat().st_mode & 0o022
