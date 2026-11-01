@@ -1,13 +1,15 @@
 # OpenClaw browser and CLI installation
 
-## Public browser policy candidate (2026-11-01)
+## Public browser access (2026-11-01)
 
 [ADR-026](adr/026-openclaw-public-browser.md) records the owner's requested
 replacement for the finite public-domain policy: public HTTP(S) hostname URLs on
 ports 80/443 and bounded page interaction, including expressly requested survey
-submission. This section describes the source candidate. It has **not been
-deployed or live-qualified** by this change; the observations below describe the
-previous installed policy.
+submission. The policy is **deployed and live-qualified** through the dedicated browser
+lifecycle at source revision `b57fcfce405fb4044693cc19542f553ff3032d8d`.
+The [sanitized verification record](openclaw-public-browser-validation.json)
+records artifact comparisons, tests, rollback retention and remaining host drift.
+The observations dated 2026-10-25 below describe the previous installed policy.
 
 The protected guard and Python DNS worker validate public hostname syntax, then
 reject DNS answers containing private/reserved, metadata, tailnet or mapped IPv6
@@ -47,10 +49,15 @@ that the new candidate is installed.
 1. Retain root-private backups of native config, protected modules, DNS identity,
    skill ownership ledger and affected AGENTS/skill files. Record the current
    immutable browser image and prior container/network tuple. Pause the native
-   health supervisor and public DNS controller for the maintenance window, using
-   the existing guest runbook; stop the gateway through NemoClaw. Preserve all
+   health supervisor and public DNS controller for the maintenance window. Keep
+   the managed sandbox available for source staging and native config validation;
+   perform its supported gateway restart after the setup phases below. Preserve
    private state and do not edit OpenShell's phase database.
 2. Stage the selected release root-owned outside readable agent workspaces.
+   Remove group/other write permission from archive staging (`chmod -R go-w`).
+   Native operator commands must use a permitted `/sandbox/` source path and
+   the managed native-user environment (including `HOME=/sandbox`), through
+   `nemoclaw agent-openclaw exec` where applicable.
    Build the worker from the inspected immutable browser image without package
    upgrades, using the tracked policy overlay:
 
@@ -155,9 +162,11 @@ retained complete browser/DNS image, networks, protected modules, native config,
 DNS identity and changed instruction/skill tuple. Resume and requalify the prior
 tuple. Keep the current native authentication/ownership records; never blindly
 restore expired auth from a different sandbox. Code rollback cannot retract a
-form already submitted. No changes in this candidate claim live survey readiness.
+form already submitted. The deployed synthetic fixture qualified navigation, typing, one Submit click,
+confirmation and cleanup. The original survey URL was not supplied; login,
+CAPTCHA and provider-specific behavior remain unverified for that website.
 
-## Current browser access (2026-10-25)
+## Previous browser access (2026-10-25)
 
 The running protected browser is enabled for Nova and Lyra. Atlas delegates
 research to specialists; the coordinator guard blocks his direct domain calls.

@@ -1,6 +1,6 @@
 # ADR-026: Public browsing and owner-requested page interaction
 
-**Status:** Accepted policy; source implementation pending live qualification.
+**Status:** Accepted, deployed and qualified with a synthetic public form.
 **Date:** 2026-11-01
 **Tracking:** [HomeCompute issue 47](https://github.com/madslundt/HomeCompute/issues/47)
 
@@ -45,7 +45,7 @@ public DNS/address checks remain active. That CDP exception is not browser
 network access to localhost: the browser's forced proxy still rejects it.
 Requalify this behavior on an OpenClaw upgrade.
 See the [upstream configuration reference](https://docs.openclaw.ai/tools/browser/configuration)
-and the [local runbook](../openclaw-tools.md#public-browser-policy-candidate-2026-11-01).
+and the [local runbook](../openclaw-tools.md#public-browser-access-2026-11-01).
 
 ## Consequences
 
@@ -75,3 +75,12 @@ backups. Prove public navigation, requested synthetic form submission, and
 private-destination denial through the authenticated native client before
 claiming the capability live. Revert the entire browser/DNS/configuration tuple
 if qualification fails. Reverting code cannot withdraw an already submitted form.
+
+## Deployment evidence
+
+The 2026-11-01 [sanitized rollout record](../openclaw-public-browser-validation.json)
+verifies the installed artifact/configuration hashes against source, an actual
+researcher turn that submitted the public Selenium test fixture once and closed
+its tab, and 12 forced-proxy private-destination denials. Credentials and role
+grants were unchanged. The dedicated browser rollout does not reconcile the
+whole-host release markers or the other platform findings recorded there.
