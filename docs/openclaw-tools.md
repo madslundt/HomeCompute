@@ -94,13 +94,21 @@ that the new candidate is installed.
    validation, and verifies the entire resulting config against its candidate.
    The older `enable-openclaw-tools.py` is for initial single-agent activation;
    it must not be rerun against an existing team.
-5. Refresh the affected existing role identities through
-   `setup-openclaw-team.py --coordinator-identity-only --identity-role ROLE`,
-   using its normal digest fence and explicit role selection. Update only the
-   changed managed skill bundles through its ledger-checked installation path.
-   Compare the installed base browser instructions with `workspace-policy.md`;
-   reconcile any retained finite-host/read-only instructions without overwriting
-   unrelated notes, memory or later role restrictions. Preserve per-role grants.
+5. As the native config owner, plan and apply the narrow instruction refresh:
+
+   ```bash
+   python3 RELEASE/scripts/setup-openclaw-public-browser.py --refresh-instructions
+   python3 RELEASE/scripts/setup-openclaw-public-browser.py --refresh-instructions \
+     --apply --expected-plan-sha256 SHA256_FROM_INSTRUCTION_PLAN
+   ```
+
+   This uses the existing team identity and ledger-checked skill patch builders.
+   It refreshes six existing identities and only public-web-research,
+   travel-adventures and household-paperwork bundles, with private backups and
+   readback. Atlas's known legacy finite-browser paragraph is migrated to the
+   owning workspace policy; unknown edits cause a refusal. Unrelated notes,
+   memory, role grants, private account policy and native configuration are
+   preserved. Review the reported paths/hashes before applying the exact plan.
 6. Restart the gateway through `nemoclaw agent-openclaw gateway restart --quiet`.
    Rebind the DNS controller to the positively verified current native identity
    using the existing root `setup-openclaw-public-dns.py --replacement-id UUID

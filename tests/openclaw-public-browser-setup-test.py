@@ -74,6 +74,39 @@ class PublicBrowserSetup(unittest.TestCase):
         self.assertEqual(before, original)
         self.assertEqual(module.candidate(after), after)
 
+    def test_instruction_upgrade_preserves_config_notes_and_unrelated_roles(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder).resolve()
+            config = root / 'openclaw.json'
+            before = self.fixture()
+            team = json.loads((ROOT / 'config/openclaw-team.json').read_bytes())
+            before['agents']['entries'] = {role: {'workspace': str(root / ('workspace' if role == 'main' else 'workspace-' + role))}
+                                           for role in team['agents']}
+            for role, entry in before['agents']['entries'].items():
+                workspace = Path(entry['workspace'])
+                workspace.mkdir()
+                text = 'Preserved private task notes.\n'
+                if role == 'main': text += module.LEGACY_BROWSER_PARAGRAPH
+                (workspace / 'AGENTS.md').write_text(text)
+            config.write_text(json.dumps(before))
+            config.chmod(0o600)
+            raw = config.read_bytes()
+            plan = module.refresh_instructions(config, ROOT)
+            self.assertFalse(plan['applied'])
+            paths = [row['path'] for row in plan['files']]
+            self.assertNotIn('workspace-family/AGENTS.md', paths)
+            self.assertNotIn('workspace-personal/AGENTS.md', paths)
+            with self.assertRaises(ValueError):
+                module.refresh_instructions(config, ROOT, apply=True, expected_plan_sha256='changed')
+            result = module.refresh_instructions(config, ROOT, apply=True, expected_plan_sha256=plan['plan_sha256'])
+            self.assertTrue(result['applied'])
+            self.assertEqual(config.read_bytes(), raw)
+            text = (root / 'workspace/AGENTS.md').read_text()
+            self.assertIn('Preserved private task notes.', text)
+            self.assertNotIn('Other hosts require operator review', text)
+            self.assertIn('public HTTP(S)', text)
+            self.assertEqual(module.refresh_instructions(config, ROOT)['changed_files'], 0)
+
     def test_private_opt_in_unknown_policy_and_profile_drift_refused(self):
         for key, value in [('dangerouslyAllowPrivateNetwork', True), ('allowedHostnames', ['*']),
                            ('hostnameAllowlist', ['restricted.com']), ('blockedHostnames', ['blocked.com'])]:

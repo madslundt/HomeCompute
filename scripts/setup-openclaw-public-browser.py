@@ -123,14 +123,18 @@ def protected_modules(source, root):
             raise ValueError('Reviewed protected browser modules required')
 
 
-def setup(config, source, *, apply=False, expected_config_sha256=None, runner=subprocess.run):
+def read_config(config):
     if any(p.is_symlink() for p in (config, *config.parents)):
         raise ValueError('Symlink refused')
     info = config.stat()
     if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
             or info.st_mode & 0o077 or info.st_nlink != 1 or info.st_size > 1048576):
         raise ValueError('Private native configuration required')
-    raw = config.read_bytes()
+    return config.read_bytes()
+
+
+def setup(config, source, *, apply=False, expected_config_sha256=None, runner=subprocess.run):
+    raw = read_config(config)
     digest = hashlib.sha256(raw).hexdigest()
     if expected_config_sha256 is not None and expected_config_sha256 != digest:
         raise ValueError('Source configuration changed')
@@ -177,19 +181,96 @@ def setup(config, source, *, apply=False, expected_config_sha256=None, runner=su
     return result
 
 
+LEGACY_BROWSER_PARAGRAPH = 'Browser access supports public research on these approved sources: example.com,\ndocs.openclaw.ai, docs.nvidia.com, docs.litellm.ai, docs.n8n.io,\nwww.home-assistant.io, developers.home-assistant.io, nixos.org, wiki.nixos.org,\nnix.dev, search.nixos.org, github.com, raw.githubusercontent.com, and\nduckduckgo.com and marginalia-search.com. Public travel research also permits www.afbudsrejser.dk,\nwww.solfaktor.dk, www.spies.dk, www.tui.dk, www.apollorejser.dk and www.sunweb.dk.\nNova and Lyra use this protected browser; Atlas delegates public research.\nOther hosts require operator review before being added.\nInteraction and form submission are blocked by the protected tool guard.\n'
+
+def browser_instructions(existing, canonical):
+    """Migrate only the known finite-browser paragraph; preserve all other notes."""
+    legacy = LEGACY_BROWSER_PARAGRAPH
+    current = canonical[canonical.index('Browser access supports public HTTP(S)'):canonical.index('Preserve the distinction')]
+    if legacy in existing:
+        return existing.replace(legacy, current, 1)
+    if 'Other hosts require operator review before being added.' in existing:
+        raise ValueError('Unrecognized retained browser instructions require review')
+    return existing
+
+
+def refresh_instructions(config, source, *, apply=False, expected_plan_sha256=None):
+    import importlib.util
+    import sys
+    sys.path.insert(0, str(source / 'scripts'))
+    spec = importlib.util.spec_from_file_location('browser_team_setup', source / 'scripts/setup-openclaw-team.py')
+    team_setup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(team_setup)
+    team_setup.STATE_ROOT = config.parent
+    raw = read_config(config)
+    before = json.loads(raw)
+    candidate(before)  # Preserve the isolated browser contract.
+    team = team_setup.manifest(source / 'config/openclaw-team.json')
+    canonical = (source / 'deploy/openclaw/workspace-policy.md').read_text()
+    planned = []
+    for role in ('main', 'researcher', 'travel', 'cook', 'administrator', 'finance'):
+        workspace = config.parent / ('workspace' if role == 'main' else 'workspace-' + role)
+        if before['agents']['entries'][role]['workspace'] != str(workspace):
+            raise ValueError('Canonical browser role workspace required')
+        path = workspace / 'AGENTS.md'
+        existing = path.read_text()
+        if role == 'main':
+            existing = browser_instructions(existing, canonical)
+        content = team_setup.identity_text(existing, role, team).encode()
+        if content != path.read_bytes():
+            planned.append((path, content))
+    sources = {name: (source / 'deploy/openclaw/skills' / name / 'SKILL.md').read_bytes()
+               for name in ('public-web-research', 'travel-adventures', 'household-paperwork')}
+    planned += team_setup.managed_skill_plan(config, before, team, sources, {})
+    previous = {}
+    for path, _ in planned:
+        if any(p.is_symlink() for p in (path, *path.parents)):
+            raise ValueError('Instruction symlink refused')
+        if path.exists() and (path.stat().st_uid != os.geteuid() or path.stat().st_mode & 0o022):
+            raise ValueError('Owned instruction files required')
+        previous[path] = path.read_bytes() if path.exists() else None
+    rows = [{'path': str(p.relative_to(config.parent)),
+             'before': hashlib.sha256(previous[p]).hexdigest() if previous[p] is not None else None,
+             'after': hashlib.sha256(content).hexdigest()} for p, content in planned]
+    fence = hashlib.sha256(json.dumps({'config': hashlib.sha256(raw).hexdigest(), 'files': rows}, sort_keys=True).encode()).hexdigest()
+    result = {'plan_sha256': fence, 'changed_files': len(planned), 'files': rows, 'applied': False}
+    if apply:
+        if (expected_plan_sha256 != fence or config.read_bytes() != raw
+                or any((p.read_bytes() if p.exists() else None) != old for p, old in previous.items())):
+            raise ValueError('Browser instruction plan changed')
+        if planned:
+            backup = config.parent / 'public-browser-instruction-backups' / str(uuid.uuid4())
+            team_setup.private_write(backup / 'paths.json', json.dumps(rows).encode())
+            for i, (path, content) in enumerate(planned):
+                if previous[path] is not None:
+                    team_setup.private_write(backup / str(i), previous[path])
+                team_setup.private_write(path, content, replace=path.exists())
+            result['backup'] = str(backup)
+        if config.read_bytes() != raw or any(p.read_bytes() != content for p, content in planned):
+            raise ValueError('Browser instruction readback differs')
+        result['applied'] = True
+    return result
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=Path('/sandbox/.openclaw/openclaw.json'))
     parser.add_argument('--source', type=Path, default=ROOT)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--expected-config-sha256')
+    parser.add_argument('--refresh-instructions', action='store_true')
+    parser.add_argument('--expected-plan-sha256')
     parser.add_argument('--stage-modules', action='store_true', help='root-only digest-fenced module staging')
     parser.add_argument('--expected-guard-sha256')
     parser.add_argument('--expected-dns-sha256')
     parser.add_argument('--expected-schema-sha256', help='required if replacing an existing different schema helper')
     args = parser.parse_args()
     try:
-        if args.stage_modules:
+        if args.refresh_instructions:
+            if args.stage_modules:
+                raise ValueError('Select one browser setup phase')
+            result = refresh_instructions(args.config, args.source, apply=args.apply, expected_plan_sha256=args.expected_plan_sha256)
+        elif args.stage_modules:
             if args.apply or not args.expected_guard_sha256 or not args.expected_dns_sha256:
                 raise ValueError('Module staging requires exact preimage digests')
             result = stage_modules(args.config.parent, args.source,
