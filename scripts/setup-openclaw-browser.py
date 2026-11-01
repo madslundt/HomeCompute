@@ -22,7 +22,7 @@ def docker(*args):
     return r.stdout.strip()
 
 
-def install(directory: Path, image: str):
+def install(directory: Path, image: str, *, egress_only: bool = False):
     if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
         raise ValueError('immutable qualified image ID required')
     directory = directory.resolve()
@@ -31,7 +31,7 @@ def install(directory: Path, image: str):
     private = directory / 'private'
     private.mkdir(mode=0o700, exist_ok=True)
     token = private / 'browser-token'
-    if not token.exists():
+    if not egress_only and not token.exists():
         fd = os.open(token, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o444)
         with os.fdopen(fd, 'w') as out:
             out.write(secrets.token_urlsafe(48) + '\n')
@@ -46,8 +46,10 @@ def install(directory: Path, image: str):
             if network['Internal'] != internal or network['IPAM']['Config'][0]['Subnet'] != subnet:
                 raise ValueError('existing network differs from browser contract')
     existing = docker('ps', '-a', '--format', '{{.Names}}').splitlines()
-    if any(name in existing for name in (BROWSER, EGRESS, INGRESS, DNS)):
+    if any(name in existing for name in ((EGRESS,) if egress_only else (BROWSER, EGRESS, INGRESS, DNS))):
         raise ValueError('browser containers already exist; inspect before replacement')
+    if egress_only and not all(name in existing for name in (BROWSER, INGRESS, DNS)):
+        raise ValueError('existing browser, ingress and DNS required for egress-only reconciliation')
     common = ['--init', '--restart', 'unless-stopped', '--user', '10001:10001', '--read-only',
               '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
               '--log-driver', 'local', '--log-opt', 'max-size=5m', '--log-opt', 'max-file=2']
@@ -60,6 +62,12 @@ def install(directory: Path, image: str):
     # stopped worker's address first during Docker/VM restart.
     docker('network', 'connect', '--ip', '172.30.188.3', '--alias', 'browser-egress', BROWSER, EGRESS)
     docker('start', EGRESS)
+    if egress_only:
+        receipt = {'egress': EGRESS, 'image': image, 'egress_only': True,
+                   'private_networks': 'proxy denied'}
+        (private / 'installation-egress.json').write_text(json.dumps(receipt, indent=2) + '\n')
+        print(json.dumps(receipt))
+        return
     docker('create', '--name', DNS, *common, '--network', BROWSER,
         '--network-alias', 'browser-dns', '--ip', '172.30.188.5',
         '--cpus', '0.25', '--memory', '64m', '--memory-swap', '64m', '--pids-limit', '64',
@@ -99,5 +107,6 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--directory', type=Path, required=True)
     p.add_argument('--image-id', required=True)
+    p.add_argument('--egress-only', action='store_true', help='reconcile a retained/replaced proxy without recreating browser state')
     args = p.parse_args()
-    install(args.directory, args.image_id)
+    install(args.directory, args.image_id, egress_only=args.egress_only)

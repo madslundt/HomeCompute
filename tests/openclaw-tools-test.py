@@ -39,6 +39,27 @@ exec(compile(ast.Module(body=definitions,type_ignores=[]),'activation-preflight'
 
 
 class ToolsTest(unittest.TestCase):
+    def test_egress_only_reconciliation_preserves_workers_profile_and_token(self):
+        calls=[]
+        def docker(*args):
+            calls.append(args)
+            if args[:2] == ('ps', '-a'):
+                return '\n'.join([BROWSER_INSTALL.BROWSER, BROWSER_INSTALL.INGRESS, BROWSER_INSTALL.DNS])
+            return ''
+        with tempfile.TemporaryDirectory() as folder:
+            directory=Path(folder).resolve();(directory/'tools').mkdir()
+            (directory/'tools/browser-squid.conf').write_text('reviewed fixture')
+            with patch.object(BROWSER_INSTALL,'docker',side_effect=docker), \
+                 patch.object(BROWSER_INSTALL.subprocess,'run',return_value=types.SimpleNamespace(returncode=1)), \
+                 patch('builtins.print'):
+                BROWSER_INSTALL.install(directory,'sha256:'+'a'*64,egress_only=True)
+            self.assertFalse((directory/'private/browser-token').exists())
+            self.assertTrue((directory/'private/installation-egress.json').exists())
+        created=[cmd[cmd.index('--name')+1] for cmd in calls if cmd[0]=='create']
+        self.assertEqual(created,[BROWSER_INSTALL.EGRESS])
+        self.assertEqual([cmd for cmd in calls if cmd[0]=='start'],[('start',BROWSER_INSTALL.EGRESS)])
+        self.assertFalse(any(cmd[:2]==('volume','create') for cmd in calls))
+
     def test_authenticated_tab_cleanup_forwards_native_plain_text_response(self):
         calls=[]
         class Upstream(BaseHTTPRequestHandler):

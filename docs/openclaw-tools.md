@@ -71,6 +71,21 @@ that the new candidate is installed.
    `private/browser-token`. Compare all resulting flags, networks, mounts, proxy
    configuration and worker hashes with the selected source. Keep rollback
    containers stopped so they cannot reclaim the new tuple's addresses.
+
+   When retaining a Chromium profile across a container hostname change, inspect
+   its SingletonLock/SingletonSocket/SingletonCookie symlinks before startup.
+   Only after positively verifying that every container mounting that profile is
+   stopped, preserve the stale symlinks in the private rollback backup and remove
+   those exact runtime lock artifacts. Refuse unexpected regular files or an
+   active owner. Preserve cookies, history and all other profile data.
+
+   For a proxy-only reconciliation, retain/stop the inspected egress container,
+   rename it and detach its reserved network addresses, then run the same source
+   installer with `--egress-only`. It requires the existing browser, DNS and
+   ingress containers and recreates only egress; it does not create a token or
+   touch the profile. Verify the new proxy configuration against source and keep
+   the prior proxy stopped for rollback. The explicit `to_localhost` denial
+   covers IPv4 and IPv6 loopback before public traffic is admitted.
 3. In the sandbox, stage the reviewed protected modules as root using their
    inspected preimage hashes. The command retains a root-only module backup:
 

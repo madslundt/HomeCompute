@@ -13,7 +13,7 @@ test('pinned native source-transform loader loads protected hook and DNS depende
   const loaded = nativeLoader({ modulePath: entry, rootDir: guard, aliasMap: {}, importerUrl: loaderUrl })(entry);
   const plugin = loaded.default ?? loaded;
   const hooks = []; const services = [];
-  plugin.register({ on: (...args) => hooks.push(args), registerService: service => services.push(service) });
+  plugin.register({ on: (...args) => hooks.push(args), registerService: service => services.push(service), registerGatewayMethod() {} });
   assert.equal(hooks.length, 2); assert.equal(services.length, 1);
   assert.ok(hooks.every(([name,, options]) => name === 'before_tool_call' && options.priority <= -1000000));
   const policy = hooks[0][1];
