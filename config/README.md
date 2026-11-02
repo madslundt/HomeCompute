@@ -8,11 +8,11 @@ they do not use them as production configuration in place.
 | --- | --- | --- |
 | `compute-node.env.example` | Compute-node and model lifecycle scripts | Current Qwen3.6 rollback tuple, pinned isolated Flash-Next candidate, private ports, bind policy, and resource limits |
 | `plapre-tts.env.example` | `setup-compute-plapre.sh` | Pinned Plapre/Kanade/HiFT tuple, Danish voice gate, resource bounds, and Wyoming publication policy |
-| `hviske-stt.env.example` | `setup-compute-hviske-stt.sh` | Pinned Hviske v5.3 tuple, license decision, bounded transcription, and Wyoming publication policy |
+| `hviske-stt.env.example` | `setup-compute-hviske-stt.sh` | Historical Hviske rollback tuple; new activation is refused. Use the [Whisper lifecycle](../deploy/whisper-stt/README.md) for full Large-v3 |
 | `model-catalog.json` | `scripts/model_registry.py` and the LiteLLM renderer | Immutable text artifacts, supported runtime profiles, deployment identities, endpoint environment names, lifecycle, and qualification evidence |
 | `capability-routes.json` | `scripts/model_registry.py` and the LiteLLM renderer | Stable capabilities, deployment mapping, local-only policy, context requirements, and named timeout profiles |
 | `gb10-model-roster.json` | `gb10_model_roster.py` and GB10 installation planning | Hardware-scoped model and modality staging inventory; generic structural validation only |
-| `speech-routing-policy.json` | `speech_routing_policy.py` and future speech adapters | Inactive Danish/non-Danish STT/TTS routes, fallback behavior, and license/voice gates |
+| `speech-routing-policy.json` | `speech_routing_policy.py` and future speech adapters | Unified multilingual Whisper STT target, unchanged TTS routing, and qualification/voice gates |
 | `tts-qualification.json` | `tts-qualification.py` | Danish phrase set, 750 ms/RTF/listening gates, and ASR/resynthesis recovery scenarios |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, selected compute transport, `/srv/state`, and sops-nix runtime secret paths |
 | `open-webui.env.example` | `deploy/open-webui/compose.yaml` | Pinned Open WebUI image, persistent state path, and runtime LiteLLM/WebUI secret-file paths |

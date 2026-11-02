@@ -236,10 +236,6 @@
           "require_health": false
         },
         {
-          "name": "gb10-hviske-primary",
-          "require_health": true
-        },
-        {
           "name": "homecompute-plapre-plapre-primary-1",
           "require_health": true
         },
@@ -249,10 +245,6 @@
         },
         {
           "name": "gb10-whisper-http",
-          "require_health": true
-        },
-        {
-          "name": "gb10-hviske-http",
           "require_health": true
         },
         {

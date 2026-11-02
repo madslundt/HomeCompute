@@ -163,9 +163,11 @@ revision in `config/gb10-model-roster.json`. Blazux/NVIDIA is the Flash-Next
 quality baseline and UltraFast is its separate performance challenger; neither
 is approved for cutover. Qwen3.8-27B remains a smaller cold fallback/workhorse
 artifact, with no future routing encoded. Gemma is outside the target and
-Qwen3-TTS is not part of the target speech stack. The required Spark speech pair is
-Hviske v5.3 and Plapre Nano v2. Whisper is deferred/optional for evaluation on
-`home-core`.
+Qwen3-TTS is not part of the target speech stack. The selected STT target is full
+Whisper Large-v3 for all languages; it replaces Hviske and Turbo through the
+[Whisper lifecycle](../deploy/whisper-stt/README.md) and
+[ADR-027](adr/027-unified-whisper-large-v3-stt.md). Deployment and hardware
+qualification must be verified separately. TTS is outside this STT migration.
 
 See [ADR-025](adr/025-flash-next-primary-candidate.md) and the
 [Qwen3.6 vs Flash-Next benchmark report](benchmarks/qwen36-vs-flash-next-automation.md)

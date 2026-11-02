@@ -209,7 +209,7 @@
       "privacy": "local_only",
       "timeout_profile": "transcription",
       "deployments": [
-        "hviske-spark-primary"
+        "whisper-large-v3-spark-primary"
       ]
     },
     "whisper-turbo": {
@@ -217,7 +217,15 @@
       "privacy": "local_only",
       "timeout_profile": "transcription",
       "deployments": [
-        "whisper-turbo-spark-primary"
+        "whisper-large-v3-spark-primary"
+      ]
+    },
+    "whisper": {
+      "state": "active",
+      "privacy": "local_only",
+      "timeout_profile": "transcription",
+      "deployments": [
+        "whisper-large-v3-spark-primary"
       ]
     }
   },

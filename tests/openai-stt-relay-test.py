@@ -52,6 +52,20 @@ def upload(audio=b"synthetic", fields=None, files=1):
 
 
 class UploadBoundaryTests(unittest.TestCase):
+    def test_large_v3_compatibility_aliases_preserve_request_parameters(self):
+        with patch.dict(os.environ, {'STT_MODEL': 'whisper-large-v3',
+                                    'STT_UPSTREAM_BASE_URL': 'http://whisper-primary:8000'}):
+            config = RELAY.load_config()
+        for alias in ('whisper', 'whisper-large-v3', 'stt-danish', 'whisper-turbo'):
+            body, kind = upload(fields=[('model', alias), ('language', 'da'),
+                                       ('response_format', 'verbose_json'),
+                                       ('timestamp_granularities[]', 'segment'), ('temperature', '0')])
+            fields, audio = RELAY.parse_upload(body, kind, config)
+            self.assertEqual(fields, [('model', b'whisper-large-v3'), ('language', b'da'),
+                                     ('response_format', b'verbose_json'),
+                                     ('timestamp_granularities[]', b'segment'), ('temperature', b'0')])
+            self.assertEqual(audio, b'synthetic')
+
     def test_malformed_multipart_and_multiple_files_are_rejected(self):
         examples = [upload(files=2), upload(files=0), (b"not multipart", "multipart/form-data; boundary=x")]
         body, content_type = upload()
@@ -84,15 +98,11 @@ class UploadBoundaryTests(unittest.TestCase):
             with self.subTest(name=name), patch.dict(os.environ, {name: value}), self.assertRaises(ValueError):
                 RELAY.load_config()
 
-    def test_model_and_backend_pair_is_fixed_for_each_deployment(self):
-        with patch.dict(os.environ, {'STT_MODEL': 'whisper-turbo', 'STT_UPSTREAM_BASE_URL': 'http://whisper-primary:8000'}):
-            config = RELAY.load_config()
-            body, kind = upload(fields=[('model', 'whisper-turbo')])
-            self.assertEqual(RELAY.parse_upload(body, kind, config)[0], [('model', b'whisper-turbo')])
-            wrong, kind = upload(fields=[('model', 'stt-danish')])
-            with self.assertRaises(RELAY.RelayError):
-                RELAY.parse_upload(wrong, kind, config)
-        for model, upstream in [('whisper-turbo', RELAY.UPSTREAM), ('stt-danish', 'http://whisper-primary:8000'), ('arbitrary', RELAY.UPSTREAM)]:
+    def test_model_and_backend_pair_is_fixed_for_the_full_model(self):
+        self.assertEqual(RELAY.load_config().model, 'whisper-large-v3')
+        for model, upstream in [('whisper-turbo', RELAY.UPSTREAM),
+                                ('stt-danish', 'http://hviske-primary:8000'),
+                                ('whisper-large-v3', 'http://hviske-primary:8000'), ('arbitrary', RELAY.UPSTREAM)]:
             with self.subTest(model=model, upstream=upstream), patch.dict(os.environ, {'STT_MODEL': model, 'STT_UPSTREAM_BASE_URL': upstream}), self.assertRaises(ValueError):
                 RELAY.load_config()
 
@@ -193,6 +203,7 @@ class HttpRelayTests(unittest.TestCase):
         self.assertEqual(auth, "Bearer private-test-key")
         fields = {part.get_param("name", header="content-disposition"): part.get_payload(decode=True) for part in parts}
         self.assertEqual(fields["language"], b"da")
+        self.assertEqual(fields["model"], b"whisper-large-v3")
         self.assertEqual(fields["response_format"], b"json")
         with wave.open(io.BytesIO(fields["file"]), "rb") as decoded:
             self.assertEqual(decoded.getframerate(), 16000)

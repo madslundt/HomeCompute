@@ -29,8 +29,8 @@ def validate_policy(policy: dict[str, Any]) -> None:
         raise SpeechPolicyError("speech routes must remain schema 1 and qualification-only")
     routes = policy.get("routes")
     if not isinstance(routes, dict) or routes.get("stt") != {
-        "danish": "stt_danish",
-        "english_mixed_or_unknown": "stt_english",
+        "danish": "stt_multilingual",
+        "english_mixed_or_unknown": "stt_multilingual",
     }:
         raise SpeechPolicyError("STT routing contract changed")
     if routes.get("tts") != {
@@ -52,7 +52,6 @@ def validate_policy(policy: dict[str, Any]) -> None:
         gates.get(name) is True
         for name in (
             "all_routes_require_qualification",
-            "hviske_commercial_use_requires_license_review",
             "arbitrary_voice_cloning_requires_documented_consent_and-policy",
         )
     ):
@@ -63,7 +62,7 @@ def route(policy: dict[str, Any], operation: str, language: str, gpu_available: 
     validate_policy(policy)
     is_danish = language in policy["language_rules"]["danish_tags"]
     if operation == "stt":
-        return "stt_danish" if is_danish else "stt_english"
+        return "stt_multilingual"
     if operation != "tts":
         raise SpeechPolicyError("operation must be stt or tts")
     if is_danish:

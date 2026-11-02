@@ -1,5 +1,11 @@
 # Hviske Danish STT on home-spark
 
+Retired target: [ADR-027](../../docs/adr/027-unified-whisper-large-v3-stt.md)
+replaces this model and Turbo with full Whisper Large-v3. This directory and
+its old lifecycle are retained for historical rollback. Use the
+[Whisper lifecycle](../whisper-stt/README.md) for current installation; do not
+activate this project as a language-specific replacement or fallback.
+
 ## Wyoming placement (2026-10-28)
 
 Spark serves model inference and private HTTP ingress. Wyoming runs on

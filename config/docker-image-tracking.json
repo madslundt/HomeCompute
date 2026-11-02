@@ -170,7 +170,7 @@
           "source_lane": "source_pin"
         },
         "gb10-whisper-http": {
-          "tracked_tag": "1.1.0",
+          "tracked_tag": "2.0.0",
           "source_lane": "source_pin"
         },
         "gb10-hviske-http": {

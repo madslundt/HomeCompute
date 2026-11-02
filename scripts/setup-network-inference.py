@@ -42,10 +42,11 @@ def model_scope(models: object) -> set[str]:
 
 
 def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_plapre: bool = False,
-              enable_embedding: bool = False, enable_video: bool = False) -> None:
+              enable_embedding: bool = False, enable_video: bool = False,
+              enable_full_whisper: bool = False) -> None:
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')
-    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video)) > 1:
+    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video, enable_full_whisper)) > 1:
         raise SystemExit('Migrate one model-scope change at a time.')
     if KEY_FILE.exists() or KEY_FILE.is_symlink():
         info = KEY_FILE.lstat()
@@ -58,6 +59,8 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
         if data['expires'] is not None or data['user_id'] != 'network-inference':
             raise SystemExit('Existing network credential has an unexpected scope, owner, or expiry.')
         scope = model_scope(data['models'])
+        has_full_whisper = 'whisper' in scope
+        scope -= {'whisper'}
         has_video = 'video' in scope
         base_scope = scope - {'video'}
         reviewed = (set(MODELS), set(TTS_MODELS), set([*MODELS, 'embedding']), set([*TTS_MODELS, 'embedding']))
@@ -65,7 +68,9 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
             raise SystemExit('Existing video credential has an unexpected underlying model scope.')
         scope = base_scope
         target = None
-        if enable_stt and scope == set(TEXT_MODELS):
+        if enable_full_whisper and scope in reviewed and not has_full_whisper:
+            target = [*data['models'], 'whisper']
+        elif enable_stt and scope == set(TEXT_MODELS):
             target = STT_MODELS
         elif enable_whisper and scope == set(STT_MODELS):
             target = MODELS
@@ -77,7 +82,9 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
             target = [*(TTS_MODELS if 'plapre' in scope else MODELS), 'embedding']
         elif enable_video and scope in reviewed and not has_video:
             target = [*data['models'], 'video']
-        if target is not None and has_video:
+        if target is not None and has_full_whisper and 'whisper' not in target:
+            target = [*target, 'whisper']
+        if target is not None and has_video and 'video' not in target:
             target = [*target, 'video']
         if target is not None:
             code = '''
@@ -112,6 +119,8 @@ urllib.request.urlopen(req, timeout=30).close()
     # into a private file; never print credentials in deployment output.
     expected_models = (TTS_MODELS if enable_plapre else [*MODELS, 'embedding'] if enable_embedding
                        else [*MODELS, 'video'] if enable_video else MODELS)
+    if enable_full_whisper:
+        expected_models = [*expected_models, 'whisper']
     code = '''
 import json, urllib.request
 master = open('/run/secrets/litellm_master_key').read().strip()
@@ -143,9 +152,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--enable-stt', action='store_true', help='Migrate the reviewed text-only network key to include stt-danish.')
     parser.add_argument('--enable-whisper', action='store_true', help='Migrate the reviewed text and Danish STT network key to include whisper-turbo.')
+    parser.add_argument('--enable-full-whisper', action='store_true', help='Add the canonical full Whisper alias, retaining compatibility scopes.')
     parser.add_argument('--enable-plapre', action='store_true', help='Migrate the reviewed network key to include candidate Plapre TTS.')
     parser.add_argument('--enable-embedding', action='store_true', help='Add the local embedding alias to the reviewed network key.')
     parser.add_argument('--enable-video', action='store_true', help='Add only the local video alias to the reviewed network key.')
     args = parser.parse_args()
     provision(enable_stt=args.enable_stt, enable_whisper=args.enable_whisper,
-              enable_plapre=args.enable_plapre, enable_embedding=args.enable_embedding, enable_video=args.enable_video)
+              enable_plapre=args.enable_plapre, enable_embedding=args.enable_embedding, enable_video=args.enable_video,
+              enable_full_whisper=args.enable_full_whisper)

@@ -95,35 +95,31 @@ of school history or all conversations.
 
 ## Speech transcription
 
-Use the same base URL `https://home-core.tail479ad.ts.net:8443/v1`, model
-`stt-danish`, and no API key. Send a multipart `POST /v1/audio/transcriptions`
-with `file` and `model=stt-danish`. JSON is the default response format;
-`language=da` and `response_format=json` may also be supplied explicitly.
-The model is the running Spark GPU service `syvai/hviske-v5.3`, pinned at
-`5d1a09822018702dc51d763e3a867b62d26b3501`. Home-core routes uploads through
-LiteLLM and a dedicated SSH forward to the Spark's loopback HTTP relay. The
-existing Home Assistant Wyoming service stays separate. CORS and OPTIONS
-support applies to transcription, including placeholder authorization headers.
-The gateway bounds the request body at 32 MB; the Spark HTTP relay accepts
-recordings up to 10 MB and 60 seconds, with four concurrent transcriptions.
-It converts common phone formats, including M4A/AAC, to PCM WAV before
-calling the model.
+The selected replacement is full `openai/whisper-large-v3`, revision
+`06f233fe06e710322aca913c1bc4249a0d71fce1`, for Danish, English, mixed and
+unknown-language recordings. The canonical API alias is `whisper`; existing
+`stt-danish` and `whisper-turbo` names select the same full model after cutover.
+The older names are compatibility routes. There is no Hviske/Turbo fallback.
+See the [guarded lifecycle](../deploy/whisper-stt/README.md) for deployment and
+verification; source selection alone does not establish live readiness.
 
-For English or mixed-language recordings, choose `model=whisper-turbo` on the
-same endpoint. It runs `openai/whisper-large-v3-turbo`, pinned at
-`41f01f3fe87f28c78e2fbf8b568835947dd65ed9`, in its own Spark GPU container.
-`language=en` is optional; omit the language for automatic detection. JSON is
-the default, and the same 10 MB/60 second recording limits apply. The Whisper
-relay admits one transcription at a time; concurrent requests may return 429.
-The model uses eager execution and a bounded 4% GPU memory allocation.
-An acceptance check on 2026-10-14 ran Whisper, Hviske, and a roughly 3,000-word
-LLM prompt concurrently. All returned HTTP 200; Whisper transcribed 16 seconds
-of synthetic English speech in 5.6 seconds. Memory monitoring recorded about
-7.4 GiB available and no swap-out. This checks normal coexistence, not maximum
-LLM context/concurrency or accuracy on the owner's recordings.
+Send multipart `POST /v1/audio/transcriptions` to the existing approved HTTPS
+base with `file` and `model=whisper`. Use your existing client credential, or the
+existing private-network admission path after its explicit scope migration.
+Omit `language` for automatic detection; optional language and timestamp fields
+are preserved. The relay normalizes common phone formats to PCM WAV, accepts
+10 MB/60 seconds, and admits one request at a time (429 when busy). Original
+recordings must stay with their owning application; split long recordings in
+that consumer while retaining source offsets.
 
-`whisper-1` and `stt-english` are not aliases. Requests never silently fall back
-to home-core's CPU Faster Whisper service.
+The replacement uses the pinned NVIDIA vLLM 0.19 runtime with a starting 8%
+GPU allocation and eager execution. Those are deployment inputs; measured
+Large-v3 latency, memory and concurrent-workload acceptance require actual
+Spark evidence. Historical Turbo/Hviske measurements cannot qualify this tuple.
+The existing Home Assistant Wyoming endpoint remains available through its
+CPU adapter; its historical service name does not select a Hviske model.
+`whisper-1` and `stt-english` remain unsupported aliases. Requests never silently
+fall back to home-core's CPU Faster Whisper service.
 
 ## Speech synthesis
 

@@ -1,7 +1,7 @@
-name: whisper-stt
+name: whisper-large-v3-stt
 
 x-runtime: &runtime
-  image: ${WHISPER_IMAGE:-nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d}
+  image: nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d
   init: true
   user: "${GB10_RUNTIME_UID:?Set GB10_RUNTIME_UID}:${GB10_RUNTIME_GID:?Set GB10_RUNTIME_GID}"
   read_only: true
@@ -28,11 +28,11 @@ services:
       - --cache-root
       - /var/cache/huggingface
       - --repo-id
-      - openai/whisper-large-v3-turbo
+      - openai/whisper-large-v3
       - --revision
-      - 41f01f3fe87f28c78e2fbf8b568835947dd65ed9
+      - 06f233fe06e710322aca913c1bc4249a0d71fce1
       - --max-artifact-bytes
-      - "3000000000"
+      - "4000000000"
       - --max-artifact-files
       - "32"
       - --max-cache-bytes
@@ -41,6 +41,30 @@ services:
       - "50000"
       - --min-free-bytes
       - "214748364800"
+      - --include-file
+      - config.json
+      - --include-file
+      - generation_config.json
+      - --include-file
+      - model.safetensors
+      - --include-file
+      - preprocessor_config.json
+      - --include-file
+      - tokenizer.json
+      - --include-file
+      - tokenizer_config.json
+      - --include-file
+      - normalizer.json
+      - --include-file
+      - special_tokens_map.json
+      - --include-file
+      - added_tokens.json
+      - --include-file
+      - merges.txt
+      - --include-file
+      - vocab.json
+      - --include-file
+      - README.md
     volumes:
       - ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface:/var/cache/huggingface
       - ../../scripts/model-cache-integrity.py:/opt/homecompute/model-cache-integrity.py:ro
@@ -60,13 +84,13 @@ services:
         import json, os, stat, subprocess
         from pathlib import Path
         args = ['python3', '/opt/homecompute/model-cache-integrity.py', 'create',
-                '--cache-root', '/var/cache/huggingface', '--repo-id', 'openai/whisper-large-v3-turbo',
-                '--revision', '41f01f3fe87f28c78e2fbf8b568835947dd65ed9']
+                '--cache-root', '/var/cache/huggingface', '--repo-id', 'openai/whisper-large-v3',
+                '--revision', '06f233fe06e710322aca913c1bc4249a0d71fce1']
         manifest = subprocess.check_output(args)
         objects = json.loads(manifest)['objects'].values()
-        assert any(obj['sha256'] == '542566a422ae4f3fd23f1ba11add198fca01bbf82e66e6a2857b3f608b1eb9d1'
-                   and obj['size'] == 1617824864 for obj in objects), 'Whisper weight checksum mismatch'
-        target = Path('/manifests/accepted-whisper-turbo-cache.json')
+        assert any(obj['sha256'] == 'a8e94b85976e5864ba3e9525c7e6c83b2a1eca42d4b797a0c7c24d778e40fd95'
+                   and obj['size'] == 3087130976 for obj in objects), 'Whisper weight checksum mismatch'
+        target = Path('/manifests/accepted-whisper-large-v3-cache.json')
         if target.exists() or target.is_symlink():
             info = target.lstat()
             assert stat.S_ISREG(info.st_mode) and info.st_uid == 0 and stat.S_IMODE(info.st_mode) == 0o440, "Untrusted accepted Whisper manifest"
@@ -80,7 +104,7 @@ services:
                 os.fsync(handle.fileno())
             os.link(temporary, target)
             temporary.unlink()
-        print('Verified and accepted pinned Whisper Turbo cache')
+        print('Verified and accepted pinned Whisper Large-v3 cache')
     volumes:
       - ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface:/var/cache/huggingface:ro
       - ${GB10_ROOT:?Set GB10_ROOT}/manifests:/manifests
@@ -93,7 +117,7 @@ services:
     container_name: gb10-whisper-primary
     restart: unless-stopped
     cpus: 4
-    mem_limit: 8g
+    mem_limit: 12g
     pids_limit: 256
     shm_size: 1gb
     environment:
@@ -114,17 +138,17 @@ services:
     command:
       - |
         python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface \
-          --repo-id openai/whisper-large-v3-turbo --revision 41f01f3fe87f28c78e2fbf8b568835947dd65ed9 \
-          --manifest /run/accepted-whisper-turbo-cache.json
+          --repo-id openai/whisper-large-v3 --revision 06f233fe06e710322aca913c1bc4249a0d71fce1 \
+          --manifest /run/accepted-whisper-large-v3-cache.json
         export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
-        exec vllm serve openai/whisper-large-v3-turbo --revision 41f01f3fe87f28c78e2fbf8b568835947dd65ed9 \
-          --served-model-name whisper-turbo --host 0.0.0.0 --port 8000 \
-          --gpu-memory-utilization 0.04 --max-num-seqs 1 --max-num-batched-tokens 2048 --enforce-eager \
+        exec vllm serve openai/whisper-large-v3 --revision 06f233fe06e710322aca913c1bc4249a0d71fce1 \
+          --served-model-name whisper-large-v3 --host 0.0.0.0 --port 8000 \
+          --gpu-memory-utilization 0.08 --max-num-seqs 1 --max-num-batched-tokens 2048 --enforce-eager \
           --no-enable-log-requests --disable-uvicorn-access-log
     secrets: [vllm_api_key]
     volumes:
       - ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface:/var/cache/huggingface:ro
-      - ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-whisper-turbo-cache.json:/run/accepted-whisper-turbo-cache.json:ro
+      - ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-whisper-large-v3-cache.json:/run/accepted-whisper-large-v3-cache.json:ro
       - ../../scripts/model-cache-integrity.py:/opt/homecompute/model-cache-integrity.py:ro
     # Triton loads generated shared libraries from its isolated compiler cache.
     tmpfs:
@@ -147,7 +171,7 @@ services:
 
   whisper-http:
     container_name: gb10-whisper-http
-    image: homecompute/stt-http:1.1.0
+    image: homecompute/stt-http:2.0.0
     build:
       context: ../../scripts
       dockerfile: ../deploy/hviske-stt/Dockerfile.http-relay
@@ -160,11 +184,11 @@ services:
     cpus: 2
     mem_limit: 256m
     pids_limit: 64
-    ports: ["127.0.0.1:8007:8007"]
+    ports: ["127.0.0.1:8007:8007", "127.0.0.1:8003:8007"]
     environment:
       PYTHONDONTWRITEBYTECODE: "1"
       STT_RELAY_PORT: "8007"
-      STT_MODEL: whisper-turbo
+      STT_MODEL: whisper-large-v3
       STT_UPSTREAM_BASE_URL: http://whisper-primary:8000
       STT_MAX_UPLOAD_BYTES: "10000000"
       STT_MAX_AUDIO_SECONDS: "60"

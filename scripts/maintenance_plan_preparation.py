@@ -20,7 +20,7 @@ from infrastructure_update_policy import classify_plan
 ROOT = Path(__file__).resolve().parent
 REPORT = Path('/var/lib/homecompute-maintenance/report.json')
 CONTAINER_COMMAND = '/usr/local/libexec/homecompute-container-maintenance'
-SPARK_COMPONENTS = {'packages', 'restart-plapre', 'restart-hviske', 'restart-qwen'}
+SPARK_COMPONENTS = {'packages', 'restart-plapre', 'restart-whisper', 'restart-qwen'}
 SSH = '/run/current-system/sw/bin/ssh'
 SSH_ARGS = ['-F', '/dev/null', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
             '-o', 'IdentitiesOnly=yes', '-o', 'ForwardAgent=no', '-o', 'ConnectTimeout=8',

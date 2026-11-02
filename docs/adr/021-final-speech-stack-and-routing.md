@@ -54,6 +54,9 @@ repurposed as the four isolated runtimes.
 
 ## Status
 
+The STT selection and routing are superseded by
+[ADR-027](027-unified-whisper-large-v3-stt.md). The TTS decision remains in force.
+
 Accepted; supersedes the speech-model and speech-exclusion portions of ADR-019.
 No model download, deployment, or live route change is authorized by this ADR.
 

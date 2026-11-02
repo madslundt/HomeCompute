@@ -1,5 +1,16 @@
 # Current-state analysis
 
+## STT replacement target (2026-11-02)
+
+The owner selected full Whisper Large-v3 to replace both Hviske and Turbo for
+all languages; see [ADR-027](adr/027-unified-whisper-large-v3-stt.md) and the
+[guarded lifecycle](../deploy/whisper-stt/README.md). At the start of this work,
+both hosts recorded release `b0e8b106dd79e30d765ddd38970c29649ebfb37b` and
+both old STT engines were still healthy. Source selection alone is not a live
+cutover or a full-model accuracy/capacity result. Historical speech inventories
+below describe their observation dates. Record actual replacement evidence
+before claiming retirement or synchronization.
+
 ## Operational repairs (2026-10-28)
 
 Live inspection and scoped repairs verified Home Assistant Core 2026.10.4,

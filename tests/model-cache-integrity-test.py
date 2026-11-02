@@ -51,6 +51,23 @@ def fake_cumulative_overflow_download(*, repo_id, revision, token, cache_dir):
 
 
 class BoundedFetchTests(unittest.TestCase):
+    def test_selective_fetch_rejects_unknown_files_and_patterns_before_download(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(sys.modules, {"huggingface_hub": types.SimpleNamespace(HfApi=FakeApi)}):
+            for names in [['missing.json'], ['*.bin'], ['../model.bin'], ['file-0', 'file-0']]:
+                with self.subTest(names=names), self.assertRaises(RuntimeError):
+                    MODULE.bounded_fetch(directory, 'owner/model', [REVISION], 8192, 8,
+                                         1024 * 1024, 100, 1, names)
+
+    def test_selective_download_passes_exact_filenames_to_publisher_client(self):
+        calls = []
+        fake = types.SimpleNamespace(snapshot_download=lambda **kwargs: calls.append(kwargs))
+        with patch.dict(sys.modules, {'huggingface_hub': fake}), \
+                patch('resource.setrlimit'):
+            MODULE.download_snapshots('/cache', 'owner/model', [REVISION], 8192,
+                                      ['config.json', 'model.safetensors'])
+        self.assertEqual(calls[0]['allow_patterns'], ['config.json', 'model.safetensors'])
+
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary_directory.cleanup)

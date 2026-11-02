@@ -3,8 +3,8 @@
   "mode": "qualification-only",
   "routes": {
     "stt": {
-      "danish": "stt_danish",
-      "english_mixed_or_unknown": "stt_english"
+      "danish": "stt_multilingual",
+      "english_mixed_or_unknown": "stt_multilingual"
     },
     "tts": {
       "danish": "tts_danish",
@@ -14,15 +14,36 @@
     }
   },
   "language_rules": {
-    "danish_tags": ["da", "da-DK"],
-    "english_tags": ["en", "en-GB", "en-US"],
-    "mixed_or_unknown_tags": ["mixed", "unknown", "und"],
-    "qwen_supported_language_tags": ["zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"],
+    "danish_tags": [
+      "da",
+      "da-DK"
+    ],
+    "english_tags": [
+      "en",
+      "en-GB",
+      "en-US"
+    ],
+    "mixed_or_unknown_tags": [
+      "mixed",
+      "unknown",
+      "und"
+    ],
+    "qwen_supported_language_tags": [
+      "zh",
+      "en",
+      "ja",
+      "ko",
+      "de",
+      "fr",
+      "ru",
+      "pt",
+      "es",
+      "it"
+    ],
     "qwen_danish_forbidden": true
   },
   "activation_gates": {
     "all_routes_require_qualification": true,
-    "hviske_commercial_use_requires_license_review": true,
     "plapre_voice_policy": "approved-supplied-or-reference-voice-only",
     "arbitrary_voice_cloning_requires_documented_consent_and-policy": true
   }

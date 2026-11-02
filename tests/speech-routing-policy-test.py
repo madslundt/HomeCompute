@@ -21,11 +21,11 @@ class SpeechRoutingPolicyTest(unittest.TestCase):
     def test_checked_in_policy_is_valid(self) -> None:
         MODULE.validate_policy(POLICY)
 
-    def test_stt_routes_danish_to_hviske_and_everything_else_to_whisper(self) -> None:
-        self.assertEqual("stt_danish", MODULE.route(POLICY, "stt", "da-DK"))
+    def test_stt_routes_all_languages_to_full_whisper(self) -> None:
+        self.assertEqual("stt_multilingual", MODULE.route(POLICY, "stt", "da-DK"))
         for language in ("en", "mixed", "unknown", "und"):
             with self.subTest(language=language):
-                self.assertEqual("stt_english", MODULE.route(POLICY, "stt", language))
+                self.assertEqual("stt_multilingual", MODULE.route(POLICY, "stt", language))
 
     def test_tts_never_routes_danish_to_qwen(self) -> None:
         self.assertEqual("tts_danish", MODULE.route(POLICY, "tts", "da"))
@@ -41,7 +41,6 @@ class SpeechRoutingPolicyTest(unittest.TestCase):
 
     def test_consent_and_license_gates_cannot_be_disabled(self) -> None:
         for gate in (
-            "hviske_commercial_use_requires_license_review",
             "arbitrary_voice_cloning_requires_documented_consent_and-policy",
         ):
             policy = copy.deepcopy(POLICY)

@@ -57,20 +57,13 @@
       "project_url": "https://github.com/blazux/qwen3.8-Flash-DGX"
     },
     {
-      "id": "danish-stt",
+      "id": "multilingual-stt",
       "kind": "huggingface_model",
-      "label": "Hviske v5.3",
-      "role": "Selected Danish speech-to-text checkpoint",
-      "request_url": "https://huggingface.co/api/models/syvai/hviske-v5.3",
-      "project_url": "https://huggingface.co/syvai/hviske-v5.3"
-    },
-    {
-      "id": "english-stt",
-      "kind": "huggingface_model",
-      "label": "Whisper large-v3-turbo",
-      "role": "Selected English, mixed, and unknown-language speech-to-text checkpoint",
-      "request_url": "https://huggingface.co/api/models/openai/whisper-large-v3-turbo",
-      "project_url": "https://huggingface.co/openai/whisper-large-v3-turbo"
+      "label": "Whisper Large-v3 (full)",
+      "role": "Selected Danish, English, mixed and unknown-language speech-to-text checkpoint",
+      "request_url": "https://huggingface.co/api/models/openai/whisper-large-v3",
+      "project_url": "https://huggingface.co/openai/whisper-large-v3",
+      "installed_revision": "06f233fe06e710322aca913c1bc4249a0d71fce1"
     },
     {
       "id": "danish-tts",

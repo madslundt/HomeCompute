@@ -22,9 +22,10 @@ import urllib.request
 import wave
 
 
-MODEL = "stt-danish"
-UPSTREAM = "http://hviske-primary:8000"
-UPSTREAMS = {MODEL: UPSTREAM, "whisper-turbo": "http://whisper-primary:8000"}
+MODEL = "whisper-large-v3"
+UPSTREAM = "http://whisper-primary:8000"
+UPSTREAMS = {MODEL: UPSTREAM}
+WHISPER_ALIASES = {b"whisper", b"whisper-large-v3", b"stt-danish", b"whisper-turbo"}
 MAX_RESPONSE_BYTES = 2_000_000
 FIELD_NAME = re.compile(r"^[A-Za-z0-9_.\[\]-]{1,80}$")
 
@@ -36,7 +37,7 @@ class RelayError(Exception):
 
 @dataclass(frozen=True)
 class Config:
-    port: int = 8003
+    port: int = 8007
     upstream: str = UPSTREAM
     ffmpeg: str = "ffmpeg"
     max_upload_bytes: int = 10_000_000
@@ -61,7 +62,7 @@ def load_config() -> Config:
     if upstream != UPSTREAMS.get(model) or not ffmpeg or "\x00" in ffmpeg:
         raise ValueError("Invalid upstream or decoder configuration")
     return Config(
-        port=bounded_env("STT_RELAY_PORT", 8003, 65535), upstream=upstream, ffmpeg=ffmpeg, model=model,
+        port=bounded_env("STT_RELAY_PORT", 8007, 65535), upstream=upstream, ffmpeg=ffmpeg, model=model,
         max_upload_bytes=bounded_env("STT_MAX_UPLOAD_BYTES", 10_000_000, 10_000_000),
         max_audio_seconds=bounded_env("STT_MAX_AUDIO_SECONDS", 60, 60),
         max_connections=bounded_env("STT_MAX_CONNECTIONS", 4, 4),
@@ -106,8 +107,10 @@ def parse_upload(body: bytes, content_type: str, config: Config) -> tuple[list[t
                 raise RelayError(400, "Invalid transcription parameter")
             fields.append((name, data))
     models = [value for name, value in fields if name == "model"]
-    if models != [config.model.encode()]:
+    accepted = WHISPER_ALIASES if config.model == "whisper-large-v3" else {config.model.encode()}
+    if len(models) != 1 or models[0] not in accepted:
         raise RelayError(400, "Unsupported transcription model")
+    fields = [(name, config.model.encode() if name == "model" else value) for name, value in fields]
     if len(files) != 1 or not files[0]:
         raise RelayError(400, "Exactly one nonempty audio file is required")
     return fields, files[0]

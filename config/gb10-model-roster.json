@@ -1,6 +1,6 @@
 {
   "schema_version": 4,
-  "roster_version": "2026-09-29-flash-next-qualification",
+  "roster_version": "2026-11-02-unified-whisper-large-v3",
   "hardware": {
     "accelerator": "NVIDIA GB10",
     "unified_memory_gib": 128,
@@ -85,7 +85,7 @@
         "shopping-50-reviewed-items",
         "tool-surface-64-or-more",
         "native-context-262144",
-        "hviske-plapre-mixed-load",
+        "whisper-plapre-mixed-load",
         "24-hour-soak"
       ]
     },
@@ -185,29 +185,16 @@
     }
   },
   "services": {
-    "stt_danish": {
-      "model_id": "syvai/hviske-v5.3",
-      "revision": "5d1a09822018702dc51d763e3a867b62d26b3501",
-      "license_id": "cc-by-nc-4.0",
-      "disposition": "deferred-optional-evaluate-on-home-core",
-      "language": "da",
-      "runtime_profile": {
-        "isolation_group": "hviske-vllm-0.19",
-        "runtime": "vllm",
-        "version_constraint": ">=0.19,<0.20"
-      },
-      "commercial_use_gate": "SYVAI license review required for employer, work, or commercial use"
-    },
-    "stt_english": {
-      "model_id": "openai/whisper-large-v3-turbo",
-      "revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",
-      "license_id": "mit",
-      "disposition": "excluded-from-target-architecture",
+    "stt_multilingual": {
+      "model_id": "openai/whisper-large-v3",
+      "revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+      "license_id": "apache-2.0",
+      "disposition": "install",
       "language": "multilingual",
       "runtime_profile": {
-        "isolation_group": "whisper-turbo",
-        "runtime": "transformers",
-        "version_constraint": "pinned-image-required"
+        "isolation_group": "whisper-large-v3",
+        "runtime": "vllm",
+        "version_constraint": ">=0.19,<0.20"
       }
     },
     "tts_danish": {
@@ -250,22 +237,18 @@
       "license_id": "cc0-1.0",
       "disposition": "cpu-fallback-until-plapre-qualifies",
       "host_class": "home-core-cpu"
-    },
-    "stt_danish_later_evaluation": {
-      "model_id": "syvai/hviske-v5-tiny",
-      "revision": "361051e8ed732798d68fcd5d5ec64fd4e39da40b",
-      "license_id": "cc-by-nc-4.0",
-      "disposition": "evaluate-later-not-primary"
     }
   },
   "excluded_models": [
     "google/gemma-4-E4B-it-qat-w4a16-ct",
     "nvidia/DeepSeek-V4-Flash-NVFP4",
     "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-    "openai/whisper-large-v3",
     "nvidia/parakeet-tdt-0.6b-v2",
     "syvai/Qwen3.8-27B-DFlash2-W4A16",
-    "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "syvai/hviske-v5.3",
+    "syvai/hviske-v5-tiny",
+    "openai/whisper-large-v3-turbo"
   ],
   "operating_profiles": {
     "normal": {
@@ -275,7 +258,7 @@
         "performance"
       ],
       "speech_services": [
-        "stt_danish",
+        "stt_multilingual",
         "tts_danish"
       ]
     },
@@ -296,7 +279,7 @@
       "candidate_selection": "pending-quality-and-reliability-qualification",
       "exclusive_cold_swap": true,
       "speech_services": [
-        "stt_danish",
+        "stt_multilingual",
         "tts_danish"
       ],
       "dynamic_router_activation": false,

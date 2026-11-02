@@ -54,9 +54,9 @@ model_list:
       output_cost_per_token: 0
   - model_name: "stt-danish"
     litellm_params:
-      model: "openai/stt-danish"
+      model: "openai/whisper-large-v3"
       order: 1
-      api_base: "os.environ/COMPUTE_STT_DANISH_BASE_URL"
+      api_base: "os.environ/COMPUTE_STT_MULTILINGUAL_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 120
       response_format: json
@@ -64,7 +64,17 @@ model_list:
       mode: audio_transcription
   - model_name: "whisper-turbo"
     litellm_params:
-      model: "openai/whisper-turbo"
+      model: "openai/whisper-large-v3"
+      order: 1
+      api_base: "os.environ/COMPUTE_STT_MULTILINGUAL_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 120
+      response_format: json
+    model_info:
+      mode: audio_transcription
+  - model_name: "whisper"
+    litellm_params:
+      model: "openai/whisper-large-v3"
       order: 1
       api_base: "os.environ/COMPUTE_STT_MULTILINGUAL_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY

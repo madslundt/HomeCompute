@@ -419,6 +419,13 @@ automatic container updater is installed.
 
 ### Spark transcription over the HTTPS gateway
 
+The replacement target is now full Whisper Large-v3 for every STT alias.
+Use the [Whisper lifecycle](../whisper-stt/README.md) and
+[ADR-027](../../docs/adr/027-unified-whisper-large-v3-stt.md). The older split
+deployment instructions below are historical rollback context, not the desired
+activation path. The existing core Wyoming service name and tunnels remain
+compatible with the new single relay.
+
 The network model `stt-danish` routes `/v1/audio/transcriptions` to the running
 Spark Hviske v5.3 GPU service. Run `scripts/setup-compute-hviske-stt.sh http-up` to build/start only the
 logging-free `hviske-http` profile; it publishes `127.0.0.1:8003` and needs no

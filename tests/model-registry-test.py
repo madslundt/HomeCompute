@@ -138,30 +138,30 @@ class ModelRegistryTests(unittest.TestCase):
                     REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 
     def test_multilingual_whisper_route_is_pinned_separate_and_uses_json_default(self) -> None:
-        deployment = CATALOG["transcription_deployments"]["whisper-turbo-spark-primary"]
-        self.assertEqual("openai/whisper-large-v3-turbo", deployment["upstream_model_id"])
-        self.assertEqual("41f01f3fe87f28c78e2fbf8b568835947dd65ed9", deployment["revision"])
+        deployment = CATALOG["transcription_deployments"]["whisper-large-v3-spark-primary"]
+        self.assertEqual("openai/whisper-large-v3", deployment["upstream_model_id"])
+        self.assertEqual("06f233fe06e710322aca913c1bc4249a0d71fce1", deployment["revision"])
         self.assertEqual("COMPUTE_STT_MULTILINGUAL_BASE_URL", deployment["endpoint_env"])
         self.assertEqual(1, deployment["concurrency"])
-        self.assertEqual("mit", deployment["license_id"])
+        self.assertEqual("apache-2.0", deployment["license_id"])
         self.assertNotIn("context_tokens", deployment)
-        self.assertEqual(["whisper-turbo-spark-primary"], ROUTES["transcription_routes"]["whisper-turbo"]["deployments"])
+        self.assertEqual(["whisper-large-v3-spark-primary"], ROUTES["transcription_routes"]["whisper-turbo"]["deployments"])
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
         whisper = rendered.split('model_name: "whisper-turbo"', 1)[1]
-        self.assertIn('model: "openai/whisper-turbo"', whisper)
+        self.assertIn('model: "openai/whisper-large-v3"', whisper)
         self.assertIn('COMPUTE_STT_MULTILINGUAL_BASE_URL', whisper)
         self.assertIn('timeout: 120', whisper)
         self.assertIn('response_format: json', whisper)
         self.assertIn('mode: audio_transcription', whisper)
 
     def test_transcription_is_pinned_and_has_no_text_context_contract(self) -> None:
-        deployment = CATALOG["transcription_deployments"]["hviske-spark-primary"]
-        self.assertEqual("syvai/hviske-v5.3", deployment["upstream_model_id"])
-        self.assertEqual("5d1a09822018702dc51d763e3a867b62d26b3501", deployment["revision"])
-        self.assertEqual("COMPUTE_STT_DANISH_BASE_URL", deployment["endpoint_env"])
+        deployment = CATALOG["transcription_deployments"]["whisper-large-v3-spark-primary"]
+        self.assertEqual("openai/whisper-large-v3", deployment["upstream_model_id"])
+        self.assertEqual("06f233fe06e710322aca913c1bc4249a0d71fce1", deployment["revision"])
+        self.assertEqual("COMPUTE_STT_MULTILINGUAL_BASE_URL", deployment["endpoint_env"])
         self.assertNotIn("context_tokens", deployment)
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        self.assertRegex(rendered, r'(?s)model_name: "stt-danish".*?model: "openai/stt-danish".*?timeout: 120.*?mode: audio_transcription')
+        self.assertRegex(rendered, r'(?s)model_name: "stt-danish".*?model: "openai/whisper-large-v3".*?timeout: 120.*?mode: audio_transcription')
 
     def test_transcription_validation_rejects_unpinned_nonlocal_and_stopped_backends(self) -> None:
         for field, value, error in (("revision", "main", "immutable"),
@@ -172,7 +172,7 @@ class ModelRegistryTests(unittest.TestCase):
                                     ("context_tokens", 4096, "text context")):
             with self.subTest(field=field):
                 catalog = copy.deepcopy(CATALOG)
-                catalog["transcription_deployments"]["hviske-spark-primary"][field] = value
+                catalog["transcription_deployments"]["whisper-large-v3-spark-primary"][field] = value
                 with self.assertRaisesRegex(REGISTRY.RegistryError, error):
                     REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 
@@ -188,7 +188,7 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_transcription_runtime_must_support_audio_protocol(self) -> None:
         catalog = copy.deepcopy(CATALOG)
-        catalog["transcription_deployments"]["hviske-spark-primary"]["runtime_profile"] = "vllm-qwen"
+        catalog["transcription_deployments"]["whisper-large-v3-spark-primary"]["runtime_profile"] = "vllm-qwen"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "transcription protocol"):
             REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 

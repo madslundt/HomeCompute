@@ -297,6 +297,12 @@ write_release_record() {
 }
 
 case "$COMMAND" in
+  prepare|up|install|http-up)
+    die "Hviske is retired; use setup-whisper-stt.py. Historical rollback requires the selected old published release."
+    ;;
+esac
+
+case "$COMMAND" in
   help) usage ;;
   validate) validate_config ;;
   preflight) preflight ;;

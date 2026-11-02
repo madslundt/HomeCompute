@@ -46,7 +46,7 @@ class HomeComputeCliTests(unittest.TestCase):
         rows = hc.model_inventory(catalog, roster)
         self.assertTrue(any(row["id"] == "automation-spark-primary" for row in rows))
         self.assertTrue(any(row["id"] == "heavy" for row in rows))
-        self.assertTrue(any(row["id"] == "stt_danish" for row in rows))
+        self.assertTrue(any(row["id"] == "stt_multilingual" for row in rows))
 
     def test_drift_requires_observed_revision(self):
         self.assertEqual(hc.compare_drift("a" * 40, None), "unknown")

@@ -277,6 +277,7 @@ python3 -m unittest "$REPO_ROOT/tests/benchmark_correctness_test.py"
 python3 "$REPO_ROOT/tests/model-update-check-test.py"
 python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/speech-routing-policy-test.py"
+python3 "$REPO_ROOT/tests/whisper-migration-test.py"
 python3 "$REPO_ROOT/tests/model-registry-test.py"
 python3 "$REPO_ROOT/tests/flash-next-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/comfyui-lifecycle-test.py"
@@ -1072,7 +1073,7 @@ jq -e '
   (.services["whisper-primary"].read_only == true) and
   (.services["whisper-primary"].cap_drop | index("ALL") != null) and
   (.services["whisper-primary"].environment.HF_HUB_OFFLINE == "1") and
-  (.services["whisper-primary"].command | join(" ") | contains("--gpu-memory-utilization 0.04") and contains("--max-num-seqs 1")) and
+  (.services["whisper-primary"].command | join(" ") | contains("--gpu-memory-utilization 0.08") and contains("--max-num-seqs 1")) and
   (.services["whisper-http"].ports[0].host_ip == "127.0.0.1") and
   (.services["whisper-http"].ports[0].published == "8007") and
   (.services["whisper-http"].read_only == true) and

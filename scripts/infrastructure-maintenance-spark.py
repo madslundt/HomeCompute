@@ -14,7 +14,7 @@ import uuid
 COMMAND = '/usr/local/libexec/homecompute-infrastructure-maintenance-spark'
 CONTROLLER = '/opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py'
 FIXES = {'restart-plapre': 'homecompute-plapre-plapre-primary-1',
-         'restart-hviske': 'gb10-hviske-primary', 'restart-qwen': 'qwen38-flash-ultrafast'}
+         'restart-whisper': 'gb10-whisper-primary', 'restart-qwen': 'qwen38-flash-ultrafast'}
 
 
 def arguments(command):

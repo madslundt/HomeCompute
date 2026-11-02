@@ -154,7 +154,8 @@ def allocated_tree(cache_root: Path) -> tuple[int, int]:
     return allocated, files
 
 
-def download_snapshots(cache_root: str, repo_id: str, revisions: list[str], max_artifact_bytes: int) -> None:
+def download_snapshots(cache_root: str, repo_id: str, revisions: list[str], max_artifact_bytes: int,
+                       include_files: list[str] | None = None) -> None:
     import resource
     from huggingface_hub import snapshot_download
 
@@ -166,6 +167,7 @@ def download_snapshots(cache_root: str, repo_id: str, revisions: list[str], max_
             revision=revision,
             token=token,
             cache_dir=str(Path(cache_root) / "hub"),
+            **({"allow_patterns": include_files} if include_files else {}),
         )
 
 
@@ -178,6 +180,7 @@ def bounded_fetch(
     max_cache_bytes: int,
     max_cache_files: int,
     min_free_bytes: int,
+    include_files: list[str] | None = None,
 ) -> None:
     try:
         from huggingface_hub import HfApi
@@ -191,6 +194,9 @@ def bounded_fetch(
     limits = (max_artifact_bytes, max_artifact_files, max_cache_bytes, max_cache_files, min_free_bytes)
     if any(limit <= 0 for limit in limits):
         fail("fetch limits must be positive integers")
+    if include_files is not None and (not include_files or len(set(include_files)) != len(include_files) or
+            any(not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", ".."} for name in include_files)):
+        fail("included files must be unique exact top-level filenames")
     cache_root_path = Path(cache_root_arg)
     metadata = cache_root_path.lstat()
     if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
@@ -205,7 +211,11 @@ def bounded_fetch(
         info = api.model_info(repo_id=repo_id, revision=revision, files_metadata=True, token=token)
         if not isinstance(info.sha, str) or info.sha.lower() != revision.lower():
             fail(f"artifact metadata did not resolve the pinned revision: {revision}")
+        if include_files and not set(include_files).issubset({s.rfilename for s in info.siblings}):
+            fail("included file is missing from pinned artifact metadata")
         for sibling in info.siblings:
+            if include_files and sibling.rfilename not in include_files:
+                continue
             if not isinstance(sibling.size, int) or sibling.size < 0:
                 fail(f"artifact metadata has no valid size: {sibling.rfilename}")
             expected_bytes += sibling.size
@@ -235,7 +245,7 @@ def bounded_fetch(
     context = multiprocessing.get_context("fork")
     process = context.Process(
         target=download_snapshots,
-        args=(str(cache_root), repo_id, unique_revisions, max_artifact_bytes),
+        args=(str(cache_root), repo_id, unique_revisions, max_artifact_bytes, include_files),
     )
     process.start()
     try:
@@ -290,6 +300,7 @@ def main() -> None:
     parser.add_argument("--max-cache-bytes", type=int)
     parser.add_argument("--max-cache-files", type=int)
     parser.add_argument("--min-free-bytes", type=int)
+    parser.add_argument("--include-file", action="append")
     arguments = parser.parse_args()
     if arguments.command == "fetch":
         if arguments.manifest or any(
@@ -312,8 +323,11 @@ def main() -> None:
             arguments.max_cache_bytes,
             arguments.max_cache_files,
             arguments.min_free_bytes,
+            arguments.include_file,
         )
         return
+    if arguments.include_file:
+        fail("included files apply only to fetch; manifests always verify the whole snapshot")
     actual = build_manifest(arguments.cache_root, arguments.repo_id, arguments.revision)
     if arguments.command == "create":
         if arguments.manifest:
