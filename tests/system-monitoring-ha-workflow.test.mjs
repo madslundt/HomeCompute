@@ -37,7 +37,7 @@ function fixture() {
   rows.find(row => row.entity_id === policy.numeric.electricity_price[0]).attributes.prices = [
     {start: stamp(0), end: stamp(3600), price: 1.5, private_text: 'PRIVATE'},
     {start: stamp(3600), end: stamp(7200), price: -0.25}];
-  for (const entity_id of ['conversation.automation_moe', 'conversation.gemma_4_e4b', 'stt.hviske_vllm', 'tts.plapre_nano_v2']) rows.push({entity_id, state: 'unknown'});
+  for (const entity_id of ['conversation.automation_moe', 'conversation.gemma_4_e4b', 'stt.hviske_vllm', 'tts.omnivoice']) rows.push({entity_id, state: 'unknown'});
   rows.push({entity_id: 'person.private', state: 'home', attributes: {latitude: 55.1, token: 'SECRET'}});
   rows.push({entity_id: 'sensor.unrelated', state: 'unavailable', attributes: {friendly_name: 'PRIVATE'}});
   rows.push({entity_id: 'automation.private', state: 'off'});

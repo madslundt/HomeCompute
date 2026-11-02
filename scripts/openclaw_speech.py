@@ -60,11 +60,15 @@ def synthesis(body: bytes, content_type: str) -> bytes:
         raise ValueError('Bounded speech JSON required')
     value = json.loads(body)
     if (not isinstance(value, dict) or set(value) - {'model', 'input', 'voice', 'response_format', 'speed'}
-            or value.get('model') != 'omnivoice' or value.get('voice') not in {'danish-default', 'english-default'}
+            or value.get('model') not in {'omnivoice', 'tts-danish', 'tts-english'} or value.get('voice') not in {'danish-default', 'english-default'}
             or value.get('response_format') != 'wav' or value.get('speed', 1) != 1
             or not isinstance(value.get('input'), str) or not value['input'].strip()
             or len(value['input']) > 2000):
         raise ValueError('Fixed local voice and WAV format required')
+    expected = 'tts-english' if value['voice'] == 'english-default' else 'tts-danish'
+    if value['model'] != 'omnivoice' and value['model'] != expected:
+        raise ValueError('Speech alias and voice language must agree')
+    value['model'] = expected
     return json.dumps(value).encode()
 
 
@@ -101,10 +105,9 @@ class SpeechClient:
                 raise RuntimeError('Invalid local speech WAV')
 
     def _verified(self, text: str, audio: bytes, language: str = 'da') -> bool:
-        # Known Danish output uses the Danish recognizer, independently of the
-        # multilingual route used for the owner's incoming voice messages.
+        # All languages use the canonical full Whisper route.
         boundary = 'homecompute-speech-verification'
-        model = 'whisper' if language == 'en' else 'stt-danish'
+        model = 'whisper'
         body = (f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n{model}\r\n'
                 f'--{boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n{language}\r\n'
                 f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="reply.wav"\r\n'

@@ -75,3 +75,35 @@ Remove only the two new aliases through LiteLLM's key API when reverting their
 scope migration, preserving the remaining model list. Never recreate retired
 Plapre implicitly. Keep MOSS/Piper and all durable data. Realtime voice and
 streaming have separate qualification gates.
+
+## Application consumers
+
+Daythread uses `whisper` with no language model overrides; its private Docker
+DNS resolves `ai.home.arpa` to Caddy's internal TLS listener on port 8443. Keep
+`https://ai.home.arpa:8443/v1` there: host port 443 is a publication, not an
+internal container listener. The model and request contract are identical.
+Use the revision-checked `migrate-daythread-whisper.py` lifecycle for model
+settings; preserve recordings and saved transcripts.
+
+OpenClaw's `--standardize-aliases` migration changes only its managed audio model
+to `whisper` and both managed Danish TTS provider fields to `tts-danish`. Its
+trusted private speech bridge remains the sandbox boundary; credentials, channel
+policy and session data are preserved. Install the reviewed trusted bridge with
+the guarded `setup-omnivoice.py apply-bridge` lifecycle before reloading native
+OpenClaw. English requests select `tts-english` with `english-default`.
+
+Home Assistant retains its native Wyoming integrations and uses `tts.omnivoice`
+with `danish-default`. `stt.hviske_vllm` is the retained compatibility entity for
+full Whisper. Announcement sources are owned by HA-automations and deployed only
+through its Git app. The finite n8n metadata workflow must observe these actual
+entities; update it through MCP after publishing its sanitized source.
+
+Open WebUI audio is configured by `setup-open-webui-speech.py`: its default is a
+read-only plan; `--apply --revision FULL_SHA` requires a clean published release
+and updates only audio settings through the authenticated application API. It
+uses internal `http://litellm:4000/v1`, `whisper`, `tts-danish`, `danish-default`,
+and WAV. A dedicated key permits only Whisper and the two speech aliases; it is
+kept outside Git at `/srv/state/open-webui/speech-api-key`. Private prior audio
+settings are retained under `/var/lib/homecompute-open-webui-speech`; rollback
+uses the same audio API to restore that saved payload, preserving other settings.
+The script does not rebuild indexes, change chat models, or restart the app.

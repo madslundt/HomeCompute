@@ -97,12 +97,12 @@ def candidate(before: dict[str, Any]) -> dict[str, Any]:
             allow.append('openai')
         plugins.setdefault('entries', {}).setdefault('openai', {})['enabled'] = True
         media = after.setdefault('tools', {}).setdefault('media', {})
-        model = {'provider': 'openai', 'model': 'whisper-turbo', 'capabilities': ['audio'],
+        model = {'provider': 'openai', 'model': 'whisper', 'capabilities': ['audio'],
                  'baseUrl': ORIGIN + '/v1', 'maxBytes': 10_000_000, 'maxChars': 4000,
                  'timeoutSeconds': 120}
         retained = []
         for current in media.get('models', []):
-            if current == model:
+            if current in (model, {**model, 'model': 'whisper-turbo'}, {**model, 'model': 'stt-danish'}):
                 continue
             capabilities = current.get('capabilities')
             if not capabilities or 'audio' in capabilities:
@@ -114,7 +114,7 @@ def candidate(before: dict[str, Any]) -> dict[str, Any]:
                           'scope': {'default': 'deny', 'rules': [
                               {'action': 'allow', 'match': {'channel': 'mattermost'}}]}}
         speech_provider = {'apiKey': copy.deepcopy(key), 'baseUrl': ORIGIN + '/v1',
-                           'model': 'omnivoice', 'voice': 'danish-default', 'responseFormat': 'wav'}
+                           'model': 'tts-danish', 'voice': 'danish-default', 'responseFormat': 'wav'}
         tts = {
             'auto': 'inbound', 'mode': 'final', 'provider': 'openai',
             'maxTextLength': 2000, 'timeoutMs': 120000,
@@ -123,10 +123,13 @@ def candidate(before: dict[str, Any]) -> dict[str, Any]:
                                         'fallbackPolicy': 'fail',
                                         'providers': {'openai': copy.deepcopy(speech_provider)}}},
             'providers': {'openai': speech_provider}}
-        legacy = copy.deepcopy(tts)
-        legacy['providers']['openai']['model'] = 'plapre'
-        legacy['personas']['local-danish']['providers']['openai']['model'] = 'plapre'
-        if 'tts' in before and before['tts'] not in (tts, legacy):
+        accepted = [tts]
+        for old_model in ('plapre', 'omnivoice'):
+            legacy = copy.deepcopy(tts)
+            legacy['providers']['openai']['model'] = old_model
+            legacy['personas']['local-danish']['providers']['openai']['model'] = old_model
+            accepted.append(legacy)
+        if 'tts' in before and before['tts'] not in accepted:
             raise Refused('existing-root-tts-requires-reconciliation')
         after['tts'] = tts
         return after
@@ -141,23 +144,49 @@ def tts_candidate(before: dict[str, Any]) -> dict[str, Any]:
         providers = [after['tts']['providers']['openai'],
                      after['tts']['personas']['local-danish']['providers']['openai']]
         for provider in providers:
-            if (provider['model'] not in {'plapre', 'omnivoice'}
+            if (provider['model'] not in {'plapre', 'omnivoice', 'tts-danish'}
                     or provider['baseUrl'] != ORIGIN + '/v1'
                     or provider['voice'] != 'danish-default' or provider['responseFormat'] != 'wav'):
                 raise Refused('managed-tts-provider-required')
-            provider['model'] = 'omnivoice'
+            provider['model'] = 'tts-danish'
         return after
     except (KeyError, TypeError):
         raise Refused('managed-tts-provider-required') from None
 
 
+def aliases_candidate(before: dict[str, Any]) -> dict[str, Any]:
+    """Migrate only known managed speech model fields; preserve policy and secrets."""
+    after = copy.deepcopy(before)
+    try:
+        models = after['tools']['media']['models']
+        audio = [model for model in models if 'audio' in model.get('capabilities', [])]
+        if len(audio) != 1:
+            raise Refused('unique-managed-audio-model-required')
+        model = audio[0]
+        if (model.get('model') not in {'stt-danish', 'whisper-turbo', 'whisper'}
+                or model.get('provider') != 'openai' or model.get('baseUrl') != ORIGIN + '/v1'):
+            raise Refused('managed-stt-provider-required')
+        model['model'] = 'whisper'
+        providers = [after['tts']['providers']['openai'],
+                     after['tts']['personas']['local-danish']['providers']['openai']]
+        for provider in providers:
+            if (provider.get('model') not in {'plapre', 'omnivoice', 'tts-danish'}
+                    or provider.get('voice') != 'danish-default'
+                    or provider.get('baseUrl') != ORIGIN + '/v1' or provider.get('responseFormat') != 'wav'):
+                raise Refused('managed-tts-provider-required')
+            provider['model'] = 'tts-danish'
+        return after
+    except (KeyError, TypeError, AttributeError):
+        raise Refused('managed-speech-contract-required') from None
+
+
 def setup(config: Path, *, apply: bool = False,
-          runner: Callable[..., Any] = subprocess.run, tts_only: bool = False) -> dict[str, Any]:
+          runner: Callable[..., Any] = subprocess.run, tts_only: bool = False, standardize: bool = False) -> dict[str, Any]:
     checked(config)
     checked(config.parent, directory=True)
     raw = config.read_bytes()
     before = json.loads(raw)
-    after = tts_candidate(before) if tts_only else candidate(before)
+    after = aliases_candidate(before) if standardize else tts_candidate(before) if tts_only else candidate(before)
     temporary = config.parent / ('.speech-candidate-' + uuid.uuid4().hex + '.json')
     write(temporary, (json.dumps(after, indent=2) + '\n').encode())
     try:
@@ -170,7 +199,7 @@ def setup(config: Path, *, apply: bool = False,
         changed = before != after
         summary = {'schema_validated': True, 'config_changed': changed, 'applied': False,
                    'restart_required': changed, 'channel': 'mattermost',
-                   'stt_model': 'preserved' if tts_only else 'whisper-turbo', 'tts_model': 'omnivoice', 'tts_auto': 'inbound'}
+                   'stt_model': 'preserved' if tts_only else 'whisper', 'tts_model': 'tts-danish', 'tts_auto': 'inbound'}
         if not apply:
             return summary
         if config.read_bytes() != raw:
@@ -279,11 +308,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=Path('/sandbox/.openclaw/openclaw.json'))
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--standardize-aliases', action='store_true', help='Migrate only managed STT/TTS aliases, preserving other configuration.')
     parser.add_argument('--replace-plapre', action='store_true', help='Migrate only managed TTS model fields, preserving current STT and settings.')
     parser.add_argument('--network-policy', action='store_true')
     args = parser.parse_args()
     try:
-        result = network_setup(apply=args.apply) if args.network_policy else setup(args.config, apply=args.apply, tts_only=args.replace_plapre)
+        result = network_setup(apply=args.apply) if args.network_policy else setup(args.config, apply=args.apply, tts_only=args.replace_plapre, standardize=args.standardize_aliases)
         print(json.dumps(result, sort_keys=True))
         return 0
     except (Refused, OSError, ValueError):

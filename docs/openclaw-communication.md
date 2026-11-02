@@ -34,7 +34,7 @@ Off-host backup/restore remains a separate household rollout requirement.
 ## Mattermost voice messages
 
 Enabled on 2026-10-27. Send an audio attachment or voice message to the existing
-Mattermost assistant. Native OpenClaw transcribes it through local Whisper Turbo
+Mattermost assistant. Native OpenClaw transcribes it through local Whisper Large-v3 (`whisper`)
 and adds a Danish WAV attachment to the final reply. Typed messages keep text
 replies. Incoming recordings are limited to 10 MB and 60 seconds. The speech
 bridge uses the existing managed MCP credential and exact audio POST endpoints;
@@ -56,8 +56,11 @@ at most one resynthesis after a mismatch. A second mismatch, GPU timeout, or
 unavailable verifier uses the existing CPU Danish voice. English has no qualified
 CPU fallback; native OpenClaw retains its text reply if synthesis fails.
 [OmniVoice's dedicated lifecycle](../deploy/omnivoice/README.md) replaces Plapre
-without resetting conversations or credentials. Native inbound replies retain
-the Danish default. Session-level `/tts` preferences can override this default.
+without resetting conversations or credentials. Native inbound replies use `tts-danish` and retain
+the Danish default. Run `setup-openclaw-speech.py --standardize-aliases` in the
+native sandbox to migrate only the managed speech model fields; validate before
+repeating with `--apply`. The trusted bridge translates older OmniVoice model
+requests to `tts-danish` or `tts-english` according to the approved voice. Session-level `/tts` preferences can override this default.
 
 ## Use the working console
 

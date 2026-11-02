@@ -216,11 +216,13 @@ def apply_bridge(state):
     destination = Path('/opt/homecompute/openclaw-communication/scripts/openclaw_speech.py')
     predecessor = run(['git', '-C', str(ROOT), 'show',
         '5c4b046:scripts/openclaw_speech.py']).encode()
+    bilingual = run(['git', '-C', str(ROOT), 'show',
+        '6a6155822a76e4bd729ab7fa5dec315f260ca4c8:scripts/openclaw_speech.py']).encode()
     desired = (ROOT / 'scripts/openclaw_speech.py').read_bytes()
     info = destination.lstat()
     before = destination.read_bytes()
     if (destination.is_symlink() or info.st_uid != 0 or info.st_mode & 0o022
-            or before not in (predecessor, desired)):
+            or before not in (predecessor, bilingual, desired)):
         raise ValueError('Trusted speech module drift requires review')
     if before == desired:
         print(json.dumps({'speech_bridge': 'current'})); return

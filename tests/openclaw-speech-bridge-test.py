@@ -108,6 +108,14 @@ class SpeechClientTests(unittest.TestCase):
         fallback.return_value = b''
         with self.assertRaises(RuntimeError): client.request('/v1/audio/speech', json.dumps(TTS).encode(), 'application/json')
 
+    def test_aliases_select_language_and_reject_mismatched_voices(self):
+        for model, voice in [('tts-danish', 'danish-default'), ('tts-english', 'english-default')]:
+            value = {**TTS, 'model': model, 'voice': voice}
+            result = json.loads(speech.synthesis(json.dumps(value).encode(), 'application/json'))
+            self.assertEqual(result, value)
+        with self.assertRaises(ValueError):
+            speech.synthesis(json.dumps({**TTS, 'model': 'tts-english'}).encode(), 'application/json')
+
     def test_english_uses_full_whisper_and_never_a_danish_fallback(self):
         opener = Mock(); fallback = Mock(return_value=wav())
         opener.open.side_effect = [Response(wav()), Response(b'{"text":"Hello."}')]
