@@ -3,6 +3,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import importlib.util
+import contextlib
+import io
+import os
+import threading
+import time
+import urllib.error
+import urllib.parse
 import json
 from pathlib import Path
 import socket
@@ -86,6 +93,37 @@ class PlatformHealthTest(unittest.TestCase):
         self.assertEqual(command[:5], ['docker', 'exec', '-i', 'homecompute-control-plane-litellm-1', 'python3'])
         self.assertIn('COMPUTE_AUTOMATION_CANDIDATE_BASE_URL', run.call_args.kwargs['input'])
         self.assertNotIn('10.77.10.10', run.call_args.kwargs['input'])
+
+    def test_two_stt_routes_can_share_a_single_request_relay(self):
+        slot = threading.Lock()
+        ports = []
+        class Response:
+            status = 200
+            def __init__(self, locked): self.locked = locked
+            def __enter__(self):
+                if self.locked: time.sleep(0.025)
+                return self
+            def __exit__(self, *_):
+                if self.locked: slot.release()
+        class Opener:
+            def open(self, request, timeout):
+                port = urllib.parse.urlsplit(request.full_url).port
+                if port in {8003, 8007}:
+                    if not slot.acquire(blocking=False):
+                        raise urllib.error.HTTPError(request.full_url, 429, 'busy', {}, None)
+                    ports.append(port)
+                    return Response(True)
+                return Response(False)
+        environment = {name: 'http://127.0.0.1:' + str(port) + '/v1' for name, port in (
+            ('COMPUTE_AUTOMATION_CANDIDATE_BASE_URL', 8005), ('EMBEDDING_BASE_URL', 8080),
+            ('COMPUTE_STT_DANISH_BASE_URL', 8003), ('COMPUTE_STT_MULTILINGUAL_BASE_URL', 8007),
+            ('OMNIVOICE_TTS_BASE_URL', 8004))}
+        output = io.StringIO()
+        with patch.dict(os.environ, environment), patch.object(Path, 'read_text', return_value='synthetic-key'), \
+                patch('urllib.request.build_opener', return_value=Opener()), contextlib.redirect_stdout(output):
+            exec(health.UPSTREAM_PROBE, {})
+        self.assertEqual(json.loads(output.getvalue()), dict.fromkeys(health.UPSTREAM_KEYS, True))
+        self.assertEqual(ports, [8003, 8007])
 
     def test_unknown_fields_nonbooleans_and_content_never_become_metrics(self):
         for value in [{'text': True}, {**dict.fromkeys(health.UPSTREAM_KEYS, True), 'private': 'SECRET'},

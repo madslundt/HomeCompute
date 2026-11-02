@@ -39,7 +39,7 @@ measured 15.659s for 1.880s of Danish audio and 23.791s for 2.690s, with peak
 RSS about 2.5GiB. English exposed an optional-normalizer dependency, fixed by
 using the existing Danish num2words normalizer only for Danish. These first
 samples do not establish warm p95, but reject CPU placement for the intended
-interactive latency. GPU measurement remains necessary.
+interactive latency. GPU results and the eventual stable-reference service are recorded below.
 
 ## Retire Plapre
 
@@ -155,3 +155,60 @@ If a first start fails before any container runs, connect through home-core
 bounded network/container metadata, refuses unknown or running containers,
 and removes only this new project's stopped containers and networks. It never
 changes host routes, firewall rules or other projects.
+
+## Observed rollout, 2026-11-02
+
+The engine and both core adapters run dedicated revision
+`6a6155822a76e4bd729ab7fa5dec315f260ca4c8`. The authenticated gateway uses that
+release's generated routes and both native HA pipelines use `tts.omnivoice`.
+Plapre containers on both hosts and its HA integration were removed; rollback
+images and data remain. Core's CPU fallback stays independently available.
+
+| Measurement | home-core CPU test | Spark GPU, stable synthetic references |
+| --- | --- | --- |
+| Danish synthesis | 15.659–23.791s for 1.88–2.69s audio | warm 0.453–0.526s for 1.93–2.69s audio |
+| English synthesis | not completed in initial CPU run | warm 0.470–0.476s for 1.68s audio |
+| Peak process RSS | about 2.5GiB | about 3.1GiB |
+| Torch CUDA memory | none | 1.9GiB allocated, 2.95GiB reserved, 2.65GiB peak allocated |
+| Container allocation | 4 CPUs, 8GiB cap | 4 CPUs, 12GiB cap; Docker reported about 2.7GiB used |
+
+RSS, CUDA allocator statistics and container accounting overlap differently on
+GB10 shared memory; do not add these numbers into a supposed total. The stable
+reference test loaded in 22.846s. The installed raw-HTTP smoke took 0.614s Danish
+and 0.488s English. Authenticated HTTPS synthesis took 0.541s Danish and 0.604s
+English in another sample; both passed the existing recognition-match check.
+These are short synthetic samples with the text engine resident, not loaded
+p95, throughput, long-form reliability or native-listener quality qualification.
+
+HA-generated Danish/English PCM matched direct OmniVoice output exactly, without
+speaker playback. HA's streaming WAV intentionally declares zero frames in its
+header; validate its actual PCM payload rather than treating that streaming
+header as an empty buffered WAV. The native OpenClaw Mattermost TTS conversion
+also produced a valid WAV after the supported gateway restart:
+
+```bash
+NEMOCLAW_GATEWAY_PORT=9123 nemoclaw agent-openclaw gateway restart --quiet
+```
+
+This restart is required after the native model migration; schema validation
+and writing the candidate alone do not establish that the gateway uses it.
+The synthetic native conversion took 3.654s including CLI, bridge and recognition
+verification, for 2.0s audio. No message was sent to a channel. Existing native
+conversations, STT selection and credentials were preserved.
+
+`status`, `services`, `doctor` and `drift` were inspected separately. The regular
+host markers track different lifecycles (core `f630fde`, Spark `b0e8b10` at this
+observation), so they do not establish this dedicated TTS rollout. Revision
+labels, actual image/configuration, healthy containers and the client probes
+above establish the TTS state. Retained, stopped rollback containers are not
+required services. Ancillary image-tracking and disabled-recovery declarations
+follow their maintenance/Nix lifecycles rather than this Docker-only installer.
+
+The final monitoring check exposed HTTP 429 when its two STT probes reached the
+same single-request Whisper relay in parallel. The readiness probe now checks
+those two routes sequentially while checking other dependencies concurrently;
+both STT routes remain required, and the eight-second STT bound fits inside its
+nine-second process budget. The changed probe passed against the live services.
+Install its exact published hash through `setup-platform-observability.py` and
+verify the receipt and resulting gauges; do not mark the platform ready merely
+because synthesis passed. This does not resize or restart the Whisper model.

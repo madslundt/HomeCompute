@@ -48,12 +48,20 @@ def check(item):
    return name, False
   url = urllib.parse.urlunsplit((value.scheme, value.netloc, suffix, '', ''))
   request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + key} if key else {})
-  with opener.open(request, timeout=5) as response:
+  with opener.open(request, timeout=4) as response:
    return name, response.status == 200
  except Exception:
   return name, False
-with ThreadPoolExecutor(max_workers=5) as pool:
- print(json.dumps(dict(pool.map(check, routes.items())), sort_keys=True))
+# Both STT addresses may target the same one-request relay. Serial probes
+# preserve each route check without making the other return HTTP 429.
+groups = [('text',), ('embedding',), ('tts',), ('stt_danish', 'stt_multilingual')]
+def check_group(names):
+ return dict(check((name, routes[name])) for name in names)
+with ThreadPoolExecutor(max_workers=4) as pool:
+ result = {}
+ for states in pool.map(check_group, groups):
+  result.update(states)
+ print(json.dumps(result, sort_keys=True))
 '''
 
 
