@@ -199,7 +199,7 @@ class AssistDependencyProjectionTests(unittest.TestCase):
     def states():
         return [{'entity_id': entity, 'state': 'unknown', 'attributes': {'private': 'never projected'}}
                 for entity in ('conversation.automation_moe', 'conversation.gemma_4_e4b',
-                               'stt.hviske_vllm', 'tts.omnivoice')]
+                               'stt.whisper', 'tts.omnivoice')]
 
     def test_unknown_voice_states_are_available_and_selected_dependency_checks_exist(self):
         result = self.project(self.states())
@@ -212,7 +212,7 @@ class AssistDependencyProjectionTests(unittest.TestCase):
     def test_missing_or_unavailable_selected_dependency_degrades_affected_pipeline(self):
         for entity, affected in [('conversation.gemma_4_e4b', ['assist_primary']),
                                  ('conversation.automation_moe', ['assist_secondary']),
-                                 ('stt.hviske_vllm', ['assist_primary', 'assist_secondary', 'assist_stt']),
+                                 ('stt.whisper', ['assist_primary', 'assist_secondary', 'assist_stt']),
                                  ('tts.omnivoice', ['assist_primary', 'assist_secondary', 'assist_tts'])]:
             for missing in (False, True):
                 with self.subTest(entity=entity, missing=missing):

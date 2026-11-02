@@ -53,6 +53,15 @@ class WyomingAdapterTest(unittest.TestCase):
         self.assertEqual(["da"], data["asr"][0]["models"][0]["languages"])
         self.assertTrue(data["asr"][0]["requires_external_vad"])
 
+    def test_whisper_metadata_reports_the_actual_model_and_publisher(self):
+        _, data = decode_event(ADAPTER.info_event("whisper", "da"))
+        program = data["asr"][0]
+        self.assertEqual(program["name"], "Whisper")
+        self.assertEqual(program["attribution"]["name"], "OpenAI")
+        self.assertEqual(program["models"][0]["name"], "whisper")
+        self.assertIn("Large-v3", program["models"][0]["description"])
+        self.assertNotIn("hviske", json.dumps(data).lower())
+
     def test_official_separate_data_and_payload_framing_is_accepted(self) -> None:
         async def exercise() -> object:
             reader = asyncio.StreamReader()

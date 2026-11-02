@@ -44,7 +44,7 @@ function states(){
  rows.push({entity_id:'sensor.staircase_battery_operation_plan',state:'ready',last_updated:at(-86400),attributes:{created_at:at(-10),expected_cost_dkk:5,baseline_cost_dkk:7,expected_savings_dkk:2,
   blocks:[{start:at(0),end:at(3600),action:'charge',energy_kwh:0.5,expected_load_kwh:0.2,expected_grid_import_kwh:0.7,expected_cost_dkk:1.2,expected_savings_dkk:0.3,private_reason:'PRIVATE'}],private_note:'SECRET'}});
  rows.find(e=>e.entity_id===policy.numeric.electricity_price[0]).attributes.prices=[{start:at(0),end:at(3600),price:1.5},{start:at(3600),end:at(7200),price:-0.25}];
- for(const entity_id of ['conversation.automation_moe','conversation.gemma_4_e4b','stt.hviske_vllm','tts.omnivoice'])rows.push({entity_id,state:'unknown'});
+ for(const entity_id of ['conversation.automation_moe','conversation.gemma_4_e4b','stt.whisper','tts.omnivoice'])rows.push({entity_id,state:'unknown'});
  rows.push({entity_id:'person.private',state:'home',attributes:{latitude:55.1,token:'SECRET'}});
  rows.push({entity_id:'sensor.unrelated',state:'unavailable'});
  rows.push({entity_id:'automation.private',state:'off'});

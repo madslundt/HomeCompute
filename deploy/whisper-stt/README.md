@@ -137,3 +137,33 @@ Large-v3 is the owner's selected replacement. Hardware qualification and honest
 limitations still govern whether deployment succeeds. Do not claim measured
 accuracy gains, timestamp quality, memory headroom or concurrency readiness
 until those checks actually run.
+
+## Home Assistant primary service identity
+
+The core Wyoming adapter uses `STT_MODEL=whisper` and advertises `Whisper` with
+OpenAI attribution. Its listener remains HA-only on core port 10301. The old
+Compose service name is retained for firewall and deployment compatibility.
+The adapter program is a read-only bind from the selected release, so an image
+rebuild is not required for this protocol metadata update.
+
+From a clean published release on home-core, run:
+
+```sh
+sudo python3 scripts/setup-ha-speech.py adapter --revision FULL_SHA
+sudo python3 scripts/setup-ha-speech.py plan --revision FULL_SHA
+sudo python3 scripts/setup-ha-speech.py apply --revision FULL_SHA
+```
+
+The lifecycle verifies the existing adapter source/image/environment before replacing only that
+service. It reloads the existing Wyoming entry, changes its display title and
+entity ID to `stt.whisper`, and updates pipelines using that primary recognizer.
+OmniVoice's primary entry/entity display name becomes `OmniVoice`; TTS stays
+`tts.omnivoice`. Fallback integrations and their enabled/disabled state remain
+unchanged. No `.storage` files are edited and no integrations are deleted.
+
+Private pre-change metadata and verification receipts are kept under
+`/var/lib/homecompute/ha-speech`. Retain the prior release and adapter image.
+Rollback uses its recorded Compose source for only `hviske-wyoming-proxy`, then
+the native registry/pipeline APIs to restore the saved IDs, titles and selection
+if required. Update the finite n8n speech-health entity reference through MCP
+after the HA rename. Model inference and TTS runtimes are outside this lifecycle.

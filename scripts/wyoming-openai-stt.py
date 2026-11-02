@@ -99,17 +99,19 @@ async def read_event(reader: asyncio.StreamReader, max_payload: int) -> Event | 
 
 
 def info_event(model: str, language: str) -> bytes:
-    attribution = {"name": "SYVAI", "url": "https://huggingface.co/syvai/hviske-v5.3"}
+    canonical = model == "whisper"
+    attribution = ({"name": "OpenAI", "url": "https://github.com/openai/whisper"} if canonical
+                   else {"name": "SYVAI", "url": "https://huggingface.co/syvai/hviske-v5.3"})
     artifact = {
         "name": model,
-        "description": "Pinned Danish Hviske speech recognition",
+        "description": "Whisper Large-v3 speech recognition" if canonical else "Pinned Danish Hviske speech recognition",
         "version": None,
         "attribution": attribution,
         "installed": True,
         "languages": [language],
     }
     program = {
-        "name": "hviske-vllm",
+        "name": "Whisper" if canonical else "hviske-vllm",
         "description": "HomeCompute Wyoming to vLLM transcription adapter",
         "version": "1",
         "attribution": attribution,
@@ -215,7 +217,10 @@ class WyomingSession:
             requested_model = event.data.get("name")
             if requested_language not in (None, self.config.language, "da-DK"):
                 raise ProtocolError("only Danish transcription is supported")
-            if requested_model not in (None, self.config.model, "hviske-vllm", "stt-danish"):
+            allowed_names = {None, self.config.model, "hviske-vllm", "stt-danish"}
+            if self.config.model == "whisper":
+                allowed_names.add("Whisper")
+            if requested_model not in allowed_names:
                 raise ProtocolError("unknown transcription model")
             self.reset()
             self.active = True
@@ -316,7 +321,7 @@ def load_config() -> Config:
         "http://10.77.10.10:8003/v1/audio/transcriptions",
     }:
         raise SystemExit("unexpected transcription upstream")
-    if config.model != "stt-danish" or config.language != "da":
+    if config.model not in {"stt-danish", "whisper"} or config.language != "da":
         raise SystemExit("adapter supports only the pinned Danish model alias")
     if (
         config.max_audio_bytes != 10_000_000

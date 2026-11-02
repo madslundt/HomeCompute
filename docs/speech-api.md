@@ -93,8 +93,8 @@ the guarded `setup-omnivoice.py apply-bridge` lifecycle before reloading native
 OpenClaw. English requests select `tts-english` with `english-default`.
 
 Home Assistant retains its native Wyoming integrations and uses `tts.omnivoice`
-with `danish-default`. `stt.hviske_vllm` is the retained compatibility entity for
-full Whisper. Announcement sources are owned by HA-automations and deployed only
+with `danish-default`. `stt.whisper` is the primary full Whisper entity.
+Announcement sources are owned by HA-automations and deployed only
 through its Git app. The finite n8n metadata workflow must observe these actual
 entities; update it through MCP after publishing its sanitized source.
 

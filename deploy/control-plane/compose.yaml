@@ -324,13 +324,15 @@ services:
       WYOMING_PORT: "10301"
       STT_UPSTREAM_URL: http://${HVISKE_WYOMING_UPSTREAM_HOST:-10.77.10.10}:${HVISKE_WYOMING_UPSTREAM_PORT:-8003}/v1/audio/transcriptions
       STT_API_KEY_FILE: /run/secrets/compute_api_key
-      STT_MODEL: stt-danish
+      STT_MODEL: whisper
       STT_LANGUAGE: da
       STT_MAX_AUDIO_BYTES: "10000000"
       STT_MAX_AUDIO_SECONDS: "60"
       STT_UPSTREAM_TIMEOUT_SECONDS: "120"
       STT_MAX_CONNECTIONS: "4"
     entrypoint: [python3, /opt/homecompute/wyoming-openai-stt.py]
+    volumes:
+      - ../../scripts/wyoming-openai-stt.py:/opt/homecompute/wyoming-openai-stt.py:ro
     secrets: [compute_api_key]
     ports:
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:${HVISKE_WYOMING_LAN_PORT:-10301}:10301/tcp

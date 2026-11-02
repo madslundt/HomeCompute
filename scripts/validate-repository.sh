@@ -263,6 +263,7 @@ python3 "$REPO_ROOT/tests/tcp-edge-proxy-test.py"
 python3 "$REPO_ROOT/tests/openai-stt-relay-test.py"
 printf '[validate] Hviske Wyoming adapter tests\n'
 python3 "$REPO_ROOT/tests/wyoming-openai-stt-test.py"
+python3 "$REPO_ROOT/tests/ha-speech-migration-test.py"
 printf '[validate] Plapre deployment and Wyoming adapter tests\n'
 python3 "$REPO_ROOT/tests/plapre-deployment-test.py"
 python3 "$REPO_ROOT/tests/plapre-wyoming-test.py"
@@ -729,7 +730,11 @@ jq -e '
   (.services["plapre-wyoming-proxy"].cap_drop | index("ALL") != null) and
   (.services["hviske-wyoming-proxy"].cap_drop | index("ALL") != null) and
   ((.services["plapre-wyoming-proxy"].volumes // []) | length == 0) and
-  ((.services["hviske-wyoming-proxy"].volumes // []) | length == 0) and
+  (.services["hviske-wyoming-proxy"].volumes | length == 1) and
+  (.services["hviske-wyoming-proxy"].volumes[0].target == "/opt/homecompute/wyoming-openai-stt.py") and
+  (.services["hviske-wyoming-proxy"].volumes[0].read_only == true) and
+  (.services["hviske-wyoming-proxy"].volumes[0].source | endswith("/scripts/wyoming-openai-stt.py")) and
+  (.services["hviske-wyoming-proxy"].environment.STT_MODEL == "whisper") and
   (.services["plapre-wyoming-proxy"].entrypoint == ["python3", "/opt/homecompute/plapre-wyoming.py"]) and
   (.services["hviske-wyoming-proxy"].entrypoint == ["python3", "/opt/homecompute/wyoming-openai-stt.py"]) and
   (.services["plapre-wyoming-proxy"].environment.PLAPRE_UPSTREAM_URL == "http://10.77.10.10:8004") and
