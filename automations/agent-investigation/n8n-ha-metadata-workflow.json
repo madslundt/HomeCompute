@@ -183,6 +183,6 @@
     "saveDataErrorExecution": "none",
     "saveExecutionProgress": false,
     "saveManualExecutions": false,
-    "availableInMCP": false
+    "availableInMCP": true
   }
 }

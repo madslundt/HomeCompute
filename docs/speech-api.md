@@ -107,3 +107,8 @@ kept outside Git at `/srv/state/open-webui/speech-api-key`. Private prior audio
 settings are retained under `/var/lib/homecompute-open-webui-speech`; rollback
 uses the same audio API to restore that saved payload, preserving other settings.
 The script does not rebuild indexes, change chat models, or restart the app.
+
+The owner enabled MCP access for the finite HA observation workflow during this
+migration. Its sanitized declaration retains `availableInMCP: true`; request
+authentication, bounded read-only projection and disabled payload retention
+remain enforced. Server-added workflow defaults remain server-managed.
