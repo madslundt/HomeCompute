@@ -2,14 +2,18 @@
 
 ## STT replacement target (2026-11-02)
 
-The owner selected full Whisper Large-v3 to replace both Hviske and Turbo for
-all languages; see [ADR-027](adr/027-unified-whisper-large-v3-stt.md) and the
-[guarded lifecycle](../deploy/whisper-stt/README.md). At the start of this work,
-both hosts recorded release `b0e8b106dd79e30d765ddd38970c29649ebfb37b` and
-both old STT engines were still healthy. Source selection alone is not a live
-cutover or a full-model accuracy/capacity result. Historical speech inventories
-below describe their observation dates. Record actual replacement evidence
-before claiming retirement or synchronization.
+Full Whisper Large-v3 now serves all GPU STT aliases from release
+`5c4b046e5230001ae028064bf09117e6e4721cf9`. The owner-requested cleanup at
+`f86c16464a93d9d20ac00f74ebde70a2fabb5f27` removed the retained Hviske/Turbo
+containers, weights and legacy HTTP images. Daythread uses `whisper` with no
+Danish replacement route. Recordings and saved transcripts were preserved.
+
+See [ADR-027](adr/027-unified-whisper-large-v3-stt.md), the
+[guarded lifecycle](../deploy/whisper-stt/README.md) and
+[measured findings](benchmarks/whisper-large-v3-migration-2026-11-02.md).
+Mixed-language, timestamp and whole-speech capacity limitations remain;
+full-voice acceptance is open. The separately owned TTS rollout is independent
+of this STT task. Older inventories below describe their observation dates.
 
 ## Operational repairs (2026-10-28)
 
