@@ -50,7 +50,7 @@ def transcription(body: bytes, content_type: str) -> None:
                 raise ValueError('Audio size exceeded')
         elif len(data) > 4096:
             raise ValueError('Transcription field exceeded')
-    if (audio != 1 or fields.get('model') not in {b'stt-danish', b'whisper-turbo'}
+    if (audio != 1 or fields.get('model') not in {b'stt-danish', b'whisper-turbo', b'whisper'}
             or fields.get('response_format', b'json') not in {b'json', b'verbose_json'}):
         raise ValueError('Local transcription model and JSON response required')
 
@@ -60,7 +60,7 @@ def synthesis(body: bytes, content_type: str) -> bytes:
         raise ValueError('Bounded speech JSON required')
     value = json.loads(body)
     if (not isinstance(value, dict) or set(value) - {'model', 'input', 'voice', 'response_format', 'speed'}
-            or value.get('model') != 'plapre' or value.get('voice') != 'danish-default'
+            or value.get('model') != 'omnivoice' or value.get('voice') not in {'danish-default', 'english-default'}
             or value.get('response_format') != 'wav' or value.get('speed', 1) != 1
             or not isinstance(value.get('input'), str) or not value['input'].strip()
             or len(value['input']) > 2000):
@@ -100,11 +100,13 @@ class SpeechClient:
                     or len(audio.readframes(audio.getnframes())) != audio.getnframes() * 2):
                 raise RuntimeError('Invalid local speech WAV')
 
-    def _verified(self, text: str, audio: bytes) -> bool:
+    def _verified(self, text: str, audio: bytes, language: str = 'da') -> bool:
         # Known Danish output uses the Danish recognizer, independently of the
         # multilingual route used for the owner's incoming voice messages.
         boundary = 'homecompute-speech-verification'
-        body = (f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\nstt-danish\r\n'
+        model = 'whisper' if language == 'en' else 'stt-danish'
+        body = (f'--{boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\n{model}\r\n'
+                f'--{boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n{language}\r\n'
                 f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="reply.wav"\r\n'
                 f'Content-Type: audio/wav\r\n\r\n').encode() + audio + f'\r\n--{boundary}--\r\n'.encode()
         result = json.loads(self._post('/v1/audio/transcriptions', body,
@@ -119,18 +121,22 @@ class SpeechClient:
                 and SequenceMatcher(None, expected, actual, autojunk=False).ratio() >= 0.90)
 
     def _speak(self, body: bytes) -> bytes:
-        text = json.loads(body)['input']
+        value = json.loads(body)
+        text = value['input']
+        language = 'en' if value['voice'] == 'english-default' else 'da'
         for _ in range(2):
             try:
                 audio = self._post('/v1/audio/speech', body, 'application/json', MAX_AUDIO, 25)
                 self._wav(audio)
-                if self._verified(text, audio):
+                if self._verified(text, audio, language):
                     return audio
             except Exception:
                 # An unavailable GPU or verifier goes straight to the reliable
                 # local CPU voice; only an actual ASR mismatch is resynthesized.
                 break
         fallback = self.fallback
+        if json.loads(body)['voice'] == 'english-default':
+            raise RuntimeError('No qualified English CPU fallback')
         if fallback is None:
             from wyoming_tts_client import synthesize
             fallback = synthesize

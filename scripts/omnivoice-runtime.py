@@ -51,6 +51,12 @@ class Engine:
                 self.prompts[language] = self.model.create_voice_clone_prompt(
                     ref_audio=(torch.from_numpy(audio), 24000), ref_text=text)
 
+    def resources(self):
+        return {'peak_rss_kib': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+                'cuda_allocated_bytes': self.torch.cuda.memory_allocated() if self.device == 'cuda' else 0,
+                'cuda_reserved_bytes': self.torch.cuda.memory_reserved() if self.device == 'cuda' else 0,
+                'cuda_peak_allocated_bytes': self.torch.cuda.max_memory_allocated() if self.device == 'cuda' else 0}
+
     def synthesize(self, text, language='da'):
         if (language not in self.config['languages'] or not isinstance(text, str)
                 or not text.strip() or len(text) > self.config['maximum_input_characters']):
@@ -101,7 +107,8 @@ def serve(device):
             self.close_connection = True
 
         def do_GET(self):
-            self.reply(200 if self.path == '/health' else 404, b'{"ready":true}')
+            self.reply(200 if self.path == '/health' else 404,
+                       json.dumps({'ready': True, **engine.resources()}).encode() if self.path == '/health' else b'{}')
 
         def do_POST(self):
             if self.path != '/v1/audio/speech':

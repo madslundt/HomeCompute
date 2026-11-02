@@ -49,14 +49,15 @@ to be the only enabled channel and uses native root `tts.auto=inbound` with
 speech scope before enabling another channel. Existing session-level `/tts`
 preferences can override the configured default.
 
-The trusted host adapter accepts only bounded local models and the approved
-`danish-default` voice in WAV format. Plapre output is checked by Danish Hviske
-before delivery, with at most one resynthesis after a mismatch. A second mismatch,
-GPU timeout, or unavailable verifier uses the existing CPU Piper Danish voice.
-If synthesis is unavailable, native OpenClaw retains its text reply. The Plapre
-HTTP shim uses the fixed proxy address because Docker network restoration can
-lose its Compose DNS alias. Setup preserves private configuration and policy
-backups; no conversation or credential reset is needed.
+The trusted host adapter accepts bounded local models and the approved
+`danish-default` and `english-default` OmniVoice voices in WAV format.
+Danish output is checked by the local Whisper service before delivery, with
+at most one resynthesis after a mismatch. A second mismatch, GPU timeout, or
+unavailable verifier uses the existing CPU Danish voice. English has no qualified
+CPU fallback; native OpenClaw retains its text reply if synthesis fails.
+[OmniVoice's dedicated lifecycle](../deploy/omnivoice/README.md) replaces Plapre
+without resetting conversations or credentials. Native inbound replies retain
+the Danish default. Session-level `/tts` preferences can override this default.
 
 ## Use the working console
 

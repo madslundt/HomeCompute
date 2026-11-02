@@ -5,8 +5,8 @@
 The owner selected `k2-fsa/OmniVoice` for Danish-first household TTS with
 English support, and explicitly requested stopping and removing Plapre.
 Use the pinned source and model revisions in `config/omnivoice-tts.json`.
-Measure home-core CPU latency before selecting its placement; otherwise use
-an isolated GB10 runtime. Preserve the existing CPU MOSS/Piper fallback.
+Use an isolated GB10 runtime for inference and home-core for adapters.
+The measured home-core CPU latency was unsuitable for interactive speech. Preserve the existing CPU MOSS/Piper fallback.
 
 Keep inference local, runtime egress disabled, and client/network scopes
 unchanged. Weights are noncommercial; this deployment is household-only.

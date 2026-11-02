@@ -102,6 +102,7 @@ python3 "$REPO_ROOT/tests/nas-backup-credentials-test.py"
 python3 "$REPO_ROOT/tests/nas-recovery-setup-test.py"
 python3 "$REPO_ROOT/tests/speech-boundary-test.py"
 python3 "$REPO_ROOT/tests/omnivoice-deployment-test.py"
+python3 "$REPO_ROOT/tests/omnivoice-wyoming-test.py"
 python3 "$REPO_ROOT/tests/speech-rollback-test.py"
 python3 "$REPO_ROOT/tests/speech-cutover-firewall-test.py"
 python3 "$REPO_ROOT/tests/spark-rollout-test.py"
@@ -700,11 +701,15 @@ jq -e '
 control_plane_speech_json="$temporary_root/control-plane-speech.json"
 docker compose --profile speech-proxies --env-file "$control_plane_env" \
   -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --format json >"$control_plane_speech_json"
+jq -e '(.services | keys) == ["caddy", "hviske-wyoming-proxy", "litellm", "postgres"]' "$control_plane_speech_json" >/dev/null
+# Historical Plapre definitions are reachable only with this explicit rollback profile.
+docker compose --profile speech-proxies --profile retired-plapre --env-file "$control_plane_env" \
+  -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --format json >"$control_plane_speech_json"
 jq -e '
   ((.services | keys) == ["caddy", "hviske-wyoming-proxy", "litellm", "plapre-openai-tts", "plapre-wyoming-proxy", "postgres"]) and
-  (.services["plapre-wyoming-proxy"].profiles == ["speech-proxies"]) and
+  (.services["plapre-wyoming-proxy"].profiles == ["retired-plapre"]) and
   (.services["hviske-wyoming-proxy"].profiles == ["speech-proxies"]) and
-  (.services["plapre-openai-tts"].profiles == ["speech-proxies"]) and
+  (.services["plapre-openai-tts"].profiles == ["retired-plapre"]) and
   (.services["plapre-openai-tts"].ports == null) and
   (.services["plapre-openai-tts"].expose == ["8004"]) and
   (.services["plapre-openai-tts"].networks | has("edge")) and

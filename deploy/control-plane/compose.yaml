@@ -85,7 +85,7 @@ services:
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://homecompute-embeddings:8080/v1}
       VIDEO_GENERATION_BASE_URL: ${VIDEO_GENERATION_BASE_URL:-http://caddy:8195/v1}
       COMPUTE_STT_DANISH_BASE_URL: ${COMPUTE_STT_DANISH_BASE_URL:-http://172.28.200.1:18003/v1}
-      PLAPRE_TTS_BASE_URL: ${PLAPRE_TTS_BASE_URL:-http://plapre-openai-tts:8004/v1}
+      OMNIVOICE_TTS_BASE_URL: ${OMNIVOICE_TTS_BASE_URL:-http://omnivoice-openai-tts:8004/v1}
       COMPUTE_HOME_BASE_URL: ${COMPUTE_HOME_BASE_URL:?Set COMPUTE_HOME_BASE_URL}
       LITELLM_CONFIG: /etc/litellm/config.yaml
       LITELLM_MIGRATION_DIR: /app/migrations
@@ -209,7 +209,7 @@ services:
 
   # Service names/IPs remain stable so the HA firewall and callers do not move.
   plapre-wyoming-proxy:
-    profiles: [speech-proxies]
+    profiles: [retired-plapre]
     image: ${SPEECH_ADAPTER_IMAGE:-homecompute/speech-adapters:wyoming-1.10.2}
     build:
       context: ../..
@@ -256,7 +256,7 @@ services:
         ipv4_address: ${PLAPRE_PROXY_EDGE_IP:?Set PLAPRE_PROXY_EDGE_IP}
 
   plapre-openai-tts:
-    profiles: [speech-proxies]
+    profiles: [retired-plapre]
     image: ${PLAPRE_OPENAI_TTS_IMAGE:?Set PLAPRE_OPENAI_TTS_IMAGE to a release-pinned local image tag}
     build:
       context: ../..

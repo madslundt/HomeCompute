@@ -27,7 +27,7 @@ def compose(path: str, environment: str, *profiles: str) -> dict:
 
 class SpeechBoundaryTest(unittest.TestCase):
     def test_core_runs_real_cpu_adapters_at_existing_ha_addresses(self):
-        document = compose('deploy/control-plane/compose.yaml', 'config/control-plane.env.example', 'speech-proxies')
+        document = compose('deploy/control-plane/compose.yaml', 'config/control-plane.env.example', 'speech-proxies', 'retired-plapre')
         for name, port, address in [('plapre-wyoming-proxy', 10201, '172.28.200.4'),
                                     ('hviske-wyoming-proxy', 10301, '172.28.200.5')]:
             service = document['services'][name]

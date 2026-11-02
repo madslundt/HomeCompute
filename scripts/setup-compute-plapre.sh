@@ -120,13 +120,7 @@ build_image() {
 }
 
 start_services() {
-  require_root
-  validate_config
-  activation_gates
-  docker image inspect "$PLAPRE_LOCAL_IMAGE" >/dev/null 2>&1 || die "Local image is missing; run build first"
-  install -m 0444 -o root -g root "$SCRIPT_DIR/tcp-edge-proxy.py" /srv/gb10-ai/runtime/tcp-edge-proxy.py
-  compose up -d --no-build --wait --wait-timeout 1200 plapre-primary plapre-http
-  log "Plapre HTTP inference is staged on loopback:8004; Wyoming runs on home-core"
+  die "Plapre is retired by ADR-028; use scripts/setup-omnivoice.py from a published release"
 }
 
 smoke() {

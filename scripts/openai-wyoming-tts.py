@@ -64,6 +64,7 @@ class Config:
     max_input_chars: int
     synthesis_timeout_seconds: int
     max_concurrent_requests: int
+    additional_voice_aliases: tuple[str, ...] = ()
 
 
 def _required_env(name: str) -> str:
@@ -121,6 +122,9 @@ def load_config() -> Config:
     wyoming_uri = _required_env("WYOMING_URI")
     if not wyoming_uri.startswith(("tcp://", "unix://")):
         raise ValueError("WYOMING_URI must use tcp:// or unix://")
+    additional_voices = tuple(filter(None, os.environ.get('TTS_ADDITIONAL_VOICE_ALIASES', '').split(',')))
+    if set(additional_voices) - {'english-default'} or len(additional_voices) != len(set(additional_voices)):
+        raise ValueError('Only the fixed additional English voice is supported')
     return Config(
         bind_address=bind_address,
         port=port,
@@ -132,6 +136,7 @@ def load_config() -> Config:
         max_input_chars=max_chars,
         synthesis_timeout_seconds=synthesis_timeout,
         max_concurrent_requests=max_concurrent,
+        additional_voice_aliases=additional_voices,
     )
 
 
@@ -341,7 +346,7 @@ class AdapterHandler(BaseHTTPRequestHandler):
             raise RequestError(400, "unknown_field", "Request contains unsupported fields")
         if document.get("model") != self.config.model_alias:
             raise RequestError(400, "unsupported_model", "Unsupported speech model")
-        if document.get("voice") != self.config.voice_alias:
+        if document.get("voice") not in (self.config.voice_alias, *self.config.additional_voice_aliases):
             raise RequestError(400, "unsupported_voice", "Unsupported speech voice")
         if document.get("response_format") != "wav":
             raise RequestError(400, "unsupported_format", "response_format must be wav")
@@ -376,8 +381,11 @@ class AdapterHandler(BaseHTTPRequestHandler):
             self._error(401, "invalid_api_key", "Invalid or missing API key")
             return
         try:
-            text = self._validate_speech(self._read_document())
-            wav_bytes = self.gateway.synthesize(text, self.config.piper_voice_id)
+            document = self._read_document()
+            text = self._validate_speech(document)
+            voice = (self.config.piper_voice_id if document['voice'] == self.config.voice_alias
+                     else document['voice'])
+            wav_bytes = self.gateway.synthesize(text, voice)
             self._send_bytes(200, wav_bytes, "audio/wav")
         except RequestError as error:
             self.close_connection = True

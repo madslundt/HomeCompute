@@ -20,7 +20,7 @@ SPEC = importlib.util.spec_from_file_location('speech_fixture', Path(__file__).w
 FIXTURE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FIXTURE)
 NATIVE = {'openclaw': 'synthetic-native-openclaw-' + 'x' * 40}
-TTS = {'model': 'plapre', 'voice': 'danish-default', 'input': 'Hej, stemmen virker.', 'response_format': 'wav'}
+TTS = {'model': 'omnivoice', 'voice': 'danish-default', 'input': 'Hej, stemmen virker.', 'response_format': 'wav'}
 
 
 def wav():
@@ -107,6 +107,20 @@ class SpeechClientTests(unittest.TestCase):
         self.assertEqual(opener.open.call_count, 1)
         fallback.return_value = b''
         with self.assertRaises(RuntimeError): client.request('/v1/audio/speech', json.dumps(TTS).encode(), 'application/json')
+
+    def test_english_uses_full_whisper_and_never_a_danish_fallback(self):
+        opener = Mock(); fallback = Mock(return_value=wav())
+        opener.open.side_effect = [Response(wav()), Response(b'{"text":"Hello."}')]
+        client = speech.SpeechClient(opener, fallback)
+        value = {**TTS, 'voice': 'english-default', 'input': 'Hello.'}
+        self.assertEqual(client.request('/v1/audio/speech', json.dumps(value).encode(), 'application/json'), ('audio/wav', wav()))
+        verification = opener.open.call_args.args[0].data
+        self.assertIn(b'\r\nwhisper\r\n', verification)
+        self.assertIn(b'\r\nen\r\n', verification)
+        opener.open.side_effect = TimeoutError('offline')
+        with self.assertRaises(RuntimeError):
+            client.request('/v1/audio/speech', json.dumps(value).encode(), 'application/json')
+        fallback.assert_not_called()
 
     def test_verification_rejects_changed_numbers_and_unbounded_transcripts(self):
         opener = Mock(); client = speech.SpeechClient(opener)

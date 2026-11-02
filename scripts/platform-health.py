@@ -34,7 +34,7 @@ routes = {
  'embedding': ('EMBEDDING_BASE_URL', '/health'),
  'stt_danish': ('COMPUTE_STT_DANISH_BASE_URL', '/health'),
  'stt_multilingual': ('COMPUTE_STT_MULTILINGUAL_BASE_URL', '/health'),
- 'tts': ('PLAPRE_TTS_BASE_URL', '/health/ready'),
+ 'tts': ('OMNIVOICE_TTS_BASE_URL', '/health/ready'),
 }
 try:
  key = Path('/run/secrets/compute_api_key').read_text().strip()

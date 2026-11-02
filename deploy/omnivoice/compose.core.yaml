@@ -1,0 +1,107 @@
+name: homecompute-omnivoice
+
+x-runtime: &runtime
+  restart: unless-stopped
+  init: true
+  user: "65532:65532"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 128
+  tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700]
+  logging:
+    driver: local
+    options: {max-size: 5m, max-file: "2"}
+  labels:
+    org.homecompute.omnivoice.revision: ${OMNIVOICE_RELEASE_REVISION:?Published revision required}
+
+services:
+  omnivoice-wyoming:
+    <<: *runtime
+    image: ${OMNIVOICE_ADAPTER_IMAGE:?Selected release adapter image required}
+    build:
+      context: ../..
+      dockerfile: deploy/omnivoice/Dockerfile.adapters
+    entrypoint: [python3, /opt/homecompute/omnivoice-wyoming.py]
+    environment:
+      OMNIVOICE_UPSTREAM_URL: ${OMNIVOICE_UPSTREAM_URL:?Fixed private inference upstream required}
+    command:
+      - --uri=tcp://0.0.0.0:10201
+      - --upstream-url=${OMNIVOICE_UPSTREAM_URL:?Fixed private inference upstream required}
+      - --voice-alias=danish-default
+      - --speaker-id=da
+      - --tempo=1.0
+      - --max-input-chars=2000
+      - --max-pcm-bytes=5760000
+      - --timeout-seconds=120
+    ports: ["${CONTROL_PLANE_LAN_BIND_ADDRESS:?Exact LAN address required}:10201:10201"]
+    cpus: 1
+    mem_limit: 256m
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/speech-adapter-health.py, tts]
+      interval: 15s
+      timeout: 12s
+      retries: 4
+      start_period: 30s
+    networks:
+      edge:
+        ipv4_address: ${PLAPRE_PROXY_EDGE_IP:?Retained HA-only relay address required}
+      inference: {}
+
+  omnivoice-openai-tts:
+    <<: *runtime
+    image: ${OMNIVOICE_ADAPTER_IMAGE:?Selected release adapter image required}
+    entrypoint: [python3, /opt/homecompute/openai-wyoming-tts.py]
+    group_add: ["${CONTROL_PLANE_SECRET_GID:?Secret group required}"]
+    environment:
+      GB10_BIND_ADDRESS: 0.0.0.0
+      TTS_HOST_PORT: "8004"
+      WYOMING_URI: tcp://omnivoice-wyoming:10201
+      TTS_API_KEY_FILE: /run/secrets/compute_api_key
+      TTS_MODEL_ALIAS: omnivoice
+      TTS_VOICE_ALIAS: danish-default
+      TTS_ADDITIONAL_VOICE_ALIASES: english-default
+      PIPER_VOICE_ID: danish-default
+      TTS_MAX_INPUT_CHARS: "2000"
+      TTS_SYNTHESIS_TIMEOUT_SECONDS: "120"
+      TTS_MAX_CONCURRENT_REQUESTS: "1"
+    secrets: [compute_api_key]
+    expose: ["8004"]
+    cpus: 0.5
+    mem_limit: 128m
+    depends_on:
+      omnivoice-wyoming: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/openai-wyoming-tts.py, --probe-ready]
+      interval: 20s
+      timeout: 10s
+      retries: 4
+    networks: [edge]
+
+  omnivoice-engine:
+    <<: *runtime
+    profiles: [cpu]
+    image: ${OMNIVOICE_CPU_IMAGE:?Selected CPU image required}
+    command: [--serve, --device, cpu]
+    cpus: 4
+    mem_limit: 8g
+    memswap_limit: 8g
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=256m,uid=65532,gid=65532,mode=0700]
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8004/health',timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 5m
+    networks: [inference]
+
+networks:
+  edge:
+    external: true
+    name: homecompute-control-plane_edge
+  inference:
+    internal: true
+
+secrets:
+  compute_api_key:
+    file: ${COMPUTE_API_KEY_FILE:?Existing external compute credential required}

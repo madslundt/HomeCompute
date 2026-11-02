@@ -2,7 +2,10 @@
 """Retirement must never remove a different Compose service or clone."""
 import copy
 import importlib.util
+import json
+import os
 from pathlib import Path
+import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +15,34 @@ spec.loader.exec_module(module)
 
 
 class RetirementTest(unittest.TestCase):
+    def test_runtime_compose_preserves_private_host_boundaries(self):
+        environment = {**os.environ, 'OMNIVOICE_RELEASE_REVISION': 'a'*40,
+            'OMNIVOICE_GPU_IMAGE': 'homecompute/omnivoice:gpu-'+'a'*40,
+            'OMNIVOICE_CPU_IMAGE': 'homecompute/omnivoice:cpu-'+'a'*40,
+            'OMNIVOICE_ADAPTER_IMAGE': 'homecompute/omnivoice-adapters:'+'a'*40,
+            'OMNIVOICE_UPSTREAM_URL': 'http://172.28.200.1:18201'}
+        rendered = {}
+        for host in ('core', 'spark'):
+            result = subprocess.run(['docker', 'compose', '--env-file', str(ROOT/'config/control-plane.env.example'),
+                '-f', str(ROOT/f'deploy/omnivoice/compose.{host}.yaml'), 'config', '--format', 'json'],
+                env=environment, capture_output=True, text=True, check=True)
+            rendered[host] = json.loads(result.stdout)
+            for service in rendered[host]['services'].values():
+                self.assertTrue(service['read_only'])
+                self.assertEqual(service['cap_drop'], ['ALL'])
+                self.assertEqual(service['user'], '65532:65532')
+                self.assertTrue(service['mem_limit'])
+                self.assertNotIn('volumes', service)
+        self.assertEqual(set(rendered['core']['services']), {'omnivoice-wyoming', 'omnivoice-openai-tts'})
+        relay = rendered['core']['services']['omnivoice-wyoming']
+        self.assertEqual(relay['networks']['edge']['ipv4_address'], '172.28.200.4')
+        self.assertEqual(relay['ports'][0]['target'], 10201)
+        engine = rendered['spark']['services']['omnivoice-engine']
+        self.assertFalse(engine.get('ports'))
+        self.assertEqual(set(engine['networks']), {'inference'})
+        self.assertTrue(rendered['spark']['networks']['inference']['internal'])
+        self.assertEqual(rendered['spark']['services']['omnivoice-http']['ports'][0]['host_ip'], '127.0.0.1')
+
     def setUp(self):
         self.item = {'Id': 'fixed-id', 'Name': '/homecompute-plapre-plapre-primary-1',
             'Image': 'sha256:fixed-image', 'State': {'Running': True}, 'Config': {'Labels': {

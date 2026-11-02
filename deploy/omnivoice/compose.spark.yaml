@@ -1,0 +1,72 @@
+name: homecompute-omnivoice-spark
+
+x-runtime: &runtime
+  restart: unless-stopped
+  init: true
+  user: "65532:65532"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  pids_limit: 256
+  logging:
+    driver: local
+    options: {max-size: 5m, max-file: "2"}
+  labels:
+    org.homecompute.omnivoice.revision: ${OMNIVOICE_RELEASE_REVISION:?Published revision required}
+
+services:
+  omnivoice-engine:
+    <<: *runtime
+    image: ${OMNIVOICE_GPU_IMAGE:?Selected release GPU image required}
+    build:
+      context: ../..
+      dockerfile: deploy/omnivoice/Dockerfile.gpu
+    command: [--serve, --device, cuda]
+    cpus: 4
+    mem_limit: 12g
+    memswap_limit: 12g
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=512m,uid=65532,gid=65532,mode=0700
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8004/health',timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 10m
+    networks: [inference]
+
+  omnivoice-http:
+    <<: *runtime
+    image: ${OMNIVOICE_ADAPTER_IMAGE:?Selected release adapter image required}
+    build:
+      context: ../..
+      dockerfile: deploy/omnivoice/Dockerfile.adapters
+    entrypoint: [python3, /opt/homecompute/tcp-edge-proxy.py]
+    environment:
+      EDGE_LISTEN_PORT: "8004"
+      EDGE_UPSTREAM_HOST: omnivoice-engine
+      EDGE_UPSTREAM_PORT: "8004"
+    cpus: 0.25
+    mem_limit: 64m
+    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=8m]
+    ports: [127.0.0.1:8004:8004]
+    depends_on:
+      omnivoice-engine: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/tcp-edge-proxy.py, --probe-upstream]
+      interval: 15s
+      timeout: 7s
+      retries: 4
+    networks: [inference, edge]
+
+networks:
+  inference:
+    internal: true
+  edge: {}

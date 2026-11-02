@@ -77,7 +77,7 @@
           "require_health": true
         },
         {
-          "name": "homecompute-control-plane-plapre-wyoming-proxy-1",
+          "name": "homecompute-omnivoice-omnivoice-wyoming-1",
           "require_health": true
         },
         {
@@ -85,7 +85,7 @@
           "require_health": true
         },
         {
-          "name": "homecompute-control-plane-plapre-openai-tts-1",
+          "name": "homecompute-omnivoice-omnivoice-openai-tts-1",
           "require_health": true
         },
         {
@@ -236,7 +236,7 @@
           "require_health": false
         },
         {
-          "name": "homecompute-plapre-plapre-primary-1",
+          "name": "homecompute-omnivoice-spark-omnivoice-engine-1",
           "require_health": true
         },
         {
@@ -248,7 +248,7 @@
           "require_health": true
         },
         {
-          "name": "homecompute-plapre-plapre-http-1",
+          "name": "homecompute-omnivoice-spark-omnivoice-http-1",
           "require_health": true
         }
       ],

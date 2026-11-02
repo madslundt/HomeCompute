@@ -45,6 +45,8 @@ def validate_policy(policy: dict[str, Any]) -> None:
         raise SpeechPolicyError("Qwen3-TTS must be forbidden for Danish")
     if set(language.get("danish_tags", [])) != {"da", "da-DK"}:
         raise SpeechPolicyError("Danish tags must be explicit")
+    if set(language.get('tts_supported_language_tags', [])) != {'da', 'en'}:
+        raise SpeechPolicyError('OmniVoice household qualification covers Danish and English only')
     if set(language.get("qwen_supported_language_tags", [])) != {"zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"}:
         raise SpeechPolicyError("Qwen3-TTS supported language tags must match the selected checkpoint")
     gates = policy.get("activation_gates")
@@ -52,6 +54,7 @@ def validate_policy(policy: dict[str, Any]) -> None:
         gates.get(name) is True
         for name in (
             "all_routes_require_qualification",
+            "omnivoice_noncommercial_household_only",
             "arbitrary_voice_cloning_requires_documented_consent_and-policy",
         )
     ):
@@ -70,8 +73,8 @@ def route(policy: dict[str, Any], operation: str, language: str, gpu_available: 
     if not gpu_available:
         raise SpeechPolicyError("no qualified non-Danish CPU fallback; fail closed")
     base_language = language.lower().split("-", 1)[0]
-    if base_language not in policy["language_rules"]["qwen_supported_language_tags"]:
-        raise SpeechPolicyError("language is not supported by the selected Qwen3-TTS checkpoint")
+    if base_language not in policy["language_rules"]["tts_supported_language_tags"]:
+        raise SpeechPolicyError("language is not supported by the household OmniVoice profile")
     return "tts_english"
 
 

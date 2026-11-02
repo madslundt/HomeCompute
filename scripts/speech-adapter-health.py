@@ -22,11 +22,11 @@ def probe(kind: str) -> None:
         headers = {"Authorization": "Bearer " + config.api_key.decode()}
         port, capability = config.port, "asr"
     elif kind == "tts":
-        upstream = os.environ.get("PLAPRE_UPSTREAM_URL")
+        upstream = os.environ.get("OMNIVOICE_UPSTREAM_URL") or os.environ.get("PLAPRE_UPSTREAM_URL")
         if upstream is None:
             raise ValueError("missing fixed inference upstream")
         parsed = urlsplit(upstream)
-        if parsed.scheme != "http" or parsed.hostname not in {"172.28.200.1", "10.77.10.10"} or parsed.port not in {18201, 8004}:
+        if parsed.scheme != "http" or parsed.hostname not in {"172.28.200.1", "10.77.10.10", "omnivoice-engine"} or parsed.port not in {18201, 8004}:
             raise ValueError("unapproved inference upstream")
         url, headers = upstream + "/health", {}
         port, capability = 10201, "tts"

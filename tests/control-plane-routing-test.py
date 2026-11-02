@@ -101,6 +101,14 @@ class NetworkCredentialTests(unittest.TestCase):
             stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
             yield target, internal
 
+    def test_omnivoice_replaces_only_plapre_preserving_full_whisper_and_optional_scopes(self):
+        before = [*NETWORK.TTS_MODELS, 'embedding', 'video', 'whisper']
+        target = NETWORK.omnivoice_scope(before)
+        self.assertEqual(set(target), set(before) - {'plapre'} | {'omnivoice'})
+        self.assertEqual(NETWORK.omnivoice_scope(target), target)
+        for scope in (['*'], [*before, 'foreign'], NETWORK.TEXT_MODELS):
+            with self.assertRaises(SystemExit): NETWORK.omnivoice_scope(scope)
+
     def test_video_migration_appends_only_video_and_is_idempotent(self):
         for base in (NETWORK.MODELS, NETWORK.TTS_MODELS, [*NETWORK.MODELS, 'embedding'], [*NETWORK.TTS_MODELS, 'embedding']):
             old = {'models': base, 'expires': None, 'user_id': 'network-inference'}
@@ -116,7 +124,7 @@ class NetworkCredentialTests(unittest.TestCase):
 
     def test_later_embedding_and_tts_migrations_preserve_video(self):
         for base, changes, options in (([*NETWORK.MODELS, 'video'], ['embedding', 'video'], {'enable_embedding': True}),
-                                      ([*NETWORK.MODELS, 'embedding', 'video'], ['plapre', 'embedding', 'video'], {'enable_plapre': True})):
+                                      ([*NETWORK.MODELS, 'embedding', 'video'], ['embedding', 'video', 'omnivoice'], {'enable_omnivoice': True})):
             old = {'models': base, 'expires': None, 'user_id': 'network-inference'}
             new = {**old, 'models': [*NETWORK.MODELS, *changes]}
             with self.subTest(options=options), self.video_credential([old, new, new]) as (_, internal):
@@ -399,7 +407,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "stt-danish", "whisper-turbo", "whisper", "plapre", "embedding", "video"}, names)
+        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "embedding", "video"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 

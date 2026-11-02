@@ -157,7 +157,7 @@ class FakeClientFactory:
 
 
 class RunningAdapter:
-    def __init__(self, gateway: Any) -> None:
+    def __init__(self, gateway: Any, additional_voices=()) -> None:
         self.config = ADAPTER.Config(
             bind_address="127.0.0.1",
             port=0,
@@ -169,6 +169,7 @@ class RunningAdapter:
             max_input_chars=20,
             synthesis_timeout_seconds=5,
             max_concurrent_requests=1,
+            additional_voice_aliases=additional_voices,
         )
         self.server = ADAPTER.build_server(self.config, gateway)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -303,6 +304,16 @@ class OpenAIWyomingTtsTest(unittest.TestCase):
         self.assertEqual(client.writes[0].type, "synthesize")
         self.assertEqual(client.writes[0].data["voice"]["name"], "da_DK-talesyntese-medium")
         self.assertEqual(client.writes[0].data["text"], "Hej verden")
+
+    def test_english_alias_is_forwarded_without_becoming_danish(self) -> None:
+        client = FakeClient([Event('audio-start', {'rate': 24000, 'width': 2, 'channels': 1}),
+            Event('audio-chunk', {'rate': 24000, 'width': 2, 'channels': 1}, b'\x01\x02'), Event('audio-stop')])
+        gateway = ADAPTER.WyomingGateway('tcp://wyoming:10201', FakeClientFactory([client]))
+        with RunningAdapter(gateway, ('english-default',)) as adapter:
+            status, _, body = adapter.request('POST', '/v1/audio/speech', valid_request(voice='english-default'))
+        self.assertEqual(status, 200)
+        self.assertTrue(body.startswith(b'RIFF'))
+        self.assertEqual(client.writes[0].data['voice']['name'], 'english-default')
 
     def test_inconsistent_wyoming_pcm_fails_with_generic_error(self) -> None:
         client = FakeClient(

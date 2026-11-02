@@ -114,7 +114,7 @@ def candidate(before: dict[str, Any]) -> dict[str, Any]:
                           'scope': {'default': 'deny', 'rules': [
                               {'action': 'allow', 'match': {'channel': 'mattermost'}}]}}
         speech_provider = {'apiKey': copy.deepcopy(key), 'baseUrl': ORIGIN + '/v1',
-                           'model': 'plapre', 'voice': 'danish-default', 'responseFormat': 'wav'}
+                           'model': 'omnivoice', 'voice': 'danish-default', 'responseFormat': 'wav'}
         tts = {
             'auto': 'inbound', 'mode': 'final', 'provider': 'openai',
             'maxTextLength': 2000, 'timeoutMs': 120000,
@@ -123,7 +123,10 @@ def candidate(before: dict[str, Any]) -> dict[str, Any]:
                                         'fallbackPolicy': 'fail',
                                         'providers': {'openai': copy.deepcopy(speech_provider)}}},
             'providers': {'openai': speech_provider}}
-        if 'tts' in before and before['tts'] != tts:
+        legacy = copy.deepcopy(tts)
+        legacy['providers']['openai']['model'] = 'plapre'
+        legacy['personas']['local-danish']['providers']['openai']['model'] = 'plapre'
+        if 'tts' in before and before['tts'] not in (tts, legacy):
             raise Refused('existing-root-tts-requires-reconciliation')
         after['tts'] = tts
         return after
@@ -131,13 +134,30 @@ def candidate(before: dict[str, Any]) -> dict[str, Any]:
         raise Refused('managed-speech-contract-required') from None
 
 
+def tts_candidate(before: dict[str, Any]) -> dict[str, Any]:
+    """Replace only the managed root TTS model; retain current STT and policy."""
+    after = copy.deepcopy(before)
+    try:
+        providers = [after['tts']['providers']['openai'],
+                     after['tts']['personas']['local-danish']['providers']['openai']]
+        for provider in providers:
+            if (provider['model'] not in {'plapre', 'omnivoice'}
+                    or provider['baseUrl'] != ORIGIN + '/v1'
+                    or provider['voice'] != 'danish-default' or provider['responseFormat'] != 'wav'):
+                raise Refused('managed-tts-provider-required')
+            provider['model'] = 'omnivoice'
+        return after
+    except (KeyError, TypeError):
+        raise Refused('managed-tts-provider-required') from None
+
+
 def setup(config: Path, *, apply: bool = False,
-          runner: Callable[..., Any] = subprocess.run) -> dict[str, Any]:
+          runner: Callable[..., Any] = subprocess.run, tts_only: bool = False) -> dict[str, Any]:
     checked(config)
     checked(config.parent, directory=True)
     raw = config.read_bytes()
     before = json.loads(raw)
-    after = candidate(before)
+    after = tts_candidate(before) if tts_only else candidate(before)
     temporary = config.parent / ('.speech-candidate-' + uuid.uuid4().hex + '.json')
     write(temporary, (json.dumps(after, indent=2) + '\n').encode())
     try:
@@ -150,7 +170,7 @@ def setup(config: Path, *, apply: bool = False,
         changed = before != after
         summary = {'schema_validated': True, 'config_changed': changed, 'applied': False,
                    'restart_required': changed, 'channel': 'mattermost',
-                   'stt_model': 'whisper-turbo', 'tts_model': 'plapre', 'tts_auto': 'inbound'}
+                   'stt_model': 'preserved' if tts_only else 'whisper-turbo', 'tts_model': 'omnivoice', 'tts_auto': 'inbound'}
         if not apply:
             return summary
         if config.read_bytes() != raw:
@@ -259,10 +279,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=Path('/sandbox/.openclaw/openclaw.json'))
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--replace-plapre', action='store_true', help='Migrate only managed TTS model fields, preserving current STT and settings.')
     parser.add_argument('--network-policy', action='store_true')
     args = parser.parse_args()
     try:
-        result = network_setup(apply=args.apply) if args.network_policy else setup(args.config, apply=args.apply)
+        result = network_setup(apply=args.apply) if args.network_policy else setup(args.config, apply=args.apply, tts_only=args.replace_plapre)
         print(json.dumps(result, sort_keys=True))
         return 0
     except (Refused, OSError, ValueError):

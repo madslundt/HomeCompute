@@ -40,11 +40,16 @@
       "es",
       "it"
     ],
-    "qwen_danish_forbidden": true
+    "qwen_danish_forbidden": true,
+    "tts_supported_language_tags": [
+      "da",
+      "en"
+    ]
   },
   "activation_gates": {
     "all_routes_require_qualification": true,
-    "plapre_voice_policy": "approved-supplied-or-reference-voice-only",
-    "arbitrary_voice_cloning_requires_documented_consent_and-policy": true
+    "arbitrary_voice_cloning_requires_documented_consent_and-policy": true,
+    "omnivoice_voice_policy": "seeded-synthetic-household-voice",
+    "omnivoice_noncommercial_household_only": true
   }
 }

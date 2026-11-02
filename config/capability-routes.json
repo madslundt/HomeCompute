@@ -231,11 +231,17 @@
   },
   "tts_routes": {
     "plapre": {
+      "state": "disabled",
+      "privacy": "local_only",
+      "timeout_profile": "tts",
+      "deployments": []
+    },
+    "omnivoice": {
       "state": "candidate",
       "privacy": "local_only",
       "timeout_profile": "tts",
       "deployments": [
-        "plapre-nano-v2"
+        "omnivoice-household"
       ]
     }
   },

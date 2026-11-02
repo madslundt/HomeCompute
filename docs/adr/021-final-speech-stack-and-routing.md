@@ -1,5 +1,7 @@
 # ADR-021: Final 2+2 speech stack and language routing
 
+TTS selection superseded by [ADR-028](028-omnivoice-danish-english-tts.md) on 2026-11-02. Historical evidence below remains dated.
+
 ## Context
 
 The earlier single-GB10 roster selected Parakeet for English STT and Qwen3-TTS

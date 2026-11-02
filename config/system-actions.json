@@ -218,12 +218,12 @@
       ]
     },
     {
-      "id": "home-spark.recover-plapre",
+      "id": "home-spark.recover-omnivoice",
       "target": "home-spark",
       "environment": "production",
       "enabled": false,
       "executor": "approved-spark-compose-recovery",
-      "check_id": "container.homecompute-plapre-plapre-primary-1",
+      "check_id": "container.homecompute-omnivoice-spark-omnivoice-engine-1",
       "category": "health",
       "status": "degraded",
       "gates": [
@@ -248,9 +248,9 @@
       "postcheck": "registered-health",
       "rollback": "operator-reconcile",
       "mechanism_refs": [
-        "deploy/compute-node/plapre/compose.yaml",
+        "deploy/omnivoice/compose.spark.yaml",
         "scripts/deploy-home-spark.sh",
-        "docs/research/plapre-nano-v2-gb10-home-assistant-deployment-2026-09-26.md"
+        "deploy/omnivoice/README.md"
       ]
     }
   ]

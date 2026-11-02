@@ -47,6 +47,18 @@ class SpeechSetupTests(unittest.TestCase):
         self.assertEqual(json.loads(candidate.read_text()), speech.candidate(self.before))
         return subprocess.CompletedProcess(arguments, 0, stdout='private-native-output', stderr='')
 
+    def test_tts_migration_preserves_full_whisper_and_every_unrelated_setting(self):
+        before = {'tools': {'media': {'models': [{'model': 'whisper'}]}},
+                  'tts': {'providers': {'openai': {'model': 'plapre', 'voice': 'danish-default',
+                     'baseUrl': speech.ORIGIN + '/v1', 'responseFormat': 'wav'}},
+                     'personas': {'local-danish': {'providers': {'openai': {'model': 'plapre',
+                     'voice': 'danish-default', 'baseUrl': speech.ORIGIN + '/v1', 'responseFormat': 'wav'}}}}}}
+        after = speech.tts_candidate(before)
+        self.assertEqual(after['tools'], before['tools'])
+        self.assertEqual(after['tts']['providers']['openai']['model'], 'omnivoice')
+        self.assertEqual(before['tts']['providers']['openai']['model'], 'plapre')
+        self.assertEqual(speech.tts_candidate(after), after)
+
     def test_candidate_replies_only_to_inbound_mattermost_audio_in_final_wav(self):
         original = copy.deepcopy(self.before)
         after = speech.candidate(self.before)
@@ -57,7 +69,7 @@ class SpeechSetupTests(unittest.TestCase):
         self.assertFalse(tts['modelOverrides']['enabled'])
         provider = tts['providers']['openai']
         self.assertEqual(provider['baseUrl'], speech.ORIGIN + '/v1')
-        self.assertEqual(provider['model'], 'plapre')
+        self.assertEqual(provider['model'], 'omnivoice')
         self.assertEqual(provider['voice'], 'danish-default')
         self.assertEqual(provider['responseFormat'], 'wav')
         persona = tts['personas'][tts['persona']]

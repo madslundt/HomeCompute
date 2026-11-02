@@ -31,7 +31,8 @@ class SpeechRoutingPolicyTest(unittest.TestCase):
         self.assertEqual("tts_danish", MODULE.route(POLICY, "tts", "da"))
         self.assertEqual("tts_danish_fallback", MODULE.route(POLICY, "tts", "da", gpu_available=False))
         self.assertEqual("tts_english", MODULE.route(POLICY, "tts", "en"))
-        self.assertEqual("tts_english", MODULE.route(POLICY, "tts", "fr-FR"))
+        with self.assertRaisesRegex(MODULE.SpeechPolicyError, 'not supported'):
+            MODULE.route(POLICY, "tts", "fr-FR")
 
     def test_non_danish_gpu_failure_is_fail_closed(self) -> None:
         with self.assertRaisesRegex(MODULE.SpeechPolicyError, "fail closed"):
@@ -41,6 +42,7 @@ class SpeechRoutingPolicyTest(unittest.TestCase):
 
     def test_consent_and_license_gates_cannot_be_disabled(self) -> None:
         for gate in (
+            "omnivoice_noncommercial_household_only",
             "arbitrary_voice_cloning_requires_documented_consent_and-policy",
         ):
             policy = copy.deepcopy(POLICY)

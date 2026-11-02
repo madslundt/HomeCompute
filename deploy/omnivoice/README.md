@@ -65,3 +65,81 @@ The retained previous release and image can recreate Plapre only through its
 documented lifecycle, with existing external environment files. That rollback
 is explicit and is not performed automatically after the owner requested
 Plapre removal. MOSS/Piper remains independent.
+
+## Dedicated installation and clients
+
+Placement is Spark GPU inference, with home-core adapters and independent CPU
+MOSS/Piper fallback. The initial GPU test at
+`4a9a5a73552944faf1313a15ed365133e689200b` measured warm Danish 0.594–0.694s
+and English 0.566–0.591s for the fixed short phrases; the first Danish request
+took 2.267s. Peak process RSS was 3.13GiB, not total shared GPU memory. These
+voice-design measurements precede the stable synthetic-reference service.
+Native Danish pronunciation, long-form reliability and loaded p95 remain gates.
+
+All commands below run from the same clean published full-SHA checkout. Core
+uses root; Spark uses the existing Docker-authorized operator. `apply` checks
+active speech-capacity, speech-finalization and Docker maintenance receipts and
+refuses pending overrides; never delete a receipt to bypass it. It does not
+restart text or STT, adjust their memory, change host networking, or set the
+normal host release pointer. Every container carries its dedicated revision.
+
+```bash
+# home-spark: build and start the internal GPU engine and loopback HTTP edge
+python3 scripts/setup-omnivoice.py apply --revision FULL_SHA
+python3 scripts/setup-omnivoice.py smoke --revision FULL_SHA
+# home-core: adapters on the existing HA address/port and private gateway network
+sudo -n python3 scripts/setup-omnivoice.py apply --revision FULL_SHA
+# Rebind only LiteLLM to this release; require its existing pinned image/entrypoint.
+sudo -n python3 scripts/setup-omnivoice.py apply-gateway --revision FULL_SHA
+# Change only the exact tracked trusted speech module; retain communication policy.
+sudo -n python3 scripts/setup-omnivoice.py apply-bridge --revision FULL_SHA
+# Create the native Wyoming integration, update the two retired HA pipelines,
+# preserving their fresh STT/conversation settings, then remove the Plapre entry.
+sudo -n python3 scripts/setup-omnivoice.py ha-apply --revision FULL_SHA
+```
+
+The gateway key migration removes only `plapre` and adds `omnivoice`, retaining
+full Whisper, compatibility, embedding and video access. The authenticated
+OpenAI endpoint accepts `model=omnivoice`, `voice=danish-default` or
+`english-default`, and WAV output. The Wyoming API advertises Danish and English
+with the same fixed voices. Concurrency is one at the inference engine. Voice
+references are generated synthetically at startup with a fixed seed and never
+accept caller-provided audio, paths, speaker IDs or instructions.
+
+Run the selected release's `scripts/setup-openclaw-speech.py --replace-plapre`
+inside the existing sandbox as its configuration owner, then repeat with
+`--apply` after its native schema check passes. It updates only the two managed
+root TTS model fields and keeps current STT, credentials and other settings.
+Use the existing native supervisor to reload/restart if required; retain its
+private `speech-setup-backups`. No channel message is needed for verification.
+Daythread has no TTS configuration and needs no TTS migration.
+
+Reconcile the monitoring registry and readiness bundle with the documented
+`setup-platform-observability.py` hash-bound lifecycle. It installs the new
+container names and probes `OMNIVOICE_TTS_BASE_URL`; verify its private registry
+against source. Docker image tracking marks locally built speech images as
+source pins rather than proposing mutable upstream tags.
+
+After installation, check both container projects, revision labels, health,
+raw PCM metadata, authenticated gateway Danish/English WAVs, HA engine/voice
+readback and a synthetic HA synthesis without playback. Check
+`homecompute status`, `services`, `doctor`, and `drift` as well. The normal host
+revision marker alone does not prove this dedicated workload is installed.
+
+## Recovery
+
+Keep both prior releases and locally built images. For a failed OmniVoice
+revision, select the previous published OmniVoice revision, run its dedicated
+`apply` on each host and verify before migrating clients. Use the private
+`gateway-before.json` source-mount receipt to review a gateway rollback. Restore
+the trusted bridge only from its saved exact predecessor or a reviewed source
+release, with the adapter stopped, and retain the new private settings backup.
+
+For immediate Danish availability, run the selected published release
+`ha-fallback` action on core. It selects the existing `tts.piper` voice
+`da_DK-talesyntese-medium` for Plapre/OmniVoice pipelines while retaining STT and conversation settings;
+Mattermost retains its local Danish CPU fallback and text replies. English has
+no qualified CPU fallback. Restoring Plapre is an explicit owner-selected
+rollback through its historical guarded lifecycle; its retired profile is
+excluded from normal speech startup and the current Plapre start command
+refuses activation. Never prune model/data volumes as part of this migration.

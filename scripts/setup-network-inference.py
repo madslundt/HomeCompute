@@ -13,6 +13,7 @@ TEXT_MODELS = ['automation', 'home', 'automation-moe']
 STT_MODELS = [*TEXT_MODELS, 'stt-danish']
 MODELS = [*STT_MODELS, 'whisper-turbo']
 TTS_MODELS = [*MODELS, 'plapre']
+OMNIVOICE_MODELS = [*MODELS, 'omnivoice']
 CONTAINER = 'homecompute-control-plane-litellm-1'
 
 
@@ -41,13 +42,26 @@ def model_scope(models: object) -> set[str]:
     return set(models)
 
 
+def omnivoice_scope(models):
+    scope = model_scope(models)
+    allowed = set(MODELS) | {'plapre', 'omnivoice', 'embedding', 'video', 'whisper'}
+    if not set(MODELS) <= scope or not scope <= allowed:
+        raise SystemExit('Unexpected network scope; review before migrating TTS.')
+    result = [model for model in models if model != 'plapre']
+    if 'omnivoice' not in result:
+        result.append('omnivoice')
+    return result
+
+
 def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_plapre: bool = False,
               enable_embedding: bool = False, enable_video: bool = False,
-              enable_full_whisper: bool = False) -> None:
+              enable_full_whisper: bool = False, enable_omnivoice: bool = False) -> None:
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')
-    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video, enable_full_whisper)) > 1:
+    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video, enable_full_whisper, enable_omnivoice)) > 1:
         raise SystemExit('Migrate one model-scope change at a time.')
+    if enable_plapre:
+        raise SystemExit('Plapre is retired; use --enable-omnivoice.')
     if KEY_FILE.exists() or KEY_FILE.is_symlink():
         info = KEY_FILE.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
@@ -63,12 +77,16 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
         scope -= {'whisper'}
         has_video = 'video' in scope
         base_scope = scope - {'video'}
-        reviewed = (set(MODELS), set(TTS_MODELS), set([*MODELS, 'embedding']), set([*TTS_MODELS, 'embedding']))
+        reviewed = (set(MODELS), set(TTS_MODELS), set([*MODELS, 'embedding']), set([*TTS_MODELS, 'embedding']),
+                    set(OMNIVOICE_MODELS), set([*OMNIVOICE_MODELS, 'embedding']))
         if has_video and base_scope not in reviewed:
             raise SystemExit('Existing video credential has an unexpected underlying model scope.')
         scope = base_scope
         target = None
-        if enable_full_whisper and scope in reviewed and not has_full_whisper:
+        if enable_omnivoice:
+            selected = omnivoice_scope(data['models'])
+            target = selected if selected != data['models'] else None
+        elif enable_full_whisper and scope in reviewed and not has_full_whisper:
             target = [*data['models'], 'whisper']
         elif enable_stt and scope == set(TEXT_MODELS):
             target = STT_MODELS
@@ -78,8 +96,8 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
             target = TTS_MODELS
         elif enable_plapre and scope == set([*MODELS, 'embedding']):
             target = [*TTS_MODELS, 'embedding']
-        elif enable_embedding and scope in (set(MODELS), set(TTS_MODELS)):
-            target = [*(TTS_MODELS if 'plapre' in scope else MODELS), 'embedding']
+        elif enable_embedding and scope in (set(MODELS), set(TTS_MODELS), set(OMNIVOICE_MODELS)):
+            target = [*(TTS_MODELS if 'plapre' in scope else OMNIVOICE_MODELS if 'omnivoice' in scope else MODELS), 'embedding']
         elif enable_video and scope in reviewed and not has_video:
             target = [*data['models'], 'video']
         if target is not None and has_full_whisper and 'whisper' not in target:
@@ -118,7 +136,7 @@ urllib.request.urlopen(req, timeout=30).close()
     # The master key stays inside LiteLLM. Capture the new virtual key directly
     # into a private file; never print credentials in deployment output.
     expected_models = (TTS_MODELS if enable_plapre else [*MODELS, 'embedding'] if enable_embedding
-                       else [*MODELS, 'video'] if enable_video else MODELS)
+                       else [*MODELS, 'video'] if enable_video else OMNIVOICE_MODELS if enable_omnivoice else MODELS)
     if enable_full_whisper:
         expected_models = [*expected_models, 'whisper']
     code = '''
@@ -153,10 +171,11 @@ if __name__ == '__main__':
     parser.add_argument('--enable-stt', action='store_true', help='Migrate the reviewed text-only network key to include stt-danish.')
     parser.add_argument('--enable-whisper', action='store_true', help='Migrate the reviewed text and Danish STT network key to include whisper-turbo.')
     parser.add_argument('--enable-full-whisper', action='store_true', help='Add the canonical full Whisper alias, retaining compatibility scopes.')
+    parser.add_argument('--enable-omnivoice', action='store_true', help='Replace only the retired Plapre scope, preserving other reviewed model access.')
     parser.add_argument('--enable-plapre', action='store_true', help='Migrate the reviewed network key to include candidate Plapre TTS.')
     parser.add_argument('--enable-embedding', action='store_true', help='Add the local embedding alias to the reviewed network key.')
     parser.add_argument('--enable-video', action='store_true', help='Add only the local video alias to the reviewed network key.')
     args = parser.parse_args()
     provision(enable_stt=args.enable_stt, enable_whisper=args.enable_whisper,
               enable_plapre=args.enable_plapre, enable_embedding=args.enable_embedding, enable_video=args.enable_video,
-              enable_full_whisper=args.enable_full_whisper)
+              enable_full_whisper=args.enable_full_whisper, enable_omnivoice=args.enable_omnivoice)

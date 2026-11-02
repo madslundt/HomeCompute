@@ -1,0 +1,8 @@
+**
+!deploy/
+!deploy/omnivoice/
+!deploy/omnivoice/**
+!scripts/
+!scripts/openai-wyoming-tts.py
+!scripts/speech-adapter-health.py
+!scripts/tcp-edge-proxy.py

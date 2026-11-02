@@ -44,8 +44,8 @@
           "tracked_tag": "2-alpine",
           "source_lane": "registry"
         },
-        "homecompute-control-plane-plapre-openai-tts-1": {
-          "tracked_tag": "wyoming-1.10.2",
+        "homecompute-omnivoice-omnivoice-openai-tts-1": {
+          "tracked_tag": null,
           "source_lane": "source_pin"
         },
         "homecompute-automation-n8n-1": {
@@ -104,9 +104,9 @@
           "tracked_tag": "3.12-slim-bookworm",
           "source_lane": "registry"
         },
-        "homecompute-control-plane-plapre-wyoming-proxy-1": {
-          "tracked_tag": "3.12-slim-bookworm",
-          "source_lane": "registry"
+        "homecompute-omnivoice-omnivoice-wyoming-1": {
+          "tracked_tag": null,
+          "source_lane": "source_pin"
         },
         "homecompute-immich-redis-1": {
           "tracked_tag": "9",
@@ -185,16 +185,12 @@
           "tracked_tag": null,
           "source_lane": "source_pin"
         },
-        "homecompute-plapre-plapre-edge-1": {
-          "tracked_tag": "b111239d-007e0b47-vllm0151-ta211src1",
+        "homecompute-omnivoice-spark-omnivoice-engine-1": {
+          "tracked_tag": null,
           "source_lane": "source_pin"
         },
-        "homecompute-plapre-plapre-wyoming-1": {
-          "tracked_tag": "b111239d-007e0b47-vllm0151-ta211src1",
-          "source_lane": "source_pin"
-        },
-        "homecompute-plapre-plapre-primary-1": {
-          "tracked_tag": "b111239d-007e0b47-vllm0151-ta211src1",
+        "homecompute-omnivoice-spark-omnivoice-http-1": {
+          "tracked_tag": null,
           "source_lane": "source_pin"
         }
       }

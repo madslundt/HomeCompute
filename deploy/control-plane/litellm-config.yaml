@@ -82,11 +82,11 @@ model_list:
       response_format: json
     model_info:
       mode: audio_transcription
-  - model_name: "plapre"
+  - model_name: "omnivoice"
     litellm_params:
-      model: "openai/plapre"
+      model: "openai/omnivoice"
       order: 1
-      api_base: "os.environ/PLAPRE_TTS_BASE_URL"
+      api_base: "os.environ/OMNIVOICE_TTS_BASE_URL"
       api_key: os.environ/COMPUTE_API_KEY
       timeout: 300
       stream_timeout: 300

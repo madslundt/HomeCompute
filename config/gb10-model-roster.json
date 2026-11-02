@@ -198,29 +198,32 @@
       }
     },
     "tts_danish": {
-      "model_id": "syvai/plapre-nano-v2",
-      "revision": "007e0b471e377dd5061786f7df6ad659d15c4d5f",
-      "license_id": "cc-by-4.0",
+      "model_id": "k2-fsa/OmniVoice",
+      "revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+      "license_id": "cc-by-nc",
       "disposition": "install",
       "language": "da",
       "runtime_profile": {
-        "isolation_group": "plapre-vllm-0.15",
-        "runtime": "vllm",
-        "version_constraint": ">=0.15,<0.16"
+        "isolation_group": "omnivoice-household",
+        "runtime": "transformers",
+        "version_constraint": "5.3.0"
       },
-      "voice_policy": "approved-supplied-or-reference-voice-only"
+      "voice_policy": "seeded-synthetic-household-voice",
+      "usage": "noncommercial-household"
     },
     "tts_english": {
-      "model_id": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
-      "revision": "85e237c12c027371202489a0ec509ded67b5e4b5",
-      "license_id": "apache-2.0",
+      "model_id": "k2-fsa/OmniVoice",
+      "revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+      "license_id": "cc-by-nc",
       "disposition": "install",
-      "language": "multilingual-excluding-da",
+      "language": "en",
       "runtime_profile": {
-        "isolation_group": "qwen3-tts-0.6",
-        "runtime": "qwen-tts",
-        "version_constraint": "pinned-image-required"
-      }
+        "isolation_group": "omnivoice-household",
+        "runtime": "transformers",
+        "version_constraint": "5.3.0"
+      },
+      "voice_policy": "seeded-synthetic-household-voice",
+      "usage": "noncommercial-household"
     }
   },
   "supporting_services": {
@@ -235,7 +238,7 @@
       "model_id": "rhasspy/piper-voices:da_DK-talesyntese-medium",
       "revision": "1162a9173d0ce503555aed757976b7a9912eae4c",
       "license_id": "cc0-1.0",
-      "disposition": "cpu-fallback-until-plapre-qualifies",
+      "disposition": "independent-cpu-fallback",
       "host_class": "home-core-cpu"
     }
   },

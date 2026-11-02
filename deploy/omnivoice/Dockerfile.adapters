@@ -1,0 +1,9 @@
+FROM python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY deploy/omnivoice/requirements.adapters.lock /tmp/requirements.lock
+RUN python3 -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.lock
+COPY deploy/omnivoice/wyoming_adapter.py /opt/homecompute/omnivoice-wyoming.py
+COPY scripts/openai-wyoming-tts.py /opt/homecompute/openai-wyoming-tts.py
+COPY scripts/speech-adapter-health.py /opt/homecompute/speech-adapter-health.py
+COPY scripts/tcp-edge-proxy.py /opt/homecompute/tcp-edge-proxy.py
+USER 65532:65532
