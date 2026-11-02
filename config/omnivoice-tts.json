@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "model_id": "k2-fsa/OmniVoice",
+  "model_revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+  "code_revision": "08be0b4ccbac3e13e374e86fbfead4b4cac343e2",
+  "license_id": "cc-by-nc",
+  "use_scope": "noncommercial-household",
+  "languages": ["da", "en"],
+  "default_language": "da",
+  "steps": 16,
+  "seed": 20261102,
+  "voice_design": "male, middle-aged",
+  "maximum_input_characters": 2000,
+  "maximum_audio_seconds": 120,
+  "cpu_threads": 4,
+  "cpu_memory_limit": "8g",
+  "retired_spark_project": "homecompute-plapre",
+  "retired_core_services": ["plapre-wyoming-proxy", "plapre-openai-tts"]
+}

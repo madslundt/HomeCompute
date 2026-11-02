@@ -153,6 +153,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-024](adr/024-model-artifact-deployment-capability-separation.md) | Separate artifacts, deployments, stable capability routes, and consumer authorization |
 | [ADR-025](adr/025-flash-next-primary-candidate.md) | Proposed Flash-Next primary-model candidate; qualification is pending |
 | [ADR-026](adr/026-openclaw-public-browser.md) | Public browser URLs and owner-requested page interaction; private-network and credential boundaries remain enforced |
+| [ADR-028](adr/028-omnivoice-danish-english-tts.md) | Owner-selected OmniVoice replacement for Plapre; Danish-first placement measurements and retained CPU fallback |
 
 ## Research and model evidence
 
