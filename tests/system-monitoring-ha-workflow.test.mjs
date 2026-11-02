@@ -52,7 +52,8 @@ test('inactive route authenticates fixed GET, bounds runtime and disables retent
   assert.equal(webhook.parameters.authentication, 'headerAuth');
   assert.ok(webhook.credentials.httpHeaderAuth);
   for (const key of ['saveDataSuccessExecution', 'saveDataErrorExecution']) assert.equal(flow.settings[key], 'none');
-  for (const key of ['saveManualExecutions', 'saveExecutionProgress', 'availableInMCP']) assert.equal(flow.settings[key], false);
+  for (const key of ['saveManualExecutions', 'saveExecutionProgress']) assert.equal(flow.settings[key], false);
+  assert.equal(flow.settings.availableInMCP, true);
   assert.equal(flow.settings.executionTimeout, 12);
   assert.equal(flow.nodes.filter(n => n.type === 'n8n-nodes-base.homeAssistant').length, 2);
   for (const n of flow.nodes.filter(n => n.type === 'n8n-nodes-base.homeAssistant')) {

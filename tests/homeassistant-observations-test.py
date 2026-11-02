@@ -420,12 +420,15 @@ class HAProvisioningBoundaryTests(unittest.TestCase):
         spec.loader.exec_module(setup)
         flow = json.loads((ROOT / 'automations/agent-investigation/n8n-ha-metadata-workflow.json').read_text())
         setup.validate_template(flow)
+        operator_disabled = copy.deepcopy(flow)
+        operator_disabled['settings']['availableInMCP'] = False
+        setup.validate_template(operator_disabled)
         mutations = [lambda f: f['nodes'][2]['parameters'].update(resource='service', operation='call'),
                      lambda f: f['nodes'][0]['parameters'].update(httpMethod='POST'),
                      lambda f: f['nodes'][2]['credentials']['homeAssistantApi'].update(id='different-credential'),
                      lambda f: f['nodes'][4].update(type='n8n-nodes-base.telegram'),
                      lambda f: f['settings'].update(saveDataSuccessExecution='all'),
-                     lambda f: f['settings'].update(availableInMCP=True),
+                     lambda f: f['settings'].update(availableInMCP='true'),
                      lambda f: f['connections']['Read HA state inventory']['main'][0][0].update(node='Return finite metadata')]
         for mutate in mutations:
             corrupted = copy.deepcopy(flow)

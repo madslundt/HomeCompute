@@ -67,7 +67,8 @@ def validate_template(flow: dict[str, Any]) -> None:
             raise ValueError('only existing credential config/states GETs allowed')
     settings = flow['settings']
     if (settings.get('saveDataSuccessExecution') != 'none' or settings.get('saveDataErrorExecution') != 'none'
-            or any(settings.get(k) is not False for k in ('saveManualExecutions', 'saveExecutionProgress', 'availableInMCP'))
+            or any(settings.get(k) is not False for k in ('saveManualExecutions', 'saveExecutionProgress'))
+            or type(settings.get('availableInMCP')) is not bool
             or settings.get('executionTimeout') != 12
             or 'configured=false' not in flow['nodes'][1]['parameters']['jsCode']):
         raise ValueError('closed source gate and no payload retention required')
