@@ -25,6 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute/whisper-stt')
 OLD = ('gb10-hviske-http', 'gb10-whisper-http', 'gb10-hviske-primary', 'gb10-whisper-primary')
 NEW = ('gb10-whisper-primary', 'gb10-whisper-http')
+CANDIDATE = 'gb10-whisper-candidate'
+CANDIDATE_IMAGE = 'homecompute/whisper-vllm-candidate:0.19.0-hc1'
 REVISION = '06f233fe06e710322aca913c1bc4249a0d71fce1'
 MODEL = 'openai/whisper-large-v3'
 LEGACY_REPOSITORIES = ('syvai/hviske-v5.3', 'openai/whisper-large-v3-turbo')
@@ -104,7 +106,7 @@ def guards():
 
 def prepare():
     guards()
-    print('Preparing pinned full Whisper cache and relay; GPU services remain unchanged', flush=True)
+    print('Preparing pinned full Whisper cache, relay, and opt-in runtime candidate; GPU services remain unchanged', flush=True)
     for path in ('/srv/gb10-ai/cache/huggingface', '/srv/gb10-ai/manifests'):
         if Path(path).is_symlink() or not Path(path).is_dir():
             raise ValueError('Existing cache and manifest directories are required')
@@ -112,6 +114,18 @@ def prepare():
     compose('--profile', 'prepare', 'run', '--rm', 'whisper-accept')
     compose('build', 'whisper-http')
     print('Whisper cache accepted and relay built', flush=True)
+
+
+def prepare_runtime_candidate():
+    guards()
+    cache = Path('/srv/gb10-ai/manifests/accepted-whisper-large-v3-cache.json')
+    protected(cache)
+    manifest = json.loads(cache.read_text())
+    if manifest.get('repo_id') != MODEL or manifest.get('revision') != REVISION:
+        raise ValueError('Accepted full Whisper cache is required before candidate preparation')
+    compose('--profile', 'candidate', 'build', 'whisper-candidate')
+    candidate_image_id()
+    print('Pinned Whisper runtime candidate image built and verified; no model was started', flush=True)
 
 
 def gate(chain, install):
@@ -150,7 +164,7 @@ print(json.dumps({'idle':all(v==0 for v in rows)}))
     while time.monotonic() < deadline:
         idle = True
         for item in containers:
-            if item['State']['Running'] and item['Name'].endswith('-primary'):
+            if item['State']['Running'] and item['Name'].endswith(('-primary', '-candidate')):
                 result = run(['docker', 'exec', item['Id'], 'python3', '-c', probe])
                 idle = idle and json.loads(result.stdout) == {'idle': True}
         connections = run(['ss', '-Htn', 'state', 'established', '( sport = :8003 or sport = :8007 )']).stdout
@@ -161,8 +175,148 @@ print(json.dumps({'idle':all(v==0 for v in rows)}))
     raise ValueError('STT requests did not drain; no model may be replaced')
 
 
-def smoke():
-    item = inspect(NEW[0])
+def candidate_image_id():
+    result = run(['docker', 'image', 'inspect', CANDIDATE_IMAGE])
+    image = json.loads(result.stdout)[0]
+    labels = image.get('Config', {}).get('Labels') or {}
+    if (labels.get('io.homecompute.whisper-runtime-patch') != '0.19.0-hc1' or
+            labels.get('io.homecompute.whisper-runtime-patcher-sha256') !=
+            'fed6ae01930b2689fbfdcb039ffdb024778f84dc67ba61d0d84fb7fc54935c74' or
+            labels.get('io.homecompute.whisper-source-prompt-sha256') !=
+            '44d196b1d3ec3182de51f4b5f87764a33a1b58c83e6afb5e452f52f4bb653dcf' or
+            labels.get('io.homecompute.whisper-source-serving-sha256') !=
+            '7b9b47511ba3643ccae14ae8a4095153959a35a671eb3cc07707dfd1f10ebfa3' or
+            labels.get('org.opencontainers.image.base.name') != \
+            'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d'):
+        raise ValueError('Patched candidate image identity or base pin differs')
+    return image['Id']
+
+
+def candidate_rollback(tx):
+    candidate = inspect(CANDIDATE)
+    if candidate:
+        labels = candidate.get('Config', {}).get('Labels') or {}
+        if (candidate['Image'] != tx['candidate_image_id'] or
+                labels.get('com.docker.compose.project') != 'whisper-large-v3-stt' or
+                labels.get('com.docker.compose.service') != 'whisper-candidate'):
+            raise ValueError('Candidate container ownership changed; rollback held')
+        if candidate['State']['Running']:
+            run(['docker', 'update', '--restart', 'no', candidate['Id']])
+            run(['docker', 'stop', '--time', '180', candidate['Id']], timeout=210)
+        run(['docker', 'rm', candidate['Id']])
+    original = inspect(tx['primary_id'])
+    if not original or original['Image'] != tx['primary_image'] or \
+            original['Name'] != '/gb10-whisper-primary':
+        raise ValueError('Original Whisper primary changed or disappeared; rollback held')
+    run(['docker', 'update', '--restart', tx['primary_restart'], tx['primary_id']])
+    if not original['State']['Running']:
+        run(['docker', 'start', tx['primary_id']])
+    deadline = time.monotonic() + 900
+    while time.monotonic() < deadline:
+        current = inspect(tx['primary_id'])
+        if current and current['State']['Running'] and \
+                current.get('State', {}).get('Health', {}).get('Status') == 'healthy':
+            tx['state'] = 'rolled-back'
+            save_candidate(tx)
+            return
+        time.sleep(2)
+    raise ValueError('Original Whisper primary did not become healthy; rollback is incomplete')
+
+
+def candidate_start(revision):
+    guards()
+    base_tx_path = STATE / 'transaction.json'
+    protected(base_tx_path)
+    base_tx = json.loads(base_tx_path.read_text())
+    if base_tx.get('state') != 'applied':
+        raise ValueError('The full Whisper lifecycle must be applied before runtime qualification')
+    primary = inspect(NEW[0])
+    if (not primary or not primary['State']['Running'] or
+            primary.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+            MODEL not in ' '.join(primary['Config'].get('Cmd') or []) or
+            REVISION not in ' '.join(primary['Config'].get('Cmd') or []) or
+            primary.get('Config', {}).get('Image') !=
+            'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d'):
+        raise ValueError('Expected healthy pinned NVIDIA Whisper primary before candidate qualification')
+    image_id = candidate_image_id()
+    if inspect(CANDIDATE):
+        raise ValueError('A candidate container already exists; inspect it before qualification')
+    journal = STATE / 'runtime-candidate.json'
+    if journal.exists() or journal.is_symlink():
+        protected(journal)
+        previous = json.loads(journal.read_text())
+        if previous.get('state') != 'rolled-back':
+            raise ValueError('Existing runtime candidate transaction requires rollback/status review')
+        journal.rename(STATE / ('runtime-candidate-rolled-back-' + os.urandom(6).hex() + '.json'))
+    chain = 'HC-STT-' + os.urandom(6).hex()
+    tx = {'revision': revision, 'state': 'prepared', 'chain': chain, 'candidate_image_id': image_id,
+          'primary_id': primary['Id'], 'primary_image': primary['Image'],
+          'primary_restart': restart_policy(primary)}
+    save_candidate(tx)
+    try:
+        gate(chain, True)
+        quiet([primary])
+        run(['docker', 'update', '--restart', 'no', primary['Id']])
+        run(['docker', 'stop', '--time', '180', primary['Id']], timeout=210)
+        memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+        if int(memory['MemAvailable'].split()[0]) < 12 * 1024 * 1024:
+            raise ValueError('Less than 12 GiB available before candidate model load')
+        tx['state'] = 'primary-stopped'; save_candidate(tx)
+        compose('--profile', 'candidate', 'up', '-d', '--no-build', '--pull', 'never', '--wait',
+                '--wait-timeout', '900', 'whisper-candidate')
+        candidate = inspect(CANDIDATE)
+        if (not candidate or candidate['Image'] != image_id or not candidate['State']['Running'] or
+                candidate.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+                MODEL not in ' '.join(candidate['Config'].get('Cmd') or []) or
+                REVISION not in ' '.join(candidate['Config'].get('Cmd') or []) or
+                candidate.get('Config', {}).get('Labels', {}).get('com.docker.compose.project') !=
+                'whisper-large-v3-stt' or
+                candidate.get('Config', {}).get('Labels', {}).get('com.docker.compose.service') !=
+                'whisper-candidate'):
+            raise ValueError('Patched candidate failed image, model or health verification')
+        smoke(CANDIDATE)
+        memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+        if int(memory['MemAvailable'].split()[0]) / int(memory['MemTotal'].split()[0]) < 0.10:
+            raise ValueError('Candidate failed the 10 percent host headroom gate')
+        tx['state'] = 'candidate-running'; save_candidate(tx)
+    except BaseException:
+        candidate_rollback(tx)
+        raise
+    finally:
+        gate(chain, False)
+    print('Patched Whisper candidate active for qualification; run runtime-candidate-rollback afterward', flush=True)
+
+
+def save_candidate(value):
+    target = STATE / 'runtime-candidate.json'
+    temporary = STATE / 'runtime-candidate.tmp'
+    if temporary.exists() or temporary.is_symlink():
+        raise ValueError('Incomplete candidate journal write requires inspection')
+    with temporary.open('x') as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(value, stream, sort_keys=True)
+        stream.flush(); os.fsync(stream.fileno())
+    os.replace(temporary, target)
+
+
+def candidate_stop(revision):
+    journal = STATE / 'runtime-candidate.json'; protected(journal)
+    tx = json.loads(journal.read_text())
+    if tx.get('revision') != revision or tx.get('state') == 'rolled-back':
+        raise ValueError('No matching recoverable runtime candidate transaction')
+    chain = tx['chain']
+    gate(chain, True)
+    try:
+        candidate = inspect(CANDIDATE)
+        if candidate and candidate['State']['Running']:
+            quiet([candidate])
+        candidate_rollback(tx)
+    finally:
+        gate(chain, False)
+
+
+def smoke(container=NEW[0]):
+    item = inspect(container)
     if not item or MODEL not in ' '.join(item['Config'].get('Cmd') or []) or \
             REVISION not in ' '.join(item['Config'].get('Cmd') or []):
         raise ValueError('Full Whisper model/pin is not installed')
@@ -179,7 +333,7 @@ r=urllib.request.Request('http://whisper-http:8007/v1/audio/transcriptions',body
 d=json.load(urllib.request.urlopen(r,timeout=120));assert isinstance(d.get('text'),str)
 print('Authenticated relay transcription passed; content withheld')
 '''
-    run(['docker', 'exec', NEW[0], 'python3', '-c', code], timeout=150)
+    run(['docker', 'exec', container, 'python3', '-c', code], timeout=150)
 
 
 def rollback(tx):
@@ -362,7 +516,9 @@ def retire(revision):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'apply', 'install', 'retire', 'rollback', 'status', 'smoke'))
+    parser.add_argument('action', choices=('prepare', 'prepare-runtime-candidate', 'apply', 'install', 'retire',
+                                           'rollback', 'status', 'smoke', 'runtime-candidate',
+                                           'runtime-candidate-rollback'))
     parser.add_argument('--revision', required=True)
     args = parser.parse_args()
     if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-spark':
@@ -379,10 +535,13 @@ def main():
         for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             signal.signal(sig, lambda *_: (_ for _ in ()).throw(InterruptedError('Interrupted')))
         if args.action == 'prepare': prepare()
+        elif args.action == 'prepare-runtime-candidate': prepare_runtime_candidate()
         elif args.action == 'apply': apply(args.revision)
         elif args.action == 'install': prepare(); apply(args.revision)
         elif args.action == 'retire': retire(args.revision)
         elif args.action == 'smoke': smoke()
+        elif args.action == 'runtime-candidate': candidate_start(args.revision)
+        elif args.action == 'runtime-candidate-rollback': candidate_stop(args.revision)
         else:
             journal = STATE / 'transaction.json'; protected(journal)
             tx = json.loads(journal.read_text())

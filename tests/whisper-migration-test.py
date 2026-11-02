@@ -19,6 +19,7 @@ def module(name, path):
 
 
 LIFECYCLE = module('whisper_lifecycle', 'scripts/setup-whisper-stt.py')
+BOOTSTRAP = module('whisper_bootstrap', 'scripts/bootstrap-whisper-stt.py')
 DAYTHREAD = module('daythread_whisper', 'scripts/migrate-daythread-whisper.py')
 
 
@@ -40,6 +41,48 @@ class MigrationTests(unittest.TestCase):
         with patch.object(Path, 'exists', return_value=True), patch.object(LIFECYCLE, 'compose') as compose:
             with self.assertRaisesRegex(ValueError, 'capacity'): LIFECYCLE.prepare()
         compose.assert_not_called()
+
+    def test_prepare_keeps_runtime_candidate_opt_in(self):
+        with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE.Path, 'is_symlink', return_value=False), \
+                patch.object(LIFECYCLE.Path, 'is_dir', return_value=True), patch.object(LIFECYCLE, 'compose') as compose:
+            LIFECYCLE.prepare()
+        calls = [call.args for call in compose.call_args_list]
+        self.assertNotIn(('--profile', 'candidate', 'build', 'whisper-candidate'), calls)
+        self.assertFalse(any('up' in call for call in calls))
+
+    def test_runtime_candidate_preparation_builds_but_never_starts_it(self):
+        with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'protected'), \
+                patch.object(LIFECYCLE.Path, 'read_text', return_value=json.dumps({
+                    'repo_id': LIFECYCLE.MODEL, 'revision': LIFECYCLE.REVISION})), \
+                patch.object(LIFECYCLE, 'compose') as compose, \
+                patch.object(LIFECYCLE, 'candidate_image_id', return_value='sha256:' + 'a' * 64):
+            LIFECYCLE.prepare_runtime_candidate()
+        calls = [call.args for call in compose.call_args_list]
+        self.assertEqual(calls, [('--profile', 'candidate', 'build', 'whisper-candidate')])
+
+    def test_candidate_image_identity_requires_patch_and_base_labels(self):
+        expected = 'sha256:' + 'a' * 64
+        good = {'Id': expected, 'Config': {'Labels': {
+            'io.homecompute.whisper-runtime-patch': '0.19.0-hc1',
+            'io.homecompute.whisper-runtime-patcher-sha256':
+                'fed6ae01930b2689fbfdcb039ffdb024778f84dc67ba61d0d84fb7fc54935c74',
+            'io.homecompute.whisper-source-prompt-sha256':
+                '44d196b1d3ec3182de51f4b5f87764a33a1b58c83e6afb5e452f52f4bb653dcf',
+            'io.homecompute.whisper-source-serving-sha256':
+                '7b9b47511ba3643ccae14ae8a4095153959a35a671eb3cc07707dfd1f10ebfa3',
+            'org.opencontainers.image.base.name':
+                'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d'}}}
+        with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([good]))):
+            self.assertEqual(LIFECYCLE.candidate_image_id(), expected)
+        good['Config']['Labels']['io.homecompute.whisper-runtime-patch'] = 'unqualified'
+        with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([good]))), \
+                self.assertRaisesRegex(ValueError, 'identity or base pin'):
+            LIFECYCLE.candidate_image_id()
+
+    def test_public_bootstrap_allows_only_declared_candidate_lifecycle_actions(self):
+        self.assertIn('prepare-runtime-candidate', BOOTSTRAP.ACTIONS)
+        self.assertIn('runtime-candidate', BOOTSTRAP.ACTIONS)
+        self.assertIn('runtime-candidate-rollback', BOOTSTRAP.ACTIONS)
 
     def old_containers(self):
         return [{'Id': name + '-id', 'Name': '/' + name, 'Image': 'sha256:old',

@@ -18,6 +18,74 @@ core tunnels and Home Assistant's existing Wyoming endpoint on port 10301.
 The historical core service name `hviske-wyoming-proxy` is compatibility naming;
 it is a CPU protocol adapter, not a Hviske model or fallback.
 
+## Opt-in vLLM runtime candidate
+
+The production service continues to use the NVIDIA vLLM 0.19 image pinned
+above. The explicit `prepare-runtime-candidate` action builds a profile-gated
+candidate image from that same immutable image and the pinned source checksums
+in `scripts/patch-vllm-whisper-runtime.py`. It applies two source edits:
+
+- replaces the invalid Whisper prompt marker `<|prev|>` with the vocabulary
+  token `<|startofprev|>`;
+- preserves the full decoded plain text in `verbose_json` even when vLLM's
+  timestamp parser returns no segment or drops an unclosed passage. It keeps
+  only the parser's available segments and invents no timestamps.
+
+The candidate is declared as `whisper-candidate` under the `candidate` Compose
+profile. `prepare-runtime-candidate` builds the image but never starts it or
+loads a model. The candidate shares the existing verified model cache and
+serves the same pinned weights with the same capacity parameters. It must not run beside
+`whisper-primary`: both require the same GPU model allocation. Keep prompt and
+vocabulary hints disabled by default until the paired real-audio qualification
+passes. Source patch tests prove anchor/checksum refusal and text-preserving
+behavior; they do not qualify inference quality. The candidate remains
+unpromoted until frozen prompted/plain and verbose/JSON comparisons, full
+recording review, and capacity checks pass.
+
+For a reviewed release that has already completed the normal `apply`, the
+guarded runtime qualification swap is:
+
+```bash
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py prepare-runtime-candidate --revision FULL_SHA
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py runtime-candidate --revision FULL_SHA
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py runtime-candidate-rollback --revision FULL_SHA
+```
+
+Both actions acquire the existing Spark deployment, rollout, speech-capacity
+and Whisper locks. The start action blocks new loopback STT connections, drains
+the primary, checks the image labels, stops the NVIDIA primary before starting
+the patched image, validates the relay route and enforces the existing memory
+gates. The candidate temporarily advertises the stable `whisper-primary`
+network alias so the relay and consumers use the same authenticated path.
+Rollback stops and removes only the labeled candidate, then restores the exact
+saved primary container and restart policy. If interrupted, run the rollback
+action from the same immutable release; it recovers any journaled state. Always
+run rollback after qualification. These commands never promote the candidate.
+
+For Spark's interactive sudo boundary, the same actions are accepted by the
+published bootstrap. From the operator checkout, stage the bootstrap bytes from
+the exact reviewed commit on Spark and verify them locally first:
+
+```bash
+stage=$(mktemp -d /tmp/homecompute-whisper-stt.XXXXXXXX)
+chmod 700 "$stage"
+git show FULL_SHA:scripts/bootstrap-whisper-stt.py > "$stage/bootstrap-whisper-stt.py"
+chmod 600 "$stage/bootstrap-whisper-stt.py"
+test "$(shasum -a 256 "$stage/bootstrap-whisper-stt.py" | cut -d ' ' -f 1)" = \
+  "$(git show FULL_SHA:scripts/bootstrap-whisper-stt.py | shasum -a 256 | cut -d ' ' -f 1)"
+ssh home-spark "mkdir -m 700 $stage"
+scp "$stage/bootstrap-whisper-stt.py" "home-spark:$stage/"
+ssh -t home-spark "sudo python3 -I -B $stage/bootstrap-whisper-stt.py --revision FULL_SHA --action prepare-runtime-candidate"
+ssh -t home-spark "sudo python3 -I -B $stage/bootstrap-whisper-stt.py --revision FULL_SHA --action runtime-candidate"
+ssh -t home-spark "sudo python3 -I -B $stage/bootstrap-whisper-stt.py --revision FULL_SHA --action runtime-candidate-rollback"
+ssh home-spark "rm -rf -- $stage"
+rm -rf -- "$stage"
+```
+
+Use a published full SHA in place of `FULL_SHA`. Keep the staging directories
+until rollback completes; if qualification is interrupted, run only the
+rollback action before removing them.
+
 ## Publication and guarded installation
 
 Run focused tests and `./scripts/validate-repository.sh`, review the exact diff,

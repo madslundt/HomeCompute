@@ -169,6 +169,73 @@ services:
               capabilities: [gpu]
     networks: [inference]
 
+  # Candidate only: never run alongside whisper-primary because both load the
+  # same GPU model. The production service remains on the pinned NVIDIA image.
+  whisper-candidate:
+    <<: *runtime
+    profiles: [candidate]
+    image: homecompute/whisper-vllm-candidate:0.19.0-hc1
+    build:
+      context: ../..
+      dockerfile: deploy/whisper-stt/Dockerfile.patched-runtime
+      args:
+        VLLM_BASE_IMAGE: nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d
+        PATCHER_SHA256: fed6ae01930b2689fbfdcb039ffdb024778f84dc67ba61d0d84fb7fc54935c74
+    container_name: gb10-whisper-candidate
+    cpus: 4
+    mem_limit: 12g
+    pids_limit: 256
+    shm_size: 1gb
+    environment:
+      HF_HOME: /var/cache/huggingface
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      DO_NOT_TRACK: "1"
+      HOME: /var/cache/vllm
+      TRITON_CACHE_DIR: /var/cache/vllm/triton
+      VLLM_CACHE_ROOT: /var/cache/vllm/vllm
+      USER: gb10-ai
+      LOGNAME: gb10-ai
+      TORCHINDUCTOR_CACHE_DIR: /var/cache/vllm/torchinductor
+      TOKENIZERS_PARALLELISM: "false"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        python3 /opt/homecompute/model-cache-integrity.py verify --cache-root /var/cache/huggingface \
+          --repo-id openai/whisper-large-v3 --revision 06f233fe06e710322aca913c1bc4249a0d71fce1 \
+          --manifest /run/accepted-whisper-large-v3-cache.json
+        export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
+        exec vllm serve openai/whisper-large-v3 --revision 06f233fe06e710322aca913c1bc4249a0d71fce1 \
+          --served-model-name whisper-large-v3 --host 0.0.0.0 --port 8000 \
+          --gpu-memory-utilization 0.08 --max-num-seqs 1 --max-num-batched-tokens 2048 --enforce-eager \
+          --no-enable-log-requests --disable-uvicorn-access-log
+    secrets: [vllm_api_key]
+    volumes:
+      - ${GB10_ROOT:?Set GB10_ROOT}/cache/huggingface:/var/cache/huggingface:ro
+      - ${GB10_ROOT:?Set GB10_ROOT}/manifests/accepted-whisper-large-v3-cache.json:/run/accepted-whisper-large-v3-cache.json:ro
+      - ../../scripts/model-cache-integrity.py:/opt/homecompute/model-cache-integrity.py:ro
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=1g"
+      - "/var/cache/vllm:rw,exec,nosuid,nodev,size=512m,uid=${GB10_RUNTIME_UID},gid=${GB10_RUNTIME_GID},mode=0700"
+    healthcheck:
+      test: [CMD-SHELL, "curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8000/health >/dev/null"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 5m
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      inference:
+        aliases: [whisper-primary]
+
   whisper-http:
     container_name: gb10-whisper-http
     image: homecompute/stt-http:2.0.0

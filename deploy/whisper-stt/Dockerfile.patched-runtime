@@ -1,0 +1,17 @@
+ARG VLLM_BASE_IMAGE=nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d
+FROM ${VLLM_BASE_IMAGE}
+ARG VLLM_BASE_IMAGE
+ARG PATCHER_SHA256
+LABEL org.opencontainers.image.base.name="${VLLM_BASE_IMAGE}" \
+      io.homecompute.whisper-runtime-patch="0.19.0-hc1" \
+      io.homecompute.whisper-runtime-patcher-sha256="${PATCHER_SHA256}" \
+      io.homecompute.whisper-source-prompt-sha256="44d196b1d3ec3182de51f4b5f87764a33a1b58c83e6afb5e452f52f4bb653dcf" \
+      io.homecompute.whisper-source-serving-sha256="7b9b47511ba3643ccae14ae8a4095153959a35a671eb3cc07707dfd1f10ebfa3"
+
+USER root
+COPY scripts/patch-vllm-whisper-runtime.py /opt/homecompute/patch-vllm-whisper-runtime.py
+RUN python3 /opt/homecompute/patch-vllm-whisper-runtime.py \
+      --vllm-root /usr/local/lib/python3.12/dist-packages/vllm \
+ && python3 /opt/homecompute/patch-vllm-whisper-runtime.py \
+      --vllm-root /usr/local/lib/python3.12/dist-packages/vllm --verify \
+ && rm /opt/homecompute/patch-vllm-whisper-runtime.py
