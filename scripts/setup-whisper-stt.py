@@ -15,7 +15,9 @@ from pathlib import Path
 import pwd
 import re
 import signal
+import shutil
 import socket
+import stat
 import subprocess
 import time
 
@@ -25,6 +27,7 @@ OLD = ('gb10-hviske-http', 'gb10-whisper-http', 'gb10-hviske-primary', 'gb10-whi
 NEW = ('gb10-whisper-primary', 'gb10-whisper-http')
 REVISION = '06f233fe06e710322aca913c1bc4249a0d71fce1'
 MODEL = 'openai/whisper-large-v3'
+LEGACY_REPOSITORIES = ('syvai/hviske-v5.3', 'openai/whisper-large-v3-turbo')
 
 
 def run(args, *, timeout=60, check=True, environment=None):
@@ -70,7 +73,7 @@ def inspect(name):
     if result.returncode:
         # Distinguish an absent container from unavailable Docker.
         run(['docker', 'info', '--format', '{{.ServerVersion}}'])
-        if 'No such object' not in result.stderr:
+        if not any(reason in result.stderr.lower() for reason in ('no such object', 'no such container')):
             raise ValueError('Container state is unavailable')
         return None
     return json.loads(result.stdout)[0]
@@ -279,9 +282,87 @@ def restart_policy(item):
     return name + (':' + str(policy['MaximumRetryCount']) if name == 'on-failure' and policy['MaximumRetryCount'] else '')
 
 
+def retirement_paths():
+    cache = Path('/srv/gb10-ai/cache/huggingface/hub')
+    return [cache / ('models--' + repo.replace('/', '--')) for repo in LEGACY_REPOSITORIES] + [
+        cache / '.locks' / ('models--' + repo.replace('/', '--')) for repo in LEGACY_REPOSITORIES
+    ] + [Path('/srv/gb10-ai/cache/vllm/hviske')]
+
+
+def retire(revision):
+    """Explicit owner-requested deletion, independent of current inference intake."""
+    guards()
+    journal = STATE / 'transaction.json'; protected(journal)
+    tx = json.loads(journal.read_text())
+    if tx['state'] not in {'applied', 'retiring-legacy', 'legacy-retired'}:
+        raise ValueError('Complete or recover the full Whisper migration first')
+    run(['git', '-C', str(ROOT), 'merge-base', '--is-ancestor', tx['revision'], revision])
+    current = inspect(NEW[0])
+    if (not current or not current['State']['Running'] or
+            current['State'].get('Health', {}).get('Status') != 'healthy' or
+            MODEL not in ' '.join(current['Config'].get('Cmd') or []) or
+            REVISION not in ' '.join(current['Config'].get('Cmd') or []) or
+            current['Config'].get('Labels', {}).get('com.docker.compose.project') != 'whisper-large-v3-stt'):
+        raise ValueError('Healthy pinned full Whisper is required before deletion')
+    targets = [dict(row) for row in tx['old']]
+    adapter = inspect('gb10-hviske-wyoming')
+    if adapter:
+        labels = adapter['Config'].get('Labels', {})
+        if (labels.get('com.docker.compose.project') != 'hviske-stt' or
+                labels.get('com.docker.compose.service') != 'hviske-wyoming'):
+            raise ValueError('Unknown legacy adapter ownership; deletion refused')
+        targets.append({'id': adapter['Id'], 'image': adapter['Image'], 'name': 'gb10-hviske-wyoming'})
+    for row in targets:
+        actual = inspect(row['id'])
+        if actual and (actual['State']['Running'] or actual['Image'] != row['image']):
+            raise ValueError('Legacy container is running or changed; deletion refused')
+    ids = run(['docker', 'ps', '-aq']).stdout.split()
+    containers = json.loads(run(['docker', 'inspect', *ids]).stdout) if ids else []
+    for item in containers:
+        command = ' '.join(item['Config'].get('Cmd') or [])
+        manifests = {Path(mount['Source']).name for mount in item.get('Mounts', [])}
+        if (any(repo in command for repo in LEGACY_REPOSITORIES) or
+                manifests & {'accepted-hviske-cache.json', 'accepted-whisper-turbo-cache.json'}):
+            if item['Id'] not in {row['id'] for row in targets}:
+                raise ValueError('Another container references a legacy model; deletion refused')
+    paths = retirement_paths()
+    if not shutil.rmtree.avoids_symlink_attacks:
+        raise ValueError('Descriptor-safe directory removal is required')
+    for path in paths:
+        if path.is_symlink() or path.exists() and not path.is_dir():
+            raise ValueError('Legacy cache path changed type; deletion refused')
+    manifests = [Path('/srv/gb10-ai/manifests') / name for name in
+                 ('accepted-hviske-cache.json', 'accepted-whisper-turbo-cache.json')]
+    for path, repository in zip(manifests, LEGACY_REPOSITORIES):
+        if path.exists() or path.is_symlink():
+            protected(path)
+            if json.loads(path.read_text()).get('repo_id') != repository:
+                raise ValueError('Legacy accepted manifest identity differs')
+    if tx['state'] == 'legacy-retired':
+        if any(inspect(row['id']) for row in targets) or any(path.exists() for path in paths + manifests):
+            raise ValueError('Retired legacy assets reappeared; inspect drift')
+        print('Hviske and Turbo remain removed'); return
+    # Deletion cannot be rolled back without refetching. Journal before removing
+    # anything; interruption resumes only these exact finite targets.
+    tx.update(state='retiring-legacy', retirement_revision=revision); save(tx)
+    for row in targets:
+        if inspect(row['id']): run(['docker', 'rm', row['id']])
+    for path in paths:
+        if path.exists(): shutil.rmtree(path)
+    for path in manifests:
+        if path.exists(): path.unlink()
+    for tag in ('homecompute/hviske-http:1.0.0', 'homecompute/stt-http:1.1.0'):
+        # Never force-remove a shared image or touch the NVIDIA runtime used by
+        # full Whisper. Docker refuses a still-referenced legacy image.
+        run(['docker', 'image', 'rm', tag], check=False)
+    tx.update(state='legacy-retired', rollback_containers_retained=False); save(tx)
+    print(json.dumps({'state': tx['state'], 'retirement_revision': revision,
+                      'removed_models': list(LEGACY_REPOSITORIES), 'full_whisper_running': True}))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'apply', 'install', 'rollback', 'status', 'smoke'))
+    parser.add_argument('action', choices=('prepare', 'apply', 'install', 'retire', 'rollback', 'status', 'smoke'))
     parser.add_argument('--revision', required=True)
     args = parser.parse_args()
     if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-spark':
@@ -300,12 +381,16 @@ def main():
         if args.action == 'prepare': prepare()
         elif args.action == 'apply': apply(args.revision)
         elif args.action == 'install': prepare(); apply(args.revision)
+        elif args.action == 'retire': retire(args.revision)
         elif args.action == 'smoke': smoke()
         else:
             journal = STATE / 'transaction.json'; protected(journal)
             tx = json.loads(journal.read_text())
-            if tx['revision'] != args.revision: raise ValueError('Transaction belongs to another release')
+            if args.revision not in {tx['revision'], tx.get('retirement_revision')}:
+                raise ValueError('Transaction belongs to another release')
             if args.action == 'rollback':
+                if tx['state'] in {'retiring-legacy', 'legacy-retired'}:
+                    raise ValueError('Owner retired legacy assets; historical rollback requires an explicit refetch')
                 gate(tx['chain'], True) if tx['state'] == 'applied' else None
                 try:
                     quiet([inspect(name) for name in NEW if inspect(name)])
@@ -314,7 +399,8 @@ def main():
             blocked = run(['iptables', '-w', '-C', 'OUTPUT', '-j', tx['chain']], check=False).returncode == 0
             print(json.dumps({'revision': tx['revision'], 'state': tx['state'], 'model': MODEL,
                               'intake_blocked': blocked,
-                              'model_revision': REVISION, 'rollback_containers_retained': True}))
+                              'model_revision': REVISION,
+                              'rollback_containers_retained': tx['state'] not in {'retiring-legacy', 'legacy-retired'}}))
 
 
 if __name__ == '__main__':

@@ -173,18 +173,6 @@
           "tracked_tag": "2.0.0",
           "source_lane": "source_pin"
         },
-        "gb10-hviske-http": {
-          "tracked_tag": "1.0.0",
-          "source_lane": "source_pin"
-        },
-        "gb10-hviske-wyoming": {
-          "tracked_tag": null,
-          "source_lane": "source_pin"
-        },
-        "gb10-hviske-primary": {
-          "tracked_tag": null,
-          "source_lane": "source_pin"
-        },
         "homecompute-omnivoice-spark-omnivoice-engine-1": {
           "tracked_tag": null,
           "source_lane": "source_pin"

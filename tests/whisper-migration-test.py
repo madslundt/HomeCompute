@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+from types import SimpleNamespace
 from pathlib import Path
 import tempfile
 import unittest
@@ -90,6 +91,29 @@ class MigrationTests(unittest.TestCase):
         self.assertEqual(set(catalog['transcription_deployments']), {'whisper-large-v3-spark-primary'})
         for route in routes['transcription_routes'].values():
             self.assertEqual(route['deployments'], ['whisper-large-v3-spark-primary'])
+
+    def test_retirement_requires_a_healthy_full_model_before_any_deletion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'transaction.json').write_text(json.dumps({'state': 'applied', 'revision': 'a' * 40, 'old': []}))
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'guards'), \
+                    patch.object(LIFECYCLE, 'protected'), patch.object(LIFECYCLE, 'inspect', return_value=None), \
+                    patch.object(LIFECYCLE, 'run') as run, patch.object(LIFECYCLE.shutil, 'rmtree') as remove:
+                with self.assertRaisesRegex(ValueError, 'Healthy pinned full Whisper'):
+                    LIFECYCLE.retire('b' * 40)
+                self.assertTrue(all(call.args[0][0] == 'git' for call in run.call_args_list))
+                remove.assert_not_called()
+
+    def test_retirement_paths_cannot_include_full_model_or_recordings(self):
+        paths = [str(path) for path in LIFECYCLE.retirement_paths()]
+        self.assertEqual(len(paths), 5)
+        self.assertTrue(all(path.startswith('/srv/gb10-ai/cache/') for path in paths))
+        self.assertNotIn('/srv/gb10-ai/cache/huggingface/hub/models--openai--whisper-large-v3', paths)
+
+    def test_missing_container_detection_accepts_current_docker_error_case(self):
+        with patch.object(LIFECYCLE, 'run', side_effect=[
+                SimpleNamespace(returncode=1, stderr='error: no such object: old'), SimpleNamespace(stdout='29.7')]):
+            self.assertIsNone(LIFECYCLE.inspect('old'))
 
 
 if __name__ == '__main__': unittest.main()

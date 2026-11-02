@@ -66,6 +66,27 @@ published command with `rollback` (bootstrap `--action rollback`). Preserve the
 journal and inspect any ownership/gate drift; never delete guards to retry.
 Configuration rollback does not modify recordings or application data.
 
+## Remove Hviske and Turbo
+
+After full Large-v3 is healthy, the owner may explicitly remove the old engines
+and their cached artifacts through the same published lifecycle:
+
+```bash
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py retire --revision FULL_SHA
+```
+
+The staged bootstrap accepts `--action retire` too. It checks the exact healthy
+full model, original container identities, other references and cache types,
+then removes the four retained old containers, the old Hviske Wyoming adapter,
+both legacy Hugging Face repositories/manifests/locks and the Hviske compiler
+cache. Unreferenced legacy HTTP images are removed without forcing shared image
+deletion. The NVIDIA runtime used by full Whisper and all credentials remain.
+Recordings and application data are outside its finite deletion list.
+
+Retirement is journaled and resumable. Once the owner requests deletion, the
+old-container rollback is refused; a historical release would require explicitly
+preparing its model artifacts again. Historical Git source is retained.
+
 ## Gateway and consumers
 
 After Spark's authenticated relay smoke and private audio checks pass:

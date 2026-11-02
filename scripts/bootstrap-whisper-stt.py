@@ -62,7 +62,7 @@ def materialize(revision):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision',required=True)
-    parser.add_argument('--action',choices=('prepare','apply','install','rollback','status','smoke'),required=True)
+    parser.add_argument('--action',choices=('prepare','apply','install','retire','rollback','status','smoke'),required=True)
     args=parser.parse_args()
     if os.geteuid()!=0 or socket.gethostname().split('.')[0]!='home-spark' or not sys.flags.isolated:
         raise ValueError('run-python-with-I-and-B-through-sudo-on-home-spark')

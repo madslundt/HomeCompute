@@ -1,7 +1,10 @@
 # Whisper Large-v3 migration evidence — 2026-11-02
 
-Status: source migration prepared; full-model deployment and comparison pending
-Spark's interactive sudo boundary. This record does not qualify Large-v3.
+Status: full Large-v3 is deployed from
+`5c4b046e5230001ae028064bf09117e6e4721cf9`; its frozen-corpus replay is running.
+The owner subsequently requested removal of the retained Hviske/Turbo assets.
+The guarded `retire` lifecycle implements that explicit deletion. Complete
+quality and concurrent-workload qualification remains pending.
 
 ## Selection
 
