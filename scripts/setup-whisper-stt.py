@@ -228,8 +228,8 @@ def candidate_start(revision):
     base_tx_path = STATE / 'transaction.json'
     protected(base_tx_path)
     base_tx = json.loads(base_tx_path.read_text())
-    if base_tx.get('state') != 'applied':
-        raise ValueError('The full Whisper lifecycle must be applied before runtime qualification')
+    if base_tx.get('state') not in {'applied', 'legacy-retired'}:
+        raise ValueError('The full Whisper lifecycle must be applied or legacy-retired before runtime qualification')
     primary = inspect(NEW[0])
     if (not primary or not primary['State']['Running'] or
             primary.get('State', {}).get('Health', {}).get('Status') != 'healthy' or

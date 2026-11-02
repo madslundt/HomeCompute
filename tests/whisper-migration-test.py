@@ -79,6 +79,77 @@ class MigrationTests(unittest.TestCase):
                 self.assertRaisesRegex(ValueError, 'identity or base pin'):
             LIFECYCLE.candidate_image_id()
 
+    def test_candidate_start_accepts_successfully_legacy_retired_full_whisper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'transaction.json').write_text(json.dumps({
+                'state': 'legacy-retired', 'revision': 'a' * 40,
+                'rollback_containers_retained': False,
+            }))
+            primary = {
+                'Id': 'full-whisper-id', 'Image': 'sha256:' + 'b' * 64,
+                'Name': '/' + LIFECYCLE.NEW[0],
+                'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+                'Config': {
+                    'Cmd': [LIFECYCLE.MODEL, LIFECYCLE.REVISION],
+                    'Image': 'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d',
+                },
+                'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped', 'MaximumRetryCount': 0}},
+            }
+            calls = []
+            def stop_before_mutation(tx):
+                calls.append(tx)
+                raise RuntimeError('test stops before candidate switch')
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'guards'), \
+                    patch.object(LIFECYCLE, 'protected'), \
+                    patch.object(LIFECYCLE, 'inspect', side_effect=[primary, None]), \
+                    patch.object(LIFECYCLE, 'candidate_image_id', return_value='sha256:' + 'c' * 64), \
+                    patch.object(LIFECYCLE, 'save_candidate', side_effect=stop_before_mutation), \
+                    patch.object(LIFECYCLE, 'gate') as gate, patch.object(LIFECYCLE, 'compose') as compose:
+                with self.assertRaisesRegex(RuntimeError, 'stops before candidate switch'):
+                    LIFECYCLE.candidate_start('d' * 40)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0]['state'], 'prepared')
+            self.assertEqual(calls[0]['primary_id'], 'full-whisper-id')
+            gate.assert_not_called()
+            compose.assert_not_called()
+
+    def test_candidate_start_refuses_mid_retirement_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'transaction.json').write_text(json.dumps({'state': 'retiring-legacy'}))
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'guards'), \
+                    patch.object(LIFECYCLE, 'protected'), patch.object(LIFECYCLE, 'inspect') as inspect, \
+                    patch.object(LIFECYCLE, 'candidate_image_id') as image:
+                with self.assertRaisesRegex(ValueError, 'applied or legacy-retired'):
+                    LIFECYCLE.candidate_start('d' * 40)
+            inspect.assert_not_called()
+            image.assert_not_called()
+
+    def test_candidate_rollback_restores_only_journaled_full_whisper_primary(self):
+        primary = {
+            'Id': 'full-whisper-id', 'Image': 'sha256:' + 'b' * 64,
+            'Name': '/gb10-whisper-primary',
+            'State': {'Running': False, 'Health': {'Status': 'unhealthy'}},
+        }
+        healthy_primary = {
+            **primary,
+            'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+        }
+        tx = {
+            'primary_id': 'full-whisper-id', 'primary_image': 'sha256:' + 'b' * 64,
+            'primary_restart': 'unless-stopped', 'candidate_image_id': 'sha256:' + 'c' * 64,
+        }
+        with patch.object(LIFECYCLE, 'inspect', side_effect=[None, primary, healthy_primary]), \
+                patch.object(LIFECYCLE, 'run') as run, patch.object(LIFECYCLE, 'save_candidate') as save:
+            LIFECYCLE.candidate_rollback(tx)
+        self.assertEqual([call.args[0] for call in run.call_args_list], [
+            ['docker', 'update', '--restart', 'unless-stopped', 'full-whisper-id'],
+            ['docker', 'start', 'full-whisper-id'],
+        ])
+        self.assertEqual(tx['state'], 'rolled-back')
+        save.assert_called_once_with(tx)
+
     def test_public_bootstrap_allows_only_declared_candidate_lifecycle_actions(self):
         self.assertIn('prepare-runtime-candidate', BOOTSTRAP.ACTIONS)
         self.assertIn('runtime-candidate', BOOTSTRAP.ACTIONS)
