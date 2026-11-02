@@ -31,6 +31,8 @@ services:
       OMP_NUM_THREADS: "8"
       OPENBLAS_NUM_THREADS: "8"
       MALLOC_ARENA_MAX: "2"
+    volumes:
+      - ./moss-wyoming.py:/app/moss-wyoming.py:ro
     ports:
       - "127.0.0.1:${PIPER_WYOMING_PORT:-10200}:10200"
       - "${PIPER_LAN_ADDRESS:?Set the home-core LAN address}:${PIPER_WYOMING_PORT:-10200}:10200"

@@ -243,6 +243,22 @@
       "deployments": [
         "omnivoice-household"
       ]
+    },
+    "tts-danish": {
+      "state": "candidate",
+      "privacy": "local_only",
+      "timeout_profile": "tts",
+      "deployments": [
+        "omnivoice-household"
+      ]
+    },
+    "tts-english": {
+      "state": "candidate",
+      "privacy": "local_only",
+      "timeout_profile": "tts",
+      "deployments": [
+        "omnivoice-household"
+      ]
     }
   },
   "video_routes": {

@@ -92,6 +92,26 @@ model_list:
       stream_timeout: 300
     model_info:
       mode: audio_speech
+  - model_name: "tts-danish"
+    litellm_params:
+      model: "openai/omnivoice"
+      order: 1
+      api_base: "os.environ/OMNIVOICE_TTS_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 300
+      stream_timeout: 300
+    model_info:
+      mode: audio_speech
+  - model_name: "tts-english"
+    litellm_params:
+      model: "openai/omnivoice"
+      order: 1
+      api_base: "os.environ/OMNIVOICE_TTS_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+      timeout: 300
+      stream_timeout: 300
+    model_info:
+      mode: audio_speech
   - model_name: "video"
     litellm_params:
       model: "openai/ltx-2.5"

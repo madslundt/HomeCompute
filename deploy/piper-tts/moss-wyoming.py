@@ -128,8 +128,8 @@ class MossEventHandler(AsyncEventHandler):
 
             return True
         except Exception as err:
-            LOGGER.exception("Both MOSS and Piper synthesis failed")
-            await self.write_event(Error(text=str(err), code=err.__class__.__name__).event())
+            LOGGER.warning("Both MOSS and Piper synthesis failed")
+            await self.write_event(Error(text="Speech synthesis failed", code="synthesis_failed").event())
             return True
 
     async def synthesize(self, text: str) -> None:
@@ -142,10 +142,10 @@ class MossEventHandler(AsyncEventHandler):
             try:
                 rate, channels, pcm = await self.runtime.synthesize(normalized_text)
                 await self.write_pcm(rate=rate, channels=channels, pcm=pcm)
-                LOGGER.info("Synthesized with MOSS: %s", normalized_text)
+                LOGGER.info("Synthesized with MOSS")
                 return
             except Exception:
-                LOGGER.exception("MOSS synthesis failed; using Piper fallback")
+                LOGGER.warning("MOSS synthesis failed; using Piper fallback")
         else:
             LOGGER.warning("MOSS runtime is unavailable; using Piper fallback")
 
@@ -178,7 +178,7 @@ class MossEventHandler(AsyncEventHandler):
                 if AudioStart.is_type(event.type) or AudioChunk.is_type(event.type) or AudioStop.is_type(event.type):
                     await self.write_event(event)
                 if AudioStop.is_type(event.type):
-                    LOGGER.info("Synthesized with Piper fallback: %s", text)
+                    LOGGER.info("Synthesized with Piper fallback")
                     return
 
 
@@ -189,7 +189,7 @@ async def async_main(args: argparse.Namespace) -> None:
         runtime = await asyncio.to_thread(MossRuntime, Path(args.model_dir), args.cpu_threads, args.voice)
         LOGGER.info("MOSS-TTS-Nano is ready (voice=%s, threads=%s)", args.voice, args.cpu_threads)
     except Exception:
-        LOGGER.exception("MOSS initialization failed; starting with Piper fallback only")
+        LOGGER.warning("MOSS initialization failed; starting with Piper fallback only")
         runtime = None
 
     server = AsyncServer.from_uri(args.uri)

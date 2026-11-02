@@ -53,3 +53,11 @@ helper and units under `/opt/homecompute/service-recovery/rollback`. The NixOS
 releases. To roll back the dedicated lifecycle, stop its timer and service,
 restore the retained attached units and helper, then reload systemd. Neither
 rollback nor recovery replaces model images, databases, credentials, or media.
+
+## Privacy and release ownership
+
+MOSS loads its Wyoming wrapper from a read-only bind mount in the selected
+release, so privacy fixes apply without rebuilding model artifacts. Synthesis
+logs contain no input text or exception payloads. The existing Home Assistant
+endpoint remains available. The application [speech API](../../docs/speech-api.md)
+uses the separately owned OmniVoice service.

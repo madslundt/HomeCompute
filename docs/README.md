@@ -66,6 +66,7 @@ and other personal-agent services remain deferred.
 | Plan a Grok Bot-style OpenClaw experience | [Proposed implementation plan](openclaw-grok-bot-plan.md) and [Rakazo assessment](research/rakazo-assessment-2026-10-29.md) |
 | Inspect measured OpenClaw optimization opportunities | [Local-model/Rakazo diagnostic baseline](benchmarks/openclaw-rakazo-baseline-2026-10-29.md) |
 | Review OpenClaw reasoning and prompt/tool optimization | [Measured canary results and promotion gates](benchmarks/openclaw-performance-2026-10-30.md) |
+| Consume local STT and TTS | [Speech API contract](speech-api.md) |
 | Integrate Home Assistant voice and tools | [Home Assistant model evaluation](research/home-assistant-model-evaluation.md), [ADR-008](adr/008-home-assistant-model-role.md), and verification tests V-HA-001/V-HA-002 |
 | Extend Meeting Assistant or process Plaud recordings | [ADR-012](adr/012-reuse-meeting-assistant.md), the meeting sections in [architecture](architecture.md) and [verification](verification-strategy.md) |
 | Add the Hermes personal assistant layer | [NemoClaw placement and Hermes setup](research/nemoclaw-machine-placement.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [ADR-013](adr/013-hermes-personal-agent-layer.md), and Phases I/J in the [implementation plan](implementation-plan.md) |

@@ -44,7 +44,7 @@ def model_scope(models: object) -> set[str]:
 
 def omnivoice_scope(models):
     scope = model_scope(models)
-    allowed = set(MODELS) | {'plapre', 'omnivoice', 'embedding', 'video', 'whisper'}
+    allowed = set(MODELS) | {'plapre', 'omnivoice', 'embedding', 'video', 'whisper', 'tts-danish', 'tts-english'}
     if not set(MODELS) <= scope or not scope <= allowed:
         raise SystemExit('Unexpected network scope; review before migrating TTS.')
     result = [model for model in models if model != 'plapre']
@@ -55,10 +55,10 @@ def omnivoice_scope(models):
 
 def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_plapre: bool = False,
               enable_embedding: bool = False, enable_video: bool = False,
-              enable_full_whisper: bool = False, enable_omnivoice: bool = False) -> None:
+              enable_full_whisper: bool = False, enable_omnivoice: bool = False, enable_speech_aliases: bool = False) -> None:
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')
-    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video, enable_full_whisper, enable_omnivoice)) > 1:
+    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video, enable_full_whisper, enable_omnivoice, enable_speech_aliases)) > 1:
         raise SystemExit('Migrate one model-scope change at a time.')
     if enable_plapre:
         raise SystemExit('Plapre is retired; use --enable-omnivoice.')
@@ -73,6 +73,8 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
         if data['expires'] is not None or data['user_id'] != 'network-inference':
             raise SystemExit('Existing network credential has an unexpected scope, owner, or expiry.')
         scope = model_scope(data['models'])
+        speech_aliases = scope & {'tts-danish', 'tts-english'}
+        scope -= speech_aliases
         has_full_whisper = 'whisper' in scope
         scope -= {'whisper'}
         has_video = 'video' in scope
@@ -83,7 +85,12 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
             raise SystemExit('Existing video credential has an unexpected underlying model scope.')
         scope = base_scope
         target = None
-        if enable_omnivoice:
+        if enable_speech_aliases:
+            if scope not in reviewed or 'omnivoice' not in scope:
+                raise SystemExit('Install and provision OmniVoice before adding speech aliases.')
+            selected = [*data['models'], *sorted({'tts-danish', 'tts-english'} - speech_aliases)]
+            target = selected if selected != data['models'] else None
+        elif enable_omnivoice:
             selected = omnivoice_scope(data['models'])
             target = selected if selected != data['models'] else None
         elif enable_full_whisper and scope in reviewed and not has_full_whisper:
@@ -100,6 +107,8 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
             target = [*(TTS_MODELS if 'plapre' in scope else OMNIVOICE_MODELS if 'omnivoice' in scope else MODELS), 'embedding']
         elif enable_video and scope in reviewed and not has_video:
             target = [*data['models'], 'video']
+        if target is not None:
+            target += sorted(speech_aliases - set(target))
         if target is not None and has_full_whisper and 'whisper' not in target:
             target = [*target, 'whisper']
         if target is not None and has_video and 'video' not in target:
@@ -133,6 +142,8 @@ urllib.request.urlopen(req, timeout=30).close()
             raise SystemExit('Plapre scope migration did not apply; inspect the LiteLLM key state.')
         print('Network inference credential already provisioned.')
         return
+    if enable_speech_aliases:
+        raise SystemExit('Provision the existing OmniVoice network credential first.')
     # The master key stays inside LiteLLM. Capture the new virtual key directly
     # into a private file; never print credentials in deployment output.
     expected_models = (TTS_MODELS if enable_plapre else [*MODELS, 'embedding'] if enable_embedding
@@ -168,6 +179,7 @@ print(json.dumps({'key': result['key'], 'models': result['models'], 'expires': r
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--enable-speech-aliases', action='store_true', help='Add Danish/English capability aliases to an existing OmniVoice credential.')
     parser.add_argument('--enable-stt', action='store_true', help='Migrate the reviewed text-only network key to include stt-danish.')
     parser.add_argument('--enable-whisper', action='store_true', help='Migrate the reviewed text and Danish STT network key to include whisper-turbo.')
     parser.add_argument('--enable-full-whisper', action='store_true', help='Add the canonical full Whisper alias, retaining compatibility scopes.')
@@ -178,4 +190,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     provision(enable_stt=args.enable_stt, enable_whisper=args.enable_whisper,
               enable_plapre=args.enable_plapre, enable_embedding=args.enable_embedding, enable_video=args.enable_video,
-              enable_full_whisper=args.enable_full_whisper, enable_omnivoice=args.enable_omnivoice)
+              enable_full_whisper=args.enable_full_whisper, enable_omnivoice=args.enable_omnivoice, enable_speech_aliases=args.enable_speech_aliases)

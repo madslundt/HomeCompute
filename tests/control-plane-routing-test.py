@@ -77,6 +77,25 @@ class GatewayCertificateTests(unittest.TestCase):
 
 
 class NetworkCredentialTests(unittest.TestCase):
+    def test_speech_aliases_preserve_other_scopes_and_are_idempotent(self):
+        base = [*NETWORK.OMNIVOICE_MODELS, 'embedding', 'video', 'whisper']
+        old = {'models': base, 'expires': None, 'user_id': 'network-inference'}
+        new = {**old, 'models': [*base, 'tts-danish', 'tts-english']}
+        with self.video_credential([old, new, new, new]) as (_, internal):
+            NETWORK.provision(enable_speech_aliases=True)
+            NETWORK.provision(enable_speech_aliases=True)
+            NETWORK.provision()
+            self.assertEqual(internal.call_count, 1)
+            self.assertIn(repr(new['models']), internal.call_args.kwargs['input'])
+
+    def test_speech_aliases_require_selected_omnivoice_scope(self):
+        old = {'models': NETWORK.MODELS, 'expires': None, 'user_id': 'network-inference'}
+        with self.video_credential([old]) as (_, internal):
+            with self.assertRaises(SystemExit):
+                NETWORK.provision(enable_speech_aliases=True)
+            internal.assert_not_called()
+
+
     def test_full_whisper_migration_preserves_existing_scopes_and_is_idempotent(self):
         for base in (NETWORK.MODELS, [*NETWORK.TTS_MODELS, 'embedding', 'video']):
             old = {'models': base, 'expires': None, 'user_id': 'network-inference'}
@@ -407,7 +426,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "embedding", "video"}, names)
+        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "tts-danish", "tts-english", "embedding", "video"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 

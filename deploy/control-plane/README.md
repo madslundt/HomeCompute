@@ -51,14 +51,12 @@ behavior against the pinned LiteLLM 1.99.1 image with synthetic refused,
 non-responsive, error, and streaming upstreams before promoting the generated
 config. Model generation does not create, broaden, or revoke any virtual key.
 
-The candidate `plapre` model is exposed through OpenAI-compatible
-`POST /v1/audio/speech` with `model: "plapre"`, `voice: "danish-default"`,
-and `response_format: "wav"`. The `plapre-openai-tts` shim translates that
-request to the private Wyoming relay; clients use the gateway base URL
-(`https://ai.home.arpa/v1`) and do not connect to the raw Wyoming port. Start
-the speech profile with `--build` so Compose builds the local adapter image.
-The alias remains a candidate pending the voice, latency, and pronunciation
-qualification gates.
+Speech clients use the [speech API contract](../../docs/speech-api.md).
+`whisper` serves transcription. `tts-danish` and `tts-english` are stable
+capability aliases for the selected bilingual OmniVoice service; `omnivoice`
+remains available for existing clients. Plapre is retired. The dedicated
+[OmniVoice lifecycle](../omnivoice/README.md) owns speech adapters; model and
+voice qualification remain separate from successful API checks.
 
 Caddy remains in this project while it fronts only this gateway. The official
 image starts as root, but it listens on unprivileged container port 8443, has
