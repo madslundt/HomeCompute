@@ -182,6 +182,35 @@ def apply_runtime(host, revision):
                 'omnivoice-wyoming', 'omnivoice-openai-tts', capture=False)
 
 
+def reset_failed_networks(revision, state):
+    """Recover a failed first start; never stop a running or unrelated container."""
+    deployment_guards()
+    project = 'homecompute-omnivoice-spark'
+    identities = run(['docker', 'ps', '-aq', '--filter', 'label=com.docker.compose.project=' + project]).split()
+    containers = json.loads(run(['docker', 'inspect', *identities])) if identities else []
+    rows = []
+    for item in containers:
+        labels = item['Config'].get('Labels') or {}
+        service = labels.get('com.docker.compose.service')
+        if (service not in {'omnivoice-engine', 'omnivoice-http'}
+                or item['Name'] != '/' + project + '-' + service + '-1' or item['State']['Running']):
+            raise ValueError('Network recovery requires only known, stopped OmniVoice containers')
+        rows.append({'name': item['Name'], 'id': item['Id'], 'image': item['Image'], 'state': item['State']['Status']})
+    names = run(['docker', 'network', 'ls', '--filter', 'label=com.docker.compose.project=' + project,
+                 '--format', '{{.Name}}']).split()
+    if set(names) - {project + '_edge', project + '_inference'}:
+        raise ValueError('Unknown OmniVoice network; preserve for review')
+    inspected = json.loads(run(['docker', 'network', 'inspect', *names])) if names else []
+    networks = [{'name': n['Name'], 'ipam': n['IPAM'], 'driver': n['Driver']} for n in inspected]
+    receipt = state / ('failed-network-recovery-' + revision + '.json')
+    with receipt.open('x') as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        json.dump({'revision': revision, 'containers': rows, 'networks': networks}, stream)
+        stream.flush(); os.fsync(stream.fileno())
+    compose('home-spark', revision, 'down')
+    print(json.dumps({'failed_omnivoice_networks_removed': len(names), 'evidence_retained': True}))
+
+
 def apply_bridge(state):
     """Reconcile the exact tracked predecessor without reinstalling communication."""
     destination = Path('/opt/homecompute/openclaw-communication/scripts/openclaw_speech.py')
@@ -370,13 +399,14 @@ def ha_fallback(state):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('retire-plapre', 'benchmark-cpu', 'benchmark-gpu',
-                                         'ha-fallback', 'ha-apply', 'apply-bridge', 'apply-gateway', 'apply', 'smoke'))
+                                         'ha-fallback', 'ha-apply', 'apply-bridge', 'apply-gateway',
+                                         'reset-failed-networks', 'apply', 'smoke'))
     parser.add_argument('--revision', required=True)
     args = parser.parse_args()
     host = socket.gethostname().split('.')[0]
     if host not in OLD or args.action in {'benchmark-cpu', 'ha-fallback', 'ha-apply', 'apply-bridge', 'apply-gateway'} and host != 'home-core':
         raise ValueError('Wrong host for this lifecycle')
-    if args.action in {'benchmark-gpu', 'smoke'} and host != 'home-spark':
+    if args.action in {'benchmark-gpu', 'smoke', 'reset-failed-networks'} and host != 'home-spark':
         raise ValueError('GPU measurement requires home-spark')
     published(args.revision)
     state = Path.home() / '.local/state/homecompute/omnivoice'
@@ -395,6 +425,8 @@ def main():
             apply_bridge(state)
         elif args.action == 'apply-gateway':
             apply_gateway(args.revision, state)
+        elif args.action == 'reset-failed-networks':
+            reset_failed_networks(args.revision, state)
         elif args.action == 'benchmark-gpu':
             benchmark_gpu(args.revision)
         elif args.action == 'apply':

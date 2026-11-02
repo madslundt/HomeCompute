@@ -8,7 +8,7 @@ x-runtime: &runtime
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   pids_limit: 128
-  tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700]
+  tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m,uid=65532,gid=65532,mode=0700"]
   logging:
     driver: local
     options: {max-size: 5m, max-file: "2"}
@@ -86,7 +86,7 @@ services:
     cpus: 4
     mem_limit: 8g
     memswap_limit: 8g
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=256m,uid=65532,gid=65532,mode=0700]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=256m,uid=65532,gid=65532,mode=0700"]
     healthcheck:
       test: [CMD, python3, -c, "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8004/health',timeout=5)"]
       interval: 15s
@@ -101,6 +101,8 @@ networks:
     name: homecompute-control-plane_edge
   inference:
     internal: true
+    ipam:
+      config: [{subnet: 10.253.73.0/28}]
 
 secrets:
   compute_api_key:

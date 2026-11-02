@@ -143,3 +143,15 @@ no qualified CPU fallback. Restoring Plapre is an explicit owner-selected
 rollback through its historical guarded lifecycle; its retired profile is
 excluded from normal speech startup and the current Plapre start command
 refuses activation. Never prune model/data volumes as part of this migration.
+
+The project declares explicit nonoverlapping Docker subnets: Spark edge
+`10.253.71.0/28`, Spark internal inference `10.253.72.0/28`, and core internal
+inference `10.253.73.0/28`. Core's existing edge remains external. Do not rely
+on Docker's automatic address pool: this host has enough retained projects to
+allocate `192.168.0.0/20`, which overlaps the operator workstation network.
+If a first start fails before any container runs, connect through home-core
+(`ssh -J home-core home-spark`) and run the selected published release's
+`reset-failed-networks --revision FULL_SHA`, then `apply`. Recovery first saves
+bounded network/container metadata, refuses unknown or running containers,
+and removes only this new project's stopped containers and networks. It never
+changes host routes, firewall rules or other projects.

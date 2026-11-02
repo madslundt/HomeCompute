@@ -6,7 +6,9 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('omnivoice_setup', ROOT / 'scripts/setup-omnivoice.py')
@@ -15,6 +17,20 @@ spec.loader.exec_module(module)
 
 
 class RetirementTest(unittest.TestCase):
+    def test_network_recovery_refuses_running_or_unrecognized_containers(self):
+        project = 'homecompute-omnivoice-spark'
+        for running, service in ((True, 'omnivoice-engine'), (False, 'unrelated')):
+            item = {'Name': '/' + project + '-' + service + '-1',
+                    'Config': {'Labels': {'com.docker.compose.service': service}},
+                    'State': {'Running': running}}
+            with tempfile.TemporaryDirectory() as state, patch.object(module, 'deployment_guards'), \
+                    patch.object(module, 'run', side_effect=['one-id', json.dumps([item])]), \
+                    patch.object(module, 'compose') as mutation:
+                with self.assertRaises(ValueError):
+                    module.reset_failed_networks('a'*40, Path(state))
+                mutation.assert_not_called()
+                self.assertEqual(list(Path(state).iterdir()), [])
+
     def test_runtime_compose_preserves_private_host_boundaries(self):
         environment = {**os.environ, 'OMNIVOICE_RELEASE_REVISION': 'a'*40,
             'OMNIVOICE_GPU_IMAGE': 'homecompute/omnivoice:gpu-'+'a'*40,
@@ -33,6 +49,8 @@ class RetirementTest(unittest.TestCase):
                 self.assertEqual(service['user'], '65532:65532')
                 self.assertTrue(service['mem_limit'])
                 self.assertNotIn('volumes', service)
+                self.assertEqual(len(service['tmpfs']), 1)
+                self.assertTrue(service['tmpfs'][0].startswith('/tmp:rw,noexec,nosuid,nodev,size='))
         self.assertEqual(set(rendered['core']['services']), {'omnivoice-wyoming', 'omnivoice-openai-tts'})
         relay = rendered['core']['services']['omnivoice-wyoming']
         self.assertEqual(relay['networks']['edge']['ipv4_address'], '172.28.200.4')
@@ -41,6 +59,8 @@ class RetirementTest(unittest.TestCase):
         self.assertFalse(engine.get('ports'))
         self.assertEqual(set(engine['networks']), {'inference'})
         self.assertTrue(rendered['spark']['networks']['inference']['internal'])
+        self.assertEqual(rendered['spark']['networks']['inference']['ipam']['config'][0]['subnet'], '10.253.72.0/28')
+        self.assertEqual(rendered['spark']['networks']['edge']['ipam']['config'][0]['subnet'], '10.253.71.0/28')
         self.assertEqual(rendered['spark']['services']['omnivoice-http']['ports'][0]['host_ip'], '127.0.0.1')
 
     def setUp(self):

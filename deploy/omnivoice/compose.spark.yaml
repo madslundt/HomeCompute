@@ -55,7 +55,7 @@ services:
       EDGE_UPSTREAM_PORT: "8004"
     cpus: 0.25
     mem_limit: 64m
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=8m]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=8m"]
     ports: [127.0.0.1:8004:8004]
     depends_on:
       omnivoice-engine: {condition: service_healthy}
@@ -69,4 +69,8 @@ services:
 networks:
   inference:
     internal: true
-  edge: {}
+    ipam:
+      config: [{subnet: 10.253.72.0/28}]
+  edge:
+    ipam:
+      config: [{subnet: 10.253.71.0/28}]
