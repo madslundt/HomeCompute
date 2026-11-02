@@ -3,6 +3,7 @@
 import copy
 import importlib.util
 import json
+import re
 from types import SimpleNamespace
 from pathlib import Path
 import tempfile
@@ -78,6 +79,21 @@ class MigrationTests(unittest.TestCase):
         with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([good]))), \
                 self.assertRaisesRegex(ValueError, 'identity or base pin'):
             LIFECYCLE.candidate_image_id()
+
+    def test_candidate_allocation_is_bounded_without_changing_production(self):
+        compose = (ROOT / 'deploy/whisper-stt/compose.yaml').read_text()
+        def service_block(name):
+            match = re.search(rf'(?ms)^  {re.escape(name)}:\n(.*?)(?=^  [a-zA-Z0-9_-]+:|\Z)', compose)
+            self.assertIsNotNone(match, f'missing Compose service {name}')
+            return match.group(1)
+        primary = service_block('whisper-primary')
+        candidate = service_block('whisper-candidate')
+        self.assertIn('--gpu-memory-utilization 0.08', primary)
+        self.assertIn('--gpu-memory-utilization 0.06', candidate)
+        for args in ('--max-num-seqs 1', '--max-num-batched-tokens 2048', '--enforce-eager'):
+            with self.subTest(args=args):
+                self.assertIn(args, primary)
+                self.assertIn(args, candidate)
 
     def test_candidate_start_accepts_successfully_legacy_retired_full_whisper(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -34,13 +34,18 @@ in `scripts/patch-vllm-whisper-runtime.py`. It applies two source edits:
 The candidate is declared as `whisper-candidate` under the `candidate` Compose
 profile. `prepare-runtime-candidate` builds the image but never starts it or
 loads a model. The candidate shares the existing verified model cache and
-serves the same pinned weights with the same capacity parameters. It must not run beside
-`whisper-primary`: both require the same GPU model allocation. Keep prompt and
-vocabulary hints disabled by default until the paired real-audio qualification
-passes. Source patch tests prove anchor/checksum refusal and text-preserving
-behavior; they do not qualify inference quality. The candidate remains
-unpromoted until frozen prompted/plain and verbose/JSON comparisons, full
-recording review, and capacity checks pass.
+serves the same pinned weights. For this bounded headroom qualification only,
+the candidate uses `--gpu-memory-utilization 0.06`; the production primary stays
+at `0.08`. Both retain one sequence, 2,048 batched tokens, and eager execution.
+The lower candidate allocation is a measured headroom attempt, not a capacity
+approval or a waiver: at least 12 GiB available host RAM is still required
+before model load and at least 10% available host RAM after load. The candidate
+must not run beside `whisper-primary`; both require the same GPU model. Keep
+prompt and vocabulary hints disabled by default until the paired real-audio
+qualification passes. Source patch tests prove anchor/checksum refusal and
+text-preserving behavior; they do not qualify inference quality. The candidate
+remains unpromoted until frozen prompted/plain and verbose/JSON comparisons,
+full recording review, and capacity checks pass.
 
 For a reviewed release that has already completed the normal `apply`, the
 guarded runtime qualification swap is:

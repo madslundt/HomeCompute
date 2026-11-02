@@ -170,7 +170,7 @@ services:
     networks: [inference]
 
   # Candidate only: never run alongside whisper-primary because both load the
-  # same GPU model. The production service remains on the pinned NVIDIA image.
+  # same GPU model. This bounded headroom trial is 0.06; production stays 0.08.
   whisper-candidate:
     <<: *runtime
     profiles: [candidate]
@@ -209,7 +209,7 @@ services:
         export VLLM_API_KEY="$$(cat /run/secrets/vllm_api_key)"
         exec vllm serve openai/whisper-large-v3 --revision 06f233fe06e710322aca913c1bc4249a0d71fce1 \
           --served-model-name whisper-large-v3 --host 0.0.0.0 --port 8000 \
-          --gpu-memory-utilization 0.08 --max-num-seqs 1 --max-num-batched-tokens 2048 --enforce-eager \
+          --gpu-memory-utilization 0.06 --max-num-seqs 1 --max-num-batched-tokens 2048 --enforce-eager \
           --no-enable-log-requests --disable-uvicorn-access-log
     secrets: [vllm_api_key]
     volumes:
