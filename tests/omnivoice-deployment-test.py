@@ -55,6 +55,18 @@ class RetirementTest(unittest.TestCase):
         self.assertEqual(original['tts_engine'], 'tts.plapre_nano_v2')
         self.assertIsNone(module.pipeline_candidate({**original, 'tts_engine': 'tts.piper'}))
 
+    def test_inference_rejects_arbitrary_reference_and_language_fields(self):
+        spec = importlib.util.spec_from_file_location('omnivoice_runtime', ROOT / 'scripts/omnivoice-runtime.py')
+        runtime = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runtime)
+        self.assertEqual(runtime.request_fields({'text': 'Hej.', 'speaker': 'da'}), ('Hej.', 'da'))
+        for value in ({'text': 'Hej.', 'speaker': 'fr'},
+                      {'text': 'Hej.', 'speaker': 'da', 'ref_audio': '/private/file'},
+                      {'text': 'x'*2001, 'speaker': 'da'},
+                      {'text': '', 'speaker': 'en'}):
+            with self.assertRaises(ValueError):
+                runtime.request_fields(value)
+
 
 if __name__ == '__main__':
     unittest.main()

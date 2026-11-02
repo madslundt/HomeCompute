@@ -1,0 +1,8 @@
+**
+!deploy/
+!deploy/omnivoice/
+!deploy/omnivoice/**
+!config/
+!config/omnivoice-tts.json
+!scripts/
+!scripts/omnivoice-runtime.py

@@ -97,6 +97,18 @@ def benchmark(revision):
          image, '--benchmark'], timeout=1800, capture=False)
 
 
+def benchmark_gpu(revision):
+    image = 'homecompute/omnivoice:gpu-' + revision
+    run(['docker', 'build', '-f', str(ROOT / 'deploy/omnivoice/Dockerfile.gpu'),
+         '-t', image, str(ROOT)], timeout=3600, capture=False)
+    run(['docker', 'run', '--rm', '--name', 'homecompute-omnivoice-gpu-benchmark',
+         '--gpus', 'all', '--network', 'none', '--read-only', '--cap-drop', 'ALL',
+         '--security-opt', 'no-new-privileges:true', '--cpus', '4', '--memory', '12g',
+         '--memory-swap', '12g', '--pids-limit', '256', '--tmpfs',
+         '/tmp:rw,noexec,nosuid,nodev,size=512m,uid=65532,gid=65532',
+         image, '--benchmark', '--device', 'cuda'], timeout=1800, capture=False)
+
+
 def pipeline_candidate(before, engine='tts.piper', voice='da_DK-talesyntese-medium'):
     if before.get('tts_engine') != 'tts.plapre_nano_v2':
         return None
@@ -156,12 +168,14 @@ def ha_fallback(state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('retire-plapre', 'benchmark-cpu', 'ha-fallback'))
+    parser.add_argument('action', choices=('retire-plapre', 'benchmark-cpu', 'benchmark-gpu', 'ha-fallback'))
     parser.add_argument('--revision', required=True)
     args = parser.parse_args()
     host = socket.gethostname().split('.')[0]
     if host not in OLD or args.action in {'benchmark-cpu', 'ha-fallback'} and host != 'home-core':
         raise ValueError('Wrong host for this lifecycle')
+    if args.action == 'benchmark-gpu' and host != 'home-spark':
+        raise ValueError('GPU measurement requires home-spark')
     published(args.revision)
     state = Path.home() / '.local/state/homecompute/omnivoice'
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -173,6 +187,8 @@ def main():
             retire(args.revision, host, state)
         elif args.action == 'ha-fallback':
             ha_fallback(state)
+        elif args.action == 'benchmark-gpu':
+            benchmark_gpu(args.revision)
         else:
             benchmark(args.revision)
 

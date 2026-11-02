@@ -28,6 +28,19 @@ not native-listener pronunciation qualification or service readiness.
 The existing MOSS/Piper CPU service is independent. Retain it during migration.
 No general host release is needed to build this isolated image.
 
+On Spark, `python3 scripts/setup-omnivoice.py benchmark-gpu --revision FULL_SHA`
+builds the pinned NVIDIA ARM64 image and runs the same fixed in-memory test.
+It installs torchaudio from the exact source revision against NVIDIA's Torch
+ABI; a generic PyPI torchaudio wheel would replace the vendor Torch tuple.
+The engine accepts only fixed Danish/English speakers and no reference paths.
+
+The initial home-core test at `dede6633b4716d8e507ac53990ed717da9447473`
+measured 15.659s for 1.880s of Danish audio and 23.791s for 2.690s, with peak
+RSS about 2.5GiB. English exposed an optional-normalizer dependency, fixed by
+using the existing Danish num2words normalizer only for Danish. These first
+samples do not establish warm p95, but reject CPU placement for the intended
+interactive latency. GPU measurement remains necessary.
+
 ## Retire Plapre
 
 From the selected clean published checkout on each host, run:

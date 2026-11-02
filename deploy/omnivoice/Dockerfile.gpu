@@ -1,0 +1,30 @@
+FROM nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+RUN apt-get update && apt-get install --no-install-recommends -y \
+      git ca-certificates libsndfile1 ffmpeg build-essential cmake \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv --system-site-packages /opt/omnivoice/venv \
+    && /opt/omnivoice/venv/bin/pip install --no-cache-dir \
+      setuptools==80.10.2 wheel==0.46.3 ninja==1.13.0
+RUN git clone https://github.com/pytorch/audio.git /opt/build/torchaudio \
+    && git -C /opt/build/torchaudio checkout --detach 34c52a67e8941bbd8e6adaca0eb0b9eabec11d78 \
+    && BUILD_VERSION=2.11.0+nv26.2 USE_CUDA=0 BUILD_RNNT=0 BUILD_ALIGN=0 \
+      BUILD_CUDA_CTC_DECODER=0 MAX_JOBS=2 \
+      /opt/omnivoice/venv/bin/pip install --no-cache-dir --no-build-isolation --no-deps /opt/build/torchaudio \
+    && rm -rf /opt/build/torchaudio
+COPY deploy/omnivoice/requirements.lock /tmp/requirements.lock
+RUN /opt/omnivoice/venv/bin/pip install --no-cache-dir --require-hashes -r /tmp/requirements.lock
+RUN git clone https://github.com/k2-fsa/OmniVoice.git /opt/omnivoice/source \
+    && git -C /opt/omnivoice/source checkout --detach 08be0b4ccbac3e13e374e86fbfead4b4cac343e2 \
+    && test "$(git -C /opt/omnivoice/source rev-parse HEAD)" = 08be0b4ccbac3e13e374e86fbfead4b4cac343e2 \
+    && rm -rf /opt/omnivoice/source/.git
+ENV PATH=/opt/omnivoice/venv/bin:${PATH} PYTHONPATH=/opt/omnivoice/source
+COPY deploy/omnivoice/fetch.py /opt/omnivoice/fetch.py
+RUN python3 /opt/omnivoice/fetch.py
+COPY config/omnivoice-tts.json /opt/omnivoice/config.json
+COPY scripts/omnivoice-runtime.py /opt/omnivoice/runtime.py
+ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 \
+    OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 NUMBA_CACHE_DIR=/tmp/numba-cache
+RUN --network=none python3 -c 'import torch,torchaudio;from omnivoice import OmniVoice;assert torch.__version__.startswith("2.11.0a0+");assert torchaudio.__version__=="2.11.0+nv26.2"'
+USER 65532:65532
+ENTRYPOINT ["python3", "/opt/omnivoice/runtime.py"]
