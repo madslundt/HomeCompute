@@ -24,7 +24,9 @@ RUN python3 /opt/omnivoice/fetch.py
 COPY config/omnivoice-tts.json /opt/omnivoice/config.json
 COPY scripts/omnivoice-runtime.py /opt/omnivoice/runtime.py
 ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 \
-    OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 NUMBA_CACHE_DIR=/tmp/numba-cache
+    OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=1 NUMBA_CACHE_DIR=/tmp/numba-cache \
+    USER=omnivoice LOGNAME=omnivoice HOME=/tmp \
+    TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor TRITON_CACHE_DIR=/tmp/triton
 RUN --network=none python3 -c 'import torch,torchaudio;from omnivoice import OmniVoice;assert torch.__version__.startswith("2.11.0a0+");assert torchaudio.__version__=="2.11.0+nv26.2"'
 USER 65532:65532
 ENTRYPOINT ["python3", "/opt/omnivoice/runtime.py"]
