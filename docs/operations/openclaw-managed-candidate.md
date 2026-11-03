@@ -150,3 +150,58 @@ sudo python3 "$native_tool" upgrade --revision FULL_SHA --expected-hash NATIVE_B
 sudo python3 "$native_tool" rollback --revision FULL_SHA --expected-hash NATIVE_BUNDLE_HASH
 sudo python3 "$native_tool" cleanup --revision FULL_SHA --expected-hash NATIVE_BUNDLE_HASH
 ```
+
+## Qualification using the verified restored VM
+
+The separate-account fixture refused before creating a sandbox: the vendor
+allocator scans its complete default dashboard-port range and cannot prove
+another Unix account's existing listener ownership. Its provider and gateway
+processes were stopped, Docker group membership removed, and its private home
+and diagnostics retained. Atlas's container, configuration, registry and CLI
+fences remained unchanged. Do not weaken those ownership checks to pass a test.
+
+Use `scripts/prepare-openclaw-upgrade-assets.py --build-dir REVIEWED_BUILD
+--revision FULL_SHA` in the published guest release to capture both complete
+public GHCR cohorts with each pinned CLI's own digest/label-validating resolver.
+It verifies the two previously built archive hashes, exports only the cached
+candidate workload image, and produces a hashed public asset manifest. Copy that
+finite directory to a new root-private `/srv/restore-tests/ASSETS` on home-core.
+No production state or credentials are included in these assets.
+
+`scripts/qualify-openclaw-restored-upgrade.py` takes the same private restored
+archive selection as the accepted native recovery receipt, plus `--assets`,
+`--expected-assets-sha256` and `--expected-policy-sha256`. Its source must be a
+reviewed published core release. It requires the matching accepted native
+recovery proof and verifies every input hash before constructing its read-only
+qualification ISO. This is a separate receipt; it never replaces the accepted
+NAS recovery receipt.
+
+The VM uses the existing networkless unprivileged QEMU lifecycle, two visible
+vCPUs pinned to one host CPU, 8 GiB guest RAM, a 10 GiB physical memory cap and
+bounded scratch I/O. Its source disk descriptor is read only, with disposable
+COW writes. It has no NIC, host share or forwarded host port. The clone-only
+provider keeps the retained endpoint/provider identity, uses clone-only hosts
+resolution and a synthetic credential, and logs no requests. Real channel
+connections and heartbeats are disabled inside the clone before the upgrade.
+
+The official vendor qualification hook replays the authenticated public GHCR
+catalogs; it changes no CLI code, runtime, registry ownership or phase database.
+This qualifies lifecycle behavior using public registry metadata replay, not an
+unchanged offline production CLI. Production must independently resolve its
+normal authenticated GHCR catalog and compare the selected immutable workload.
+The test executes normal named140 rebuild and129 rollback, authenticated native
+health and plugin loading, a synthetic model turn and a real researcher handoff.
+It checks immutable conversation projections for all roles, all workspaces and
+the retained paused policy across each transition. Raw diagnostics stay private.
+A missing native turn, handoff, state check or rollback keeps acceptance false.
+
+The installed channel probe discovers the active Mattermost project through its
+native installation record and accepts only the reviewed9.1 or9.2 package and
+runtime preimage. It applies the corresponding queue port, then loads that exact
+installed factory in a temporary sibling module with an empty synthetic queue.
+Its SDK resolution must point to the candidate core9.2. Controlled readiness
+must prevent every queue inspection while unavailable and resume native
+inspection after recovery; abort must settle shutdown. No real event, account,
+claim, transcript or message delivery is used in this channel-specific fixture.
+The actual active package version is retained in the private receipt; do not
+assume the workload image upgraded a separately installed channel package.
