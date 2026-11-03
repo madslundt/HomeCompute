@@ -1,29 +1,41 @@
 # OpenClaw toward a Grok Bot experience
 
-Date: 2026-10-29. Status: proposed implementation plan; no runtime, provider,
-credential, schedule, model or deployment change is authorized by this document.
-Baseline reviewed: `24cd9602b18127c4dbf825d2be8fbe103e56f562`.
-Evidence is repository source and dated rollout receipts, not a fresh live audit.
+Updated: 2026-11-03. Status: implementation plan refreshed after an authorized
+read-only live audit and upstream compatibility assessment. No runtime, provider,
+credential, schedule, permission, model or deployment was changed. Proposed
+paths, interfaces, defaults and acceptance thresholds below are not installed.
 
-Follow-up: the [2026-10-29 baseline and runtime diagnostic](benchmarks/openclaw-rakazo-baseline-2026-10-29.md)
-now records live read-only checks and a synthetic local-model comparison.
-It does not qualify the complete Rakazo product or apply OpenClaw optimizations.
+Start with the [fresh live audit](operations/openclaw-atlas-audit-2026-11-03.md)
+and [version-pinned upgrade assessment](research/openclaw-upgrade-assessment-2026-11-03.md).
+They supersede older stopped-worker and host-revision assumptions for this plan.
+The [October 29 comparison](benchmarks/openclaw-rakazo-baseline-2026-10-29.md)
+and [October 30 performance experiments](benchmarks/openclaw-performance-2026-10-30.md)
+remain historical measurements, not current acceptance or promoted settings.
 
 ## Recommendation and product decision
 
-Keep the current OpenClaw deployment while qualifying the missing end-to-end
-workflows. Evaluate Rakazo before building a custom computer interface, routine
-editor or demonstration recorder. Rakazo appears closer to the requested product
-experience; whether it is better for HomeCompute depends on local-model quality,
-recovery, resource use and preservation of household boundaries. See the
-[Rakazo assessment](research/rakazo-assessment-2026-10-29.md).
+Improve OpenClaw and make Atlas responsible for task completion across its
+existing specialists and controllers. Retain Mattermost as the first user
+surface. Prioritize task ownership, bounded handoffs, schedules, reminders and
+useful proactive follow-ups before a new computer interface or voice product.
 
-Rakazo is a separate candidate application/runtime, not an established OpenClaw
-frontend. Do not run two owners of the same jobs or copy their credentials,
-memories and browser sessions between them. Preserve the trusted HomeCompute
-service interfaces whichever assistant wins the comparison. If Rakazo wins,
-revise this plan and record the architecture decision before migration; do not
-spend the remaining phases duplicating its interface in OpenClaw.
+Qualify the latest compatible managed tuple rather than installing the latest
+core package into a live sandbox. The deployed verified tuple is NemoClaw
+`0.0.129` / OpenClaw `2026.9.1` / OpenShell `0.0.116`. The newest reviewed
+managed-source candidate is NemoClaw tag `v0.0.140`, locking OpenClaw
+`2026.9.2` and OpenShell `0.0.116`; it is not yet HomeCompute-qualified.
+Standalone core `2026.10.10` is the latest stable release found on November 3,
+but its managed build, plugins, state migration and local patches are unqualified.
+Its features must not be promised on the `2026.9.2` candidate. See the cited
+release/source evidence in the upgrade assessment.
+
+Use native task/session/automation lifecycle where it passes our requirements.
+Do not add a parallel general-purpose task engine before demonstrating a native
+gap. Existing n8n workflows, household task stores and coding broker retain
+their authority. Rakazo comparison is deferred, not a prerequisite for improving
+Atlas. Revisit the [candidate assessment](research/rakazo-assessment-2026-10-29.md)
+before expensive custom computer/teaching UI work if OpenClaw's qualified
+workflow results or maintenance cost justify reopening the product choice.
 
 The target is the experience described by [Grok Bot](https://x.ai/bot) and its
 [overview](https://docs.x.ai/grok-bot/overview): message a persistent teammate,
@@ -44,22 +56,40 @@ independent security principal. See [SECURITY](../SECURITY.md),
 
 | Area | Existing source or recorded evidence | Work still needed |
 | --- | --- | --- |
-| Teammates | [Team manifest](../config/openclaw-team.json), specialist instructions and isolated delegation | Consistent personality, reliable handoffs, visible ownership and qualified concurrency |
-| Background execution | [Coding broker](../deploy/codex-worker/broker.py), [task feed](../scripts/openclaw_tasks.py), native turn lifecycle | General multi-step research/preparation jobs with bounded recovery; coding worker availability must be checked separately |
-| Everyday tasks | [Household task store](../scripts/openclaw_household_tasks.py), reminders and separate Family projection | Unified presentation; a reminder record must not pretend to execute a project |
+| Teammates | Live Atlas plus ten eligible specialists; serial, depth-one isolated delegation; direct session messaging denied | Multi-step ownership, reliable result return, cancellation and status; concurrency remains gated |
+| Background execution | Live native lifecycle, [coding broker](../deploy/codex-worker/broker.py), [task feed](../scripts/openclaw_tasks.py); coding VM and guest worker currently running | Inspect actual broker activity and qualify general research/preparation recovery; worker process health is not coding acceptance |
+| Everyday tasks | [Household task store](../scripts/openclaw_household_tasks.py), active owner/Family reminder timers and location listener; authenticated Mattermost destinations verified without sending | End-to-end reminder/phone delivery, reboot persistence, explicit private/shared destination semantics and a unified view |
 | Research | [Protected browser and search fallback](openclaw-tools.md), [specialist integrations](openclaw-integrations.md) | Broader qualified source coverage, complete evidence and multi-step acceptance |
 | Apps/computers | Finite site operations, owner-only sign-in viewer and registered account grants | Interactive task computer, explicit action permissions and owner takeover; the owner sign-in viewer is not an agent computer |
 | Memory | Workspace memory and local embeddings | Full inspect/correct/delete/export controls, provenance and cross-domain deletion checks |
 | Voice | [Mattermost local speech](openclaw-communication.md#mattermost-voice-messages) | Streaming, turn detection, interruption and mobile reconnect for live conversation |
-| Routines | Managed skills, n8n schedules and independent timers | Natural-language routine proposals, run history, pause/test controls, and later demonstration capture |
+| Routines | Existing n8n morning/tomorrow/travel routines active; native cron and heartbeats disabled | Source-owned proposals, bounded metadata-only run history, pause/test controls and native qualification for uncovered jobs |
+| Proactive follow-ups | Existing observations, update feed and scheduled briefings | Authorized goal/expiry, change thresholds, deduplicated meaningful notifications, quiet periods and explicit escalation |
 
-Prefer recent receipts to historical overview paragraphs. The
-[2026-10-28 integrations receipt](operations/openclaw-integrations-rollout-2026-10-28.json)
-records a verified Lyra hotel call, an unverified private-photo path, missing
-Geoapify/n8n credentials, a preserved Telegram receiver mask, unresolved broader
-host revisions and a failed NAS recovery backup. These are audit inputs, not
-claims about today's state. Do not reactivate Telegram or the stopped coding
-worker simply to make inventories look complete.
+The fresh audit reports a healthy authenticated gateway/Mattermost connection,
+both host release markers behind desired source, a deferred NAS backup service,
+and failing direct STT readiness. Seven selected communication helpers and four
+safety files match workstation source; installed speech source instead matches
+the newer origin/master. The native n8n-status credential is absent even though
+the operator MCP can inspect workflows. Preserve the Telegram mask and current
+worker state. Do not use a full bootstrap or broad host deployment to make these
+inventories look equal. No real task or channel message was sent in this audit.
+
+## Task and scheduling ownership
+
+| User request | Authoritative lifecycle | Atlas responsibility |
+| --- | --- | --- |
+| Answer/research/preparation | Native root session and bounded specialist runs | Own the outcome, retain step references, review evidence and return the final result |
+| Coding change | Existing broker/worker ledger | Submit only through granted tools, track actual state and return the reviewable result; do not infer completion from worker activity |
+| Chore, deadline or reminder | Existing owner or explicitly shared Family task store | Record through finite tools and confirm actual reminder/delivery status |
+| Existing daily/weekly household automation | Its existing n8n workflow or timer | Present status and propose scoped changes without creating another schedule |
+| New repeated research/watch | Reviewed routine declaration; one qualified backend | Propose source, show next run/history and dispatch bounded steps through Atlas |
+
+One-off task records, reminders, occurrence receipts and execution state are
+durable application data outside Git; creating an ordinary reminder does not
+require a commit. Managed routine definitions, reusable skills, permissions and
+workflow changes remain reproducible source. A due date alone never schedules
+a reminder, and a saved reminder does not execute a research or coding project.
 
 ## Acceptance workloads
 
@@ -82,9 +112,14 @@ The initial product must complete these vertical workflows in Danish and English
 5. **Computer task:** complete a multi-page workflow in a synthetic account on a
    registered test site, pause for owner sign-in when needed, return an artifact
    and stop before any unapproved external effect.
-6. **Reuse and voice:** turn a successful workflow into a reviewed routine;
+6. **Reuse and voice (later):** turn a successful workflow into a reviewed routine;
    start a permitted job by Danish voice, interrupt a spoken response, reconnect
    and obtain the same job's status without starting it again.
+7. **Reminder and proactive follow-up:** create one owner-private reminder and
+   one explicitly shared Family reminder with synthetic content. Confirm their
+   distinct destinations, revision/idempotency receipts and cancellation. For a
+   bounded read-only watch, unchanged findings stay quiet, a threshold change
+   notifies once and expiry stops all future dispatch.
 
 For each workload record completion, unsupported steps, operator interventions,
 tool failures, elapsed time, queue time, inference calls and CPU/RAM/GPU use.
@@ -102,95 +137,149 @@ trust boundary, and add an ADR for any accepted decision change as required by
 
 ### 0. Establish the actual baseline and recovery gate
 
-Inspect deployed full SHAs, effective native configuration and source hashes,
-all role grants, channel bindings/masks, model and speech routes, worker state,
-in-flight jobs, overrides, backups and resource headroom. Use
-`./scripts/homecompute status`, `services`, `doctor` and `drift`, then the owning
-workload checks. Reconcile intended differences through source; preserve unknown
-drift and uncertain operations. Verify an encrypted off-host restore before any
-durable-state migration or expansion of unattended work.
+The November 3 [audit](operations/openclaw-atlas-audit-2026-11-03.md) completes
+the bounded read-only inventory. Remaining work is to inspect current broker
+activity, inventory all retained native databases/patch receipts and exact
+channel bindings, establish timer boot ownership, and restore-test the actual
+OpenClaw state. Preserve the running worker; an old stopped-worker receipt is
+not authority to start, stop or replay it.
 
-Exit: sanitized baseline matrix marks each capability verified, staged,
-intentionally disabled, unavailable or unverified, and names its owning lifecycle.
-Backup failures, roster mismatches and model identity are resolved or remain
-explicit blockers. No full bootstrap merely to replace a newer scoped rollout.
+Reconcile selected installations against published source, including newer
+speech helpers and known overrides, before choosing an apply revision. Use the
+owning recovery/observability lifecycles to investigate backup deferrals and
+direct STT readiness separately. Do not clear failure flags to pass the gate.
+Synthetic candidate/fixture development can proceed without declaring those
+production checks passed.
 
-### 1. Compare Rakazo before expensive interface work
+Exit: every capability has verified/configured/disabled/unavailable/unverified
+status, an owning lifecycle and evidence date. A current consistent encrypted
+backup and isolated OpenClaw restore are mandatory before state migration or
+expanded unattended production work; a running timer or old restore receipt is
+insufficient.
 
-Use a pinned, disposable, non-production candidate with synthetic data and a
-distinct limited model credential. Start with text research/preparation; no
-production MCP credential, account login or household state. Review its
-supervisor/Docker boundary and egress policy before execution. Register a
-candidate through repository-owned deployment source if retained.
+### 1. Qualify the managed upgrade and native lifecycle
 
-Run the same relevant workloads through current OpenClaw and Rakazo using the
-same qualified local model and budgets. Record unsupported features as unsupported.
-Test local STT/TTS against the existing speech bridge, total context/tool payloads,
-session isolation, cancellation, provider outage, restart and duplicate admission.
-The reviewed Rakazo speech adapter requests MP3 and rejects our current WAV
-response format; qualify an explicit bounded adapter or upstream fix. Mobile
-device recognition/voices also need an offline/privacy check. Give any later
-MCP connection a new limited backend principal; native OpenClaw's shared token
-and role-policy grants are not transferable authority for another runtime.
-Actual desktop vision is a separate gate: our current text route must not be
-relabelled vision-capable. Qualify a local vision deployment through the model
-catalog/routes if required, or report screenshot tasks blocked. Do not silently
-substitute a cloud model to make the comparison succeed.
+Prepare a source-owned candidate for NemoClaw `v0.0.140` at
+`88fe14f3fb9a0bf72997cce19ec88b5b2ee08391`, OpenClaw `2026.9.2` and
+OpenShell `0.0.116`. Resolve immutable amd64 image/provenance and retain the
+existing management, credential-custody, inference and network boundary. No
+image digest has been qualified by this plan. Select a separate registry,
+gateway and state volume, with synthetic data and no production channel tokens,
+browser sessions, schedules or model credentials. Inference qualification needs
+a separately limited candidate credential and budget.
 
-Exit: a written keep/migrate decision with measured workflow results, operating
-cost/headroom, required patches and preservation of security boundaries. Hard
-failures are cross-principal disclosure, unauthorized effects, duplicate effects
-or private cloud fallback. Prefer Rakazo if it materially improves completion and
-reduces custom maintenance while meeting those gates; its feature list alone is
-insufficient. OpenClaw continues unchanged if the comparison remains inconclusive.
+The change must account for shared tuple pins in `config/hermes-release.json`
+and `scripts/setup-hermes-guest.sh`, `config/openclaw-nemoclaw.env.example`,
+the OpenClaw supervisor's compiled-module identity and managed recovery declarations,
+and `docs/openclaw-nemoclaw.md`, plus a reviewed candidate/upgrade lifecycle. Do not
+run the general installer or change only a recovery image constant. Preserve
+the retired Hermes state; a shared template name does not authorize recreating it.
+The [managed-candidate artifact/lifecycle research](research/openclaw-managed-candidate-qualification-2026-11-03.md)
+pins the available amd64 workload and its provenance metadata. Candidate source
+and runtime checks must remain separate from the production tuple declarations
+until qualification passes.
+
+Build a candidate compatibility matrix for the actual installed Mattermost
+plugin, native child-result/yield/queue patches, safety hooks, finite MCP grants,
+agent-office plugin, model serialization, team policy and state restoration.
+Use `setup-openclaw-child-results.py`, `setup-openclaw-yield-acknowledgment.py`,
+`setup-openclaw-llm-queue.py` and `setup-openclaw-mattermost.py` as migration
+inventory, not version-independent installers. Reproduce each old failure on the
+new tuple; retire an obsolete patch or port it against a new exact preimage and
+add the relevant regression. Keep current refusal guards intact.
+
+Separately resolve a supported managed recipe for core `2026.10.10`, commit
+`7dc3350cb9f08fcf9a0af5c4845a20d5b2f1a8be`. NVIDIA's reviewed build pins
+`2026.9.2`; `2026.10.10` is a feature candidate, not a drop-in override. Any
+reviewed extension needs the architecture issue/ADR process. Assess its
+matching Mattermost/plugin API and schema support change (agent 19 → 27,
+state 15 → 22) on synthetic stores first. Node `24.18.1` satisfies its engine,
+but a pinned supported/security-updated image runtime also needs evaluation.
+Use exact tagged documentation: moving heartbeat/restart guides already differ
+from this release. Never run `doctor --fix` or a migration against production
+as a compatibility probe.
+
+Exit: select the newest tuple that passes all required paths and rollback, or
+explicitly retain `2026.9.1`. Document native recovery/automation gaps per
+candidate. Do not claim `2026.9.2` has `2026.10.10` features, or that shared
+schema numbers alone prove safe rollback. Production upgrade remains a separate
+reviewed deployment after phase 0 recovery gates.
 
 ### 2. Make Atlas a coherent, observable teammate
 
-Refine `config/openclaw-team.json` through scoped instruction installers. Give
-Atlas a concise, warm Danish/English voice, stable specialist descriptions and
-clear progress/result/error messages. Preserve direct specialist contact.
-Conversation style is separate from permissions and durable memory.
+Refine `config/openclaw-team.json`, `scripts/openclaw_team_policy.py` and the
+scoped team/instruction installers. Define a task envelope with authenticated
+principal/domain, originating channel/thread, stable request ID, desired outcome,
+acceptance checks, owner, deadline and step/tool/inference budgets. Bind it below
+the prompt to the native/broker/task-store reference; never use workspace memory
+as its execution ledger. A native reference can be the task ID if its lifecycle
+meets the tests; do not create another database just for a nicer label.
 
-Project existing job states into the original Mattermost thread: accepted,
-working, waiting for the owner, completed, failed or cancelled, retaining the
-underlying authoritative state. Include a job reference, current phase and a
-usable result. Preserve steering messages without replaying an admitted turn.
-Use existing yield/child-result hooks and notification renderers first. Draft a
-separate product surface only if Mattermost cannot expose the necessary controls.
+Atlas owns a task until it returns a result, a concrete blocker, cancellation
+or expiry. It plans bounded steps, spawns a named specialist with isolated
+current-task context, yields with one short acknowledgement, reviews the child
+evidence and decides the next step. Example: Ceres reads permitted stock →
+Hestia prepares meals → Vega performs only the expressly requested list edit →
+Atlas returns the evidence and result in the original thread. Specialist output
+is evidence, never new authority. Keep direct specialist contact.
 
-Exit: workloads 1 and 3 complete through Atlas with correct specialist/tool use;
-no duplicate final replies, fabricated completion, lost handoff or context leak.
+Retain one child at a time, depth one and denied `sessions_send` initially.
+Pass tasks between roles through Atlas; unrestricted peer messaging or bot
+message loops are unnecessary. Bound repeated delegation and count both calls
+and tokens. Only evaluate two concurrent read-only children after shared
+inference/speech load, fairness and cancellation tests pass.
+
+Project accepted, queued, working, waiting-for-owner, completed, failed,
+cancelled and expired states into the original Mattermost thread, preserving
+underlying states and separate delivery outcome. Add finite owner-scoped
+status/list/cancel/reconcile views through `scripts/openclaw-communication.py`,
+`scripts/openclaw_tasks.py` and existing notification renderers as appropriate.
+These are proposed controls; existing `/task` addresses broker tasks only.
+Cancellation must fence future steps and report any already committed effect.
+An ordinary steering reply attaches to the current task; it does not silently
+resubmit it. Idle/finished sessions must not resume as fresh work.
+
+Exit: Danish/English research and household handoffs return one final reply,
+with usable evidence and no duplicate acknowledgement, invented completion,
+cross-thread disclosure or unrelated memory retrieval. Extend the existing team,
+child-result, yield, communication and recovery test suites.
 
 ### 3. Add bounded durable background execution
 
-Keep coding state in the broker, household tasks in their store, and existing
-scheduled workflows in n8n. Add an assistant-job controller only for the uncovered
-research/preparation lifecycle; first document why native lifecycle storage
-cannot meet the requirement. Candidate source is `scripts/openclaw_jobs.py`,
-with finite MCP operations exposed through the existing trusted facade.
+Qualify native accepted-input persistence, parent/child completion delivery,
+restart reconciliation, cancellation and queue fairness on the selected tuple.
+Exercise graceful restart, crash, provider outage, duplicate admission, lost
+acknowledgement and cancellation during a tool call. Recovery must inspect
+native and external receipts before continuing; a failed child is not permission
+to rerun its last action. The exact release may stop a child and require parent
+reconciliation rather than transparently resume it.
 
-Admission binds authenticated principal/domain, original thread, immutable
-request ID, outcome, allowed tools, deadline, inference/step budget and policy
-version. Store job/step events, lease/fencing token, attempt and effect receipts,
-artifact references, cancellation and delivery state outside agent memory.
-Delegate only bounded steps; the controller owns recovery and dispatch.
+Reuse `deploy/codex-worker/broker.py` for coding and
+`scripts/openclaw_household_tasks.py` for chores/reminders. For general
+research/preparation, start with native run/session state and a thin finite
+projection if required. Only propose `scripts/openclaw_jobs.py` if a written
+gap matrix demonstrates missing durable admission, deadlines or recovery that
+cannot be supplied by the native lifecycle. Any such controller requires its
+own issue, state schema, idempotent installer and rollback; it is not yet a
+selected architecture.
 
-On restart reconcile the original native session before doing anything else.
-Resume only a provably replay-safe read/preparation step. An uncertain write or
-lost effect receipt stops for reconciliation; lease expiry alone never permits
-re-execution. Cancellation fences future steps and attempts to stop current work;
-it cannot undo an already committed effect. Approval expires and binds exact
-parameters/preconditions. Agents never gain the operator approval interface.
+If needed, the controller owns job/step events, leases/fencing tokens, attempts,
+effect receipts, artifact references, cancellation and delivery state. Lease
+expiry never authorizes replay of an uncertain write. Resume only provably
+replay-safe read/preparation steps; hold unknown effects for reconciliation.
+Approvals bind exact parameters/preconditions and expiry, outside agent tools.
+Do not claim exactly-once external effects.
 
-Begin with one active inference turn, bounded queue admission and fair scheduling
-so routines cannot starve household chat or n8n. Qualify any higher concurrency
-against Spark and speech contention. An unavailable model leaves work queued or
-explicitly expired, without automatic cloud fallback.
+Start with one active inference turn and a bounded fair queue so routines do
+not starve chat or n8n. Provider loss leaves work queued or visibly expired,
+with no private cloud fallback. Carry deadlines across retries, restart and
+fallback decisions; never reset the task budget by spawning another child.
 
-Exit: workload 2 and the coding handoff pass restart, duplicate request, lost
-acknowledgement, cancel-during-tool, timeout, stale lease and provider-outage
-tests. Delivery is verified separately from job completion. No claim of exactly-once
-external effects; uncertain outcomes remain visible and held.
+Exit: the background watch and coding fixture retain stable task references,
+bounded work and truthful status through those failure cases. A completed job
+with failed delivery remains visibly undelivered. A coding process merely
+running is not acceptance; inspect its ledger and use only an allowlisted
+synthetic project with separate execution/publication authority.
 
 ### 4. Make memory useful and controllable
 
@@ -208,23 +297,86 @@ denial tests pass. Memory never changes authority or schedules work by itself.
 
 ### 5. Qualify reusable routines
 
-Propose `config/openclaw-routines.json` plus a schema and idempotent patch builder.
-Chat can propose a named routine with owner/domain, versioned skill, bounded
-inputs, trigger, Europe/Copenhagen timezone, output destination, freshness policy,
-budget, expiry and approval boundary. Persistent routine definitions are managed
-configuration: generate a reviewable Git change before activation. Individual
-run IDs, outcomes and task records are durable application data outside Git.
+Add a proposed `config/openclaw-routines.json`, schema and idempotent builder
+`scripts/setup-openclaw-routines.py`. Start with an inventory referencing existing
+n8n IDs/timers; it must not recreate their schedules. Use chat to propose a named
+routine with owner/domain, versioned skill, bounded inputs, trigger, IANA
+timezone, destination, freshness rules, budgets, expiry and approval boundary.
+Show its source diff, backend, next run and whether it is inactive/proposed.
+Activation requires published source through the owning lifecycle. No generic
+native cron/exec tool or n8n administrator token is granted to Atlas.
 
-Choose one scheduler per routine: reuse its n8n workflow or existing timer where
-appropriate; never add a parallel native cron/heartbeat. Bind occurrences to stable
-IDs, define overlap and missed-run behavior, and prevent catch-up storms. Add
-list/test/history/pause/resume controls. A runtime pause can be an immediate stop;
-permanent changes must reconcile source before subsequent deployment.
+Choose one backend per routine. Retain existing n8n morning weather, tomorrow
+preparation and travel/news schedules. Qualify native automation only for an
+uncovered assistant watch/research routine on the selected runtime; enabling
+native cron is an explicit protected-policy change. Keep all specialist ambient
+heartbeats disabled. Native features remain conditional if only `2026.9.2`
+qualifies; a small finite n8n patch builder is preferable to pretending that
+later native behavior exists. Use n8n MCP for live workflow inspection and
+publication, not an alternate raw workflow-write API.
+
+Extend `scripts/openclaw_integrations.py` and its finite `automation_status`
+projection with backend-owned metadata only. Provision any missing native n8n
+read credential by the documented external custody path and minimum required
+scope; operator MCP access does not transfer to Atlas. Where the platform cannot
+scope a credential narrowly, keep it in a trusted adapter that enforces the fixed
+workflow allowlist. No private report payloads enter execution logging. Expose
+list, test, next-run, history, pause and resume with distinct configuration,
+execution and delivery outcomes. Pausing must stop future dispatch immediately;
+persist the desired pause through source before deployment can re-enable it.
+
+Use stable occurrence IDs, explicit no-overlap behavior and bounded catch-up.
+Test both Europe/Copenhagen DST transitions, ambiguous/nonexistent local times,
+missed slots, duplicate events, expiry, outages and cancellation. A test run uses
+synthetic input/destination and never invokes an existing production routine
+with real messaging/actions just to inspect it.
+
+#### Reminder completion
+
+Update `deploy/openclaw/skills/tasks-and-reminders/SKILL.md`, relevant Luna/Orion
+instructions and task/delivery helpers together. Clarify who, when, destination
+and sharing only when missing; use explicit RFC3339 instants and stable UUID
+request IDs on writes. Luna's current source instruction includes a timed-reminder
+Family default while other clauses require explicit sharing; remove that
+ambiguity in source and enforce destination/scope below the model. Default
+private owner tasks to an admitted private destination; Family delivery requires
+explicit sharing. If no private destination is configured, ask for the
+destination rather than exposing it to Family. Reuse existing task stores and
+revision checks; do not schedule a second native reminder for the same task.
+
+Keep due time separate from reminder time. Confirm the saved receipt and next
+occurrence; report scheduled, delivery accepted, delivered, failed or uncertain
+according to the owning transport. Home Assistant acceptance is not phone
+receipt. Prove that private details remain private, shared projection is explicit,
+duplicate requests create one intended reminder, cancelled reminders do not fire,
+and overdue/recurring tasks do not create notification storms. Preserve the
+supported none/daily/weekly/monthly recurrence until a tested extension exists.
+Verify owner/Family timer boot ownership as well as current active state.
+
+#### Proactive follow-ups
+
+Begin with a read-only expiring watch and existing unfinished-task follow-up,
+then reuse existing morning/tomorrow briefing coverage. Each follow-up records
+the owner's authorized goal, data sources/freshness, threshold, owner/domain,
+destination, cadence, deadline/expiry, notification budget and stop condition.
+Proposed initial non-urgent quiet hours are 22:00–07:00 Europe/Copenhagen;
+confirm those defaults in the reviewed routine configuration before activation.
+Do not silently delay an explicitly timed reminder under a watch's quiet policy.
+
+Trigger from trusted observations or the single owning scheduler. Notify on a
+material change, completion, failure, approaching agreed deadline or required
+owner action; remain quiet for unchanged state. Deduplicate by task/occurrence
+and finding version, impose a cooldown, and stop on expiry, cancellation or
+revocation. An unavailable source produces an explicit stale/blocked status,
+never fabricated fresh evidence. Private findings never expand Family scope.
+Proactivity can prepare advice or an exact proposal; device actions, publication,
+purchases, messages to others and deployments keep their existing authority.
 
 Exit: a successful one-off research task becomes a reviewed routine with a safe
-test and verified scheduled result. DST transitions, missed triggers, duplicate
-events, source outage, expiry and cancellation have defined tested outcomes.
-Existing travel/news schedules are preserved unless explicitly migrated.
+test, a real scheduled result and separate delivery receipt. A restart preserves
+the same watch; unchanged checks stay quiet, a threshold change notifies once,
+expiry stops it, and all reminder/privacy/DST cases pass. These are future
+acceptance runs, not results of the November 3 read-only audit.
 
 ### 6. Expand computer and app work one workflow at a time
 
@@ -278,15 +430,35 @@ not permission to add cloud fallback.
 
 ## Release gates, sequencing and first change
 
-Order: 0 → 1 → product decision → 2 → 3 → 5. Memory controls (4) precede
+Order: 0 → 1 → qualified tuple decision → 2 → 3 → 5. Memory controls (4) precede
 expanded personalization; computer work (6) precedes visual teaching (7).
 Voice can be developed after the model/speech capacity audit independently of
 computer work. Do not wait for every feature to release useful increments.
 
-The first implementation change should add the sanitized baseline/qualification
-matrix and shared acceptance fixtures for research and a background read-only
-job. Follow with the bounded candidate comparison. This tests the main product
-choice before investing in a custom interface or more browser machinery.
+The audit/upgrade documentation is now prepared as a source-only patch. The
+first implementation packages are:
+
+| Package | Concrete source change | Acceptance before production |
+| --- | --- | --- |
+| P0: recovery and drift | Reconcile selected published/scoped source; use existing backup/restore and observability lifecycles | Consistent current OpenClaw backup/isolated restore; current worker activity and readiness gaps accounted for |
+| P1: upgrade candidate | Version/image pins and candidate lifecycle; port/retire exact native/plugin patches with provenance tests | Matching SDK/plugin/config, safety denials, native state migration and rollback pass on synthetic state; choose compatible tuple |
+| P2: Atlas ownership/handoffs | Team manifest/policy, scoped instruction installer, native task projection and communication rendering | One request → bounded specialist chain → one final result in original thread; status/cancel/steering work without replay |
+| P3: background reliability | Reuse native lifecycle; add only demonstrated missing projection/controller behavior | Restart/crash/duplicate/provider outage/unknown-effect and failed-delivery cases pass with stable references |
+| P4: reminder semantics | Tasks-and-reminders skill, Luna/Orion instructions, task-store/delivery policy and timer ownership | Private/shared destination conflict removed; timed/zone/recurrence/cancel/DST and delivery checks pass |
+| P5: routines/proactivity | Routine schema/patch builder, finite status facade, metadata receipts and quiet/change policy | Existing schedules preserved; one expiring watch survives restart, stays quiet unchanged, notifies once and stops on expiry |
+
+P2/P4 fixture and instruction work can proceed against the current pinned
+runtime while P1 is qualified, without production apply. P3/P5 behavior must be
+evaluated on the tuple actually selected. Memory, computer UI and live voice are
+later packages; they do not block a useful task/reminder release.
+
+Extend the existing tests rather than mirroring prompts: `openclaw-team-test.py`,
+`openclaw-team-household-test.py`, `openclaw-team-recovery-test.py`,
+`openclaw-child-results-test.py`, `openclaw-yield-acknowledgment-test.py`,
+`openclaw-communication-test.py`, `openclaw-household-tasks-test.py`,
+`openclaw-family-projection-test.py`, location/delivery tests and native queue
+tests under `tests/`. Add candidate-backed plugin/SDK and schedule/recovery tests
+where existing fixtures cannot verify the real contract.
 
 For initial product acceptance, propose at least 20 scored runs of supported
 workflows with at least 90% meeting their declared outcomes, plus all destructive

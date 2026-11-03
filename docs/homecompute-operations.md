@@ -368,6 +368,41 @@ after 30 minutes; successful completion, inspection errors, transfer failures
 and failed resumption do not restart automatically. Preparation runs in the
 backup unit's main command so systemd can distinguish its exit status. A
 deferred manual `backup-now` is not evidence of a completed fresh backup.
+For an attended backup when inference work repeatedly fills the idle windows,
+the source-owned operator helper holds new main-HTTP connections and waits for
+existing requests to finish before invoking the same guarded cold backup:
+
+```bash
+recovery_tool=/srv/homecompute/releases/FULL_SHA/scripts/backup-application-recovery.py
+sudo python3 "$recovery_tool" plan
+sudo python3 "$recovery_tool" backup --revision FULL_SHA \
+  --expected-hash REVIEWED_OPERATOR_BUNDLE_HASH --installed-hash INSTALLED_NAS_BUNDLE_HASH \
+  --acknowledge-pause --drain-timeout 120
+```
+
+The operator bundle must be a reviewed published release. The installed NAS
+hash comes from its existing private deployment receipt, including after
+canonical retirement. This command does not reinstall or replace NAS units.
+It cancels only an idle exit-75 retry; an actual running backup/check is refused.
+The hold reuses the speech-boundary drain's exact LiteLLM client/main-HTTP
+scope, with separate chain `HC-RECOVERY-DRAIN`. It affects only new connections;
+existing requests are never killed, and a drain timeout starts no backup.
+The scheduled service retains its conservative idle preflight and AF_UNIX-only
+security sandbox. No service gains firewall authority. All existing writer,
+browser, broker, storage, NAS and resumption guards remain active.
+
+The hold ends once the source LiteLLM container is confirmed stopped, allowing
+normal inference when writers resume before the NAS transfer finishes. The
+operator continues waiting for a fresh NAS receipt and successful service exit;
+releasing the hold alone is not backup success. Exceptions and handled terminal
+signals during the hold stop the owning unit and wait for its writer resumption
+before removing the hold. SIGKILL/power loss can retain the chain.
+An existing chain refuses a new attempt: inspect the exact source-declared
+PREROUTING jump and chain, reconcile any backup/resume journal and remove only
+that verified hold before another run. Never flush shared firewall policy or
+delete backup receipts/markers to force admission. A cleanup failure is an
+operator recovery condition, not successful backup evidence.
+
 The main command forwards a service-stop SIGTERM to preparation and waits for
 its recovery cleanup; a stop never begins archive transfer or schedules a retry.
 The private resume journal and `ExecStopPost` recovery also cover interrupted

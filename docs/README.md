@@ -63,7 +63,7 @@ and other personal-agent services remain deferred.
 | Run the explicit Codex local trial | [Codex GB10 Local trial](codex-local-trial.md), [Codex compatibility](research/codex-compatibility.md), and verification tests V-CODEX-TRIAL-001/V-CODEX-E2E-001 |
 | Integrate other developer harnesses | [Agent harness operations](agent-harness-operations.md), [ADR-018](adr/018-multiple-developer-harnesses.md), and their verification tests |
 | Review OpenClaw and unattended Codex | [Discovery/workflow assessment](openclaw-discovery.md), [operations and architecture](openclaw-operations.md), [runtime evidence](openclaw-runtime-research.md), and [NemoClaw target](openclaw-nemoclaw.md) |
-| Plan a Grok Bot-style OpenClaw experience | [Proposed implementation plan](openclaw-grok-bot-plan.md) and [Rakazo assessment](research/rakazo-assessment-2026-10-29.md) |
+| Improve Atlas tasks, handoffs, schedules, reminders and follow-ups | [Updated implementation plan](openclaw-grok-bot-plan.md), [live audit (2026-11-03)](operations/openclaw-atlas-audit-2026-11-03.md), and [upgrade compatibility assessment](research/openclaw-upgrade-assessment-2026-11-03.md) |
 | Inspect measured OpenClaw optimization opportunities | [Local-model/Rakazo diagnostic baseline](benchmarks/openclaw-rakazo-baseline-2026-10-29.md) |
 | Review OpenClaw reasoning and prompt/tool optimization | [Measured canary results and promotion gates](benchmarks/openclaw-performance-2026-10-30.md) |
 | Consume local STT and TTS | [Speech API contract](speech-api.md) |
