@@ -234,6 +234,20 @@ class AdapterContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "image ID"):
                 ADAPTER.load_config()
 
+    def test_compose_build_revision_is_baked_and_resolved_image_id_reaches_runtime(self):
+        compose = (DEPLOY / "compose.yaml").read_text()
+        dockerfile = (DEPLOY / "Dockerfile").read_text()
+        self.assertIn("HOME_COMPUTE_REVISION: ${WHISPER_CPP_HOME_COMPUTE_REVISION:?", compose)
+        self.assertIn("WHISPER_CPP_IMAGE_ID: ${WHISPER_CPP_IMAGE_ID:-}", compose)
+        self.assertIn("ARG HOME_COMPUTE_REVISION", dockerfile)
+        self.assertIn("WHISPER_CPP_HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION}", dockerfile)
+        self.assertIn('user: "10001:10001"', compose)
+        with patch.dict(os.environ, {"WHISPER_CPP_HOME_COMPUTE_REVISION": "c" * 40,
+                                     "WHISPER_CPP_IMAGE_ID": "sha256:" + "d" * 64}, clear=False):
+            config = ADAPTER.load_config()
+        self.assertEqual(config.homecompute_revision, "c" * 40)
+        self.assertEqual(config.image_id, "sha256:" + "d" * 64)
+
     def test_native_process_is_pinned_to_cpu_auto_language_and_zero_context(self):
         config = ADAPTER.CandidateConfig(Path("/models/ggml-large-v3.bin"), Path("/key"), native_threads=4)
         command = ADAPTER.native_command(config)

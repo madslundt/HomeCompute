@@ -1095,6 +1095,8 @@ jq -e '
 ' "$whisper_json" >/dev/null
 
 whisper_cpp_json="$temporary_root/whisper-cpp-stt.json"
+WHISPER_CPP_HOME_COMPUTE_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+WHISPER_CPP_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
 WHISPER_CPP_MODEL_FILE=/validation/ggml-large-v3.bin \
 WHISPER_CPP_API_KEY_FILE=/validation/qualification-api-key \
   docker compose --profile candidate -f "$REPO_ROOT/deploy/whisper-cpp-stt/compose.yaml" \
@@ -1112,6 +1114,8 @@ jq -e '
   (.services["whisper-cpp"].logging.driver == "none") and
   (.services["whisper-cpp"].environment.WHISPER_CPP_MAX_AUDIO_SECONDS == "180") and
   (.services["whisper-cpp"].environment.WHISPER_CPP_MAX_UPLOAD_BYTES == "6000000") and
+  (.services["whisper-cpp"].environment.WHISPER_CPP_IMAGE_ID == "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") and
+  (.services["whisper-cpp"].build.args.HOME_COMPUTE_REVISION == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and
   (.networks.candidate.internal == true)
 ' "$whisper_cpp_json" >/dev/null
 jq -e . "$REPO_ROOT/deploy/whisper-cpp-stt/model-pin.json" >/dev/null
