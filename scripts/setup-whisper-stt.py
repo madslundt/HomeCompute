@@ -1317,7 +1317,7 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
             raise ValueError('CUDA candidate failed the 10 percent host headroom gate')
         if promotion:
             cuda_candidate_stage(tx, 'recording-relay-update')
-            promote_relay(tx, image_source_revision)
+            promote_relay(tx)
             cuda_candidate_stage(tx, 'recording-relay-smoke')
             promoted_relay_smoke()
             cuda_candidate_stage(tx, 'persist-candidate')

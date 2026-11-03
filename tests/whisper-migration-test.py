@@ -215,6 +215,112 @@ class MigrationTests(unittest.TestCase):
                                       relay_image_id='sha256:' + 'a' * 64,
                                       maintenance_bundle_sha256='b' * 64)
 
+    def test_cuda_promotion_success_path_checks_live_helper_signatures(self):
+        revision = 'e' * 40
+        image_id = LIFECYCLE.CPP_QUALIFIED_IMAGE_ID
+        primary = {
+            'Id': 'primary-id', 'Image': 'sha256:' + '9' * 64,
+            'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+            'Config': {'Image': 'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d',
+                       'Cmd': [LIFECYCLE.MODEL, LIFECYCLE.REVISION]},
+            'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped', 'MaximumRetryCount': 0}},
+        }
+        relay = {
+            'Id': 'relay-id', 'Image': LIFECYCLE.CPP_GATE_FAILURE_RELAY_IMAGE,
+            'Name': '/gb10-whisper-http',
+            'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+            'Config': {'Image': 'homecompute/stt-http:2.0.0', 'Labels': {
+                'com.docker.compose.project': 'whisper-large-v3-stt',
+                'com.docker.compose.service': 'whisper-http'}},
+            'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped', 'MaximumRetryCount': 0}},
+        }
+        candidate = {
+            'Id': 'candidate-id', 'Image': image_id,
+            'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+            'Config': {'Labels': {'com.docker.compose.project': LIFECYCLE.CUDA_CANDIDATE_PROJECT,
+                                  'com.docker.compose.service': 'whisper-cpp-cuda'}},
+        }
+        health = {
+            'status': 'ok', 'device': 'cuda', 'compute_backend': 'cuda',
+            'strict_gpu_patch': LIFECYCLE.CPP_CUDA_PATCH_VERSION,
+            'strict_gpu_patcher_sha256': LIFECYCLE.CPP_CUDA_PATCHER_SHA256,
+            'native_inference_busy': False, 'gpu_model_buffer_bytes': 1,
+            'model_sha256': LIFECYCLE.CPP_MODEL_SHA256,
+            'runtime_commit': LIFECYCLE.CPP_RUNTIME_COMMIT,
+            'homecompute_revision': LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION,
+            'image_id': image_id,
+        }
+
+        started = {'candidate': False}
+
+        def inspect(name):
+            if name == LIFECYCLE.CUDA_CANDIDATE and started['candidate']:
+                return candidate
+            return {'gb10-whisper-primary': primary, 'gb10-whisper-http': relay}.get(name)
+
+        def command(args, **_kwargs):
+            if args[:3] == ['docker', 'exec', LIFECYCLE.CUDA_CANDIDATE]:
+                return SimpleNamespace(stdout=json.dumps(health), returncode=0)
+            return SimpleNamespace(stdout='', returncode=0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'transaction.json').write_text(json.dumps({'state': 'legacy-retired'}))
+            read_text = Path.read_text
+
+            def fake_read_text(path, *args, **kwargs):
+                if path == Path('/proc/meminfo'):
+                    return 'MemTotal: 100000000 kB\nMemAvailable: 50000000 kB\n'
+                return read_text(path, *args, **kwargs)
+
+            def record_promoted_relay(tx):
+                tx['relay_candidate_id'] = 'relay-candidate-id'
+                tx['relay_candidate_image_id'] = 'sha256:' + 'a' * 64
+
+            def start_candidate(*_args, **_kwargs):
+                started['candidate'] = True
+                return SimpleNamespace(stdout='', returncode=0)
+
+            with (patch.object(LIFECYCLE, 'STATE', state),
+                  patch.object(LIFECYCLE, 'guards', autospec=True),
+                  patch.object(LIFECYCLE, 'ensure_no_cuda_candidate_transaction', autospec=True),
+                  patch.object(LIFECYCLE, 'validate_cuda_request_limits', autospec=True),
+                  patch.object(LIFECYCLE, 'protected', autospec=True),
+                  patch.object(LIFECYCLE, 'check_cuda_host', autospec=True),
+                  patch.object(LIFECYCLE, 'inspect', autospec=True, side_effect=inspect) as inspect_mock,
+                  patch.object(LIFECYCLE, 'qualified_cuda_candidate_image_id', autospec=True,
+                               return_value=image_id),
+                  patch.object(LIFECYCLE, 'validate_cuda_artifacts', autospec=True),
+                  patch.object(LIFECYCLE, 'save_cuda_candidate', autospec=True),
+                  patch.object(LIFECYCLE, 'gate', autospec=True) as gate,
+                  patch.object(LIFECYCLE, 'quiet', autospec=True),
+                  patch.object(LIFECYCLE, 'compose_cuda', autospec=True, side_effect=start_candidate) as compose_cuda,
+                  patch.object(LIFECYCLE, 'run', autospec=True, side_effect=command) as run,
+                  patch.object(LIFECYCLE, 'cuda_candidate_smoke', autospec=True) as candidate_smoke,
+                  patch.object(LIFECYCLE, 'promote_relay', autospec=True,
+                               side_effect=record_promoted_relay) as relay_promotion,
+                  patch.object(LIFECYCLE, 'promoted_relay_smoke', autospec=True) as relay_smoke,
+                  patch.object(Path, 'read_text', autospec=True, side_effect=fake_read_text),
+                  contextlib.redirect_stdout(io.StringIO())):
+                LIFECYCLE.cuda_candidate_start(
+                    revision, max_audio_seconds=1200, max_upload_bytes=40_000_000,
+                    native_timeout_seconds=1800, promotion=True,
+                    relay_image='homecompute/stt-http:2.0.0-cpp-' + revision[:12],
+                    relay_image_id='sha256:' + 'a' * 64,
+                    maintenance_bundle_sha256='b' * 64)
+
+        compose_cuda.assert_called_once()
+        candidate_smoke.assert_called_once_with()
+        relay_promotion.assert_called_once()
+        relay_smoke.assert_called_once_with()
+        self.assertTrue(any(call.args[1] is True and call.args[0].startswith('HC-STT-')
+                            for call in gate.call_args_list))
+        self.assertEqual(run.call_args_list[-2].args[0],
+                         ['docker', 'update', '--restart', 'unless-stopped', LIFECYCLE.CUDA_CANDIDATE])
+        self.assertEqual(run.call_args_list[-1].args[0],
+                         ['docker', 'update', '--restart', 'unless-stopped', 'relay-candidate-id'])
+        self.assertTrue(any(call.args == ('gb10-whisper-cpp-primary',) for call in inspect_mock.call_args_list))
+
     def test_promotion_refuses_model_transition_if_maintenance_install_fails(self):
         with patch.object(LIFECYCLE, 'guards'), \
                 patch.object(LIFECYCLE, 'ensure_spark_maintenance_ownership',
