@@ -326,6 +326,7 @@ class AdapterContractTests(unittest.TestCase):
         self.assertEqual(strict["source_checksums"], {
             path: spec[0] for path, spec in CUDA_PATCHER.PATCHES.items()
         })
+        self.assertIn("!ggml_backend_buffer_is_host(buffer)", CUDA_PATCHER.IMPLEMENTATION)
         fixture = b"one exact source anchor"
         patched = CUDA_PATCHER.patch_bytes(fixture, hashlib.sha256(fixture).hexdigest(),
                                            "exact source anchor", "changed source anchor")

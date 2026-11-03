@@ -80,7 +80,8 @@ IMPLEMENTATION = """size_t whisper_model_gpu_buffer_size(struct whisper_context 
     for (ggml_backend_buffer_t buffer : ctx->model.buffers) {
         ggml_backend_buffer_type_t buft = ggml_backend_buffer_get_type(buffer);
         ggml_backend_dev_t dev = ggml_backend_buft_get_device(buft);
-        if (dev && (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU ||
+        if (!ggml_backend_buffer_is_host(buffer) && dev &&
+                (ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_GPU ||
                     ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_IGPU)) {
             size += ggml_backend_buffer_get_size(buffer);
         }
