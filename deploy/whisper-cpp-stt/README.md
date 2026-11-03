@@ -146,11 +146,21 @@ upstream v1.9.1 CMake source supports `121a-real` with CUDA 12.9 and newer;
 the candidate pins that architecture explicitly. NVIDIA lists GB10 as compute
 capability 12.1, and the inspected host driver is 580.178.04. CUDA 13.x's
 documented Linux compatibility floor is R580. This supports building the
-candidate, but exact runtime compatibility, model load, memory use, quality,
-and latency remain unverified until a guarded GPU qualification completes.
+candidate, but the patched CUDA source has not yet been compiled on the target;
+exact runtime compatibility, model load, memory use, quality, and latency
+remain unverified until a guarded GPU qualification completes.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
-visible device, and it does not pass `--no-gpu` to the pinned server. CPU remains
+visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
+build applies `strict-gpu-buffer-proof-v1` to the exact pinned upstream source
+files after verifying their SHA-256 digests. It refuses model initialization if
+the requested GPU backend cannot initialize or if no model weight buffer was
+actually allocated on a GPU backend. Native `/health` reports the resulting
+GPU model-buffer byte count; the adapter and Compose healthcheck reject a CUDA
+candidate reporting zero or CPU placement. This proves model weights were
+placed on GPU memory, not that every operation or model buffer runs there.
+The patch changes no model weights. Its upstream base commit, patcher checksum,
+and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
 the default mode and the separate CPU image is built with `GGML_CUDA=OFF`.
 Neither Compose file publishes a host port or joins the production inference
 network. The candidate has its own private Docker network, read-only model and

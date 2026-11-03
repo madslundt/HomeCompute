@@ -36,6 +36,8 @@ CPP_MODEL_SHA256 = '64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594
 CPP_MODEL_PATH = Path('/srv/gb10-ai/cache/whisper-cpp/ggml-large-v3.bin')
 CPP_API_KEY_PATH = Path('/etc/gb10-ai/secrets/whisper_cpp_api_key')
 CPP_RUNTIME_COMMIT = 'f049fff95a089aa9969deb009cdd4892b3e74916'
+CPP_CUDA_PATCH_VERSION = 'strict-gpu-buffer-proof-v1'
+CPP_CUDA_PATCHER_SHA256 = '634fe25b3c1e96e38e88ccf023d5819fc908b0c94c38b49eb6a80b6ba3616fc9'
 REVISION = '06f233fe06e710322aca913c1bc4249a0d71fce1'
 MODEL = 'openai/whisper-large-v3'
 LEGACY_REPOSITORIES = ('syvai/hviske-v5.3', 'openai/whisper-large-v3-turbo')
@@ -367,6 +369,7 @@ def compose_cuda(*arguments, timeout=3600, revision='', image_id='',
                    'WHISPER_CPP_IMAGE_ID': image_id,
                    'WHISPER_CPP_MODEL_FILE': str(CPP_MODEL_PATH),
                    'WHISPER_CPP_API_KEY_FILE': str(CPP_API_KEY_PATH),
+                   'WHISPER_CPP_CUDA_PATCHER_SHA256': CPP_CUDA_PATCHER_SHA256,
                    'WHISPER_CPP_MAX_AUDIO_SECONDS': str(max_audio_seconds),
                    'WHISPER_CPP_MAX_UPLOAD_BYTES': str(max_upload_bytes),
                    'WHISPER_CPP_NATIVE_TIMEOUT_SECONDS': str(native_timeout_seconds),
@@ -451,7 +454,11 @@ def cuda_candidate_image_id(revision):
         'io.homecompute.whisper-cpp.runtime-commit': CPP_RUNTIME_COMMIT,
         'io.homecompute.whisper-cpp.model-sha256': CPP_MODEL_SHA256,
         'io.homecompute.whisper-cpp.backend': 'cuda-121a',
+        'io.homecompute.whisper-cpp.cuda-patch': CPP_CUDA_PATCH_VERSION,
+        'io.homecompute.whisper-cpp.cuda-patcher-sha256': CPP_CUDA_PATCHER_SHA256,
         'io.homecompute.whisper-cpp.cuda-base': CUDA_BASE_IMAGE,
+        'io.homecompute.whisper-cpp.cuda-patch': CPP_CUDA_PATCH_VERSION,
+        'io.homecompute.whisper-cpp.cuda-patcher-sha256': CPP_CUDA_PATCHER_SHA256,
     }
     if (image.get('Os') != 'linux' or image.get('Architecture') != 'arm64' or
             any(labels.get(key) != value for key, value in expected.items())):
@@ -770,6 +777,12 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
                       'import json,urllib.request;print(json.dumps(json.load(urllib.request.urlopen("http://127.0.0.1:8000/health",timeout=3))))'], timeout=5)
         metadata = json.loads(health.stdout)
         if (metadata.get('status') != 'ok' or metadata.get('device') != 'cuda' or
+                metadata.get('compute_backend') != 'cuda' or
+                metadata.get('strict_gpu_patch') != CPP_CUDA_PATCH_VERSION or
+                metadata.get('strict_gpu_patcher_sha256') != CPP_CUDA_PATCHER_SHA256 or
+                not isinstance(metadata.get('gpu_model_buffer_bytes'), int) or
+                isinstance(metadata.get('gpu_model_buffer_bytes'), bool) or
+                metadata.get('gpu_model_buffer_bytes', 0) <= 0 or
                 metadata.get('model_sha256') != CPP_MODEL_SHA256 or
                 metadata.get('runtime_commit') != CPP_RUNTIME_COMMIT or
                 metadata.get('homecompute_revision') != revision or metadata.get('image_id') != image_id):

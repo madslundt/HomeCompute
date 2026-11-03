@@ -38,6 +38,8 @@ def load_file(name: str, path: Path):
 
 VERIFY = load_file("verify_model", DEPLOY / "verify_model.py")
 ADAPTER = load_file("whisper_cpp_adapter", DEPLOY / "adapter.py")
+CUDA_PATCHER = load_file("whisper_cpp_cuda_patcher", DEPLOY / "patch-whisper-cpp-cuda.py")
+LIFECYCLE = load_file("whisper_cpp_lifecycle", ROOT / "scripts/setup-whisper-stt.py")
 
 
 def synthetic_model(header_overrides: dict[str, int] | None = None) -> bytes:
@@ -295,6 +297,43 @@ class AdapterContractTests(unittest.TestCase):
         with patch.object(ADAPTER.ctypes, "CDLL", return_value=SimpleNamespace(cudaGetDeviceCount=one_device)):
             ADAPTER.require_cuda_device()
 
+    def test_cuda_readiness_requires_native_gpu_model_buffer_placement(self):
+        cuda = ADAPTER.CandidateConfig(Path("/model"), Path("/key"), device="cuda")
+        cpu = ADAPTER.CandidateConfig(Path("/model"), Path("/key"), device="cpu")
+        self.assertTrue(ADAPTER.native_health_is_valid(cuda, {
+            "status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 1,
+        }))
+        for fallback in (
+            {"status": "ok", "compute_backend": "cpu", "gpu_model_buffer_bytes": 0},
+            {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 0},
+            {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": True},
+            {"status": "ok", "device": "cuda"},
+        ):
+            with self.subTest(fallback=fallback):
+                self.assertFalse(ADAPTER.native_health_is_valid(cuda, fallback))
+        self.assertTrue(ADAPTER.native_health_is_valid(cpu, {"status": "ok"}))
+        self.assertFalse(ADAPTER.native_health_is_valid(cuda, {"status": "loading model"}))
+
+    def test_cuda_strict_patch_is_pinned_and_source_checksums_match_model_pin(self):
+        pin = json.loads((DEPLOY / "model-pin.json").read_text())
+        strict = pin["cuda_candidate"]["strict_gpu_patch"]
+        self.assertEqual(strict["version"], CUDA_PATCHER.PATCH_VERSION)
+        self.assertEqual(strict["patcher_sha256"], hashlib.sha256(
+            (DEPLOY / "patch-whisper-cpp-cuda.py").read_bytes()).hexdigest())
+        self.assertEqual(strict["patcher_sha256"], LIFECYCLE.CPP_CUDA_PATCHER_SHA256)
+        self.assertEqual(strict["patcher_sha256"], ADAPTER.CUDA_PATCHER_SHA256)
+        self.assertEqual(strict["version"], ADAPTER.CUDA_PATCH_VERSION)
+        self.assertEqual(strict["source_checksums"], {
+            path: spec[0] for path, spec in CUDA_PATCHER.PATCHES.items()
+        })
+        fixture = b"one exact source anchor"
+        patched = CUDA_PATCHER.patch_bytes(fixture, hashlib.sha256(fixture).hexdigest(),
+                                           "exact source anchor", "changed source anchor")
+        self.assertEqual(patched, b"one changed source anchor")
+        with self.assertRaisesRegex(ValueError, "checksum changed"):
+            CUDA_PATCHER.patch_bytes(fixture + b"x", hashlib.sha256(fixture).hexdigest(),
+                                     "exact source anchor", "changed source anchor")
+
     def test_tracked_pins_and_compose_stay_cpu_private_and_opt_in(self):
         pin = json.loads((DEPLOY / "model-pin.json").read_text())
         compose = (DEPLOY / "compose.yaml").read_text()
@@ -336,6 +375,10 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn("CMAKE_CUDA_ARCHITECTURES=121a-real", dockerfile)
         self.assertIn("-DGGML_CUDA=ON", dockerfile)
         self.assertIn('io.homecompute.whisper-cpp.backend="cuda-121a"', dockerfile)
+        self.assertIn('io.homecompute.whisper-cpp.cuda-patch="strict-gpu-buffer-proof-v1"', dockerfile)
+        self.assertIn("CUDA_PATCHER_SHA256: ${WHISPER_CPP_CUDA_PATCHER_SHA256:?", compose)
+        self.assertIn("gpu_model_buffer_bytes", compose)
+        self.assertIn(ADAPTER.CUDA_PATCHER_SHA256, compose)
         self.assertIn("WHISPER_CPP_DEVICE", (DEPLOY / "adapter.py").read_text())
 
     def test_verbose_native_segments_keep_text_timing_and_exact_char_anchors(self):
@@ -442,7 +485,9 @@ class AdapterContractTests(unittest.TestCase):
         config = ADAPTER.CandidateConfig(
             Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
             image_id="sha256:" + "b" * 64, device="cuda")
-        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0))
+        native_health = {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 4096}
+        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0),
+                                         native_health=native_health)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -450,6 +495,10 @@ class AdapterContractTests(unittest.TestCase):
             with urllib.request.urlopen(url, timeout=3) as response:
                 healthy = json.loads(response.read())
             self.assertEqual(healthy["device"], "cuda")
+            self.assertEqual(healthy["compute_backend"], "cuda")
+            self.assertEqual(healthy["gpu_model_buffer_bytes"], 4096)
+            self.assertEqual(healthy["strict_gpu_patch"], ADAPTER.CUDA_PATCH_VERSION)
+            self.assertEqual(healthy["strict_gpu_patcher_sha256"], ADAPTER.CUDA_PATCHER_SHA256)
             self.assertEqual(healthy["inference_busy"], False)
             self.assertTrue(server.inflight.acquire(blocking=False))
             try:
@@ -467,7 +516,9 @@ class AdapterContractTests(unittest.TestCase):
         config = ADAPTER.CandidateConfig(
             Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
             image_id="sha256:" + "b" * 64, device="cuda")
-        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0))
+        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0),
+                                         native_health={"status": "ok", "compute_backend": "cuda",
+                                                        "gpu_model_buffer_bytes": 4096})
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:

@@ -11,6 +11,7 @@ services:
       args:
         CUDA_BASE_IMAGE: nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9
         WHISPER_CPP_COMMIT: f049fff95a089aa9969deb009cdd4892b3e74916
+        CUDA_PATCHER_SHA256: ${WHISPER_CPP_CUDA_PATCHER_SHA256:?Set to the reviewed strict-GPU patcher checksum}
         HOME_COMPUTE_REVISION: ${WHISPER_CPP_HOME_COMPUTE_REVISION:?Set to the reviewed HomeCompute source commit}
     container_name: gb10-whisper-cpp-cuda-candidate
     init: true
@@ -42,7 +43,7 @@ services:
     logging:
       driver: none
     healthcheck:
-      test: [CMD, python3, -I, -B, -c, "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); raise SystemExit(0 if d.get('status')=='ok' and d.get('device')=='cuda' else 1)"]
+      test: [CMD, python3, -I, -B, -c, "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); raise SystemExit(0 if d.get('status')=='ok' and d.get('device')=='cuda' and d.get('compute_backend')=='cuda' and d.get('strict_gpu_patch')=='strict-gpu-buffer-proof-v1' and d.get('strict_gpu_patcher_sha256')=='634fe25b3c1e96e38e88ccf023d5819fc908b0c94c38b49eb6a80b6ba3616fc9' and type(d.get('gpu_model_buffer_bytes')) is int and d['gpu_model_buffer_bytes']>0 else 1)"]
       interval: 15s
       timeout: 5s
       retries: 8

@@ -45,6 +45,8 @@ for _name in ("MODEL_ID", "ALIASES", "MAX_AUDIO_SECONDS", "MAX_BODY_BYTES",
 
 
 RUNTIME_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
+CUDA_PATCH_VERSION = "strict-gpu-buffer-proof-v1"
+CUDA_PATCHER_SHA256 = "634fe25b3c1e96e38e88ccf023d5819fc908b0c94c38b49eb6a80b6ba3616fc9"
 NATIVE_PORT = 8081
 
 
@@ -150,10 +152,12 @@ class CandidateServer(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 4
 
-    def __init__(self, config: CandidateConfig, api_key: bytes, address=("0.0.0.0", 8000), native_process=None):
+    def __init__(self, config: CandidateConfig, api_key: bytes, address=("0.0.0.0", 8000),
+                 native_process=None, native_health=None):
         self.config = config
         self.api_key = api_key
         self.native_process = native_process
+        self.native_health = native_health if isinstance(native_health, dict) else {}
         self.inflight = threading.BoundedSemaphore(1)
         super().__init__(address, CandidateHandler)
 
@@ -202,7 +206,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            ready = self.server.native_process is None or self.server.native_process.poll() is None
+            process_ready = self.server.native_process is None or self.server.native_process.poll() is None
+            ready = process_ready and native_health_is_valid(self.server.config, self.server.native_health)
             idle_probe = self.server.inflight.acquire(blocking=False)
             busy = not idle_probe
             if idle_probe:
@@ -219,6 +224,10 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "homecompute_revision": self.server.config.homecompute_revision,
                 "image_id": self.server.config.image_id,
                 "device": self.server.config.device,
+                "compute_backend": self.server.native_health.get("compute_backend", "cpu"),
+                "gpu_model_buffer_bytes": self.server.native_health.get("gpu_model_buffer_bytes", 0),
+                "strict_gpu_patch": CUDA_PATCH_VERSION if self.server.config.device == "cuda" else None,
+                "strict_gpu_patcher_sha256": CUDA_PATCHER_SHA256 if self.server.config.device == "cuda" else None,
                 "decoding_defaults": {
                     "language": "auto", "prompt": None, "max_context": 0,
                     "strategy": "beam_search", "beam_size": 5, "best_of": 5,
@@ -283,12 +292,25 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 self.server.inflight.release()
 
 
-def _native_health(timeout: float = 1.0) -> bool:
+def native_health_is_valid(config: CandidateConfig, health: object) -> bool:
+    if not isinstance(health, dict) or health.get("status") != "ok":
+        return False
+    if config.device == "cpu":
+        return True
+    gpu_bytes = health.get("gpu_model_buffer_bytes")
+    return (health.get("compute_backend") == "cuda" and isinstance(gpu_bytes, int) and
+            not isinstance(gpu_bytes, bool) and gpu_bytes > 0)
+
+
+def _native_health(timeout: float = 1.0) -> dict | None:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{NATIVE_PORT}/health", timeout=timeout) as response:
-            return response.status == 200 and json.loads(response.read(512)).get("status") == "ok"
-    except (OSError, urllib.error.URLError, json.JSONDecodeError):
-        return False
+            if response.status != 200:
+                return None
+            value = json.loads(response.read(512))
+            return value if isinstance(value, dict) else None
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
 
 
 def native_command(config: CandidateConfig) -> list[str]:
@@ -318,12 +340,17 @@ def run() -> int:
         while time.monotonic() < deadline:
             if native.poll() is not None:
                 return 1
-            if _native_health():
-                server = CandidateServer(config, key, native_process=native)
+            native_health = _native_health()
+            if native_health_is_valid(config, native_health):
+                server = CandidateServer(config, key, native_process=native, native_health=native_health)
                 # Force successful, checksum-bound startup before advertising readiness.
                 print(json.dumps({"event": "ready", "model_sha256": model["sha256"],
                                   "runtime_commit": RUNTIME_COMMIT,
-                                  "device": config.device}, sort_keys=True), flush=True)
+                                  "device": config.device,
+                                  "compute_backend": native_health.get("compute_backend", "cpu"),
+                                  "gpu_model_buffer_bytes": native_health.get("gpu_model_buffer_bytes", 0),
+                                  "strict_gpu_patch": CUDA_PATCH_VERSION if config.device == "cuda" else None},
+                                 sort_keys=True), flush=True)
                 server.serve_forever(poll_interval=0.25)
                 return 0
             time.sleep(0.25)

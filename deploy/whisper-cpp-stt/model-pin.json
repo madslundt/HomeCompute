@@ -11,7 +11,16 @@
     "base_image": "nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9",
     "cuda_toolkit": "13.1.115",
     "architecture": "121a-real",
-    "minimum_linux_driver_major": 580
+    "minimum_linux_driver_major": 580,
+    "strict_gpu_patch": {
+      "version": "strict-gpu-buffer-proof-v1",
+      "patcher_sha256": "634fe25b3c1e96e38e88ccf023d5819fc908b0c94c38b49eb6a80b6ba3616fc9",
+      "source_checksums": {
+        "src/whisper.cpp": "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
+        "examples/server/server.cpp": "4edae36f55e3a751583cd2dfe32bb5b5516cf59a3c137254f08c7ac0bd3f5d59",
+        "include/whisper.h": "6c1c70a5d4b74556f4253e51a13874ad013513b0ae62e779c0e30ffde3dc30ba"
+      }
+    }
   },
   "model": {
     "repository": "ggerganov/whisper.cpp",

@@ -95,6 +95,8 @@ class MigrationTests(unittest.TestCase):
             'io.homecompute.whisper-cpp.model-sha256': LIFECYCLE.CPP_MODEL_SHA256,
             'io.homecompute.whisper-cpp.backend': 'cuda-121a',
             'io.homecompute.whisper-cpp.cuda-base': LIFECYCLE.CUDA_BASE_IMAGE,
+            'io.homecompute.whisper-cpp.cuda-patch': LIFECYCLE.CPP_CUDA_PATCH_VERSION,
+            'io.homecompute.whisper-cpp.cuda-patcher-sha256': LIFECYCLE.CPP_CUDA_PATCHER_SHA256,
         }
         good = {'Id': image_id, 'Os': 'linux', 'Architecture': 'arm64',
                 'Config': {'Labels': labels}}
