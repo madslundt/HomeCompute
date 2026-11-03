@@ -5,8 +5,11 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import re
 import stat
+import subprocess
+import sys
 from types import SimpleNamespace
 from pathlib import Path
 import tempfile
@@ -169,6 +172,129 @@ class MigrationTests(unittest.TestCase):
         ])
         self.assertEqual(tx['state'], 'rolled-back')
         self.assertEqual(journal['rollback_status'], 'completed')
+
+    def test_cuda_exposed_candidate_timeout_remains_busy_guarded_on_retry(self):
+        candidate = {'Id': 'cpp-cuda-id', 'Image': 'sha256:' + 'c' * 64,
+                     'State': {'Running': True},
+                     'Config': {'Labels': {'com.docker.compose.project': LIFECYCLE.CUDA_CANDIDATE_PROJECT,
+                                           'com.docker.compose.service': 'whisper-cpp-cuda'}}}
+        primary = {'Id': 'primary-id', 'Image': 'sha256:' + 'b' * 64,
+                   'Name': '/gb10-whisper-primary',
+                   'State': {'Running': True, 'Health': {'Status': 'healthy'}}}
+        tx = {'revision': 'd' * 40, 'state': 'candidate-running', 'candidate_exposed': True,
+              'candidate_image_id': candidate['Image'], 'primary_id': primary['Id'],
+              'primary_image': primary['Image'], 'primary_restart': 'unless-stopped'}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(LIFECYCLE, 'STATE', Path(directory)), \
+                patch.object(LIFECYCLE, 'inspect', side_effect=[candidate]) as inspect, \
+                patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout='{"busy":true}', returncode=0)) as run, \
+                patch.object(LIFECYCLE.time, 'monotonic', side_effect=[0, 181]), \
+                patch.object(LIFECYCLE.time, 'sleep'):
+            with self.assertRaisesRegex(ValueError, 'did not become idle') as error:
+                LIFECYCLE.cuda_candidate_rollback(tx)
+            metadata = LIFECYCLE.cuda_candidate_failure(tx, error.exception, rollback=True)
+            journal = json.loads((Path(directory) / 'cuda-candidate.json').read_text())
+            self.assertEqual(journal['state'], 'rollback-failed')
+            self.assertTrue(journal['candidate_exposed'])
+            self.assertEqual(metadata['rollback_failure_classification'], 'unknown')
+            self.assertNotIn('docker stop', repr(run.call_args_list))
+            inspect.assert_called_once_with(LIFECYCLE.CUDA_CANDIDATE)
+
+            idle_candidate = candidate
+            primary_healthy = primary
+            inspection_results = [idle_candidate, None, primary_healthy, primary_healthy]
+            def inspect_retry(name):
+                return inspection_results.pop(0)
+            idle_results = [SimpleNamespace(stdout='{"busy":false}', returncode=0) for _ in range(3)]
+            def run_retry(command, **_kwargs):
+                if command[:3] == ['docker', 'exec', LIFECYCLE.CUDA_CANDIDATE]:
+                    return idle_results.pop(0)
+                return SimpleNamespace(stdout='', returncode=0)
+            with patch.object(LIFECYCLE, 'inspect', side_effect=inspect_retry), \
+                    patch.object(LIFECYCLE, 'run', side_effect=run_retry) as retry_run, \
+                    patch.object(LIFECYCLE.time, 'monotonic', return_value=0), \
+                    patch.object(LIFECYCLE.time, 'sleep'):
+                LIFECYCLE.cuda_candidate_rollback(tx)
+            self.assertEqual(tx['state'], 'rolled-back')
+            self.assertTrue(any(call.args[0][:3] == ['docker', 'exec', LIFECYCLE.CUDA_CANDIDATE]
+                                for call in retry_run.call_args_list))
+            self.assertEqual(len(idle_results), 0)
+
+    def test_cuda_candidate_smoke_executes_valid_multipart_pcm_child_program(self):
+        code = LIFECYCLE.cuda_candidate_smoke_program()
+        body_requests = []
+        secret = 'private-test-token-with-enough-bytes'
+        def fake_open(path, mode='r', *args, **kwargs):
+            if path == '/fake/key':
+                return io.BytesIO(secret.encode('ascii'))
+            return open(path, mode, *args, **kwargs)
+        def fake_urlopen(request, timeout):
+            body_requests.append((request, timeout))
+            return io.BytesIO(b'{"text":"synthetic"}')
+        stdout = io.StringIO()
+        with patch('builtins.open', side_effect=fake_open), \
+                patch('urllib.request.urlopen', side_effect=fake_urlopen), \
+                patch.dict(os.environ, {'WHISPER_CPP_API_KEY_FILE': '/fake/key'}), \
+                contextlib.redirect_stdout(stdout):
+            exec(compile(code, '<cuda-smoke-child>', 'exec'), {'__name__': 'smoke_test'})
+        self.assertEqual(len(body_requests), 1)
+        request, timeout = body_requests[0]
+        self.assertEqual(timeout, 120)
+        self.assertEqual(request.get_header('Authorization'), 'Bearer ' + secret)
+        body = request.data
+        self.assertIn(b'\r\nContent-Disposition:', body)
+        self.assertIn(b'\r\n\r\n', body)
+        self.assertNotIn(b'\\r\\n', body)
+        wav_bytes = body.split(b'Content-Type: audio/wav\r\n\r\n', 1)[1].split(b'\r\n--smoke--', 1)[0]
+        with __import__('wave').open(io.BytesIO(wav_bytes), 'rb') as wav:
+            self.assertEqual((wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes()),
+                             (1, 2, 16000, 16000))
+            self.assertEqual(wav.readframes(16000), bytes(32000))
+        self.assertNotIn(secret, stdout.getvalue())
+
+    def test_cuda_candidate_key_check_executes_and_rejects_newline(self):
+        program = LIFECYCLE.cuda_candidate_key_check_program()
+        with tempfile.TemporaryDirectory() as directory:
+            key = Path(directory) / 'key'
+            for value, expected in ((b'private-key-with-enough-bytes', 0),
+                                    (b'private-key-with-enough-bytes\n', 1)):
+                key.chmod(0o600) if key.exists() else None
+                key.write_bytes(value)
+                key.chmod(0o440)
+                result = subprocess.run([sys.executable, '-I', '-B', '-c', program, str(key)],
+                                        env={**os.environ, 'WHISPER_CPP_API_KEY_FILE': str(key)},
+                                        capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode == 0, expected == 0)
+                self.assertNotIn(value.decode('ascii'), result.stdout + result.stderr)
+
+    def test_active_cuda_journal_blocks_other_primary_mutating_lifecycles_before_docker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'cuda-candidate.json').write_text(json.dumps({
+                'revision': 'd' * 40, 'state': 'rollback-failed', 'candidate_exposed': True,
+            }))
+            operations = (
+                ('apply', lambda: LIFECYCLE.apply('d' * 40)),
+                ('classic rollback', lambda: LIFECYCLE.rollback({'old': []})),
+                ('runtime candidate', lambda: LIFECYCLE.candidate_start('d' * 40)),
+                ('runtime rollback', lambda: LIFECYCLE.candidate_stop('d' * 40)),
+                ('retire', lambda: LIFECYCLE.retire('d' * 40)),
+            )
+            for label, operation in operations:
+                with self.subTest(label=label), \
+                        patch.object(LIFECYCLE, 'STATE', state), \
+                        patch.object(LIFECYCLE, 'protected'), \
+                        patch.object(LIFECYCLE, 'guards'), \
+                        patch.object(LIFECYCLE, 'run') as run, \
+                        patch.object(LIFECYCLE, 'compose') as compose, \
+                        patch.object(LIFECYCLE, 'compose_cuda') as compose_cuda, \
+                        patch.object(LIFECYCLE, 'inspect') as inspect:
+                    with self.assertRaisesRegex(ValueError, 'cuda-candidate-rollback'):
+                        operation()
+                    run.assert_not_called()
+                    compose.assert_not_called()
+                    compose_cuda.assert_not_called()
+                    inspect.assert_not_called()
 
     def test_cuda_candidate_bootstrap_actions_are_explicit(self):
         for action in ('prepare-cuda-candidate', 'cuda-candidate',
