@@ -7,6 +7,11 @@
   "openclaw_version": "2026.9.2",
   "node_version": "v24.22.1",
   "schema_versions": {"agent": 19, "state": 15},
+  "runtime_modules": {
+    "child_result": {"path": "dist/subagent-announce-output-Cy2Rx3_K.js", "sha256": "71523669a7f466e8c3a240f7d0a8485a8fa8882f5920add16176685cb5d34dc1"},
+    "activity": {"path": "dist/gateway-active-work-DdwRky6I.js", "sha256": "286cd71c28dd945b266bd96df9c6b2242e419de0052203e070d4e838c8997a48"},
+    "plugin_loader": {"path": "dist/plugin-module-loader-cache-lf3kAaBw.js", "sha256": "e09d22fd6e1877f388c44be8e837dec5ebb0cb8002d29ddf41c26ef7f84c0d08"}
+  },
   "platform": "linux/amd64",
   "image": "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:23b806f148ba3e2c57b923f659fe2e6caa1dded684fc3ae410c41c2e17a73890",
   "image_config": "sha256:e10fa6554bdd92f0176d0eb405f37dc554c5c02007fe33a46ad6835a59d89478",

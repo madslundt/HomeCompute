@@ -196,3 +196,112 @@ and synthetic stores separate throughout qualification.
 [Mattermost package](https://registry.npmjs.org/@openclaw%2fmattermost/2026.9.2),
 [HomeCompute managed runbook](../openclaw-nemoclaw.md),
 [HomeCompute recovery helper](../../scripts/restore-openclaw-nemoclaw.py).
+
+## Published 2026.9.2 bundle patch inventory
+
+Follow-up source-only inspection downloaded the published core and Mattermost
+tarballs, verified their npm SHA-512 integrity, and read their extracted source.
+No downloaded JavaScript or package lifecycle script was executed. The local
+HomeCompute pure Python overlay functions were evaluated against those bytes;
+both retained their expected refusal of unknown preimage hashes. Hypothetical
+patch hashes below were calculated in memory without modifying implementation
+or installed runtime files.
+
+The OpenClaw `v2026.9.2` tag resolves to commit
+`3928bad9badfcb6c7d140530435e806fb8092190`. These hashes identify **pristine npm
+artifacts**, not yet the corresponding files inside NVIDIA's managed image.
+NVIDIA applies its own patches while building that image; inspect and reconcile
+the exact managed preimages before using any of these hashes as an installer
+admission pin.
+[Core tarball](https://registry.npmjs.org/openclaw/-/openclaw-2026.9.2.tgz),
+[Mattermost tarball](https://registry.npmjs.org/@openclaw/mattermost/-/mattermost-2026.9.2.tgz),
+[NVIDIA managed Dockerfile](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/Dockerfile).
+
+| Seam in published artifact | Exact new relative path | SHA-256 of unmodified npm bytes |
+| --- | --- | --- |
+| Child result evidence | core `dist/subagent-announce-output-Cy2Rx3_K.js` | `71523669a7f466e8c3a240f7d0a8485a8fa8882f5920add16176685cb5d34dc1` |
+| Embedded agent runner | core `dist/embedded-agent-D9hkv0XX.js` | `de162cbb3725c0ddd7bb0521cd54309095b09c5b15c92d994a7c49d442024c00` |
+| Reply/yield dispatcher | core `dist/agent-runner.runtime-cwyzm408.js` | `135a52075af80beb1cc5fd22a7e72324308f099208b00de00fb13967bf923911` |
+| Mattermost ingress | plugin `dist/channel.runtime-B454n78J.js` | `17f9cc55ddbbd3f2393ba459746dec1c711ae79255b0c18afe16908f780d45eb` |
+| Core ingress monitor | core `dist/ingress-monitor--JQILMnk.js` | `153485e44ec82352c72c79662bdf767abca222d739e9f82908aa3b3be02ee251` |
+| Active-work inventory | core `dist/gateway-active-work-DdwRky6I.js` | `286cd71c28dd945b266bd96df9c6b2242e419de0052203e070d4e838c8997a48` |
+| Native plugin source loader | core `dist/plugin-module-loader-cache-lf3kAaBw.js` | `e09d22fd6e1877f388c44be8e837dec5ebb0cb8002d29ddf41c26ef7f84c0d08` |
+| Global hook runner | core `dist/hook-runner-global-0kfmMG4T.js` | `7f9473df33a148d511815fca56b1349cc5525e516680a71da22ca2cc863d047d` |
+| Optional browser-schema canary | core `dist/browser-tool.schema-CFr5Al89.js` | `b3893011da781d2ee592f94de9fbe954d6817bb5cf2c9ab0e01bc7064310edfd` |
+
+### Child evidence: behavior remains; prepare a versioned port
+
+The new child module still sets `MAX_CHILD_COMPLETION_RESULT_CHARS = 512` and
+passes that limit to `formatChildResultData(resultText)`. Each of the three
+existing [child-result overlay](../../scripts/setup-openclaw-child-results.py)
+anchors occurs exactly once. Applying the same bounded single-child extension
+in memory yields SHA-256
+`ed09c0b16e452ec159085ef35b3475cd20c15b6ffbf8620c4b24517588c86bad`.
+This seam has not incorporated our extension. Reproduce loss of essential
+single-child evidence, then qualify a version-specific port with the same
+single/multiple/aggregate limits, truncation and injection cases. Anchor
+compatibility alone does not prove a functioning multi-step handoff.
+
+### Yield acknowledgement: retire the old patch for this candidate
+
+The old `suppressToolErrorWarnings: runParams.suppressToolErrorWarnings` seam is
+absent. Upstream now marks generated tool warnings with private metadata and
+handles the collision in `agent-runner-result-payloads.ts`: when an eligible
+yield acknowledgement exists, generated warnings do not consume the final
+reply slot; they are filtered before terminal-content selection, and the
+acknowledgement is rendered when no other terminal payload exists.
+
+This directly addresses the failure that motivated the old
+[yield overlay](../../scripts/setup-openclaw-yield-acknowledgment.py), using a
+different ownership point. Do not port that overlay into the new embedded
+runner. Retain its old-version recovery support, and qualify the new dispatcher
+with one acknowledgement despite an earlier tool error, a genuine terminal
+failure, an empty/missing acknowledgement, missing continuation, silent cases,
+and subsequent child completion. Source shows the upstream fix; candidate
+runtime regression acceptance remains outstanding.
+[Exact reply dispatcher source](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/auto-reply/reply/agent-runner-result-payloads.ts),
+[acknowledgement eligibility](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/auto-reply/reply/sessions-yield-acknowledgment.ts).
+
+### Queue gate: API seam remains, HomeCompute readiness gate is absent
+
+The Mattermost module retains exactly one
+`waitForDeliveryIdleBeforeRepump: true` anchor and does not supply `runPumpTask`.
+The core monitor still invokes `options.runPumpTask(runPump)` when provided,
+otherwise `runPump()` directly. The existing
+[queue overlay](../../scripts/setup-openclaw-llm-queue.py)'s import and callback,
+applied in memory, produce SHA-256
+`a749d8665eab1280fac1247713c72a3b356f0936b04dafbd72e82bad74247284`.
+Prepare a versioned port preserving pre-claim waiting, pump cleanup and abort
+semantics; the native monitor must own all admitted work. Resolve the installed
+9.2 plugin through verified native install records rather than retaining the
+old `openclaw-mattermost-41605c6faa` project directory assumption.
+[Core monitor source](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/channels/message/ingress-monitor.ts).
+
+### Safety imports and SDK: port internal references, test real enforcement
+
+The [activity helper](../../deploy/openclaw/safety-plugin/llm-queue.mjs) must
+select the candidate's exact active-work filename and preimage. The new module
+still exports `createGatewayActiveWorkSnapshot` as `t`, returning
+`counts.totalActive`; that count remains a composite inventory of active/queued
+work, not a count of distinct user tasks. The old filename/hash will correctly
+refuse or fail as unavailable on the new artifact. Verify the managed install's
+runtime/symlink ownership before selecting an import path.
+
+The [native loader test](../../tests/openclaw-native-loader.test.mjs) pins an old
+filename. The new source loader is still export `n`; its `modulePath`, `rootDir`,
+`aliasMap` and `importerUrl` inputs remain visible. Adapt the test's versioned
+selection and run it against the real candidate loader. Reading those inputs
+does not establish module-cache identity or loaded policy behavior.
+
+The published declarations retain `registerService` and
+`registerGatewayMethod(method, handler, {scope})`. The global hook runner
+explicitly sets `before_tool_call` to fail closed, sorts higher priorities first,
+keeps a blocking result sticky and stops later handlers after a block. These
+are compatible source contracts for the current safety approach, but actual
+registration, native caller identity, final parameter rewriting, exceptions,
+RPC scope and public/private destination denials need candidate SDK tests.
+Local plugin unit stubs cannot substitute for those checks. Do not widen grants
+to work around a plugin failing to load.
+[Hook runner source](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/plugins/hooks.ts),
+[tool-call enforcement](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/agents/agent-tools.before-tool-call.ts),
+[active-work source](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/infra/gateway-active-work.ts).

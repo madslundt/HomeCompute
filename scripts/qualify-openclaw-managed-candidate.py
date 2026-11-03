@@ -23,6 +23,13 @@ const crypto = require('node:crypto');
 const base = '/usr/local/lib/nemoclaw/openclaw-runtime/node_modules/openclaw';
 const pkg = JSON.parse(fs.readFileSync(base + '/package.json', 'utf8'));
 const output = {node:process.version, uid:process.getuid(), core:pkg.version, schemas:pkg.openclaw?.schemaVersions};
+const expectedModules = __RUNTIME_MODULES__;
+output.runtime_modules = {};
+for (const [name, expected] of Object.entries(expectedModules)) {
+  const path = base + '/' + expected.path;
+  const hash = fs.existsSync(path) ? crypto.createHash('sha256').update(fs.readFileSync(path)).digest('hex') : null;
+  output.runtime_modules[name] = {sha256:hash,matches_published_npm:hash === expected.sha256};
+}
 const env = {PATH:process.env.PATH, HOME:'/sandbox', OPENCLAW_STATE_DIR:'/sandbox/state', NO_COLOR:'1', CI:'1',
   NODE_OPTIONS:'--max-old-space-size=768'};
 const version = cp.spawnSync('/usr/local/bin/openclaw', ['--version'], {encoding:'utf8',timeout:30000,env,maxBuffer:1048576});
@@ -37,6 +44,8 @@ fs.writeFileSync('/sandbox/config.json', JSON.stringify(config), {mode:0o600});
 const validation = cp.spawnSync('/usr/local/bin/openclaw', ['config','set','--batch-json','[]','--dry-run'],
   {encoding:'utf8',timeout:30000,env:{...env,OPENCLAW_CONFIG_PATH:'/sandbox/config.json'},maxBuffer:1048576});
 output.synthetic_config_valid = validation.status === 0;
+if (validation.status !== 0) process.stderr.write(JSON.stringify({phase:'synthetic-config-validation',
+  stdout:(validation.stdout || '').slice(0,32768),stderr:(validation.stderr || '').slice(0,32768)}) + '\n');
 output.patch_modules = {};
 for (const name of ['subagent-announce-output-CgCr3vGC.js','embedded-agent-DaSvA-Yk.js']) {
   const path = base + '/dist/' + name;
@@ -135,7 +144,8 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
         raise ValueError('managed image provenance mismatch')
     name='hc-oc140-'+uuid.uuid4().hex[:12]
     try:
-        result=call(command(data,name),input=PROBE,timeout=data['probe_timeout_seconds'])
+        result=call(command(data,name),input=PROBE.replace('__RUNTIME_MODULES__',json.dumps(data['runtime_modules'])),
+                    timeout=data['probe_timeout_seconds'])
     finally:
         cleanup(call,name)  # A Docker client timeout does not stop its server-side container.
     # All data in this fresh networkless container is synthetic; raw diagnostics stay private.
