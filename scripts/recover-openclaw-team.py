@@ -35,6 +35,29 @@ SUPERVISOR = module('supervise-openclaw-nemoclaw')
 PATCHES = [module('setup-openclaw-child-results'), module('setup-openclaw-yield-acknowledgment')]
 
 
+def unreviewed_layer_paths(raw):
+    rows = [(line[:1], line[2:]) for line in raw.splitlines() if len(line) > 2]
+    scratch = [(kind, path) for kind, path in rows if path.startswith('/var/tmp/')]
+    # setup-openclaw-public-browser.py keeps numbered before-images here.
+    # These are diagnostic copies, never runtime inputs or restored overlays.
+    known_scratch = bool(scratch) and all(
+        kind in {'A', 'C'} and re.fullmatch(
+            r'/var/tmp/homecompute-browser-before-[a-z0-9_]{8}(?:/(?:[0-3]|paths\.json))?', path)
+        for kind, path in scratch)
+    roots = ('/tmp', '/etc', '/usr/local/share/ca-certificates', '/usr/local/share/nemoclaw',
+             '/run', '/sandbox', '/opt/openshell', '/opt/homecompute-public-dns',
+             '/var/lib/nemoclaw', '/var/log')
+    approved = {str(p.RUNTIME) for p in PATCHES}
+    unexpected = [path for kind, path in rows if kind == 'C'
+                  and not any(path == x or x.startswith(path + '/') for x in approved)
+                  and not any(path == x or path.startswith(x + '/') or x.startswith(path + '/') for x in roots)
+                  and not (path == '/var/tmp' and known_scratch)
+                  and not (known_scratch and path.startswith('/var/tmp/'))]
+    if not known_scratch:
+        unexpected.extend(path for _, path in scratch)
+    return sorted(set(unexpected))
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -308,19 +331,16 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         rc, raw = self.ctx.run(['/usr/bin/docker', 'diff', self.ctx.container], 'retained-layer-inventory', timeout=90)
         if rc:
             raise ValueError('layer-inventory-unavailable')
-        changed = {line[2:] for line in raw.decode().splitlines() if line[:2] == 'C '}
-        roots = ('/tmp', '/etc', '/usr/local/share/ca-certificates', '/usr/local/share/nemoclaw',
-                 '/run', '/sandbox', '/opt/openshell', '/opt/homecompute-public-dns',
-                 '/var/lib/nemoclaw', '/var/log')
-        approved = {str(p.RUNTIME) for p in PATCHES}
-        unexpected = [p for p in changed if not any(p == x or x.startswith(p + '/') for x in approved)
-                      and not any(p == x or p.startswith(x + '/') or x.startswith(p + '/') for x in roots)]
-        if unexpected:
+        if unreviewed_layer_paths(raw.decode()):
             raise ValueError('unreviewed-runtime-layer-change')
+        self.browser_scratch = any(line[2:].startswith('/var/tmp/') for line in raw.decode().splitlines())
 
     def stage(self, stage, status='active'):
         if stage == 'backup-verified':
             backup_root = Path(self.record['backup'])
+            if getattr(self, 'browser_scratch', False):
+                self.command(['/usr/bin/docker', 'cp', self.ctx.container + ':/var/tmp',
+                              str(backup_root / 'browser-installer-scratch')], 'preserve-browser-installer-scratch')
             BASE.atomic_json(backup_root / 'permissions.json', self.permissions)
             for patch in PATCHES:
                 target = backup_root / patch.RUNTIME.name

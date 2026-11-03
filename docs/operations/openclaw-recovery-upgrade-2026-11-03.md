@@ -82,7 +82,7 @@ qualification.
 
 The attended backup has 10 focused tests covering admission order, safe retry
 handling, no backup on a failed drain, interruption/resumption ordering, early
-hold release and truthful completion. The offline candidate has five focused
+hold release and truthful completion. The offline candidate has six focused
 isolation/provenance-refusal/ownership-cleanup tests. Both repository validation
 runs passed, including containerized Nix flake evaluation. The later probe
 instrumentation changes also passed focused tests and whitespace checks.

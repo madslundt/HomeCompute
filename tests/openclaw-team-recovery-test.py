@@ -12,6 +12,14 @@ spec = importlib.util.spec_from_file_location('team_recovery', ROOT / 'scripts/r
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 class TeamRecoveryTests(unittest.TestCase):
+    def test_only_known_browser_installer_scratch_explains_var_tmp_metadata(self):
+        known='C /var/tmp\nA /var/tmp/homecompute-browser-before-g6gnd88c\nA /var/tmp/homecompute-browser-before-g6gnd88c/0\nA /var/tmp/homecompute-browser-before-g6gnd88c/paths.json\n'
+        self.assertEqual(m.unreviewed_layer_paths(known),[])
+        for raw in ('C /var/tmp\n',known+'A /var/tmp/unknown\n',
+                    known+'C /var/tmp/homecompute-browser-before-g6gnd88c/foreign\n',
+                    'C /usr/local/bin/foreign\n'):
+            self.assertTrue(m.unreviewed_layer_paths(raw))
+
     def test_native_mcp_rebind_preserves_other_policy_and_uses_existing_provider_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             ctx=Mock(state=Path(tmp),openshell='/fixed/openshell');ctx.observe.return_value='Ready'

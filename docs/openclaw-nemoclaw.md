@@ -455,6 +455,10 @@ and restart through the native lifecycle. It submits no agent turn or message.
 
 The existing yield-acknowledgment and bounded child-result fixes are reproduced
 by their exact-input tracked patch builders, not an opaque container snapshot.
+Numbered before-images left by the tracked browser installer under its exact
+`/var/tmp/homecompute-browser-before-*` scratch pattern are preserved privately
+with the recovery backup, then excluded from runtime restoration. An unexplained
+`/var/tmp` change or another scratch path still blocks recovery.
 The existing public-DNS controller is rebound to the replacement's positively
 verified UUID/generation, image, volume and gateway process. Its public-only
 DNS policy and unprivileged namespace boundary remain unchanged.
