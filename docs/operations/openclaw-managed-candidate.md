@@ -114,3 +114,39 @@ It emits byte-hashed public archives and build identities in a new private build
 directory. Archives exclude Git metadata and reject external symlinks. These
 artifacts are inputs to the separate synthetic native lifecycle qualification;
 a successful build alone does not authorize production replacement.
+
+The native lifecycle fixture uses `scripts/qualify-openclaw-native-lifecycle.py`
+from a reviewed published guest release. `plan` prints its hash. Root `prepare`
+requires that hash, revision and `--build-dir` naming the retained CLI build
+receipt. It verifies both public archive hashes before creating a locked,
+nonlogin fixture account. The fixture has its own home, registry, state volume,
+loopback gateway 9124 and dashboard 18792; Atlas remains on gateway 9123.
+A local synthetic provider binds only the Docker bridge address on port 18081,
+returns fixed model responses, and logs no request bodies. The trusted fixture
+management account can use Docker, while the agent container receives neither
+the socket nor production credentials. CLI input environment is constructed
+explicitly; production environment files are never loaded.
+
+Run `baseline`, `upgrade`, then `rollback` with the same published revision/hash.
+Each action checks the production container ID, image, resource limits, config
+and native registry hashes and CLI target before and after its native command.
+The fixture uses two vCPUs and 3 GiB RAM; CLI commands have bounded deadlines and
+terminate their own process group on timeout. Private step logs use exclusive
+creation, preventing an accidental replay from overwriting diagnostic evidence.
+`cleanup` destroys only the named fixture through its own registry, stops its
+provider and remaining account processes, and retains the locked account/home
+and private diagnostics for inspection. A failed step requires inspection and a
+reviewed continuation; no production checkpoint or phase database is edited.
+A completed baseline/upgrade/rollback still does not establish task delivery,
+Mattermost integration or full state preservation; those need separate evidence.
+
+```bash
+native_tool="$HOME/.local/share/homecompute/releases/FULL_SHA/scripts/qualify-openclaw-native-lifecycle.py"
+python3 "$native_tool" plan
+sudo python3 "$native_tool" prepare --revision FULL_SHA --expected-hash NATIVE_BUNDLE_HASH \
+  --build-dir "$HOME/.local/share/homecompute/openclaw-cli-builds/REVIEWED_BUILD"
+sudo python3 "$native_tool" baseline --revision FULL_SHA --expected-hash NATIVE_BUNDLE_HASH
+sudo python3 "$native_tool" upgrade --revision FULL_SHA --expected-hash NATIVE_BUNDLE_HASH
+sudo python3 "$native_tool" rollback --revision FULL_SHA --expected-hash NATIVE_BUNDLE_HASH
+sudo python3 "$native_tool" cleanup --revision FULL_SHA --expected-hash NATIVE_BUNDLE_HASH
+```
