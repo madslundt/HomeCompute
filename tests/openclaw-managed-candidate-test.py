@@ -13,6 +13,34 @@ m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 
 
 class CandidateTest(unittest.TestCase):
+    def image_metadata(self):
+        data=m.policy();proof=m.manifest_proof(data)
+        return {'Id':data['image_config'],'Architecture':'amd64','Os':'linux','RepoDigests':[data['image']],
+          'Config':{'User':'sandbox','Labels':{'org.opencontainers.image.revision':data['nemoclaw_commit'],
+          'org.opencontainers.image.version':data['nemoclaw_tag'],'io.nvidia.nemoclaw.agent':'openclaw',
+          'io.nvidia.nemoclaw.managed-image.cohort':data['cohort'],
+          'io.nvidia.nemoclaw.managed-image.platform':'linux/amd64',
+          'io.nvidia.nemoclaw.managed-image.contract':'1','io.nvidia.nemoclaw.managed-image.startup-profile':'1',
+          'io.nvidia.nemoclaw.managed-image.capabilities':'1'}}}
+
+    def test_classic_and_containerd_ids_require_the_same_exact_manifest_config_chain(self):
+        data=m.policy();image=self.image_metadata();proof=m.manifest_proof(data)
+        self.assertEqual(m.provenance(data,image)['image_id_kind'],'config')
+        image.update(Id=proof['manifest_digest'],Descriptor={'digest':proof['manifest_digest'],
+            'mediaType':'application/vnd.oci.image.manifest.v1+json','size':proof['manifest_size']})
+        self.assertEqual(m.provenance(data,image)['image_id_kind'],'manifest')
+        for field,value in [('Id','sha256:'+'0'*64),('RepoDigests',[]),('Descriptor',None),('Architecture','arm64')]:
+            with self.assertRaisesRegex(ValueError,'provenance'):m.provenance(data,{**image,field:value})
+        image['Descriptor']['digest']='sha256:'+'0'*64
+        with self.assertRaisesRegex(ValueError,'provenance'):m.provenance(data,image)
+
+    def test_altered_manifest_or_config_pin_never_gets_blessed(self):
+        data=m.policy();raw=(ROOT/m.MANIFEST).read_bytes()
+        with self.assertRaisesRegex(ValueError,'content digest'):m.manifest_proof(data,raw+b' ')
+        with self.assertRaisesRegex(ValueError,'config chain'):m.manifest_proof({**data,'image_config':'sha256:'+'0'*64},raw)
+        image=self.image_metadata();image['Config']['Labels']['io.nvidia.nemoclaw.managed-image.cohort']='unreviewed'
+        with self.assertRaisesRegex(ValueError,'provenance'):m.provenance(data,image)
+
     def test_temporary_overlay_reuses_tracked_changes_and_pins_both_hashes(self):
         payload=m.child_overlay(m.policy())
         self.assertEqual(len(payload['changes']),3)

@@ -146,11 +146,21 @@ adds actual state/database/conversation and authenticated gateway checks to the
 existing archive, PostgreSQL and VM boot gates. Its source/tests do not themselves
 establish a successful live restore; use the corresponding execution evidence.
 
+The same-day recovery implementation now has actual acceptance evidence:
+fresh encrypted NAS snapshot, archive/SQLite checks, four PostgreSQL imports,
+both isolated VM boots, and native Atlas startup from the restored disk with
+retained conversations, twelve roles, required plugins and original policy.
+See the execution receipt for the exact published lifecycle revisions and
+hardware-fixture corrections. External channel/inference delivery and global
+host synchronization remain separate claims. Scheduled backups retain their
+conservative idle guard; reliable unattended admission needs its own scoped
+maintenance-window rollout before expanded unattended work.
+
 The November 3 [audit](operations/openclaw-atlas-audit-2026-11-03.md) completes
 the bounded read-only inventory. Remaining work is to inspect current broker
 activity, inventory all retained native databases/patch receipts and exact
-channel bindings, establish timer boot ownership, and restore-test the actual
-OpenClaw state. Preserve the running worker; an old stopped-worker receipt is
+channel bindings, establish timer boot ownership, and retain the accepted
+OpenClaw recovery evidence. Preserve the running worker; an old stopped-worker receipt is
 not authority to start, stop or replay it.
 
 Reconcile selected installations against published source, including newer

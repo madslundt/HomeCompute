@@ -355,3 +355,26 @@ no channels, cron or heartbeat. Use the genuine 129 CLI to create baseline
 synthetic data, then the 140 CLI's named rebuild and an actual rollback test.
 Unchanged agent/state schema numbers cannot substitute for that rehearsal.
 [Bridge restrictions](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/inference/native-local/eligibility.ts).
+
+
+## Actual Docker provenance check, 20:20 UTC
+
+After the native NAS recovery gate passed, the exact declared workload was
+pulled on the existing agents guest. Docker Engine 29.1.3 returned the manifest
+digest as `Id`, with the same exact repository digest and OCI descriptor. User,
+architecture and every reviewed label matched. The initial probe refused because
+it assumed `Id` was always the config digest; no candidate container ran.
+
+The corrected probe vendors the exact 20,193-byte public OCI manifest. Its SHA256
+is the already-declared workload digest, and its `config.digest` is the
+already-declared `e10fa6…` config digest. Both pins remain unchanged. It checks
+that chain, repository digest, optional descriptor and all existing provenance
+fields before supporting either Docker ID representation. Altered manifest
+bytes, a wrong config pin, another repository digest or unknown ID still fail.
+This is an inspector compatibility repair, not candidate runtime qualification.
+
+Docker documents the [containerd image store](https://docs.docker.com/engine/storage/containerd/)
+as the default for fresh Engine 29 installations. The first-party
+[containerd inspector implementation](https://github.com/moby/moby/blob/master/daemon/containerd/image_inspect.go)
+sets the returned ID from the target digest. The live response is the evidence
+for this installed daemon; a moving source page does not qualify the workload.

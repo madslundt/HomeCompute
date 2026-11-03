@@ -20,8 +20,14 @@ python3 "$candidate_tool" probe --revision FULL_SHA --expected-hash REVIEWED_BUN
 
 The default plans without Docker operations. `--pull` fetches only the declared
 amd64 workload digest; subsequent probes can omit it. Inspection requires the
-exact image config digest, agent/revision/release/cohort/contract labels and
-non-root sandbox user. Available RAM, Docker filesystem space and guest full
+exact image manifest/config chain, agent/revision/release/cohort/contract labels
+and non-root sandbox user. The byte-preserved public
+[OCI manifest](../../deploy/openclaw/qualification/openclaw-0.0.140-linux-amd64.manifest.json)
+must hash to the declared workload digest and name the declared config digest.
+Classic Docker config IDs and containerd manifest IDs are accepted only with
+that same chain, exact repository digest and (when present) matching descriptor.
+Unknown IDs, changed manifest bytes, a changed config pin or inconsistent labels
+still refuse before container execution. Available RAM, Docker filesystem space and guest full
 I/O-pressure average over ten seconds must satisfy the declaration before
 pulling; insufficient headroom refuses without changing
 production resources.

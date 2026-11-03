@@ -1,6 +1,19 @@
 # OpenClaw recovery and managed-upgrade execution — 2026-11-03
 
-Status: in progress. The owner authorized backup/recovery repairs followed by
+Status: recovery gate accepted; managed candidate qualification in progress.
+
+A fresh encrypted NAS backup, archive integrity checks, four PostgreSQL imports,
+both isolated VM boots, and native Atlas recovery from that same snapshot have
+passed. The native proof at approximately 20:16 UTC uses published
+`e67d0b308720231160267081dc983e94991d4420`: 39 native SQLite databases,
+twelve roles/workspaces, retained main conversations, original image/core,
+required plugins, authenticated gateway health and policy rechecked after startup.
+Its actual accepted receipt was indexed only after matching the snapshot,
+manifest and engine proof; the owned VM/scope was collected. The source disk
+remained read-only. External channel/model delivery is not established by the
+networkless copy. Production retains its original managed tuple.
+
+The owner authorized backup/recovery repairs followed by
 managed upgrade qualification and deployment only after qualification. Source is
 implemented in the isolated `codex/openclaw-recovery-upgrade` worktree based on
 published master; the original dirty workstation checkout is preserved.
@@ -143,14 +156,15 @@ disabled. Native cron and heartbeats retain their previous disabled state.
 The address-space-adjusted test reached native recovery without another thread
 allocation failure. At approximately 19:52 UTC its evidence showed that named
 host-gateway recovery succeeded and the retained sandbox start was attempted.
-The container then exited and automatic Error recovery correctly refused the
+Native phase became Error while the retained container remained exited, and
+automatic Error recovery correctly refused the
 twelve-agent roster (`agent-roster-refused`). The container was retained, not
 missing. No roster or identity guard was bypassed. A later probe revision waits
 for native Ready before exec permission housekeeping, captures structured phase
 and current-boot error/exit diagnostics, fails promptly on that known refusal,
-and rechecks policy after startup. Ten focused tests cover these gates. The
-actual start failure remains under investigation; backup data readability is
-proven, complete native recovery is not yet accepted.
+and rechecks policy after startup. Focused tests cover these gates. The
+one-CPU fixture's failure was not accepted; the later capacity-matched successful
+native restore supersedes that failed fixture result.
 
 ## Managed candidate source
 
@@ -194,13 +208,15 @@ synchronized with current master; no broad release was applied.
 The restored sandbox never advanced its Docker start timestamp after the
 original intentional stop; the process did not reach a new startup error log.
 The test VM exposed one CPU while the retained production container has a
-two-CPU NanoCPUs limit. The next source revision exposes two virtual CPUs while
-retaining affinity to one host CPU, and records the native database's stored
-failure conditions. This capacity mismatch is a hypothesis under test, not a
-confirmed cause or permission to relax a recovery guard.
+two-CPU NanoCPUs limit. Published
+`e67d0b308720231160267081dc983e94991d4420` exposes two virtual CPUs
+while retaining affinity to one host CPU and records the native database's
+stored failure conditions. That rerun started the original retained container,
+reached DependenciesReady and passed authenticated health/version/plugin and
+post-start policy checks. The smaller one-CPU fixture did not represent the
+retained two-CPU runtime budget. No production resource or roster guard changed.
 
-Outstanding: successful authenticated gateway startup in the restored copy;
-then actual managed-artifact checks, native fixture lifecycle/rebuild and
+Outstanding: actual managed-artifact checks, native fixture lifecycle/rebuild and
 rollback, integration/patch/identity tests and authenticated client acceptance.
 Do not deploy from an artifact-only pass or imply host synchronization from
 release markers. Retain the prior production tuple until those gates pass.

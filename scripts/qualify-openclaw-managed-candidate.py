@@ -18,7 +18,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = 'config/openclaw-managed-candidate.json'
-FILES = ('scripts/qualify-openclaw-managed-candidate.py', POLICY,
+MANIFEST = 'deploy/openclaw/qualification/openclaw-0.0.140-linux-amd64.manifest.json'
+FILES = ('scripts/qualify-openclaw-managed-candidate.py', POLICY, MANIFEST,
          'scripts/setup-openclaw-child-results.py',
          'deploy/openclaw/qualification/native-fixtures.mjs',
          *('deploy/openclaw/safety-plugin/' + name for name in
@@ -117,6 +118,50 @@ for (const name of ['subagent-announce-output-CgCr3vGC.js','embedded-agent-DaSvA
 }
 console.log(JSON.stringify(output));
 '''
+
+
+def manifest_proof(data: dict, raw: bytes | None = None) -> dict:
+    raw = (ROOT / MANIFEST).read_bytes() if raw is None else raw
+    digest = 'sha256:' + hashlib.sha256(raw).hexdigest()
+    if len(raw) > 128 * 1024 or digest != data['image'].split('@', 1)[1]:
+        raise ValueError('reviewed manifest content digest mismatch')
+    manifest = json.loads(raw)
+    if (manifest.get('schemaVersion') != 2
+            or manifest.get('mediaType') != 'application/vnd.oci.image.manifest.v1+json'
+            or manifest.get('config', {}).get('digest') != data['image_config']
+            or manifest.get('config', {}).get('mediaType') != 'application/vnd.oci.image.config.v1+json'):
+        raise ValueError('reviewed manifest/config chain mismatch')
+    return {'manifest_digest': digest, 'config_digest': manifest['config']['digest'],
+            'manifest_size': len(raw), 'manifest_content_verified': True}
+
+
+def provenance(data: dict, inspected: dict) -> dict:
+    proof = manifest_proof(data)
+    labels = inspected.get('Config', {}).get('Labels') or {}
+    required = {'org.opencontainers.image.revision': data['nemoclaw_commit'],
+                'org.opencontainers.image.version': data['nemoclaw_tag'],
+                'io.nvidia.nemoclaw.agent': 'openclaw',
+                'io.nvidia.nemoclaw.managed-image.cohort': data['cohort'],
+                'io.nvidia.nemoclaw.managed-image.platform': 'linux/amd64',
+                'io.nvidia.nemoclaw.managed-image.contract': '1',
+                'io.nvidia.nemoclaw.managed-image.startup-profile': '1',
+                'io.nvidia.nemoclaw.managed-image.capabilities': '1'}
+    identifier = inspected.get('Id')
+    descriptor = inspected.get('Descriptor')
+    # Classic stores report config IDs; containerd stores report manifest IDs.
+    # The exact reviewed manifest cryptographically binds both identities.
+    if (identifier not in (proof['config_digest'], proof['manifest_digest'])
+            or data['image'] not in inspected.get('RepoDigests', [])
+            or inspected.get('Architecture') != 'amd64' or inspected.get('Os') != 'linux'
+            or inspected.get('Config', {}).get('User') != 'sandbox'
+            or any(labels.get(key) != value for key, value in required.items())
+            or (identifier == proof['manifest_digest'] and not descriptor)
+            or (descriptor and (descriptor.get('digest') != proof['manifest_digest']
+                    or descriptor.get('mediaType') != 'application/vnd.oci.image.manifest.v1+json'
+                    or descriptor.get('size') != proof['manifest_size']))):
+        raise ValueError('managed image provenance mismatch')
+    return {**proof, 'image_id': identifier,
+            'image_id_kind': 'config' if identifier == proof['config_digest'] else 'manifest'}
 
 
 def policy() -> dict:
@@ -237,16 +282,8 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
         if result.returncode:raise RuntimeError('immutable candidate image pull failed')
     result=call(['docker','image','inspect',data['image']])
     if result.returncode:raise ValueError('candidate image unavailable; explicit --pull required')
-    inspected=json.loads(result.stdout)[0];labels=inspected['Config'].get('Labels') or {}
-    required={'org.opencontainers.image.revision':data['nemoclaw_commit'],
-              'org.opencontainers.image.version':data['nemoclaw_tag'],
-              'io.nvidia.nemoclaw.agent':'openclaw','io.nvidia.nemoclaw.managed-image.cohort':data['cohort'],
-              'io.nvidia.nemoclaw.managed-image.platform':'linux/amd64',
-              'io.nvidia.nemoclaw.managed-image.contract':'1',
-              'io.nvidia.nemoclaw.managed-image.startup-profile':'1',
-              'io.nvidia.nemoclaw.managed-image.capabilities':'1'}
-    if inspected['Id']!=data['image_config'] or inspected['Architecture']!='amd64' or inspected['Config']['User']!='sandbox' or any(labels.get(k)!=v for k,v in required.items()):
-        raise ValueError('managed image provenance mismatch')
+    inspected=json.loads(result.stdout)[0]
+    identity=provenance(data, inspected)
     name='hc-oc140-'+uuid.uuid4().hex[:12]
     try:
         probe=PROBE.replace('__RUNTIME_MODULES__',json.dumps(data['runtime_modules'])).replace('__CHILD_OVERLAY__',json.dumps(child_overlay(data))).replace('__NATIVE_FIXTURE_FILES__',json.dumps(fixture_files()))
@@ -269,7 +306,7 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
             'proposed_child_overlay_checks_passed':observed.get('proposed_child_overlay',{}).get('source_verified') is True
                 and child_evidence_ok({'native_child_fixture':observed.get('proposed_child_overlay',{}).get('fixture',{})}),
             'production_qualified':False,'observed':observed,
-            'image':data['image'],'native_lifecycle_verified':False,'integration_paths_verified':False}
+            'image':data['image'],'image_provenance':identity,'native_lifecycle_verified':False,'integration_paths_verified':False}
     fd=os.open(evidence/'report.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,'w') as stream:json.dump(report,stream)
     return report
