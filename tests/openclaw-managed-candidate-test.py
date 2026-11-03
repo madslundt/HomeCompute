@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Offline candidate isolation and ownership-fenced timeout cleanup."""
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import unittest
+from unittest.mock import patch
+
+ROOT=Path(__file__).resolve().parents[1]
+s=importlib.util.spec_from_file_location('candidate',ROOT/'scripts/qualify-openclaw-managed-candidate.py')
+m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
+
+
+class CandidateTest(unittest.TestCase):
+    def test_offline_probe_cannot_mount_credentials_publish_ports_or_contact_network(self):
+        data=m.policy();args=m.command(data,'synthetic')
+        for key,value in [('--network','none'),('--cap-drop','ALL'),('--entrypoint','/usr/local/bin/node')]:
+            self.assertEqual(args[args.index(key)+1],value)
+        self.assertIn('--read-only',args)
+        for key in ['--volume','-v','--mount','--env-file','--privileged','--publish','-p']:
+            self.assertNotIn(key,args)
+        self.assertEqual(args[args.index('--memory')+1],args[args.index('--memory-swap')+1])
+        self.assertFalse(data['production_qualified'])
+
+    def test_mutable_image_is_refused_before_execution(self):
+        value=m.policy();value['image']='ghcr.io/nvidia/nemoclaw/openclaw-sandbox:v0.0.140'
+        with patch.object(m.json,'loads',return_value=value),self.assertRaisesRegex(ValueError,'candidate policy'):
+            m.policy()
+
+    def test_cleanup_removes_only_exact_owned_container_id(self):
+        name='hc-oc140-synthetic';identifier='a'*64;calls=[]
+        def call(args,**kwargs):
+            calls.append(args)
+            if args[1]=='ps':text=identifier[:12]+'\n'
+            elif args[1]=='inspect':text=json.dumps([{'Id':identifier,'Name':'/'+name,'Config':{'Labels':{'org.homecompute.candidate':name}}}])
+            else:text=''
+            return subprocess.CompletedProcess(args,0,text,'')
+        m.cleanup(call,name)
+        self.assertEqual(calls[-1],['docker','rm','--force',identifier])
+
+    def test_unknown_or_ambiguous_container_is_never_removed(self):
+        for ids in ['a'*12+'\n'+'b'*12,'a'*12]:
+            calls=[]
+            def call(args,**kwargs):
+                calls.append(args)
+                text=ids if args[1]=='ps' else json.dumps([{'Name':'/production','Config':{'Labels':{}}}])
+                return subprocess.CompletedProcess(args,0,text,'')
+            with self.assertRaises(RuntimeError):m.cleanup(call,'synthetic')
+            self.assertFalse(any(a[1]=='rm' for a in calls))
+
+    def test_unpublished_checkout_is_refused(self):
+        with self.assertRaisesRegex(ValueError,'published candidate'):
+            m.published('a'*40,m.bundle())
+
+
+if __name__=='__main__':unittest.main()
