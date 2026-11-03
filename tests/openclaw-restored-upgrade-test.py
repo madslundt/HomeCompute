@@ -99,6 +99,17 @@ class RestoredUpgrade(unittest.TestCase):
    with self.assertRaisesRegex(ValueError,'identity-changed'):w.stop_native('0.0.129',{},'synthetic-stop')
    inspect.assert_not_called()
 
+ def test_paused_start_requires_same_identity_running_and_authenticated_health(self):
+  identifier='aabbccdd-0000-4000-8000-000000000001'
+  stopped=json.dumps({'name':'agent-openclaw','id':identifier,'phase':'Stopped'}).encode()
+  ready=json.dumps({'name':'agent-openclaw','id':identifier,'phase':'Ready'}).encode()
+  with patch.object(w,'run',side_effect=[stopped,b'optional finalization error',ready]),patch.object(w.subprocess,'check_output',return_value=b'running'),patch.object(w,'health') as health:
+   w.start_native('0.0.129',{},'paused-start');health.assert_called_once_with('0.0.129',{})
+  changed=json.dumps({'name':'agent-openclaw','id':'aabbccdd-0000-4000-8000-000000000002','phase':'Ready'}).encode()
+  with patch.object(w,'run',side_effect=[stopped,b'error',changed]),patch.object(w,'health') as health:
+   with self.assertRaisesRegex(ValueError,'exact-ready'):w.start_native('0.0.129',{},'paused-start')
+   health.assert_not_called()
+
  def test_handoff_fixture_requires_received_child_evidence(self):
   def request(message,tools=()):
    data={'messages':[{'role':'user','content':message}],'tools':[{'function':{'name':name}} for name in tools]}

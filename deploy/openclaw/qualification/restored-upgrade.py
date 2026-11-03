@@ -131,6 +131,19 @@ def container():
  return rows[0]
 
 
+def start_native(version,env,label):
+ query=[str(HOME/'.local/bin/openshell'),'sandbox','get','-g','nemoclaw-9123','agent-openclaw','-o','json']
+ before=json.loads(run(query,label+'-identity',env=env,user=True,timeout=30))
+ if before.get('name')!='agent-openclaw' or before.get('phase')!='Stopped':raise ValueError('exact-stopped-start-target-required')
+ expected=str(uuid.UUID(before['id']))
+ run(cli(version,'agent-openclaw','start'),label,env=env,user=True,timeout=300,check=False)
+ after=json.loads(run(query,label+'-observation',env=env,user=True,timeout=30))
+ if after.get('id')!=expected or after.get('name')!='agent-openclaw' or after.get('phase')!='Ready':raise ValueError('exact-ready-start-required')
+ status=subprocess.check_output(['docker','inspect','--format','{{.State.Status}}','openshell-default--agent-openclaw-'+expected],timeout=15).decode().strip()
+ if status!='running':raise ValueError('ready-native-container-not-running')
+ health(version,env)
+
+
 def health(version,env):
  raw=run(cli(version,'agent-openclaw','exec','--','openclaw','gateway','health','--timeout','10000','--json'),'gateway-health',env=env,user=True,timeout=90)
  data,_=json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])
@@ -362,6 +375,9 @@ def main():
   result['local_negative_dns_fixture']=True
   server=http.server.ThreadingHTTPServer(('0.0.0.0',18080),Provider);threading.Thread(target=server.serve_forever,daemon=True).start()
   run([str(HOME/'.local/bin/openshell'),'provider','update','-g','nemoclaw-9123','compatible-endpoint','--credential','COMPATIBLE_API_KEY'],'replace-clone-only-credential',env=env,user=True)
+  progress('start-paused-native-rebuild-source');start_native('0.0.129',env,'start-paused-native-rebuild-source')
+  if policy_projection(json.loads((STATE/'openclaw.json').read_bytes()))!=policy or snapshot()!=before:raise ValueError('paused-source-state-drift')
+  wait_idle('0.0.129',env)
   progress('name-authenticated-oci-content');named=WORK/'named-candidate-image.tar'
   naming=prep.named_archive(assets/'candidate-image.tar',named,prep.IMAGES['0.0.140']);(WORK/'oci-naming-proof.json').write_text(json.dumps(naming,sort_keys=True))
   progress('load-candidate-image');run(['docker','image','load','--input',str(named)],'load-candidate-image',timeout=240)
@@ -382,7 +398,7 @@ def main():
    install_ports(core)
    mm_runtime,mm_sha,mm_version=mattermost_port(version,env)
    stop_native(version,env,label+'-stop-for-ports')
-   run(cli(version,'agent-openclaw','start'),label+'-start-with-ports',env=env,user=True,timeout=300)
+   start_native(version,env,label+'-start-with-ports')
    health(version,env)
    if label=='upgrade':
     mattermost_probe(mm_runtime,mm_sha);result['installed_mattermost_ingress_verified']=True;result['mattermost_version']=mm_version

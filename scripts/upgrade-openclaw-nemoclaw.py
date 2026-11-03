@@ -224,7 +224,7 @@ class ManagedTransaction(TEAM.RetainedTransaction):
   if stage=='complete-active-team':status='active'
   super().stage(stage,status)
  def command(self,argv,label,**kwargs):
-  if label in ('start-qualified-runtime-ports','start-retained-stopped-version'):
+  if label in ('start-qualified-runtime-ports','start-retained-stopped-version','start-paused-upgrade-source','start-paused-rollback-source'):
    code,raw=self.ctx.run(argv,label,**kwargs)
    self.ctx.check_registry();self.ctx.check_container()
    if self.ctx.observe()!='Ready' or not self.ctx.ready():raise ValueError('exact authenticated native start required')
@@ -412,6 +412,9 @@ def apply(args,policy,proof):
   tx.command(['docker','cp',str(paused),ctx.container+':/sandbox/.openclaw/openclaw.json'],'quarantine-upgrade-channels')
   tx.volume_command("import os;os.chown('/state/openclaw.json',998,998);os.chmod('/state/openclaw.json',0o600)",'paused-policy-owner-mode')
   tx.stage('verified-backup-before-native-rebuild')
+  tx.command([ctx.cli,SUP.NAME,'start'],'start-paused-upgrade-source',timeout=420)
+  ownership_merge(before,native_config(tx,'verify-ready-paused-upgrade-source')[0])
+  require_idle(ctx,tx.record);tx.stage('ready-paused-source-before-native-rebuild')
   next_env=dict(ctx.env,OPENCLAW_NEMOCLAW_MODEL_KEY_FILE=str(ctx.keyfile),NEMOCLAW_INSTALL_REF=policy['target_revision'],NEMOCLAW_INSTALL_TAG=policy['target_tag'],NEMOCLAW_CPU='2')
   ctx.env.update({key:next_env[key] for key in ('NEMOCLAW_INSTALL_REF','NEMOCLAW_INSTALL_TAG','NEMOCLAW_CPU')})
   identifier,generation=rebuild_observed(tx,cli140,policy['target_revision'],'managed-qualified-rebuild','newId','newGeneration')
@@ -514,8 +517,11 @@ def rollback_transition(args,policy,proof):
  tx.volume_command("import os;os.chown('/state/openclaw.json',998,998);os.chmod('/state/openclaw.json',0o600)",'rollback-paused-config-owner')
  previous=SUP.PROFILES[SUP.REVISION];legacy=Path(record['cli129'])
  if legacy!=HOME/'.nemoclaw/releases'/('v0.0.129-'+SUP.REVISION):raise ValueError('retained qualified CLI path required')
- tx.ctx.env.update(NEMOCLAW_INSTALL_REF=SUP.REVISION,NEMOCLAW_INSTALL_TAG=previous['tag'],NEMOCLAW_CPU='2')
  if ctx.revision!=SUP.REVISION:
+  tx.command([ctx.cli,SUP.NAME,'start'],'start-paused-rollback-source',timeout=420)
+  ownership_merge(original,native_config(tx,'verify-ready-paused-rollback-source')[0])
+  require_idle(ctx,record)
+  tx.ctx.env.update(NEMOCLAW_INSTALL_REF=SUP.REVISION,NEMOCLAW_INSTALL_TAG=previous['tag'],NEMOCLAW_CPU='2')
   record['rollback_checkpoint']['phase']='native-rebuild-starting';tx.stage('rollback-native-rebuild-starting')
   rebuild_observed(tx,legacy,SUP.REVISION,'qualified-retained-version-rebuild','rollbackId','rollbackGeneration')
  else:

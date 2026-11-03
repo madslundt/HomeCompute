@@ -349,3 +349,22 @@ expiry or unexpected task maintenance conservatively refuses preservation.
 The production controller additionally compares workspace ownership/modes read
 from the actual state volume; Docker copy ownership is not used as evidence of
 native UID/GID preservation.
+
+The revised fixture's BusyBox warm-up completed in65.246 seconds and recorded
+five container lifecycle events. The unchanged native20-second bridge and DNS
+checks then passed. Native rebuild still refused before deleting anything:
+ordinary `Stopped` is `not_ready`, rather than the terminal-state path that
+captures an unreachable sandbox. Rebuild's MCP-state observer therefore tries
+live exec and correctly rejects that stopped source. The previous conclusion
+that terminal-state support also covered ordinaryStopped was incorrect.
+The lifecycle now takes and validates its cold backup, writes the paused policy,
+starts the same old native identity and verifies authenticatedReady, unchanged
+paused authority/state and zero active turns before normal named rebuild.
+The production upgrade and reverse-version lifecycle use the same ordering;
+source CLI/model/identity bindings stay on the current tuple until replacement.
+The [pinned MCP observer](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/actions/sandbox/mcp-bridge-source.ts)
+and [sandbox observer](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/adapters/openshell/sandbox-observer-cli.ts)
+own those reachability checks. Positive nativeReady, same UUID, running Docker
+state and authenticated plugin health are mandatory after each paused start,
+including when optional CLI finalization returns nonzero. These failed receipts
+remain evidence of fixture corrections; production qualification is still false.
