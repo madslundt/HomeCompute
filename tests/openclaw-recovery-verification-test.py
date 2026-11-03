@@ -38,7 +38,7 @@ class NativeRestoreTests(unittest.TestCase):
             if dropped:raise PermissionError('cannot raise hard limits after setuid')
         with patch.object(m.ENGINE,'vm_child',side_effect=drop) as prepare,patch.object(m.resource,'setrlimit',side_effect=limit):
             m.child(65534,65534,300)
-        self.assertEqual(prepare.call_args.kwargs,{'memory_limit':12*1024**3,'cpu_seconds':900,'file_limit':2*1024**3})
+        self.assertEqual(prepare.call_args.kwargs,{'memory_limit':32*1024**3,'cpu_seconds':900,'file_limit':2*1024**3})
 
     def test_native_sqlite_inspection_reads_adjacent_wal_and_rejects_corruption(self):
         with tempfile.TemporaryDirectory() as tmp:

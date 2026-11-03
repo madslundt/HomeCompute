@@ -170,6 +170,7 @@ def main():
         def progress(details):
             with open('/dev/ttyS0', 'w') as serial:
                 serial.write('\nHC_OPENCLAW_STARTUP_' + nonce + ' ' + json.dumps(details, sort_keys=True) + '\n')
+        progress({'stage': 'before-health', **private_diagnostics({})})
         result.update(gateway_health(progress))
     except Exception as error:
         if isinstance(error, GatewayUnavailable):

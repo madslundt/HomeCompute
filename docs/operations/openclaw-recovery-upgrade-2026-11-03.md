@@ -123,6 +123,18 @@ failed. The gate therefore remains red. Published
 diagnostics and is being rerun without modifying the production VM or source
 disk. Neither data readability nor a login prompt alone is restore acceptance.
 
+The next diagnostic run confirmed Docker/containerd/socket readiness but native
+transport refusal, followed by NemoClaw's container-identity refusal during
+permission cleanup. This is not authority to bypass identity checks. A later
+run terminated with QEMU's `qemu_thread_create: Resource temporarily unavailable`
+before it could produce the enhanced startup evidence. Host memory headroom
+was approximately 22 GiB, with only one other unprivileged-reader task and a
+large process limit. The harness now allows 32 GiB of virtual address space for
+QEMU reservations/thread stacks while retaining the 8 GiB guest and 10 GiB
+physical-memory cgroup cap. Resource counters will be retained privately.
+The cause of the original native startup refusal remains unverified; candidate
+execution and production upgrade remain behind the recovery gate.
+
 Production was checked independently during the isolated boot: authenticated
 health was good, zero plugin errors, and all eleven enabled Mattermost accounts
 were connected. Twelve accounts remain configured; Family is deliberately

@@ -67,7 +67,7 @@ def command(executable, descriptors):
 
 
 def child(uid, gid, kvm):
-    ENGINE.vm_child(uid, gid, kvm, memory_limit=12 * 1024**3, cpu_seconds=900,
+    ENGINE.vm_child(uid, gid, kvm, memory_limit=32 * 1024**3, cpu_seconds=900,
                     file_limit=2 * 1024**3)
 
 
@@ -110,6 +110,16 @@ def verify(target, snapshot, archive, expected, revision):
             deadline = time.monotonic() + 900
             while time.monotonic() < deadline:
                 ENGINE.private_logs_bounded(log, errors)
+                # QEMU's virtual address reservations can exceed guest RAM.
+                # Preserve only resource counters, never process memory/argv.
+                status = Path('/proc') / str(process.pid) / 'status'
+                try:
+                    counters = {line.split(':', 1)[0]: line.split(':', 1)[1].strip()
+                                for line in status.read_text().splitlines()
+                                if line.split(':', 1)[0] in ('VmPeak', 'VmSize', 'VmRSS', 'Threads')}
+                    (work / 'resource-observation.json').write_text(json.dumps(counters, sort_keys=True))
+                except FileNotFoundError:
+                    pass
                 result = result_from_log(log.read_bytes(), nonce)
                 if result is not None:
                     break

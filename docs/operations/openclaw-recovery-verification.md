@@ -15,7 +15,10 @@ are not modified.
 The VM has no NIC, no host shares, no management socket, no SSH forwarding and
 no external network namespace. It runs as the existing unprivileged restore
 reader with one CPU, 8 GiB RAM and bounded COW/log files. A collected transient
-scope bounds total memory at 10 GiB and disk throughput at 20 MB/s writes and
+scope bounds physical memory at 10 GiB. QEMU may reserve up to 32 GiB of
+virtual address space so thread stacks/I/O mappings fit without granting more
+physical memory. Private diagnostics retain only its address/RSS/thread counters.
+Disk throughput is bounded at 20 MB/s writes and
 40 MB/s reads. Sixteen GiB of host memory and 32 GiB of disk headroom are required. Interruption
 stops the owned VM and scope. Serial output and receipts remain private.
 
