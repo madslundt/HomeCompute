@@ -723,6 +723,13 @@ class AdapterContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ADAPTER.RequestError, "out-of-bounds"):
             ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 1.0)
 
+    def test_one_second_audio_rejects_29_98_second_native_segment_without_clamping(self):
+        source = {"text": "synthetic", "segments": [{"start": 0.0, "end": 29.98, "text": "synthetic"}]}
+        with self.assertRaisesRegex(ADAPTER.RequestError, "out-of-bounds") as caught:
+            ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 1.0)
+        self.assertEqual(caught.exception.status, 502)
+        self.assertEqual(caught.exception.message, "Speech backend returned out-of-bounds segment timestamps")
+
     def test_real_http_handler_auth_and_forwarding_with_synthetic_native_response(self):
         config = ADAPTER.CandidateConfig(
             Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,

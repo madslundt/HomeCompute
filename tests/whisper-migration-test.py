@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import signal
+import socket
 import stat
 import struct
 import subprocess
@@ -17,18 +18,20 @@ import sys
 from types import SimpleNamespace
 from pathlib import Path
 import tempfile
+import threading
 import unittest
 import urllib.error
 import urllib.request
 import wave
 from unittest.mock import patch
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def module(name, path):
     spec = importlib.util.spec_from_file_location(name, ROOT / path)
-    result = importlib.util.module_from_spec(spec); spec.loader.exec_module(result)
+    result = importlib.util.module_from_spec(spec); sys.modules[name] = result; spec.loader.exec_module(result)
     return result
 
 
@@ -36,6 +39,8 @@ LIFECYCLE = module('whisper_lifecycle', 'scripts/setup-whisper-stt.py')
 BOOTSTRAP = module('whisper_bootstrap', 'scripts/bootstrap-whisper-stt.py')
 DAYTHREAD = module('daythread_whisper', 'scripts/migrate-daythread-whisper.py')
 QUALIFICATION = module('whisper_cuda_qualification', 'scripts/whisper-cuda-qualification.py')
+RELAY = module('whisper_cpp_promotion_relay', 'scripts/openai-stt-relay.py')
+CPP_ADAPTER = module('whisper_cpp_promotion_adapter', 'deploy/whisper-cpp-stt/adapter.py')
 
 
 def qualification_fixture(*, truncated=False):
@@ -826,8 +831,9 @@ class MigrationTests(unittest.TestCase):
 
     def test_promoted_relay_smoke_covers_standard_and_longform_auth_provenance(self):
         code = LIFECYCLE.promoted_relay_smoke_program(LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION)
-        self.assertIn("post('/v1/audio/transcriptions'", code)
-        self.assertIn("post('/v1/recording-transcriptions'", code)
+        self.assertIn("post('recording-adapter'", code)
+        self.assertIn("post('recording-relay'", code)
+        self.assertIn("post('standard-relay'", code)
         self.assertIn("'carry_initial_prompt','false'", code)
         self.assertIn("'max_len','-1'", code)
         for header in ('X-HomeCompute-STT-Model-SHA256', 'X-HomeCompute-STT-Model-Snapshot',
@@ -848,9 +854,10 @@ class MigrationTests(unittest.TestCase):
             'X-HomeCompute-STT-Image-ID': LIFECYCLE.CPP_QUALIFIED_IMAGE_ID,
         }
         class Response(io.BytesIO):
-            def __init__(self):
-                super().__init__(b'{"text":"synthetic","segments":[]}')
-                self.headers = headers
+            def __init__(self, payload, response_headers):
+                super().__init__(payload)
+                self.headers = response_headers
+                self.status = 200
             def __enter__(self): return self
             def __exit__(self, *_args): self.close()
         def fake_open(path, mode='r', *args, **kwargs):
@@ -858,23 +865,184 @@ class MigrationTests(unittest.TestCase):
                 return io.BytesIO(secret.encode())
             return open(path, mode, *args, **kwargs)
         def fake_urlopen(request, timeout):
-            captured.append((request, timeout))
-            return Response()
+            if request.data is not None:
+                captured.append((request, timeout))
+                return Response(b'{"text":"synthetic","segments":[]}', headers)
+            return Response(b'{"status":"ok","inference_busy":false,"native_inference_busy":false,"device":"cuda"}', {})
         output = io.StringIO()
         with patch('builtins.open', side_effect=fake_open), \
                 patch('urllib.request.urlopen', side_effect=fake_urlopen), \
                 contextlib.redirect_stdout(output):
             exec(compile(code, '<promoted-relay-smoke>', 'exec'), {'__name__': 'smoke_test'})
         self.assertEqual([item[0].full_url for item in captured], [
-            'http://127.0.0.1:8007/v1/audio/transcriptions',
-            'http://127.0.0.1:8007/v1/recording-transcriptions'])
+            'http://whisper-cpp-recording:8000/v1/audio/transcriptions',
+            'http://127.0.0.1:8007/v1/recording-transcriptions',
+            'http://127.0.0.1:8007/v1/audio/transcriptions'])
         self.assertTrue(all(item[1] == 180 for item in captured))
         self.assertTrue(all(item[0].get_header('Authorization') == 'Bearer ' + secret for item in captured))
         self.assertNotIn(secret, output.getvalue())
         long_body = captured[1][0].data
         self.assertIn(b"name=\"carry_initial_prompt\"", long_body)
         self.assertIn(b"name=\"no_timestamps\"", long_body)
+        self.assertGreater(len(long_body), 32_000 * 30)
         self.assertNotIn(b'\\r\\n', long_body)
+        self.assertNotIn('synthetic', output.getvalue())
+
+    def test_promoted_relay_smoke_real_http_path_emits_safe_probe_enums(self):
+        secret = b'synthetic-role-key-never-print-this'
+        provenance = {
+            'X-HomeCompute-STT-Model-SHA256': LIFECYCLE.CPP_MODEL_SHA256,
+            'X-HomeCompute-STT-Model-Snapshot': LIFECYCLE.CPP_MODEL_SNAPSHOT,
+            'X-HomeCompute-STT-Runtime': 'whisper.cpp',
+            'X-HomeCompute-STT-Runtime-Commit': LIFECYCLE.CPP_RUNTIME_COMMIT,
+            'X-HomeCompute-STT-HomeCompute-Revision': LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION,
+            'X-HomeCompute-STT-Image-ID': LIFECYCLE.CPP_QUALIFIED_IMAGE_ID,
+        }
+
+        def run_scenario(mode, *, direct_unreachable=False, omit_provenance=False):
+            native_receipts = []
+
+            class Native(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    payload = b'{"status":"ok"}'
+                    self.send_response(200)
+                    self.send_header('Content-Length', str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+
+                def do_POST(self):
+                    body = self.rfile.read(int(self.headers['Content-Length']))
+                    verbose = b'name="response_format"\r\n\r\nverbose_json' in body
+                    native_receipts.append({'verbose': verbose, 'body_bytes': len(body)})
+                    if verbose and mode == 'timestamp-overrun':
+                        payload = b'{"text":"synthetic","segments":[{"start":0.0,"end":30.01,"text":"synthetic"}]}'
+                    elif verbose:
+                        payload = b'{"text":"synthetic","segments":[{"start":0.0,"end":0.5,"text":"synthetic"}]}'
+                    else:
+                        payload = b'{"text":"synthetic"}'
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+
+                def log_message(self, *_args):
+                    pass
+
+            native = ThreadingHTTPServer(('127.0.0.1', 0), Native)
+            old_native_port = CPP_ADAPTER.NATIVE_PORT
+            CPP_ADAPTER.NATIVE_PORT = native.server_port
+            adapter_config = CPP_ADAPTER.CandidateConfig(
+                model_path=Path('/synthetic/model'), key_path=Path('/synthetic/key'),
+                homecompute_revision=LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION,
+                image_id=LIFECYCLE.CPP_QUALIFIED_IMAGE_ID,
+                max_audio_seconds=1200, max_upload_bytes=40_000_000,
+                native_timeout_seconds=30, device='cpu')
+            adapter_server = CPP_ADAPTER.CandidateServer(
+                adapter_config, secret, address=('127.0.0.1', 0), native_health={'status': 'ok'})
+            upstream = f'http://127.0.0.1:{adapter_server.server_port}'
+            relay_server = RELAY.RelayServer(
+                ('127.0.0.1', 0), RELAY.Config(
+                    upstream=upstream, recording_upstream=upstream,
+                    recording_authorization_file=Path('/synthetic/key'),
+                    max_upload_bytes=100_000, max_audio_seconds=60, max_connections=4,
+                    recording_max_upload_bytes=40_000_000,
+                    recording_max_audio_seconds=1200, recording_upstream_timeout=30))
+            servers = (native, adapter_server, relay_server)
+            threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in servers]
+            for thread in threads:
+                thread.start()
+            dead = socket.socket()
+            dead.bind(('127.0.0.1', 0))
+            dead_port = dead.getsockname()[1]
+            dead.close()
+            code = LIFECYCLE.promoted_relay_smoke_program(LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION)
+            code = code.replace('http://whisper-cpp-recording:8000',
+                                f'http://127.0.0.1:{dead_port}' if direct_unreachable else upstream)
+            code = code.replace('http://127.0.0.1:8007',
+                                f'http://127.0.0.1:{relay_server.server_port}')
+            output = io.StringIO()
+            original_respond = CPP_ADAPTER.CandidateHandler.respond
+
+            def without_verbose_provenance(handler, status, payload, content_type='application/json', *, provenance=False):
+                if omit_provenance and provenance and b'"segments"' in payload:
+                    provenance = False
+                return original_respond(handler, status, payload, content_type, provenance=provenance)
+
+            def fake_open(path, mode='r', *args, **kwargs):
+                if path == '/run/secrets/whisper_cpp_api_key':
+                    return io.BytesIO(secret)
+                return open(path, mode, *args, **kwargs)
+
+            exit_code = 0
+            try:
+                with (patch.object(CPP_ADAPTER, 'NATIVE_PORT', native.server_port),
+                      patch.object(CPP_ADAPTER.CandidateHandler, 'respond', without_verbose_provenance),
+                      patch.object(RELAY, 'recording_key', return_value=secret),
+                      patch.object(RELAY, 'normalize_audio', side_effect=lambda audio, _config: bytes(audio)),
+                      patch('builtins.open', side_effect=fake_open),
+                      contextlib.redirect_stdout(output)):
+                    try:
+                        exec(compile(code, '<real-promoted-relay-smoke>', 'exec'), {'__name__': 'smoke_test'})
+                    except SystemExit as error:
+                        exit_code = error.code
+            finally:
+                for server in servers:
+                    server.shutdown()
+                    server.server_close()
+                CPP_ADAPTER.NATIVE_PORT = old_native_port
+            return output.getvalue(), exit_code, native_receipts
+
+        cases = (
+            ('valid', {}, {'recording-adapter': (200, 'none'), 'recording-relay': (200, 'none'),
+                           'standard-relay': (200, 'none')}, 0),
+            ('timestamp-overrun', {}, {'recording-adapter': (502, 'timestamp_out_of_bounds'),
+                                       'recording-relay': (502, 'upstream_rejected'),
+                                       'standard-relay': (200, 'none')}, 1),
+            ('missing-provenance', {'omit_provenance': True},
+             {'recording-adapter': (200, 'missing_provenance'), 'recording-relay': (502, 'missing_provenance'),
+              'standard-relay': (200, 'none')}, 1),
+            ('direct-connection-error', {'direct_unreachable': True},
+             {'recording-adapter': (None, 'connection_error'), 'recording-relay': (200, 'none'),
+              'standard-relay': (200, 'none')}, 1),
+        )
+        for mode, options, expected, expected_exit in cases:
+            with self.subTest(mode=mode):
+                output, exit_code, native_receipts = run_scenario(mode, **options)
+                receipts = [json.loads(line) for line in output.splitlines()]
+                self.assertEqual(exit_code, expected_exit)
+                self.assertEqual({item['probe']: (item['status'], item['error']) for item in receipts}, expected)
+                self.assertNotIn(secret.decode(), output)
+                self.assertNotIn('synthetic', output)
+                self.assertEqual([item['verbose'] for item in native_receipts], [True, True, False]
+                                 if not options.get('direct_unreachable') else [True, False])
+
+        overrun_output, _, _ = run_scenario('timestamp-overrun')
+        with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=overrun_output, returncode=1)):
+            with self.assertRaises(LIFECYCLE.PromotedRelaySmokeFailure) as caught:
+                LIFECYCLE.promoted_relay_smoke()
+        tx = {'candidate_stage': 'recording-relay-smoke'}
+        with patch.object(LIFECYCLE, 'write_candidate_diagnostic', autospec=True), \
+                patch.object(LIFECYCLE, 'save_cuda_candidate', autospec=True):
+            LIFECYCLE.cuda_candidate_failure(tx, caught.exception)
+        public = LIFECYCLE.public_cuda_failure_metadata(tx)
+        self.assertEqual(public['failure_probe'], 'recording-relay')
+        self.assertEqual(public['failure_probe_error'], 'upstream_rejected')
+        self.assertEqual(public['recording_adapter_error'], 'timestamp_out_of_bounds')
+        self.assertEqual(public['recording_relay_error'], 'upstream_rejected')
+        self.assertEqual(public['failure_http_status'], 502)
+        formatted = LIFECYCLE.format_cuda_candidate_failure(public)
+        self.assertIn('adapter_error=timestamp_out_of_bounds', formatted)
+        self.assertIn('relay_error=upstream_rejected', formatted)
+        invalid_receipt = LIFECYCLE.public_cuda_failure_metadata({
+            'failure_probe': 'unknown', 'failure_probe_error': 'smoke_receipt_invalid',
+            'recording_adapter_error': 'untrusted-value',
+        })
+        self.assertEqual(invalid_receipt['failure_probe'], 'unknown')
+        self.assertEqual(invalid_receipt['failure_probe_error'], 'smoke_receipt_invalid')
+        self.assertIsNone(invalid_receipt['recording_adapter_error'])
+        self.assertIn('probe=unknown probe_error=smoke_receipt_invalid',
+                      LIFECYCLE.format_cuda_candidate_failure(invalid_receipt))
 
     def test_promotion_retains_original_relay_and_starts_dedicated_image(self):
         old = {'Id': 'old-relay', 'Image': 'sha256:' + 'a' * 64, 'Name': '/gb10-whisper-http',

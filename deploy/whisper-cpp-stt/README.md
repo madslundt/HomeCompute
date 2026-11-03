@@ -314,6 +314,18 @@ and long-form routes and checks all six provenance headers. Both CPP containers
 start with restart disabled; only after both relay smokes, GPU/headroom checks,
 and journaled promotion succeed does the lifecycle set `unless-stopped` on the
 CPP model and relay. The retained vLLM and old relay keep restart disabled.
+The promotion smoke first sends a 30-second synthetic verbose request directly
+to the private CPP adapter, then sends the same request through the recording
+relay, and finishes with the ordinary one-second JSON route. This gives the
+verbose path a full Whisper window while checking timestamps against that exact
+input duration. After each request it polls
+the existing health endpoint until adapter and native inference are confirmed
+idle before issuing another. It reports only fixed probe names, HTTP status,
+allowlisted error enums, provenance-header presence booleans, and bounded
+timestamp-check metadata; transcript, audio, response bodies and credentials
+are never printed. A failed command summary includes both direct-adapter and
+relay error enums, while bounded raw command output stays in the root-only
+diagnostic receipt.
 Rollback removes
 only the journaled CPP relay and restores the retained original relay container
 plus the exact saved vLLM container. The long-recording path is unavailable

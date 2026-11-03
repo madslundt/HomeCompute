@@ -899,34 +899,220 @@ def promoted_relay_smoke_program(image_source_revision):
         'X-HomeCompute-STT-HomeCompute-Revision': image_source_revision,
         'X-HomeCompute-STT-Image-ID': CPP_QUALIFIED_IMAGE_ID,
     }, sort_keys=True)
-    return '''import io,json,os,urllib.request,wave
+    return '''import io,json,math,socket,time,urllib.error,urllib.request,wave
 key=open('/run/secrets/whisper_cpp_api_key','rb').read().decode('ascii')
-def pcm():
+def pcm(seconds=1):
  b=io.BytesIO()
  with wave.open(b,'wb') as w:
-  w.setnchannels(1);w.setsampwidth(2);w.setframerate(16000);w.writeframes(bytes(32000))
+  w.setnchannels(1);w.setsampwidth(2);w.setframerate(16000);w.writeframes(bytes(seconds*32000))
  return b.getvalue()
-def post(path, fields, provenance=False):
+def error_enum(body, route):
+ try:
+  value=json.loads(body[:4096])
+  message=value.get('error') if isinstance(value,dict) else None
+  if isinstance(message,dict): message=message.get('message')
+ except (ValueError,UnicodeError):
+  message=None
+ if not isinstance(message,str): return 'http_error_unclassified'
+ direct={
+  'Speech backend returned out-of-bounds segment timestamps':'timestamp_out_of_bounds',
+  'Speech backend returned invalid verbose JSON':'invalid_verbose_json',
+  'Speech backend returned an invalid segment':'invalid_segment',
+  'Speech backend returned invalid text':'invalid_text',
+  'Speech backend is unavailable':'backend_unavailable',
+  'Speech backend rejected the request':'backend_rejected',
+  'Audio duration exceeds the limit':'audio_duration_exceeded',
+  'Audio must be mono 16 kHz PCM16 WAV':'audio_format_rejected',
+ }
+ relay={
+  'Speech backend provenance is incomplete':'missing_provenance',
+  'Speech backend rejected the request':'upstream_rejected',
+  'Speech backend is unavailable':'upstream_unavailable',
+  'Recording recognition is unavailable':'recording_unavailable',
+ }
+ return (direct if route=='recording-adapter' else relay).get(message,'http_error_unclassified')
+def post(probe,base,path,fields,verbose=False,provenance=False,duration=1.0):
+ global can_post
  boundary='promotion-smoke-boundary'
  body=b''.join((b'--'+boundary.encode()+b'\\r\\nContent-Disposition: form-data; name="'+k.encode()+b'"\\r\\n\\r\\n'+v.encode()+b'\\r\\n') for k,v in fields)
- body+=b'--'+boundary.encode()+b'\\r\\nContent-Disposition: form-data; name="file"; filename="audio.wav"\\r\\nContent-Type: audio/wav\\r\\n\\r\\n'+pcm()+b'\\r\\n--'+boundary.encode()+b'--\\r\\n'
- req=urllib.request.Request('http://127.0.0.1:8007'+path,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'multipart/form-data; boundary='+boundary})
- with urllib.request.urlopen(req,timeout=180) as response:
-  result=json.loads(response.read())
-  assert isinstance(result.get('text'),str)
-  if provenance:
-   expected=''' + expected + '''
-   for name,value in expected.items(): assert response.headers.get(name)==value
-   assert isinstance(result.get('segments'),list)
-post('/v1/audio/transcriptions',[('model','whisper-large-v3'),('response_format','json'),('language','auto'),('max_context','0'),('max_len','-1'),('beam_size','5'),('best_of','5')])
-post('/v1/recording-transcriptions',[('model','whisper'),('response_format','verbose_json'),('language','auto'),('temperature','0'),('temperature_inc','0.2'),('max_context','0'),('max_len','-1'),('beam_size','5'),('best_of','5'),('carry_initial_prompt','false'),('translate','false'),('no_timestamps','false')],True)
-print('Authenticated relay smoke passed; response text withheld')
+ body+=b'--'+boundary.encode()+b'\\r\\nContent-Disposition: form-data; name="file"; filename="audio.wav"\\r\\nContent-Type: audio/wav\\r\\n\\r\\n'+pcm(int(duration))+b'\\r\\n--'+boundary.encode()+b'--\\r\\n'
+ req=urllib.request.Request(base+path,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'multipart/form-data; boundary='+boundary})
+ record={'probe':probe,'status':None,'error':'none','timestamp_bounds_valid':None,'timestamp_bound_violation_count':None,'audio_duration_seconds':duration,'inference_idle_confirmed':None}
+ if provenance: record['provenance_headers_present']={name:False for name in ''' + expected + '''}
+ if not can_post:
+  record['error']='inference_idle_unconfirmed'
+  print(json.dumps(record,sort_keys=True,separators=(',',':')),flush=True)
+  return record
+ try:
+  with urllib.request.urlopen(req,timeout=180) as response:
+   record['status']=response.status
+   raw=response.read(2097152+1)
+   if len(raw)>2097152: raise ValueError
+   result=json.loads(raw)
+   if not isinstance(result,dict) or not isinstance(result.get('text'),str): record['error']='response_shape_invalid'
+   elif verbose and not isinstance(result.get('segments'),list): record['error']='response_shape_invalid'
+   elif verbose:
+    violations=0
+    for segment in result['segments']:
+     if not isinstance(segment,dict): record['error']='response_shape_invalid';break
+     start=segment.get('start');end=segment.get('end')
+     if (not isinstance(start,(int,float)) or isinstance(start,bool) or not isinstance(end,(int,float)) or
+         isinstance(end,bool) or not math.isfinite(start) or not math.isfinite(end)):
+      record['error']='invalid_segment';break
+     if start<0 or end<start or end>record['audio_duration_seconds']: violations+=1
+    record['timestamp_bound_violation_count']=violations
+    record['timestamp_bounds_valid']=record['error']!='invalid_segment' and record['error']!='response_shape_invalid' and violations==0
+    if violations and record['error']=='none': record['error']='timestamp_out_of_bounds'
+   if provenance:
+    present={name:response.headers.get(name)==value for name,value in ''' + expected + '''.items()}
+    record['provenance_headers_present']={name:response.headers.get(name) is not None for name in ''' + expected + '''}
+    if not all(record['provenance_headers_present'].values()) and record['error']=='none': record['error']='missing_provenance'
+    elif not all(present.values()) and record['error']=='none': record['error']='provenance_mismatch'
+ except urllib.error.HTTPError as e:
+  record['status']=e.code
+  try: body=e.read(4096)
+  except OSError: body=b''
+  record['error']=error_enum(body,probe)
+  e.close()
+  if record['error']=='timestamp_out_of_bounds': record['timestamp_bounds_valid']=False
+ except (TimeoutError,socket.timeout): record['error']='timeout'
+ except urllib.error.URLError as e:
+  record['error']='timeout' if isinstance(getattr(e,'reason',None),(TimeoutError,socket.timeout)) else 'connection_error'
+ except (OSError,ValueError,UnicodeError): record['error']='response_or_connection_invalid'
+ record['inference_idle_confirmed']=wait_idle()
+ if record['inference_idle_confirmed'] is not True:
+  can_post=False
+  if record['error']=='none': record['error']='inference_idle_unconfirmed'
+ print(json.dumps(record,sort_keys=True,separators=(',',':')),flush=True)
+ return record
+def wait_idle():
+ for _ in range(5):
+  try:
+   request=urllib.request.Request('http://127.0.0.1:8007/health')
+   with urllib.request.urlopen(request,timeout=1) as response:
+    value=json.loads(response.read(4096))
+   if not isinstance(value,dict): time.sleep(0.2);continue
+   native=value.get('native_inference_busy')
+   device=value.get('device')
+   if (value.get('status')=='ok' and value.get('inference_busy') is False and
+       device in ('cpu','cuda') and (native is False or device=='cpu' and native is None)):
+    return True
+   if native is not False and device=='cuda': time.sleep(0.2);continue
+  except urllib.error.HTTPError as e:
+   e.close()
+   time.sleep(0.2);continue
+  except (TimeoutError,socket.timeout,urllib.error.URLError,OSError,ValueError,UnicodeError):
+   time.sleep(0.2);continue
+  return False
+ return False
+can_post=True
+standard=[('model','whisper-large-v3'),('response_format','json'),('language','auto'),('max_context','0'),('max_len','-1'),('beam_size','5'),('best_of','5')]
+verbose=[('model','whisper'),('response_format','verbose_json'),('language','auto'),('temperature','0'),('temperature_inc','0.2'),('max_context','0'),('max_len','-1'),('beam_size','5'),('best_of','5'),('carry_initial_prompt','false'),('translate','false'),('no_timestamps','false')]
+direct=post('recording-adapter','http://whisper-cpp-recording:8000','/v1/audio/transcriptions',verbose,True,True,30.0)
+recording=post('recording-relay','http://127.0.0.1:8007','/v1/recording-transcriptions',verbose,True,True,30.0)
+ordinary=post('standard-relay','http://127.0.0.1:8007','/v1/audio/transcriptions',standard)
+if any(item['error']!='none' or item['status']!=200 for item in (direct,recording,ordinary)): raise SystemExit(1)
 '''
 
 
+class PromotedRelaySmokeFailure(RuntimeError):
+    def __init__(self, probe, error, status, *, adapter_error='unknown', relay_error='unknown'):
+        self.probe = probe if probe in {'recording-adapter', 'recording-relay', 'standard-relay'} else 'unknown'
+        self.error = error if error in {
+            'timestamp_out_of_bounds', 'invalid_verbose_json', 'invalid_segment', 'invalid_text',
+            'backend_unavailable', 'backend_rejected', 'audio_duration_exceeded', 'audio_format_rejected',
+            'missing_provenance', 'upstream_rejected', 'upstream_unavailable', 'recording_unavailable',
+            'http_error_unclassified', 'provenance_mismatch', 'response_shape_invalid', 'timeout',
+            'connection_error', 'response_or_connection_invalid', 'inference_idle_unconfirmed',
+            'smoke_receipt_invalid',
+        } else 'smoke_receipt_invalid'
+        self.status = status if isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599 else None
+        allowed = {'none', 'timestamp_out_of_bounds', 'invalid_verbose_json', 'invalid_segment',
+                   'invalid_text', 'backend_unavailable', 'backend_rejected', 'audio_duration_exceeded',
+                   'audio_format_rejected', 'missing_provenance', 'upstream_rejected',
+                   'upstream_unavailable', 'recording_unavailable', 'http_error_unclassified',
+                   'provenance_mismatch', 'response_shape_invalid', 'timeout', 'connection_error',
+                   'response_or_connection_invalid', 'inference_idle_unconfirmed'}
+        self.adapter_error = adapter_error if adapter_error in allowed else 'unknown'
+        self.relay_error = relay_error if relay_error in allowed else 'unknown'
+        super().__init__('Promoted STT relay smoke failed')
+
+
 def promoted_relay_smoke():
-    run(['docker', 'exec', 'gb10-whisper-cpp-http', 'python3', '-c',
-         promoted_relay_smoke_program(CPP_QUALIFIED_SOURCE_REVISION)], timeout=240)
+    result = run(['docker', 'exec', 'gb10-whisper-cpp-http', 'python3', '-c',
+                    promoted_relay_smoke_program(CPP_QUALIFIED_SOURCE_REVISION)], timeout=570, check=False)
+    allowed_probes = {'recording-adapter', 'recording-relay', 'standard-relay'}
+    allowed_errors = {'none', 'timestamp_out_of_bounds', 'invalid_verbose_json', 'invalid_segment',
+                      'invalid_text', 'backend_unavailable', 'backend_rejected', 'audio_duration_exceeded',
+                      'audio_format_rejected', 'missing_provenance', 'upstream_rejected',
+                      'upstream_unavailable', 'recording_unavailable', 'http_error_unclassified',
+                      'provenance_mismatch', 'response_shape_invalid', 'timeout', 'connection_error',
+                      'response_or_connection_invalid', 'inference_idle_unconfirmed'}
+    receipts = []
+    expected_headers = {
+        'X-HomeCompute-STT-Model-SHA256', 'X-HomeCompute-STT-Model-Snapshot',
+        'X-HomeCompute-STT-Runtime', 'X-HomeCompute-STT-Runtime-Commit',
+        'X-HomeCompute-STT-HomeCompute-Revision', 'X-HomeCompute-STT-Image-ID',
+    }
+    for line in result.stdout.splitlines():
+        try:
+            value = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if (not isinstance(value, dict) or not isinstance(value.get('probe'), str) or
+                not isinstance(value.get('error'), str) or value.get('probe') not in allowed_probes or
+                value.get('error') not in allowed_errors or
+                value.get('status') is not None and
+                    (not isinstance(value.get('status'), int) or isinstance(value.get('status'), bool) or
+                     not 100 <= value['status'] <= 599)):
+            continue
+        if type(value.get('inference_idle_confirmed')) not in {bool, type(None)}:
+            continue
+        headers = value.get('provenance_headers_present')
+        if value['probe'] in {'recording-adapter', 'recording-relay'} and (
+                not isinstance(headers, dict) or set(headers) != expected_headers or
+                any(type(flag) is not bool for flag in headers.values()) or
+                type(value.get('timestamp_bounds_valid')) not in {bool, type(None)} or
+                type(value.get('timestamp_bound_violation_count')) not in {int, type(None)} or
+                isinstance(value.get('timestamp_bound_violation_count'), bool) or
+                type(value.get('inference_idle_confirmed')) not in {bool, type(None)} or
+                type(value.get('audio_duration_seconds')) not in {int, float} or
+                isinstance(value.get('audio_duration_seconds'), bool) or
+                value.get('audio_duration_seconds') != 30.0):
+            continue
+        receipts.append(value)
+    if len(receipts) != 3 or len({item['probe'] for item in receipts}) != 3:
+        raise PromotedRelaySmokeFailure('unknown', 'smoke_receipt_invalid', None)
+    by_probe = {item['probe']: item for item in receipts}
+    adapter_error = by_probe['recording-adapter']['error']
+    relay_error = by_probe['recording-relay']['error']
+    failures = [item for item in receipts if item['error'] != 'none' or item['status'] != 200 or
+                item.get('inference_idle_confirmed') is not True or
+                item['probe'] in {'recording-adapter', 'recording-relay'} and
+                    (item.get('timestamp_bounds_valid') is not True or
+                     item.get('timestamp_bound_violation_count') != 0)]
+    if failures or result.returncode:
+        # Prefer the public relay path in the summary while retaining the
+        # direct adapter's allowlisted result for diagnosis.
+        failed = next((by_probe[name] for name in ('recording-relay', 'recording-adapter', 'standard-relay')
+                       if by_probe[name]['error'] != 'none' or by_probe[name]['status'] != 200), None)
+        if failed is None:
+            failed = {'probe': 'unknown', 'error': 'smoke_receipt_invalid', 'status': None}
+        failure_error = failed['error']
+        if failure_error == 'none' and failed.get('inference_idle_confirmed') is not True:
+            failure_error = 'inference_idle_unconfirmed'
+        if failure_error == 'none' and failed['probe'] in {'recording-adapter', 'recording-relay'}:
+            failure_error = ('timestamp_out_of_bounds' if failed.get('timestamp_bounds_valid') is False or
+                             failed.get('timestamp_bound_violation_count') not in {0, None}
+                             else 'smoke_receipt_invalid')
+        if failure_error == 'none':
+            failure_error = 'smoke_receipt_invalid'
+        raise PromotedRelaySmokeFailure(failed['probe'], failure_error, failed['status'],
+                                        adapter_error=adapter_error, relay_error=relay_error)
+    if any(item.get('timestamp_bounds_valid') is not True for item in receipts
+           if item['probe'] in {'recording-adapter', 'recording-relay'}):
+        raise PromotedRelaySmokeFailure('recording-relay', 'smoke_receipt_invalid', 200,
+                                        adapter_error=adapter_error, relay_error=relay_error)
 
 
 def promote_relay(tx):
@@ -1053,6 +1239,11 @@ def cuda_candidate_failure(tx, error, *, stage=None, rollback=False):
                   failure_exit_code=command['exit_code'], failure_id=diagnostic_id,
                   failure_classification=diagnostic['failure_classification'],
                   failure_diagnostic_available=diagnostic_available, rollback_status='pending')
+        if isinstance(error, PromotedRelaySmokeFailure):
+            tx.update(failure_probe=error.probe, failure_probe_error=error.error,
+                      recording_adapter_error=error.adapter_error,
+                      recording_relay_error=error.relay_error,
+                      failure_http_status=error.status)
     try:
         save_cuda_candidate(tx)
     except Exception:
@@ -1060,6 +1251,8 @@ def cuda_candidate_failure(tx, error, *, stage=None, rollback=False):
     return {key: tx.get(key) for key in (
         'failure_id', 'failure_stage', 'failure_class', 'failure_executable', 'failure_exit_code',
         'failure_classification', 'failure_diagnostic_available', 'rollback_status',
+        'failure_probe', 'failure_probe_error', 'recording_adapter_error',
+        'recording_relay_error', 'failure_http_status',
         'rollback_failure_stage', 'rollback_failure_class',
         'rollback_failure_classification',
         'rollback_failure_executable', 'rollback_failure_exit_code')}
@@ -1564,7 +1757,7 @@ def cuda_candidate_status(revision):
         current_gate_held = gate_is_active(tx.get('chain', ''))
     except Exception:
         current_gate_held = None
-    safe_classes = {'ValueError', 'RuntimeError', 'ManagedCommandFailure', 'KeyboardInterrupt',
+    safe_classes = {'ValueError', 'RuntimeError', 'ManagedCommandFailure', 'PromotedRelaySmokeFailure', 'KeyboardInterrupt',
                     'InterruptedError', 'OSError', 'TimeoutExpired', 'PermissionError',
                     'FileNotFoundError', 'CalledProcessError', 'JSONDecodeError'}
     def safe_class(value):
@@ -1594,6 +1787,28 @@ def cuda_candidate_status(revision):
         'failure_class': safe_class(tx.get('failure_class')),
         'failure_classification': tx.get('failure_classification') if tx.get('failure_classification') in FAILURE_CLASSIFICATIONS else 'unknown',
         'failure_diagnostic_available': bool(tx.get('failure_diagnostic_available')),
+        'failure_probe': tx.get('failure_probe') if tx.get('failure_probe') in {'recording-adapter', 'recording-relay', 'standard-relay'} or
+            tx.get('failure_probe') == 'unknown' and tx.get('failure_probe_error') == 'smoke_receipt_invalid' else None,
+        'failure_probe_error': tx.get('failure_probe_error') if tx.get('failure_probe_error') in {
+            'timestamp_out_of_bounds', 'invalid_verbose_json', 'invalid_segment', 'invalid_text',
+            'backend_unavailable', 'backend_rejected', 'audio_duration_exceeded', 'audio_format_rejected',
+            'missing_provenance', 'upstream_rejected', 'upstream_unavailable', 'recording_unavailable',
+            'http_error_unclassified', 'provenance_mismatch', 'response_shape_invalid', 'timeout',
+            'connection_error', 'response_or_connection_invalid', 'inference_idle_unconfirmed',
+            'smoke_receipt_invalid'} else None,
+        'recording_adapter_error': tx.get('recording_adapter_error') if tx.get('recording_adapter_error') in {
+            'none', 'timestamp_out_of_bounds', 'invalid_verbose_json', 'invalid_segment', 'invalid_text',
+            'backend_unavailable', 'backend_rejected', 'audio_duration_exceeded', 'audio_format_rejected',
+            'missing_provenance', 'upstream_rejected', 'upstream_unavailable', 'recording_unavailable',
+            'http_error_unclassified', 'provenance_mismatch', 'response_shape_invalid', 'timeout',
+            'connection_error', 'response_or_connection_invalid', 'inference_idle_unconfirmed'} else None,
+        'recording_relay_error': tx.get('recording_relay_error') if tx.get('recording_relay_error') in {
+            'none', 'timestamp_out_of_bounds', 'invalid_verbose_json', 'invalid_segment', 'invalid_text',
+            'backend_unavailable', 'backend_rejected', 'audio_duration_exceeded', 'audio_format_rejected',
+            'missing_provenance', 'upstream_rejected', 'upstream_unavailable', 'recording_unavailable',
+            'http_error_unclassified', 'provenance_mismatch', 'response_shape_invalid', 'timeout',
+            'connection_error', 'response_or_connection_invalid', 'inference_idle_unconfirmed'} else None,
+        'failure_http_status': tx.get('failure_http_status') if isinstance(tx.get('failure_http_status'), int) and not isinstance(tx.get('failure_http_status'), bool) and 100 <= tx['failure_http_status'] <= 599 else None,
         'failure_executable': tx.get('failure_executable') if tx.get('failure_executable') in SAFE_EXECUTABLES else None,
         'failure_exit_code': safe_exit(tx.get('failure_exit_code')),
         'rollback_status': tx.get('rollback_status') if tx.get('rollback_status') in {'pending', 'completed', 'failed'} else None,
@@ -1616,16 +1831,38 @@ def format_cuda_candidate_failure(metadata):
             f" rollback={metadata.get('rollback_status') or 'unknown'}"
             f" rollback_stage={metadata.get('rollback_failure_stage') or 'none'}"
             f" rollback_class={metadata.get('rollback_failure_class') or 'none'}"
-            f" rollback_classification={metadata.get('rollback_failure_classification') or 'unknown'}")
+            f" rollback_classification={metadata.get('rollback_failure_classification') or 'unknown'}"
+            f" probe={metadata.get('failure_probe') or 'none'}"
+            f" probe_error={metadata.get('failure_probe_error') or 'none'}"
+            f" adapter_error={metadata.get('recording_adapter_error') or 'none'}"
+            f" relay_error={metadata.get('recording_relay_error') or 'none'}"
+            f" probe_status={metadata.get('failure_http_status')}")
 
 
 def public_cuda_failure_metadata(tx):
-    return {key: tx.get(key) for key in (
+    result = {key: tx.get(key) for key in (
         'failure_id', 'failure_stage', 'failure_class', 'failure_executable',
         'failure_exit_code', 'failure_classification', 'failure_diagnostic_available',
         'rollback_status', 'rollback_failure_stage', 'rollback_failure_class',
         'rollback_failure_classification', 'rollback_failure_executable',
         'rollback_failure_exit_code', 'gate_cleanup_failure_class')}
+    probes = {'recording-adapter', 'recording-relay', 'standard-relay'}
+    errors = {'none', 'timestamp_out_of_bounds', 'invalid_verbose_json', 'invalid_segment',
+              'invalid_text', 'backend_unavailable', 'backend_rejected', 'audio_duration_exceeded',
+              'audio_format_rejected', 'missing_provenance', 'upstream_rejected',
+              'upstream_unavailable', 'recording_unavailable', 'http_error_unclassified',
+              'provenance_mismatch', 'response_shape_invalid', 'timeout', 'connection_error',
+              'response_or_connection_invalid', 'inference_idle_unconfirmed', 'smoke_receipt_invalid'}
+    if (tx.get('failure_probe') in probes or
+            tx.get('failure_probe') == 'unknown' and tx.get('failure_probe_error') == 'smoke_receipt_invalid'):
+        result.update(
+            failure_probe=tx['failure_probe'],
+            failure_probe_error=tx.get('failure_probe_error') if tx.get('failure_probe_error') in errors else None,
+            recording_adapter_error=tx.get('recording_adapter_error') if tx.get('recording_adapter_error') in errors else None,
+            recording_relay_error=tx.get('recording_relay_error') if tx.get('recording_relay_error') in errors else None,
+            failure_http_status=tx.get('failure_http_status') if isinstance(tx.get('failure_http_status'), int)
+                and not isinstance(tx.get('failure_http_status'), bool) and 100 <= tx['failure_http_status'] <= 599 else None)
+    return result
 
 
 def parse_iptables_listing(result, *, chain=None):
