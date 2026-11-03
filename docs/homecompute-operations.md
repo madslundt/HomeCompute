@@ -473,7 +473,12 @@ sudo python3 "$nas_tool" enable-schedule --expected-hash "$nas_bundle_hash"
 ```
 
 `restore-verify` extracts the archive into a second new scratch directory beside
-the first. Scheduling requires matching snapshot/verification receipts and does
+the first. Restore and extraction use an automatically collected transient
+scope with idle I/O priority, 50 MB/s writes and 100 MB/s reads against the
+scratch filesystem's backing device. These explicit limits protect live VM
+filesystems even when the disk scheduler ignores idle-priority hints. No
+persistent unit or production service property is changed. Scheduling
+requires matching snapshot/verification receipts and does
 not imply that PostgreSQL import or VM boot has passed. `resume` retries a
 retained fixed-resource journal even if the NAS is offline; `rollback` restores
 only the pre-installation configuration. Use `retire` after the normal NixOS

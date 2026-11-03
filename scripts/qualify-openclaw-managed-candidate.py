@@ -125,6 +125,16 @@ def published(revision: str, expected: str) -> None:
         if result.stdout!=(ROOT/name).read_bytes():raise ValueError('unpublished candidate source refused')
 
 
+def admit(data: dict, available: int, free: int, pressure: str) -> None:
+    match=re.search(r'^full avg10=([0-9]+(?:\.[0-9]+)?)\b',pressure,re.MULTILINE)
+    if not match or not 0<=float(match[1])<=100:
+        raise ValueError('candidate I/O pressure admission unavailable')
+    if (available<data['minimum_available_memory_mib']*1024**2
+            or free<data['minimum_free_disk_gib']*1024**3
+            or float(match[1])>data['maximum_io_full_avg10_percent']):
+        raise ValueError('insufficient candidate headroom; production resources unchanged')
+
+
 def run(data: dict, evidence: Path, *, pull: bool) -> dict:
     if socket.gethostname().split('.')[0]!='agents' or platform.machine()!='x86_64':
         raise ValueError('existing amd64 agents guest required')
@@ -133,8 +143,7 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
     if any(p.is_symlink() for p in (evidence,*evidence.parents)):
         raise ValueError('symlinked evidence path refused')
     available=int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:')))*1024
-    if available<data['minimum_available_memory_mib']*1024**2 or shutil.disk_usage('/var/lib/docker').free<data['minimum_free_disk_gib']*1024**3:
-        raise ValueError('insufficient candidate headroom; production resources unchanged')
+    admit(data,available,shutil.disk_usage('/var/lib/docker').free,Path('/proc/pressure/io').read_text())
     evidence.mkdir(mode=0o700)
     env={'PATH':'/usr/local/bin:/usr/bin:/bin','HOME':str(evidence),'DOCKER_HOST':'unix:///var/run/docker.sock',
          'DOCKER_CONFIG':'/var/empty'}

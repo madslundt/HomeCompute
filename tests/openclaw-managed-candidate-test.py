@@ -53,5 +53,13 @@ class CandidateTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'published candidate'):
             m.published('a'*40,m.bundle())
 
+    def test_heavy_restore_pressure_or_unknown_metrics_refuse_candidate_admission(self):
+        data=m.policy()
+        m.admit(data,8*1024**3,20*1024**3,'some avg10=0.00\nfull avg10=0.20 avg60=0.10\n')
+        for available,free,pressure in [(8*1024**3,20*1024**3,'full avg10=96.00\n'),
+                (1024**3,20*1024**3,'full avg10=0.00\n'),(8*1024**3,1024**3,'full avg10=0.00\n'),
+                (8*1024**3,20*1024**3,'unavailable'),(8*1024**3,20*1024**3,'full avg10=101.00\n')]:
+            with self.assertRaises(ValueError):m.admit(data,available,free,pressure)
+
 
 if __name__=='__main__':unittest.main()

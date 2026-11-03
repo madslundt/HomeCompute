@@ -19,6 +19,7 @@
   "memory_mib": 1536,
   "minimum_available_memory_mib": 3072,
   "minimum_free_disk_gib": 8,
+  "maximum_io_full_avg10_percent": 10,
   "cpus": 1,
   "pids_limit": 128,
   "probe_timeout_seconds": 90

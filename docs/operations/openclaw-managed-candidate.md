@@ -21,8 +21,9 @@ python3 "$candidate_tool" probe --revision FULL_SHA --expected-hash REVIEWED_BUN
 The default plans without Docker operations. `--pull` fetches only the declared
 amd64 workload digest; subsequent probes can omit it. Inspection requires the
 exact image config digest, agent/revision/release/cohort/contract labels and
-non-root sandbox user. Available RAM and Docker filesystem space must satisfy
-the declaration before pulling; insufficient headroom refuses without changing
+non-root sandbox user. Available RAM, Docker filesystem space and guest full
+I/O-pressure average over ten seconds must satisfy the declaration before
+pulling; insufficient headroom refuses without changing
 production resources.
 
 Execution is bounded to one CPU, 1536 MiB without additional swap, 128 PIDs and

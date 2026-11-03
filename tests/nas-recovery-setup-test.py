@@ -129,6 +129,36 @@ class NASRecoverySetupTest(unittest.TestCase):
             self.assertEqual(result['manifest_sha256'],hashlib.sha256(manifest.read_bytes()).hexdigest())
             self.assertEqual(json.loads((root/'last-application-verification.json').read_bytes()),result)
 
+    def test_restore_and_extraction_use_idle_io_so_live_guests_can_recover(self):
+        with tempfile.TemporaryDirectory() as temporary,patch.object(setup,'STATE',Path(temporary)):
+            root=Path(temporary);application=root/'nas-application';application.mkdir(mode=0o700)
+            (application/'manifest.json').write_text('{}');calls=[]
+            def run(arguments,**kwargs):
+                calls.append(arguments)
+                value=({'restored_archive':'/private/archive.tar'} if 'restore-application' in arguments else {})
+                return subprocess.CompletedProcess(arguments,0,json.dumps(value),'')
+            args=SimpleNamespace(snapshot='a'*64,archive='exact.tar',target=root/'nas')
+            with patch.object(setup,'run',side_effect=run):
+                setup.operation('restore-verify',{'version':'/reviewed','qemu_bin':'/nix/store/synthetic/bin'},args)
+            work=[args for args in calls if 'restore-application' in args or 'verify' in args]
+            self.assertEqual(len(work),2)
+            for args in work:
+                self.assertEqual(args[:4],['systemd-run','--scope','--collect','--quiet'])
+                self.assertIn('--property=IOWriteBandwidthMax=/srv/restore-tests 50M',args)
+                self.assertIn('--property=IOReadBandwidthMax=/srv/restore-tests 100M',args)
+                self.assertEqual(args[args.index('ionice'):args.index('ionice')+3],['ionice','-c','3'])
+
+    def test_restore_timeout_stops_only_its_generated_scope(self):
+        calls=[]
+        def run(args,**kwargs):
+            calls.append(args)
+            if args[0]=='systemd-run':raise subprocess.TimeoutExpired(args,1)
+            return subprocess.CompletedProcess(args,0,'','')
+        with patch.object(setup,'run',side_effect=run),self.assertRaises(subprocess.TimeoutExpired):
+            setup.restore_run(['synthetic'],env={},timeout=1)
+        unit=calls[0][calls[0].index('--unit')+1]
+        self.assertEqual(calls[1],['systemctl','stop',unit])
+
     def test_schedule_cannot_be_enabled_from_a_mismatched_restore_receipt(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(setup,'STATE',Path(temporary)), patch.object(setup,'run'):
             root=Path(temporary)

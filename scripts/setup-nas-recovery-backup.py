@@ -367,6 +367,21 @@ def installed(expected: str) -> dict:
     return record
 
 
+def restore_run(arguments: list[str], *, env: dict, timeout: int):
+    unit = 'homecompute-restore-' + uuid.uuid4().hex + '.scope'
+    command = ['systemd-run', '--scope', '--collect', '--quiet', '--unit', unit,
+               '--property=IOWeight=10',
+               '--property=IOWriteBandwidthMax=/srv/restore-tests 50M',
+               '--property=IOReadBandwidthMax=/srv/restore-tests 100M',
+               'ionice', '-c', '3', *arguments]
+    try:
+        return run(command, env=env, timeout=timeout)
+    except BaseException:
+        # A timed-out client must not leave an unbounded restore child behind.
+        run(['systemctl', 'stop', unit], env=env, timeout=60, check=False)
+        raise
+
+
 def operation(command: str, record: dict, args) -> dict:
     version = Path(record['version']); env = environment(record['qemu_bin'])
     nas = [PYTHON, '-I', str(version / 'scripts/nas-recovery-backup.py')]
@@ -390,10 +405,12 @@ def operation(command: str, record: dict, args) -> dict:
         return json.loads((STATE / 'last-backup.json').read_bytes())
     if command == 'restore-verify':
         if not args.snapshot or not args.archive or not args.target: raise ValueError('restore needs exact snapshot, archive and new scratch target')
-        result = json.loads(run([*nas, 'restore-application', '--snapshot', args.snapshot, '--archive', args.archive,
+        # Bulk scratch writes share the disk with live VM roots. Idle priority
+        # alone is insufficient on schedulers that do not honor that hint.
+        result = json.loads(restore_run([*nas, 'restore-application', '--snapshot', args.snapshot, '--archive', args.archive,
                                 '--target', str(args.target)], env=env, timeout=7500).stdout)
         application = args.target.with_name(args.target.name + '-application')
-        proof = json.loads(run([*recovery, 'verify', result['restored_archive'], str(application)],
+        proof = json.loads(restore_run([*recovery, 'verify', result['restored_archive'], str(application)],
                               env=env, timeout=7500).stdout)
         manifest = application / 'manifest.json'; safe(manifest)
         output = {'snapshot': args.snapshot, 'archive': args.archive, 'verification': proof,
