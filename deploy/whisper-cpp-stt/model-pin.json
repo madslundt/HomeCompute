@@ -6,6 +6,13 @@
     "commit": "f049fff95a089aa9969deb009cdd4892b3e74916",
     "license": "MIT"
   },
+  "cuda_candidate": {
+    "platform": "linux/arm64",
+    "base_image": "nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9",
+    "cuda_toolkit": "13.1.115",
+    "architecture": "121a-real",
+    "minimum_linux_driver_major": 580
+  },
   "model": {
     "repository": "ggerganov/whisper.cpp",
     "snapshot": "c521a4b02f422512d734391fdf08bb08c0862f68",
@@ -25,6 +32,6 @@
   "notes": [
     "The GGML conversion is not byte-identical to the pinned Hugging Face safetensors files.",
     "The model must be provisioned out of band and mounted read-only; inference never downloads it.",
-    "This candidate is CPU-only and has no production alias or route."
+    "CPU and CUDA builds are separate qualification candidates; neither has a production alias or route."
   ]
 }

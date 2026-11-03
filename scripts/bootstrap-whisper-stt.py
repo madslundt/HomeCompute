@@ -19,8 +19,9 @@ import tempfile
 
 REPOSITORY='https://github.com/madslundt/HomeCompute.git'
 RELEASES=Path('/srv/homecompute/releases')
-ACTIONS=('prepare','prepare-runtime-candidate','apply','install','retire','rollback','status','smoke',
-         'runtime-candidate','runtime-candidate-rollback','runtime-candidate-status')
+ACTIONS=('prepare','prepare-runtime-candidate','prepare-cuda-candidate','apply','install','retire','rollback','status','smoke',
+         'runtime-candidate','runtime-candidate-rollback','runtime-candidate-status',
+         'cuda-candidate','cuda-candidate-rollback','cuda-candidate-status')
 
 
 def run(arguments):
@@ -61,10 +62,25 @@ def materialize(revision):
     return target
 
 
+def setup_argv(release, args):
+    limits = (args.max_audio_seconds, args.max_upload_bytes, args.native_timeout_seconds)
+    if any(value is not None for value in limits) and args.action != 'cuda-candidate':
+        raise ValueError('request limits are accepted only for cuda-candidate')
+    command=[sys.executable,'-I','-B',str(release/'scripts/setup-whisper-stt.py'),
+             args.action,'--revision',args.revision]
+    names=('--max-audio-seconds','--max-upload-bytes','--native-timeout-seconds')
+    for name,value in zip(names,limits):
+        if value is not None:command.extend((name,str(value)))
+    return command
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision',required=True)
     parser.add_argument('--action',choices=ACTIONS,required=True)
+    parser.add_argument('--max-audio-seconds',type=int)
+    parser.add_argument('--max-upload-bytes',type=int)
+    parser.add_argument('--native-timeout-seconds',type=int)
     args=parser.parse_args()
     if os.geteuid()!=0 or socket.gethostname().split('.')[0]!='home-spark' or not sys.flags.isolated:
         raise ValueError('run-python-with-I-and-B-through-sudo-on-home-spark')
@@ -76,8 +92,7 @@ def main():
     release=materialize(args.revision)
     if Path(__file__).read_bytes()!=(release/'scripts/bootstrap-whisper-stt.py').read_bytes():
         raise ValueError('staged-bootstrap-differs-from-published-source')
-    os.execv(sys.executable,[sys.executable,'-I','-B',str(release/'scripts/setup-whisper-stt.py'),
-                           args.action,'--revision',args.revision])
+    os.execv(sys.executable,setup_argv(release,args))
 
 
 if __name__=='__main__':

@@ -5,6 +5,7 @@ from __future__ import annotations
 from email import policy
 from email.parser import BytesParser
 import hashlib
+import ctypes
 import importlib.util
 import io
 import json
@@ -15,6 +16,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 import urllib.error
 import urllib.request
 import wave
@@ -257,6 +259,42 @@ class AdapterContractTests(unittest.TestCase):
         self.assertEqual(command[command.index("--language") + 1], "auto")
         self.assertNotIn("--prompt", command)
 
+    def test_cuda_device_is_explicit_and_never_silently_forced_to_cpu(self):
+        cpu = ADAPTER.native_command(ADAPTER.CandidateConfig(
+            Path("/models/ggml-large-v3.bin"), Path("/key")))
+        cuda = ADAPTER.native_command(ADAPTER.CandidateConfig(
+            Path("/models/ggml-large-v3.bin"), Path("/key"), device="cuda"))
+        self.assertIn("--no-gpu", cpu)
+        self.assertNotIn("--no-gpu", cuda)
+        self.assertEqual(cuda[cuda.index("--device") + 1], "0")
+        self.assertEqual(cuda[cuda.index("--max-context") + 1], "0")
+        with patch.dict(os.environ, {"WHISPER_CPP_DEVICE": "cuda"}, clear=False):
+            self.assertEqual(ADAPTER.load_config().device, "cuda")
+        with patch.dict(os.environ, {"WHISPER_CPP_DEVICE": "automatic"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "WHISPER_CPP_DEVICE"):
+                ADAPTER.load_config()
+
+    def test_cuda_runtime_refuses_missing_runtime_or_no_device(self):
+        with patch.object(ADAPTER.ctypes, "CDLL", side_effect=OSError("synthetic")):
+            with self.assertRaisesRegex(RuntimeError, "CUDA runtime is unavailable"):
+                ADAPTER.require_cuda_device()
+
+        def no_devices(pointer):
+            ctypes.cast(pointer, ctypes.POINTER(ctypes.c_int)).contents.value = 0
+            return 0
+
+        runtime = SimpleNamespace(cudaGetDeviceCount=no_devices)
+        with patch.object(ADAPTER.ctypes, "CDLL", return_value=runtime):
+            with self.assertRaisesRegex(RuntimeError, "CUDA device is unavailable"):
+                ADAPTER.require_cuda_device()
+
+        def one_device(pointer):
+            ctypes.cast(pointer, ctypes.POINTER(ctypes.c_int)).contents.value = 1
+            return 0
+
+        with patch.object(ADAPTER.ctypes, "CDLL", return_value=SimpleNamespace(cudaGetDeviceCount=one_device)):
+            ADAPTER.require_cuda_device()
+
     def test_tracked_pins_and_compose_stay_cpu_private_and_opt_in(self):
         pin = json.loads((DEPLOY / "model-pin.json").read_text())
         compose = (DEPLOY / "compose.yaml").read_text()
@@ -274,6 +312,31 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn("HOME_COMPUTE_REVISION: ${WHISPER_CPP_HOME_COMPUTE_REVISION", compose)
         self.assertIn("WHISPER_CPP_IMAGE_ID: ${WHISPER_CPP_IMAGE_ID", compose)
         self.assertIn(ADAPTER.RUNTIME_COMMIT, dockerfile)
+
+    def test_cuda_profile_is_pinned_arm64_opt_in_and_isolated(self):
+        pin = json.loads((DEPLOY / "model-pin.json").read_text())
+        compose = (DEPLOY / "compose-cuda.yaml").read_text()
+        dockerfile = (DEPLOY / "Dockerfile.cuda").read_text()
+        cuda = pin["cuda_candidate"]
+        self.assertEqual(cuda["platform"], "linux/arm64")
+        self.assertEqual(cuda["architecture"], "121a-real")
+        self.assertEqual(cuda["cuda_toolkit"], "13.1.115")
+        self.assertIn(cuda["base_image"], compose)
+        self.assertIn(cuda["base_image"], dockerfile)
+        self.assertIn("release 13.1, V13.1.115", dockerfile)
+        self.assertIn("cmake version 3.31.6", dockerfile)
+        self.assertIn("gcc -dumpfullversion", dockerfile)
+        self.assertIn("grep -q 'libggml-cuda'", dockerfile)
+        self.assertIn("platform: linux/arm64", compose)
+        self.assertIn("profiles: [cuda-candidate]", compose)
+        self.assertIn("WHISPER_CPP_DEVICE: cuda", compose)
+        self.assertIn("capabilities: [gpu]", compose)
+        self.assertIn("internal: true", compose)
+        self.assertNotRegex(compose, r"(?m)^\s+ports:")
+        self.assertIn("CMAKE_CUDA_ARCHITECTURES=121a-real", dockerfile)
+        self.assertIn("-DGGML_CUDA=ON", dockerfile)
+        self.assertIn('io.homecompute.whisper-cpp.backend="cuda-121a"', dockerfile)
+        self.assertIn("WHISPER_CPP_DEVICE", (DEPLOY / "adapter.py").read_text())
 
     def test_verbose_native_segments_keep_text_timing_and_exact_char_anchors(self):
         source = {"text": "Hello <|25.52|> world\nAgain.\n", "segments": [
@@ -356,6 +419,7 @@ class AdapterContractTests(unittest.TestCase):
                 self.assertEqual(response.headers["X-HomeCompute-STT-Runtime-Commit"], ADAPTER.RUNTIME_COMMIT)
                 self.assertEqual(response.headers["X-HomeCompute-STT-HomeCompute-Revision"], "a" * 40)
                 self.assertEqual(response.headers["X-HomeCompute-STT-Image-ID"], "sha256:" + "b" * 64)
+                self.assertEqual(response.headers["X-HomeCompute-STT-Device"], "cpu")
             self.assertEqual(observed["fields"]["prompt"], "synthetic neutral\nprompt")
             self.assertEqual(observed["fields"]["language"], "auto")
             self.assertEqual(observed["fields"]["response_format"], "verbose_json")
@@ -373,6 +437,52 @@ class AdapterContractTests(unittest.TestCase):
         server.shutdown()
         server.server_close()
         thread.join(timeout=3)
+
+    def test_health_reports_device_provenance_and_inference_busy_state(self):
+        config = ADAPTER.CandidateConfig(
+            Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
+            image_id="sha256:" + "b" * 64, device="cuda")
+        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/health"
+            with urllib.request.urlopen(url, timeout=3) as response:
+                healthy = json.loads(response.read())
+            self.assertEqual(healthy["device"], "cuda")
+            self.assertEqual(healthy["inference_busy"], False)
+            self.assertTrue(server.inflight.acquire(blocking=False))
+            try:
+                with urllib.request.urlopen(url, timeout=3) as response:
+                    busy = json.loads(response.read())
+                self.assertEqual(busy["inference_busy"], True)
+            finally:
+                server.inflight.release()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+    def test_cuda_success_response_identifies_backend_without_changing_text(self):
+        config = ADAPTER.CandidateConfig(
+            Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
+            image_id="sha256:" + "b" * 64, device="cuda")
+        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            body, content_type = multipart([("model", "whisper"), ("response_format", "json")], wav_bytes())
+            url = f"http://127.0.0.1:{server.server_address[1]}/v1/audio/transcriptions"
+            request = urllib.request.Request(url, data=body, headers={
+                "Content-Type": content_type, "Authorization": "Bearer synthetic-secret-value"})
+            with patch.object(ADAPTER, "_native_request", return_value=b'{"text":"Synthetic words"}'):
+                with urllib.request.urlopen(request, timeout=3) as response:
+                    self.assertEqual(response.headers["X-HomeCompute-STT-Device"], "cuda")
+                    self.assertEqual(json.loads(response.read()), {"text": "Synthetic words"})
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
 
 
 if __name__ == "__main__":

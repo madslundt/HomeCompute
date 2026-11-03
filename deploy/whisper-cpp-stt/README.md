@@ -134,6 +134,68 @@ in force. No claim is made that core CPU can finish either long request within
 the deadline. A limit breach returns an error; requests are never silently
 shortened.
 
+## Opt-in native GB10 CUDA candidate
+
+`Dockerfile.cuda` and `compose-cuda.yaml` define a separate qualification-only
+ARM64 CUDA image. Its base is the locally verified NGC PyTorch image
+`nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9`
+(resolved on Spark to linux/arm64 image
+`sha256:c0e6c0b168faa1be027564e9a004e842c342e22ea51903d5fc7b9008850398d0`).
+The base includes CUDA Toolkit 13.1.115, CMake 3.31.6, and GCC 13.3. The
+upstream v1.9.1 CMake source supports `121a-real` with CUDA 12.9 and newer;
+the candidate pins that architecture explicitly. NVIDIA lists GB10 as compute
+capability 12.1, and the inspected host driver is 580.178.04. CUDA 13.x's
+documented Linux compatibility floor is R580. This supports building the
+candidate, but exact runtime compatibility, model load, memory use, quality,
+and latency remain unverified until a guarded GPU qualification completes.
+
+The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
+visible device, and it does not pass `--no-gpu` to the pinned server. CPU remains
+the default mode and the separate CPU image is built with `GGML_CUDA=OFF`.
+Neither Compose file publishes a host port or joins the production inference
+network. The candidate has its own private Docker network, read-only model and
+credential mounts, no Docker logs, one serialized request, and 4 CPU / 12 GiB
+container bounds. It does not alter production aliases or relay routes.
+
+Provision the exact pinned GGML artifact and a separate qualification key
+outside Git before starting. Required Spark paths are
+`/srv/gb10-ai/cache/whisper-cpp/ggml-large-v3.bin` and
+`/etc/gb10-ai/secrets/whisper_cpp_api_key`; both must be regular root-owned,
+group-10001, mode-0440 files. Candidate startup hashes and validates the model
+before stopping the primary. The key is never shown by lifecycle status or
+health output.
+
+Use only the source-owned lifecycle from an exact reviewed release:
+
+```bash
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py prepare-cuda-candidate --revision FULL_SHA
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py cuda-candidate --revision FULL_SHA --max-audio-seconds 1200 --max-upload-bytes 40000000 --native-timeout-seconds 14400
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py cuda-candidate-status --revision FULL_SHA
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py cuda-candidate-rollback --revision FULL_SHA
+```
+
+`prepare-cuda-candidate` checks the native ARM64 host, local pinned base image,
+GB10 compute capability and driver floor, then builds and verifies the image;
+it does not attach a GPU or start a model. `cuda-candidate` requires a
+successfully applied or legacy-retired full Whisper transaction, a healthy
+pinned vLLM primary, and no active vLLM candidate. It validates the pinned
+model/key, applies the existing intake gate and drain, stops only the exact
+healthy primary, then starts this isolated candidate. The existing 12-GiB
+pre-load and 10-percent post-load host headroom gates remain mandatory. A
+synthetic authenticated smoke must pass before qualification is reported.
+Always run `cuda-candidate-rollback` after qualification; it removes only the
+journaled candidate and restores the exact stopped vLLM primary and restart
+policy. The candidate is never promoted by these actions.
+
+For the 1,122-second private qualification, pass bounded duration, upload, and
+native timeout values explicitly as lifecycle options, for example the values
+shown above. The service refuses inconsistent duration/upload limits and caps
+the longform path at two hours / 256 MiB / four hours of native time.
+The current production relay still caps requests at 60 seconds / 10,000,000
+bytes and strips response headers, so this private candidate is not reachable
+through the current full-recording client path. Do not claim a client route or
+production readiness from a successful direct qualification.
+
 The portable synthetic contract and refusal tests run with:
 
 ```bash

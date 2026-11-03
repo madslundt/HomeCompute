@@ -11,6 +11,7 @@ from contextlib import ExitStack
 import fcntl
 import json
 import os
+import platform
 from pathlib import Path
 import pwd
 import re
@@ -27,6 +28,14 @@ OLD = ('gb10-hviske-http', 'gb10-whisper-http', 'gb10-hviske-primary', 'gb10-whi
 NEW = ('gb10-whisper-primary', 'gb10-whisper-http')
 CANDIDATE = 'gb10-whisper-candidate'
 CANDIDATE_IMAGE = 'homecompute/whisper-vllm-candidate:0.19.0-hc1'
+CUDA_CANDIDATE = 'gb10-whisper-cpp-cuda-candidate'
+CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc1'
+CUDA_CANDIDATE_PROJECT = 'whisper-cpp-gb10-cuda'
+CUDA_BASE_IMAGE = 'nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9'
+CPP_MODEL_SHA256 = '64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2'
+CPP_MODEL_PATH = Path('/srv/gb10-ai/cache/whisper-cpp/ggml-large-v3.bin')
+CPP_API_KEY_PATH = Path('/etc/gb10-ai/secrets/whisper_cpp_api_key')
+CPP_RUNTIME_COMMIT = 'f049fff95a089aa9969deb009cdd4892b3e74916'
 REVISION = '06f233fe06e710322aca913c1bc4249a0d71fce1'
 MODEL = 'openai/whisper-large-v3'
 LEGACY_REPOSITORIES = ('syvai/hviske-v5.3', 'openai/whisper-large-v3-turbo')
@@ -39,6 +48,17 @@ CANDIDATE_STAGES = frozenset({
 CANDIDATE_ROLLBACK_STAGES = frozenset({
     'inspect-candidate', 'disable-candidate-restart', 'stop-candidate',
     'remove-candidate', 'inspect-primary', 'restore-primary-restart',
+    'start-primary', 'wait-primary-health', 'complete',
+})
+CUDA_CANDIDATE_STAGES = frozenset({
+    'preflight', 'install-intake-gate', 'drain-primary', 'stop-primary',
+    'pre-load-memory-check', 'candidate-start', 'candidate-health-check',
+    'synthetic-candidate-smoke', 'post-load-memory-check', 'release-intake-gate',
+    'candidate-running', 'candidate-rollback', 'gate-cleanup',
+})
+CUDA_ROLLBACK_STAGES = frozenset({
+    'inspect-candidate', 'wait-candidate-idle', 'stop-candidate', 'remove-candidate',
+    'inspect-network', 'remove-network', 'inspect-primary', 'restore-primary-restart',
     'start-primary', 'wait-primary-health', 'complete',
 })
 SAFE_EXECUTABLES = frozenset({'docker', 'python3', 'git', 'iptables'})
@@ -277,6 +297,7 @@ def format_candidate_failure(metadata):
             f" stage={metadata.get('failure_stage') or 'unknown'}"
             f" class={metadata.get('failure_class') or 'Error'}"
             f" classification={metadata.get('failure_classification') or 'unknown'}"
+            f" classification={metadata.get('failure_classification') or 'unknown'}"
             f" executable={metadata.get('failure_executable') or 'none'}"
             f" exit_code={metadata.get('failure_exit_code')}"
             f" rollback={metadata.get('rollback_status') or 'unknown'}"
@@ -338,6 +359,25 @@ def compose(*arguments, timeout=1200):
                 *arguments], timeout=timeout, environment=environment)
 
 
+def compose_cuda(*arguments, timeout=3600, revision='', image_id='',
+                 max_audio_seconds=180, max_upload_bytes=6_000_000,
+                 native_timeout_seconds=900):
+    identity = pwd.getpwnam('gb10-ai')
+    environment = {**os.environ,
+                   'WHISPER_CPP_HOME_COMPUTE_REVISION': revision,
+                   'WHISPER_CPP_IMAGE_ID': image_id,
+                   'WHISPER_CPP_MODEL_FILE': str(CPP_MODEL_PATH),
+                   'WHISPER_CPP_API_KEY_FILE': str(CPP_API_KEY_PATH),
+                   'WHISPER_CPP_MAX_AUDIO_SECONDS': str(max_audio_seconds),
+                   'WHISPER_CPP_MAX_UPLOAD_BYTES': str(max_upload_bytes),
+                   'WHISPER_CPP_NATIVE_TIMEOUT_SECONDS': str(native_timeout_seconds),
+                   'WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS': os.environ.get('WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS', '120'),
+                   'GB10_RUNTIME_UID': str(identity.pw_uid), 'GB10_RUNTIME_GID': str(identity.pw_gid)}
+    return run(['docker', 'compose', '--project-name', CUDA_CANDIDATE_PROJECT,
+                '-f', str(ROOT / 'deploy/whisper-cpp-stt/compose-cuda.yaml'),
+                *arguments], timeout=timeout, environment=environment)
+
+
 def guards():
     for path in (Path('/var/lib/homecompute-speech-capacity/active.json'),
                  Path('/var/lib/homecompute-speech-finalization/active.json')):
@@ -373,6 +413,446 @@ def prepare_runtime_candidate():
     compose('--profile', 'candidate', 'build', 'whisper-candidate')
     candidate_image_id()
     print('Pinned Whisper runtime candidate image built and verified; no model was started', flush=True)
+
+
+def check_cuda_host():
+    if platform.machine() != 'aarch64':
+        raise ValueError('GB10 CUDA candidate requires native ARM64; emulation is refused')
+    base = json.loads(run(['docker', 'image', 'inspect', CUDA_BASE_IMAGE]).stdout)[0]
+    if base.get('Os') != 'linux' or base.get('Architecture') != 'arm64':
+        raise ValueError('Pinned CUDA build base is not a native ARM64 image')
+    rows = run(['nvidia-smi', '--query-gpu=name,compute_cap,driver_version', '--format=csv,noheader']).stdout.strip().splitlines()
+    if len(rows) != 1:
+        raise ValueError('Exactly one local GB10 CUDA device is required')
+    fields = [field.strip() for field in rows[0].split(',')]
+    if len(fields) != 3 or fields[0] != 'NVIDIA GB10' or fields[1] != '12.1':
+        raise ValueError('Local CUDA device is not the pinned GB10 compute capability')
+    match = re.match(r'^(\d+)', fields[2])
+    if not match or int(match.group(1)) < 580:
+        raise ValueError('CUDA 13 requires NVIDIA Linux driver 580 or newer')
+
+
+def cuda_candidate_image_id(revision):
+    image = json.loads(run(['docker', 'image', 'inspect', CUDA_CANDIDATE_IMAGE]).stdout)[0]
+    labels = image.get('Config', {}).get('Labels') or {}
+    expected = {
+        'org.opencontainers.image.revision': CPP_RUNTIME_COMMIT,
+        'io.homecompute.source-revision': revision,
+        'io.homecompute.whisper-cpp.runtime-commit': CPP_RUNTIME_COMMIT,
+        'io.homecompute.whisper-cpp.model-sha256': CPP_MODEL_SHA256,
+        'io.homecompute.whisper-cpp.backend': 'cuda-121a',
+        'io.homecompute.whisper-cpp.cuda-base': CUDA_BASE_IMAGE,
+    }
+    if (image.get('Os') != 'linux' or image.get('Architecture') != 'arm64' or
+            any(labels.get(key) != value for key, value in expected.items())):
+        raise ValueError('Whisper.cpp CUDA candidate image identity or pinned build labels differ')
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image.get('Id', '')):
+        raise ValueError('Whisper.cpp CUDA candidate image ID is invalid')
+    return image['Id']
+
+
+def prepare_cuda_candidate(revision):
+    guards()
+    check_cuda_host()
+    compose_cuda('--profile', 'cuda-candidate', 'build', '--pull=false', 'whisper-cpp-cuda',
+                 revision=revision)
+    cuda_candidate_image_id(revision)
+    print('Pinned native ARM64 Whisper.cpp CUDA candidate image built and verified; no GPU model was started', flush=True)
+
+
+def validate_cuda_artifacts(image_id, revision):
+    for path in (CPP_MODEL_PATH, CPP_API_KEY_PATH):
+        try:
+            info = path.lstat()
+        except OSError:
+            raise ValueError('Whisper.cpp CUDA model or qualification credential is unavailable') from None
+        if (not stat.S_ISREG(info.st_mode) or path.is_symlink() or info.st_uid != 0 or
+                info.st_gid != 10001 or stat.S_IMODE(info.st_mode) != 0o440):
+            raise ValueError('Whisper.cpp CUDA model and credential must be root:10001 mode 0440 files')
+    if CPP_API_KEY_PATH.stat().st_size < 16 or CPP_API_KEY_PATH.stat().st_size > 512:
+        raise ValueError('Whisper.cpp CUDA qualification credential size is invalid')
+    command = ['docker', 'run', '--rm', '--network', 'none', '--read-only', '--cap-drop=ALL',
+               '--security-opt=no-new-privileges', '--user', '10001:10001', '--memory=512m',
+               '--pids-limit=16', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=8m',
+               '--mount', f'type=bind,src={CPP_MODEL_PATH},dst=/models/ggml-large-v3.bin,readonly',
+               '--entrypoint', 'python3', image_id, '-I', '-B',
+               '/opt/homecompute/verify_model.py', '/models/ggml-large-v3.bin']
+    run(command, timeout=1800)
+    key_check = ('import os,stat; p="/run/secrets/whisper_cpp_api_key"; i=os.stat(p,follow_symlinks=False); '
+                 'assert stat.S_ISREG(i.st_mode) and stat.S_IMODE(i.st_mode)==0o440; '
+                 'b=open(p,"rb").read(); assert 16<=len(b)<=512 and b.strip() and b"\\n" not in b and b"\\r" not in b; '
+                 'print("Qualification credential verified")')
+    run(['docker', 'run', '--rm', '--network', 'none', '--read-only', '--cap-drop=ALL',
+         '--security-opt=no-new-privileges', '--user', '10001:10001', '--memory=64m',
+         '--pids-limit=16', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=8m',
+         '--mount', f'type=bind,src={CPP_API_KEY_PATH},dst=/run/secrets/whisper_cpp_api_key,readonly',
+         '--entrypoint', 'python3', image_id, '-I', '-B', '-c', key_check], timeout=30)
+
+
+def validate_cuda_request_limits(max_audio_seconds, max_upload_bytes, native_timeout_seconds):
+    if (not 1 <= max_audio_seconds <= 7200 or not 1 <= max_upload_bytes <= 256 * 1024 * 1024 or
+            max_upload_bytes < max_audio_seconds * 32_000 + 44 or
+            not 1 <= native_timeout_seconds <= 14_400):
+        raise ValueError('Whisper.cpp CUDA request limits are invalid or inconsistent')
+
+
+def save_cuda_candidate(tx):
+    target = STATE / 'cuda-candidate.json'
+    temporary = STATE / 'cuda-candidate.tmp'
+    if temporary.exists() or temporary.is_symlink():
+        raise ValueError('Incomplete CUDA candidate journal write requires inspection')
+    with temporary.open('x') as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(tx, stream, sort_keys=True)
+        stream.flush(); os.fsync(stream.fileno())
+    os.replace(temporary, target)
+
+
+def cuda_candidate_stage(tx, stage):
+    if stage not in CUDA_CANDIDATE_STAGES:
+        raise ValueError('Unknown CUDA candidate stage')
+    tx['candidate_stage'] = stage
+    save_cuda_candidate(tx)
+
+
+def cuda_candidate_failure(tx, error, *, stage=None, rollback=False):
+    failure_stage = stage or (tx.get('rollback_stage') if rollback else tx.get('candidate_stage'))
+    allowed = CUDA_ROLLBACK_STAGES if rollback else CUDA_CANDIDATE_STAGES
+    if failure_stage not in allowed:
+        failure_stage = 'preflight'
+    command = safe_command_metadata(error)
+    if rollback:
+        tx.update(state='rollback-failed', rollback_status='failed',
+                  rollback_failure_stage=failure_stage,
+                  rollback_failure_class=safe_class_name(error),
+                  rollback_failure_executable=command['executable'],
+                  rollback_failure_exit_code=command['exit_code'])
+    else:
+        diagnostic_id = os.urandom(6).hex()
+        private_text = (error.private_diagnostic if isinstance(error, ManagedCommandFailure)
+                        else bounded_private_excerpt(error))
+        diagnostic = {
+            'diagnostic_id': diagnostic_id, 'failure_stage': failure_stage,
+            'failure_class': safe_class_name(error),
+            'failure_classification': (error.classification if isinstance(error, ManagedCommandFailure)
+                and error.classification != 'unknown' else classify_diagnostic('', stage=failure_stage)),
+            'command_executable': command['executable'], 'command_exit_code': command['exit_code'],
+            'command_diagnostic_excerpt': private_text,
+        }
+        try:
+            write_candidate_diagnostic(diagnostic_id, diagnostic)
+            diagnostic_available = True
+        except Exception:
+            diagnostic_available = False
+        tx.update(state='rollback-pending', failure_stage=failure_stage,
+                  failure_class=safe_class_name(error), failure_executable=command['executable'],
+                  failure_exit_code=command['exit_code'], failure_id=diagnostic_id,
+                  failure_classification=diagnostic['failure_classification'],
+                  failure_diagnostic_available=diagnostic_available, rollback_status='pending')
+    try:
+        save_cuda_candidate(tx)
+    except Exception:
+        pass
+    return {key: tx.get(key) for key in (
+        'failure_id', 'failure_stage', 'failure_class', 'failure_executable', 'failure_exit_code',
+        'failure_classification', 'failure_diagnostic_available', 'rollback_status',
+        'rollback_failure_stage', 'rollback_failure_class',
+        'rollback_failure_executable', 'rollback_failure_exit_code')}
+
+
+class CudaCandidateFailure(RuntimeError):
+    def __init__(self, metadata):
+        self.metadata = metadata
+        super().__init__('Whisper.cpp CUDA candidate qualification failed')
+
+
+def cuda_candidate_rollback(tx):
+    def stage(name):
+        if name not in CUDA_ROLLBACK_STAGES:
+            raise ValueError('Unknown CUDA candidate rollback stage')
+        tx['rollback_stage'] = name
+        save_cuda_candidate(tx)
+
+    stage('inspect-candidate')
+    candidate = inspect(CUDA_CANDIDATE)
+    if candidate:
+        labels = candidate.get('Config', {}).get('Labels') or {}
+        if (candidate.get('Image') != tx.get('candidate_image_id') or
+                labels.get('com.docker.compose.project') != CUDA_CANDIDATE_PROJECT or
+                labels.get('com.docker.compose.service') != 'whisper-cpp-cuda'):
+            raise ValueError('Whisper.cpp CUDA candidate ownership changed; rollback held')
+        if tx.get('state') == 'candidate-running':
+            deadline = time.monotonic() + 180
+            stable = 0
+            check = 'import json,urllib.request; d=json.load(urllib.request.urlopen("http://127.0.0.1:8000/health",timeout=2)); print(json.dumps({"busy":d.get("inference_busy") is True}))'
+            while time.monotonic() < deadline:
+                stage('wait-candidate-idle')
+                result = run(['docker', 'exec', CUDA_CANDIDATE, 'python3', '-c', check], timeout=5)
+                stable = stable + 1 if json.loads(result.stdout) == {'busy': False} else 0
+                if stable >= 3:
+                    break
+                time.sleep(1)
+            else:
+                raise ValueError('Whisper.cpp CUDA candidate did not become idle; rollback held')
+        if candidate['State']['Running']:
+            stage('stop-candidate')
+            run(['docker', 'update', '--restart', 'no', candidate['Id']])
+            run(['docker', 'stop', '--time', '180', candidate['Id']], timeout=210)
+        stage('remove-candidate')
+        run(['docker', 'rm', candidate['Id']])
+    if inspect(CUDA_CANDIDATE):
+        raise ValueError('Whisper.cpp CUDA candidate remains after project cleanup')
+    stage('inspect-network')
+    network_ids = run(['docker', 'network', 'ls', '-q', '--filter',
+                       'label=com.docker.compose.project=' + CUDA_CANDIDATE_PROJECT]).stdout.split()
+    for network_id in network_ids:
+        network = json.loads(run(['docker', 'network', 'inspect', network_id]).stdout)[0]
+        labels = network.get('Labels') or {}
+        if (network.get('Name') != CUDA_CANDIDATE_PROJECT + '_candidate' or
+                labels.get('com.docker.compose.project') != CUDA_CANDIDATE_PROJECT or
+                labels.get('com.docker.compose.network') != 'candidate' or
+                not network.get('Internal') or network.get('Containers')):
+            raise ValueError('Whisper.cpp CUDA candidate network ownership changed; cleanup held')
+        stage('remove-network')
+        run(['docker', 'network', 'rm', network_id])
+    stage('inspect-primary')
+    original = inspect(tx['primary_id'])
+    if (not original or original.get('Image') != tx['primary_image'] or
+            original.get('Name') != '/gb10-whisper-primary'):
+        raise ValueError('Original Whisper primary changed or disappeared; rollback held')
+    stage('restore-primary-restart')
+    run(['docker', 'update', '--restart', tx['primary_restart'], tx['primary_id']])
+    if not original['State']['Running']:
+        stage('start-primary')
+        run(['docker', 'start', tx['primary_id']])
+    stage('wait-primary-health')
+    deadline = time.monotonic() + 900
+    while time.monotonic() < deadline:
+        current = inspect(tx['primary_id'])
+        if (current and current['State']['Running'] and
+                current.get('State', {}).get('Health', {}).get('Status') == 'healthy'):
+            tx.update(state='rolled-back', rollback_status='completed')
+            stage('complete')
+            return
+        time.sleep(2)
+    raise ValueError('Original Whisper primary did not become healthy; rollback is incomplete')
+
+
+def cuda_candidate_smoke():
+    code = '''import io,json,urllib.request,wave
+key=open('/run/secrets/whisper_cpp_api_key').read().strip()
+audio=io.BytesIO()
+with wave.open(audio,'wb') as w:
+ w.setparams((1,2,16000,0,'NONE','PCM'));w.writeframes(b'\\0\\0'*16000)
+body=(b'--smoke\\r\\nContent-Disposition: form-data; name="model"\\r\\n\\r\\nwhisper-large-v3\\r\\n'
+      b'--smoke\\r\\nContent-Disposition: form-data; name="response_format"\\r\\n\\r\\njson\\r\\n'
+      b'--smoke\\r\\nContent-Disposition: form-data; name="file"; filename="audio.wav"\\r\\nContent-Type: audio/wav\\r\\n\\r\\n'
+      +audio.getvalue()+b'\\r\\n--smoke--\\r\\n')
+r=urllib.request.Request('http://127.0.0.1:8000/v1/audio/transcriptions',body,
+ headers={'Authorization':'Bearer '+key,'Content-Type':'multipart/form-data; boundary=smoke'})
+d=json.load(urllib.request.urlopen(r,timeout=120))
+assert isinstance(d.get('text'),str)
+print('Authenticated CUDA candidate smoke passed; content withheld')
+'''
+    run(['docker', 'exec', CUDA_CANDIDATE, 'python3', '-c', code], timeout=150)
+
+
+def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_000_000,
+                         native_timeout_seconds=900):
+    guards()
+    validate_cuda_request_limits(max_audio_seconds, max_upload_bytes, native_timeout_seconds)
+    base_tx_path = STATE / 'transaction.json'
+    protected(base_tx_path)
+    base_tx = json.loads(base_tx_path.read_text())
+    if base_tx.get('state') not in {'applied', 'legacy-retired'}:
+        raise ValueError('The full Whisper lifecycle must be applied or legacy-retired before CUDA qualification')
+    check_cuda_host()
+    primary = inspect(NEW[0])
+    if (not primary or not primary['State']['Running'] or
+            primary.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+            MODEL not in ' '.join(primary['Config'].get('Cmd') or []) or
+            REVISION not in ' '.join(primary['Config'].get('Cmd') or []) or
+            primary.get('Config', {}).get('Image') !=
+            'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d'):
+        raise ValueError('Healthy pinned full Whisper primary must be restored before CUDA qualification')
+    if inspect(CANDIDATE) or inspect(CUDA_CANDIDATE):
+        raise ValueError('Another Whisper candidate container exists; inspect and rollback it first')
+    prior = STATE / 'runtime-candidate.json'
+    if prior.exists() or prior.is_symlink():
+        protected(prior)
+        if json.loads(prior.read_text()).get('state') != 'rolled-back':
+            raise ValueError('The existing vLLM candidate transaction must be rolled back first')
+    image_id = cuda_candidate_image_id(revision)
+    validate_cuda_artifacts(image_id, revision)
+    journal = STATE / 'cuda-candidate.json'
+    if journal.exists() or journal.is_symlink():
+        protected(journal)
+        previous = json.loads(journal.read_text())
+        if previous.get('state') != 'rolled-back':
+            raise ValueError('Existing CUDA candidate transaction requires rollback/status review')
+        journal.rename(STATE / ('cuda-candidate-rolled-back-' + os.urandom(6).hex() + '.json'))
+    chain = 'HC-STT-' + os.urandom(6).hex()
+    tx = {'revision': revision, 'state': 'prepared', 'chain': chain,
+          'candidate_image_id': image_id, 'primary_id': primary['Id'],
+          'primary_image': primary['Image'], 'primary_restart': restart_policy(primary),
+          'model_sha256': CPP_MODEL_SHA256, 'runtime_commit': CPP_RUNTIME_COMMIT}
+    save_cuda_candidate(tx)
+    gate_attempted = False
+    failure = None
+    try:
+        cuda_candidate_stage(tx, 'install-intake-gate')
+        gate_attempted = True
+        gate(chain, True)
+        cuda_candidate_stage(tx, 'drain-primary')
+        quiet([primary])
+        cuda_candidate_stage(tx, 'stop-primary')
+        run(['docker', 'update', '--restart', 'no', primary['Id']])
+        run(['docker', 'stop', '--time', '180', primary['Id']], timeout=210)
+        cuda_candidate_stage(tx, 'pre-load-memory-check')
+        memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+        if int(memory['MemAvailable'].split()[0]) < 12 * 1024 * 1024:
+            raise ValueError('Less than 12 GiB available before CUDA candidate model load')
+        tx['state'] = 'primary-stopped'; save_cuda_candidate(tx)
+        cuda_candidate_stage(tx, 'candidate-start')
+        compose_cuda('--profile', 'cuda-candidate', 'up', '-d', '--no-build', '--pull', 'never',
+                     '--wait', '--wait-timeout', '900', 'whisper-cpp-cuda',
+                     revision=revision, image_id=image_id, timeout=1200,
+                     max_audio_seconds=max_audio_seconds, max_upload_bytes=max_upload_bytes,
+                     native_timeout_seconds=native_timeout_seconds)
+        cuda_candidate_stage(tx, 'candidate-health-check')
+        candidate = inspect(CUDA_CANDIDATE)
+        labels = candidate.get('Config', {}).get('Labels') or {} if candidate else {}
+        if (not candidate or candidate.get('Image') != image_id or not candidate['State']['Running'] or
+                candidate.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+                labels.get('com.docker.compose.project') != CUDA_CANDIDATE_PROJECT or
+                labels.get('com.docker.compose.service') != 'whisper-cpp-cuda'):
+            raise ValueError('Whisper.cpp CUDA candidate failed image, ownership or health verification')
+        health = run(['docker', 'exec', CUDA_CANDIDATE, 'python3', '-c',
+                      'import json,urllib.request;print(json.dumps(json.load(urllib.request.urlopen("http://127.0.0.1:8000/health",timeout=3))))'], timeout=5)
+        metadata = json.loads(health.stdout)
+        if (metadata.get('status') != 'ok' or metadata.get('device') != 'cuda' or
+                metadata.get('model_sha256') != CPP_MODEL_SHA256 or
+                metadata.get('runtime_commit') != CPP_RUNTIME_COMMIT or
+                metadata.get('homecompute_revision') != revision or metadata.get('image_id') != image_id):
+            raise ValueError('Whisper.cpp CUDA health provenance differs')
+        cuda_candidate_stage(tx, 'synthetic-candidate-smoke')
+        cuda_candidate_smoke()
+        cuda_candidate_stage(tx, 'post-load-memory-check')
+        memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+        if int(memory['MemAvailable'].split()[0]) / int(memory['MemTotal'].split()[0]) < 0.10:
+            raise ValueError('CUDA candidate failed the 10 percent host headroom gate')
+        tx['state'] = 'candidate-running'
+        cuda_candidate_stage(tx, 'candidate-running')
+    except BaseException as error:
+        failure = cuda_candidate_failure(tx, error)
+        try:
+            cuda_candidate_rollback(tx)
+            tx['failure_rollback_status'] = tx.get('rollback_status', 'completed')
+            save_cuda_candidate(tx)
+        except BaseException as rollback_error:
+            failure = cuda_candidate_failure(tx, rollback_error, rollback=True)
+    finally:
+        if gate_attempted:
+            try:
+                gate(chain, False)
+            except BaseException as cleanup_error:
+                if failure is None:
+                    failure = cuda_candidate_failure(tx, cleanup_error, stage='gate-cleanup')
+                    try:
+                        cuda_candidate_rollback(tx)
+                    except BaseException as rollback_error:
+                        failure = cuda_candidate_failure(tx, rollback_error, rollback=True)
+                tx['gate_cleanup_failure_class'] = safe_class_name(cleanup_error)
+                try:
+                    save_cuda_candidate(tx)
+                except Exception:
+                    pass
+                try:
+                    gate(chain, False)
+                except BaseException:
+                    pass
+    if failure is not None:
+        raise CudaCandidateFailure(failure) from None
+    print('Whisper.cpp CUDA candidate active for qualification; run cuda-candidate-rollback afterward', flush=True)
+
+
+def cuda_candidate_stop(revision):
+    journal = STATE / 'cuda-candidate.json'
+    protected(journal)
+    tx = json.loads(journal.read_text())
+    if tx.get('revision') != revision or tx.get('state') == 'rolled-back':
+        raise ValueError('No matching recoverable Whisper.cpp CUDA candidate transaction')
+    chain = tx['chain']
+    gate(chain, True)
+    try:
+        candidate = inspect(CUDA_CANDIDATE)
+        if candidate and candidate['State']['Running'] and tx.get('state') == 'candidate-running':
+            # Stop only after the adapter reports three consecutive idle samples.
+            deadline = time.monotonic() + 180
+            stable = 0
+            check = 'import json,urllib.request; d=json.load(urllib.request.urlopen("http://127.0.0.1:8000/health",timeout=2)); print(json.dumps({"busy":d.get("inference_busy") is True}))'
+            while time.monotonic() < deadline:
+                result = run(['docker', 'exec', CUDA_CANDIDATE, 'python3', '-c', check], timeout=5)
+                stable = stable + 1 if json.loads(result.stdout) == {'busy': False} else 0
+                if stable >= 3:
+                    break
+                time.sleep(1)
+            else:
+                raise ValueError('Whisper.cpp CUDA candidate did not become idle; rollback held')
+        cuda_candidate_rollback(tx)
+    finally:
+        gate(chain, False)
+    print('Whisper.cpp CUDA candidate stopped; exact original Whisper primary restored', flush=True)
+
+
+def cuda_candidate_status(revision):
+    journal = STATE / 'cuda-candidate.json'
+    if not journal.exists() and not journal.is_symlink():
+        print(json.dumps({'revision': revision, 'state': 'absent'}, sort_keys=True))
+        return
+    protected(journal)
+    tx = json.loads(journal.read_text())
+    if tx.get('revision') != revision:
+        raise ValueError('CUDA candidate transaction belongs to another release')
+    safe_classes = {'ValueError', 'RuntimeError', 'ManagedCommandFailure', 'KeyboardInterrupt',
+                    'InterruptedError', 'OSError', 'TimeoutExpired', 'PermissionError',
+                    'FileNotFoundError', 'CalledProcessError', 'JSONDecodeError'}
+    def safe_class(value):
+        return value if value in safe_classes else None
+    def safe_exit(value):
+        return value if isinstance(value, int) and -255 <= value <= 255 else None
+    print(json.dumps({
+        'revision': revision,
+        'state': tx.get('state') if tx.get('state') in {
+            'prepared', 'primary-stopped', 'candidate-running', 'rollback-pending',
+            'rolled-back', 'rollback-failed'} else 'unknown',
+        'candidate_stage': tx.get('candidate_stage') if tx.get('candidate_stage') in CUDA_CANDIDATE_STAGES else None,
+        'failure_id': tx.get('failure_id') if re.fullmatch(r'[0-9a-f]{12}', str(tx.get('failure_id') or '')) else None,
+        'failure_stage': tx.get('failure_stage') if tx.get('failure_stage') in CUDA_CANDIDATE_STAGES else None,
+        'failure_class': safe_class(tx.get('failure_class')),
+        'failure_classification': tx.get('failure_classification') if tx.get('failure_classification') in FAILURE_CLASSIFICATIONS else 'unknown',
+        'failure_diagnostic_available': bool(tx.get('failure_diagnostic_available')),
+        'failure_executable': tx.get('failure_executable') if tx.get('failure_executable') in SAFE_EXECUTABLES else None,
+        'failure_exit_code': safe_exit(tx.get('failure_exit_code')),
+        'rollback_status': tx.get('rollback_status') if tx.get('rollback_status') in {'pending', 'completed', 'failed'} else None,
+        'rollback_failure_stage': tx.get('rollback_failure_stage') if tx.get('rollback_failure_stage') in CUDA_ROLLBACK_STAGES else None,
+        'rollback_failure_class': safe_class(tx.get('rollback_failure_class')),
+        'rollback_failure_executable': tx.get('rollback_failure_executable') if tx.get('rollback_failure_executable') in SAFE_EXECUTABLES else None,
+        'rollback_failure_exit_code': safe_exit(tx.get('rollback_failure_exit_code')),
+        'gate_cleanup_failure_class': safe_class(tx.get('gate_cleanup_failure_class')),
+    }, sort_keys=True))
+
+
+def format_cuda_candidate_failure(metadata):
+    return ('Whisper.cpp CUDA candidate failure'
+            f" id={metadata.get('failure_id') or 'unavailable'}"
+            f" stage={metadata.get('failure_stage') or 'unknown'}"
+            f" class={metadata.get('failure_class') or 'Error'}"
+            f" executable={metadata.get('failure_executable') or 'none'}"
+            f" exit_code={metadata.get('failure_exit_code')}"
+            f" rollback={metadata.get('rollback_status') or 'unknown'}"
+            f" rollback_stage={metadata.get('rollback_failure_stage') or 'none'}"
+            f" rollback_class={metadata.get('rollback_failure_class') or 'none'}")
 
 
 def gate(chain, install):
@@ -842,15 +1322,20 @@ def retire(revision):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('prepare', 'prepare-runtime-candidate', 'apply', 'install', 'retire',
-                                           'rollback', 'status', 'smoke', 'runtime-candidate',
-                                           'runtime-candidate-rollback', 'runtime-candidate-status'))
+    parser.add_argument('action', choices=('prepare', 'prepare-runtime-candidate', 'prepare-cuda-candidate',
+                                           'apply', 'install', 'retire', 'rollback', 'status', 'smoke',
+                                           'runtime-candidate', 'runtime-candidate-rollback',
+                                           'runtime-candidate-status', 'cuda-candidate',
+                                           'cuda-candidate-rollback', 'cuda-candidate-status'))
     parser.add_argument('--revision', required=True)
+    parser.add_argument('--max-audio-seconds', type=int, default=180)
+    parser.add_argument('--max-upload-bytes', type=int, default=6_000_000)
+    parser.add_argument('--native-timeout-seconds', type=int, default=900)
     args = parser.parse_args()
     if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-spark':
         raise ValueError('Run through sudo on home-spark')
     published(args.revision)
-    if args.action == 'runtime-candidate-status':
+    if args.action in {'runtime-candidate-status', 'cuda-candidate-status'}:
         if not STATE.exists() and not STATE.is_symlink():
             print(json.dumps({'revision': args.revision, 'state': 'absent', 'failure_id': None,
                               'failure_stage': None, 'failure_class': None, 'failure_classification': None,
@@ -871,7 +1356,10 @@ def main():
                     raise ValueError('Candidate status lock unavailable; no state changed')
                 stream = stack.enter_context(open(name, 'r'))
                 fcntl.flock(stream, fcntl.LOCK_SH | fcntl.LOCK_NB)
-            candidate_status(args.revision)
+            if args.action == 'runtime-candidate-status':
+                candidate_status(args.revision)
+            else:
+                cuda_candidate_status(args.revision)
         return
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700); protected(STATE, True)
     with ExitStack() as stack:
@@ -885,6 +1373,7 @@ def main():
             signal.signal(sig, lambda *_: (_ for _ in ()).throw(InterruptedError('Interrupted')))
         if args.action == 'prepare': prepare()
         elif args.action == 'prepare-runtime-candidate': prepare_runtime_candidate()
+        elif args.action == 'prepare-cuda-candidate': prepare_cuda_candidate(args.revision)
         elif args.action == 'apply': apply(args.revision)
         elif args.action == 'install': prepare(); apply(args.revision)
         elif args.action == 'retire': retire(args.revision)
@@ -892,6 +1381,12 @@ def main():
         elif args.action == 'runtime-candidate': candidate_start(args.revision)
         elif args.action == 'runtime-candidate-rollback': candidate_stop(args.revision)
         elif args.action == 'runtime-candidate-status': candidate_status(args.revision)
+        elif args.action == 'cuda-candidate':
+            cuda_candidate_start(args.revision, max_audio_seconds=args.max_audio_seconds,
+                                 max_upload_bytes=args.max_upload_bytes,
+                                 native_timeout_seconds=args.native_timeout_seconds)
+        elif args.action == 'cuda-candidate-rollback': cuda_candidate_stop(args.revision)
+        elif args.action == 'cuda-candidate-status': cuda_candidate_status(args.revision)
         else:
             journal = STATE / 'transaction.json'; protected(journal)
             tx = json.loads(journal.read_text())
@@ -917,6 +1412,8 @@ if __name__ == '__main__':
     except Exception as error:
         if isinstance(error, CandidateQualificationFailure):
             message = format_candidate_failure(error.metadata)
+        elif isinstance(error, CudaCandidateFailure):
+            message = format_cuda_candidate_failure(error.metadata)
         else:
             message = ('Whisper lifecycle refused: ' + str(error) if isinstance(error, ValueError)
                        else 'Whisper lifecycle failed: ' + type(error).__name__)

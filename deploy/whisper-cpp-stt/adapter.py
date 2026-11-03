@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ctypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
@@ -58,6 +59,7 @@ class CandidateConfig:
     upload_timeout_seconds: int = 120
     native_timeout_seconds: int = 900
     native_threads: int = 4
+    device: str = "cpu"
 
 
 def _bounded_env(name: str, default: int, maximum: int) -> int:
@@ -82,6 +84,9 @@ def load_config() -> CandidateConfig:
                                     MAX_CONFIGURED_UPLOAD_BYTES)
     if max_upload_bytes < max_audio_seconds * 32_000 + 44:
         raise ValueError("WHISPER_CPP_MAX_UPLOAD_BYTES is too small for configured audio duration")
+    device = os.environ.get("WHISPER_CPP_DEVICE", "cpu")
+    if device not in {"cpu", "cuda"}:
+        raise ValueError("invalid WHISPER_CPP_DEVICE")
     return CandidateConfig(
         model_path=model_path,
         key_path=key_path,
@@ -92,7 +97,20 @@ def load_config() -> CandidateConfig:
         upload_timeout_seconds=_bounded_env("WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS", 120, 1800),
         native_timeout_seconds=_bounded_env("WHISPER_CPP_NATIVE_TIMEOUT_SECONDS", 900, 14_400),
         native_threads=_bounded_env("WHISPER_CPP_NATIVE_THREADS", 4, 8),
+        device=device,
     )
+
+
+def require_cuda_device() -> None:
+    """Fail closed instead of silently running a CUDA candidate on CPU."""
+    try:
+        runtime = ctypes.CDLL("libcudart.so.13")
+        count = ctypes.c_int()
+        status = runtime.cudaGetDeviceCount(ctypes.byref(count))
+    except (OSError, AttributeError):
+        raise RuntimeError("CUDA runtime is unavailable") from None
+    if status != 0 or count.value < 1:
+        raise RuntimeError("CUDA device is unavailable")
 
 
 def read_api_key(path: Path) -> bytes:
@@ -168,6 +186,7 @@ class CandidateHandler(BaseHTTPRequestHandler):
             self.send_header("X-HomeCompute-STT-Runtime-Commit", RUNTIME_COMMIT)
             self.send_header("X-HomeCompute-STT-HomeCompute-Revision", self.server.config.homecompute_revision)
             self.send_header("X-HomeCompute-STT-Image-ID", self.server.config.image_id)
+            self.send_header("X-HomeCompute-STT-Device", self.server.config.device)
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(payload)
@@ -184,8 +203,13 @@ class CandidateHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             ready = self.server.native_process is None or self.server.native_process.poll() is None
+            idle_probe = self.server.inflight.acquire(blocking=False)
+            busy = not idle_probe
+            if idle_probe:
+                self.server.inflight.release()
             self.respond(200 if ready else 503, json.dumps({
                 "status": "ok" if ready else "unavailable",
+                "inference_busy": busy,
                 "model": MODEL_ID,
                 "model_repository": PIN["repository"],
                 "model_snapshot": PIN["snapshot"],
@@ -194,7 +218,7 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "runtime_commit": RUNTIME_COMMIT,
                 "homecompute_revision": self.server.config.homecompute_revision,
                 "image_id": self.server.config.image_id,
-                "device": "cpu",
+                "device": self.server.config.device,
                 "decoding_defaults": {
                     "language": "auto", "prompt": None, "max_context": 0,
                     "strategy": "beam_search", "beam_size": 5, "best_of": 5,
@@ -268,17 +292,24 @@ def _native_health(timeout: float = 1.0) -> bool:
 
 
 def native_command(config: CandidateConfig) -> list[str]:
-    return [
+    command = [
         "/usr/local/bin/whisper-server", "--model", str(config.model_path), "--host", "127.0.0.1",
-        "--port", str(NATIVE_PORT), "--no-gpu", "--threads", str(config.native_threads),
+        "--port", str(NATIVE_PORT), "--threads", str(config.native_threads),
         "--max-context", "0", "--language", "auto", "--no-language-probabilities",
     ]
+    if config.device == "cpu":
+        command.append("--no-gpu")
+    else:
+        command.extend(("--device", "0"))
+    return command
 
 
 def run() -> int:
     config = load_config()
     model = verify_model(config.model_path)
     key = read_api_key(config.key_path)
+    if config.device == "cuda":
+        require_cuda_device()
     native = subprocess.Popen(native_command(config), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                               stderr=subprocess.DEVNULL, close_fds=True)
     server = None
@@ -291,7 +322,8 @@ def run() -> int:
                 server = CandidateServer(config, key, native_process=native)
                 # Force successful, checksum-bound startup before advertising readiness.
                 print(json.dumps({"event": "ready", "model_sha256": model["sha256"],
-                                  "runtime_commit": RUNTIME_COMMIT}, sort_keys=True), flush=True)
+                                  "runtime_commit": RUNTIME_COMMIT,
+                                  "device": config.device}, sort_keys=True), flush=True)
                 server.serve_forever(poll_interval=0.25)
                 return 0
             time.sleep(0.25)
