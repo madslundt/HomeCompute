@@ -152,6 +152,35 @@ class AdapterContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ADAPTER.RequestError, "exceeds"):
             ADAPTER.validate_audio(wav_bytes(180.01), 180)
 
+    def test_truncated_wav_payload_is_rejected_before_native_forwarding(self):
+        audio = wav_bytes()
+        self.assertGreater(len(audio), 44)
+        truncated = audio[:44]  # RIFF header still claims 1,600 PCM frames.
+        with self.assertRaisesRegex(ADAPTER.RequestError, "payload is truncated"):
+            ADAPTER.validate_audio(truncated, 180)
+
+        config = ADAPTER.CandidateConfig(Path("/unused/model"), Path("/unused/key"), native_timeout_seconds=2)
+        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            body, content_type = multipart([("model", "whisper")], truncated)
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_address[1]}/v1/audio/transcriptions",
+                data=body,
+                headers={"Content-Type": content_type,
+                         "Authorization": "Bearer synthetic-secret-value"},
+            )
+            with patch.object(ADAPTER, "_native_request", side_effect=AssertionError("must not forward")):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(request, timeout=3)
+                self.assertEqual(error.exception.code, 400)
+                error.exception.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
     def test_longform_limits_require_explicit_consistent_bounded_configuration(self):
         with patch.dict(os.environ, {"WHISPER_CPP_MAX_AUDIO_SECONDS": "1200",
                                      "WHISPER_CPP_MAX_UPLOAD_BYTES": "40000000"}, clear=False):

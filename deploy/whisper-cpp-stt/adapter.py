@@ -175,6 +175,9 @@ def validate_audio(audio: bytes, max_seconds: int) -> float:
             if not 0 < frames <= max_seconds * 16_000:
                 raise RequestError(413 if frames > max_seconds * 16_000 else 400,
                                    "Audio duration is outside the supported range")
+            expected_pcm_bytes = frames * source.getnchannels() * source.getsampwidth()
+            if len(source.readframes(frames)) != expected_pcm_bytes:
+                raise RequestError(400, "PCM WAV payload is truncated")
             return frames / 16_000
     except (wave.Error, EOFError, OSError):
         raise RequestError(400, "Invalid PCM WAV audio") from None

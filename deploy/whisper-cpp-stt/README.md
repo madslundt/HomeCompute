@@ -47,6 +47,13 @@ host memory and latency qualification. Compose caps the service at four CPUs,
 12 GiB RAM and 128 processes. A single inference is admitted at a time. The
 native call deadline is bounded to four hours; its default is 15 minutes.
 
+The pinned native endpoint uses cpp-httplib's default in-memory multipart parser
+and does not set its own payload maximum; the authenticated adapter's configured
+256-MiB cap is the limiting request bound. The native process is started without
+`--convert`, so it reads the submitted WAV directly and does not spool an audio
+copy under `/tmp`. The Compose 32-MiB `/tmp` tmpfs therefore does not constrain
+raw WAV uploads. Keep `--convert` disabled for this candidate.
+
 Default decoding uses automatic language detection, no prompt, and
 `max_context=0`. Explicit `language`, `prompt`, `temperature`,
 `temperature_inc`, `translate`, `carry_initial_prompt`, `max_context`,
