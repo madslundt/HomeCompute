@@ -47,6 +47,12 @@ text-preserving behavior; they do not qualify inference quality. The candidate
 remains unpromoted until frozen prompted/plain and verbose/JSON comparisons,
 full recording review, and capacity checks pass.
 
+An independent full Large-v3 CPU reference candidate is documented in the
+[whisper.cpp qualification runbook](../whisper-cpp-stt/README.md). It uses a
+converted F16 GGML artifact and does not alter this vLLM lifecycle, production
+alias, relay route, or client configuration. Its results must be compared
+separately; model conversion is not byte-identical to the safetensors artifact.
+
 Candidate failures print only a random diagnostic ID, stage, exception class,
 allowlisted failure classification, executable basename, exit code, and
 rollback state. Before rollback removes a candidate, its bounded command output

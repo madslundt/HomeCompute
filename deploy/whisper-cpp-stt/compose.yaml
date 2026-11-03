@@ -1,0 +1,49 @@
+name: whisper-cpp-qualification
+
+services:
+  whisper-cpp:
+    profiles: [candidate]
+    platform: linux/amd64
+    image: homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-hc1
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        WHISPER_CPP_COMMIT: f049fff95a089aa9969deb009cdd4892b3e74916
+    container_name: homecompute-whisper-cpp-qualification
+    init: true
+    restart: "no"
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 4
+    mem_limit: 12g
+    pids_limit: 128
+    shm_size: 128m
+    environment:
+      WHISPER_CPP_MODEL_PATH: /models/ggml-large-v3.bin
+      WHISPER_CPP_API_KEY_FILE: /run/secrets/whisper_cpp_api_key
+      WHISPER_CPP_MAX_AUDIO_SECONDS: ${WHISPER_CPP_MAX_AUDIO_SECONDS:-180}
+      WHISPER_CPP_MAX_UPLOAD_BYTES: ${WHISPER_CPP_MAX_UPLOAD_BYTES:-6000000}
+      WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS: ${WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS:-120}
+      WHISPER_CPP_NATIVE_TIMEOUT_SECONDS: ${WHISPER_CPP_NATIVE_TIMEOUT_SECONDS:-900}
+      WHISPER_CPP_NATIVE_THREADS: "4"
+    volumes:
+      - ${WHISPER_CPP_MODEL_FILE:?Set WHISPER_CPP_MODEL_FILE to the verified provisioned model}:/models/ggml-large-v3.bin:ro
+      - ${WHISPER_CPP_API_KEY_FILE:?Set WHISPER_CPP_API_KEY_FILE to an externally provisioned candidate key}:/run/secrets/whisper_cpp_api_key:ro
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=0700"
+    logging:
+      driver: none
+    healthcheck:
+      test: [CMD, python3, -I, -B, -c, "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); raise SystemExit(0 if d.get('status')=='ok' else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 2m
+    networks: [candidate]
+
+networks:
+  candidate:
+    internal: true

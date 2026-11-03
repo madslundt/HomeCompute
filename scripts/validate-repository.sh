@@ -281,6 +281,7 @@ python3 "$REPO_ROOT/tests/model-update-check-test.py"
 python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
 python3 "$REPO_ROOT/tests/speech-routing-policy-test.py"
 python3 "$REPO_ROOT/tests/whisper-migration-test.py"
+python3 "$REPO_ROOT/tests/whisper-cpp-stt-test.py"
 python3 "$REPO_ROOT/tests/model-registry-test.py"
 python3 "$REPO_ROOT/tests/flash-next-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/comfyui-lifecycle-test.py"
@@ -359,6 +360,7 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/compute-node/plapre/compose.yaml" \
     "$REPO_ROOT/deploy/hviske-stt/compose.yaml" \
     "$REPO_ROOT/deploy/whisper-stt/compose.yaml" \
+    "$REPO_ROOT/deploy/whisper-cpp-stt/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
     "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" \
@@ -1092,6 +1094,28 @@ jq -e '
   (.networks.inference.internal == true)
 ' "$whisper_json" >/dev/null
 
+whisper_cpp_json="$temporary_root/whisper-cpp-stt.json"
+WHISPER_CPP_MODEL_FILE=/validation/ggml-large-v3.bin \
+WHISPER_CPP_API_KEY_FILE=/validation/qualification-api-key \
+  docker compose --profile candidate -f "$REPO_ROOT/deploy/whisper-cpp-stt/compose.yaml" \
+  config --format json >"$whisper_cpp_json"
+jq -e '
+  ((.services | keys) == ["whisper-cpp"]) and
+  (.services["whisper-cpp"].ports == null) and
+  (.services["whisper-cpp"].profiles == ["candidate"]) and
+  (.services["whisper-cpp"].platform == "linux/amd64") and
+  (.services["whisper-cpp"].restart == "no") and
+  (.services["whisper-cpp"].read_only == true) and
+  (.services["whisper-cpp"].cpus == 4) and
+  (.services["whisper-cpp"].mem_limit == "12884901888") and
+  (.services["whisper-cpp"].pids_limit == 128) and
+  (.services["whisper-cpp"].logging.driver == "none") and
+  (.services["whisper-cpp"].environment.WHISPER_CPP_MAX_AUDIO_SECONDS == "180") and
+  (.services["whisper-cpp"].environment.WHISPER_CPP_MAX_UPLOAD_BYTES == "6000000") and
+  (.networks.candidate.internal == true)
+' "$whisper_cpp_json" >/dev/null
+jq -e . "$REPO_ROOT/deploy/whisper-cpp-stt/model-pin.json" >/dev/null
+
 printf '[validate] approved trusted communication relay boundary\n'
 communication_json="$temporary_root/openclaw-communication.json"
 COMMUNICATION_TLS_CERT=/validation/communication.crt COMMUNICATION_TLS_KEY=/validation/communication.key \
@@ -1181,7 +1205,9 @@ fi
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
 # Optional agent office runs inside the existing sandbox, not a host container.
 [[ ! -e "$REPO_ROOT/deploy/agent-office/compose.yaml" ]]
-expected_deployment_projects="$(printf '%s\n' agent-office automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openclaw piper-tts ttlock-webhook whisper-stt wyoming-stt | LC_ALL=C sort)"
+# whisper-cpp-stt is an opt-in CPU qualification project: internal network,
+# no host ports, no production route or alias, and no restart policy.
+expected_deployment_projects="$(printf '%s\n' agent-office automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

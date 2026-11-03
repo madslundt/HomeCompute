@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "runtime": {
+    "repository": "https://github.com/ggml-org/whisper.cpp.git",
+    "tag": "v1.9.1",
+    "commit": "f049fff95a089aa9969deb009cdd4892b3e74916",
+    "license": "MIT"
+  },
+  "model": {
+    "repository": "ggerganov/whisper.cpp",
+    "snapshot": "c521a4b02f422512d734391fdf08bb08c0862f68",
+    "filename": "ggml-large-v3.bin",
+    "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+    "size_bytes": 3095033483,
+    "format": "GGML F16 conversion of full openai/whisper-large-v3",
+    "expected_header": {
+      "magic": "ggml",
+      "n_vocab": 51866,
+      "n_audio_layer": 32,
+      "n_text_layer": 32,
+      "n_mels": 128,
+      "ftype": 1
+    }
+  },
+  "notes": [
+    "The GGML conversion is not byte-identical to the pinned Hugging Face safetensors files.",
+    "The model must be provisioned out of band and mounted read-only; inference never downloads it.",
+    "This candidate is CPU-only and has no production alias or route."
+  ]
+}
