@@ -9,7 +9,7 @@ import subprocess
 
 
 UPSTREAM_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-PATCH_VERSION = "strict-gpu-buffer-proof-v1"
+PATCH_VERSION = "strict-gpu-buffer-idle-proof-v2"
 PATCHES = {
     "src/whisper.cpp": (
         "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
@@ -35,13 +35,15 @@ PATCHES = {
         """            const std::string health_response = "{\\\"status\\\":\\\"ok\\\"}";
             res.set_content(health_response, "application/json");
 """,
-        """            const size_t gpu_model_buffer_bytes = whisper_model_gpu_buffer_size(ctx);
-            const std::string compute_backend = gpu_model_buffer_bytes > 0 ? "cuda" : "cpu";
-            const std::string health_response = json{
-                {"status", "ok"},
-                {"compute_backend", compute_backend},
-                {"gpu_model_buffer_bytes", gpu_model_buffer_bytes},
-            }.dump();
+        """            std::unique_lock<std::mutex> inference_probe(whisper_mutex, std::try_to_lock);
+            const bool inference_busy = !inference_probe.owns_lock();
+            json health = {{"status", "ok"}, {"inference_busy", inference_busy}};
+            if (!inference_busy) {
+                const size_t gpu_model_buffer_bytes = whisper_model_gpu_buffer_size(ctx);
+                health["compute_backend"] = gpu_model_buffer_bytes > 0 ? "cuda" : "cpu";
+                health["gpu_model_buffer_bytes"] = gpu_model_buffer_bytes;
+            }
+            const std::string health_response = health.dump();
             res.set_content(health_response, "application/json");
 """,
     ),
@@ -134,6 +136,8 @@ def verify(root: Path) -> bool:
     return ("required GPU backend initialization failed" in whisper and
             "size_t whisper_model_gpu_buffer_size(struct whisper_context * ctx)" in whisper and
             "requested GPU has no model weight buffers" in whisper and
+            "std::unique_lock<std::mutex> inference_probe(whisper_mutex, std::try_to_lock)" in server and
+            "if (!inference_busy)" in server and 'health["gpu_model_buffer_bytes"] = gpu_model_buffer_bytes;' in server and
             "ggml_backend_buffer_get_size(buffer)" in whisper and
             "gpu_model_buffer_bytes" in server and "compute_backend" in server and
             "whisper_model_gpu_buffer_size(struct whisper_context * ctx)" in header and

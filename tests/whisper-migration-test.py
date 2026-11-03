@@ -8,6 +8,8 @@ import io
 import json
 import os
 import re
+import shutil
+import signal
 import stat
 import struct
 import subprocess
@@ -16,6 +18,9 @@ from types import SimpleNamespace
 from pathlib import Path
 import tempfile
 import unittest
+import urllib.error
+import urllib.request
+import wave
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +35,37 @@ def module(name, path):
 LIFECYCLE = module('whisper_lifecycle', 'scripts/setup-whisper-stt.py')
 BOOTSTRAP = module('whisper_bootstrap', 'scripts/bootstrap-whisper-stt.py')
 DAYTHREAD = module('daythread_whisper', 'scripts/migrate-daythread-whisper.py')
+QUALIFICATION = module('whisper_cuda_qualification', 'scripts/whisper-cuda-qualification.py')
+
+
+def qualification_fixture(*, truncated=False):
+    directory = tempfile.TemporaryDirectory(prefix='homecompute-whisper-stt.', dir='/tmp')
+    staging = Path(directory.name)
+    staging.chmod(0o700)
+    audio_path = staging / 'sample.wav'
+    stream = io.BytesIO()
+    with wave.open(stream, 'wb') as wav:
+        wav.setparams((1, 2, 16000, 0, 'NONE', 'PCM'))
+        wav.writeframes(b'\0\0' * 1600)
+    audio = stream.getvalue()
+    frames = 1600
+    if truncated:
+        audio = bytearray(audio)
+        struct.pack_into('<I', audio, 40, frames + 100)
+        audio = bytes(audio)
+        frames += 100
+    audio_path.write_bytes(audio)
+    audio_path.chmod(0o600)
+    manifest = {
+        'schema_version': 1, 'max_audio_seconds': 1, 'max_upload_bytes': 40_000,
+        'native_timeout_seconds': 30,
+        'inputs': [{'id': 'sample', 'file': audio_path.name, 'bytes': len(audio),
+                    'sha256': hashlib.sha256(audio).hexdigest(), 'frames': frames}],
+    }
+    manifest_path = staging / 'qualification-manifest.json'
+    manifest_path.write_text(json.dumps(manifest))
+    manifest_path.chmod(0o600)
+    return directory, manifest_path, audio
 
 
 class MigrationTests(unittest.TestCase):
@@ -481,13 +517,13 @@ class MigrationTests(unittest.TestCase):
 
     def test_cuda_candidate_bootstrap_actions_are_explicit(self):
         for action in ('prepare-cuda-candidate', 'cuda-candidate',
-                       'cuda-candidate-rollback', 'cuda-candidate-status'):
+                       'cuda-candidate-rollback', 'cuda-candidate-status', 'cuda-candidate-qualify'):
             self.assertIn(action, BOOTSTRAP.ACTIONS)
 
     def test_bootstrap_forwards_bounded_longform_options_only_to_cuda_candidate(self):
         args = SimpleNamespace(action='cuda-candidate', revision='d' * 40,
                                max_audio_seconds=1200, max_upload_bytes=40_000_000,
-                               native_timeout_seconds=14_400)
+                               native_timeout_seconds=14_400, qualification_manifest=None)
         self.assertEqual(BOOTSTRAP.setup_argv(Path('/release'), args), [
             BOOTSTRAP.sys.executable, '-I', '-B', '/release/scripts/setup-whisper-stt.py',
             'cuda-candidate', '--revision', 'd' * 40, '--max-audio-seconds', '1200',
@@ -495,6 +531,364 @@ class MigrationTests(unittest.TestCase):
         args.action = 'status'
         with self.assertRaisesRegex(ValueError, 'only for cuda-candidate'):
             BOOTSTRAP.setup_argv(Path('/release'), args)
+
+    def test_bootstrap_qualification_manifest_stays_in_private_staging_directory(self):
+        args = SimpleNamespace(action='cuda-candidate-qualify', revision='d' * 40,
+                               max_audio_seconds=None, max_upload_bytes=None,
+                               native_timeout_seconds=None,
+                               qualification_manifest='/tmp/homecompute-whisper-stt.Ab12/qualification-manifest.json')
+        with patch.object(BOOTSTRAP, '__file__', '/tmp/homecompute-whisper-stt.Ab12/bootstrap-whisper-stt.py'):
+            self.assertEqual(BOOTSTRAP.setup_argv(Path('/release'), args), [
+                BOOTSTRAP.sys.executable, '-I', '-B', '/release/scripts/setup-whisper-stt.py',
+                'cuda-candidate-qualify', '--revision', 'd' * 40,
+                '--qualification-manifest', args.qualification_manifest])
+            args.qualification_manifest = '/tmp/elsewhere/qualification-manifest.json'
+            with self.assertRaisesRegex(ValueError, 'bootstrap staging directory'):
+                BOOTSTRAP.setup_argv(Path('/release'), args)
+
+    def test_qualification_manifest_validation_rejects_bad_hash_truncation_mode_and_symlinks(self):
+        for case in ('hash', 'truncated', 'mode', 'symlink'):
+            with self.subTest(case=case):
+                staging, manifest, audio = qualification_fixture(truncated=case == 'truncated')
+                try:
+                    path = manifest.parent / 'sample.wav'
+                    if case == 'hash':
+                        document = json.loads(manifest.read_text())
+                        document['inputs'][0]['sha256'] = '0' * 64
+                        manifest.write_text(json.dumps(document))
+                    elif case == 'mode':
+                        path.chmod(0o640)
+                    elif case == 'symlink':
+                        real = manifest.parent / 'real.wav'
+                        path.rename(real)
+                        path.symlink_to(real.name)
+                    with self.assertRaises((ValueError, QUALIFICATION.QualificationError)):
+                        QUALIFICATION._validate_manifest(manifest, os.getuid())
+                finally:
+                    staging.cleanup()
+        staging, manifest, _audio = qualification_fixture()
+        try:
+            document = json.loads(manifest.read_text())
+            document['schema_version'] = True
+            manifest.write_text(json.dumps(document))
+            with self.assertRaises((ValueError, QUALIFICATION.QualificationError)):
+                QUALIFICATION._validate_manifest(manifest, os.getuid())
+        finally:
+            staging.cleanup()
+
+    def test_qualification_manifest_copies_opened_audio_bytes_and_detects_toctou_change(self):
+        staging, manifest, audio = qualification_fixture()
+        try:
+            real_open = os.open
+            replacement = bytearray(audio)
+            replacement[-1] = 1
+            changed = False
+
+            def racing_open(path, flags, *args, **kwargs):
+                nonlocal changed
+                if path == 'sample.wav' and kwargs.get('dir_fd') is not None and not changed:
+                    changed = True
+                    audio_path = manifest.parent / 'sample.wav'
+                    audio_path.unlink()
+                    audio_path.write_bytes(replacement)
+                    audio_path.chmod(0o600)
+                return real_open(path, flags, *args, **kwargs)
+
+            with patch.object(QUALIFICATION.os, 'open', side_effect=racing_open):
+                with self.assertRaisesRegex(ValueError, 'changed during open'):
+                    QUALIFICATION._validate_manifest(manifest, os.getuid())
+            self.assertTrue(changed)
+        finally:
+            staging.cleanup()
+
+    class FakeCudaQualificationLifecycle:
+        def __init__(self, state):
+            self.STATE = state
+            self.CUDA_CANDIDATE = 'gb10-whisper-cpp-cuda-candidate'
+            self.CPP_MODEL_SHA256 = '1' * 64
+            self.CPP_MODEL_SNAPSHOT = 'c' * 40
+            self.CPP_RUNTIME_COMMIT = '2' * 40
+            self.prepared = False
+            self.started = False
+            self.stopped = False
+            self.stop_timeout = None
+            self.run_failure = None
+            self.http_error = False
+            self.rollback_failure = False
+            self.failure_recorded = False
+            self.prepare_failure = None
+            self.tx_path = self.STATE / 'cuda-candidate.json'
+            self.image_id = 'sha256:' + '3' * 64
+
+        def ensure_no_cuda_candidate_transaction(self, _action):
+            return None
+
+        def inspect(self, _name):
+            return None
+
+        def prepare_cuda_candidate(self, _revision):
+            if self.prepare_failure:
+                raise self.prepare_failure
+            self.prepared = True
+
+        def cuda_candidate_start(self, revision, **limits):
+            self.started = True
+            self.limits = limits
+            self.tx_path.write_text(json.dumps({
+                'revision': revision, 'state': 'candidate-running', 'candidate_exposed': True,
+                'candidate_image_id': self.image_id,
+            }))
+            self.tx_path.chmod(0o600)
+
+        def run_with_input(self, _command, audio, *, timeout):
+            self.audio_seen = audio
+            self.request_timeout = timeout
+            code = _command[-1]
+            self.program_fields = json.loads(re.search(r'FIELDS=(\{[^\n]+\})', code).group(1))
+            if self.run_failure:
+                if self.run_failure == 'hup':
+                    signal.raise_signal(signal.SIGHUP)
+                if self.run_failure == 'term':
+                    signal.raise_signal(signal.SIGTERM)
+                raise self.run_failure
+            body = json.dumps({'text': 'Synthetic private transcript.', 'segments': [
+                {'id': 0, 'start': 0.0, 'end': 0.1, 'text': 'Synthetic private transcript.'},
+            ]}).encode()
+            headers = {
+                'x-homecompute-stt-model-sha256': self.CPP_MODEL_SHA256,
+                'x-homecompute-stt-model-snapshot': self.CPP_MODEL_SNAPSHOT,
+                'x-homecompute-stt-runtime': 'whisper.cpp',
+                'x-homecompute-stt-runtime-commit': self.CPP_RUNTIME_COMMIT,
+                'x-homecompute-stt-homecompute-revision': 'd' * 40,
+                'x-homecompute-stt-image-id': self.image_id,
+            }
+            envelope = {'ok': not self.http_error, 'status': 400 if self.http_error else 200,
+                        'headers': headers, 'body_truncated': False,
+                        'body_base64': __import__('base64').b64encode(
+                            b'private synthetic HTTP error' if self.http_error else body).decode()}
+            return SimpleNamespace(stdout=json.dumps(envelope))
+
+        def cuda_candidate_stop(self, _revision, *, idle_timeout):
+            self.stop_timeout = idle_timeout
+            if self.rollback_failure:
+                self.tx_path.write_text(json.dumps({'revision': 'd' * 40, 'state': 'rollback-failed'}))
+                self.tx_path.chmod(0o600)
+                raise RuntimeError('private rollback diagnostic')
+            tx = json.loads(self.tx_path.read_text())
+            tx['state'] = 'rolled-back'
+            self.tx_path.write_text(json.dumps(tx))
+            self.tx_path.chmod(0o600)
+            self.stopped = True
+
+        def cuda_candidate_failure(self, tx, error, *, rollback):
+            self.failure_recorded = rollback and isinstance(error, RuntimeError)
+            tx['state'] = 'rollback-failed'
+            self.tx_path.write_text(json.dumps(tx))
+            self.tx_path.chmod(0o600)
+
+    def _run_fake_cuda_qualification(self, *, run_failure=None, rollback_failure=False):
+        staging, manifest, audio = qualification_fixture()
+        state = Path(tempfile.mkdtemp(prefix='whisper-qualification-state-'))
+        state.chmod(0o700)
+        fake = self.FakeCudaQualificationLifecycle(state)
+        fake.run_failure = run_failure
+        fake.rollback_failure = rollback_failure
+        try:
+            outcome = QUALIFICATION.qualify(fake, manifest, 'd' * 40, operator_uid=os.getuid())
+            return staging, state, manifest, audio, fake, outcome
+        except BaseException:
+            staging.cleanup()
+            shutil.rmtree(state)
+            raise
+
+    def test_one_command_qualification_preserves_raw_response_and_rolls_back(self):
+        staging, state, manifest, audio, fake, outcome = self._run_fake_cuda_qualification()
+        try:
+            self.assertTrue(fake.prepared and fake.started and fake.stopped)
+            self.assertEqual(fake.audio_seen, audio)
+            self.assertEqual(fake.limits, {'max_audio_seconds': 1, 'max_upload_bytes': 40_000,
+                                           'native_timeout_seconds': 30})
+            self.assertEqual(fake.stop_timeout, 210)
+            self.assertEqual(fake.program_fields, QUALIFICATION.REQUEST_FIELDS)
+            for field in ('carry_initial_prompt', 'translate', 'no_timestamps'):
+                self.assertEqual(fake.program_fields[field], 'false')
+            self.assertNotIn('prompt', fake.program_fields)
+            self.assertEqual(outcome['state'], 'completed')
+            self.assertEqual(outcome['rollback'], 'completed')
+            result_path = Path(outcome['results'][0])
+            self.assertEqual(stat.S_IMODE(result_path.stat().st_mode), 0o600)
+            result = json.loads(result_path.read_text())
+            body = __import__('base64').b64decode(result['response_body_base64'])
+            self.assertIn('Synthetic private transcript.', body.decode())
+            self.assertEqual(set(result['headers']), set(QUALIFICATION.PROVENANCE_HEADERS))
+            self.assertNotIn('Synthetic private transcript.', json.dumps(outcome))
+            root_receipt = next((state / 'cuda-qualifications' / outcome['qualification_id']).glob('receipt-*.json'))
+            receipt = json.loads(root_receipt.read_text())
+            self.assertGreaterEqual(receipt['timings']['per_input_seconds']['sample'], 0)
+            self.assertIn('prepare_seconds', receipt['timings'])
+            self.assertIn('start_seconds', receipt['timings'])
+            self.assertIn('rollback_seconds', receipt['timings'])
+            self.assertIn('total_seconds', receipt['timings'])
+            root_copy = state / 'cuda-qualifications' / outcome['qualification_id'] / receipt['results'][0]
+            self.assertTrue(root_copy.exists())
+            self.assertEqual(stat.S_IMODE(root_copy.stat().st_mode), 0o600)
+        finally:
+            staging.cleanup()
+            shutil.rmtree(state)
+
+    def test_generated_qualification_client_executes_real_multipart_and_http_error_capture(self):
+        audio = b'RIFF' + b'\0' * 16 + b'PCM-SYNTHETIC'
+        for http_error in (False, True):
+            with self.subTest(http_error=http_error):
+                observed = {}
+                headers = {name: 'synthetic' for name in QUALIFICATION.PROVENANCE_HEADERS}
+
+                # Provide a context-manager-capable response while executing the exact
+                # generated child program, not a reimplementation of its multipart logic.
+                class Response:
+                    status = 200
+                    def __init__(self, response_headers): self.headers = response_headers
+                    def __enter__(self): return self
+                    def __exit__(self, *_args): return None
+                    def read(self, _limit): return b'{"text":"ok","segments":[]}'
+
+                def open_key(path, mode='r', *args, **kwargs):
+                    if path == '/run/secrets/whisper_cpp_api_key' and mode == 'rb':
+                        return io.BytesIO(b'test-key\n')
+                    return real_open(path, mode, *args, **kwargs)
+
+                real_open = open
+                def fake_urlopen(request, timeout):
+                    observed['request'] = request
+                    observed['timeout'] = timeout
+                    if http_error:
+                        raise urllib.error.HTTPError(request.full_url, 422, 'safe test', headers,
+                                                     io.BytesIO(b'private error body'))
+                    return Response(headers)
+
+                namespace = {}
+                output = io.StringIO()
+                with patch('builtins.open', side_effect=open_key), patch.object(urllib.request, 'urlopen', fake_urlopen), \
+                     patch.object(sys, 'stdin', SimpleNamespace(buffer=io.BytesIO(audio))), \
+                     contextlib.redirect_stdout(output):
+                    try:
+                        exec(QUALIFICATION._client_program(40_000, 17), namespace)
+                    except SystemExit as exit_error:
+                        self.assertEqual(exit_error.code, 0)
+                envelope = json.loads(output.getvalue())
+                request = observed['request']
+                body = request.data
+                self.assertTrue(body.startswith(b'--hc-qual-'))
+                self.assertIn(b'Content-Disposition: form-data; name="no_timestamps"\r\n\r\nfalse\r\n', body)
+                self.assertIn(b'Content-Disposition: form-data; name="carry_initial_prompt"\r\n\r\nfalse\r\n', body)
+                self.assertIn(b'\r\n' + audio + b'\r\n--hc-qual-', body)
+                self.assertNotIn(b'\\r\\n', body)
+                self.assertEqual(request.get_header('Authorization'), 'Bearer test-key')
+                self.assertEqual(observed['timeout'], 17)
+                if http_error:
+                    self.assertEqual(envelope['status'], 422)
+                    self.assertFalse(envelope['ok'])
+                    self.assertEqual(__import__('base64').b64decode(envelope['body_base64']), b'private error body')
+                    self.assertEqual(set(envelope['headers']), set(QUALIFICATION.PROVENANCE_HEADERS))
+                else:
+                    self.assertEqual(envelope['status'], 200)
+                    self.assertTrue(envelope['ok'])
+
+    def test_one_command_qualification_rolls_back_after_request_error_and_interrupt(self):
+        for error in (RuntimeError('private synthetic inference error'), KeyboardInterrupt(), 'hup', 'term'):
+            with self.subTest(error=type(error).__name__):
+                staging, state, _manifest, _audio, fake, outcome = self._run_fake_cuda_qualification(run_failure=error)
+                try:
+                    self.assertTrue(fake.prepared and fake.started and fake.stopped)
+                    self.assertEqual(outcome['state'], 'failed')
+                    self.assertEqual(outcome['rollback'], 'completed')
+                    expected = 'InterruptedError' if error in ('hup', 'term') else type(error).__name__
+                    self.assertEqual(outcome['failure']['failure_class'], expected)
+                finally:
+                    staging.cleanup()
+                    shutil.rmtree(state)
+
+    def test_qualification_persists_http_error_body_and_provenance_before_failure(self):
+        staging, manifest, audio = qualification_fixture()
+        state = Path(tempfile.mkdtemp(prefix='whisper-qualification-state-'))
+        state.chmod(0o700)
+        fake = self.FakeCudaQualificationLifecycle(state)
+        fake.http_error = True
+        try:
+            outcome = QUALIFICATION.qualify(fake, manifest, 'd' * 40, operator_uid=os.getuid())
+            self.assertEqual(outcome['state'], 'failed')
+            self.assertEqual(outcome['rollback'], 'completed')
+            result_path = Path(outcome['results'][0])
+            result = json.loads(result_path.read_text())
+            self.assertEqual(result['http_status'], 400)
+            self.assertEqual(result['headers']['x-homecompute-stt-model-sha256'], fake.CPP_MODEL_SHA256)
+            body = __import__('base64').b64decode(result['response_body_base64'])
+            self.assertEqual(body, b'private synthetic HTTP error')
+            self.assertNotIn('private synthetic HTTP error', json.dumps(outcome))
+        finally:
+            staging.cleanup()
+            shutil.rmtree(state)
+
+    def test_one_command_qualification_reports_rollback_failure_without_hiding_it(self):
+        staging, state, _manifest, _audio, fake, outcome = self._run_fake_cuda_qualification(rollback_failure=True)
+        try:
+            self.assertTrue(fake.started)
+            self.assertTrue(fake.failure_recorded)
+            self.assertEqual(outcome['state'], 'rollback-failed')
+            self.assertEqual(outcome['rollback'], 'failed')
+            self.assertEqual(outcome['rollback_failure']['failure_class'], 'RuntimeError')
+            self.assertIsNone(outcome['failure'])
+            self.assertNotEqual(outcome['failure'], outcome['rollback_failure'])
+            root_receipt = next((state / 'cuda-qualifications' / outcome['qualification_id']).glob('receipt-*.json'))
+            receipt = json.loads(root_receipt.read_text())
+            self.assertEqual(receipt['rollback'], 'failed')
+        finally:
+            staging.cleanup()
+            shutil.rmtree(state)
+
+    def test_prepare_diagnostic_metadata_is_preserved_without_raw_details(self):
+        staging, manifest, _audio = qualification_fixture()
+        state = Path(tempfile.mkdtemp(prefix='whisper-qualification-state-'))
+        state.chmod(0o700)
+        fake = self.FakeCudaQualificationLifecycle(state)
+        class PrepareError(RuntimeError):
+            metadata = {'diagnostic_id': 'f00ba412', 'stage': 'model-provision',
+                        'failure_class': 'PermissionError', 'classification': 'permission-denied',
+                        'executable': 'python3', 'exit_code': 13,
+                        'diagnostic_available': True, 'secret': 'do-not-leak'}
+        fake.prepare_failure = PrepareError('secret-bearing detail')
+        try:
+            outcome = QUALIFICATION.qualify(fake, manifest, 'd' * 40, operator_uid=os.getuid())
+            self.assertEqual(outcome['state'], 'failed')
+            self.assertEqual(outcome['failure'], {
+                'failure_id': 'f00ba412', 'failure_stage': 'model-provision',
+                'failure_class': 'PermissionError', 'failure_executable': 'python3',
+                'failure_exit_code': 13, 'failure_classification': 'permission-denied'})
+            self.assertNotIn('secret', json.dumps(outcome))
+            self.assertFalse(fake.started)
+        finally:
+            staging.cleanup()
+            shutil.rmtree(state)
+
+    def test_qualification_progress_is_content_free_and_uses_fixed_stages(self):
+        staging, manifest, _audio = qualification_fixture()
+        state = Path(tempfile.mkdtemp(prefix='whisper-qualification-state-'))
+        state.chmod(0o700)
+        fake = self.FakeCudaQualificationLifecycle(state)
+        output = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(output):
+                outcome = QUALIFICATION.qualify(fake, manifest, 'd' * 40, operator_uid=os.getuid())
+            events = [json.loads(line) for line in output.getvalue().splitlines()]
+            self.assertEqual([event['stage'] for event in events],
+                             ['prepare', 'start', 'inference', 'rollback'])
+            self.assertEqual(events[2]['input_index'], 1)
+            self.assertTrue(all(event['qualification_id'] == outcome['qualification_id'] for event in events))
+            self.assertNotIn('sample', output.getvalue())
+            self.assertNotIn('Synthetic private transcript', output.getvalue())
+        finally:
+            staging.cleanup()
+            shutil.rmtree(state)
 
     def test_cuda_candidate_longform_limits_are_explicit_and_consistent(self):
         LIFECYCLE.validate_cuda_request_limits(1200, 40_000_000, 14_400)

@@ -45,8 +45,8 @@ for _name in ("MODEL_ID", "ALIASES", "MAX_AUDIO_SECONDS", "MAX_BODY_BYTES",
 
 
 RUNTIME_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-CUDA_PATCH_VERSION = "strict-gpu-buffer-proof-v1"
-CUDA_PATCHER_SHA256 = "5c8e2036dce08d2d4ba6c6f065d09f1aa7e0db792b9be9d9120d452ee3f533ca"
+CUDA_PATCH_VERSION = "strict-gpu-buffer-idle-proof-v2"
+CUDA_PATCHER_SHA256 = "d68e0e16aca14d3169501a751b054a7e85def93aa7679bb7f26f209236b9d7ef"
 NATIVE_PORT = 8081
 
 
@@ -158,6 +158,8 @@ class CandidateServer(ThreadingHTTPServer):
         self.api_key = api_key
         self.native_process = native_process
         self.native_health = native_health if isinstance(native_health, dict) else {}
+        self.native_gpu_proof = {key: self.native_health[key] for key in
+                                 ("compute_backend", "gpu_model_buffer_bytes") if key in self.native_health}
         self.inflight = threading.BoundedSemaphore(1)
         super().__init__(address, CandidateHandler)
 
@@ -207,14 +209,26 @@ class CandidateHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             process_ready = self.server.native_process is None or self.server.native_process.poll() is None
-            ready = process_ready and native_health_is_valid(self.server.config, self.server.native_health)
+            current_native = _native_health(timeout=1.0)
+            native_health = None
+            if isinstance(current_native, dict):
+                native_health = current_native
+                if self.server.config.device == "cpu":
+                    self.server.native_health = current_native
+                elif (self.server.config.device == "cuda" and
+                        type(current_native.get("inference_busy")) is bool and current_native["inference_busy"]):
+                    native_health = {**self.server.native_gpu_proof, **current_native}
+            ready = process_ready and native_health_is_valid(self.server.config, native_health)
             idle_probe = self.server.inflight.acquire(blocking=False)
-            busy = not idle_probe
+            native_busy = (native_health.get("inference_busy")
+                           if isinstance(native_health, dict) else None)
+            busy = (not idle_probe or native_busy is not False) if self.server.config.device == "cuda" else not idle_probe
             if idle_probe:
                 self.server.inflight.release()
             self.respond(200 if ready else 503, json.dumps({
                 "status": "ok" if ready else "unavailable",
                 "inference_busy": busy,
+                "native_inference_busy": native_busy,
                 "model": MODEL_ID,
                 "model_repository": PIN["repository"],
                 "model_snapshot": PIN["snapshot"],
@@ -224,8 +238,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "homecompute_revision": self.server.config.homecompute_revision,
                 "image_id": self.server.config.image_id,
                 "device": self.server.config.device,
-                "compute_backend": self.server.native_health.get("compute_backend", "cpu"),
-                "gpu_model_buffer_bytes": self.server.native_health.get("gpu_model_buffer_bytes", 0),
+                "compute_backend": native_health.get("compute_backend", "cpu") if native_health else "unknown",
+                "gpu_model_buffer_bytes": native_health.get("gpu_model_buffer_bytes", 0) if native_health else 0,
                 "strict_gpu_patch": CUDA_PATCH_VERSION if self.server.config.device == "cuda" else None,
                 "strict_gpu_patcher_sha256": CUDA_PATCHER_SHA256 if self.server.config.device == "cuda" else None,
                 "decoding_defaults": {
@@ -271,6 +285,15 @@ class CandidateHandler(BaseHTTPRequestHandler):
             if not self.server.inflight.acquire(blocking=False):
                 raise RequestError(429, "Speech service is busy")
             acquired = True
+            if self.server.config.device == "cuda":
+                native_health = _native_health(timeout=1.0)
+                if (not isinstance(native_health, dict) or native_health.get("status") != "ok" or
+                        type(native_health.get("inference_busy")) is not bool):
+                    raise RequestError(503, "Native inference state is unavailable")
+                if native_health["inference_busy"]:
+                    raise RequestError(429, "Speech service is busy")
+                if not native_health_is_valid(self.server.config, native_health):
+                    raise RequestError(503, "Native inference state is unavailable")
             self.request.settimeout(self.server.config.upload_timeout_seconds)
             body = self.rfile.read(length)
             if len(body) != length:
@@ -300,7 +323,8 @@ def native_health_is_valid(config: CandidateConfig, health: object) -> bool:
         return True
     gpu_bytes = health.get("gpu_model_buffer_bytes")
     return (health.get("compute_backend") == "cuda" and isinstance(gpu_bytes, int) and
-            not isinstance(gpu_bytes, bool) and gpu_bytes > 0)
+            not isinstance(gpu_bytes, bool) and gpu_bytes > 0 and
+            type(health.get("inference_busy")) is bool)
 
 
 def _native_health(timeout: float = 1.0) -> dict | None:

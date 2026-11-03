@@ -4,7 +4,7 @@ services:
   whisper-cpp-cuda:
     profiles: [cuda-candidate]
     platform: linux/arm64
-    image: homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc1
+    image: homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc2
     build:
       context: .
       dockerfile: Dockerfile.cuda
@@ -43,7 +43,7 @@ services:
     logging:
       driver: none
     healthcheck:
-      test: [CMD, python3, -I, -B, -c, "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); raise SystemExit(0 if d.get('status')=='ok' and d.get('device')=='cuda' and d.get('compute_backend')=='cuda' and d.get('strict_gpu_patch')=='strict-gpu-buffer-proof-v1' and d.get('strict_gpu_patcher_sha256')=='5c8e2036dce08d2d4ba6c6f065d09f1aa7e0db792b9be9d9120d452ee3f533ca' and type(d.get('gpu_model_buffer_bytes')) is int and d['gpu_model_buffer_bytes']>0 else 1)"]
+      test: [CMD, python3, -I, -B, -c, "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); raise SystemExit(0 if d.get('status')=='ok' and d.get('device')=='cuda' and d.get('compute_backend')=='cuda' and d.get('strict_gpu_patch')=='strict-gpu-buffer-idle-proof-v2' and d.get('strict_gpu_patcher_sha256')=='d68e0e16aca14d3169501a751b054a7e85def93aa7679bb7f26f209236b9d7ef' and type(d.get('gpu_model_buffer_bytes')) is int and d['gpu_model_buffer_bytes']>0 and type(d.get('native_inference_busy')) is bool else 1)"]
       interval: 15s
       timeout: 5s
       retries: 8

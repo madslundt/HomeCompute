@@ -21,7 +21,7 @@ REPOSITORY='https://github.com/madslundt/HomeCompute.git'
 RELEASES=Path('/srv/homecompute/releases')
 ACTIONS=('prepare','prepare-runtime-candidate','prepare-cuda-candidate','apply','install','retire','rollback','status','smoke',
          'runtime-candidate','runtime-candidate-rollback','runtime-candidate-status',
-         'cuda-candidate','cuda-candidate-rollback','cuda-candidate-status')
+         'cuda-candidate','cuda-candidate-rollback','cuda-candidate-status','cuda-candidate-qualify')
 
 
 def run(arguments):
@@ -66,8 +66,18 @@ def setup_argv(release, args):
     limits = (args.max_audio_seconds, args.max_upload_bytes, args.native_timeout_seconds)
     if any(value is not None for value in limits) and args.action != 'cuda-candidate':
         raise ValueError('request limits are accepted only for cuda-candidate')
+    if args.action == 'cuda-candidate-qualify':
+        staging = Path(__file__).absolute().parent
+        manifest = Path(args.qualification_manifest or '')
+        if (not manifest.is_absolute() or manifest.parent != staging or
+                manifest.name != 'qualification-manifest.json'):
+            raise ValueError('qualification manifest must be in the bootstrap staging directory')
+    elif args.qualification_manifest is not None:
+        raise ValueError('qualification manifest is accepted only for cuda-candidate-qualify')
     command=[sys.executable,'-I','-B',str(release/'scripts/setup-whisper-stt.py'),
              args.action,'--revision',args.revision]
+    if args.qualification_manifest is not None:
+        command.extend(('--qualification-manifest',str(args.qualification_manifest)))
     names=('--max-audio-seconds','--max-upload-bytes','--native-timeout-seconds')
     for name,value in zip(names,limits):
         if value is not None:command.extend((name,str(value)))
@@ -81,6 +91,7 @@ def main():
     parser.add_argument('--max-audio-seconds',type=int)
     parser.add_argument('--max-upload-bytes',type=int)
     parser.add_argument('--native-timeout-seconds',type=int)
+    parser.add_argument('--qualification-manifest')
     args=parser.parse_args()
     if os.geteuid()!=0 or socket.gethostname().split('.')[0]!='home-spark' or not sys.flags.isolated:
         raise ValueError('run-python-with-I-and-B-through-sudo-on-home-spark')

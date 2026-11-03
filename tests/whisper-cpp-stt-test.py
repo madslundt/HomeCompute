@@ -310,11 +310,14 @@ class AdapterContractTests(unittest.TestCase):
         cpu = ADAPTER.CandidateConfig(Path("/model"), Path("/key"), device="cpu")
         self.assertTrue(ADAPTER.native_health_is_valid(cuda, {
             "status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 1,
+            "inference_busy": False,
         }))
         for fallback in (
             {"status": "ok", "compute_backend": "cpu", "gpu_model_buffer_bytes": 0},
             {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 0},
             {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": True},
+            {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 1,
+             "inference_busy": None},
             {"status": "ok", "device": "cuda"},
         ):
             with self.subTest(fallback=fallback):
@@ -335,6 +338,9 @@ class AdapterContractTests(unittest.TestCase):
             path: spec[0] for path, spec in CUDA_PATCHER.PATCHES.items()
         })
         self.assertIn("!ggml_backend_buffer_is_host(buffer)", CUDA_PATCHER.IMPLEMENTATION)
+        self.assertIn("std::try_to_lock", CUDA_PATCHER.PATCHES["examples/server/server.cpp"][2])
+        self.assertIn('health["gpu_model_buffer_bytes"] = gpu_model_buffer_bytes;',
+                      CUDA_PATCHER.PATCHES["examples/server/server.cpp"][2])
         fixture = b"one exact source anchor"
         patched = CUDA_PATCHER.patch_bytes(fixture, hashlib.sha256(fixture).hexdigest(),
                                            "exact source anchor", "changed source anchor")
@@ -404,10 +410,11 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn("CMAKE_CUDA_ARCHITECTURES=121a-real", dockerfile)
         self.assertIn("-DGGML_CUDA=ON", dockerfile)
         self.assertIn('io.homecompute.whisper-cpp.backend="cuda-121a"', dockerfile)
-        self.assertIn('io.homecompute.whisper-cpp.cuda-patch="strict-gpu-buffer-proof-v1"', dockerfile)
+        self.assertIn('io.homecompute.whisper-cpp.cuda-patch="strict-gpu-buffer-idle-proof-v2"', dockerfile)
         self.assertIn("CUDA_PATCHER_SHA256: ${WHISPER_CPP_CUDA_PATCHER_SHA256:?", compose)
         self.assertIn("gpu_model_buffer_bytes", compose)
         self.assertIn(ADAPTER.CUDA_PATCHER_SHA256, compose)
+        self.assertIn("native_inference_busy", compose)
         self.assertIn("WHISPER_CPP_DEVICE", (DEPLOY / "adapter.py").read_text())
 
     def test_verbose_native_segments_keep_text_timing_and_exact_char_anchors(self):
@@ -515,15 +522,17 @@ class AdapterContractTests(unittest.TestCase):
         config = ADAPTER.CandidateConfig(
             Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
             image_id="sha256:" + "b" * 64, device="cuda")
-        native_health = {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 4096}
+        native_health = {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 4096,
+                         "inference_busy": False}
         server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0),
                                          native_health=native_health)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             url = f"http://127.0.0.1:{server.server_address[1]}/health"
-            with urllib.request.urlopen(url, timeout=3) as response:
-                healthy = json.loads(response.read())
+            with patch.object(ADAPTER, "_native_health", return_value=native_health):
+                with urllib.request.urlopen(url, timeout=3) as response:
+                    healthy = json.loads(response.read())
             self.assertEqual(healthy["device"], "cuda")
             self.assertEqual(healthy["compute_backend"], "cuda")
             self.assertEqual(healthy["gpu_model_buffer_bytes"], 4096)
@@ -532,11 +541,85 @@ class AdapterContractTests(unittest.TestCase):
             self.assertEqual(healthy["inference_busy"], False)
             self.assertTrue(server.inflight.acquire(blocking=False))
             try:
-                with urllib.request.urlopen(url, timeout=3) as response:
-                    busy = json.loads(response.read())
+                with patch.object(ADAPTER, "_native_health", return_value=native_health):
+                    with urllib.request.urlopen(url, timeout=3) as response:
+                        busy = json.loads(response.read())
                 self.assertEqual(busy["inference_busy"], True)
             finally:
                 server.inflight.release()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+    def test_native_busy_after_adapter_timeout_stays_busy_and_unknown_is_not_idle(self):
+        config = ADAPTER.CandidateConfig(
+            Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
+            image_id="sha256:" + "b" * 64, device="cuda")
+        startup = {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 4096,
+                   "inference_busy": False}
+        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0),
+                                         native_health=startup)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        url = f"http://127.0.0.1:{server.server_address[1]}/health"
+        try:
+            with patch.object(ADAPTER, "_native_health", return_value={"status": "ok", "inference_busy": True}):
+                with urllib.request.urlopen(url, timeout=3) as response:
+                    busy = json.loads(response.read())
+                self.assertEqual(busy["status"], "ok")
+                self.assertEqual(busy["native_inference_busy"], True)
+                self.assertEqual(busy["inference_busy"], True)
+                self.assertEqual(busy["gpu_model_buffer_bytes"], 4096)
+            with patch.object(ADAPTER, "_native_health", return_value=None):
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(url, timeout=3)
+                unknown = json.loads(error.exception.read())
+                error.exception.close()
+                self.assertEqual(error.exception.code, 503)
+                self.assertEqual(unknown["status"], "unavailable")
+                self.assertEqual(unknown["inference_busy"], True)
+            for current, expected_native_busy, expected_busy in (
+                ({"status": "ok"}, None, True),
+                ({"status": "ok", "inference_busy": "false"}, "false", True),
+                ({"status": "ok", "inference_busy": False}, False, False),
+            ):
+                with self.subTest(current=current), patch.object(ADAPTER, "_native_health", return_value=current):
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        urllib.request.urlopen(url, timeout=3)
+                    payload = json.loads(error.exception.read())
+                    error.exception.close()
+                    self.assertEqual(error.exception.code, 503)
+                    self.assertEqual(payload["native_inference_busy"], expected_native_busy)
+                    self.assertEqual(payload["inference_busy"], expected_busy)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+    def test_cuda_post_refuses_native_busy_or_unknown_after_adapter_slot_is_free(self):
+        config = ADAPTER.CandidateConfig(
+            Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
+            image_id="sha256:" + "b" * 64, device="cuda")
+        native_health = {"status": "ok", "compute_backend": "cuda", "gpu_model_buffer_bytes": 4096,
+                         "inference_busy": False}
+        server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0),
+                                         native_health=native_health)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        body, content_type = multipart([("model", "whisper"), ("response_format", "json")], wav_bytes())
+        url = f"http://127.0.0.1:{server.server_address[1]}/v1/audio/transcriptions"
+        try:
+            for current, expected in (({"status": "ok", "inference_busy": True}, 429), (None, 503)):
+                request = urllib.request.Request(url, data=body, headers={
+                    "Content-Type": content_type, "Authorization": "Bearer synthetic-secret-value"})
+                with patch.object(ADAPTER, "_native_health", return_value=current), \
+                     patch.object(ADAPTER, "_native_request") as native_request:
+                    with self.assertRaises(urllib.error.HTTPError) as error:
+                        urllib.request.urlopen(request, timeout=3)
+                    self.assertEqual(error.exception.code, expected)
+                    error.exception.close()
+                    native_request.assert_not_called()
         finally:
             server.shutdown()
             server.server_close()
@@ -548,7 +631,8 @@ class AdapterContractTests(unittest.TestCase):
             image_id="sha256:" + "b" * 64, device="cuda")
         server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0),
                                          native_health={"status": "ok", "compute_backend": "cuda",
-                                                        "gpu_model_buffer_bytes": 4096})
+                                                        "gpu_model_buffer_bytes": 4096,
+                                                        "inference_busy": False})
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -556,7 +640,8 @@ class AdapterContractTests(unittest.TestCase):
             url = f"http://127.0.0.1:{server.server_address[1]}/v1/audio/transcriptions"
             request = urllib.request.Request(url, data=body, headers={
                 "Content-Type": content_type, "Authorization": "Bearer synthetic-secret-value"})
-            with patch.object(ADAPTER, "_native_request", return_value=b'{"text":"Synthetic words"}'):
+            with patch.object(ADAPTER, "_native_health", return_value=server.native_health), \
+                 patch.object(ADAPTER, "_native_request", return_value=b'{"text":"Synthetic words"}'):
                 with urllib.request.urlopen(request, timeout=3) as response:
                     self.assertEqual(response.headers["X-HomeCompute-STT-Device"], "cuda")
                     self.assertEqual(json.loads(response.read()), {"text": "Synthetic words"})

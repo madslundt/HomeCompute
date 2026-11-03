@@ -157,13 +157,22 @@ remain unverified until a guarded GPU qualification completes.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-build applies `strict-gpu-buffer-proof-v1` to the exact pinned upstream source
+build applies `strict-gpu-buffer-idle-proof-v2` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
 GPU model-buffer byte count; the adapter and Compose healthcheck reject a CUDA
 candidate reporting zero or CPU placement. This proves model weights were
-placed on GPU memory, not that every operation or model buffer runs there.
+placed on GPU memory, not that every operation or model buffer runs there. The
+CUDA native health handler also try-locks the same mutex held across native
+inference and reports `inference_busy`; the adapter refreshes that probe on
+every health request and treats a missing or invalid result as busy. This keeps
+candidate rollback from stopping whisper.cpp after the HTTP client times out
+while the native decoder continues working; CUDA request admission also rejects
+new work while that native lock is held or its state cannot be confirmed. The
+CPU image is unpatched and
+reports only adapter admission activity, so it is not used by this CUDA
+rollback idle gate.
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
 the default mode and the separate CPU image is built with `GGML_CUDA=OFF`.
@@ -194,6 +203,56 @@ sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.
 sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py cuda-candidate-status --revision FULL_SHA
 sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py cuda-candidate-rollback --revision FULL_SHA
 ```
+
+For a one-command private qualification, use the `cuda-candidate-qualify`
+action after the prior Whisper runtime candidate has been rolled back. It
+requires `qualification-manifest.json` and its audio inputs in the same private
+`/tmp/homecompute-whisper-stt.<token>` directory as the staged bootstrap. Set
+the directory to mode 0700 and each input plus manifest to mode 0600, owned by
+the invoking operator. The manifest has this exact schema:
+
+```json
+{
+  "schema_version": 1,
+  "max_audio_seconds": 1200,
+  "max_upload_bytes": 40000000,
+  "native_timeout_seconds": 14400,
+  "inputs": [
+    {"id": "recording", "file": "original.wav", "bytes": 35913004,
+     "sha256": "<64 lowercase hex characters>", "frames": 17956480}
+  ]
+}
+```
+
+It accepts one to four bounded files. Each WAV must match its declared byte
+count, SHA-256 and sample count and contain complete mono 16 kHz PCM16 samples.
+The helper stages the validated bytes root-only before preparing the pinned
+model/key/image. It then sends serial authenticated requests with automatic
+language, no prompt, zero context, beam/best-of 5, and `max_len=-1`. Raw
+verbose responses and all six provenance headers are preserved in mode-0600
+root-owned results before checks. It always runs the exact-primary rollback
+after inference or failure, waiting up to the native timeout plus three minutes
+for a confirmed idle candidate. It refuses to stop a candidate whose idle
+state remains unknown; that case is reported as rollback failure for recovery
+through the existing status/rollback lifecycle. `SIGINT`, `SIGTERM` and
+`SIGHUP` trigger the bounded rollback path; `SIGKILL` and power loss cannot.
+
+Example after staging the manifest and WAV:
+
+```bash
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-stt.py \
+  --revision FULL_SHA --action cuda-candidate-qualify \
+  --qualification-manifest /tmp/homecompute-whisper-stt.TOKEN/qualification-manifest.json
+```
+
+The action exports result JSON and a content-free receipt into that same
+operator-owned staging directory using exclusive mode-0600 files. The result
+JSON contains the candidate transcript response and provenance headers, never
+the key. Matching root-only copies remain under
+`/var/lib/homecompute/whisper-stt/cuda-qualifications/`. Standard output shows
+only qualification status and export paths. Do not stage prompts, names, dates,
+or reference answers in the manifest; request decoding options are fixed by the
+source-owned helper.
 
 `prepare-cuda-candidate` provisions/verifies the external artifacts, checks the
 native ARM64 host, local pinned base image, GB10 compute capability and driver
