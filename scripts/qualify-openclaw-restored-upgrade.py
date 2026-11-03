@@ -82,7 +82,7 @@ def memory_admitted(available,pressure,*,running=False):
  # live floor leaves time to terminate the owned VM during another workload's
  # burst; any sustained pressure also aborts instead of paging production.
  floor=(4 if running else 15)*1024**3
- return available>=floor and pressure['full']<=0.1 and pressure['some']<=1.0
+ return available>=floor and pressure['full']<=(1.0 if running else 0.1) and pressure['some']<=(5.0 if running else 1.0)
 
 
 def verify(args,revision):
@@ -117,11 +117,14 @@ def verify(args,revision):
   output=stack.enter_context(log.open('xb'));error=stack.enter_context(errors.open('xb'))
   command=ENGINE.vm_command(str(executable),'agents-vm',descriptors);command[command.index('-m')+1]='8192';command[command.index('-smp')+1]='2'
   def child():ENGINE.vm_child(account.pw_uid,account.pw_gid,kvm,memory_limit=32*1024**3,cpu_seconds=2250,file_limit=12*1024**3)
-  with ENGINE.owned_process(command,stdin=subprocess.DEVNULL,stdout=output,stderr=error,cwd=guest,env={**ENGINE.ENV,'TMPDIR':'.'},pass_fds=descriptors,preexec_fn=child) as process:
-   deadline=time.monotonic()+2100
+  with ENGINE.owned_process(command,stdin=subprocess.DEVNULL,stdout=output,stderr=error,cwd=guest,env={**ENGINE.ENV,'TMPDIR':'.'},pass_fds=descriptors,preexec_fn=child,cleanup_options={'graceful_timeout':60,'kill_timeout':60}) as process:
+   deadline=time.monotonic()+2100;pressure_samples=0
    while time.monotonic()<deadline:
     available,pressure=memory_state()
-    if not memory_admitted(available,pressure,running=True):raise ValueError('owned qualification stopped to preserve host memory')
+    pressure_samples=pressure_samples+1 if not memory_admitted(available,pressure,running=True) else 0
+    observation={'available_bytes':available,'pressure':pressure,'consecutive_pressure_samples':pressure_samples}
+    (work/'memory-observation.json').write_text(json.dumps(observation,sort_keys=True))
+    if available<4*1024**3 or pressure_samples>=3:raise ValueError('owned qualification stopped to preserve host memory')
     ENGINE.private_logs_bounded(log,errors);result=result_from_log(log.read_bytes(),nonce)
     if result is not None:break
     if process.poll() is not None:raise ValueError('owned qualification VM exited')

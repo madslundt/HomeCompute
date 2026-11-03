@@ -311,13 +311,13 @@ def vm_child(uid: int, gid: int, kvm_gid: int, *, memory_limit=4 * 1024**3,
     os.setgroups([kvm_gid]); os.setgid(gid); os.setuid(uid)
 
 
-def stop_owned(process: subprocess.Popen):
+def stop_owned(process: subprocess.Popen, *, graceful_timeout=10, kill_timeout=10):
     if process.poll() is None:
         process.terminate()
-        try: process.wait(timeout=10)
+        try: process.wait(timeout=graceful_timeout)
         except subprocess.TimeoutExpired:
             process.kill()
-            try: process.wait(timeout=10)
+            try: process.wait(timeout=kill_timeout)
             except subprocess.TimeoutExpired as error: raise CleanupError('owned-vm-cleanup-timeout') from error
 
 
@@ -334,6 +334,7 @@ def owned_process(arguments: list[str], **kwargs):
     process = None
     previous = signal.pthread_sigmask(signal.SIG_BLOCK, TERMINAL_SIGNALS)
     setup = kwargs.pop('preexec_fn', None)
+    cleanup_options = kwargs.pop('cleanup_options', {})
     def child_setup():
         signal.pthread_sigmask(signal.SIG_SETMASK, previous - TERMINAL_SIGNALS)
         if setup: setup()
@@ -345,7 +346,7 @@ def owned_process(arguments: list[str], **kwargs):
         yield process
     finally:
         if process is not None:
-            with defer_terminal_signals(): stop_owned(process)
+            with defer_terminal_signals(): stop_owned(process, **cleanup_options)
 
 
 def vm_verify(scope: str, item: dict, target: Path, work: Path) -> dict:

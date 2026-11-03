@@ -29,7 +29,7 @@ class RestoredUpgrade(unittest.TestCase):
   self.assertFalse(m.memory_admitted(15*1024**3-1,calm))
   self.assertTrue(m.memory_admitted(5*1024**3,calm,running=True))
   self.assertFalse(m.memory_admitted(4*1024**3-1,calm,running=True))
-  self.assertFalse(m.memory_admitted(20*1024**3,{'full':0.2,'some':0.2},running=True))
+  self.assertFalse(m.memory_admitted(20*1024**3,{'full':1.1,'some':1.1},running=True))
   self.assertFalse(m.memory_admitted(20*1024**3,{'full':0.0,'some':1.1}))
 
  def test_serial_result_must_have_the_selected_nonce_once(self):

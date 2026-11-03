@@ -247,8 +247,13 @@ threshold while available memory remained stable near15.6 GiB and memory
 pressure was zero. Admission now explicitly budgets the unchanged10 GiB scope
 cap plus5 GiB of host headroom. It also requires full memory pressure over ten
 seconds at most0.1% and some pressure at most1%. While running, falling below
-4 GiB available or crossing either pressure threshold terminates only the owned
-VM through its normal cleanup. The guest remains8 GiB/two visible vCPUs, with
+4 GiB available terminates the owned VM immediately. Full pressure above1% or
+some pressure above5% must persist for three consecutive two-second samples.
+The previous single-sample startup refusal is retained as failed evidence; each
+new sample records available bytes and both pressure values privately. Cleanup
+allows60 seconds after TERM and60 after KILL for the I/O-limited VM, then still
+requires its scope to be empty. Other restore callers retain their original
+cleanup deadlines. The guest remains8 GiB/two visible vCPUs, with
 its original read-only source disk, memory cap, CPU affinity and I/O limits.
 No production service is paused to create room for qualification. This change
 applies to the managed-upgrade fixture; the accepted NAS recovery verifier and
