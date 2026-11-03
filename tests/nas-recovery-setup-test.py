@@ -144,11 +144,11 @@ class NASRecoverySetupTest(unittest.TestCase):
             self.assertEqual(len(work),2)
             for args in work:
                 self.assertEqual(args[:4],['systemd-run','--scope','--collect','--quiet'])
-                for prop in ('IOWriteBandwidthMax=/srv/restore-tests 25M',
-                             'IOReadBandwidthMax=/srv/restore-tests 50M',
+                for prop in ('IOWriteBandwidthMax=/srv/restore-tests 20M',
+                             'IOReadBandwidthMax=/srv/restore-tests 40M',
                              'IOWriteIOPSMax=/srv/restore-tests 100',
                              'IOReadIOPSMax=/srv/restore-tests 200',
-                             'MemoryHigh=1G','MemoryMax=2G'):
+                             'MemoryHigh=512M','MemoryMax=2G'):
                     self.assertIn('--property='+prop,args)
                 self.assertEqual(args[args.index('ionice'):args.index('ionice')+3],['ionice','-c','3'])
 
