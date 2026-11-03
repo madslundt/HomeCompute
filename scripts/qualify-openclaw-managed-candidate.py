@@ -46,6 +46,19 @@ const validation = cp.spawnSync('/usr/local/bin/openclaw', ['config','set','--ba
 output.synthetic_config_valid = validation.status === 0;
 if (validation.status !== 0) process.stderr.write(JSON.stringify({phase:'synthetic-config-validation',
   stdout:(validation.stdout || '').slice(0,32768),stderr:(validation.stderr || '').slice(0,32768)}) + '\n');
+const childFixture = `import {n as build} from ${JSON.stringify(base + '/' + expectedModules.child_result.path)};
+const tail = ' CANDIDATE_FINAL_EVIDENCE=present';
+const text = 'Synthetic evidence. '.repeat(100).slice(0,1800-tail.length) + tail;
+const child = (i=0) => ({runId:'synthetic-'+i,childSessionKey:'agent:operator:subagent:synthetic-'+i,
+  createdAt:i,label:'Synthetic evidence',task:'Synthetic read-only task',
+  execution:{endedAt:100+i,outcome:{status:'ok'}},completion:{resultText:text}});
+console.log(JSON.stringify({single_child_retains_evidence:build([child()]).includes(tail.trim()),
+  aggregate_bound:build(Array.from({length:9},(_,i)=>child(i))).length<=4096}));`;
+const childCheck = cp.spawnSync('/usr/local/bin/node',['--input-type=module','-'],
+  {input:childFixture,encoding:'utf8',timeout:30000,env,maxBuffer:1048576});
+output.native_child_fixture = childCheck.status === 0 ? JSON.parse(childCheck.stdout.trim().split('\n').at(-1)) : {executed:false};
+if (childCheck.status !== 0) process.stderr.write(JSON.stringify({phase:'native-child-fixture',
+  stderr:(childCheck.stderr || '').slice(0,32768)}) + '\n');
 output.patch_modules = {};
 for (const name of ['subagent-announce-output-CgCr3vGC.js','embedded-agent-DaSvA-Yk.js']) {
   const path = base + '/dist/' + name;
