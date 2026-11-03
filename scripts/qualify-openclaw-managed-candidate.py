@@ -48,10 +48,12 @@ const config = {gateway:{mode:'local',bind:'loopback',auth:{mode:'token',token:'
   models:{providers:{fixture:{baseUrl:'http://127.0.0.1:1/v1',apiKey:'synthetic',api:'openai-completions',
     models:[{id:'model',name:'Synthetic model',contextWindow:32768,maxTokens:128}]}}},
   plugins:{enabled:false},cron:{enabled:false},hooks:{enabled:false},browser:{enabled:false}};
-fs.writeFileSync('/sandbox/config.json', JSON.stringify(config), {mode:0o600});
-const validation = cp.spawnSync('/usr/local/bin/openclaw', ['config','set','--batch-json','[]','--dry-run'],
+const configBytes = JSON.stringify(config);
+fs.writeFileSync('/sandbox/config.json', configBytes, {mode:0o600});
+const validation = cp.spawnSync('/usr/local/bin/openclaw', ['config','set','--batch-json',JSON.stringify([{path:'agents.entries.main.name',value:'Synthetic dry-run candidate'}]),'--dry-run'],
   {encoding:'utf8',timeout:30000,env:{...env,OPENCLAW_CONFIG_PATH:'/sandbox/config.json'},maxBuffer:1048576});
-output.synthetic_config_valid = validation.status === 0;
+output.synthetic_config_unchanged = fs.readFileSync('/sandbox/config.json','utf8') === configBytes;
+output.synthetic_config_valid = validation.status === 0 && output.synthetic_config_unchanged;
 if (validation.status !== 0) process.stderr.write(JSON.stringify({phase:'synthetic-config-validation',
   stdout:(validation.stdout || '').slice(0,32768),stderr:(validation.stderr || '').slice(0,32768)}) + '\n');
 const childFixture = (modulePath) => `import {n as build} from ${JSON.stringify(modulePath)};

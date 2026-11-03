@@ -216,7 +216,17 @@ reached DependenciesReady and passed authenticated health/version/plugin and
 post-start policy checks. The smaller one-CPU fixture did not represent the
 retained two-CPU runtime budget. No production resource or roster guard changed.
 
-Outstanding: actual managed-artifact checks, native fixture lifecycle/rebuild and
+Actual candidate execution passed the three runtime module hashes, declared
+Node/core/schema versions, native SDK loader and safety runner, fail-closed and
+sticky-veto cases, native ingress readiness/abort, yield warning/acknowledgment
+and quiet-delivery regressions. The stock single-child result still truncates
+required tail evidence; the exact-hash temporary child overlay passed all
+fixtures. The first config dry-run used an empty batch, which the native CLI
+correctly rejected before schema validation. That harness fixture is being
+corrected to a nonempty synthetic-name update with byte-for-byte no-write proof.
+The candidate remains unqualified and no production tuple changed.
+
+Outstanding: completed artifact/config gate, native fixture lifecycle/rebuild and
 rollback, integration/patch/identity tests and authenticated client acceptance.
 Do not deploy from an artifact-only pass or imply host synchronization from
 release markers. Retain the prior production tuple until those gates pass.
