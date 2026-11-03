@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """STT replacement gates, transaction recovery and consumer migration behavior."""
 import copy
+import contextlib
 import importlib.util
+import io
 import json
 import re
+import stat
 from types import SimpleNamespace
 from pathlib import Path
 import tempfile
@@ -164,12 +167,262 @@ class MigrationTests(unittest.TestCase):
             ['docker', 'start', 'full-whisper-id'],
         ])
         self.assertEqual(tx['state'], 'rolled-back')
-        save.assert_called_once_with(tx)
+        self.assertGreaterEqual(save.call_count, 1)
+        self.assertEqual(save.call_args_list[-1].args[0], tx)
+
+    def run_candidate_failure(self, directory, *, compose_error=None, smoke_error=None,
+                              postload_low=False, rollback_error=False):
+        state = Path(directory)
+        (state / 'transaction.json').write_text(json.dumps({
+            'state': 'legacy-retired', 'revision': 'a' * 40,
+            'rollback_containers_retained': False,
+        }))
+        primary_id = 'primary-id'
+        primary = {
+            'Id': primary_id, 'Image': 'sha256:' + 'b' * 64, 'Name': '/gb10-whisper-primary',
+            'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+            'Config': {
+                'Cmd': [LIFECYCLE.MODEL, LIFECYCLE.REVISION],
+                'Image': 'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d',
+            },
+            'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped', 'MaximumRetryCount': 0}},
+        }
+        candidate = {
+            'Id': 'candidate-id', 'Image': 'sha256:' + 'c' * 64, 'Name': '/gb10-whisper-candidate',
+            'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+            'Config': {
+                'Cmd': [LIFECYCLE.MODEL, LIFECYCLE.REVISION],
+                'Labels': {'com.docker.compose.project': 'whisper-large-v3-stt',
+                           'com.docker.compose.service': 'whisper-candidate'},
+            },
+        }
+        candidate_inspects = 0
+        primary_id_inspects = 0
+        meminfo_reads = 0
+        original_read_text = Path.read_text
+
+        def inspect(name):
+            nonlocal candidate_inspects, primary_id_inspects
+            if name == LIFECYCLE.NEW[0]:
+                return primary
+            if name == LIFECYCLE.CANDIDATE:
+                candidate_inspects += 1
+                return None if candidate_inspects == 1 else candidate
+            if name == primary_id:
+                primary_id_inspects += 1
+                if primary_id_inspects == 1:
+                    return {**primary, 'State': {'Running': False, 'Health': {'Status': 'unhealthy'}}}
+                return primary
+            raise AssertionError('unexpected inspect target')
+
+        def read_text(path, *args, **kwargs):
+            nonlocal meminfo_reads
+            if str(path) == '/proc/meminfo':
+                meminfo_reads += 1
+                available = 11_000_000 if postload_low and meminfo_reads == 2 else 20_000_000
+                return f'MemAvailable: {available} kB\nMemTotal: 120000000 kB\n'
+            return original_read_text(path, *args, **kwargs)
+
+        run_calls = []
+        def managed_run(args, **kwargs):
+            run_calls.append(args)
+            if args[:3] == ['docker', 'logs', '--tail']:
+                return SimpleNamespace(returncode=0, stdout=(
+                    'Worker initialized\n'
+                    'Authorization: Bearer PRIVATE_FAKE_SECRET_42\n'
+                    'transcript response: PRIVATE_FAKE_SECRET_42\n'
+                    'Engine ready\n'), stderr='')
+            if rollback_error and args[:4] == ['docker', 'stop', '--time', '180'] and args[-1] == 'candidate-id':
+                raise LIFECYCLE.ManagedCommandFailure('docker', 9)
+            return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+        gate_calls = []
+        candidate_stdout = io.StringIO()
+        with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'guards'), \
+                patch.object(LIFECYCLE, 'protected'), patch.object(LIFECYCLE, 'inspect', side_effect=inspect), \
+                patch.object(LIFECYCLE, 'candidate_image_id', return_value='sha256:' + 'c' * 64), \
+                patch.object(LIFECYCLE, 'gate', side_effect=lambda chain, enabled: gate_calls.append(enabled)), \
+                patch.object(LIFECYCLE, 'quiet'), patch.object(LIFECYCLE, 'run', side_effect=managed_run), \
+                patch.object(LIFECYCLE, 'compose', side_effect=compose_error), \
+                patch.object(LIFECYCLE, 'smoke', side_effect=smoke_error), \
+                patch.object(LIFECYCLE.Path, 'read_text', new=read_text), \
+                contextlib.redirect_stdout(candidate_stdout):
+            with self.assertRaises(LIFECYCLE.CandidateQualificationFailure) as raised:
+                LIFECYCLE.candidate_start('d' * 40)
+        return state, raised.exception, gate_calls, run_calls, candidate_stdout.getvalue()
+
+    def test_candidate_compose_failure_diagnostic_precedes_rollback_and_is_private(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state, failure, gate_calls, run_calls, stdout = self.run_candidate_failure(
+                directory, compose_error=LIFECYCLE.ManagedCommandFailure(
+                    'docker', 17, diagnostic_text='CUDA out of memory; API_KEY=PRIVATE_FAKE_SECRET_42'))
+            journal = json.loads((state / 'runtime-candidate.json').read_text())
+            report_path = state / ('candidate-diagnostic-' + journal['failure_id'] + '.json')
+            report = json.loads(report_path.read_text())
+            self.assertEqual(journal['state'], 'rolled-back')
+            self.assertEqual(journal['rollback_status'], 'completed')
+            self.assertEqual(journal['failure_stage'], 'candidate-start')
+            self.assertEqual(journal['failure_class'], 'ManagedCommandFailure')
+            self.assertEqual(journal['failure_executable'], 'docker')
+            self.assertEqual(journal['failure_exit_code'], 17)
+            self.assertEqual(journal['failure_classification'], 'cuda-out-of-memory')
+            self.assertEqual(stat.S_IMODE(report_path.stat().st_mode), 0o600)
+            self.assertIn('Worker initialized', report['candidate_log_excerpt'])
+            self.assertIn('PRIVATE_FAKE_SECRET_42', report['candidate_log_excerpt'])
+            self.assertIn('PRIVATE_FAKE_SECRET_42', report['command_diagnostic_excerpt'])
+            self.assertLessEqual(report_path.stat().st_size, LIFECYCLE.MAX_PRIVATE_DIAGNOSTIC_BYTES * 3 + 4096)
+            self.assertEqual(gate_calls, [True, False])
+            log_index = run_calls.index(['docker', 'logs', '--tail', '120', LIFECYCLE.CANDIDATE])
+            remove_index = run_calls.index(['docker', 'rm', 'candidate-id'])
+            self.assertLess(log_index, remove_index)
+            public = LIFECYCLE.format_candidate_failure(failure.metadata)
+            self.assertIn('stage=candidate-start', public)
+            self.assertIn('exit_code=17', public)
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', public)
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps(LIFECYCLE.safe_candidate_metadata(journal)))
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps(journal))
+            self.assertEqual(stdout, '')
+
+    def test_candidate_compose_runtime_error_is_reported_without_exception_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state, failure, gate_calls, _, _ = self.run_candidate_failure(
+                directory, compose_error=RuntimeError('model response PRIVATE_FAKE_SECRET_42'))
+            journal = json.loads((state / 'runtime-candidate.json').read_text())
+            report_path = state / ('candidate-diagnostic-' + journal['failure_id'] + '.json')
+            report = json.loads(report_path.read_text())
+            public = LIFECYCLE.format_candidate_failure(failure.metadata)
+            self.assertEqual(journal['state'], 'rolled-back')
+            self.assertEqual(journal['failure_stage'], 'candidate-start')
+            self.assertEqual(journal['failure_class'], 'RuntimeError')
+            self.assertEqual(journal['rollback_status'], 'completed')
+            self.assertEqual(gate_calls, [True, False])
+            self.assertEqual(report['command_diagnostic_excerpt'], '')
+            self.assertIn('PRIVATE_FAKE_SECRET_42', report['failure_diagnostic_excerpt'])
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', public)
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps(LIFECYCLE.safe_candidate_metadata(journal)))
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps(journal))
+
+    def test_managed_command_failure_uses_only_safe_command_metadata(self):
+        with patch.object(LIFECYCLE.subprocess, 'run', return_value=SimpleNamespace(
+                returncode=23, stdout='PRIVATE_FAKE_SECRET_42',
+                stderr='CUDA out of memory; API_KEY=PRIVATE_FAKE_SECRET_42')):
+            with self.assertRaises(LIFECYCLE.ManagedCommandFailure) as raised:
+                LIFECYCLE.run(['docker', 'compose', '--secret', 'PRIVATE_FAKE_SECRET_42'])
+        failure = raised.exception
+        self.assertEqual(failure.executable, 'docker')
+        self.assertEqual(failure.exit_code, 23)
+        self.assertEqual(failure.classification, 'cuda-out-of-memory')
+        self.assertNotIn('PRIVATE_FAKE_SECRET_42', str(failure))
+        self.assertIn('PRIVATE_FAKE_SECRET_42', failure.private_diagnostic)
+        self.assertLessEqual(len(failure.private_diagnostic.encode('utf-8')),
+                             LIFECYCLE.MAX_PRIVATE_DIAGNOSTIC_BYTES)
+        self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps({
+            'executable': failure.executable, 'exit_code': failure.exit_code,
+            'classification': failure.classification,
+        }))
+
+    def test_failure_classifier_uses_only_allowlisted_categories(self):
+        cases = {
+            'CUDA out of memory': 'cuda-out-of-memory',
+            'Free memory on GPU is less than requested GPU memory utilization': 'vllm-memory-budget-refusal',
+            'SHA256 checksum mismatch while loading weights': 'model-cache-integrity',
+            'container is unhealthy': 'container-health',
+            'permission denied': 'permission-denied',
+            'config gpu_memory_utilization=0.06; worker failed to initialize': 'unknown',
+            'Verifying SHA256 checksum; weights loaded successfully': 'unknown',
+            'host out of memory while allocating cache': 'unknown',
+            'opaque PRIVATE_FAKE_SECRET_42 failure': 'unknown',
+        }
+        for text, expected in cases.items():
+            with self.subTest(expected=expected):
+                result = LIFECYCLE.classify_diagnostic(text)
+                self.assertEqual(result, expected)
+                self.assertIn(result, LIFECYCLE.FAILURE_CLASSIFICATIONS)
+        bounded = LIFECYCLE.bounded_private_excerpt('safe diagnostic\n' * 10_000)
+        self.assertLessEqual(len(bounded.encode('utf-8')), LIFECYCLE.MAX_CANDIDATE_LOG_BYTES)
+
+    def test_candidate_smoke_failure_keeps_initial_stage_and_rolls_back(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state, failure, gate_calls, _, _ = self.run_candidate_failure(
+                directory, smoke_error=RuntimeError('response=PRIVATE_FAKE_SECRET_42'))
+            journal = json.loads((state / 'runtime-candidate.json').read_text())
+            public = LIFECYCLE.format_candidate_failure(failure.metadata)
+            self.assertEqual(journal['state'], 'rolled-back')
+            self.assertEqual(journal['failure_stage'], 'synthetic-relay-smoke')
+            self.assertEqual(journal['failure_class'], 'RuntimeError')
+            self.assertEqual(journal['failure_classification'], 'relay-smoke')
+            self.assertIsNone(journal['failure_executable'])
+            self.assertEqual(journal['rollback_status'], 'completed')
+            self.assertEqual(gate_calls, [True, False])
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', public)
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps(LIFECYCLE.safe_candidate_metadata(journal)))
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps(journal))
+
+    def test_candidate_postload_capacity_failure_keeps_gate_and_failure_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state, failure, gate_calls, _, _ = self.run_candidate_failure(directory, postload_low=True)
+            journal = json.loads((state / 'runtime-candidate.json').read_text())
+            self.assertEqual(journal['state'], 'rolled-back')
+            self.assertEqual(journal['failure_stage'], 'post-load-memory-check')
+            self.assertEqual(journal['failure_class'], 'ValueError')
+            self.assertEqual(journal['failure_classification'], 'host-memory-headroom')
+            self.assertEqual(journal['rollback_status'], 'completed')
+            self.assertEqual(gate_calls, [True, False])
+            self.assertIn('stage=post-load-memory-check', LIFECYCLE.format_candidate_failure(failure.metadata))
+
+    def test_candidate_rollback_failure_is_separate_from_compose_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state, failure, gate_calls, _, _ = self.run_candidate_failure(
+                directory, compose_error=LIFECYCLE.ManagedCommandFailure('docker', 17), rollback_error=True)
+            journal = json.loads((state / 'runtime-candidate.json').read_text())
+            self.assertEqual(journal['state'], 'rollback-failed')
+            self.assertEqual(journal['failure_stage'], 'candidate-start')
+            self.assertEqual(journal['failure_class'], 'ManagedCommandFailure')
+            self.assertEqual(journal['failure_exit_code'], 17)
+            self.assertEqual(journal['rollback_failure_stage'], 'stop-candidate')
+            self.assertEqual(journal['rollback_failure_class'], 'ManagedCommandFailure')
+            self.assertEqual(journal['rollback_failure_exit_code'], 9)
+            self.assertTrue(journal['failure_diagnostic_available'])
+            self.assertTrue((state / ('candidate-diagnostic-' + journal['failure_id'] + '.json')).is_file())
+            self.assertEqual(gate_calls, [True, False])
+            public = LIFECYCLE.format_candidate_failure(failure.metadata)
+            self.assertIn('exit_code=17', public)
+            self.assertIn('rollback_stage=stop-candidate', public)
+            self.assertIn('rollback_class=ManagedCommandFailure', public)
+
+    def test_keyboard_interrupt_still_rolls_back_and_releases_intake_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state, failure, gate_calls, _, _ = self.run_candidate_failure(
+                directory, compose_error=KeyboardInterrupt('PRIVATE_FAKE_SECRET_42'), rollback_error=True)
+            journal = json.loads((state / 'runtime-candidate.json').read_text())
+            public = LIFECYCLE.format_candidate_failure(failure.metadata)
+            self.assertEqual(journal['state'], 'rollback-failed')
+            self.assertEqual(journal['failure_class'], 'KeyboardInterrupt')
+            self.assertEqual(journal['failure_stage'], 'candidate-start')
+            self.assertEqual(journal['rollback_failure_stage'], 'stop-candidate')
+            self.assertEqual(gate_calls, [True, False])
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', public)
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', json.dumps(journal))
+
+    def test_candidate_status_exposes_only_safe_failure_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state, _, _, _, _ = self.run_candidate_failure(
+                directory, smoke_error=RuntimeError('PRIVATE_FAKE_SECRET_42'))
+            stdout = io.StringIO()
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'protected'), \
+                    contextlib.redirect_stdout(stdout):
+                LIFECYCLE.candidate_status('d' * 40)
+            result = json.loads(stdout.getvalue())
+            self.assertEqual(result['failure_stage'], 'synthetic-relay-smoke')
+            self.assertEqual(result['failure_class'], 'RuntimeError')
+            self.assertNotIn('PRIVATE_FAKE_SECRET_42', stdout.getvalue())
+            self.assertNotIn('candidate_log_excerpt', stdout.getvalue())
 
     def test_public_bootstrap_allows_only_declared_candidate_lifecycle_actions(self):
         self.assertIn('prepare-runtime-candidate', BOOTSTRAP.ACTIONS)
         self.assertIn('runtime-candidate', BOOTSTRAP.ACTIONS)
         self.assertIn('runtime-candidate-rollback', BOOTSTRAP.ACTIONS)
+        self.assertIn('runtime-candidate-status', BOOTSTRAP.ACTIONS)
 
     def old_containers(self):
         return [{'Id': name + '-id', 'Name': '/' + name, 'Image': 'sha256:old',

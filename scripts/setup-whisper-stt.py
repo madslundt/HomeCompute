@@ -30,13 +30,260 @@ CANDIDATE_IMAGE = 'homecompute/whisper-vllm-candidate:0.19.0-hc1'
 REVISION = '06f233fe06e710322aca913c1bc4249a0d71fce1'
 MODEL = 'openai/whisper-large-v3'
 LEGACY_REPOSITORIES = ('syvai/hviske-v5.3', 'openai/whisper-large-v3-turbo')
+CANDIDATE_STAGES = frozenset({
+    'preflight', 'install-intake-gate', 'drain-primary', 'stop-primary',
+    'pre-load-memory-check', 'candidate-start', 'candidate-health-check',
+    'synthetic-relay-smoke', 'post-load-memory-check', 'release-intake-gate',
+    'candidate-running', 'candidate-rollback', 'gate-cleanup',
+})
+CANDIDATE_ROLLBACK_STAGES = frozenset({
+    'inspect-candidate', 'disable-candidate-restart', 'stop-candidate',
+    'remove-candidate', 'inspect-primary', 'restore-primary-restart',
+    'start-primary', 'wait-primary-health', 'complete',
+})
+SAFE_EXECUTABLES = frozenset({'docker', 'python3', 'git', 'iptables'})
+FAILURE_CLASSIFICATIONS = frozenset({
+    'cuda-out-of-memory', 'vllm-memory-budget-refusal', 'model-cache-integrity',
+    'container-health', 'permission-denied', 'host-memory-headroom', 'relay-smoke', 'unknown',
+})
+MAX_CANDIDATE_LOG_BYTES = 32 * 1024
+MAX_CANDIDATE_LOG_LINES = 120
+MAX_PRIVATE_DIAGNOSTIC_BYTES = 32 * 1024
+
+
+class ManagedCommandFailure(RuntimeError):
+    """Command failure containing only a safe executable name and return code."""
+
+    def __init__(self, executable, exit_code=None, *, failure_kind='nonzero', diagnostic_text=''):
+        name = Path(str(executable)).name
+        self.executable = name if name in SAFE_EXECUTABLES else 'unknown'
+        self.exit_code = exit_code if isinstance(exit_code, int) else None
+        self.failure_kind = failure_kind if failure_kind in {'nonzero', 'timeout', 'launch'} else 'unknown'
+        self.classification = classify_diagnostic(diagnostic_text)
+        # Kept only for the root-only diagnostic receipt. Never include this in
+        # the exception message, journal, command metadata, or public output.
+        self.private_diagnostic = bounded_private_excerpt(diagnostic_text)
+        super().__init__('Managed command failed')
+
+
+class CandidateQualificationFailure(RuntimeError):
+    """Safe summary for a candidate qualification failure."""
+
+    def __init__(self, metadata):
+        self.metadata = metadata
+        super().__init__('Whisper candidate qualification failed')
 
 
 def run(args, *, timeout=60, check=True, environment=None):
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=environment)
+    try:
+        result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, env=environment)
+    except subprocess.TimeoutExpired:
+        raise ManagedCommandFailure(args[0], failure_kind='timeout') from None
+    except OSError:
+        raise ManagedCommandFailure(args[0], failure_kind='launch') from None
     if check and result.returncode:
-        raise RuntimeError('Managed command failed: ' + args[0])
+        raise ManagedCommandFailure(args[0], result.returncode,
+                                    diagnostic_text=(result.stderr or '') + '\n' + (result.stdout or ''))
     return result
+
+
+def candidate_stage(tx, stage):
+    if stage not in CANDIDATE_STAGES:
+        raise ValueError('Unknown candidate stage')
+    tx['candidate_stage'] = stage
+    save_candidate(tx)
+
+
+def safe_class_name(error):
+    name = type(error).__name__
+    return name if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', name) else 'Error'
+
+
+def safe_command_metadata(error):
+    if not isinstance(error, ManagedCommandFailure):
+        return {'executable': None, 'exit_code': None}
+    return {'executable': error.executable,
+            'exit_code': error.exit_code if error.exit_code is None or -255 <= error.exit_code <= 255 else None}
+
+
+def bounded_private_excerpt(text):
+    """Return a bounded raw excerpt for the root-only receipt, never stdout."""
+    encoded = str(text).encode('utf-8', 'replace')[-MAX_PRIVATE_DIAGNOSTIC_BYTES:]
+    return encoded.decode('utf-8', 'ignore')
+
+
+def classify_diagnostic(text, *, stage=None):
+    normalized = str(text).lower()
+    if any(marker in normalized for marker in ('permission denied', 'operation not permitted')):
+        return 'permission-denied'
+    if any(marker in normalized for marker in (
+            'cuda out of memory', 'cuda error: out of memory', 'failed to allocate cuda',
+            'cublas_status_alloc_failed', 'cudaerroroutofmemory')):
+        return 'cuda-out-of-memory'
+    if ('free memory' in normalized and any(marker in normalized for marker in (
+            'less than', 'not enough', 'insufficient')) and
+            any(marker in normalized for marker in ('gpu', 'device', 'vllm'))):
+        return 'vllm-memory-budget-refusal'
+    if any(marker in normalized for marker in (
+            'checksum mismatch', 'checksum failed', 'sha256 mismatch',
+            'sha256 verification failed', 'model cache integrity failure')):
+        return 'model-cache-integrity'
+    if any(marker in normalized for marker in ('unhealthy', 'health check failed', 'healthcheck failed')):
+        return 'container-health'
+    if stage in {'pre-load-memory-check', 'post-load-memory-check'}:
+        return 'host-memory-headroom'
+    if stage == 'synthetic-relay-smoke':
+        return 'relay-smoke'
+    return 'unknown'
+
+
+def record_candidate_rollback_failure(tx, error):
+    command = safe_command_metadata(error)
+    tx.update(
+        state='rollback-failed', rollback_status='failed',
+        rollback_failure_stage=tx.get('rollback_stage'),
+        rollback_failure_class=safe_class_name(error),
+        rollback_failure_classification=(error.classification
+            if isinstance(error, ManagedCommandFailure) and error.classification != 'unknown'
+            else classify_diagnostic('', stage=tx.get('rollback_stage'))),
+        rollback_failure_executable=command['executable'],
+        rollback_failure_exit_code=command['exit_code'],
+    )
+    try:
+        save_candidate(tx)
+    except Exception:
+        pass
+    return safe_candidate_metadata(tx)
+
+
+def candidate_diagnostic_path(diagnostic_id):
+    if not re.fullmatch(r'[0-9a-f]{12}', str(diagnostic_id)):
+        raise ValueError('Invalid candidate diagnostic identifier')
+    return STATE / ('candidate-diagnostic-' + diagnostic_id + '.json')
+
+
+def write_candidate_diagnostic(diagnostic_id, report):
+    protected(STATE, True)
+    target = candidate_diagnostic_path(diagnostic_id)
+    temporary = STATE / ('.candidate-diagnostic-' + diagnostic_id + '.tmp')
+    if target.exists() or target.is_symlink() or temporary.exists() or temporary.is_symlink():
+        raise ValueError('Candidate diagnostic already exists or is incomplete')
+    with temporary.open('x', encoding='utf-8') as stream:
+        os.chmod(temporary, 0o600)
+        json.dump(report, stream, sort_keys=True)
+        stream.flush(); os.fsync(stream.fileno())
+    os.replace(temporary, target)
+
+
+def capture_candidate_log_excerpt(tx):
+    try:
+        candidate = inspect(CANDIDATE)
+        if not candidate:
+            return 'unavailable', ''
+        labels = candidate.get('Config', {}).get('Labels') or {}
+        if (candidate.get('Image') != tx.get('candidate_image_id') or
+                labels.get('com.docker.compose.project') != 'whisper-large-v3-stt' or
+                labels.get('com.docker.compose.service') != 'whisper-candidate'):
+            return 'withheld-identity-mismatch', ''
+        result = run(['docker', 'logs', '--tail', str(MAX_CANDIDATE_LOG_LINES), CANDIDATE],
+                     timeout=15, check=False)
+        text = (result.stdout or '') + '\n' + (result.stderr or '')
+        return ('captured' if result.returncode == 0 else 'unavailable', bounded_private_excerpt(text))
+    except Exception:
+        return 'unavailable', ''
+
+
+def record_candidate_failure(tx, error, *, stage=None):
+    failure_stage = stage or tx.get('candidate_stage', 'preflight')
+    if failure_stage not in CANDIDATE_STAGES:
+        failure_stage = 'preflight'
+    command = safe_command_metadata(error)
+    diagnostic_id = os.urandom(6).hex()
+    logs_status, logs = capture_candidate_log_excerpt(tx)
+    classification = (error.classification if isinstance(error, ManagedCommandFailure) and
+                      error.classification != 'unknown' else classify_diagnostic(logs, stage=failure_stage))
+    report = {
+        'diagnostic_id': diagnostic_id,
+        'failure_stage': failure_stage,
+        'failure_class': safe_class_name(error),
+        'failure_classification': classification,
+        'failure_diagnostic_excerpt': bounded_private_excerpt(str(error)),
+        'command_executable': command['executable'],
+        'command_exit_code': command['exit_code'],
+        'command_failure_kind': error.failure_kind if isinstance(error, ManagedCommandFailure) else None,
+        'command_diagnostic_excerpt': (error.private_diagnostic
+                                       if isinstance(error, ManagedCommandFailure) else ''),
+        'candidate_log_status': logs_status,
+        'candidate_log_excerpt': logs,
+    }
+    try:
+        write_candidate_diagnostic(diagnostic_id, report)
+        diagnostic_available = True
+    except Exception:
+        diagnostic_available = False
+    tx.update(
+        failure_id=diagnostic_id,
+        failure_stage=failure_stage,
+        failure_class=safe_class_name(error),
+        failure_classification=classification,
+        failure_executable=command['executable'],
+        failure_exit_code=command['exit_code'],
+        failure_diagnostic_available=diagnostic_available,
+        rollback_status='pending',
+    )
+    try:
+        save_candidate(tx)
+    except Exception:
+        # The root-only diagnostic file remains available if the journal itself
+        # cannot be updated; rollback must still be attempted by the caller.
+        pass
+    return safe_candidate_metadata(tx)
+
+
+def safe_candidate_metadata(tx):
+    failure_id = tx.get('failure_id')
+    if not isinstance(failure_id, str) or not re.fullmatch(r'[0-9a-f]{12}', failure_id):
+        failure_id = None
+    stage = tx.get('failure_stage')
+    if stage not in CANDIDATE_STAGES:
+        stage = None
+    rollback_stage = tx.get('rollback_failure_stage')
+    if rollback_stage not in CANDIDATE_ROLLBACK_STAGES:
+        rollback_stage = None
+    def public_exit(value):
+        return value if isinstance(value, int) and -255 <= value <= 255 else None
+    return {
+        'failure_id': failure_id,
+        'failure_stage': stage,
+        'failure_class': tx.get('failure_class') if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', str(tx.get('failure_class', ''))) else None,
+        'failure_classification': tx.get('failure_classification') if tx.get('failure_classification') in FAILURE_CLASSIFICATIONS else 'unknown',
+        'failure_executable': tx.get('failure_executable') if tx.get('failure_executable') in SAFE_EXECUTABLES else None,
+        'failure_exit_code': public_exit(tx.get('failure_exit_code')),
+        'state': tx.get('state') if tx.get('state') in {'prepared', 'primary-stopped', 'candidate-running', 'rolled-back', 'rollback-failed', 'gate-cleanup-failed'} else 'unknown',
+        'rollback_status': tx.get('rollback_status') if tx.get('rollback_status') in {'pending', 'completed', 'failed', 'not-attempted'} else None,
+        'rollback_failure_stage': rollback_stage,
+        'rollback_failure_class': tx.get('rollback_failure_class') if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', str(tx.get('rollback_failure_class', ''))) else None,
+        'rollback_failure_classification': tx.get('rollback_failure_classification') if tx.get('rollback_failure_classification') in FAILURE_CLASSIFICATIONS else 'unknown',
+        'rollback_failure_executable': tx.get('rollback_failure_executable') if tx.get('rollback_failure_executable') in SAFE_EXECUTABLES else None,
+        'rollback_failure_exit_code': public_exit(tx.get('rollback_failure_exit_code')),
+        'gate_cleanup_failure_class': tx.get('gate_cleanup_failure_class') if re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,63}', str(tx.get('gate_cleanup_failure_class', ''))) else None,
+        'failure_diagnostic_available': bool(tx.get('failure_diagnostic_available')),
+    }
+
+
+def format_candidate_failure(metadata):
+    return ('Whisper candidate failure'
+            f" id={metadata.get('failure_id') or 'unavailable'}"
+            f" stage={metadata.get('failure_stage') or 'unknown'}"
+            f" class={metadata.get('failure_class') or 'Error'}"
+            f" classification={metadata.get('failure_classification') or 'unknown'}"
+            f" executable={metadata.get('failure_executable') or 'none'}"
+            f" exit_code={metadata.get('failure_exit_code')}"
+            f" rollback={metadata.get('rollback_status') or 'unknown'}"
+            f" rollback_stage={metadata.get('rollback_failure_stage') or 'none'}"
+            f" rollback_class={metadata.get('rollback_failure_class') or 'none'}"
+            f" rollback_classification={metadata.get('rollback_failure_classification') or 'unknown'}"
+            f" gate_cleanup_class={metadata.get('gate_cleanup_failure_class') or 'none'}")
 
 
 def protected(path, directory=False):
@@ -193,6 +440,13 @@ def candidate_image_id():
 
 
 def candidate_rollback(tx):
+    def stage(name):
+        if name not in CANDIDATE_ROLLBACK_STAGES:
+            raise ValueError('Unknown candidate rollback stage')
+        tx['rollback_stage'] = name
+        save_candidate(tx)
+
+    stage('inspect-candidate')
     candidate = inspect(CANDIDATE)
     if candidate:
         labels = candidate.get('Config', {}).get('Labels') or {}
@@ -201,22 +455,31 @@ def candidate_rollback(tx):
                 labels.get('com.docker.compose.service') != 'whisper-candidate'):
             raise ValueError('Candidate container ownership changed; rollback held')
         if candidate['State']['Running']:
+            stage('disable-candidate-restart')
             run(['docker', 'update', '--restart', 'no', candidate['Id']])
+            stage('stop-candidate')
             run(['docker', 'stop', '--time', '180', candidate['Id']], timeout=210)
+        stage('remove-candidate')
         run(['docker', 'rm', candidate['Id']])
+    stage('inspect-primary')
     original = inspect(tx['primary_id'])
     if not original or original['Image'] != tx['primary_image'] or \
             original['Name'] != '/gb10-whisper-primary':
         raise ValueError('Original Whisper primary changed or disappeared; rollback held')
+    stage('restore-primary-restart')
     run(['docker', 'update', '--restart', tx['primary_restart'], tx['primary_id']])
     if not original['State']['Running']:
+        stage('start-primary')
         run(['docker', 'start', tx['primary_id']])
+    stage('wait-primary-health')
     deadline = time.monotonic() + 900
     while time.monotonic() < deadline:
         current = inspect(tx['primary_id'])
         if current and current['State']['Running'] and \
                 current.get('State', {}).get('Health', {}).get('Status') == 'healthy':
             tx['state'] = 'rolled-back'
+            tx['rollback_status'] = 'completed'
+            stage('complete')
             save_candidate(tx)
             return
         time.sleep(2)
@@ -253,17 +516,26 @@ def candidate_start(revision):
           'primary_id': primary['Id'], 'primary_image': primary['Image'],
           'primary_restart': restart_policy(primary)}
     save_candidate(tx)
+    gate_attempted = False
+    failure = None
     try:
+        candidate_stage(tx, 'install-intake-gate')
+        gate_attempted = True
         gate(chain, True)
+        candidate_stage(tx, 'drain-primary')
         quiet([primary])
+        candidate_stage(tx, 'stop-primary')
         run(['docker', 'update', '--restart', 'no', primary['Id']])
         run(['docker', 'stop', '--time', '180', primary['Id']], timeout=210)
+        candidate_stage(tx, 'pre-load-memory-check')
         memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
         if int(memory['MemAvailable'].split()[0]) < 12 * 1024 * 1024:
             raise ValueError('Less than 12 GiB available before candidate model load')
         tx['state'] = 'primary-stopped'; save_candidate(tx)
+        candidate_stage(tx, 'candidate-start')
         compose('--profile', 'candidate', 'up', '-d', '--no-build', '--pull', 'never', '--wait',
                 '--wait-timeout', '900', 'whisper-candidate')
+        candidate_stage(tx, 'candidate-health-check')
         candidate = inspect(CANDIDATE)
         if (not candidate or candidate['Image'] != image_id or not candidate['State']['Running'] or
                 candidate.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
@@ -274,16 +546,51 @@ def candidate_start(revision):
                 candidate.get('Config', {}).get('Labels', {}).get('com.docker.compose.service') !=
                 'whisper-candidate'):
             raise ValueError('Patched candidate failed image, model or health verification')
+        candidate_stage(tx, 'synthetic-relay-smoke')
         smoke(CANDIDATE)
+        candidate_stage(tx, 'post-load-memory-check')
         memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
         if int(memory['MemAvailable'].split()[0]) / int(memory['MemTotal'].split()[0]) < 0.10:
             raise ValueError('Candidate failed the 10 percent host headroom gate')
-        tx['state'] = 'candidate-running'; save_candidate(tx)
-    except BaseException:
-        candidate_rollback(tx)
-        raise
+        tx['state'] = 'candidate-running'
+        candidate_stage(tx, 'candidate-running')
+    except BaseException as error:
+        failure = record_candidate_failure(tx, error)
+        try:
+            candidate_rollback(tx)
+            failure = safe_candidate_metadata(tx)
+        except BaseException as rollback_error:
+            failure = record_candidate_rollback_failure(tx, rollback_error)
     finally:
-        gate(chain, False)
+        if gate_attempted:
+            try:
+                if failure is None:
+                    candidate_stage(tx, 'release-intake-gate')
+                gate(chain, False)
+            except BaseException as cleanup_error:
+                if failure is None:
+                    failure = record_candidate_failure(tx, cleanup_error, stage='release-intake-gate')
+                    try:
+                        candidate_rollback(tx)
+                        failure = safe_candidate_metadata(tx)
+                    except BaseException as rollback_error:
+                        failure = record_candidate_rollback_failure(tx, rollback_error)
+                tx['gate_cleanup_failure_class'] = safe_class_name(cleanup_error)
+                try:
+                    save_candidate(tx)
+                except Exception:
+                    pass
+                try:
+                    gate(chain, False)
+                except BaseException as retry_error:
+                    tx['gate_cleanup_retry_class'] = safe_class_name(retry_error)
+                    try:
+                        save_candidate(tx)
+                    except Exception:
+                        pass
+                failure = safe_candidate_metadata(tx)
+    if failure is not None:
+        raise CandidateQualificationFailure(failure) from None
     print('Patched Whisper candidate active for qualification; run runtime-candidate-rollback afterward', flush=True)
 
 
@@ -313,6 +620,25 @@ def candidate_stop(revision):
         candidate_rollback(tx)
     finally:
         gate(chain, False)
+
+
+def candidate_status(revision):
+    journal = STATE / 'runtime-candidate.json'
+    if not journal.exists() and not journal.is_symlink():
+        print(json.dumps({
+            'revision': revision, 'state': 'absent', 'failure_id': None,
+            'failure_stage': None, 'failure_class': None, 'failure_executable': None,
+            'failure_exit_code': None, 'failure_classification': None, 'rollback_status': None,
+            'rollback_failure_stage': None, 'rollback_failure_class': None,
+            'rollback_failure_classification': None, 'rollback_failure_executable': None, 'rollback_failure_exit_code': None,
+            'gate_cleanup_failure_class': None, 'failure_diagnostic_available': False,
+        }, sort_keys=True))
+        return
+    protected(journal)
+    tx = json.loads(journal.read_text())
+    if tx.get('revision') != revision:
+        raise ValueError('Candidate transaction belongs to another release')
+    print(json.dumps({'revision': revision, **safe_candidate_metadata(tx)}, sort_keys=True))
 
 
 def smoke(container=NEW[0]):
@@ -518,12 +844,35 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('prepare', 'prepare-runtime-candidate', 'apply', 'install', 'retire',
                                            'rollback', 'status', 'smoke', 'runtime-candidate',
-                                           'runtime-candidate-rollback'))
+                                           'runtime-candidate-rollback', 'runtime-candidate-status'))
     parser.add_argument('--revision', required=True)
     args = parser.parse_args()
     if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-spark':
         raise ValueError('Run through sudo on home-spark')
     published(args.revision)
+    if args.action == 'runtime-candidate-status':
+        if not STATE.exists() and not STATE.is_symlink():
+            print(json.dumps({'revision': args.revision, 'state': 'absent', 'failure_id': None,
+                              'failure_stage': None, 'failure_class': None, 'failure_classification': None,
+                              'failure_executable': None, 'failure_exit_code': None,
+                              'rollback_status': None, 'rollback_failure_stage': None,
+                              'rollback_failure_class': None, 'rollback_failure_classification': None,
+                              'rollback_failure_executable': None, 'rollback_failure_exit_code': None,
+                              'gate_cleanup_failure_class': None, 'failure_diagnostic_available': False},
+                             sort_keys=True))
+            return
+        protected(STATE, True)
+        read_locks = ('/var/lib/homecompute/home-spark-deploy.lock',
+                      '/var/lib/homecompute-spark-rollout/lock',
+                      '/var/lib/homecompute-speech-capacity/lock', str(STATE / 'lock'))
+        with ExitStack() as stack:
+            for name in read_locks:
+                if not Path(name).is_file() or Path(name).is_symlink():
+                    raise ValueError('Candidate status lock unavailable; no state changed')
+                stream = stack.enter_context(open(name, 'r'))
+                fcntl.flock(stream, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            candidate_status(args.revision)
+        return
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700); protected(STATE, True)
     with ExitStack() as stack:
         for name in ('/var/lib/homecompute/home-spark-deploy.lock',
@@ -542,6 +891,7 @@ def main():
         elif args.action == 'smoke': smoke()
         elif args.action == 'runtime-candidate': candidate_start(args.revision)
         elif args.action == 'runtime-candidate-rollback': candidate_stop(args.revision)
+        elif args.action == 'runtime-candidate-status': candidate_status(args.revision)
         else:
             journal = STATE / 'transaction.json'; protected(journal)
             tx = json.loads(journal.read_text())
@@ -565,6 +915,10 @@ def main():
 if __name__ == '__main__':
     try: main()
     except Exception as error:
-        print('Whisper lifecycle refused: ' + str(error) if isinstance(error, ValueError)
-              else 'Whisper lifecycle failed: ' + type(error).__name__, file=__import__('sys').stderr)
+        if isinstance(error, CandidateQualificationFailure):
+            message = format_candidate_failure(error.metadata)
+        else:
+            message = ('Whisper lifecycle refused: ' + str(error) if isinstance(error, ValueError)
+                       else 'Whisper lifecycle failed: ' + type(error).__name__)
+        print(message, file=__import__('sys').stderr)
         raise SystemExit(1) from None

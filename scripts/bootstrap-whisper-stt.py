@@ -20,7 +20,7 @@ import tempfile
 REPOSITORY='https://github.com/madslundt/HomeCompute.git'
 RELEASES=Path('/srv/homecompute/releases')
 ACTIONS=('prepare','prepare-runtime-candidate','apply','install','retire','rollback','status','smoke',
-         'runtime-candidate','runtime-candidate-rollback')
+         'runtime-candidate','runtime-candidate-rollback','runtime-candidate-status')
 
 
 def run(arguments):

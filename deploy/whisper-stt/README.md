@@ -47,6 +47,21 @@ text-preserving behavior; they do not qualify inference quality. The candidate
 remains unpromoted until frozen prompted/plain and verbose/JSON comparisons,
 full recording review, and capacity checks pass.
 
+Candidate failures print only a random diagnostic ID, stage, exception class,
+allowlisted failure classification, executable basename, exit code, and
+rollback state. Before rollback removes a candidate, its bounded command output
+and candidate log tail are saved in
+`/var/lib/homecompute/whisper-stt/candidate-diagnostic-ID.json` with mode
+`0600`, under the root-owned state directory. This private receipt can contain
+bounded exception and runtime log content; it is never printed or copied into the journal. Public
+status is allowlisted and content-free. The read-only
+`runtime-candidate-status` action reports this metadata without exposing the
+private diagnostic file:
+
+```bash
+sudo python3 -I -B /tmp/homecompute-whisper-stt.OPERATOR/scripts/bootstrap-whisper-stt.py --action runtime-candidate-status --revision FULL_SHA
+```
+
 For a reviewed release that has already completed the normal `apply`, the
 guarded runtime qualification swap is:
 
