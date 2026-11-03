@@ -63,6 +63,9 @@ def accepted(result):
 def command(executable, descriptors):
     args = ENGINE.vm_command(str(executable), 'agents-vm', descriptors)
     args[args.index('-m') + 1] = '8192'
+    # Retained Docker NanoCPUs=2 must fit the guest's visible CPU count.
+    # vm_child still pins both vCPUs and I/O threads to one host CPU.
+    args[args.index('-smp') + 1] = '2'
     return args
 
 

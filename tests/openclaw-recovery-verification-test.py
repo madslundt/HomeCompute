@@ -19,6 +19,14 @@ m = module('native_restore', 'scripts/verify-openclaw-recovery.py')
 probe = module('guest_probe', 'deploy/openclaw/recovery/inspect-restored-state.py')
 
 class NativeRestoreTests(unittest.TestCase):
+    def test_native_status_keeps_repeated_driver_failure_conditions(self):
+        field=lambda number,value:bytes([number*8+2,len(value)])+value
+        condition=field(1,b'Ready')+field(2,b'False')+field(3,b'CPURejected')+field(4,b'synthetic CPU condition')
+        other=field(1,b'Running')+field(3,b'StartFailed')
+        payload=field(3,field(5,condition)+field(5,other)+bytes([48,3]))
+        self.assertEqual([c['reason'] for c in probe.decode_conditions(payload)],['CPURejected','StartFailed'])
+        with self.assertRaises(ValueError):probe.decode_conditions(payload[:-1])
+
     def test_health_exec_requires_exact_native_ready_identity(self):
         import subprocess
         identifier='11111111-1111-4111-8111-111111111111'
@@ -108,6 +116,7 @@ class NativeRestoreTests(unittest.TestCase):
         args = m.command('/nix/store/synthetic/bin/qemu-system-x86_64', [21, 22])
         self.assertEqual(args[args.index('-nic') + 1], 'none')
         self.assertEqual(args[args.index('-m') + 1], '8192')
+        self.assertEqual(args[args.index('-smp') + 1], '2')
         self.assertIn('file=/dev/fdset/1,if=virtio,format=qcow2,snapshot=on', args)
         self.assertIn('file=/dev/fdset/2,if=virtio,format=raw,readonly=on', args)
         self.assertNotIn('-netdev', args)

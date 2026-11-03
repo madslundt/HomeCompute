@@ -14,7 +14,9 @@ are not modified.
 
 The VM has no NIC, no host shares, no management socket, no SSH forwarding and
 no external network namespace. It runs as the existing unprivileged restore
-reader with one CPU, 8 GiB RAM and bounded COW/log files. A collected transient
+reader with two virtual CPUs pinned to one host CPU, 8 GiB RAM and bounded
+COW/log files. Two visible CPUs accommodate the retained container's two-CPU
+budget without granting more than one host CPU of execution. A collected transient
 scope bounds physical memory at 10 GiB. QEMU may reserve up to 32 GiB of
 virtual address space so thread stacks/I/O mappings fit without granting more
 physical memory. Private diagnostics retain only its address/RSS/thread counters.

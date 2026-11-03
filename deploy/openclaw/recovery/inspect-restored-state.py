@@ -76,6 +76,48 @@ class GatewayUnavailable(ValueError):
         self.details = details
 
 
+def wire_values(data, number, wire):
+    if len(data) > 1024**2:
+        raise ValueError('native-status-size')
+    offset = 0
+    result = []
+    def varint():
+        nonlocal offset
+        value = 0
+        for shift in range(0, 70, 7):
+            if offset >= len(data): raise ValueError('native-status-invalid')
+            byte = data[offset]; offset += 1
+            value |= (byte & 127) << shift
+            if byte < 128: return value
+        raise ValueError('native-status-invalid')
+    while offset < len(data):
+        tag = varint(); kind = tag & 7
+        if kind == 0: value = varint()
+        elif kind in (1, 2, 5):
+            size = varint() if kind == 2 else (8 if kind == 1 else 4)
+            if offset + size > len(data): raise ValueError('native-status-invalid')
+            value = data[offset:offset + size]; offset += size
+        else: raise ValueError('native-status-invalid')
+        if tag >> 3 == number:
+            if kind != wire: raise ValueError('native-status-invalid')
+            result.append(value)
+            if len(result) > 32: raise ValueError('native-status-count')
+    return result
+
+
+def decode_conditions(payload):
+    statuses = wire_values(payload, 3, 2)
+    if len(statuses) != 1: raise ValueError('native-status-missing')
+    conditions = []
+    for condition in wire_values(statuses[0], 5, 2):
+        fields = {}
+        for number, name in ((1, 'type'), (2, 'status'), (3, 'reason'), (4, 'message')):
+            values = wire_values(condition, number, 2)
+            if len(values) == 1: fields[name] = values[0].decode(errors='replace')[:2048]
+        conditions.append(fields)
+    return conditions
+
+
 def redact_diagnostic(value):
     value = re.sub(r'(?i)(bearer\s+|(?:token|api[_-]?key|password)[\"\']?\s*[=:]\s*[\"\']?)[^\s\"\']+', r'\1[redacted]', value)
     return re.sub(r'https?://[^\s]+', '[endpoint]', value)
@@ -119,12 +161,22 @@ def private_diagnostics(last):
     previous_label = previous.splitlines()[0] if previous else ''
     state = {}
     errors = ''
+    conditions = []
     identity = Path('/etc/homecompute-openclaw/supervisor-identity.env')
     if identity.is_file() and not identity.is_symlink():
         match = re.search(r'^OPENCLAW_EXPECTED_SANDBOX_ID=([0-9a-f-]{36})$', identity.read_text(), re.MULTILINE)
         if match:
             identifier = str(uuid.UUID(match[1]))
             name = 'openshell-default--agent-openclaw-' + identifier
+            database = Path('/home/hermes-operator/.local/state/nemoclaw/openshell-docker-gateway-9123/openshell.db')
+            try:
+                with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True, timeout=3)) as db:
+                    db.execute('PRAGMA query_only=ON')
+                    rows = db.execute('SELECT payload FROM objects WHERE object_type=? AND name=? AND workspace=? AND id=?',
+                                      ('sandbox', 'agent-openclaw', 'default', identifier)).fetchall()
+                if len(rows) == 1: conditions = decode_conditions(rows[0][0])
+            except (OSError, sqlite3.Error, ValueError, TypeError):
+                pass
             try:
                 observed = json.loads(query(['docker', 'inspect', '--format', '{{json .State}}', name]))
                 state = {key: observed.get(key) for key in ('Status', 'OOMKilled', 'ExitCode', 'Error', 'StartedAt', 'FinishedAt')}
@@ -140,6 +192,7 @@ def private_diagnostics(last):
             'native_exception': last.get('exception'), 'native_stderr': stderr[-2048:],
             'supervisor_command': previous_label,
             'sandbox_status': redact_diagnostic(json.dumps(native_status))[:4096],
+            'native_conditions': redact_diagnostic(json.dumps(conditions))[:8192],
             'container_exit': state, 'startup_errors': redact_diagnostic(errors)[-4096:]}
 
 

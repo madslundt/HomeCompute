@@ -154,6 +154,11 @@ proven, complete native recovery is not yet accepted.
 
 ## Managed candidate source
 
+At approximately 20:11 UTC, a fresh remote Git stable-tag and peeled-commit
+check still identified `v0.0.140` at
+`88fe14f3fb9a0bf72997cce19ec88b5b2ee08391` as the newest stable vendor tag.
+This confirms candidate selection, not compatibility or deployment readiness.
+
 The separate [candidate policy](../../config/openclaw-managed-candidate.json)
 pins NemoClaw v0.0.140 / OpenClaw 2026.9.2 / OpenShell 0.0.116 and its exact
 amd64 workload/config digests. [The offline probe](../../scripts/qualify-openclaw-managed-candidate.py)
@@ -172,19 +177,27 @@ qualification.
 
 ## Validation and outstanding gates
 
-The attended backup has 10 focused tests covering admission order, safe retry
-handling, no backup on a failed drain, interruption/resumption ordering, early
-hold release and truthful completion. The offline candidate has nine focused
-isolation/provenance-refusal/ownership-cleanup tests. Both repository validation
-runs passed, including containerized Nix flake evaluation. The later probe
-instrumentation changes also passed focused tests and whitespace checks.
-Existing optional native-runtime tests skip on the workstation; these synthetic
-results are separate from live readiness and candidate SDK acceptance.
+Focused attended-backup, application-integrity, NAS continuation, engine and
+full-team recovery tests pass. The current native recovery probe has eleven
+focused tests; the candidate has nine. Published implementation batches passed
+`git diff --check` and full repository validation, including containerized Nix
+flake evaluation. Independent concurrent Whisper changes were retained, with
+45 CPP and 79 migration tests passing after the rebase. Optional installed-native
+runtime suites skip on the workstation and do not establish live qualification.
 
-The restore lifecycle now has 18 focused tests and the candidate has eight,
-including refusal under high or unavailable I/O pressure. The complete
-repository validator passed after the resource limits were added, including
-containerized Nix flake evaluation.
+Fresh status/doctor checks found home-core reachable with no failed units. The
+workstation's direct home-spark SSH route timed out; the same repository-owned
+status payload through home-core succeeded with no failed units and fifteen
+containers. Its deployment marker remained unchanged. Neither host is declared
+synchronized with current master; no broad release was applied.
+
+The restored sandbox never advanced its Docker start timestamp after the
+original intentional stop; the process did not reach a new startup error log.
+The test VM exposed one CPU while the retained production container has a
+two-CPU NanoCPUs limit. The next source revision exposes two virtual CPUs while
+retaining affinity to one host CPU, and records the native database's stored
+failure conditions. This capacity mismatch is a hypothesis under test, not a
+confirmed cause or permission to relax a recovery guard.
 
 Outstanding: successful authenticated gateway startup in the restored copy;
 then actual managed-artifact checks, native fixture lifecycle/rebuild and
