@@ -194,6 +194,7 @@ class MigrationTests(unittest.TestCase):
 
     def test_promotion_uses_only_the_qualified_image_and_full_recording_bounds(self):
         with patch.object(LIFECYCLE, 'guards'), \
+                patch.object(LIFECYCLE, 'ensure_spark_maintenance_ownership', return_value='b' * 64) as maintenance, \
                 patch.object(LIFECYCLE, 'qualified_cuda_candidate_image_id', return_value=LIFECYCLE.CPP_QUALIFIED_IMAGE_ID) as image, \
                 patch.object(LIFECYCLE, 'provision_cpp_role_key', return_value='existing') as key, \
                 patch.object(LIFECYCLE, 'verify_cpp_model') as model, \
@@ -202,6 +203,7 @@ class MigrationTests(unittest.TestCase):
                 patch.object(LIFECYCLE, 'cuda_candidate_start') as start:
             LIFECYCLE.promote_qualified_cuda_candidate('e' * 40)
         image.assert_called_once_with()
+        maintenance.assert_called_once_with()
         key.assert_called_once_with()
         model.assert_called_once_with(LIFECYCLE.CPP_MODEL_PATH)
         compose.assert_called_once_with('--profile', 'cpp-production', 'build', 'whisper-cpp-http',
@@ -210,7 +212,60 @@ class MigrationTests(unittest.TestCase):
         start.assert_called_once_with('e' * 40, max_audio_seconds=1200, max_upload_bytes=40_000_000,
                                       native_timeout_seconds=1800, promotion=True,
                                       relay_image='homecompute/stt-http:2.0.0-cpp-' + 'e' * 12,
-                                      relay_image_id='sha256:' + 'a' * 64)
+                                      relay_image_id='sha256:' + 'a' * 64,
+                                      maintenance_bundle_sha256='b' * 64)
+
+    def test_promotion_refuses_model_transition_if_maintenance_install_fails(self):
+        with patch.object(LIFECYCLE, 'guards'), \
+                patch.object(LIFECYCLE, 'ensure_spark_maintenance_ownership',
+                             side_effect=ValueError('install or verification failed')) as maintenance, \
+                patch.object(LIFECYCLE, 'qualified_cuda_candidate_image_id',
+                             return_value=LIFECYCLE.CPP_QUALIFIED_IMAGE_ID), \
+                patch.object(LIFECYCLE, 'provision_cpp_role_key'), \
+                patch.object(LIFECYCLE, 'verify_cpp_model'), \
+                patch.object(LIFECYCLE, 'compose'), \
+                patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout='[{"Id":"sha256:' + 'a' * 64 + '"}]')), \
+                patch.object(LIFECYCLE, 'cuda_candidate_start') as start:
+            with self.assertRaisesRegex(ValueError, 'install or verification failed'):
+                LIFECYCLE.promote_qualified_cuda_candidate('e' * 40)
+        maintenance.assert_called_once_with()
+        start.assert_not_called()
+
+    def test_maintenance_install_helper_pins_bundle_and_verifies_without_public_key(self):
+        digest = 'b' * 64
+        outputs = [
+            {'bundle_sha256': digest, 'installed': False},
+            {'host': 'home-spark', 'installed': True, 'root_key_installed': False, 'updates_run': 0},
+            {'host': 'home-spark', 'verified': True, 'bundle_sha256': digest},
+        ]
+        commands = []
+
+        def fake_run(command, **_kwargs):
+            commands.append(command)
+            return SimpleNamespace(stdout=json.dumps(outputs.pop(0)))
+
+        with patch.object(LIFECYCLE, 'run', side_effect=fake_run):
+            self.assertEqual(LIFECYCLE.ensure_spark_maintenance_ownership(), digest)
+        self.assertEqual(len(commands), 3)
+        self.assertIn('--source', commands[0])
+        self.assertIn('--bundle-sha256', commands[1])
+        self.assertIn('--verify-bundle-sha256', commands[2])
+        self.assertTrue(all('--public-key' not in command for command in commands))
+        self.assertEqual(commands[0][:3], [LIFECYCLE.sys.executable, '-I', '-B'])
+
+    def test_maintenance_install_helper_refuses_stale_verification_and_install_errors(self):
+        digest = 'b' * 64
+        preview = SimpleNamespace(stdout=json.dumps({'bundle_sha256': digest, 'installed': False}))
+        installed = SimpleNamespace(stdout=json.dumps({'host': 'home-spark', 'installed': True,
+                                                        'root_key_installed': False, 'updates_run': 0}))
+        stale = SimpleNamespace(stdout=json.dumps({'host': 'home-spark', 'verified': True,
+                                                    'bundle_sha256': 'c' * 64}))
+        with patch.object(LIFECYCLE, 'run', side_effect=[preview, installed, stale]), \
+                self.assertRaisesRegex(ValueError, 'install or verification failed'):
+            LIFECYCLE.ensure_spark_maintenance_ownership()
+        with patch.object(LIFECYCLE, 'run', side_effect=LIFECYCLE.ManagedCommandFailure('python3', 2)), \
+                self.assertRaisesRegex(ValueError, 'install or verification failed'):
+            LIFECYCLE.ensure_spark_maintenance_ownership()
 
     def test_cuda_candidate_prepare_builds_only_native_pinned_image(self):
         with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'provision_cpp_model', return_value='existing') as model, \
@@ -1211,6 +1266,16 @@ class MigrationTests(unittest.TestCase):
             with self.subTest(limits=limits), self.assertRaisesRegex(ValueError, 'limits are invalid'):
                 LIFECYCLE.validate_cuda_request_limits(*limits)
 
+    def test_cuda_promotion_candidate_requires_verified_maintenance_bundle_before_mutation(self):
+        with patch.object(LIFECYCLE, 'guards'), \
+                patch.object(LIFECYCLE, 'ensure_no_cuda_candidate_transaction'), \
+                patch.object(LIFECYCLE, 'inspect') as inspect, \
+                patch.object(LIFECYCLE, 'save_cuda_candidate') as save:
+            with self.assertRaisesRegex(ValueError, 'Verified Spark maintenance ownership bundle'):
+                LIFECYCLE.cuda_candidate_start('d' * 40, promotion=True)
+        inspect.assert_not_called()
+        save.assert_not_called()
+
     def test_cuda_candidate_start_failure_rolls_back_releases_gate_and_keeps_private_diagnostic(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory)
@@ -1315,6 +1380,7 @@ class MigrationTests(unittest.TestCase):
                 'failure_classification': 'unknown',
                 'rollback_status': 'failed',
                 'rollback_failure_stage': 'compose-down',
+                'maintenance_bundle_sha256': 'd' * 64,
             }))
             stdout = io.StringIO()
             with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'protected'), \
@@ -1327,6 +1393,7 @@ class MigrationTests(unittest.TestCase):
             self.assertIsNone(result['failure_id'])
             self.assertIsNone(result['candidate_stage'])
             self.assertIsNone(result['failure_class'])
+            self.assertEqual(result['maintenance_bundle_sha256'], 'd' * 64)
             self.assertNotIn('PRIVATE_FAKE_CUDA_SECRET', stdout.getvalue())
 
     def test_cuda_status_identifies_persisted_cpp_owner_and_retained_original_relay(self):

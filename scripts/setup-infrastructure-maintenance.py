@@ -29,6 +29,8 @@ FILES = ('infrastructure_maintenance.py', 'infrastructure_update_policy.py',
 DEST = Path('/opt/homecompute/infrastructure-maintenance')
 STATE = Path('/var/lib/homecompute-infrastructure-maintenance')
 NAME = 'homecompute-infrastructure-maintenance'
+LIBEXEC = Path('/usr/local/libexec')
+HOME_STATE = Path('/var/lib/homecompute')
 
 
 def bundle(source):
@@ -46,7 +48,6 @@ def bundle(source):
 
 
 def directory(path, mode=0o755):
-    from infrastructure_maintenance import trusted_path
     path = Path(path)
     if not path.exists():
         if not path.parent.exists():
@@ -69,6 +70,64 @@ def write(path, contents, mode=0o644):
         os.replace(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)
+
+
+def trusted_path(path, uid, *, directory=False):
+    """Check the full path without importing neighboring files under -I."""
+    path = Path(os.path.abspath(path))
+    for parent in [*reversed(path.parents), path]:
+        info = parent.lstat()
+        if (stat.S_ISLNK(info.st_mode) or info.st_uid not in {0, uid} or
+                info.st_mode & 0o022):
+            raise ValueError('path must be privately controlled by root')
+        if parent != path or directory:
+            if not stat.S_ISDIR(info.st_mode):
+                raise ValueError('trusted parent must be a directory')
+        elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError('trusted file must be regular with one link')
+    return path
+
+
+def verify_installed(source, expected):
+    if os.geteuid() != 0:
+        raise ValueError('root verification required')
+    host = socket.gethostname().split('.')[0]
+    if host != 'home-spark':
+        raise ValueError('reviewed Spark host required')
+    files, actual = bundle(source)
+    if actual != expected:
+        raise ValueError('exact reviewed bundle hash required')
+
+    def verify_directory(path):
+        info = path.lstat()
+        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or
+                stat.S_IMODE(info.st_mode) != 0o755):
+            raise ValueError('installed maintenance directory is not root-managed')
+
+    def verify_file(path, contents, mode):
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            info = os.fstat(fd)
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1 or
+                    stat.S_IMODE(info.st_mode) != mode or info.st_size > 131072):
+                raise ValueError('installed maintenance code differs from reviewed bundle')
+            with os.fdopen(fd, 'rb', closefd=False) as stream:
+                installed = stream.read(131073)
+            if installed != contents:
+                raise ValueError('installed maintenance code differs from reviewed bundle')
+        finally:
+            os.close(fd)
+
+    verify_directory(DEST)
+    verify_directory(LIBEXEC)
+    for name, data in files.items():
+        verify_file(DEST / name, data, 0o644)
+    python = '/usr/bin/python3'
+    container_helper = '#!' + python + ' -I\n' + files['container-maintenance.py'].decode().split('\n', 1)[1]
+    dispatcher = '#!' + python + ' -I\n' + files['infrastructure-maintenance-spark.py'].decode().split('\n', 1)[1]
+    verify_file(LIBEXEC / 'homecompute-container-maintenance', container_helper.encode(), 0o755)
+    verify_file(LIBEXEC / 'homecompute-infrastructure-maintenance-spark', dispatcher.encode(), 0o755)
+    return {'host': host, 'verified': True, 'bundle_sha256': actual}
 
 
 def unit(python):
@@ -110,19 +169,18 @@ def install(source, expected, public_key=None):
     if actual != expected:
         raise ValueError('exact reviewed bundle hash required')
     directory(DEST); directory(STATE, 0o700)
-    if not Path('/var/lib/homecompute').exists():
-        directory(Path('/var/lib/homecompute'), 0o700)
+    if not HOME_STATE.exists():
+        directory(HOME_STATE, 0o700)
     backup = STATE / 'code-backups'
     directory(backup, 0o700)
     for name, data in files.items():
         previous = DEST / name
         if previous.exists():
-            from infrastructure_maintenance import trusted_path
             trusted_path(previous, 0)
             old = previous.read_bytes()
             write(backup / (name + '.' + hashlib.sha256(old).hexdigest()), old, 0o600)
         write(previous, data)
-    directory(Path('/usr/local/libexec'))
+    directory(LIBEXEC)
     python = '/run/current-system/sw/bin/python3' if host == 'home-core' else '/usr/bin/python3'
     container_helper = '#!' + python + ' -I\n' + files['container-maintenance.py'].decode().split('\n', 1)[1]
     write(Path('/usr/local/libexec/homecompute-container-maintenance'), container_helper.encode(), 0o755)
@@ -140,7 +198,6 @@ def install(source, expected, public_key=None):
             authorized = Path('/root/.ssh/authorized_keys')
             existing = authorized.read_bytes() if authorized.exists() else b''
             if authorized.exists():
-                from infrastructure_maintenance import trusted_path
                 trusted_path(authorized, 0)
             line = b'restrict,command="/usr/local/libexec/homecompute-infrastructure-maintenance-spark" ' + text.encode()
             if text.split()[1].encode() not in existing:
@@ -166,8 +223,16 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--source', type=Path, required=True)
     p.add_argument('--bundle-sha256'); p.add_argument('--public-key', type=Path)
+    p.add_argument('--verify-bundle-sha256')
     a = p.parse_args()
+    if a.bundle_sha256 is not None and a.verify_bundle_sha256 is not None:
+        p.error('install and verify are exclusive')
     if a.bundle_sha256 is None:
+        if a.verify_bundle_sha256 is not None:
+            try:
+                print(json.dumps(verify_installed(a.source, a.verify_bundle_sha256))); return 0
+            except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+                print('Maintenance verification refused; preserve existing private state.'); return 2
         print(json.dumps({'bundle_sha256': bundle(a.source)[1], 'installed': False})); return 0
     try:
         print(json.dumps(install(a.source, a.bundle_sha256, a.public_key))); return 0

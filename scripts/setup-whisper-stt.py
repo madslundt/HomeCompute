@@ -23,6 +23,7 @@ import shutil
 import socket
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 from types import SimpleNamespace
@@ -1184,10 +1185,12 @@ def cuda_candidate_smoke():
 
 def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_000_000,
                          native_timeout_seconds=900, promotion=False, relay_image=None,
-                         relay_image_id=None):
+                         relay_image_id=None, maintenance_bundle_sha256=None):
     guards()
     ensure_no_cuda_candidate_transaction('cuda-candidate')
     validate_cuda_request_limits(max_audio_seconds, max_upload_bytes, native_timeout_seconds)
+    if promotion and not re.fullmatch(r'[0-9a-f]{64}', str(maintenance_bundle_sha256 or '')):
+        raise ValueError('Verified Spark maintenance ownership bundle is required for promotion')
     base_tx_path = STATE / 'transaction.json'
     protected(base_tx_path)
     base_tx = json.loads(base_tx_path.read_text())
@@ -1227,6 +1230,7 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
           'model_sha256': CPP_MODEL_SHA256, 'runtime_commit': CPP_RUNTIME_COMMIT,
           'native_timeout_seconds': native_timeout_seconds,
           'promotion': promotion, 'image_source_revision': image_source_revision,
+          'maintenance_bundle_sha256': maintenance_bundle_sha256 if promotion else None,
           'relay_image': relay_image if promotion else None,
           'relay_candidate_image_id': relay_image_id if promotion else None}
     save_cuda_candidate(tx)
@@ -1351,6 +1355,36 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
         print('Whisper.cpp CUDA candidate active for qualification; run cuda-candidate-rollback afterward', flush=True)
 
 
+def ensure_spark_maintenance_ownership():
+    source = ROOT / 'scripts'
+    installer = source / 'setup-infrastructure-maintenance.py'
+    command = [sys.executable, '-I', '-B', str(installer), '--source', str(source)]
+    try:
+        preview = json.loads(run(command, timeout=120).stdout)
+        if not isinstance(preview, dict):
+            raise ValueError('Maintenance bundle preview is invalid')
+        digest = preview.get('bundle_sha256')
+        if (preview.get('installed') is not False or
+                not isinstance(digest, str) or not re.fullmatch(r'[0-9a-f]{64}', digest)):
+            raise ValueError('Source maintenance bundle was not pinned')
+        installed = json.loads(run([*command, '--bundle-sha256', digest], timeout=240).stdout)
+        if not isinstance(installed, dict):
+            raise ValueError('Maintenance installer receipt is invalid')
+        if (installed.get('host') != 'home-spark' or installed.get('installed') is not True or
+                installed.get('root_key_installed') is not False or
+                type(installed.get('updates_run')) is not int or installed['updates_run'] != 0):
+            raise ValueError('Spark maintenance owners were not installed without key changes')
+        verified = json.loads(run([*command, '--verify-bundle-sha256', digest], timeout=120).stdout)
+        if not isinstance(verified, dict):
+            raise ValueError('Maintenance verification receipt is invalid')
+        if (verified.get('host') != 'home-spark' or verified.get('verified') is not True or
+                verified.get('bundle_sha256') != digest):
+            raise ValueError('Installed Spark maintenance owners do not match the published bundle')
+        return digest
+    except (ManagedCommandFailure, OSError, ValueError, TypeError, KeyError):
+        raise ValueError('Spark maintenance ownership install or verification failed; model transition refused') from None
+
+
 def promote_qualified_cuda_candidate(revision):
     guards()
     qualified_cuda_candidate_image_id()
@@ -1359,9 +1393,11 @@ def promote_qualified_cuda_candidate(revision):
     relay_image = 'homecompute/stt-http:2.0.0-cpp-' + revision[:12]
     compose('--profile', 'cpp-production', 'build', 'whisper-cpp-http', relay_image=relay_image)
     relay_image_id = json.loads(run(['docker', 'image', 'inspect', relay_image]).stdout)[0]['Id']
+    maintenance_bundle_sha256 = ensure_spark_maintenance_ownership()
     cuda_candidate_start(revision, max_audio_seconds=1200, max_upload_bytes=40_000_000,
                          native_timeout_seconds=1800, promotion=True,
-                         relay_image=relay_image, relay_image_id=relay_image_id)
+                         relay_image=relay_image, relay_image_id=relay_image_id,
+                         maintenance_bundle_sha256=maintenance_bundle_sha256)
 
 
 def cuda_candidate_stop(revision, *, idle_timeout=None):
@@ -1452,6 +1488,8 @@ def cuda_candidate_status(revision):
         'promoted_relay_running': bool(relay_owned and relay.get('State', {}).get('Running')),
         'promoted_relay_healthy': bool(relay_owned and relay.get('State', {}).get('Health', {}).get('Status') == 'healthy'),
         'promoted_relay_restart_policy': restart_policy(relay) if relay_owned else None,
+        'maintenance_bundle_sha256': tx.get('maintenance_bundle_sha256')
+            if re.fullmatch(r'[0-9a-f]{64}', str(tx.get('maintenance_bundle_sha256') or '')) else None,
         'original_relay_retained': original_relay_retained,
         'gate_held': current_gate_held,
         'candidate_stage': tx.get('candidate_stage') if tx.get('candidate_stage') in CUDA_CANDIDATE_STAGES else None,

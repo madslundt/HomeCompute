@@ -367,6 +367,13 @@ Promotion reuses the exact qualified image, sets the long-form adapter bounds
 to 1,200 seconds / 40 MB / 1,800 seconds, and retains the required memory and
 native-inference-idle checks. Rollback is exact and refuses to stop the CPP
 decoder while its native busy state is true or unknown.
+Before starting the model transition, promotion runs the published
+`setup-infrastructure-maintenance.py` bundle installer without a public-key
+argument, then verifies that the Spark dispatcher and container-maintenance
+helper exactly match the computed bundle hash. The hash is recorded in the
+promotion journal. A stale bundle, install error, or verification mismatch
+aborts before any model container is stopped. Existing SSH authorization and
+private maintenance controller state are preserved.
 
 The portable synthetic contract and refusal tests run with:
 
