@@ -194,6 +194,15 @@ class TeamRecoveryTests(unittest.TestCase):
             (root/'agents/cook/escape').symlink_to('/etc/passwd')
             with self.assertRaises(ValueError):m.complete_hashes(root)
 
+    def test_opt_in_native_stop_keeps_exact_gateway_and_identity_fences(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=Mock(state=Path(tmp),cli='/fixed/nemoclaw',openshell='/fixed/openshell')
+            tx=m.RetainedTransaction(ctx,'a'*64);tx.use_native_stop=True
+            tx.stop_owned('reviewed-stop')
+            ctx.check_registry.assert_called_once();ctx.check_container.assert_called_once()
+            self.assertEqual(ctx.run.call_args.args[0],['/fixed/openshell','sandbox','stop','-g',m.BASE.GATEWAY,m.BASE.NAME])
+            self.assertNotIn('--force',ctx.run.call_args.args[0])
+
     def test_core92_recovery_selects_only_its_child_patch_and_exact_image(self):
         with tempfile.TemporaryDirectory() as tmp:
             image='ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:23b806f148ba3e2c57b923f659fe2e6caa1dded684fc3ae410c41c2e17a73890'

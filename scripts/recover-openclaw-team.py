@@ -325,8 +325,15 @@ class RetainedTransaction(BASE.Transaction):
             return output
         return super().command(argv, label, **kwargs)
 
+    def stop_owned(self, label):
+        argv=[self.ctx.cli, BASE.NAME, 'stop']
+        if getattr(self,'use_native_stop',False):
+            self.ctx.check_registry();self.ctx.check_container()
+            argv=[self.ctx.openshell,'sandbox','stop','-g',BASE.GATEWAY,BASE.NAME]
+        return self.ctx.run(argv,label,timeout=180)
+
     def restore_files(self, backup, candidate):
-        code, _ = self.ctx.run([self.ctx.cli, BASE.NAME, 'stop'], 'retained-replacement-stop', timeout=180)
+        code, _ = self.stop_owned('retained-replacement-stop')
         if self.ctx.observe() != 'Stopped':
             raise ValueError('replacement-positive-stopped-required')
         self.inspect()
@@ -475,7 +482,7 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         self.merge_native_policy('retained-service-routes.json','retained-service-policy.yaml')
         final = backup_root / 'restored-active-config.json'
         BASE.atomic_json(final, self.policy)
-        code, _ = self.ctx.run([self.ctx.cli, BASE.NAME, 'stop'], 'verified-team-stop', timeout=180)
+        code, _ = self.stop_owned('verified-team-stop')
         if self.ctx.observe() != 'Stopped':
             raise ValueError('verified-team-stopped-required')
         self.command(['/usr/bin/docker', 'cp', str(final), self.ctx.container + ':/sandbox/.openclaw/openclaw.json'], 'restore-active-team-policy')

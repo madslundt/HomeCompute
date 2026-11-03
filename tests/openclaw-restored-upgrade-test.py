@@ -23,6 +23,15 @@ class RestoredUpgrade(unittest.TestCase):
   for key in ('native_rollback_verified','agent_handoff_verified','state_preserved'):
    with self.subTest(key=key):self.assertFalse(m.accepted({**data,key:False}))
 
+ def test_memory_admission_and_runtime_pressure_preserve_host_reserve(self):
+  calm={'full':0.0,'some':0.0}
+  self.assertTrue(m.memory_admitted(15*1024**3,calm))
+  self.assertFalse(m.memory_admitted(15*1024**3-1,calm))
+  self.assertTrue(m.memory_admitted(5*1024**3,calm,running=True))
+  self.assertFalse(m.memory_admitted(4*1024**3-1,calm,running=True))
+  self.assertFalse(m.memory_admitted(20*1024**3,{'full':0.2,'some':0.2},running=True))
+  self.assertFalse(m.memory_admitted(20*1024**3,{'full':0.0,'some':1.1}))
+
  def test_serial_result_must_have_the_selected_nonce_once(self):
   self.assertIsNone(m.result_from_log(b'HC_OPENCLAW_UPGRADE_other {}\n','selected'))
   raw=b'HC_OPENCLAW_UPGRADE_selected {"native_upgrade_verified":true}\n'

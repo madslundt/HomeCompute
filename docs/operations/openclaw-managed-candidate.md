@@ -241,3 +241,15 @@ all immutable role state. It carries only allow-listed non-secret deployment
 settings into a clean environment and replaces the clone's model credential
 with a synthetic value. A real yielded terminal receipt and two independent
 zero-activity observations settle the handoff before the rollback snapshot.
+
+A subsequent attempt was refused before boot by the previous16 GiB admission
+threshold while available memory remained stable near15.6 GiB and memory
+pressure was zero. Admission now explicitly budgets the unchanged10 GiB scope
+cap plus5 GiB of host headroom. It also requires full memory pressure over ten
+seconds at most0.1% and some pressure at most1%. While running, falling below
+4 GiB available or crossing either pressure threshold terminates only the owned
+VM through its normal cleanup. The guest remains8 GiB/two visible vCPUs, with
+its original read-only source disk, memory cap, CPU affinity and I/O limits.
+No production service is paused to create room for qualification. This change
+applies to the managed-upgrade fixture; the accepted NAS recovery verifier and
+its receipt are unchanged.

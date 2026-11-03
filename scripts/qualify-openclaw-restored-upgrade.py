@@ -69,14 +69,30 @@ def validate_assets(directory,expected):
  return manifest
 
 
+def memory_state():
+ available=int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:')))*1024
+ pressure=Path('/proc/pressure/memory').read_text()
+ values={name:float(value) for name,value in re.findall(r'^(some|full) avg10=([0-9]+(?:\.[0-9]+)?)',pressure,re.MULTILINE)}
+ if set(values)!={'some','full'}:raise ValueError('memory pressure observation unavailable')
+ return available,values
+
+
+def memory_admitted(available,pressure,*,running=False):
+ # The scope's 10 GiB maximum plus a 5 GiB host reserve. A separate 4 GiB
+ # live floor leaves time to terminate the owned VM during another workload's
+ # burst; any sustained pressure also aborts instead of paging production.
+ floor=(4 if running else 15)*1024**3
+ return available>=floor and pressure['full']<=0.1 and pressure['some']<=1.0
+
+
 def verify(args,revision):
  manifest=ENGINE.restored_input(args.restore_directory,args.snapshot,args.archive)
  ENGINE.protected(ENGINE.STATE/'last-openclaw-verification.json',limit=65536)
  previous=json.loads((ENGINE.STATE/'last-openclaw-verification.json').read_bytes())
  if previous.get('accepted') is not True or any(previous.get(k)!=v for k,v in {'snapshot':args.snapshot,'archive':args.archive,'manifest_sha256':manifest}.items()):raise ValueError('accepted matching native recovery proof required')
  validate_assets(args.assets,args.expected_assets_sha256)
- available=int(next(line.split()[1] for line in Path('/proc/meminfo').read_text().splitlines() if line.startswith('MemAvailable:')))*1024
- if available<16*1024**3 or shutil.disk_usage(ENGINE.SCRATCH).free<32*1024**3:raise ValueError('isolated native headroom unavailable')
+ available,pressure=memory_state()
+ if not memory_admitted(available,pressure) or shutil.disk_usage(ENGINE.SCRATCH).free<32*1024**3:raise ValueError('isolated native headroom unavailable')
  executable=ENGINE.QEMU_ROOT.resolve(strict=True)/'bin/qemu-system-x86_64'
  for tool in (executable,XORRISO.resolve(strict=True)):
   if not str(tool).startswith('/nix/store/') or tool.stat().st_uid!=0 or tool.stat().st_mode&0o022:raise ValueError('protected Nix tool required')
@@ -104,6 +120,8 @@ def verify(args,revision):
   with ENGINE.owned_process(command,stdin=subprocess.DEVNULL,stdout=output,stderr=error,cwd=guest,env={**ENGINE.ENV,'TMPDIR':'.'},pass_fds=descriptors,preexec_fn=child) as process:
    deadline=time.monotonic()+2100
    while time.monotonic()<deadline:
+    available,pressure=memory_state()
+    if not memory_admitted(available,pressure,running=True):raise ValueError('owned qualification stopped to preserve host memory')
     ENGINE.private_logs_bounded(log,errors);result=result_from_log(log.read_bytes(),nonce)
     if result is not None:break
     if process.poll() is not None:raise ValueError('owned qualification VM exited')
@@ -137,7 +155,9 @@ def main():
    ENGINE.run(['systemctl','stop',unit],check=False,timeout=60)
    members=Path('/sys/fs/cgroup/system.slice')/unit/'cgroup.procs'
    if members.exists() and members.read_text().strip():raise ValueError('owned qualification cleanup unverified')
-  sys.stdout.write(result.stdout.decode());raise SystemExit(result.returncode)
+  sys.stdout.write(result.stdout.decode())
+  if result.returncode and not result.stdout:print(json.dumps({'accepted':False,'error_category':'qualification-worker-failed','private_diagnostics':str(dispatch),'production_modified':False}))
+  raise SystemExit(result.returncode)
  group=Path('/proc/self/cgroup').read_text().strip().split('::')[-1]
  if not re.fullmatch('/system.slice/homecompute-openclaw-upgrade-[0-9a-f]{32}\\.scope',group):raise ValueError('owned resource scope required')
  with (ENGINE.SCRATCH/'.engine-verification.lock').open('a') as lock:
