@@ -41,6 +41,22 @@ checks exact name/ID/label ownership, then removes that owned instance. Ambiguou
 or unavailable cleanup is an error; inspect it before another probe. The pulled
 immutable image cache is retained and accounted for by the candidate declaration.
 
+The child-evidence gate separately requires actual native fixture execution,
+single-child tail retention, and a bounded nonempty aggregate with its omission
+notice. Either a failed artifact gate or child-evidence gate returns nonzero;
+metadata success alone cannot hide an unexecuted or truncated child fixture.
+The stock candidate is expected to fail tail retention until its exact runtime
+patch is ported and qualified.
+
+The probe also checks a proposed port of the tracked child-result changes against
+both declared before/after hashes, mirrors public runtime files using temporary
+symlinks and runs the same native fixture against the temporary changed module.
+`proposed_child_overlay_checks_passed` describes only that isolated overlay;
+the unmodified image's child gate remains separate and the CLI still returns
+nonzero when it fails. Neither the installed image nor production state is
+changed. A passing temporary overlay does not qualify an upgrade installer,
+native lifecycle, integration or rollback.
+
 `artifact_checks_passed=true` is explicitly **not production qualification**.
 Native NemoClaw fixture-provider onboarding/rebuild/rollback, actual SDK/safety
 and Mattermost integration, patch porting, state preservation, authenticated

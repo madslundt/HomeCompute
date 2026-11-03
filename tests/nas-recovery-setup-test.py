@@ -148,7 +148,7 @@ class NASRecoverySetupTest(unittest.TestCase):
                              'IOReadBandwidthMax=/srv/restore-tests 50M',
                              'IOWriteIOPSMax=/srv/restore-tests 100',
                              'IOReadIOPSMax=/srv/restore-tests 200',
-                             'MemoryHigh=512M','MemoryMax=2G'):
+                             'MemoryHigh=1G','MemoryMax=2G'):
                     self.assertIn('--property='+prop,args)
                 self.assertEqual(args[args.index('ionice'):args.index('ionice')+3],['ionice','-c','3'])
 

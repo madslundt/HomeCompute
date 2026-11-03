@@ -13,6 +13,24 @@ m=importlib.util.module_from_spec(s);s.loader.exec_module(m)
 
 
 class CandidateTest(unittest.TestCase):
+    def test_temporary_overlay_reuses_tracked_changes_and_pins_both_hashes(self):
+        payload=m.child_overlay(m.policy())
+        self.assertEqual(len(payload['changes']),3)
+        self.assertEqual(payload['before_sha256'],m.policy()['runtime_modules']['child_result']['sha256'])
+        self.assertEqual(payload['after_sha256'],m.policy()['child_result_overlay_sha256'])
+        self.assertIn('children.length === 1 ? 3072',payload['changes'][-1][1])
+        self.assertIn('scripts/setup-openclaw-child-results.py',m.FILES)
+
+    def test_unexecuted_empty_or_truncated_child_fixture_never_passes_child_gate(self):
+        keys=('executed','single_child_retains_evidence','aggregate_bound',
+              'aggregate_retains_evidence','aggregate_reports_omission')
+        fixture={key:True for key in keys}
+        self.assertTrue(m.child_evidence_ok({'native_child_fixture':fixture}))
+        self.assertFalse(m.child_evidence_ok({}))
+        for key in keys:
+            for value in (False,None,'true'):
+                self.assertFalse(m.child_evidence_ok({'native_child_fixture':{**fixture,key:value}}))
+
     def test_offline_probe_cannot_mount_credentials_publish_ports_or_contact_network(self):
         data=m.policy();args=m.command(data,'synthetic')
         for key,value in [('--network','none'),('--cap-drop','ALL'),('--entrypoint','/usr/local/bin/node')]:

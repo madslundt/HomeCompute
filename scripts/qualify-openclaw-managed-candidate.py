@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -16,6 +17,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = 'config/openclaw-managed-candidate.json'
+FILES = ('scripts/qualify-openclaw-managed-candidate.py', POLICY,
+         'scripts/setup-openclaw-child-results.py')
 PROBE = r'''
 const fs = require('node:fs');
 const cp = require('node:child_process');
@@ -46,19 +49,52 @@ const validation = cp.spawnSync('/usr/local/bin/openclaw', ['config','set','--ba
 output.synthetic_config_valid = validation.status === 0;
 if (validation.status !== 0) process.stderr.write(JSON.stringify({phase:'synthetic-config-validation',
   stdout:(validation.stdout || '').slice(0,32768),stderr:(validation.stderr || '').slice(0,32768)}) + '\n');
-const childFixture = `import {n as build} from ${JSON.stringify(base + '/' + expectedModules.child_result.path)};
+const childFixture = (modulePath) => `import {n as build} from ${JSON.stringify(modulePath)};
 const tail = ' CANDIDATE_FINAL_EVIDENCE=present';
 const text = 'Synthetic evidence. '.repeat(100).slice(0,1800-tail.length) + tail;
 const child = (i=0) => ({runId:'synthetic-'+i,childSessionKey:'agent:operator:subagent:synthetic-'+i,
   createdAt:i,label:'Synthetic evidence',task:'Synthetic read-only task',
   execution:{endedAt:100+i,outcome:{status:'ok'}},completion:{resultText:text}});
-console.log(JSON.stringify({single_child_retains_evidence:build([child()]).includes(tail.trim()),
-  aggregate_bound:build(Array.from({length:9},(_,i)=>child(i))).length<=4096}));`;
-const childCheck = cp.spawnSync('/usr/local/bin/node',['--input-type=module','-'],
-  {input:childFixture,encoding:'utf8',timeout:30000,env,maxBuffer:1048576});
-output.native_child_fixture = childCheck.status === 0 ? JSON.parse(childCheck.stdout.trim().split('\n').at(-1)) : {executed:false};
-if (childCheck.status !== 0) process.stderr.write(JSON.stringify({phase:'native-child-fixture',
-  stderr:(childCheck.stderr || '').slice(0,32768)}) + '\n');
+const single = build([child()]);
+const aggregate = build(Array.from({length:9},(_,i)=>child(i)));
+console.log(JSON.stringify({executed:true,single_child_retains_evidence:single.includes(tail.trim()),
+  aggregate_bound:aggregate.length<=4096,
+  aggregate_retains_evidence:aggregate.includes('Synthetic evidence.'),
+  aggregate_reports_omission:aggregate.toLowerCase().includes('additional child completion result')}));`;
+function checkChild(modulePath, phase) {
+  const result = cp.spawnSync('/usr/local/bin/node',['--input-type=module','-'],
+    {input:childFixture(modulePath),encoding:'utf8',timeout:30000,env,maxBuffer:1048576});
+  if (result.status === 0) return JSON.parse(result.stdout.trim().split('\n').at(-1));
+  process.stderr.write(JSON.stringify({phase,stderr:(result.stderr || '').slice(0,32768)}) + '\n');
+  return {executed:false};
+}
+output.native_child_fixture = checkChild(base + '/' + expectedModules.child_result.path, 'native-child-fixture');
+// Test only a temporary, exact-hash overlay. The image remains read-only.
+const overlay = __CHILD_OVERLAY__;
+let childSource = fs.readFileSync(base + '/' + expectedModules.child_result.path, 'utf8');
+let verified = crypto.createHash('sha256').update(childSource).digest('hex') === overlay.before_sha256;
+for (const [before, after] of overlay.changes) {
+  if (childSource.split(before).length !== 2) { verified = false; break; }
+  childSource = childSource.replace(before, after);
+}
+const patchedHash = crypto.createHash('sha256').update(childSource).digest('hex');
+verified = verified && patchedHash === overlay.after_sha256;
+output.proposed_child_overlay = {source_verified:verified,sha256:patchedHash,fixture:{executed:false}};
+if (verified) {
+  const mirror = fs.mkdtempSync('/tmp/hc-child-overlay-');
+  for (const name of fs.readdirSync(base)) {
+    if (name !== 'dist') fs.symlinkSync(base + '/' + name, mirror + '/' + name);
+  }
+  if (!fs.existsSync(mirror + '/node_modules')) fs.symlinkSync(base + '/..', mirror + '/node_modules');
+  fs.mkdirSync(mirror + '/dist');
+  const filename = expectedModules.child_result.path.split('/').at(-1);
+  for (const name of fs.readdirSync(base + '/dist')) {
+    if (name !== filename) fs.symlinkSync(base + '/dist/' + name, mirror + '/dist/' + name);
+  }
+  const target = mirror + '/dist/' + filename;
+  fs.writeFileSync(target, childSource, {flag:'wx',mode:0o400});
+  output.proposed_child_overlay.fixture = checkChild(target, 'proposed-child-overlay-fixture');
+}
 output.patch_modules = {};
 for (const name of ['subagent-announce-output-CgCr3vGC.js','embedded-agent-DaSvA-Yk.js']) {
   const path = base + '/dist/' + name;
@@ -75,6 +111,7 @@ def policy() -> dict:
             or not re.fullmatch(r'ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:[0-9a-f]{64}',data.get('image',''))
             or not 512 <= data.get('memory_mib',0) <= 2048
             or data.get('cpus') != 1 or data.get('pids_limit') != 128
+            or not re.fullmatch('[0-9a-f]{64}',data.get('child_result_overlay_sha256',''))
             or not 30 <= data.get('probe_timeout_seconds',0) <= 120):
         raise ValueError('finite unqualified candidate policy required')
     return data
@@ -97,7 +134,7 @@ def cleanup(call, name: str) -> None:
 
 def bundle() -> str:
     digest = hashlib.sha256()
-    for name in ('scripts/qualify-openclaw-managed-candidate.py', POLICY):
+    for name in FILES:
         path = ROOT / name
         if path.is_symlink(): raise ValueError('regular candidate source required')
         digest.update(name.encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
@@ -120,7 +157,7 @@ def published(revision: str, expected: str) -> None:
         raise ValueError('exact published candidate release/hash required')
     for args in [('merge-base','--is-ancestor',revision,'origin/master')]:
         subprocess.run(['git','-C',str(ROOT),*args],check=True,capture_output=True,timeout=15)
-    for name in ('scripts/qualify-openclaw-managed-candidate.py',POLICY):
+    for name in FILES:
         result=subprocess.run(['git','-C',str(ROOT),'show',revision+':'+name],check=True,capture_output=True,timeout=15)
         if result.stdout!=(ROOT/name).read_bytes():raise ValueError('unpublished candidate source refused')
 
@@ -133,6 +170,21 @@ def admit(data: dict, available: int, free: int, pressure: str) -> None:
             or free<data['minimum_free_disk_gib']*1024**3
             or float(match[1])>data['maximum_io_full_avg10_percent']):
         raise ValueError('insufficient candidate headroom; production resources unchanged')
+
+
+def child_evidence_ok(observed: dict) -> bool:
+    fixture = observed.get('native_child_fixture', {})
+    return all(fixture.get(key) is True for key in (
+        'executed', 'single_child_retains_evidence', 'aggregate_bound',
+        'aggregate_retains_evidence', 'aggregate_reports_omission'))
+
+
+def child_overlay(data: dict) -> dict:
+    tree = ast.parse((ROOT / 'scripts/setup-openclaw-child-results.py').read_text())
+    changes = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == 'CHANGES' for target in node.targets))
+    return {'before_sha256':data['runtime_modules']['child_result']['sha256'],
+            'after_sha256':data['child_result_overlay_sha256'],'changes':changes}
 
 
 def run(data: dict, evidence: Path, *, pull: bool) -> dict:
@@ -166,7 +218,8 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
         raise ValueError('managed image provenance mismatch')
     name='hc-oc140-'+uuid.uuid4().hex[:12]
     try:
-        result=call(command(data,name),input=PROBE.replace('__RUNTIME_MODULES__',json.dumps(data['runtime_modules'])),
+        probe=PROBE.replace('__RUNTIME_MODULES__',json.dumps(data['runtime_modules'])).replace('__CHILD_OVERLAY__',json.dumps(child_overlay(data)))
+        result=call(command(data,name),input=probe,
                     timeout=data['probe_timeout_seconds'])
     finally:
         cleanup(call,name)  # A Docker client timeout does not stop its server-side container.
@@ -179,7 +232,10 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
     artifact_passed=(observed['node']==data['node_version'] and observed['core']==data['openclaw_version']
                      and observed['schemas']==data['schema_versions']
                      and observed['uid']!=0 and observed['cli_version_ok'] and observed['synthetic_config_valid'])
-    report={'artifact_checks_passed':artifact_passed,'production_qualified':False,'observed':observed,
+    report={'artifact_checks_passed':artifact_passed,'child_evidence_checks_passed':child_evidence_ok(observed),
+            'proposed_child_overlay_checks_passed':observed.get('proposed_child_overlay',{}).get('source_verified') is True
+                and child_evidence_ok({'native_child_fixture':observed.get('proposed_child_overlay',{}).get('fixture',{})}),
+            'production_qualified':False,'observed':observed,
             'image':data['image'],'native_lifecycle_verified':False,'integration_paths_verified':False}
     fd=os.open(evidence/'report.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
     with os.fdopen(fd,'w') as stream:json.dump(report,stream)
@@ -197,7 +253,7 @@ def main() -> None:
     if not args.revision or not args.expected_hash or not args.evidence:parser.error('probe requires revision, reviewed hash and new evidence directory')
     published(args.revision,args.expected_hash)
     result=run(data,args.evidence,pull=args.pull);print(json.dumps(result))
-    if not result['artifact_checks_passed']:raise SystemExit(1)
+    if not result['artifact_checks_passed'] or not result['child_evidence_checks_passed']:raise SystemExit(1)
 
 
 if __name__=='__main__':main()

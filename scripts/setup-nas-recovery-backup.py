@@ -370,7 +370,7 @@ def installed(expected: str) -> dict:
 def restore_run(arguments: list[str], *, env: dict, timeout: int):
     unit = 'homecompute-restore-' + uuid.uuid4().hex + '.scope'
     command = ['systemd-run', '--scope', '--collect', '--quiet', '--unit', unit,
-               '--property=IOWeight=10', '--property=MemoryHigh=512M', '--property=MemoryMax=2G',
+               '--property=IOWeight=10', '--property=MemoryHigh=1G', '--property=MemoryMax=2G',
                '--property=IOWriteBandwidthMax=/srv/restore-tests 25M',
                '--property=IOReadBandwidthMax=/srv/restore-tests 50M',
                '--property=IOWriteIOPSMax=/srv/restore-tests 100',

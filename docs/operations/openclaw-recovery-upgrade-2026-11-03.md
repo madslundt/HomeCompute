@@ -77,6 +77,23 @@ and reads at 50 MB/s / 200 IOPS. Actual `io.max`, memory limits and frozen state
 were verified. This is an in-progress incident record; thaw/cleanup and resulting
 guest readiness must still be recorded.
 
+The continuation from `d40bb5410866f26216c3bdd77156369b3be018f8` completed
+at approximately 16:58 UTC. The replacement was positively Ready on the original
+managed image, with complete offline file hashes, retained conversation state
+and all specialist workspaces checked by the recovery lifecycle. Independent
+readback confirmed twelve agents/accounts and unchanged agents, tools, channels,
+cron, hooks and browser sections, the original 8 GiB memory/swap cap and two CPUs.
+Public DNS and the watchdog were active. The canonical authenticated gateway
+health returned `ok=true`, no plugin errors and connected Mattermost accounts.
+This is current-runtime recovery, not upgrade qualification or a synthetic
+end-user task/delivery test.
+
+The owned restore scope was thawed at 16:59:05 UTC. Memory charges fell from
+approximately 10 GiB to the bounded cache without an OOM. The final high
+watermark is 1 GiB, hard maximum 2 GiB, retaining the 25/50 MB/s and 100/200 IOPS
+limits. Extraction is progressing and production remains healthy. All transient
+properties must disappear with scope completion; that check is still pending.
+
 ## Managed candidate source
 
 The separate [candidate policy](../../config/openclaw-managed-candidate.json)
@@ -99,14 +116,14 @@ qualification.
 
 The attended backup has 10 focused tests covering admission order, safe retry
 handling, no backup on a failed drain, interruption/resumption ordering, early
-hold release and truthful completion. The offline candidate has six focused
+hold release and truthful completion. The offline candidate has eight focused
 isolation/provenance-refusal/ownership-cleanup tests. Both repository validation
 runs passed, including containerized Nix flake evaluation. The later probe
 instrumentation changes also passed focused tests and whitespace checks.
 Existing optional native-runtime tests skip on the workstation; these synthetic
 results are separate from live readiness and candidate SDK acceptance.
 
-The restore lifecycle now has 18 focused tests and the candidate has six,
+The restore lifecycle now has 18 focused tests and the candidate has eight,
 including refusal under high or unavailable I/O pressure. The complete
 repository validator passed after the resource limits were added, including
 containerized Nix flake evaluation.

@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "production_qualified": false,
+  "child_result_overlay_sha256": "ed09c0b16e452ec159085ef35b3475cd20c15b6ffbf8620c4b24517588c86bad",
   "nemoclaw_tag": "v0.0.140",
   "nemoclaw_commit": "88fe14f3fb9a0bf72997cce19ec88b5b2ee08391",
   "openshell_version": "0.0.116",
