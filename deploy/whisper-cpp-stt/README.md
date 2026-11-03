@@ -151,9 +151,11 @@ upstream v1.9.1 CMake source supports `121a-real` with CUDA 12.9 and newer;
 the candidate pins that architecture explicitly. NVIDIA lists GB10 as compute
 capability 12.1, and the inspected host driver is 580.178.04. CUDA 13.x's
 documented Linux compatibility floor is R580. This supports building the
-candidate, but the patched CUDA source has not yet been compiled on the target;
-exact runtime compatibility, model load, memory use, quality, and latency
-remain unverified until a guarded GPU qualification completes.
+candidate. The exact patched CUDA source, target runtime compatibility, model
+load, memory use, quality, and latency have since been verified by the guarded
+private full-recording qualification recorded below. Permanent production
+promotion and route activation are still pending source review and operator
+action.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
@@ -317,6 +319,10 @@ only the journaled CPP relay and restores the retained original relay container
 plus the exact saved vLLM container. The long-recording path is unavailable
 after rollback because the restored older relay does not implement it; requests
 fail closed and never fall back to vLLM.
+No in-network consumer depends on the old relay service DNS name
+`whisper-http`: Core clients enter through the existing protected tunnel and
+Caddy routes. The promoted relay uses its explicit `whisper-cpp-http`
+service/container name.
 Rollback waits for three consecutive native-idle checks and empty host
 8003/8007 connection checks, so an upload that has not reached inference keeps
 the model alive. Its default bounded wait is the recorded native timeout plus

@@ -909,7 +909,7 @@ class MigrationTests(unittest.TestCase):
     class FakeCudaQualificationLifecycle:
         def __init__(self, state):
             self.STATE = state
-            self.CUDA_CANDIDATE = 'gb10-whisper-cpp-cuda-candidate'
+            self.CUDA_CANDIDATE = 'gb10-whisper-cpp-primary'
             self.CPP_MODEL_SHA256 = '1' * 64
             self.CPP_MODEL_SNAPSHOT = 'c' * 40
             self.CPP_RUNTIME_COMMIT = '2' * 40

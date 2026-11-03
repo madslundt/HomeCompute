@@ -50,8 +50,7 @@ class Tests(unittest.TestCase):
 
     def test_core_catalogue_matches_registered_deployments_and_spark_stays_separate(self):
         self.assertEqual(container.CONTAINERS['home-core'], {row[0] for row in DOCKER.values()})
-        self.assertEqual(container.CONTAINERS['home-spark'], {'qwen38-flash-ultrafast', 'gb10-whisper-primary',
-                                                               'gb10-whisper-cpp-cuda-candidate', SPARK})
+        self.assertEqual(container.CONTAINERS['home-spark'], {'qwen38-flash-ultrafast', 'gb10-whisper-cpp-primary', SPARK})
 
     def test_root_and_host_boundaries_precede_any_command(self):
         with patch.object(container.os, 'geteuid', return_value=501), self.assertRaises(ValueError):

@@ -51,6 +51,15 @@ def fixtures(reg):
 
 
 class MonitoringTest(unittest.TestCase):
+    def test_spark_monitors_only_the_cpp_whisper_and_relay_as_active_owners(self):
+        reg = registry()
+        spark = next(item for item in reg['systems'] if item['id'] == 'home-spark')
+        names = {item['name'] for item in spark['containers']}
+        self.assertIn('gb10-whisper-cpp-primary', names)
+        self.assertIn('gb10-whisper-cpp-http', names)
+        self.assertNotIn('gb10-whisper-primary', names)
+        self.assertNotIn('gb10-whisper-http', names)
+
     def test_workflow_failure_monitor_catches_pruned_errors_and_deduplicates_counts(self):
         reg = registry(); data = fixtures(reg)
         data['home-core']['n8n_workflow_health']['failure_count'] = 1

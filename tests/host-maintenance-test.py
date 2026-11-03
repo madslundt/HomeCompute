@@ -32,6 +32,17 @@ def policy(lane='registry'):
 
 
 class DiscoveryTest(unittest.TestCase):
+    def test_spark_whisper_image_tracking_uses_cpp_source_pins_and_keeps_vllm_rollback(self):
+        tracking = json.loads((ROOT / 'config/docker-image-tracking.json').read_text())['hosts']['home-spark']['containers']
+        self.assertEqual(tracking['gb10-whisper-cpp-primary'], {
+            'tracked_tag': '1.9.1-large-v3-f16-cuda121a-hc3', 'source_lane': 'source_pin'})
+        self.assertEqual(tracking['gb10-whisper-cpp-http'], {
+            'tracked_tag': None, 'source_lane': 'source_pin'})
+        self.assertEqual(tracking['gb10-whisper-primary'], {
+            'tracked_tag': None, 'source_lane': 'source_pin'})
+        self.assertEqual(tracking['gb10-whisper-http'], {
+            'tracked_tag': None, 'source_lane': 'source_pin'})
+
     def discover(self, snapshot=None, tracking=None, tags=None):
         registry = Mock()
         registry.platform.side_effect = lambda ref, tag, *platform: OLD if tag == '1.2.3' else NEW

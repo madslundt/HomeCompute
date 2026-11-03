@@ -240,11 +240,11 @@
           "require_health": true
         },
         {
-          "name": "gb10-whisper-primary",
+          "name": "gb10-whisper-cpp-primary",
           "require_health": true
         },
         {
-          "name": "gb10-whisper-http",
+          "name": "gb10-whisper-cpp-http",
           "require_health": true
         },
         {

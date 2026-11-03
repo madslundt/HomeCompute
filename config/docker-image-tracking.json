@@ -170,7 +170,15 @@
           "source_lane": "source_pin"
         },
         "gb10-whisper-http": {
-          "tracked_tag": "2.0.0",
+          "tracked_tag": null,
+          "source_lane": "source_pin"
+        },
+        "gb10-whisper-cpp-primary": {
+          "tracked_tag": "1.9.1-large-v3-f16-cuda121a-hc3",
+          "source_lane": "source_pin"
+        },
+        "gb10-whisper-cpp-http": {
+          "tracked_tag": null,
           "source_lane": "source_pin"
         },
         "homecompute-omnivoice-spark-omnivoice-engine-1": {

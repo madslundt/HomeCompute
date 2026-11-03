@@ -16,7 +16,7 @@ CONTROLLER = '/opt/homecompute/infrastructure-maintenance/infrastructure_mainten
 FIXES = {'restart-plapre': 'homecompute-plapre-plapre-primary-1',
          'restart-whisper': 'gb10-whisper-primary', 'restart-qwen': 'qwen38-flash-ultrafast'}
 WHISPER_STATE = Path('/var/lib/homecompute/whisper-stt')
-CPP_WHISPER = 'gb10-whisper-cpp-cuda-candidate'
+CPP_WHISPER = 'gb10-whisper-cpp-primary'
 CPP_PROMOTED_IMAGE = 'sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3'
 
 

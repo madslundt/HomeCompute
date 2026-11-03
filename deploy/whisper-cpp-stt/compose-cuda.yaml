@@ -13,7 +13,7 @@ services:
         WHISPER_CPP_COMMIT: f049fff95a089aa9969deb009cdd4892b3e74916
         CUDA_PATCHER_SHA256: ${WHISPER_CPP_CUDA_PATCHER_SHA256:?Set to the reviewed strict-GPU patcher checksum}
         HOME_COMPUTE_REVISION: ${WHISPER_CPP_HOME_COMPUTE_REVISION:?Set to the reviewed HomeCompute source commit}
-    container_name: gb10-whisper-cpp-cuda-candidate
+    container_name: gb10-whisper-cpp-primary
     init: true
     restart: "no"
     user: "10001:10001"

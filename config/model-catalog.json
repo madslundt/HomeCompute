@@ -115,7 +115,7 @@
       "homecompute_source_revision": "50ee4f9666c26df89bccab30c83e9cd6dcc0faba",
       "model_snapshot": "c521a4b02f422512d734391fdf08bb08c0862f68",
       "model_sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
-      "model_format": "GGML F16 converted from pinned Hugging Face safetensors",
+      "model_format": "GGML F16 conversion of full Whisper Large-v3",
       "qualification_status": "qualified",
       "supported_protocols": [
         "audio_transcriptions"

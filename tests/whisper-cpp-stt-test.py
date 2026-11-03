@@ -474,6 +474,7 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn("inference:\n    external: true", compose)
         self.assertNotRegex(compose, r"(?m)^\s+ports:")
         qualification = (DEPLOY / "compose-cuda.yaml").read_text()
+        self.assertIn("container_name: gb10-whisper-cpp-primary", qualification)
         self.assertIn("networks: [candidate]", qualification)
         self.assertNotIn("whisper-primary", qualification)
 
