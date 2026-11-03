@@ -82,7 +82,7 @@ def install(identity_override: dict[str, str] | None = None) -> dict[str, object
     return {'staged': True, 'started': False, 'module_sha256': identity['module_sha256']}
 
 
-def rebind(sandbox_id: str, generation: str) -> dict[str, object]:
+def rebind(sandbox_id: str, generation: str, runtime_version: str = '2026.9.1') -> dict[str, object]:
     """Rebind only a positively verified replacement of the same native target."""
     if os.geteuid() != 0 or socket.gethostname() != 'agents':
         raise ValueError('root agents guest required')
@@ -98,6 +98,9 @@ def rebind(sandbox_id: str, generation: str) -> dict[str, object]:
     protected(module)
     identity = {'sandbox_id': sandbox_id, 'generation': generation,
                 'module_sha256': hashlib.sha256(module.read_bytes()).hexdigest()}
+    if runtime_version not in ('2026.9.1', '2026.9.2'):
+        raise ValueError('qualified runtime version required')
+    if runtime_version == '2026.9.2':identity['image'] = controller.IMAGE92
     observe_ready(controller, identity)  # supervisor, registry, image, volume, UID and listeners
     container = 'openshell-default--agent-openclaw-' + sandbox_id
     def docker(*args):
@@ -108,7 +111,7 @@ def rebind(sandbox_id: str, generation: str) -> dict[str, object]:
     docker('exec', '--user', '0:0', container, 'chown', '0:0', '/opt/homecompute-public-dns/public-dns.mjs')
     docker('exec', '--user', '0:0', container, 'chmod', '0555', '/opt/homecompute-public-dns/public-dns.mjs')
     observe_ready(controller, identity)
-    return install({'sandbox_id': sandbox_id, 'generation': generation})
+    return install({key: value for key, value in identity.items() if key != 'module_sha256'})
 
 
 def observe_ready(controller, identity):
@@ -128,13 +131,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--replacement-id')
     parser.add_argument('--replacement-generation')
+    parser.add_argument('--runtime-version', choices=('2026.9.1','2026.9.2'), default='2026.9.1')
     args = parser.parse_args()
     if bool(args.replacement_id) != bool(args.replacement_generation):
         parser.error('both replacement UUIDs required')
     if args.replacement_id:
         if os.geteuid() != 0 or socket.gethostname() != 'agents':
             raise ValueError('root agents guest required')
-        print(json.dumps(rebind(args.replacement_id, args.replacement_generation)))
+        print(json.dumps(rebind(args.replacement_id, args.replacement_generation, args.runtime_version)))
     else:
         print(json.dumps(install()))
 

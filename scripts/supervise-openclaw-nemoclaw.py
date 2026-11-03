@@ -28,6 +28,17 @@ NAME = "agent-openclaw"
 GATEWAY = "nemoclaw-9123"
 REVISION = "26922313bba96184e65c3663b351683ebae9504d"
 IMAGE = "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:51d9fe7e0097931ce96f72f3c7dea522c129c569d91680d2e11989ea70a37d8a"
+# Explicit release profiles permit a reviewed upgrade and its retained rollback.
+# Source publication alone does not select a profile; the guarded lifecycle owns
+# the private environment and CLI wrapper only after native qualification.
+PROFILES = {
+    REVISION: {"tag": "v0.0.129", "core": "2026.9.1", "image": IMAGE,
+               "source": ".nemoclaw/source"},
+    "88fe14f3fb9a0bf72997cce19ec88b5b2ee08391": {
+        "tag": "v0.0.140", "core": "2026.9.2",
+        "image": "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:23b806f148ba3e2c57b923f659fe2e6caa1dded684fc3ae410c41c2e17a73890",
+        "source": ".nemoclaw/releases/v0.0.140-88fe14f3fb9a0bf72997cce19ec88b5b2ee08391"},
+}
 INTERVAL = 60
 WINDOW = 1800
 MAX_ATTEMPTS = 3
@@ -122,7 +133,14 @@ def protobuf_field(data: bytes, number: int, wire: int) -> bytes | int:
 class Supervisor:
     def __init__(self, environment: dict[str, str], *, operator_resume: bool = False) -> None:
         self.env = {key: environment[key] for key in ENV_KEYS if key in environment}
-        for key, value in REQUIRED_ENV.items():
+        self.revision = self.env.get("NEMOCLAW_INSTALL_REF")
+        if self.revision not in PROFILES:
+            raise Refused("unsupported-managed-release")
+        self.profile = PROFILES[self.revision]
+        self.image, self.core_version = self.profile["image"], self.profile["core"]
+        required = {**REQUIRED_ENV, "NEMOCLAW_INSTALL_REF": self.revision,
+                    "NEMOCLAW_INSTALL_TAG": self.profile["tag"]}
+        for key, value in required.items():
             if self.env.get(key) != value:
                 raise Refused("environment-tuple-mismatch")
         self.env.update({key: environment[key] for key in ("HOME", "PATH", "USER", "LOGNAME")
@@ -146,6 +164,9 @@ class Supervisor:
         transaction = self.state / "error-recovery-transaction.json"
         if not operator_resume and transaction.exists() and json.loads(transaction.read_bytes()).get("status") not in ("complete", "refused"):
             raise Refused("error-recovery-needs-operator")
+        upgrade = self.state / "managed-upgrade-transaction.json"
+        if not operator_resume and upgrade.exists() and json.loads(private_file(upgrade)).get("status") not in ("complete", "refused"):
+            raise Refused("managed-upgrade-needs-operator")
         self.stopping = threading.Event()
         self.child: subprocess.Popen | None = None
         self.attempts: list[float] = []
@@ -215,13 +236,13 @@ class Supervisor:
                         "gatewayPort": 9123, "dashboardPort": 18791,
                         "provider": "compatible-endpoint", "model": "automation-moe",
                         "endpointUrl": "http://ai.home.arpa:18080/v1",
-                        "agentVersion": "2026.9.1", "openshellVersion": "0.0.116",
+                        "agentVersion": self.core_version, "openshellVersion": "0.0.116",
                         "lifecycleGeneration": self.generation}
             if any(entry.get(key) != value for key, value in expected.items()):
                 raise Refused("registry-identity-mismatch")
             workload = entry["workload"]
-            if (workload.get("reference") != IMAGE or
-                    workload.get("sourceRevision") != REVISION):
+            if (workload.get("reference") != self.image or
+                    workload.get("sourceRevision") != self.revision):
                 raise Refused("registry-workload-mismatch")
         except (ValueError, KeyError, OSError, TypeError):
             raise Refused("registry-unavailable") from None
@@ -339,7 +360,7 @@ class Supervisor:
             self.report("ready")
 
     def host_gateway_recovery_argv(self) -> list[str]:
-        module = self.home / ".nemoclaw/source/dist/lib/gateway-runtime-action.js"
+        module = self.home / self.profile["source"] / "dist/lib/gateway-runtime-action.js"
         try:
             if module.is_symlink() or not module.is_file():
                 raise Refused("native-gateway-module-unavailable")

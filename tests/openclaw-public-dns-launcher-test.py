@@ -121,6 +121,28 @@ class ControllerTest(unittest.TestCase):
             with patch.object(dns, 'trusted_file', return_value=json.dumps(value).encode()):
                 with self.assertRaises((dns.Refused, ValueError)): dns.manifest()
 
+    def test_new_image_requires_explicit_identity_and_matching_registry_release(self):
+        approved={**IDENTITY,'image':dns.IMAGE92}
+        with patch.object(dns,'trusted_file',return_value=json.dumps(approved).encode()):
+            self.assertEqual(dns.manifest()['image'],dns.IMAGE92)
+        with self.assertRaisesRegex(dns.Refused,'registry-identity'):dns.observe(approved)
+        self.entry['workload']['reference']='ghcr.io/nvidia/nemoclaw/openclaw-sandbox@'+dns.IMAGE92
+        self.write_registry()
+        with self.assertRaisesRegex(dns.Refused,'registry-release'):dns.observe(approved)
+        self.entry['agentVersion']='2026.9.2'
+        self.entry['workload']['sourceRevision']='88fe14f3fb9a0bf72997cce19ec88b5b2ee08391';self.write_registry()
+        self.records[1]=dns.IMAGE92
+        def selected(args):
+            if args[0]=='image':
+                self.assertIn('ghcr.io/nvidia/nemoclaw/openclaw-sandbox@'+dns.IMAGE92,args)
+                return (json.dumps(dns.IMAGE92)+'\n'+json.dumps(['ghcr.io/nvidia/nemoclaw/openclaw-sandbox@'+dns.IMAGE92])+'\n').encode()
+            return self.command(args)
+        with patch.object(dns,'command',side_effect=selected):
+            self.assertEqual(dns.observe(approved).container_id,'a'*64)
+        for image in ('sha256:'+'f'*64,'../unapproved'):
+            with patch.object(dns,'trusted_file',return_value=json.dumps({**IDENTITY,'image':image}).encode()):
+                with self.assertRaisesRegex(dns.Refused,'identity-image'):dns.manifest()
+
     def test_metadata_oversize_symlinks_and_fifo_never_authorize_or_block(self):
         path = self.root / 'metadata'
         path.write_bytes(b'x' * 17)

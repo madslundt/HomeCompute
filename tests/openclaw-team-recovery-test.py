@@ -194,4 +194,14 @@ class TeamRecoveryTests(unittest.TestCase):
             (root/'agents/cook/escape').symlink_to('/etc/passwd')
             with self.assertRaises(ValueError):m.complete_hashes(root)
 
+    def test_core92_recovery_selects_only_its_child_patch_and_exact_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            image='ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:23b806f148ba3e2c57b923f659fe2e6caa1dded684fc3ae410c41c2e17a73890'
+            ctx=Mock(state=Path(tmp),core_version='2026.9.2',image=image)
+            tx=m.RetainedTransaction(ctx,'a'*64)
+            self.assertEqual(tx.image,image)
+            self.assertEqual([p.RUNTIME.name for p in tx.patches],['subagent-announce-output-Cy2Rx3_K.js'])
+            self.assertEqual(m.unreviewed_layer_paths('C '+str(tx.patches[0].RUNTIME)+'\n',tx.patches),[])
+            with self.assertRaises(m.BASE.RecoveryRefused):m.RetainedTransaction(Mock(state=Path(tmp),image='unqualified-image'),'a'*64)
+
 if __name__=='__main__':unittest.main()

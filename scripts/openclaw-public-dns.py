@@ -24,6 +24,7 @@ IDENTITY = DIRECTORY / 'identity.json'
 REGISTRY = Path('/home/hermes-operator/.nemoclaw/gateways/9123/sandboxes.json')
 SUPERVISOR_IDENTITY = Path('/etc/homecompute-openclaw/supervisor-identity.env')
 IMAGE = 'sha256:51d9fe7e0097931ce96f72f3c7dea522c129c569d91680d2e11989ea70a37d8a'
+IMAGE92 = 'sha256:23b806f148ba3e2c57b923f659fe2e6caa1dded684fc3ae410c41c2e17a73890'
 NODE = '/usr/local/bin/node'
 MODULE = '/opt/homecompute-public-dns/public-dns.mjs'
 NAMESPACE = 'nemoclaw-openshell-docker-gateway-9123-eabebb0f51d0'
@@ -62,12 +63,14 @@ def trusted_file(path: Path, *, digest: str | None = None) -> bytes:
 
 def manifest() -> dict[str, str]:
     value = json.loads(trusted_file(IDENTITY))
-    if set(value) != {'sandbox_id', 'generation', 'module_sha256'}:
+    if set(value) not in ({'sandbox_id', 'generation', 'module_sha256'}, {'sandbox_id', 'generation', 'module_sha256', 'image'}):
         raise Refused('identity-fields')
     if any(str(uuid.UUID(value[key])) != value[key] for key in ('sandbox_id', 'generation')):
         raise Refused('identity-uuid')
     if not re.fullmatch(r'[0-9a-f]{64}', value['module_sha256']):
         raise Refused('identity-digest')
+    if value.get('image', IMAGE) not in (IMAGE, IMAGE92):
+        raise Refused('identity-image')
     return value
 
 
@@ -144,6 +147,9 @@ def owns_gateway_listeners(pid: int, *, proc_root: Path = Path('/proc')) -> bool
 
 
 def observe(identity: dict[str, str]) -> Snapshot:
+    expected_image = identity.get('image', IMAGE)
+    if expected_image not in (IMAGE, IMAGE92):
+        raise Refused('identity-image')
     expected_env = ('OPENCLAW_EXPECTED_SANDBOX_ID=' + identity['sandbox_id'] + '\n'
                     'OPENCLAW_EXPECTED_GENERATION=' + identity['generation'] + '\n')
     if bounded_observation(SUPERVISOR_IDENTITY, 1024).decode() != expected_env:
@@ -152,20 +158,22 @@ def observe(identity: dict[str, str]) -> Snapshot:
     if (entry.get('lifecycleGeneration') != identity['generation'] or
             entry.get('gatewayName') != 'nemoclaw-9123' or entry.get('name') != 'agent-openclaw' or
             entry.get('agent') != 'openclaw' or entry.get('model') != 'automation-moe' or
-            entry.get('workload', {}).get('reference') != 'ghcr.io/nvidia/nemoclaw/openclaw-sandbox@' + IMAGE):
+            entry.get('workload', {}).get('reference') != 'ghcr.io/nvidia/nemoclaw/openclaw-sandbox@' + expected_image):
         raise Refused('registry-identity-drift')
+    if expected_image == IMAGE92 and (entry.get('agentVersion') != '2026.9.2' or entry.get('workload', {}).get('sourceRevision') != '88fe14f3fb9a0bf72997cce19ec88b5b2ee08391'):
+        raise Refused('registry-release-drift')
     container = 'openshell-default--agent-openclaw-' + identity['sandbox_id']
     template = '{{json .Id}}\n{{json .Image}}\n{{json .State}}\n{{json .Config.Labels}}\n{{json .Mounts}}'
     lines = command(['inspect', '--format', template, container]).splitlines()
     if len(lines) != 5:
         raise Refused('container-metadata')
     identifier, image, state, labels, mounts = map(json.loads, lines)
-    image_records = command(['image', 'inspect', 'ghcr.io/nvidia/nemoclaw/openclaw-sandbox@' + IMAGE,
+    image_records = command(['image', 'inspect', 'ghcr.io/nvidia/nemoclaw/openclaw-sandbox@' + expected_image,
                              '--format', '{{json .Id}}\n{{json .RepoDigests}}']).splitlines()
     if len(image_records) != 2:
         raise Refused('image-metadata')
     image_id, digests = map(json.loads, image_records)
-    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image_id) or ('ghcr.io/nvidia/nemoclaw/openclaw-sandbox@' + IMAGE) not in digests:
+    if not re.fullmatch(r'sha256:[0-9a-f]{64}', image_id) or ('ghcr.io/nvidia/nemoclaw/openclaw-sandbox@' + expected_image) not in digests:
         raise Refused('image-digest-drift')
     expected_labels = {'openshell.ai/sandbox-id': identity['sandbox_id'],
                        'openshell.ai/sandbox-name': 'agent-openclaw',

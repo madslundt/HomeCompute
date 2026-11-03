@@ -326,5 +326,40 @@ class SupervisionTests(unittest.TestCase):
         self.assertEqual(diagnostic.stat().st_mode & 0o777, 0o600)
 
 
+class ManagedReleaseFences(unittest.TestCase):
+    def environment(self, home):
+        return dict(MOD.REQUIRED_ENV, HOME=str(home), PATH="/usr/bin:/bin",
+                    NEMOCLAW_INSTALL_REF="88fe14f3fb9a0bf72997cce19ec88b5b2ee08391",
+                    NEMOCLAW_INSTALL_TAG="v0.0.140", OPENCLAW_EXPECTED_SANDBOX_ID=ID,
+                    OPENCLAW_EXPECTED_GENERATION=GEN,
+                    OPENCLAW_NEMOCLAW_MODEL_KEY_FILE="/etc/homecompute-openclaw/secrets/litellm-agent-openclaw")
+
+    def test_registry_rejects_cross_version_image_or_core(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=MOD.Supervisor(self.environment(tmp))
+            entry={"name":MOD.NAME,"agent":"openclaw","gatewayName":MOD.GATEWAY,"gatewayPort":9123,
+                   "dashboardPort":18791,"provider":"compatible-endpoint","model":"automation-moe",
+                   "endpointUrl":"http://ai.home.arpa:18080/v1","agentVersion":"2026.9.1",
+                   "openshellVersion":"0.0.116","lifecycleGeneration":GEN,
+                   "workload":{"reference":MOD.IMAGE,"sourceRevision":MOD.REVISION}}
+            ctx.registry.parent.mkdir(parents=True)
+            def save():ctx.registry.write_text(json.dumps({"sandboxes":{MOD.NAME:entry}}))
+            save()
+            with self.assertRaisesRegex(MOD.Refused,"registry-identity"):ctx.check_registry()
+            entry["agentVersion"]="2026.9.2";save()
+            with self.assertRaisesRegex(MOD.Refused,"registry-workload"):ctx.check_registry()
+            entry["workload"]={"reference":ctx.image,"sourceRevision":ctx.revision};save();ctx.check_registry()
+
+    def test_mixed_version_environment_and_active_upgrade_are_fenced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env=self.environment(tmp)
+            with self.assertRaisesRegex(MOD.Refused,"environment-tuple"):
+                MOD.Supervisor({**env,"NEMOCLAW_INSTALL_TAG":"v0.0.129"})
+            ctx=MOD.Supervisor(env);journal=ctx.state/"managed-upgrade-transaction.json"
+            journal.write_text(json.dumps({"status":"failed"}));journal.chmod(0o600)
+            with self.assertRaisesRegex(MOD.Refused,"managed-upgrade-needs-operator"):MOD.Supervisor(env)
+            MOD.Supervisor(env,operator_resume=True)
+
+
 if __name__ == "__main__":
     unittest.main()

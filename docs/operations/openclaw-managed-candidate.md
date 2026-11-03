@@ -205,3 +205,21 @@ inspection after recovery; abort must settle shutdown. No real event, account,
 claim, transcript or message delivery is used in this channel-specific fixture.
 The actual active package version is retained in the private receipt; do not
 assume the workload image upgraded a separately installed channel package.
+
+The first restored-VM attempt reached authenticated baseline health, then stopped
+before the upgrade when native129 stop returned a transport error. The fixture
+now checks the exact sandbox identity and independently requires both native
+`Stopped` and an exited/dead Docker container. A successful command alone is not
+quiescence, and a nonzero result cannot hide a completed stop. Ambiguous, running
+or changed identities still refuse before image replacement. Failure receipts
+retain bounded private native startup diagnostics for the next reviewed attempt.
+
+Supervisor and manual recovery source now recognize both exact release profiles;
+this does not select or deploy the candidate. The configured commit/tag, core
+version and workload digest must agree, and host recovery resolves the matching
+CLI source tree. An unfinished managed-upgrade journal fences automatic recovery.
+The9.2 retained recovery recreates only the qualified child port and retires the
+old yield overlay; the9.1 rollback retains both legacy ports. The queue installer
+also accepts an explicit `--core-version` when a separately installed compatible
+Mattermost version is retained. Profile selection remains part of the guarded
+production lifecycle after native qualification.

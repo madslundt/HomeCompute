@@ -29,7 +29,7 @@ def module(name):
  spec=importlib.util.spec_from_file_location(name,ROOT/'scripts'/(name+'.py'));m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 
 
-def run(argv,label,*,env=None,user=False,timeout=180):
+def run(argv,label,*,env=None,user=False,timeout=180,check=True):
  global COUNTER
  COUNTER+=1;out=WORK/(str(COUNTER)+'-'+label+'.log')
  kwargs={}
@@ -45,7 +45,7 @@ def run(argv,label,*,env=None,user=False,timeout=180):
    try:process.wait(timeout=10)
    except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait()
    raise ValueError('timeout:'+label) from None
- if process.returncode:raise ValueError('failed:'+label)
+ if check and process.returncode:raise ValueError('failed:'+label)
  return out.read_bytes()
 
 
@@ -64,6 +64,26 @@ def environment(version,assets):
 
 
 def cli(version,*args):return [str(HOME/'.nvm/versions/node/v22.23.3/bin/node'),str(WORK/('nemoclaw-'+version)/'bin/nemoclaw.js'),*args]
+
+
+def stop_native(version,env,label):
+ query=[str(HOME/'.local/bin/openshell'),'sandbox','get','-g','nemoclaw-9123','agent-openclaw','-o','json']
+ before=json.loads(run(query,label+'-identity',env=env,user=True,timeout=30))
+ if before.get('name')!='agent-openclaw' or before.get('phase')!='Ready':raise ValueError('exact-ready-stop-target-required')
+ expected=str(uuid.UUID(before['id']))
+ run(cli(version,'agent-openclaw','stop'),label,env=env,user=True,check=False)
+ deadline=time.monotonic()+45
+ while time.monotonic()<deadline:
+  raw=run(query,label+'-observation',env=env,user=True,timeout=15,check=False)
+  try:after=json.loads(raw)
+  except ValueError:time.sleep(2);continue
+  if after.get('id')!=expected or after.get('name')!='agent-openclaw':raise ValueError('stop-identity-changed')
+  if after.get('phase')=='Stopped':
+   status=subprocess.check_output(['docker','inspect','--format','{{.State.Status}}','openshell-default--agent-openclaw-'+expected],timeout=15).decode().strip()
+   if status not in ('exited','dead'):raise ValueError('stopped-native-container-not-quiescent')
+   return
+  time.sleep(2)
+ raise ValueError('native-stop-not-positively-stopped')
 
 
 def container():
@@ -225,7 +245,7 @@ def main():
   restore.gateway_health(lambda _:None)
   env=environment('0.0.129',assets)
   run(['systemctl','--user','stop','homecompute-openclaw-supervisor.service'],'stop-clone-watchdog',env=env,user=True)
-  run(cli('0.0.129','agent-openclaw','stop'),'pause-clone-native',env=env,user=True)
+  stop_native('0.0.129',env,'pause-clone-native')
   original=json.loads((STATE/'openclaw.json').read_bytes());paused=copy.deepcopy(original)
   paused.setdefault('cron',{})['enabled']=False
   for name,value in paused.get('channels',{}).items():
@@ -249,7 +269,7 @@ def main():
    if image not in (prep.IMAGES[version],prep.IMAGES[version].split('@')[1]):raise ValueError(label+'-image-mismatch')
    install_ports(core)
    mm_runtime,mm_sha,mm_version=mattermost_port(version,env)
-   run(cli(version,'agent-openclaw','stop'),label+'-stop-for-ports',env=env,user=True)
+   stop_native(version,env,label+'-stop-for-ports')
    run(cli(version,'agent-openclaw','start'),label+'-start-with-ports',env=env,user=True,timeout=300)
    health(version,env)
    if label=='upgrade':
@@ -273,7 +293,9 @@ def main():
  except Exception as error:
   result['error_category']=str(error) if isinstance(error,ValueError) else type(error).__name__
   logs=sorted(WORK.glob('*.log'),key=lambda p:p.stat().st_mtime_ns) if WORK.exists() else []
-  if logs and 'restore' in locals():result['private_diagnostic']=restore.redact_diagnostic(logs[-1].read_text(errors='replace')[-8192:])
+  if logs and 'restore' in locals():
+   result['private_diagnostic']=restore.redact_diagnostic(logs[-1].read_text(errors='replace')[-8192:])
+   result['private_startup_diagnostics']=restore.private_diagnostics({})
  with open('/dev/ttyS0','w') as f:f.write('\nHC_OPENCLAW_UPGRADE_'+nonce+' '+json.dumps(result,sort_keys=True)+'\n')
 
 

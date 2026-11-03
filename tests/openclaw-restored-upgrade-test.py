@@ -41,6 +41,20 @@ class RestoredUpgrade(unittest.TestCase):
   data['hermes']['source']['cohort']='different'
   with self.assertRaisesRegex(ValueError,'cohort mismatch'):m.ASSETS.catalog_valid(data,'0.0.140')
 
+ def test_stop_accepts_only_independent_exact_stopped_and_exited_evidence(self):
+  identifier='aabbccdd-0000-4000-8000-000000000001'
+  ready=json.dumps({'name':'agent-openclaw','id':identifier,'phase':'Ready'}).encode()
+  stopped=json.dumps({'name':'agent-openclaw','id':identifier,'phase':'Stopped'}).encode()
+  for status,accepted in ((b'exited',True),(b'running',False)):
+   with self.subTest(status=status),patch.object(w,'run',side_effect=[ready,b'native command error',stopped]),patch.object(w.subprocess,'check_output',return_value=status):
+    if accepted:w.stop_native('0.0.129',{},'synthetic-stop')
+    else:
+     with self.assertRaisesRegex(ValueError,'not-quiescent'):w.stop_native('0.0.129',{},'synthetic-stop')
+  changed=json.dumps({'name':'agent-openclaw','id':'aabbccdd-0000-4000-8000-000000000002','phase':'Stopped'}).encode()
+  with patch.object(w,'run',side_effect=[ready,b'error',changed]),patch.object(w.subprocess,'check_output') as inspect:
+   with self.assertRaisesRegex(ValueError,'identity-changed'):w.stop_native('0.0.129',{},'synthetic-stop')
+   inspect.assert_not_called()
+
  def test_handoff_fixture_requires_received_child_evidence(self):
   def request(message,tools=()):
    data={'messages':[{'role':'user','content':message}],'tools':[{'function':{'name':name}} for name in tools]}

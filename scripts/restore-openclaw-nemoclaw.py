@@ -226,6 +226,10 @@ def logical_conversations(directory: Path) -> dict[str, Any]:
 class Transaction:
     def __init__(self, context: Any) -> None:
         self.ctx = context
+        selected = getattr(context, "image", None)
+        self.image = selected if isinstance(selected, str) else IMAGE
+        if self.image not in (IMAGE, "ghcr.io/nvidia/nemoclaw/openclaw-sandbox@sha256:23b806f148ba3e2c57b923f659fe2e6caa1dded684fc3ae410c41c2e17a73890"):
+            raise RecoveryRefused("unsupported-managed-recovery-image")
         self.path = context.state / "error-recovery-transaction.json"
         self.record: dict[str, Any] = {}
 
@@ -257,7 +261,7 @@ class Transaction:
         fields = '{"status":{{json .State.Status}},"image":{{json .Config.Image}},"memory":{{.HostConfig.Memory}},"swap":{{.HostConfig.MemorySwap}},"cpus":{{.HostConfig.NanoCpus}},"gpu":{{json .HostConfig.DeviceRequests}},"mounts":{{json .Mounts}}}'
         data = json.loads(self.command(["/usr/bin/docker", "inspect", "--format", fields,
                                        self.ctx.container], "transaction-identity"))
-        if (data["image"] not in (IMAGE, "sha256:" + IMAGE.rsplit("sha256:", 1)[1]) or
+        if (data["image"] not in (self.image, "sha256:" + self.image.rsplit("sha256:", 1)[1]) or
                 data["memory"] != MEMORY or data["swap"] != MEMORY
                 or data["cpus"] != CPUS * 1_000_000_000 or data["gpu"]):
             raise RecoveryRefused("container-image-cpu-memory-gpu-mismatch")
@@ -315,7 +319,7 @@ print("config-owner-mode-verified")'''
                       "--user", "0:0", "--cap-drop", "ALL", "--cap-add", "CHOWN",
                       "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER",
                       "--security-opt", "no-new-privileges", "--entrypoint", "/usr/bin/python3",
-                      "--mount", f"type=bind,src={VOLUME},dst=/state", IMAGE, "-c", code],
+                      "--mount", f"type=bind,src={VOLUME},dst=/state", self.image, "-c", code],
                      label, timeout=180)
 
     def execute(self) -> tuple[str, str]:

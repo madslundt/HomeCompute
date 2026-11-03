@@ -21,6 +21,7 @@ import stat
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,7 +36,7 @@ SUPERVISOR = module('supervise-openclaw-nemoclaw')
 PATCHES = [module('setup-openclaw-child-results'), module('setup-openclaw-yield-acknowledgment')]
 
 
-def unreviewed_layer_paths(raw):
+def unreviewed_layer_paths(raw, patches=None):
     rows = [(line[:1], line[2:]) for line in raw.splitlines() if len(line) > 2]
     scratch = [(kind, path) for kind, path in rows if path.startswith('/var/tmp/')]
     # setup-openclaw-public-browser.py keeps numbered before-images here.
@@ -47,7 +48,7 @@ def unreviewed_layer_paths(raw):
     roots = ('/tmp', '/etc', '/usr/local/share/ca-certificates', '/usr/local/share/nemoclaw',
              '/run', '/sandbox', '/opt/openshell', '/opt/homecompute-public-dns',
              '/var/lib/nemoclaw', '/var/log')
-    approved = {str(p.RUNTIME) for p in PATCHES}
+    approved = {str(p.RUNTIME) for p in (PATCHES if patches is None else patches)}
     unexpected = [path for kind, path in rows if kind == 'C'
                   and not any(path == x or x.startswith(path + '/') for x in approved)
                   and not any(path == x or path.startswith(x + '/') or x.startswith(path + '/') for x in roots)
@@ -171,6 +172,11 @@ class RetainedTransaction(BASE.Transaction):
     def __init__(self, context, expected):
         super().__init__(context)
         self.expected = expected
+        self.patches = list(PATCHES)
+        if getattr(context, "core_version", None) == "2026.9.2":
+            child = module("setup-openclaw-child-results")
+            runtime, _, _ = child.runtime_profile("2026.9.2")
+            self.patches = [SimpleNamespace(RUNTIME=runtime, overlay=lambda data: child.overlay(data, "2026.9.2"))]
         self.allowed_configs = {expected}
         self.policy = None
         self.previous_auth = None
@@ -271,7 +277,7 @@ class RetainedTransaction(BASE.Transaction):
             raise ValueError('resume-complete-backup-hash-drift')
         if not (root / 'permissions.json').is_file():
             raise ValueError('resume-original-permissions-required')
-        for patch in PATCHES:
+        for patch in self.patches:
             data = (root / patch.RUNTIME.name).read_bytes()
             if patch.overlay(data) != data:
                 raise ValueError('resume-qualified-runtime-patches-required')
@@ -348,7 +354,7 @@ q=r/'openclaw.json';os.chown(q,998,998);os.chmod(q,0o600)
         self.volume_command(code, 'restore-original-permissions')
         # Recreate the two already-installed, hash-qualified native fixes from
         # their tracked patch builders, rather than copying an opaque image layer.
-        for patch in PATCHES:
+        for patch in self.patches:
             target = str(patch.RUNTIME)
             path = backup.parent / patch.RUNTIME.name
             data = path.read_bytes()
@@ -363,7 +369,7 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         raw = self.command(['/usr/bin/docker', 'run', '--rm', '--pull', 'never', '--network', 'none', '--read-only',
                             '--user', '0:0', '--cap-drop', 'ALL', '--cap-add', 'DAC_OVERRIDE', '--security-opt', 'no-new-privileges',
                             '--entrypoint', '/usr/bin/python3', '--mount', 'type=bind,src=' + BASE.VOLUME + ',dst=/state,readonly',
-                            BASE.IMAGE, '-c', code], 'capture-state-permissions', timeout=180)
+                            self.image, '-c', code], 'capture-state-permissions', timeout=180)
         self.permissions = json.loads(raw)
         # The base transaction captures the complete state, then calls our
         # verifier. Stage sidecars at that seam, before its native destroy edge.
@@ -376,7 +382,7 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         rc, raw = self.ctx.run(['/usr/bin/docker', 'diff', self.ctx.container], 'retained-layer-inventory', timeout=90)
         if rc:
             raise ValueError('layer-inventory-unavailable')
-        if unreviewed_layer_paths(raw.decode()):
+        if unreviewed_layer_paths(raw.decode(), self.patches):
             raise ValueError('unreviewed-runtime-layer-change')
         self.browser_scratch = any(line[2:].startswith('/var/tmp/') for line in raw.decode().splitlines())
 
@@ -387,7 +393,7 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
                 self.command(['/usr/bin/docker', 'cp', self.ctx.container + ':/var/tmp',
                               str(backup_root / 'browser-installer-scratch')], 'preserve-browser-installer-scratch')
             BASE.atomic_json(backup_root / 'permissions.json', self.permissions)
-            for patch in PATCHES:
+            for patch in self.patches:
                 target = backup_root / patch.RUNTIME.name
                 self.command(['/usr/bin/docker', 'cp', self.ctx.container + ':' + str(patch.RUNTIME), str(target)], 'capture-qualified-runtime-patch')
                 if patch.overlay(target.read_bytes()) != target.read_bytes():
@@ -448,7 +454,8 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
             if any(observed.get(k) != v for k,v in hashes.items() if k.startswith(prefix)):
                 raise ValueError('retained-workspace-drift')
         self.command(['sudo', '/usr/bin/python3', str(ROOT / 'scripts/setup-openclaw-public-dns.py'),
-                      '--replacement-id', self.ctx.uuid, '--replacement-generation', self.ctx.generation],
+                      '--replacement-id', self.ctx.uuid, '--replacement-generation', self.ctx.generation,
+                      '--runtime-version', '2026.9.2' if getattr(self.ctx,'core_version',None)=='2026.9.2' else '2026.9.1'],
                      'rebind-existing-native-public-dns', timeout=120)
         self.command(['sudo', 'systemctl', 'daemon-reload'], 'dns-unit-reload')
         self.command(['sudo', 'systemctl', 'restart', 'homecompute-public-dns.service'], 'dns-replacement-start')

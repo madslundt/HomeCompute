@@ -125,6 +125,7 @@ def main() -> None:
     parser.add_argument('--expected-safety-sha256')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--runtime-version', choices=('2026.9.1','2026.9.2'), default='2026.9.1')
+    parser.add_argument('--core-version', choices=('2026.9.1','2026.9.2'), help='Explicit core profile when retaining a compatible channel package')
     parser.add_argument('--plugin-root', type=Path)
     args = parser.parse_args()
     plugin = plugin_root(args.runtime_version, args.plugin_root)
@@ -136,8 +137,9 @@ def main() -> None:
     before, index = read(runtime_path), read(index_path, protected=True)
     after, after_index = overlay(before, args.runtime_version), safety_overlay(index)
     original_module = read(args.source_module)
-    module = activity_module(original_module, args.runtime_version)
-    report = {'runtime_version':args.runtime_version,'module_source_sha256':digest(original_module),'runtime_before_sha256': digest(before), 'runtime_after_sha256': digest(after),
+    core_version = args.core_version or args.runtime_version
+    module = activity_module(original_module, core_version)
+    report = {'runtime_version':args.runtime_version,'core_version':core_version,'module_source_sha256':digest(original_module),'runtime_before_sha256': digest(before), 'runtime_after_sha256': digest(after),
               'safety_before_sha256': digest(index), 'safety_after_sha256': digest(after_index),
               'module_sha256': digest(module), 'applied': False}
     if args.apply:
