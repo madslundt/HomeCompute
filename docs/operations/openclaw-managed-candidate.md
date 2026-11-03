@@ -67,7 +67,11 @@ its original dependencies. Genuine tool-warning metadata exercises the native
 yield acknowledgment, ordinary-warning, terminal-answer and quiet-delivery
 rules. The production yield overlay is not applied. Missing imports, assertions
 or execution fail the separate gate; local syntax/unit checks do not count as
-native success. No gateway, channel or model is started by these regressions.
+native success. The native ingress monitor is also exercised with an empty in-memory queue:
+unavailable readiness leaves all queue methods untouched, recovery reaches native
+queue inspection, and an explicit controller abort settles the pump. This does
+not establish Mattermost patch wiring or real delivery. No gateway, channel or
+model is started by these regressions.
 
 `artifact_checks_passed=true` is explicitly **not production qualification**.
 Native NemoClaw fixture-provider onboarding/rebuild/rollback, actual SDK/safety

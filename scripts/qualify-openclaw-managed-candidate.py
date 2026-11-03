@@ -197,7 +197,8 @@ def child_evidence_ok(observed: dict) -> bool:
 def native_regressions_ok(observed: dict) -> bool:
     fixture = observed.get('native_regression_fixture', {})
     return all(fixture.get(key) is True for key in ('executed', 'native_loader', 'native_safety_policy',
-        'native_hook_failure_closed', 'native_hook_veto_sticky', 'native_yield_acknowledgment',
+        'native_hook_failure_closed', 'native_hook_veto_sticky', 'native_ingress_gate',
+        'native_ingress_shutdown', 'native_yield_acknowledgment',
         'ordinary_warning_preserved', 'terminal_answer_preserved', 'quiet_ack_rules_preserved'))
 
 

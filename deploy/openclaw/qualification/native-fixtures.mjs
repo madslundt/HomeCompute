@@ -12,6 +12,7 @@ const hashes = {
   'plugin-module-loader-cache-lf3kAaBw.js': 'e09d22fd6e1877f388c44be8e837dec5ebb0cb8002d29ddf41c26ef7f84c0d08',
   'hook-runner-global-0kfmMG4T.js': '7f9473df33a148d511815fca56b1349cc5525e516680a71da22ca2cc863d047d',
   'agent-runner.runtime-cwyzm408.js': '135a52075af80beb1cc5fd22a7e72324308f099208b00de00fb13967bf923911',
+  'ingress-monitor--JQILMnk.js': '153485e44ec82352c72c79662bdf767abca222d739e9f82908aa3b3be02ee251',
   'reply-payload-DahKk-7n.js': '5d21073c8a5e1e35a007a6d8e5bbf180063db67d81892d4d01f0619e2dd748f2',
 };
 for (const [name, hash] of Object.entries(hashes)) {
@@ -57,6 +58,39 @@ registry.typedHooks.unshift({ pluginId: 'fixture', hookName: 'before_tool_call',
   handler: () => { throw new Error('Synthetic safety failure'); } });
 await assert.rejects(() => runner().runBeforeToolCall(navigation, context('researcher')));
 reset();
+
+// Exercise the native ingress pump with an empty in-memory queue. No readiness
+// HTTP request, real inbox, claim, transcript or delivery is used.
+const { n: ingress } = await load('ingress-monitor--JQILMnk.js');
+const { runWhenTextReady } = await import(pathToFileURL(safety + '/llm-queue.mjs').href);
+const delay = () => new Promise(resolve => setTimeout(resolve, 2));
+for (const resume of [true, false]) {
+  let ready = false;
+  const calls = [], errors = [];
+  const abort = new AbortController();
+  const queue = Object.fromEntries(['prune', 'recoverStaleClaims', 'listPending', 'listClaims'].map(name =>
+    [name, async () => { calls.push(name); return []; }]));
+  const monitor = ingress({ queue, abortSignal: abort.signal, pollIntervalMs: 60000,
+    payload: { version: 1 }, onError: error => errors.push(error),
+    runPumpTask: work => runWhenTextReady(work, abort.signal, async () => ready, delay) });
+  try {
+    monitor.start();
+    await delay(); await delay();
+    assert.deepEqual(calls, [], 'offline readiness must precede native queue inspection');
+    if (resume) {
+      ready = true;
+      const deadline = Date.now() + 2000;
+      while (!calls.includes('listClaims') && !errors.length && Date.now() < deadline) await delay();
+      assert.ok(calls.includes('listPending') && calls.includes('listClaims'));
+      await monitor.waitForPumpIdle();
+    }
+  } finally {
+    abort.abort();
+    await monitor.stop();
+  }
+  assert.deepEqual(errors, []);
+  assert.equal(monitor.isStopped(), true);
+}
 
 // Expose two internal dispatcher entry points only in an ephemeral module copy.
 // All sibling modules resolve to the original immutable runtime via symlinks.
@@ -106,5 +140,6 @@ for (const overrides of [{ isInteractive: false }, { isHeartbeat: true }, { sile
   assert.equal(ack({ ...ackInput, ...overrides }), undefined);
 }
 console.log(JSON.stringify({ executed: true, native_loader: true, native_safety_policy: true,
-  native_hook_failure_closed: true, native_hook_veto_sticky: true, native_yield_acknowledgment: true,
+  native_hook_failure_closed: true, native_hook_veto_sticky: true, native_ingress_gate: true,
+  native_ingress_shutdown: true, native_yield_acknowledgment: true,
   ordinary_warning_preserved: true, terminal_answer_preserved: true, quiet_ack_rules_preserved: true }));

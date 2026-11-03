@@ -33,7 +33,8 @@ class CandidateTest(unittest.TestCase):
 
     def test_missing_or_partial_native_regressions_cannot_pass(self):
         keys=('executed','native_loader','native_safety_policy','native_hook_failure_closed',
-              'native_hook_veto_sticky','native_yield_acknowledgment','ordinary_warning_preserved',
+              'native_hook_veto_sticky','native_ingress_gate','native_ingress_shutdown',
+              'native_yield_acknowledgment','ordinary_warning_preserved',
               'terminal_answer_preserved','quiet_ack_rules_preserved')
         fixture={key:True for key in keys}
         self.assertTrue(m.native_regressions_ok({'native_regression_fixture':fixture}))
