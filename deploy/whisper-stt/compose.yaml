@@ -238,13 +238,14 @@ services:
 
   whisper-http:
     container_name: gb10-whisper-http
-    image: homecompute/stt-http:2.0.0
+    image: ${WHISPER_HTTP_IMAGE:-homecompute/stt-http:2.0.0}
     build:
       context: ../../scripts
       dockerfile: ../deploy/hviske-stt/Dockerfile.http-relay
     restart: unless-stopped
     init: true
     user: "65532:65532"
+    group_add: ["10001"]
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -262,6 +263,8 @@ services:
       STT_MAX_CONNECTIONS: "1"
       STT_UPSTREAM_TIMEOUT_SECONDS: "120"
     tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=32m"]
+    volumes:
+      - ${WHISPER_CPP_ROLE_API_KEY_FILE:?Set WHISPER_CPP_ROLE_API_KEY_FILE}:/run/secrets/whisper_cpp_api_key:ro
     healthcheck:
       test: [CMD, python3, /opt/homecompute/openai-stt-relay.py, --probe-upstream]
       interval: 20s
@@ -272,6 +275,54 @@ services:
       options: {max-size: "5m", max-file: "2"}
     depends_on:
       whisper-primary: {condition: service_healthy}
+    networks: [edge, inference]
+
+  # Kept out of default startup. The guarded CPP promotion starts this dedicated
+  # listener after renaming the retained original relay; rollback restores that
+  # exact container instead of recreating it from a potentially newer image.
+  whisper-cpp-http:
+    profiles: [cpp-production]
+    container_name: gb10-whisper-cpp-http
+    image: ${WHISPER_HTTP_IMAGE:-homecompute/stt-http:2.0.0}
+    build:
+      context: ../../scripts
+      dockerfile: ../deploy/hviske-stt/Dockerfile.http-relay
+    # The lifecycle sets restart=unless-stopped only after both authenticated
+    # smoke paths pass and the model promotion is journaled.
+    restart: "no"
+    init: true
+    user: "65532:65532"
+    group_add: ["10001"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 2
+    mem_limit: 512m
+    pids_limit: 64
+    ports: ["127.0.0.1:8007:8007", "127.0.0.1:8003:8007"]
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      STT_RELAY_PORT: "8007"
+      STT_MODEL: whisper-large-v3
+      STT_UPSTREAM_BASE_URL: http://whisper-primary:8000
+      STT_MAX_UPLOAD_BYTES: "10000000"
+      STT_MAX_AUDIO_SECONDS: "60"
+      STT_MAX_CONNECTIONS: "1"
+      STT_UPSTREAM_TIMEOUT_SECONDS: "120"
+      STT_RECORDING_MAX_UPLOAD_BYTES: "40000000"
+      STT_RECORDING_MAX_AUDIO_SECONDS: "1200"
+      STT_RECORDING_UPSTREAM_TIMEOUT_SECONDS: "1800"
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=32m"]
+    volumes:
+      - ${WHISPER_CPP_ROLE_API_KEY_FILE:?Set WHISPER_CPP_ROLE_API_KEY_FILE}:/run/secrets/whisper_cpp_api_key:ro
+    healthcheck:
+      test: [CMD, python3, /opt/homecompute/openai-stt-relay.py, --probe-upstream]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: local
+      options: {max-size: "5m", max-file: "2"}
     networks: [edge, inference]
 
 networks:

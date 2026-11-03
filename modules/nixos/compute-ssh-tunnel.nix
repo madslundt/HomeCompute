@@ -165,6 +165,10 @@ in
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18005 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18007 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+        # The dedicated long-recording endpoint uses this same existing
+        # loopback-bound Spark relay forward; only Daythread's Caddy edge may
+        # reach it directly. Ordinary STT continues through LiteLLM as before.
+        iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.2/32 -d 172.28.200.1/32 -p tcp --dport 18007 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.4/32 -d 172.28.200.1/32 -p tcp --dport 18201 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -s 172.28.200.5/32 -d 172.28.200.1/32 -p tcp --dport 18301 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -A HC-COMPUTE-TUNNEL -j REJECT
@@ -174,6 +178,7 @@ in
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18005 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18006 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.3/32 -d 172.28.200.1/32 -p tcp --dport 18007 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+        iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.2/32 -d 172.28.200.1/32 -p tcp --dport 18007 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.4/32 -d 172.28.200.1/32 -p tcp --dport 18201 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -s 172.28.200.5/32 -d 172.28.200.1/32 -p tcp --dport 18301 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
         iptables -w -C HC-COMPUTE-TUNNEL -j REJECT

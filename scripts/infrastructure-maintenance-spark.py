@@ -15,6 +15,36 @@ COMMAND = '/usr/local/libexec/homecompute-infrastructure-maintenance-spark'
 CONTROLLER = '/opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py'
 FIXES = {'restart-plapre': 'homecompute-plapre-plapre-primary-1',
          'restart-whisper': 'gb10-whisper-primary', 'restart-qwen': 'qwen38-flash-ultrafast'}
+WHISPER_STATE = Path('/var/lib/homecompute/whisper-stt')
+CPP_WHISPER = 'gb10-whisper-cpp-cuda-candidate'
+CPP_PROMOTED_IMAGE = 'sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3'
+
+
+def whisper_restart_target(state_dir=WHISPER_STATE):
+    """Never maintenance-restart the stopped vLLM owner beside a live CPP model."""
+    runtime = state_dir / 'runtime-candidate.json'
+    cuda = state_dir / 'cuda-candidate.json'
+    for path in (runtime, cuda):
+        if not path.exists() and not path.is_symlink():
+            continue
+        info = path.lstat()
+        if path.is_symlink() or info.st_uid != 0 or info.st_mode & 0o022 or not path.is_file():
+            raise ValueError('Whisper maintenance owner state is unsafe')
+        try:
+            journal = json.loads(path.read_text())
+        except (OSError, ValueError):
+            raise ValueError('Whisper maintenance owner state is unavailable') from None
+        state = journal.get('state') if isinstance(journal, dict) else None
+        if path == runtime and state != 'rolled-back':
+            raise ValueError('Rollback the active Whisper runtime candidate before maintenance restart')
+        if path == cuda and state == 'promoted':
+            if (journal.get('promotion') is not True or journal.get('candidate_exposed') is not True or
+                    journal.get('candidate_image_id') != CPP_PROMOTED_IMAGE):
+                raise ValueError('Promoted Whisper image identity is not qualified')
+            return CPP_WHISPER
+        if path == cuda and state != 'rolled-back':
+            raise ValueError('Rollback the active Whisper.cpp candidate before maintenance restart')
+    return FIXES['restart-whisper']
 
 
 def arguments(command):
@@ -65,7 +95,8 @@ def prepare_component(controller, component):
         directory = controller.state_dir / 'prepared'
         directory.mkdir(mode=0o700, exist_ok=True)
         path = directory / (uuid.uuid4().hex + '.json')
-        result = subprocess.run(['/usr/local/libexec/homecompute-container-maintenance', 'prepare', FIXES[component], '--output', str(path)],
+        target = whisper_restart_target() if component == 'restart-whisper' else FIXES[component]
+        result = subprocess.run(['/usr/local/libexec/homecompute-container-maintenance', 'prepare', target, '--output', str(path)],
                                 env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C.UTF-8', 'HOME': '/root'},
                                 capture_output=True, timeout=30)
         if result.returncode:

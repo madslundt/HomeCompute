@@ -1,0 +1,13 @@
+# Applied only by the exact-image promotion action. Qualification stays on
+# the isolated candidate network defined in compose-cuda.yaml.
+services:
+  whisper-cpp-cuda:
+    networks:
+      candidate: {}
+      inference:
+        aliases: [whisper-primary, whisper-cpp-recording]
+
+networks:
+  inference:
+    external: true
+    name: whisper-large-v3-stt_inference

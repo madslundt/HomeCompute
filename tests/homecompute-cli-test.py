@@ -47,6 +47,15 @@ class HomeComputeCliTests(unittest.TestCase):
         self.assertTrue(any(row["id"] == "automation-spark-primary" for row in rows))
         self.assertTrue(any(row["id"] == "heavy" for row in rows))
         self.assertTrue(any(row["id"] == "stt_multilingual" for row in rows))
+        cpp = next(row for row in rows if row["id"] == "whisper-large-v3-spark-primary")
+        self.assertEqual(cpp["runtime"], "whisper.cpp-cuda")
+        self.assertEqual(cpp["runtime_image"], "sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3")
+        self.assertEqual(cpp["runtime_model_sha256"], "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2")
+        self.assertEqual(cpp["actual_state"], "unknown")
+        rollback = next(row for row in rows if row["id"] == "whisper-large-v3-spark-vllm-rollback")
+        self.assertEqual(rollback["runtime"], "vllm")
+        self.assertEqual(rollback["desired_state"], "intentionally-stopped")
+        self.assertEqual(rollback["actual_state"], "unknown")
 
     def test_drift_requires_observed_revision(self):
         self.assertEqual(hc.compare_drift("a" * 40, None), "unknown")

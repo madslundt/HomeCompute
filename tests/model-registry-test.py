@@ -139,8 +139,22 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_multilingual_whisper_route_is_pinned_separate_and_uses_json_default(self) -> None:
         deployment = CATALOG["transcription_deployments"]["whisper-large-v3-spark-primary"]
+        runtime = CATALOG["runtime_profiles"][deployment["runtime_profile"]]
         self.assertEqual("openai/whisper-large-v3", deployment["upstream_model_id"])
         self.assertEqual("06f233fe06e710322aca913c1bc4249a0d71fce1", deployment["revision"])
+        self.assertEqual("whisper-cpp-cuda-large-v3", deployment["runtime_profile"])
+        self.assertEqual("whisper.cpp-cuda", runtime["family"])
+        self.assertEqual("sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3", runtime["image"])
+        self.assertEqual("f049fff95a089aa9969deb009cdd4892b3e74916", runtime["source_revision"])
+        self.assertEqual("50ee4f9666c26df89bccab30c83e9cd6dcc0faba", runtime["homecompute_source_revision"])
+        self.assertEqual("c521a4b02f422512d734391fdf08bb08c0862f68", runtime["model_snapshot"])
+        self.assertEqual("64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2", runtime["model_sha256"])
+        rollback = CATALOG["transcription_deployments"]["whisper-large-v3-spark-vllm-rollback"]
+        self.assertEqual("vllm-whisper", rollback["runtime_profile"])
+        self.assertEqual("intentionally-stopped", rollback["availability"])
+        self.assertEqual("operator-on-demand", rollback["lifecycle"])
+        for route in ROUTES["transcription_routes"].values():
+            self.assertEqual(["whisper-large-v3-spark-primary"], route["deployments"])
         self.assertEqual("COMPUTE_STT_MULTILINGUAL_BASE_URL", deployment["endpoint_env"])
         self.assertEqual(1, deployment["concurrency"])
         self.assertEqual("apache-2.0", deployment["license_id"])

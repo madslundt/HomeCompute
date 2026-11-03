@@ -106,6 +106,19 @@ def model_inventory(catalog: dict[str, Any], roster: dict[str, Any]) -> list[dic
                      "runtime": catalog.get("runtime_profiles", {}).get(deployment.get("runtime_profile"), {}).get("family"),
                      "quantization": artifact.get("quantization"), "desired_state": deployment.get("availability", "unknown"),
                      "qualification": artifact.get("qualification", {}), "actual_state": "unknown"})
+    for deployment_id, deployment in catalog.get("transcription_deployments", {}).items():
+        runtime = catalog.get("runtime_profiles", {}).get(deployment.get("runtime_profile"), {})
+        rows.append({"id": deployment_id, "model": deployment.get("upstream_model_id"),
+                     "revision": deployment.get("revision"), "host": "home-spark",
+                     "role": deployment.get("served_model_name", deployment.get("host_role")),
+                     "runtime": runtime.get("family", "unknown"), "quantization": None,
+                     "desired_state": deployment.get("availability", "unknown"),
+                     "qualification": runtime.get("qualification_status", "unknown"),
+                     "runtime_image": runtime.get("image"),
+                     "runtime_source_revision": runtime.get("homecompute_source_revision", runtime.get("source_revision")),
+                     "runtime_model_snapshot": runtime.get("model_snapshot"),
+                     "runtime_model_sha256": runtime.get("model_sha256"),
+                     "actual_state": "unknown"})
     known = {str(row["model"]).lower() for row in rows}
     for key, model in roster.get("text_models", {}).items():
         name = model.get("model_id")

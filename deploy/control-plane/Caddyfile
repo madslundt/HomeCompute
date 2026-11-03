@@ -168,6 +168,27 @@ import /config/video-api/Caddyfile
 	encode zstd gzip
 	import video_content_routes
 
+	# Long-form recognition is admitted only from the Daythread backend and
+	# sent through the existing private Spark relay tunnel. The relay validates
+	# the Whisper role credential before reading the bounded request body.
+	@recording_stt {
+		remote_ip {$DAYTHREAD_CLIENT_IP:172.28.210.6}
+		method POST
+		path /recording-stt/v1/audio/transcriptions
+	}
+	handle @recording_stt {
+		request_body {
+			max_size 40MB
+		}
+		rewrite * /v1/recording-transcriptions
+		reverse_proxy 172.28.200.1:18007 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 30m
+			}
+		}
+	}
+
 	@llm_status {
 		method GET
 		path /llm/status

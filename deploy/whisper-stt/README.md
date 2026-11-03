@@ -18,6 +18,16 @@ core tunnels and Home Assistant's existing Wyoming endpoint on port 10301.
 The historical core service name `hviske-wyoming-proxy` is compatibility naming;
 it is a CPU protocol adapter, not a Hviske model or fallback.
 
+The standard transcription route remains bounded to 60 seconds and 10 MB with
+the existing normalization behavior. A separate source-owned
+`/recording-stt/v1/audio/transcriptions` endpoint is available only to the
+Daythread backend, requires the existing Whisper role credential, and accepts
+complete mono 16 kHz PCM16 WAV up to 1,200 seconds / 40 MB. It preserves the
+multipart body and the six CPP provenance headers. The exact qualified CUDA
+image and its guarded promotion/rollback are documented in the
+[whisper.cpp runbook](../whisper-cpp-stt/README.md); when rolled back, the
+long-recording endpoint is unavailable rather than silently using vLLM.
+
 ## Opt-in vLLM runtime candidate
 
 The production service continues to use the NVIDIA vLLM 0.19 image pinned

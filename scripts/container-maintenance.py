@@ -25,7 +25,9 @@ CONTAINERS = {
         'homecompute-control-plane-caddy-1', 'homecompute-control-plane-litellm-1',
         'homecompute-control-plane-postgres-1', 'homecompute-open-webui-open-webui-1',
         'homecompute-immich-immich-server-1', 'home-core-piper-tts', 'home-core-wyoming-stt'}),
-    'home-spark': frozenset({'qwen38-flash-ultrafast', 'gb10-whisper-primary', 'homecompute-plapre-plapre-primary-1'}),
+    'home-spark': frozenset({'qwen38-flash-ultrafast', 'gb10-whisper-primary',
+                             'gb10-whisper-cpp-cuda-candidate',
+                             'homecompute-plapre-plapre-primary-1'}),
 }
 ENV = {'HOME': '/root', 'PATH': '/run/current-system/sw/bin:/usr/bin:/bin',
        'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'}

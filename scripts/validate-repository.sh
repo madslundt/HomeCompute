@@ -363,6 +363,8 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/hviske-stt/compose.yaml" \
     "$REPO_ROOT/deploy/whisper-stt/compose.yaml" \
     "$REPO_ROOT/deploy/whisper-cpp-stt/compose.yaml" \
+    "$REPO_ROOT/deploy/whisper-cpp-stt/compose-cuda.yaml" \
+    "$REPO_ROOT/deploy/whisper-cpp-stt/compose-cuda-production.yaml" \
     "$REPO_ROOT/deploy/homepage/compose.yaml" \
     "$REPO_ROOT/deploy/piper-tts/compose.yaml" \
     "$REPO_ROOT/deploy/ttlock-webhook/compose.yaml" \
@@ -1081,6 +1083,7 @@ jq -e '
 ' "$hviske_http_json" >/dev/null
 
 whisper_json="$temporary_root/whisper-stt.json"
+WHISPER_CPP_ROLE_API_KEY_FILE="$secret_file" \
 docker compose --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
   -f "$REPO_ROOT/deploy/whisper-stt/compose.yaml" config --format json >"$whisper_json"
 jq -e '
@@ -1092,9 +1095,68 @@ jq -e '
   (.services["whisper-http"].ports[0].host_ip == "127.0.0.1") and
   (.services["whisper-http"].ports[0].published == "8007") and
   (.services["whisper-http"].read_only == true) and
+  ((.services["whisper-http"].group_add | index("10001") != null)) and
+  (.services["whisper-http"].volumes | any(.target == "/run/secrets/whisper_cpp_api_key" and .read_only == true)) and
   (.services["whisper-http"].environment.STT_MAX_CONNECTIONS == "1") and
+  (.services["whisper-http"].mem_limit == "268435456") and
+  (.services["whisper-cpp-http"] == null) and
   (.networks.inference.internal == true)
 ' "$whisper_json" >/dev/null
+
+whisper_cpp_relay_json="$temporary_root/whisper-cpp-relay.json"
+WHISPER_CPP_ROLE_API_KEY_FILE="$secret_file" \
+docker compose --profile cpp-production --env-file "$REPO_ROOT/config/hviske-stt.env.example" \
+  -f "$REPO_ROOT/deploy/whisper-stt/compose.yaml" config --format json >"$whisper_cpp_relay_json"
+jq -e '
+  (.services["whisper-cpp-http"].container_name == "gb10-whisper-cpp-http") and
+  (.services["whisper-cpp-http"].mem_limit == "536870912") and
+  (.services["whisper-cpp-http"].restart == "no") and
+  (.services["whisper-cpp-http"].ports[0].host_ip == "127.0.0.1") and
+  (.services["whisper-cpp-http"].ports[0].published == "8007") and
+  (.services["whisper-cpp-http"].ports[1].host_ip == "127.0.0.1") and
+  (.services["whisper-cpp-http"].ports[1].published == "8003") and
+  (.services["whisper-cpp-http"].environment.STT_RECORDING_MAX_UPLOAD_BYTES == "40000000") and
+  (.services["whisper-cpp-http"].environment.STT_RECORDING_MAX_AUDIO_SECONDS == "1200") and
+  (.services["whisper-cpp-http"].environment.STT_RECORDING_UPSTREAM_TIMEOUT_SECONDS == "1800") and
+  (.services["whisper-cpp-http"].volumes | any(.target == "/run/secrets/whisper_cpp_api_key" and .read_only == true))
+' "$whisper_cpp_relay_json" >/dev/null
+
+whisper_cpp_cuda_json="$temporary_root/whisper-cpp-cuda.json"
+WHISPER_CPP_HOME_COMPUTE_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+WHISPER_CPP_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+WHISPER_CPP_MODEL_FILE=/validation/ggml-large-v3.bin \
+WHISPER_CPP_API_KEY_FILE=/validation/whisper_cpp_role_key \
+WHISPER_CPP_CUDA_PATCHER_SHA256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
+  docker compose --profile cuda-candidate --project-name whisper-cpp-gb10-cuda \
+  -f "$REPO_ROOT/deploy/whisper-cpp-stt/compose-cuda.yaml" config --format json >"$whisper_cpp_cuda_json"
+jq -e '
+  ((.services | keys) == ["whisper-cpp-cuda"]) and
+  (.services["whisper-cpp-cuda"].platform == "linux/arm64") and
+  (.services["whisper-cpp-cuda"].ports == null) and
+  (.services["whisper-cpp-cuda"].environment.WHISPER_CPP_HOME_COMPUTE_REVISION == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") and
+  (.services["whisper-cpp-cuda"].environment.WHISPER_CPP_IMAGE_ID == "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") and
+  (.services["whisper-cpp-cuda"].environment.WHISPER_CPP_MAX_AUDIO_SECONDS == "180") and
+  (.services["whisper-cpp-cuda"].networks.candidate == null) and
+  (.networks.candidate.internal == true) and
+  (.networks | has("inference") | not)
+' "$whisper_cpp_cuda_json" >/dev/null
+
+whisper_cpp_production_json="$temporary_root/whisper-cpp-cuda-production.json"
+WHISPER_CPP_HOME_COMPUTE_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+WHISPER_CPP_IMAGE_ID=sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+WHISPER_CPP_MODEL_FILE=/validation/ggml-large-v3.bin \
+WHISPER_CPP_API_KEY_FILE=/validation/whisper_cpp_role_key \
+WHISPER_CPP_CUDA_PATCHER_SHA256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
+  docker compose --profile cuda-candidate --project-name whisper-cpp-gb10-cuda \
+  -f "$REPO_ROOT/deploy/whisper-cpp-stt/compose-cuda.yaml" \
+  -f "$REPO_ROOT/deploy/whisper-cpp-stt/compose-cuda-production.yaml" \
+  config --format json >"$whisper_cpp_production_json"
+jq -e '
+  (.services["whisper-cpp-cuda"].networks.inference.aliases == ["whisper-primary", "whisper-cpp-recording"]) and
+  (.networks.inference.external == true) and
+  (.networks.inference.name == "whisper-large-v3-stt_inference") and
+  (.services["whisper-cpp-cuda"].ports == null)
+' "$whisper_cpp_production_json" >/dev/null
 
 whisper_cpp_json="$temporary_root/whisper-cpp-stt.json"
 WHISPER_CPP_HOME_COMPUTE_REVISION=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \

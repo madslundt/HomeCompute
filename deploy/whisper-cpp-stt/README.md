@@ -141,7 +141,7 @@ shortened.
 
 ## Opt-in native GB10 CUDA candidate
 
-`Dockerfile.cuda` and `compose-cuda.yaml` define a separate qualification-only
+`Dockerfile.cuda` and `compose-cuda.yaml` define an opt-in, promotion-capable
 ARM64 CUDA image. Its base is the locally verified NGC PyTorch image
 `nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9`
 (resolved on Spark to linux/arm64 image
@@ -176,10 +176,14 @@ rollback idle gate.
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
 the default mode and the separate CPU image is built with `GGML_CUDA=OFF`.
-Neither Compose file publishes a host port or joins the production inference
-network. The candidate has its own private Docker network, read-only model and
-credential mounts, no Docker logs, one serialized request, and 4 CPU / 12 GiB
-container bounds. The NVIDIA runtime mounts host driver libraries at container
+Neither Compose file publishes a host port. Qualification stays on the
+candidate's isolated network. Only the exact-image promotion applies
+`compose-cuda-production.yaml` to additionally join the existing private
+inference network with `whisper-primary` and `whisper-cpp-recording` aliases.
+The lifecycle stops the original before attaching it and closes intake while
+switching, so the aliases never direct production calls to two GPU models at
+once. The service has read-only model and credential mounts, no Docker logs,
+one serialized request, and 4 CPU / 12 GiB container bounds. The NVIDIA runtime mounts host driver libraries at container
 start with the `compute,utility` capabilities; the image retains those NVIDIA
 library search paths. The build-time ELF check allows only the expected
 unresolved `libcuda.so.1` host-driver dependency and requires every other
@@ -274,18 +278,89 @@ model/key, applies the existing intake gate and drain, stops only the exact
 healthy primary, then starts this isolated candidate. The existing 12-GiB
 pre-load and 10-percent post-load host headroom gates remain mandatory. A
 synthetic authenticated smoke must pass before qualification is reported.
-Always run `cuda-candidate-rollback` after qualification; it removes only the
-journaled candidate and restores the exact stopped vLLM primary and restart
-policy. The candidate is never promoted by these actions.
+Always run `cuda-candidate-rollback` after a standalone qualification; it
+removes only the journaled candidate and restores the exact stopped vLLM
+primary and restart policy. These qualification actions do not promote the
+image. Promotion is a separate exact-image operation documented above.
 
 For the 1,122-second private qualification, pass bounded duration, upload, and
 native timeout values explicitly as lifecycle options, for example the values
 shown above. The service refuses inconsistent duration/upload limits and caps
 the longform path at two hours / 256 MiB / four hours of native time.
-The current production relay still caps requests at 60 seconds / 10,000,000
-bytes and strips response headers, so this private candidate is not reachable
-through the current full-recording client path. Do not claim a client route or
-production readiness from a successful direct qualification.
+The promoted relay keeps both existing loopback mappings, 8007 for OpenAI STT
+and 8003 for the Home Assistant compatibility adapter.
+The ordinary production relay remains unchanged at 256 MiB of container memory
+and a 60-second / 10,000,000-byte request cap with its existing normalization
+and header behavior. Promotion starts a separate, profile-gated
+`whisper-cpp-http` relay with a 512 MiB hard memory cap for the 38.4 MB PCM
+input and bounded multipart validation. The source-owned long-recording route
+is separate: Caddy admits only the Daythread backend at
+`/recording-stt/v1/audio/transcriptions`, caps the body at 40 MB, and proxies
+to the existing private Spark relay tunnel with a 30-minute response-header
+deadline. The relay requires the existing Whisper role key before reading the
+body, validates complete mono 16 kHz PCM16 WAV bytes and a 1,200-second cap,
+then forwards the original multipart bytes without FFmpeg or rewriting. It
+preserves the six native model/runtime provenance headers. The CPP adapter
+accepts the role key through a root-owned mode-0440 copy; no credential is
+printed. The candidate owns the stable `whisper-primary` alias for ordinary
+short requests and `whisper-cpp-recording` for the dedicated long-form path.
+Promotion preserves the exact original relay container, image, network
+attachments, and restart policy under a temporary name, then starts the
+separate CPP relay profile on the existing loopback port. Before marking
+promotion complete it authenticates through the new relay on both the ordinary
+and long-form routes and checks all six provenance headers. Both CPP containers
+start with restart disabled; only after both relay smokes, GPU/headroom checks,
+and journaled promotion succeed does the lifecycle set `unless-stopped` on the
+CPP model and relay. The retained vLLM and old relay keep restart disabled.
+Rollback removes
+only the journaled CPP relay and restores the retained original relay container
+plus the exact saved vLLM container. The long-recording path is unavailable
+after rollback because the restored older relay does not implement it; requests
+fail closed and never fall back to vLLM.
+Rollback waits for three consecutive native-idle checks and empty host
+8003/8007 connection checks, so an upload that has not reached inference keeps
+the model alive. Its default bounded wait is the recorded native timeout plus
+120 seconds (up to 1,920 seconds for promotion). If rollback cannot verify idle
+or restore health, the intake gate remains active; `cuda-candidate-status`
+reports `gate_held`, and the same rollback action reuses the verified gate
+chain on retry.
+
+The exact image that completed the private full-recording GPU qualification is
+`sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3`,
+built from HomeCompute source `50ee4f9666c26df89bccab30c83e9cd6dcc0faba`.
+Promotion verifies that image ID plus its source/runtime/model/CUDA labels;
+it does not build or pull a replacement. It applies the existing locks,
+intake gate, drain, exact primary capture, native GPU proof, and 12-GiB/10%
+host-memory gates. The original vLLM primary remains stopped and available for
+exact rollback. There is no automatic Spark Compose or systemd startup for
+Whisper. On successful promotion, the source-owned lifecycle persists only the
+qualified CPP model and dedicated relay with `unless-stopped`; it keeps both
+original vLLM and relay restart policies disabled. The normal vLLM `apply`
+action refuses to run while a CPP promotion journal is active. The maintenance
+restart action selects the exact qualified CPP container when the journal is
+promoted, and status reports the active backend. Rollback switches back to the
+retained original pair and restores their recorded restart policies.
+
+After reviewing and publishing the source, promote with the one guarded action:
+
+```bash
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-stt.py \
+  --revision FULL_SHA --action cuda-candidate-promote
+```
+
+Check `cuda-candidate-status` for the `promoted` state. To restore the saved
+vLLM primary, run the existing source-owned rollback action:
+
+```bash
+sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-stt.py \
+  --revision FULL_SHA --action cuda-candidate-rollback
+```
+
+Both actions use the deployment, rollout, speech-capacity and Whisper locks.
+Promotion reuses the exact qualified image, sets the long-form adapter bounds
+to 1,200 seconds / 40 MB / 1,800 seconds, and retains the required memory and
+native-inference-idle checks. Rollback is exact and refuses to stop the CPP
+decoder while its native busy state is true or unknown.
 
 The portable synthetic contract and refusal tests run with:
 

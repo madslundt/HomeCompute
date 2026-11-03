@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "catalog_version": "2026-11-02-whisper-large-v3",
+  "catalog_version": "2026-11-03-whisper-cpp-large-v3",
   "runtime_profiles": {
     "vllm-qwen": {
       "family": "vllm",
@@ -100,6 +100,23 @@
     "vllm-whisper": {
       "family": "vllm",
       "image": "nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d",
+      "supported_protocols": [
+        "audio_transcriptions"
+      ],
+      "capabilities": [
+        "audio_transcription"
+      ]
+    },
+    "whisper-cpp-cuda-large-v3": {
+      "family": "whisper.cpp-cuda",
+      "image": "sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3",
+      "source_url": "https://github.com/ggml-org/whisper.cpp",
+      "source_revision": "f049fff95a089aa9969deb009cdd4892b3e74916",
+      "homecompute_source_revision": "50ee4f9666c26df89bccab30c83e9cd6dcc0faba",
+      "model_snapshot": "c521a4b02f422512d734391fdf08bb08c0862f68",
+      "model_sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
+      "model_format": "GGML F16 converted from pinned Hugging Face safetensors",
+      "qualification_status": "qualified",
       "supported_protocols": [
         "audio_transcriptions"
       ],
@@ -539,7 +556,7 @@
       "tokenizer_revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
       "code_revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
       "license_id": "apache-2.0",
-      "runtime_profile": "vllm-whisper",
+      "runtime_profile": "whisper-cpp-cuda-large-v3",
       "host_role": "compute-gb10",
       "network_scope": "private_local",
       "endpoint_env": "COMPUTE_STT_MULTILINGUAL_BASE_URL",
@@ -548,6 +565,23 @@
       "lifecycle": "resident",
       "availability": "active",
       "priority": 1
+    },
+    "whisper-large-v3-spark-vllm-rollback": {
+      "upstream_model_id": "openai/whisper-large-v3",
+      "revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+      "tokenizer_revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+      "code_revision": "06f233fe06e710322aca913c1bc4249a0d71fce1",
+      "license_id": "apache-2.0",
+      "runtime_profile": "vllm-whisper",
+      "host_role": "compute-gb10",
+      "network_scope": "private_local",
+      "endpoint_env": "COMPUTE_STT_MULTILINGUAL_BASE_URL",
+      "served_model_name": "whisper-large-v3",
+      "concurrency": 1,
+      "lifecycle": "operator-on-demand",
+      "availability": "intentionally-stopped",
+      "priority": 100,
+      "deployment_role": "exact-guarded-rollback; never automatic failover"
     }
   },
   "tts_deployments": {

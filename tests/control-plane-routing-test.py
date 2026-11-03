@@ -482,6 +482,18 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, text)
 
+    def test_long_recording_stt_route_is_private_bounded_and_separate_from_standard_api(self) -> None:
+        caddy = (ROOT / 'deploy/control-plane/Caddyfile').read_text(encoding='utf-8')
+        self.assertRegex(caddy, r'(?s)@recording_stt \{\s+remote_ip \{\$DAYTHREAD_CLIENT_IP:172\.28\.210\.6\}\s+method POST\s+path /recording-stt/v1/audio/transcriptions\s+\}\s+handle @recording_stt \{\s+request_body \{\s+max_size 40MB\s+\}\s+rewrite \* /v1/recording-transcriptions\s+reverse_proxy 172\.28\.200\.1:18007')
+        self.assertRegex(caddy, r'(?s)@recording_stt.*?response_header_timeout 30m')
+        standard = re.search(r'(?s)@standard \{.*?\n\t\}', caddy)
+        self.assertIsNotNone(standard)
+        self.assertIn('path /v1/responses /v1/chat/completions /v1/audio/transcriptions', standard.group())
+        self.assertNotIn('recording-stt', standard.group())
+        tunnel = (ROOT / 'modules/nixos/compute-ssh-tunnel.nix').read_text(encoding='utf-8')
+        self.assertIn('-s 172.28.200.2/32 -d 172.28.200.1/32 -p tcp --dport 18007', tunnel)
+        self.assertIn('bind_address:18007:127.0.0.1:8007', tunnel)
+
     def test_compute_backend_serves_only_an_internal_deployment_name(self) -> None:
         text = COMPUTE.read_text(encoding="utf-8")
         self.assertIn("--served-model-name general-spark-qwen38", text)

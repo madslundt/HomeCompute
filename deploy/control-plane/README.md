@@ -101,6 +101,18 @@ exposed model-listing/inference paths, including bare checks and trailing
 slashes. It includes private-network approval for clients that request it.
 Actual request methods remain restricted; management routes remain unexposed.
 
+The opt-in Daythread long-recording Whisper path uses the separate
+`/recording-stt/v1/audio/transcriptions` route. Caddy accepts it only from the
+Daythread backend address, limits the request to 40 MB, and proxies over the
+existing Spark 18007 forward with a 30-minute response-header deadline. The
+Spark relay requires the existing Whisper role key, validates complete mono
+16 kHz PCM16 WAV up to 1,200 seconds, and passes the original multipart body
+and native provenance headers through. The ordinary `/v1/audio/transcriptions`
+route keeps its existing 32 MB gateway and 60-second relay bounds. The host
+firewall permits only the Caddy edge and existing LiteLLM edge to reach the
+18007 tunnel listener; the deployed SSH forwarding account must also allow the
+existing remote target `127.0.0.1:8007` before this source route can be enabled.
+
 `https://home-core.tail479ad.ts.net:8443/v1` uses a public Let's Encrypt
 certificate for phone/browser clients. `ai.home.arpa` retains the private CA.
 Before Caddy startup, run `sudo python3 scripts/renew-gateway-certificate.py --no-restart`;

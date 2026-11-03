@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -55,6 +56,39 @@ class IntegrationTest(unittest.TestCase):
                      prefix + ' run ' + 'a' * 32 + '; id', '/bin/sh', prefix + ' run ../../root',
                      prefix + ' run ' + 'a' * 32 + '\n']:
             with self.assertRaises(ValueError): spark.arguments(text)
+
+    def test_restart_whisper_selects_only_the_journaled_production_owner(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            cuda = state / 'cuda-candidate.json'
+            runtime = state / 'runtime-candidate.json'
+            cuda.write_text(json.dumps({'state': 'rolled-back'}))
+            real_lstat = Path.lstat
+
+            def root_owned(path):
+                info = real_lstat(path)
+                if path in {cuda, runtime}:
+                    return SimpleNamespace(st_uid=0, st_mode=info.st_mode)
+                return info
+
+            with patch.object(spark.Path, 'lstat', autospec=True, side_effect=root_owned):
+                self.assertEqual(spark.whisper_restart_target(state), 'gb10-whisper-primary')
+                cuda.write_text(json.dumps({'state': 'promoted', 'promotion': True,
+                                            'candidate_exposed': True,
+                                            'candidate_image_id': spark.CPP_PROMOTED_IMAGE}))
+                self.assertEqual(spark.whisper_restart_target(state), spark.CPP_WHISPER)
+                for transaction in (
+                    {'state': 'promoted', 'promotion': True, 'candidate_exposed': True,
+                     'candidate_image_id': 'sha256:' + 'a' * 64},
+                    {'state': 'candidate-running'},
+                ):
+                    cuda.write_text(json.dumps(transaction))
+                    with self.assertRaises(ValueError):
+                        spark.whisper_restart_target(state)
+                cuda.write_text(json.dumps({'state': 'rolled-back'}))
+                runtime.write_text(json.dumps({'state': 'candidate-running'}))
+                with self.assertRaises(ValueError):
+                    spark.whisper_restart_target(state)
 
 
 if __name__ == '__main__':

@@ -88,7 +88,8 @@ class MigrationTests(unittest.TestCase):
         compose.assert_not_called()
 
     def test_prepare_keeps_runtime_candidate_opt_in(self):
-        with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE.Path, 'is_symlink', return_value=False), \
+        with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'provision_cpp_role_key', return_value='existing'), \
+                patch.object(LIFECYCLE.Path, 'is_symlink', return_value=False), \
                 patch.object(LIFECYCLE.Path, 'is_dir', return_value=True), patch.object(LIFECYCLE, 'compose') as compose:
             LIFECYCLE.prepare()
         calls = [call.args for call in compose.call_args_list]
@@ -150,6 +151,67 @@ class MigrationTests(unittest.TestCase):
                     self.assertRaisesRegex(ValueError, 'identity or pinned build labels'):
                 LIFECYCLE.cuda_candidate_image_id('d' * 40)
 
+    def test_promoted_image_identity_requires_exact_qualified_image_and_source_revision(self):
+        labels = {
+            'org.opencontainers.image.revision': LIFECYCLE.CPP_RUNTIME_COMMIT,
+            'io.homecompute.source-revision': LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION,
+            'io.homecompute.whisper-cpp.runtime-commit': LIFECYCLE.CPP_RUNTIME_COMMIT,
+            'io.homecompute.whisper-cpp.model-sha256': LIFECYCLE.CPP_MODEL_SHA256,
+            'io.homecompute.whisper-cpp.backend': 'cuda-121a',
+            'io.homecompute.whisper-cpp.cuda-patch': LIFECYCLE.CPP_CUDA_PATCH_VERSION,
+            'io.homecompute.whisper-cpp.cuda-patcher-sha256': LIFECYCLE.CPP_CUDA_PATCHER_SHA256,
+            'io.homecompute.whisper-cpp.cuda-base': LIFECYCLE.CUDA_BASE_IMAGE,
+        }
+        image = {'Id': LIFECYCLE.CPP_QUALIFIED_IMAGE_ID, 'Os': 'linux', 'Architecture': 'arm64',
+                 'Config': {'Labels': labels}}
+        with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([image]))):
+            self.assertEqual(LIFECYCLE.qualified_cuda_candidate_image_id(), LIFECYCLE.CPP_QUALIFIED_IMAGE_ID)
+        for mutation in ({'Id': 'sha256:' + 'c' * 64},
+                         {'label': 'io.homecompute.source-revision', 'value': 'a' * 40}):
+            candidate = copy.deepcopy(image)
+            if 'Id' in mutation:
+                candidate['Id'] = mutation['Id']
+            else:
+                candidate['Config']['Labels'][mutation['label']] = mutation['value']
+            with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([candidate]))), \
+                    self.assertRaisesRegex(ValueError, 'Qualified.*identity'):
+                LIFECYCLE.qualified_cuda_candidate_image_id()
+
+    def test_production_network_override_is_opt_in_to_promotion_compose_only(self):
+        identity = SimpleNamespace(pw_uid=1000, pw_gid=1000)
+        with patch.object(LIFECYCLE.pwd, 'getpwnam', return_value=identity), \
+                patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout='', returncode=0)) as run:
+            LIFECYCLE.compose_cuda('up', 'whisper-cpp-cuda')
+            qualification_call = run.call_args.args[0]
+            self.assertFalse(any('compose-cuda-production.yaml' in arg for arg in qualification_call))
+            LIFECYCLE.compose_cuda('up', 'whisper-cpp-cuda', production_network=True)
+            promotion_call = run.call_args.args[0]
+        self.assertTrue(any('compose-cuda-production.yaml' in arg for arg in promotion_call))
+        base_index = next(index for index, arg in enumerate(promotion_call) if 'compose-cuda.yaml' in arg)
+        override_index = next(index for index, arg in enumerate(promotion_call)
+                              if 'compose-cuda-production.yaml' in arg)
+        self.assertLess(base_index, override_index)
+
+    def test_promotion_uses_only_the_qualified_image_and_full_recording_bounds(self):
+        with patch.object(LIFECYCLE, 'guards'), \
+                patch.object(LIFECYCLE, 'qualified_cuda_candidate_image_id', return_value=LIFECYCLE.CPP_QUALIFIED_IMAGE_ID) as image, \
+                patch.object(LIFECYCLE, 'provision_cpp_role_key', return_value='existing') as key, \
+                patch.object(LIFECYCLE, 'verify_cpp_model') as model, \
+                patch.object(LIFECYCLE, 'compose') as compose, \
+                patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout='[{"Id":"sha256:' + 'a' * 64 + '"}]')) as run, \
+                patch.object(LIFECYCLE, 'cuda_candidate_start') as start:
+            LIFECYCLE.promote_qualified_cuda_candidate('e' * 40)
+        image.assert_called_once_with()
+        key.assert_called_once_with()
+        model.assert_called_once_with(LIFECYCLE.CPP_MODEL_PATH)
+        compose.assert_called_once_with('--profile', 'cpp-production', 'build', 'whisper-cpp-http',
+                                        relay_image='homecompute/stt-http:2.0.0-cpp-' + 'e' * 12)
+        run.assert_called_once_with(['docker', 'image', 'inspect', 'homecompute/stt-http:2.0.0-cpp-' + 'e' * 12])
+        start.assert_called_once_with('e' * 40, max_audio_seconds=1200, max_upload_bytes=40_000_000,
+                                      native_timeout_seconds=1800, promotion=True,
+                                      relay_image='homecompute/stt-http:2.0.0-cpp-' + 'e' * 12,
+                                      relay_image_id='sha256:' + 'a' * 64)
+
     def test_cuda_candidate_prepare_builds_only_native_pinned_image(self):
         with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'provision_cpp_model', return_value='existing') as model, \
                 patch.object(LIFECYCLE, 'provision_cpp_key', return_value='existing') as key, \
@@ -163,8 +225,28 @@ class MigrationTests(unittest.TestCase):
         artifacts.assert_called_once_with()
         compose.assert_called_once_with('--profile', 'cuda-candidate', 'build', '--pull=false',
                                         'whisper-cpp-cuda', revision='d' * 40)
-        self.assertNotIn('up', compose.call_args.args)
 
+    def test_production_cpp_credential_is_a_private_idempotent_copy_of_role_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source-key'
+            target = root / 'whisper_cpp_role_key'
+            source.write_bytes(b'private-production-role-key\n')
+            source.chmod(0o400)
+            source_info = SimpleNamespace(st_mode=stat.S_IFREG | 0o400, st_uid=0,
+                                          st_size=len(source.read_bytes()))
+            with patch.object(LIFECYCLE, 'ensure_private_directory'), \
+                    patch.object(LIFECYCLE.os, 'fstat', return_value=source_info), \
+                    patch.object(LIFECYCLE.os, 'fchown'), \
+                    patch.object(LIFECYCLE, 'validate_provisioned_key') as validate:
+                self.assertEqual(LIFECYCLE.provision_cpp_role_key(target, source), 'copied')
+                self.assertEqual(target.read_bytes(), b'private-production-role-key')
+                self.assertEqual(LIFECYCLE.provision_cpp_role_key(target, source), 'existing')
+                self.assertEqual(validate.call_count, 2)
+                source.chmod(0o600)
+                source.write_bytes(b'a-different-production-role-key\n')
+                with self.assertRaisesRegex(ValueError, 'differs'):
+                    LIFECYCLE.provision_cpp_role_key(target, source)
     def test_cuda_prepare_failure_is_sanitized_and_keeps_bounded_private_diagnostic(self):
         error = LIFECYCLE.ManagedCommandFailure(
             'docker', 23, diagnostic_text='PRIVATE_FAKE_SECRET_72 CUDA build failure')
@@ -400,7 +482,9 @@ class MigrationTests(unittest.TestCase):
         primary = {'Id': 'primary-id', 'Image': 'sha256:' + 'b' * 64,
                    'Name': '/gb10-whisper-primary',
                    'State': {'Running': True, 'Health': {'Status': 'healthy'}}}
-        tx = {'revision': 'd' * 40, 'state': 'candidate-running', 'candidate_exposed': True,
+        tx = {'revision': 'd' * 40, 'state': 'rollback-failed',
+              'candidate_stage': 'synthetic-candidate-smoke',
+              'native_timeout_seconds': 60,
               'candidate_image_id': candidate['Image'], 'primary_id': primary['Id'],
               'primary_image': primary['Image'], 'primary_restart': 'unless-stopped'}
         with tempfile.TemporaryDirectory() as directory, \
@@ -435,9 +519,105 @@ class MigrationTests(unittest.TestCase):
                     patch.object(LIFECYCLE.time, 'sleep'):
                 LIFECYCLE.cuda_candidate_rollback(tx)
             self.assertEqual(tx['state'], 'rolled-back')
+            self.assertTrue(tx['candidate_exposed'])
             self.assertTrue(any(call.args[0][:3] == ['docker', 'exec', LIFECYCLE.CUDA_CANDIDATE]
                                 for call in retry_run.call_args_list))
             self.assertEqual(len(idle_results), 0)
+
+    def test_cuda_rollback_waits_for_predecoder_upload_after_native_goes_idle(self):
+        candidate = {'Id': 'cpp-cuda-id', 'Image': 'sha256:' + 'c' * 64,
+                     'State': {'Running': True},
+                     'Config': {'Labels': {'com.docker.compose.project': LIFECYCLE.CUDA_CANDIDATE_PROJECT,
+                                           'com.docker.compose.service': 'whisper-cpp-cuda'}}}
+        tx = {'revision': 'd' * 40, 'state': 'rollback-failed',
+              'candidate_stage': 'recording-relay-smoke',
+              'native_timeout_seconds': 60,
+              'candidate_image_id': candidate['Image'], 'primary_id': 'primary-id',
+              'primary_image': 'sha256:' + 'b' * 64, 'primary_restart': 'unless-stopped'}
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(LIFECYCLE, 'STATE', Path(directory)), \
+                patch.object(LIFECYCLE, 'inspect', side_effect=[candidate]) as inspect, \
+                patch.object(LIFECYCLE, 'run', side_effect=[
+                    SimpleNamespace(stdout='{"busy":false}'),
+                    SimpleNamespace(stdout='ESTAB 0 0 127.0.0.1:8007 127.0.0.1:443'),
+                ]) as run, \
+                patch.object(LIFECYCLE.time, 'monotonic', side_effect=[0, 181]), \
+                patch.object(LIFECYCLE.time, 'sleep'):
+            with self.assertRaisesRegex(ValueError, 'did not become idle') as error:
+                LIFECYCLE.cuda_candidate_rollback(tx)
+            self.assertTrue(LIFECYCLE.cuda_candidate_was_exposed(tx))
+            journal = json.loads((Path(directory) / 'cuda-candidate.json').read_text())
+            self.assertTrue(journal['candidate_exposed'])
+            self.assertNotIn('docker stop', repr(run.call_args_list))
+            self.assertEqual(inspect.call_count, 1)
+
+    def test_cuda_stop_keeps_intake_gate_when_rollback_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'cuda-candidate.json').write_text(json.dumps({
+                'revision': 'd' * 40, 'state': 'promoted', 'chain': 'HC-STT-' + 'a' * 12,
+                'candidate_exposed': True,
+            }))
+            gate_calls = []
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'protected'), \
+                    patch.object(LIFECYCLE, 'gate', side_effect=lambda chain, enabled: gate_calls.append(enabled)), \
+                    patch.object(LIFECYCLE, 'cuda_candidate_rollback', side_effect=ValueError('active upload')):
+                with self.assertRaises(LIFECYCLE.CudaCandidateFailure):
+                    LIFECYCLE.cuda_candidate_stop('d' * 40)
+            journal = json.loads((state / 'cuda-candidate.json').read_text())
+            self.assertEqual(gate_calls, [True])
+            self.assertEqual(journal['state'], 'rollback-failed')
+            self.assertTrue(journal['gate_held'])
+            self.assertEqual(journal['rollback_failure_class'], 'ValueError')
+
+    def test_cuda_stop_retry_reuses_same_held_gate_and_releases_only_after_restore(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            chain = 'HC-STT-' + 'b' * 12
+            (state / 'cuda-candidate.json').write_text(json.dumps({
+                'revision': 'd' * 40, 'state': 'rollback-failed', 'chain': chain,
+                'candidate_exposed': True, 'gate_held': True,
+            }))
+            gate_calls = []
+
+            def complete_rollback(tx, *, idle_timeout=None):
+                tx.update(state='rolled-back', rollback_status='completed')
+
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'protected'), \
+                    patch.object(LIFECYCLE, 'gate', side_effect=lambda nonce, enabled: gate_calls.append((nonce, enabled))), \
+                    patch.object(LIFECYCLE, 'cuda_candidate_rollback', side_effect=complete_rollback):
+                LIFECYCLE.cuda_candidate_stop('d' * 40)
+            journal = json.loads((state / 'cuda-candidate.json').read_text())
+            self.assertEqual(gate_calls, [(chain, True), (chain, False)])
+            self.assertEqual(journal['state'], 'rolled-back')
+            self.assertEqual(journal['rollback_status'], 'completed')
+            self.assertFalse(journal['gate_held'])
+
+    def test_existing_exact_gate_is_reused_instead_of_recreated(self):
+        chain = 'HC-STT-' + 'a' * 12
+        rules = '\n'.join([
+            '-N ' + chain,
+            '-A ' + chain + ' -p tcp -m conntrack --ctstate NEW --ctorigdst 127.0.0.1 --ctorigdstport 8003 -j REJECT',
+            '-A ' + chain + ' -p tcp -m conntrack --ctstate NEW --ctorigdst 127.0.0.1 --ctorigdstport 8007 -j REJECT',
+        ])
+        def run(command, **_kwargs):
+            if command[2:4] == ['-S', chain]:
+                return SimpleNamespace(returncode=0, stdout=rules)
+            if command[2:4] == ['-C', 'OUTPUT']:
+                return SimpleNamespace(returncode=0, stdout='')
+            raise AssertionError('unexpected gate command')
+        with patch.object(LIFECYCLE, 'run', side_effect=run):
+            LIFECYCLE.gate(chain, True)
+
+    def test_gate_status_distinguishes_absent_from_unavailable(self):
+        chain = 'HC-STT-' + 'a' * 12
+        absent = SimpleNamespace(returncode=1, stdout='', stderr='iptables: No chain/target/match by that name.')
+        with patch.object(LIFECYCLE, 'run', return_value=absent):
+            self.assertFalse(LIFECYCLE.gate_is_active(chain))
+        unavailable = SimpleNamespace(returncode=1, stdout='', stderr='iptables: permission denied')
+        with patch.object(LIFECYCLE, 'run', return_value=unavailable), \
+                self.assertRaisesRegex(ValueError, 'state is unavailable'):
+            LIFECYCLE.gate_is_active(chain)
 
     def test_cuda_candidate_smoke_executes_valid_multipart_pcm_child_program(self):
         code = LIFECYCLE.cuda_candidate_smoke_program()
@@ -470,6 +650,122 @@ class MigrationTests(unittest.TestCase):
                              (1, 2, 16000, 16000))
             self.assertEqual(wav.readframes(16000), bytes(32000))
         self.assertNotIn(secret, stdout.getvalue())
+
+    def test_promoted_relay_smoke_covers_standard_and_longform_auth_provenance(self):
+        code = LIFECYCLE.promoted_relay_smoke_program(LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION)
+        self.assertIn("post('/v1/audio/transcriptions'", code)
+        self.assertIn("post('/v1/recording-transcriptions'", code)
+        self.assertIn("'carry_initial_prompt','false'", code)
+        self.assertIn("'max_len','-1'", code)
+        for header in ('X-HomeCompute-STT-Model-SHA256', 'X-HomeCompute-STT-Model-Snapshot',
+                       'X-HomeCompute-STT-Runtime', 'X-HomeCompute-STT-Runtime-Commit',
+                       'X-HomeCompute-STT-HomeCompute-Revision', 'X-HomeCompute-STT-Image-ID'):
+            self.assertIn(header, code)
+        self.assertNotIn('FAIR data', code)
+        self.assertNotIn('2022', code)
+
+        captured = []
+        secret = 'synthetic-role-key-with-length'
+        headers = {
+            'X-HomeCompute-STT-Model-SHA256': LIFECYCLE.CPP_MODEL_SHA256,
+            'X-HomeCompute-STT-Model-Snapshot': LIFECYCLE.CPP_MODEL_SNAPSHOT,
+            'X-HomeCompute-STT-Runtime': 'whisper.cpp',
+            'X-HomeCompute-STT-Runtime-Commit': LIFECYCLE.CPP_RUNTIME_COMMIT,
+            'X-HomeCompute-STT-HomeCompute-Revision': LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION,
+            'X-HomeCompute-STT-Image-ID': LIFECYCLE.CPP_QUALIFIED_IMAGE_ID,
+        }
+        class Response(io.BytesIO):
+            def __init__(self):
+                super().__init__(b'{"text":"synthetic","segments":[]}')
+                self.headers = headers
+            def __enter__(self): return self
+            def __exit__(self, *_args): self.close()
+        def fake_open(path, mode='r', *args, **kwargs):
+            if path == '/run/secrets/whisper_cpp_api_key':
+                return io.BytesIO(secret.encode())
+            return open(path, mode, *args, **kwargs)
+        def fake_urlopen(request, timeout):
+            captured.append((request, timeout))
+            return Response()
+        output = io.StringIO()
+        with patch('builtins.open', side_effect=fake_open), \
+                patch('urllib.request.urlopen', side_effect=fake_urlopen), \
+                contextlib.redirect_stdout(output):
+            exec(compile(code, '<promoted-relay-smoke>', 'exec'), {'__name__': 'smoke_test'})
+        self.assertEqual([item[0].full_url for item in captured], [
+            'http://127.0.0.1:8007/v1/audio/transcriptions',
+            'http://127.0.0.1:8007/v1/recording-transcriptions'])
+        self.assertTrue(all(item[1] == 180 for item in captured))
+        self.assertTrue(all(item[0].get_header('Authorization') == 'Bearer ' + secret for item in captured))
+        self.assertNotIn(secret, output.getvalue())
+        long_body = captured[1][0].data
+        self.assertIn(b"name=\"carry_initial_prompt\"", long_body)
+        self.assertIn(b"name=\"no_timestamps\"", long_body)
+        self.assertNotIn(b'\\r\\n', long_body)
+
+    def test_promotion_retains_original_relay_and_starts_dedicated_image(self):
+        old = {'Id': 'old-relay', 'Image': 'sha256:' + 'a' * 64, 'Name': '/gb10-whisper-http',
+               'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+               'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped'}},
+               'Config': {'Labels': {'com.docker.compose.project': 'whisper-large-v3-stt',
+                                     'com.docker.compose.service': 'whisper-http'}}}
+        new = {'Id': 'new-relay', 'Image': 'sha256:' + 'b' * 64,
+               'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+               'Config': {'Labels': {'com.docker.compose.project': 'whisper-large-v3-stt',
+                                     'com.docker.compose.service': 'whisper-cpp-http'}}}
+        tx = {'revision': 'e' * 40, 'relay_image': 'homecompute/stt-http:cpp',
+              'relay_candidate_image_id': new['Image']}
+        with patch.object(LIFECYCLE, 'inspect', side_effect=[old, None, new]), \
+                patch.object(LIFECYCLE, 'save_cuda_candidate') as save, \
+                patch.object(LIFECYCLE, 'run') as run, \
+                patch.object(LIFECYCLE, 'compose') as compose:
+            LIFECYCLE.promote_relay(tx)
+        self.assertEqual(tx['relay_original']['id'], 'old-relay')
+        self.assertEqual(tx['relay_original']['image'], old['Image'])
+        self.assertTrue(tx['relay_update_attempted'])
+        self.assertEqual(tx['relay_candidate_id'], 'new-relay')
+        self.assertEqual([call.args[0] for call in run.call_args_list], [
+            ['docker', 'update', '--restart', 'no', 'old-relay'],
+            ['docker', 'stop', '--time', '30', 'old-relay'],
+            ['docker', 'rename', 'old-relay', 'gb10-whisper-http-before-cpp-' + 'e' * 12],
+            ['docker', 'update', '--restart', 'no', 'new-relay'],
+        ])
+        compose.assert_called_once()
+        self.assertIn('whisper-cpp-http', compose.call_args.args)
+        self.assertEqual(save.call_count, 2)
+        self.assertTrue(all(call.args[0] is tx for call in save.call_args_list))
+
+    def test_rollback_restores_exact_retained_relay_container_and_restart_policy(self):
+        current = {'Id': 'new-relay', 'Image': 'sha256:' + 'b' * 64,
+                   'State': {'Running': True},
+                   'Config': {'Labels': {'com.docker.compose.project': 'whisper-large-v3-stt',
+                                         'com.docker.compose.service': 'whisper-cpp-http'}}}
+        prior = {'Id': 'old-relay', 'Image': 'sha256:' + 'a' * 64,
+                 'Name': '/gb10-whisper-http-before-cpp-eeeeeeeeeeee',
+                 'State': {'Running': False}}
+        healthy = {**prior, 'Name': '/gb10-whisper-http',
+                   'State': {'Running': True, 'Health': {'Status': 'healthy'}}}
+        tx = {'relay_candidate_id': 'new-relay', 'relay_candidate_image_id': current['Image'],
+              'relay_original': {'id': prior['Id'], 'image': prior['Image'],
+                  'name': '/gb10-whisper-http', 'backup_name': prior['Name'],
+                  'restart': 'unless-stopped', 'was_running': True}}
+        stages = []
+        def inspect(name):
+            if name == 'gb10-whisper-cpp-http': return current
+            if name == 'old-relay': return prior if not stages or 'restore-original-relay' not in stages else healthy
+            return None
+        def run(command, **_kwargs):
+            if command[:2] == ['docker', 'rename']:
+                stages.append('restore-original-relay')
+            return SimpleNamespace(stdout='')
+        with patch.object(LIFECYCLE, 'inspect', side_effect=inspect), \
+                patch.object(LIFECYCLE, 'run', side_effect=run) as docker:
+            LIFECYCLE.restore_promoted_relay(tx, stages.append)
+        self.assertIn(['docker', 'rm', 'new-relay'], [call.args[0] for call in docker.call_args_list])
+        self.assertIn(['docker', 'rename', 'old-relay', 'gb10-whisper-http'],
+                      [call.args[0] for call in docker.call_args_list])
+        self.assertIn(['docker', 'update', '--restart', 'unless-stopped', 'old-relay'],
+                      [call.args[0] for call in docker.call_args_list])
 
     def test_cuda_candidate_key_check_executes_and_rejects_newline(self):
         program = LIFECYCLE.cuda_candidate_key_check_program()
@@ -517,7 +813,8 @@ class MigrationTests(unittest.TestCase):
 
     def test_cuda_candidate_bootstrap_actions_are_explicit(self):
         for action in ('prepare-cuda-candidate', 'cuda-candidate',
-                       'cuda-candidate-rollback', 'cuda-candidate-status', 'cuda-candidate-qualify'):
+                       'cuda-candidate-rollback', 'cuda-candidate-status', 'cuda-candidate-qualify',
+                       'cuda-candidate-promote'):
             self.assertIn(action, BOOTSTRAP.ACTIONS)
 
     def test_bootstrap_forwards_bounded_longform_options_only_to_cuda_candidate(self):
@@ -531,6 +828,14 @@ class MigrationTests(unittest.TestCase):
         args.action = 'status'
         with self.assertRaisesRegex(ValueError, 'only for cuda-candidate'):
             BOOTSTRAP.setup_argv(Path('/release'), args)
+
+    def test_bootstrap_forwards_exact_image_promotion_as_explicit_action(self):
+        args = SimpleNamespace(action='cuda-candidate-promote', revision='e' * 40,
+                               max_audio_seconds=None, max_upload_bytes=None,
+                               native_timeout_seconds=None, qualification_manifest=None)
+        self.assertEqual(BOOTSTRAP.setup_argv(Path('/release'), args), [
+            BOOTSTRAP.sys.executable, '-I', '-B', '/release/scripts/setup-whisper-stt.py',
+            'cuda-candidate-promote', '--revision', 'e' * 40])
 
     def test_bootstrap_qualification_manifest_stays_in_private_staging_directory(self):
         args = SimpleNamespace(action='cuda-candidate-qualify', revision='d' * 40,
@@ -960,6 +1265,44 @@ class MigrationTests(unittest.TestCase):
             self.assertIn('PRIVATE_FAKE_CUDA_SECRET', diagnostic.read_text())
             self.assertTrue(any(call.args[0][:2] == ['docker', 'start'] for call in run.call_args_list))
 
+    def test_cuda_start_finally_keeps_gate_when_automatic_rollback_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'transaction.json').write_text(json.dumps({'state': 'applied'}))
+            primary = {
+                'Id': 'primary-id', 'Image': 'sha256:' + 'b' * 64,
+                'Name': '/gb10-whisper-primary',
+                'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+                'Config': {'Cmd': [LIFECYCLE.MODEL, LIFECYCLE.REVISION],
+                           'Image': 'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d'},
+                'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped'}},
+            }
+            stopped = {**primary, 'State': {'Running': False, 'Health': {'Status': 'unhealthy'}}}
+            healthy = {**primary, 'State': {'Running': True, 'Health': {'Status': 'healthy'}}}
+            inspections = [primary, None, None, None, None, stopped, healthy]
+            original_read_text = Path.read_text
+            def read_text(path, *args, **kwargs):
+                if str(path) == '/proc/meminfo':
+                    return 'MemAvailable: 20000000 kB\nMemTotal: 128000000 kB\n'
+                return original_read_text(path, *args, **kwargs)
+            gate_calls = []
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'guards'), \
+                    patch.object(LIFECYCLE, 'protected'), patch.object(LIFECYCLE, 'check_cuda_host'), \
+                    patch.object(LIFECYCLE, 'inspect', side_effect=inspections), \
+                    patch.object(LIFECYCLE, 'cuda_candidate_image_id', return_value='sha256:' + 'c' * 64), \
+                    patch.object(LIFECYCLE, 'validate_cuda_artifacts'), patch.object(LIFECYCLE, 'quiet'), \
+                    patch.object(LIFECYCLE, 'gate', side_effect=lambda _chain, enabled: gate_calls.append(enabled)), \
+                    patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout='')), \
+                    patch.object(LIFECYCLE, 'compose_cuda', side_effect=RuntimeError('startup failed')), \
+                    patch.object(LIFECYCLE, 'cuda_candidate_rollback', side_effect=ValueError('not idle')), \
+                    patch.object(LIFECYCLE.Path, 'read_text', read_text):
+                with self.assertRaises(LIFECYCLE.CudaCandidateFailure):
+                    LIFECYCLE.cuda_candidate_start('d' * 40)
+            journal = json.loads((state / 'cuda-candidate.json').read_text())
+            self.assertEqual(journal['state'], 'rollback-failed')
+            self.assertEqual(gate_calls, [True, True])
+            self.assertTrue(journal['gate_held'])
+
     def test_cuda_candidate_status_allowlists_only_safe_metadata(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory)
@@ -975,6 +1318,7 @@ class MigrationTests(unittest.TestCase):
             }))
             stdout = io.StringIO()
             with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'protected'), \
+                    patch.object(LIFECYCLE, 'inspect', return_value=None), \
                     contextlib.redirect_stdout(stdout):
                 LIFECYCLE.cuda_candidate_status('d' * 40)
             result = json.loads(stdout.getvalue())
@@ -984,6 +1328,44 @@ class MigrationTests(unittest.TestCase):
             self.assertIsNone(result['candidate_stage'])
             self.assertIsNone(result['failure_class'])
             self.assertNotIn('PRIVATE_FAKE_CUDA_SECRET', stdout.getvalue())
+
+    def test_cuda_status_identifies_persisted_cpp_owner_and_retained_original_relay(self):
+        candidate = {'Id': 'cpp-id', 'Image': LIFECYCLE.CPP_QUALIFIED_IMAGE_ID,
+                     'State': {'Running': True}, 'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped'}},
+                     'Config': {'Labels': {'com.docker.compose.project': LIFECYCLE.CUDA_CANDIDATE_PROJECT,
+                                           'com.docker.compose.service': 'whisper-cpp-cuda'}}}
+        relay = {'Id': 'relay-id', 'Image': 'sha256:' + 'a' * 64,
+                 'State': {'Running': True, 'Health': {'Status': 'healthy'}},
+                 'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped'}},
+                 'Config': {'Labels': {'com.docker.compose.project': 'whisper-large-v3-stt',
+                                       'com.docker.compose.service': 'whisper-cpp-http'}}}
+        old = {'Id': 'old-relay', 'Image': 'sha256:' + 'b' * 64,
+               'Name': '/gb10-whisper-http-before-cpp-eeeeeeeeeeee',
+               'State': {'Running': False}}
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / 'cuda-candidate.json').write_text(json.dumps({
+                'revision': 'd' * 40, 'state': 'promoted', 'promotion': True,
+                'candidate_exposed': True, 'candidate_image_id': candidate['Image'],
+                'relay_candidate_id': relay['Id'], 'relay_candidate_image_id': relay['Image'],
+                'relay_original': {'id': old['Id'], 'image': old['Image'],
+                                   'name': '/gb10-whisper-http', 'backup_name': old['Name']},
+            }))
+            def inspect(name):
+                return {LIFECYCLE.CUDA_CANDIDATE: candidate,
+                        'gb10-whisper-cpp-http': relay, 'old-relay': old}.get(name)
+            stdout = io.StringIO()
+            with patch.object(LIFECYCLE, 'STATE', state), patch.object(LIFECYCLE, 'protected'), \
+                    patch.object(LIFECYCLE, 'inspect', side_effect=inspect), \
+                    contextlib.redirect_stdout(stdout):
+                LIFECYCLE.cuda_candidate_status('d' * 40)
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(result['desired_backend'], 'whisper-cpp-cuda')
+        self.assertTrue(result['candidate_running'])
+        self.assertEqual(result['candidate_restart_policy'], 'unless-stopped')
+        self.assertTrue(result['promoted_relay_healthy'])
+        self.assertEqual(result['promoted_relay_restart_policy'], 'unless-stopped')
+        self.assertTrue(result['original_relay_retained'])
 
     def test_candidate_allocation_is_bounded_without_changing_production(self):
         compose = (ROOT / 'deploy/whisper-stt/compose.yaml').read_text()
@@ -1336,7 +1718,8 @@ class MigrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             old = self.old_containers()
             with patch.object(LIFECYCLE, 'STATE', Path(directory)), \
-                    patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'inspect', side_effect=old), \
+                    patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'provision_cpp_role_key'), \
+                    patch.object(LIFECYCLE, 'inspect', side_effect=old), \
                     patch.object(LIFECYCLE, 'gate') as gate, patch.object(LIFECYCLE, 'quiet'), \
                     patch.object(LIFECYCLE, 'run'), patch.object(LIFECYCLE, 'rollback') as rollback, \
                     patch.object(LIFECYCLE, 'compose', side_effect=RuntimeError('start failed')), \
@@ -1359,6 +1742,7 @@ class MigrationTests(unittest.TestCase):
             old = self.old_containers()
             calls = []
             with patch.object(LIFECYCLE, 'STATE', Path(directory)), patch.object(LIFECYCLE, 'guards'), \
+                    patch.object(LIFECYCLE, 'provision_cpp_role_key'), \
                     patch.object(LIFECYCLE, 'inspect', side_effect=[*old, *[{'State': {'Running': False}}] * 4]), \
                     patch.object(LIFECYCLE, 'gate', side_effect=lambda *args: calls.append(('gate', args[1]))), \
                     patch.object(LIFECYCLE, 'save', side_effect=lambda tx: calls.append(('save', tx['state']))), \
@@ -1373,7 +1757,11 @@ class MigrationTests(unittest.TestCase):
     def test_aliases_share_full_whisper_without_hviske_fallback(self):
         catalog = json.loads((ROOT / 'config/model-catalog.json').read_text())
         routes = json.loads((ROOT / 'config/capability-routes.json').read_text())
-        self.assertEqual(set(catalog['transcription_deployments']), {'whisper-large-v3-spark-primary'})
+        self.assertEqual(set(catalog['transcription_deployments']), {
+            'whisper-large-v3-spark-primary', 'whisper-large-v3-spark-vllm-rollback'})
+        rollback = catalog['transcription_deployments']['whisper-large-v3-spark-vllm-rollback']
+        self.assertEqual(rollback['runtime_profile'], 'vllm-whisper')
+        self.assertEqual(rollback['availability'], 'intentionally-stopped')
         for route in routes['transcription_routes'].values():
             self.assertEqual(route['deployments'], ['whisper-large-v3-spark-primary'])
 

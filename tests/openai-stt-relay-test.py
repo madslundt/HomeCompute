@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -94,7 +95,10 @@ class UploadBoundaryTests(unittest.TestCase):
 
     def test_environment_cannot_broaden_runtime_limits(self):
         for name, value in {"STT_MAX_AUDIO_SECONDS": "61", "STT_MAX_CONNECTIONS": "5",
-                            "STT_MAX_UPLOAD_BYTES": "10000001", "STT_UPSTREAM_BASE_URL": "http://example.com"}.items():
+                            "STT_MAX_UPLOAD_BYTES": "10000001", "STT_UPSTREAM_BASE_URL": "http://example.com",
+                            "STT_RECORDING_MAX_UPLOAD_BYTES": "40000001",
+                            "STT_RECORDING_MAX_AUDIO_SECONDS": "1201",
+                            "STT_RECORDING_UPSTREAM_TIMEOUT_SECONDS": "1801"}.items():
             with self.subTest(name=name), patch.dict(os.environ, {name: value}), self.assertRaises(ValueError):
                 RELAY.load_config()
 
@@ -139,6 +143,100 @@ class AudioNormalizationTests(unittest.TestCase):
 
 
 class HttpRelayTests(unittest.TestCase):
+    def test_maximum_longform_pcm_payload_fits_the_bounded_request_cap(self):
+        audio = wav(seconds=1200, rate=16000, channels=1)
+        body, content_type = upload(audio, [('model', 'whisper'), ('response_format', 'verbose_json')])
+        config = RELAY.Config(recording_max_upload_bytes=40_000_000, recording_max_audio_seconds=1200)
+        parse_config = RELAY.replace(config, max_upload_bytes=config.recording_max_upload_bytes)
+        _fields, parsed = RELAY.parse_upload(body, content_type, parse_config)
+        self.assertEqual(parsed, audio)
+        self.assertLessEqual(len(body), config.recording_max_upload_bytes)
+        RELAY.validate_recording_pcm(parsed, config)
+
+    def test_recording_route_forwards_exact_pcm_multipart_and_six_provenance_headers(self):
+        recording = wav(seconds=0.2, rate=16000, channels=1)
+        body, content_type = upload(recording, [
+            ('model', 'whisper'), ('response_format', 'verbose_json'),
+            ('language', 'auto'), ('temperature', '0'), ('max_context', '0'),
+        ])
+        captured = []
+        provenance = {
+            'X-HomeCompute-STT-Model-SHA256': 'model-pin',
+            'X-HomeCompute-STT-Model-Snapshot': 'model-snapshot',
+            'X-HomeCompute-STT-Runtime': 'whisper.cpp',
+            'X-HomeCompute-STT-Runtime-Commit': 'runtime-pin',
+            'X-HomeCompute-STT-HomeCompute-Revision': 'source-pin',
+            'X-HomeCompute-STT-Image-ID': 'image-pin',
+        }
+
+        class Backend(BaseHTTPRequestHandler):
+            def do_POST(self):
+                captured.append((self.path, self.headers.get('Authorization'), self.headers.get('Content-Type'),
+                                 self.rfile.read(int(self.headers['Content-Length']))))
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                for key, value in provenance.items():
+                    self.send_header(key, value)
+                self.end_headers()
+                self.wfile.write(b'{"text":"synthetic"}')
+
+            def log_message(self, *args):
+                pass
+
+        upstream = self.start_server(ThreadingHTTPServer(('127.0.0.1', 0), Backend))
+        with tempfile.NamedTemporaryFile() as credential:
+            credential.write(b'production-role-secret-value')
+            credential.flush()
+            config = RELAY.Config(
+                upstream=upstream,
+                recording_upstream=upstream,
+                recording_authorization_file=Path(credential.name),
+            )
+            relay = self.start_server(RELAY.RelayServer(('127.0.0.1', 0), config))
+            request = urllib.request.Request(relay + RELAY.RECORDING_PATH, data=body,
+                                             headers={'Content-Type': content_type,
+                                                      'Authorization': 'Bearer production-role-secret-value'})
+            with patch.object(RELAY, 'recording_key', return_value=b'production-role-secret-value'):
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    self.assertEqual(json.load(response), {'text': 'synthetic'})
+                    self.assertEqual({key: response.headers[key] for key in provenance}, provenance)
+        path, auth, upstream_type, upstream_body = captured[0]
+        self.assertEqual(path, '/v1/audio/transcriptions')
+        self.assertEqual(auth, 'Bearer production-role-secret-value')
+        self.assertEqual(upstream_type, content_type)
+        self.assertEqual(upstream_body, body)
+
+    def test_recording_route_rejects_missing_wrong_or_non_pcm_credentials_before_forwarding(self):
+        valid_audio = wav(seconds=0.2, rate=16000, channels=1)
+        body, content_type = upload(valid_audio)
+        with tempfile.NamedTemporaryFile() as credential:
+            credential.write(b'production-role-secret-value')
+            credential.flush()
+            server = RELAY.RelayServer(('127.0.0.1', 0), RELAY.Config(
+                recording_authorization_file=Path(credential.name)))
+            base = self.start_server(server)
+            with patch.object(RELAY, 'recording_key', return_value=b'production-role-secret-value'):
+                for headers, payload in [({}, body),
+                                         ({'Authorization': 'Bearer wrong'}, body),
+                                         ({'Authorization': 'Bearer production-role-secret-value'},
+                                          upload(wav(seconds=0.2), fields=[('model', 'whisper')])[0])]:
+                    request = urllib.request.Request(base + RELAY.RECORDING_PATH, data=payload,
+                                                     headers={'Content-Type': content_type, **headers})
+                    with self.assertRaises(urllib.error.HTTPError) as caught:
+                        urllib.request.urlopen(request, timeout=5)
+                    self.assertIn(caught.exception.code, (400, 401))
+                    caught.exception.close()
+
+    def test_recording_route_rejects_truncated_pcm_even_when_wav_header_claims_valid_duration(self):
+        complete = wav(seconds=0.2, rate=16000, channels=1)
+        claimed_frames = len(complete) - 44 + 3200
+        truncated = bytearray(complete)
+        struct.pack_into('<I', truncated, 4, len(truncated) - 8 + 3200)
+        struct.pack_into('<I', truncated, 40, claimed_frames)
+        with self.assertRaises(RELAY.RelayError) as caught:
+            RELAY.validate_recording_pcm(bytes(truncated), RELAY.Config())
+        self.assertEqual(caught.exception.status, 400)
+
     def test_backend_timeouts_and_failures_do_not_expose_backend_error_material(self):
         for failure, status in [
             (urllib.error.URLError(socket.timeout("private upstream sk-key")), 504),

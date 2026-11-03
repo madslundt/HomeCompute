@@ -11,6 +11,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import struct
 import tempfile
 import threading
@@ -465,6 +466,33 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn(ADAPTER.CUDA_PATCHER_SHA256, compose)
         self.assertIn("native_inference_busy", compose)
         self.assertIn("WHISPER_CPP_DEVICE", (DEPLOY / "adapter.py").read_text())
+
+    def test_cuda_candidate_joins_only_private_inference_network_with_stable_whisper_aliases(self):
+        compose = (DEPLOY / "compose-cuda-production.yaml").read_text()
+        self.assertIn("aliases: [whisper-primary, whisper-cpp-recording]", compose)
+        self.assertIn("name: whisper-large-v3-stt_inference", compose)
+        self.assertIn("inference:\n    external: true", compose)
+        self.assertNotRegex(compose, r"(?m)^\s+ports:")
+        qualification = (DEPLOY / "compose-cuda.yaml").read_text()
+        self.assertIn("networks: [candidate]", qualification)
+        self.assertNotIn("whisper-primary", qualification)
+
+    def test_promoted_relay_is_opt_in_bounded_and_leaves_normal_relay_unchanged(self):
+        compose = (ROOT / "deploy/whisper-stt/compose.yaml").read_text()
+        normal = re.search(r"(?ms)^  whisper-http:\n(.*?)(?=^  [a-zA-Z0-9_-]+:|\Z)", compose).group(1)
+        promoted = re.search(r"(?ms)^  whisper-cpp-http:\n(.*?)(?=^networks:|\Z)", compose).group(1)
+        self.assertIn("mem_limit: 256m", normal)
+        self.assertIn('STT_MAX_UPLOAD_BYTES: "10000000"', normal)
+        self.assertIn('STT_MAX_AUDIO_SECONDS: "60"', normal)
+        self.assertIn("profiles: [cpp-production]", promoted)
+        self.assertIn("container_name: gb10-whisper-cpp-http", promoted)
+        self.assertIn('restart: "no"', promoted)
+        self.assertIn("mem_limit: 512m", promoted)
+        self.assertIn('STT_RECORDING_MAX_UPLOAD_BYTES: "40000000"', promoted)
+        self.assertIn('STT_RECORDING_MAX_AUDIO_SECONDS: "1200"', promoted)
+        self.assertIn('STT_RECORDING_UPSTREAM_TIMEOUT_SECONDS: "1800"', promoted)
+        self.assertIn('127.0.0.1:8007:8007', promoted)
+        self.assertIn('127.0.0.1:8003:8007', promoted)
 
     def test_verbose_native_segments_keep_text_timing_and_exact_char_anchors(self):
         source = {"text": "Hello <|25.52|> world\nAgain.\n", "segments": [
