@@ -54,12 +54,18 @@ and does not set its own payload maximum; the authenticated adapter's configured
 copy under `/tmp`. The Compose 32-MiB `/tmp` tmpfs therefore does not constrain
 raw WAV uploads. Keep `--convert` disabled for this candidate.
 
-Default decoding uses automatic language detection, no prompt, and
-`max_context=0`. Explicit `language`, `prompt`, `temperature`,
-`temperature_inc`, `translate`, `carry_initial_prompt`, `max_context`,
-`no_timestamps` and response format values are forwarded. `text`, `json` and
-`verbose_json` formats are supported. Unknown fields and unsupported values are
-rejected instead of silently ignored. Word timestamp granularity returns 422:
+Default decoding uses automatic language detection, no prompt, `max_context=0`,
+and the pinned `whisper.cpp` CLI sampling defaults: beam search with
+`beam_size=5`, `best_of=5`, temperature `0`, temperature increment `0.2`,
+entropy threshold `2.4`, logprob threshold `-1`, and `no_context=true`. The
+upstream server alone defaults to greedy (`beam_size=-1`, `best_of=2`), so the
+adapter sends explicit beam/best-of values to preserve CLI comparability.
+Explicit `language`, `prompt`, `temperature`, `temperature_inc`,
+`beam_size` (-1 or 1–16), `best_of` (1–16), `translate`,
+`carry_initial_prompt`, `max_context`, `no_timestamps` and response format
+values are forwarded. `text`, `json` and `verbose_json` formats are supported.
+Unknown fields and unsupported values are rejected instead of silently ignored.
+Word timestamp granularity returns 422:
 whisper.cpp's token records are not canonical word timings, and this service
 does not label them as such.
 
@@ -75,8 +81,13 @@ pieces are model tokens, not a validated word alignment. Source-recording
 offsets and ownership across uploads belong to the client; this service reports
 request-local coordinates only. Successful transcriptions also include
 `X-HomeCompute-STT-Model-SHA256`, `X-HomeCompute-STT-Model-Snapshot`,
-`X-HomeCompute-STT-Runtime`, and `X-HomeCompute-STT-Runtime-Commit` headers so
-each stored result can retain the exact model and runtime provenance.
+`X-HomeCompute-STT-Runtime`, `X-HomeCompute-STT-Runtime-Commit`,
+`X-HomeCompute-STT-HomeCompute-Revision`, and `X-HomeCompute-STT-Image-ID`
+headers so each stored result can retain the exact model, upstream runtime,
+HomeCompute source and built image provenance. The HomeCompute source revision
+is baked into the image at build. The operator supplies the daemon's resolved
+image ID at runtime after building; the adapter refuses an absent or malformed
+revision/image identity.
 
 ## Build and private core qualification
 
@@ -93,11 +104,12 @@ private file paths:
 ```bash
 MODEL=/srv/private/whisper-cpp/ggml-large-v3.bin
 KEY=/srv/private/whisper-cpp/qualification-api-key
+export WHISPER_CPP_HOME_COMPUTE_REVISION="$(git rev-parse HEAD)"
+export WHISPER_CPP_MODEL_FILE="$MODEL" WHISPER_CPP_API_KEY_FILE="$KEY"
 python3 deploy/whisper-cpp-stt/verify_model.py "$MODEL"
-WHISPER_CPP_MODEL_FILE="$MODEL" WHISPER_CPP_API_KEY_FILE="$KEY" \
-  docker compose -f deploy/whisper-cpp-stt/compose.yaml --profile candidate build
-WHISPER_CPP_MODEL_FILE="$MODEL" WHISPER_CPP_API_KEY_FILE="$KEY" \
-  docker compose -f deploy/whisper-cpp-stt/compose.yaml --profile candidate up -d
+docker compose -f deploy/whisper-cpp-stt/compose.yaml --profile candidate build
+export WHISPER_CPP_IMAGE_ID="$(docker image inspect --format '{{.Id}}' homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-hc1)"
+docker compose -f deploy/whisper-cpp-stt/compose.yaml --profile candidate up -d
 docker compose -f deploy/whisper-cpp-stt/compose.yaml --profile candidate ps
 ```
 

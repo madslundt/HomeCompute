@@ -123,16 +123,32 @@ class ModelVerifierTests(unittest.TestCase):
                 ADAPTER.read_api_key(path)
 
 class AdapterContractTests(unittest.TestCase):
+    def setUp(self):
+        self.provenance_env = patch.dict(os.environ, {
+            "WHISPER_CPP_HOME_COMPUTE_REVISION": "a" * 40,
+            "WHISPER_CPP_IMAGE_ID": "sha256:" + "b" * 64,
+        }, clear=False)
+        self.provenance_env.start()
+        self.addCleanup(self.provenance_env.stop)
+
     def test_preserves_prompt_language_format_and_supported_decoding_options(self):
         fields = {"model": "whisper", "response_format": "verbose_json", "language": "da",
                   "prompt": "synthetic neutral\nprompt", "temperature": "0.2", "max_context": "0",
-                  "timestamp_granularities[]": "segment"}
+                  "beam_size": "5", "best_of": "5", "timestamp_granularities[]": "segment"}
         format_name, forwarded = ADAPTER.normalize_fields(fields)
         self.assertEqual(format_name, "verbose_json")
         self.assertIn(("language", "da"), forwarded)
         self.assertIn(("prompt", "synthetic neutral\nprompt"), forwarded)
         self.assertIn(("temperature", "0.2"), forwarded)
         self.assertIn(("max_context", "0"), forwarded)
+        self.assertIn(("beam_size", "5"), forwarded)
+        self.assertIn(("best_of", "5"), forwarded)
+        _, defaults = ADAPTER.normalize_fields({"model": "whisper"})
+        self.assertIn(("beam_size", "5"), defaults)
+        self.assertIn(("best_of", "5"), defaults)
+        _, greedy = ADAPTER.normalize_fields({"model": "whisper", "beam_size": "-1", "best_of": "1"})
+        self.assertIn(("beam_size", "-1"), greedy)
+        self.assertIn(("best_of", "1"), greedy)
 
     def test_rejects_unsupported_fields_and_word_timestamps(self):
         body, content_type = multipart([("model", "whisper"), ("initial_prompt", "unmapped")], wav_bytes())
@@ -143,6 +159,9 @@ class AdapterContractTests(unittest.TestCase):
                                       "timestamp_granularities[]": "word"})
         with self.assertRaisesRegex(ADAPTER.RequestError, "Only text, json"):
             ADAPTER.normalize_fields({"model": "whisper", "response_format": "srt"})
+        for name, value in (("beam_size", "0"), ("beam_size", "17"), ("best_of", "0"), ("best_of", "17")):
+            with self.assertRaisesRegex(ADAPTER.RequestError, "Invalid decoding"):
+                ADAPTER.normalize_fields({"model": "whisper", name: value})
 
     def test_bounds_exact_pcm_wav_contract_without_resampling_or_truncation(self):
         self.assertEqual(ADAPTER.validate_audio(wav_bytes(), 180), 0.1)
@@ -159,7 +178,9 @@ class AdapterContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ADAPTER.RequestError, "payload is truncated"):
             ADAPTER.validate_audio(truncated, 180)
 
-        config = ADAPTER.CandidateConfig(Path("/unused/model"), Path("/unused/key"), native_timeout_seconds=2)
+        config = ADAPTER.CandidateConfig(
+            Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
+            image_id="sha256:" + "b" * 64, native_timeout_seconds=2)
         server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0))
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -203,6 +224,16 @@ class AdapterContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid"):
                 ADAPTER.load_config()
 
+    def test_provenance_requires_pinned_homecompute_revision_and_image_id(self):
+        with patch.dict(os.environ, {"WHISPER_CPP_HOME_COMPUTE_REVISION": "bad",
+                                     "WHISPER_CPP_IMAGE_ID": "sha256:" + "b" * 64}, clear=False):
+            with self.assertRaisesRegex(ValueError, "source revision"):
+                ADAPTER.load_config()
+        with patch.dict(os.environ, {"WHISPER_CPP_HOME_COMPUTE_REVISION": "a" * 40,
+                                     "WHISPER_CPP_IMAGE_ID": "not-a-digest"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "image ID"):
+                ADAPTER.load_config()
+
     def test_native_process_is_pinned_to_cpu_auto_language_and_zero_context(self):
         config = ADAPTER.CandidateConfig(Path("/models/ggml-large-v3.bin"), Path("/key"), native_threads=4)
         command = ADAPTER.native_command(config)
@@ -225,6 +256,9 @@ class AdapterContractTests(unittest.TestCase):
         self.assertNotRegex(compose, r"(?m)^\s+ports:")
         self.assertIn("GGML_CUDA=OFF", dockerfile)
         self.assertIn("GGML_METAL=OFF", dockerfile)
+        self.assertIn("COPY adapter.py contract.py verify_model.py /opt/homecompute/", dockerfile)
+        self.assertIn("HOME_COMPUTE_REVISION: ${WHISPER_CPP_HOME_COMPUTE_REVISION", compose)
+        self.assertIn("WHISPER_CPP_IMAGE_ID: ${WHISPER_CPP_IMAGE_ID", compose)
         self.assertIn(ADAPTER.RUNTIME_COMMIT, dockerfile)
 
     def test_verbose_native_segments_keep_text_timing_and_exact_char_anchors(self):
@@ -271,7 +305,9 @@ class AdapterContractTests(unittest.TestCase):
             ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 1.0)
 
     def test_real_http_handler_auth_and_forwarding_with_synthetic_native_response(self):
-        config = ADAPTER.CandidateConfig(Path("/unused/model"), Path("/unused/key"), native_timeout_seconds=2)
+        config = ADAPTER.CandidateConfig(
+            Path("/unused/model"), Path("/unused/key"), homecompute_revision="a" * 40,
+            image_id="sha256:" + "b" * 64, native_timeout_seconds=2)
         server = ADAPTER.CandidateServer(config, b"synthetic-secret-value", ("127.0.0.1", 0))
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -304,9 +340,13 @@ class AdapterContractTests(unittest.TestCase):
                 self.assertEqual(response.headers["X-HomeCompute-STT-Model-Snapshot"], VERIFY.PIN["snapshot"])
                 self.assertEqual(response.headers["X-HomeCompute-STT-Runtime"], "whisper.cpp")
                 self.assertEqual(response.headers["X-HomeCompute-STT-Runtime-Commit"], ADAPTER.RUNTIME_COMMIT)
+                self.assertEqual(response.headers["X-HomeCompute-STT-HomeCompute-Revision"], "a" * 40)
+                self.assertEqual(response.headers["X-HomeCompute-STT-Image-ID"], "sha256:" + "b" * 64)
             self.assertEqual(observed["fields"]["prompt"], "synthetic neutral\nprompt")
             self.assertEqual(observed["fields"]["language"], "auto")
             self.assertEqual(observed["fields"]["response_format"], "verbose_json")
+            self.assertEqual(observed["fields"]["beam_size"], "5")
+            self.assertEqual(observed["fields"]["best_of"], "5")
             self.assertEqual(observed["audio"], wav_bytes())
             self.assertEqual(result["segments"][0]["kind"], "segment")
             self.assertEqual(result["segments"][0]["start_offset"], 0)

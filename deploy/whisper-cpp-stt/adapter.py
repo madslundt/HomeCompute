@@ -3,13 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from email import policy
-from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import io
 import importlib.util
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -21,7 +17,6 @@ import threading
 import time
 import urllib.error
 import urllib.request
-import wave
 
 _VERIFY_SPEC = importlib.util.spec_from_file_location(
     "homecompute_whisper_cpp_verify_model", Path(__file__).with_name("verify_model.py"))
@@ -34,34 +29,30 @@ ModelPinError = _VERIFY_MODULE.ModelPinError
 PIN = _VERIFY_MODULE.PIN
 verify_model = _VERIFY_MODULE.verify_model
 
+_CODEC_SPEC = importlib.util.spec_from_file_location(
+    "homecompute_whisper_cpp_contract", Path(__file__).with_name("contract.py"))
+if _CODEC_SPEC is None or _CODEC_SPEC.loader is None:
+    raise RuntimeError("candidate request codec is unavailable")
+_CODEC_MODULE = importlib.util.module_from_spec(_CODEC_SPEC)
+sys.modules[_CODEC_SPEC.name] = _CODEC_MODULE
+_CODEC_SPEC.loader.exec_module(_CODEC_MODULE)
+for _name in ("MODEL_ID", "ALIASES", "MAX_AUDIO_SECONDS", "MAX_BODY_BYTES",
+              "MAX_CONFIGURED_AUDIO_SECONDS", "MAX_CONFIGURED_UPLOAD_BYTES",
+              "MAX_RESPONSE_BYTES", "RequestError", "parse_multipart", "validate_audio",
+              "normalize_fields", "make_native_multipart", "normalize_native_response"):
+    globals()[_name] = getattr(_CODEC_MODULE, _name)
+
 
 RUNTIME_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-MODEL_ID = "whisper-large-v3"
-ALIASES = {"whisper", MODEL_ID, "stt-danish", "whisper-turbo"}
-MAX_AUDIO_SECONDS = 180
-MAX_AUDIO_BYTES = MAX_AUDIO_SECONDS * 16_000 * 2 + 44
-MAX_BODY_BYTES = MAX_AUDIO_BYTES + 128_000
-MAX_CONFIGURED_AUDIO_SECONDS = 7_200
-MAX_CONFIGURED_UPLOAD_BYTES = 256 * 1024 * 1024
-MAX_RESPONSE_BYTES = 8_000_000
-CONTROL_TOKEN = re.compile(r"<\|[^|\r\n]{1,80}\|>")
-FIELD_NAME = re.compile(r"^[A-Za-z0-9_.\[\]-]{1,80}$")
-ALLOWED_FIELDS = {"model", "response_format", "language", "prompt", "temperature",
-                  "temperature_inc", "no_timestamps", "max_context",
-                  "translate", "carry_initial_prompt"}
 NATIVE_PORT = 8081
-
-
-class RequestError(ValueError):
-    def __init__(self, status: int, message: str):
-        self.status = status
-        self.message = message
 
 
 @dataclass(frozen=True)
 class CandidateConfig:
     model_path: Path
     key_path: Path
+    homecompute_revision: str = "0" * 40
+    image_id: str = "sha256:" + "0" * 64
     max_audio_seconds: int = MAX_AUDIO_SECONDS
     max_upload_bytes: int = 6_000_000
     upload_timeout_seconds: int = 120
@@ -79,6 +70,12 @@ def _bounded_env(name: str, default: int, maximum: int) -> int:
 def load_config() -> CandidateConfig:
     model_path = Path(os.environ.get("WHISPER_CPP_MODEL_PATH", "/models/ggml-large-v3.bin"))
     key_path = Path(os.environ.get("WHISPER_CPP_API_KEY_FILE", "/run/secrets/whisper_cpp_api_key"))
+    homecompute_revision = os.environ.get("WHISPER_CPP_HOME_COMPUTE_REVISION", "")
+    image_id = os.environ.get("WHISPER_CPP_IMAGE_ID", "")
+    if not re.fullmatch(r"[0-9a-f]{40}", homecompute_revision):
+        raise ValueError("invalid HomeCompute source revision")
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        raise ValueError("invalid candidate image ID")
     max_audio_seconds = _bounded_env("WHISPER_CPP_MAX_AUDIO_SECONDS", MAX_AUDIO_SECONDS,
                                      MAX_CONFIGURED_AUDIO_SECONDS)
     max_upload_bytes = _bounded_env("WHISPER_CPP_MAX_UPLOAD_BYTES", 6_000_000,
@@ -88,6 +85,8 @@ def load_config() -> CandidateConfig:
     return CandidateConfig(
         model_path=model_path,
         key_path=key_path,
+        homecompute_revision=homecompute_revision,
+        image_id=image_id,
         max_audio_seconds=max_audio_seconds,
         max_upload_bytes=max_upload_bytes,
         upload_timeout_seconds=_bounded_env("WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS", 120, 1800),
@@ -108,211 +107,6 @@ def read_api_key(path: Path) -> bytes:
     if not key or b"\n" in key or b"\r" in key:
         raise RuntimeError("candidate API credential is unavailable or invalid")
     return key
-
-
-def parse_multipart(body: bytes, content_type: str, *, max_body_bytes: int = MAX_BODY_BYTES) -> tuple[dict[str, str], bytes]:
-    if len(body) > max_body_bytes or "\r" in content_type or "\n" in content_type or len(content_type) > 512:
-        raise RequestError(413 if len(body) > max_body_bytes else 400, "Invalid or oversized transcription request")
-    try:
-        message = BytesParser(policy=policy.default).parsebytes(
-            ("MIME-Version: 1.0\r\nContent-Type: " + content_type + "\r\n\r\n").encode("ascii") + body
-        )
-    except (ValueError, UnicodeError):
-        raise RequestError(400, "Invalid multipart transcription request") from None
-    boundary = message.get_boundary()
-    if message.get_content_type() != "multipart/form-data" or not message.is_multipart() or \
-            not boundary or len(boundary) > 70 or message.defects:
-        raise RequestError(400, "Invalid multipart transcription request")
-    fields: dict[str, str] = {}
-    audio_items: list[bytes] = []
-    for index, part in enumerate(message.iter_parts()):
-        if index >= 64 or part.is_multipart() or part.defects or part.get_content_disposition() != "form-data":
-            raise RequestError(400, "Invalid multipart transcription request")
-        name = part.get_param("name", header="content-disposition")
-        if not isinstance(name, str) or not FIELD_NAME.fullmatch(name):
-            raise RequestError(400, "Invalid multipart transcription request")
-        if part.get("Content-Transfer-Encoding", "binary").lower() not in {"binary", "7bit", "8bit"}:
-            raise RequestError(400, "Invalid multipart transcription request")
-        value = part.get_payload(decode=True)
-        if not isinstance(value, bytes):
-            raise RequestError(400, "Invalid multipart transcription request")
-        if name == "file":
-            if part.get_filename() is None or not value:
-                raise RequestError(400, "Exactly one nonempty audio file is required")
-            audio_items.append(value)
-            continue
-        if part.get_filename() is not None:
-            raise RequestError(400, "Invalid transcription parameter")
-        if name not in ALLOWED_FIELDS and name != "timestamp_granularities[]":
-            raise RequestError(400, "Unsupported transcription parameter")
-        if len(value) > 16_384:
-            raise RequestError(400, "Invalid transcription parameter")
-        try:
-            decoded = value.decode("utf-8", errors="strict")
-        except UnicodeDecodeError:
-            raise RequestError(400, "Invalid transcription parameter") from None
-        if name == "timestamp_granularities[]":
-            fields.setdefault(name, "")
-            fields[name] += ("\n" if fields[name] else "") + decoded
-        elif name in fields:
-            raise RequestError(400, "Duplicate transcription parameter")
-        else:
-            fields[name] = decoded
-    if len(audio_items) != 1:
-        raise RequestError(400, "Exactly one audio file is required")
-    return fields, audio_items[0]
-
-
-def validate_audio(audio: bytes, max_seconds: int) -> float:
-    if len(audio) > max_seconds * 32_000 + 44:
-        raise RequestError(413, "Audio duration exceeds the limit")
-    try:
-        with wave.open(io.BytesIO(audio), "rb") as source:
-            if (source.getcomptype() != "NONE" or source.getnchannels() != 1 or
-                    source.getsampwidth() != 2 or source.getframerate() != 16_000):
-                raise RequestError(400, "Audio must be mono 16 kHz PCM16 WAV")
-            frames = source.getnframes()
-            if not 0 < frames <= max_seconds * 16_000:
-                raise RequestError(413 if frames > max_seconds * 16_000 else 400,
-                                   "Audio duration is outside the supported range")
-            expected_pcm_bytes = frames * source.getnchannels() * source.getsampwidth()
-            if len(source.readframes(frames)) != expected_pcm_bytes:
-                raise RequestError(400, "PCM WAV payload is truncated")
-            return frames / 16_000
-    except (wave.Error, EOFError, OSError):
-        raise RequestError(400, "Invalid PCM WAV audio") from None
-
-
-def normalize_fields(fields: dict[str, str]) -> tuple[str, list[tuple[str, str]]]:
-    model = fields.get("model", "")
-    if model not in ALIASES:
-        raise RequestError(400, "Unsupported transcription model")
-    response_format = fields.get("response_format", "json")
-    if response_format not in {"text", "json", "verbose_json"}:
-        raise RequestError(400, "Only text, json and verbose_json response formats are supported")
-    if "timestamp_granularities[]" in fields:
-        granularities = fields["timestamp_granularities[]"].split("\n")
-        if len(set(granularities)) != len(granularities) or any(g not in {"segment", "word"} for g in granularities):
-            raise RequestError(400, "Invalid timestamp granularity")
-        if "word" in granularities:
-            raise RequestError(422, "Word timestamps are unsupported; only native segment timestamps are available")
-        if response_format != "verbose_json" and granularities:
-            raise RequestError(400, "Segment timestamps require verbose_json")
-        if "segment" in granularities and fields.get("no_timestamps", "false").lower() in {"true", "1"}:
-            raise RequestError(400, "Segment timestamps conflict with no_timestamps")
-    native: list[tuple[str, str]] = [("response_format", response_format)]
-    language = fields.get("language", "auto")
-    if language != "auto" and not re.fullmatch(r"[A-Za-z]{2,3}", language):
-        raise RequestError(400, "Unsupported language value")
-    native.append(("language", language.lower()))
-    if "prompt" in fields:
-        if "\x00" in fields["prompt"]:
-            raise RequestError(400, "Invalid transcription parameter")
-        native.append(("prompt", fields["prompt"]))
-    for name in ("temperature", "temperature_inc"):
-        if name in fields:
-            try:
-                number = float(fields[name])
-            except ValueError:
-                raise RequestError(400, "Invalid decoding parameter") from None
-            if not math.isfinite(number) or not 0.0 <= number <= 1.0:
-                raise RequestError(400, "Invalid decoding parameter")
-            native.append((name, str(number)))
-    for name in ("no_timestamps", "translate", "carry_initial_prompt"):
-        if name in fields:
-            value = fields[name].lower()
-            if value not in {"true", "false", "1", "0"}:
-                raise RequestError(400, "Invalid decoding parameter")
-            native.append((name, "true" if value in {"true", "1"} else "false"))
-    if "max_context" in fields:
-        try:
-            value = int(fields["max_context"])
-        except ValueError:
-            raise RequestError(400, "Invalid decoding parameter") from None
-        if not 0 <= value <= 448:
-            raise RequestError(400, "Invalid decoding parameter")
-        native.append(("max_context", str(value)))
-    return response_format, native
-
-
-def make_native_multipart(fields: list[tuple[str, str]], audio: bytes) -> tuple[bytes, str]:
-    boundary = "hc-whisper-cpp-" + secrets.token_hex(16)
-    parts: list[bytes] = []
-    for name, value in fields:
-        if not FIELD_NAME.fullmatch(name):
-            raise RequestError(400, "Invalid transcription parameter")
-        parts.extend((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
-                      value.encode("utf-8"), b"\r\n"))
-    parts.extend((f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.wav"\r\nContent-Type: audio/wav\r\n\r\n'.encode(),
-                  audio, f"\r\n--{boundary}--\r\n".encode()))
-    return b"".join(parts), "multipart/form-data; boundary=" + boundary
-
-
-def _clean_text(value: object) -> str:
-    if not isinstance(value, str):
-        raise RequestError(502, "Speech backend returned invalid text")
-    return CONTROL_TOKEN.sub("", value)
-
-
-def normalize_native_response(payload: bytes, response_format: str, duration: float) -> tuple[bytes, str]:
-    if len(payload) > MAX_RESPONSE_BYTES:
-        raise RequestError(502, "Speech backend response is too large")
-    if response_format == "text":
-        try:
-            text = payload.decode("utf-8", errors="strict")
-        except UnicodeDecodeError:
-            raise RequestError(502, "Speech backend returned invalid text") from None
-        return CONTROL_TOKEN.sub("", text).encode("utf-8"), "text/plain; charset=utf-8"
-    if response_format != "verbose_json":
-        try:
-            result = json.loads(payload)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            raise RequestError(502, "Speech backend returned invalid JSON") from None
-        if not isinstance(result, dict):
-            raise RequestError(502, "Speech backend returned invalid JSON")
-        result["text"] = _clean_text(result.get("text"))
-        return json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(), "application/json"
-    try:
-        result = json.loads(payload)
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        raise RequestError(502, "Speech backend returned invalid JSON") from None
-    if not isinstance(result, dict) or not isinstance(result.get("segments"), list):
-        raise RequestError(502, "Speech backend returned invalid verbose JSON")
-    result["text"] = _clean_text(result.get("text"))
-    cursor = 0
-    exact_serialization = True
-    parts: list[str] = []
-    for index, segment in enumerate(result["segments"]):
-        if not isinstance(segment, dict):
-            raise RequestError(502, "Speech backend returned an invalid segment")
-        segment_text = _clean_text(segment.get("text"))
-        segment["text"] = segment_text
-        segment["kind"] = "segment"
-        # whisper.cpp token objects are model tokens, not word alignments.
-        segment.pop("words", None)
-        start = segment.get("start")
-        end = segment.get("end")
-        if start is not None or end is not None:
-            if not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or \
-                    not math.isfinite(start) or not math.isfinite(end) or \
-                    start < 0 or end < start or end > duration:
-                raise RequestError(502, "Speech backend returned out-of-bounds segment timestamps")
-        parts.append(segment_text + "\n")
-        begin, finish = cursor, cursor + len(segment_text)
-        if result["text"][begin:finish] != segment_text or \
-                (finish < len(result["text"]) and result["text"][finish:finish + 1] != "\n"):
-            exact_serialization = False
-        if "kind" in segment:
-            segment["start_offset"] = begin
-            segment["end_offset"] = finish
-        cursor = finish + 1
-    if exact_serialization and "".join(parts) == result["text"]:
-        pass
-    else:
-        for segment in result["segments"]:
-            segment.pop("start_offset", None)
-            segment.pop("end_offset", None)
-    return json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(), "application/json"
 
 
 def _native_request(body: bytes, content_type: str, timeout: int) -> bytes:
@@ -372,6 +166,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
             self.send_header("X-HomeCompute-STT-Model-Snapshot", PIN["snapshot"])
             self.send_header("X-HomeCompute-STT-Runtime", "whisper.cpp")
             self.send_header("X-HomeCompute-STT-Runtime-Commit", RUNTIME_COMMIT)
+            self.send_header("X-HomeCompute-STT-HomeCompute-Revision", self.server.config.homecompute_revision)
+            self.send_header("X-HomeCompute-STT-Image-ID", self.server.config.image_id)
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(payload)
@@ -396,7 +192,17 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "model_sha256": PIN["sha256"],
                 "runtime": "whisper.cpp",
                 "runtime_commit": RUNTIME_COMMIT,
+                "homecompute_revision": self.server.config.homecompute_revision,
+                "image_id": self.server.config.image_id,
                 "device": "cpu",
+                "decoding_defaults": {
+                    "language": "auto", "prompt": None, "max_context": 0,
+                    "strategy": "beam_search", "beam_size": 5, "best_of": 5,
+                    "temperature": 0.0, "temperature_inc": 0.2,
+                    "entropy_thold": 2.4, "logprob_thold": -1.0,
+                    "no_context": True, "translate": False,
+                    "carry_initial_prompt": False,
+                },
                 "max_context": 0,
                 "max_audio_seconds": self.server.config.max_audio_seconds,
                 "max_upload_bytes": self.server.config.max_upload_bytes,

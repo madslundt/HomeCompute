@@ -10,6 +10,7 @@ services:
       dockerfile: Dockerfile
       args:
         WHISPER_CPP_COMMIT: f049fff95a089aa9969deb009cdd4892b3e74916
+        HOME_COMPUTE_REVISION: ${WHISPER_CPP_HOME_COMPUTE_REVISION:?Set to the reviewed HomeCompute source commit}
     container_name: homecompute-whisper-cpp-qualification
     init: true
     restart: "no"
@@ -29,6 +30,7 @@ services:
       WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS: ${WHISPER_CPP_UPLOAD_TIMEOUT_SECONDS:-120}
       WHISPER_CPP_NATIVE_TIMEOUT_SECONDS: ${WHISPER_CPP_NATIVE_TIMEOUT_SECONDS:-900}
       WHISPER_CPP_NATIVE_THREADS: "4"
+      WHISPER_CPP_IMAGE_ID: ${WHISPER_CPP_IMAGE_ID:-}
     volumes:
       - ${WHISPER_CPP_MODEL_FILE:?Set WHISPER_CPP_MODEL_FILE to the verified provisioned model}:/models/ggml-large-v3.bin:ro
       - ${WHISPER_CPP_API_KEY_FILE:?Set WHISPER_CPP_API_KEY_FILE to an externally provisioned candidate key}:/run/secrets/whisper_cpp_api_key:ro

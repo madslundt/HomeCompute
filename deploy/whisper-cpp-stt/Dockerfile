@@ -21,8 +21,10 @@ RUN cmake -S /src -B /build -DCMAKE_BUILD_TYPE=Release \
 
 FROM ${PYTHON_BASE} AS runtime
 ARG WHISPER_CPP_COMMIT=f049fff95a089aa9969deb009cdd4892b3e74916
+ARG HOME_COMPUTE_REVISION
 LABEL org.opencontainers.image.source="https://github.com/ggml-org/whisper.cpp" \
       org.opencontainers.image.revision="${WHISPER_CPP_COMMIT}" \
+      io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.whisper-cpp.runtime-commit="${WHISPER_CPP_COMMIT}" \
       io.homecompute.whisper-cpp.model-sha256="64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
 ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
@@ -36,10 +38,10 @@ RUN apt-get update \
  && chmod 0555 /opt/homecompute /models
 COPY --from=build /build/bin/whisper-server /usr/local/bin/whisper-server
 COPY --from=build /build/bin/lib*.so* /usr/local/lib/
-COPY adapter.py verify_model.py /opt/homecompute/
-ENV LD_LIBRARY_PATH=/usr/local/lib
+COPY adapter.py contract.py verify_model.py /opt/homecompute/
+ENV LD_LIBRARY_PATH=/usr/local/lib WHISPER_CPP_HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION}
 RUN chmod 0555 /usr/local/bin/whisper-server /usr/local/lib/lib*.so* \
- && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/verify_model.py \
+ && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/contract.py /opt/homecompute/verify_model.py \
  && ! ldd /usr/local/bin/whisper-server | grep -q 'not found'
 USER 10001:10001
 EXPOSE 8000
