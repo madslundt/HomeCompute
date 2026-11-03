@@ -22,7 +22,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 FILES=('scripts/qualify-openclaw-restored-upgrade.py','scripts/prepare-openclaw-upgrade-assets.py',
- 'scripts/restore-openclaw-nemoclaw.py','scripts/setup-openclaw-child-results.py','scripts/setup-openclaw-llm-queue.py',
+ 'scripts/supervise-openclaw-nemoclaw.py','scripts/restore-openclaw-nemoclaw.py','scripts/setup-openclaw-child-results.py','scripts/setup-openclaw-llm-queue.py',
  'deploy/openclaw/recovery/inspect-restored-state.py','deploy/openclaw/qualification/restored-upgrade.py',
  'deploy/openclaw/safety-plugin/llm-queue.mjs','deploy/openclaw/qualification/installed-mattermost.mjs')
 PROBE='deploy/openclaw/qualification/restored-upgrade.py'
@@ -32,7 +32,7 @@ XORRISO=Path('/nix/var/nix/gcroots/homecompute-codex-vm/xorriso/bin/xorriso')
 
 
 def accepted(data):
- return all(data.get(key) is True for key in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','installed_mattermost_ingress_verified','registry_metadata_replay')) and data.get('roles')==12
+ return all(data.get(key) is True for key in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')) and data.get('roles')==12 and type(data.get('native_sqlite_databases')) is int and data['native_sqlite_databases']>=39
 
 
 def result_from_log(raw,nonce):
@@ -100,7 +100,7 @@ def verify(args,revision):
   streams=[stack.enter_context(p.open('rb')) for p in (disk,iso)];descriptors=[s.fileno() for s in streams]
   output=stack.enter_context(log.open('xb'));error=stack.enter_context(errors.open('xb'))
   command=ENGINE.vm_command(str(executable),'agents-vm',descriptors);command[command.index('-m')+1]='8192';command[command.index('-smp')+1]='2'
-  def child():ENGINE.vm_child(account.pw_uid,account.pw_gid,kvm,memory_limit=32*1024**3,cpu_seconds=2250,file_limit=8*1024**3)
+  def child():ENGINE.vm_child(account.pw_uid,account.pw_gid,kvm,memory_limit=32*1024**3,cpu_seconds=2250,file_limit=12*1024**3)
   with ENGINE.owned_process(command,stdin=subprocess.DEVNULL,stdout=output,stderr=error,cwd=guest,env={**ENGINE.ENV,'TMPDIR':'.'},pass_fds=descriptors,preexec_fn=child) as process:
    deadline=time.monotonic()+2100
    while time.monotonic()<deadline:

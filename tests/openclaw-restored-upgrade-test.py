@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import importlib.util
 import io
+import hashlib
+import tarfile
 import json
 from pathlib import Path
 import tempfile
@@ -16,7 +18,7 @@ w=load('worker','deploy/openclaw/qualification/restored-upgrade.py')
 
 class RestoredUpgrade(unittest.TestCase):
  def test_no_acceptance_without_actual_handoff_and_rollback(self):
-  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12
+  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
   self.assertTrue(m.accepted(data))
   for key in ('native_rollback_verified','agent_handoff_verified','state_preserved'):
    with self.subTest(key=key):self.assertFalse(m.accepted({**data,key:False}))
@@ -74,8 +76,34 @@ class RestoredUpgrade(unittest.TestCase):
    request('HC_NATIVE_HANDOFF_CHECK '+child['message']['content'],tools)
    self.assertTrue(w.Provider.parent_received)
 
+ def test_oci_transport_naming_keeps_every_blob_unchanged_and_rejects_corruption(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);config=b'{"os":"linux","architecture":"amd64"}';layer=b'synthetic layer'
+   def descriptor(raw):return {'digest':'sha256:'+hashlib.sha256(raw).hexdigest(),'size':len(raw)}
+   manifest=json.dumps({'config':descriptor(config),'layers':[descriptor(layer)]}).encode();manifest+=b' '*(20193-len(manifest))
+   desc=descriptor(manifest);reference='ghcr.io/nvidia/nemoclaw/openclaw-sandbox@'+desc['digest']
+   entries={'oci-layout':b'{"imageLayoutVersion":"1.0.0"}','index.json':json.dumps({'schemaVersion':2,'manifests':[desc]}).encode(),'manifest.json':b'[]'}
+   blobs={raw: 'blobs/sha256/'+hashlib.sha256(raw).hexdigest() for raw in (manifest,config,layer)}
+   entries.update({name:raw for raw,name in blobs.items()})
+   def archive(path,values):
+    with tarfile.open(path,'w') as tar:
+     for name,raw in values.items():
+      info=tarfile.TarInfo(name);info.size=len(raw);tar.addfile(info,io.BytesIO(raw))
+   source=root/'original.tar';archive(source,entries)
+   with patch.dict(m.ASSETS.IMAGES,{'0.0.140':reference}):
+    proof=m.ASSETS.named_archive(source,root/'named.tar',reference)
+    self.assertEqual(proof['verified_unchanged_blobs'],3)
+    with tarfile.open(root/'named.tar') as tar:
+     for raw,name in blobs.items():self.assertEqual(tar.extractfile(name).read(),raw)
+     index=json.load(tar.extractfile('index.json'))
+     self.assertEqual(index['manifests'][0]['digest'],desc['digest'])
+     self.assertEqual(index['manifests'][0]['annotations']['io.containerd.image.name'],reference)
+    entries[blobs[layer]]=b'changed';archive(root/'changed.tar',entries)
+    with self.assertRaisesRegex(ValueError,'blob content mismatch'):m.ASSETS.named_archive(root/'changed.tar',root/'refused.tar',reference)
+    self.assertFalse((root/'refused.tar').exists())
+
  def test_clone_environment_does_not_inherit_external_credentials(self):
-  with patch.object(w,'ROOT',ROOT),patch.dict('os.environ',{'COMPATIBLE_API_KEY':'private','OPENAI_API_KEY':'private'}):
+  with patch.object(w,'ROOT',ROOT),patch.object(Path,'read_text',return_value='NEMOCLAW_CONTEXT_WINDOW=32768\nCOMPATIBLE_API_KEY=private\nOPENAI_API_KEY=private'),patch.dict('os.environ',{'COMPATIBLE_API_KEY':'private','OPENAI_API_KEY':'private'}):
    env=w.environment('0.0.140',Path('/readonly/assets'))
   self.assertEqual(env['COMPATIBLE_API_KEY'],'synthetic-fixture-only')
   self.assertNotIn('OPENAI_API_KEY',env)

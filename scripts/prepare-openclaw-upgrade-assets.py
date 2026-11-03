@@ -3,6 +3,9 @@
 import argparse
 from datetime import datetime,timezone
 import hashlib
+import copy
+import io
+import re
 import json
 import os
 from pathlib import Path
@@ -35,6 +38,54 @@ def catalog_valid(data,version):
   if (item['agent']!=name or item['platform']!='linux/amd64' or item['source']['revision']!=VERSIONS[version]
    or item['source']['release']!='v'+version or item['source']['cohort']!=first['source']['cohort']):raise ValueError('catalog cohort mismatch')
  if first['reference']!=IMAGES[version]:raise ValueError('reviewed managed workload mismatch')
+
+
+def named_archive(source,destination,reference):
+ """Name authenticated OCI content for Docker's containerd import lifecycle."""
+ if reference!=IMAGES['0.0.140']:raise ValueError('only reviewed candidate transport may be named')
+ digest=reference.split('@')[1]
+ with tarfile.open(source) as original:
+  members=original.getmembers();names=[m.name for m in members]
+  if len(names)!=len(set(names)) or len(names)>4096:raise ValueError('duplicate or excessive OCI members')
+  for member in members:
+   if member.isdir() and member.name in ('blobs','blobs/sha256'):continue
+   if not member.isfile() or not re.fullmatch(r'(?:index\.json|manifest\.json|oci-layout|blobs/sha256/[0-9a-f]{64})',member.name):raise ValueError('unsafe OCI archive member')
+  raw=original.extractfile('index.json').read(65537)
+  if len(raw)>65536:raise ValueError('OCI index bound')
+  index=json.loads(raw)
+  if len(index.get('manifests',[]))!=1:raise ValueError('one authenticated workload descriptor required')
+  descriptor=index['manifests'][0]
+  if descriptor.get('digest')!=digest or descriptor.get('size')!=20193:raise ValueError('authenticated manifest descriptor mismatch')
+  blob_names={m.name for m in members if m.isfile() and m.name.startswith('blobs/')}
+  expected=set();pending=[descriptor]
+  while pending:
+   row=pending.pop();name='blobs/'+row['digest'].replace(':','/',1)
+   if name in expected:continue
+   if name not in blob_names:raise ValueError('referenced OCI blob missing')
+   expected.add(name)
+   stream=original.extractfile(name)
+   h=hashlib.sha256();size=0;content=bytearray() if name=='blobs/'+digest.replace(':','/',1) else None
+   while chunk:=stream.read(1024*1024):
+    size+=len(chunk);h.update(chunk)
+    if content is not None:content.extend(chunk)
+   if 'sha256:'+h.hexdigest()!=row['digest'] or size!=row['size']:raise ValueError('OCI blob content mismatch')
+   if content is not None:
+    manifest=json.loads(content)
+    pending.extend([manifest['config'],*manifest['layers']])
+  if expected!=blob_names:raise ValueError('unreferenced OCI blob refused')
+  descriptor.setdefault('annotations',{})['io.containerd.image.name']=reference
+  rendered=json.dumps(index,sort_keys=True,separators=(',',':')).encode()
+  with destination.open('xb') as file,tarfile.open(fileobj=file,mode='w') as output:
+   for member in members:
+    info=copy.copy(member)
+    if member.name=='index.json':info.size=len(rendered);output.addfile(info,io.BytesIO(rendered))
+    else:
+     stream=original.extractfile(member) if member.isfile() else None
+     output.addfile(info,stream)
+     if stream is not None:stream.close()
+ return {'original_archive_sha256':sha(source),'named_archive_sha256':sha(destination),
+  'original_index_sha256':hashlib.sha256(raw).hexdigest(),'named_index_sha256':hashlib.sha256(rendered).hexdigest(),
+  'verified_unchanged_blobs':len(expected),'manifest_digest':digest,'reference':reference}
 
 
 def main():

@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import signal
 import sqlite3
 import subprocess
@@ -23,6 +24,7 @@ WORK=Path('/var/lib/homecompute-upgrade-fixture')
 SECTIONS=('agents','tools','channels','cron','hooks','browser')
 ROOT=None
 COUNTER=0
+SQLITE_COUNT=0
 
 
 def module(name):
@@ -60,7 +62,15 @@ def environment(version,assets):
   'GITHUB_ACTIONS':'true','NEMOCLAW_RUN_LIVE_E2E':'1',
   'NEMOCLAW_E2E_MANAGED_IMAGE_CATALOG':str(assets/('catalog-'+version+'.json')),
   'NEMOCLAW_E2E_MANAGED_IMAGE_REVISION':versions[version],'NO_COLOR':'1','CI':'1'}
- return env
+ allowed=module('supervise-openclaw-nemoclaw').ENV_KEYS
+ inherited={}
+ for line in Path('/etc/homecompute-openclaw/agent-openclaw.env').read_text().splitlines():
+  if line and not line.startswith('#') and '=' in line:
+   key,value=line.split('=',1)
+   if key in allowed:inherited[key]=value.strip('"')
+ inherited.update(env)
+ inherited['NEMOCLAW_INSTALL_REF']=versions[version];inherited['NEMOCLAW_INSTALL_TAG']='v'+version
+ return inherited
 
 
 def cli(version,*args):return [str(HOME/'.nvm/versions/node/v22.23.3/bin/node'),str(WORK/('nemoclaw-'+version)/'bin/nemoclaw.js'),*args]
@@ -100,6 +110,55 @@ def health(version,env):
  return data
 
 
+def policy_projection(config):
+ value={key:copy.deepcopy(config.get(key)) for key in SECTIONS}
+ value['plugins']={key:copy.deepcopy(val) for key,val in config.get('plugins',{}).items() if key!='installs'}
+ return value
+
+
+def native_policy(env,label):
+ raw=run([str(HOME/'.local/bin/openshell'),'policy','get','-g','nemoclaw-9123','agent-openclaw','--base','-o','json'],label,env=env,user=True)
+ return json.loads(raw)['policy']
+
+
+def wait_idle(version,env):
+ deadline=time.monotonic()+90;empty=0
+ while time.monotonic()<deadline:
+  raw=run(cli(version,'agent-openclaw','exec','--','openclaw','gateway','call','homecompute-safety.llm.activity','--params','{}','--json'),'native-activity',env=env,user=True,timeout=30)
+  value,_=json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])
+  if value.get('active_turns')==0:
+   empty+=1
+   if empty>=2:return
+  else:empty=0
+  time.sleep(1)
+ raise ValueError('native-fixture-not-quiescent')
+
+
+def native_data_integrity():
+ global SQLITE_COUNT
+ count=0;queues={};files=0
+ for path in STATE.rglob('*'):
+  if path.is_symlink() or not path.is_file():continue
+  files+=1
+  if files>200000:raise ValueError('native-state-file-budget')
+  with path.open('rb') as stream:header=stream.read(16)
+  if header!=b'SQLite format 3\0':continue
+  with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True,timeout=10) as db:
+   db.execute('pragma query_only=on')
+   if db.execute('pragma integrity_check').fetchall()!=[('ok',)]:raise ValueError('native-state-sqlite-integrity')
+   count+=1
+   for (table,) in db.execute('select name from sqlite_master where type="table"'):
+    if not re.fullmatch(r'(?:channel_ingress|channel_inbox|cron_jobs|cron_job_runs|tasks|reminders)[a-zA-Z0-9_]*',table):continue
+    quoted='"'+table.replace('"','""')+'"'
+    rows=db.execute('select * from '+quoted).fetchall()
+    if len(rows)>100000:raise ValueError('native-durable-queue-budget')
+    values=sorted(json.dumps(row,sort_keys=True,default=lambda b:{'bytes':b.hex()}) for row in rows)
+    queues[str(path.relative_to(STATE))+':'+table]=hashlib.sha256('\n'.join(values).encode()).hexdigest()
+ if count<39:raise ValueError('native-restored-sqlite-inventory-incomplete')
+ SQLITE_COUNT=count
+ return queues
+
+
 def snapshot():
  base=module('restore-openclaw-nemoclaw')
  values={}
@@ -114,7 +173,7 @@ def snapshot():
    elif p.is_file():
     with p.open('rb') as f:workspaces[key]={**metadata,'sha256':hashlib.file_digest(f,'sha256').hexdigest()}
    elif p.is_dir():workspaces[key]=metadata
- return {'conversations':values,'workspaces':workspaces}
+ return {'conversations':values,'workspaces':workspaces,'durable_queues':native_data_integrity()}
 
 
 def role_conversations(role):
@@ -252,7 +311,7 @@ def main():
    if name!='defaults' and isinstance(value,dict):value['enabled']=False
   for value in [paused['agents'].get('defaults',{}),*paused['agents']['entries'].values()]:value['heartbeat']={'every':'0m'}
   target=STATE/'openclaw.json';target.write_text(json.dumps(paused));os.chown(target,998,998);target.chmod(0o600)
-  before=snapshot();policy={k:paused.get(k) for k in SECTIONS}
+  before=snapshot();policy=policy_projection(paused);sandbox_policy=native_policy(env,'capture-native-policy')
   # Retain the exact provider/registry endpoint identity, with clone-only DNS
   # and a synthetic credential. The VM has no NIC or host share.
   bridge=json.loads(subprocess.check_output(['docker','network','inspect','bridge']))[0]['IPAM']['Config'][0]['Gateway']
@@ -260,12 +319,16 @@ def main():
   hosts.write_text('\n'.join(lines)+'\n'+bridge+' ai.home.arpa\n')
   server=http.server.ThreadingHTTPServer(('0.0.0.0',18080),Provider);threading.Thread(target=server.serve_forever,daemon=True).start()
   run([str(HOME/'.local/bin/openshell'),'provider','update','-g','nemoclaw-9123','compatible-endpoint','--credential','COMPATIBLE_API_KEY'],'replace-clone-only-credential',env=env,user=True)
-  progress('load-candidate-image');run(['docker','image','load','--input',str(assets/'candidate-image.tar')],'load-candidate-image',timeout=240)
+  progress('name-authenticated-oci-content');named=WORK/'named-candidate-image.tar'
+  naming=prep.named_archive(assets/'candidate-image.tar',named,prep.IMAGES['0.0.140']);(WORK/'oci-naming-proof.json').write_text(json.dumps(naming,sort_keys=True))
+  progress('load-candidate-image');run(['docker','image','load','--input',str(named)],'load-candidate-image',timeout=240)
   run(['docker','image','inspect',prep.IMAGES['0.0.140']],'verify-exact-candidate-cache')
   for version,core,label in [('0.0.140','2026.9.2','upgrade'),('0.0.129','2026.9.1','rollback')]:
    env=environment(version,assets);progress(label+'-native-rebuild')
    run(cli(version,'agent-openclaw','rebuild','--yes','--verbose'),label+'-native-rebuild',env=env,user=True,timeout=600)
-   c=container();image=subprocess.check_output(['docker','inspect','--format','{{.Config.Image}}',c],timeout=15).decode().strip()
+   c=container()
+   run(['docker','update','--cpus','2','--memory',str(8*1024**3),'--memory-swap',str(8*1024**3),c],label+'-retain-resource-budget')
+   image=subprocess.check_output(['docker','inspect','--format','{{.Config.Image}}',c],timeout=15).decode().strip()
    if image not in (prep.IMAGES[version],prep.IMAGES[version].split('@')[1]):raise ValueError(label+'-image-mismatch')
    install_ports(core)
    mm_runtime,mm_sha,mm_version=mattermost_port(version,env)
@@ -275,7 +338,8 @@ def main():
    if label=='upgrade':
     mattermost_probe(mm_runtime,mm_sha);result['installed_mattermost_ingress_verified']=True;result['mattermost_version']=mm_version
    actual=json.loads((STATE/'openclaw.json').read_bytes())
-   if {k:actual.get(k) for k in SECTIONS}!=policy:raise ValueError(label+'-retained-policy-drift')
+   if policy_projection(actual)!=policy:raise ValueError(label+'-retained-policy-drift')
+   if native_policy(env,label+'-native-policy')!=sandbox_policy:raise ValueError(label+'-native-policy-drift')
    if snapshot()!=before:raise ValueError(label+'-immutable-state-drift')
    if core not in run(['docker','exec',container(),'openclaw','--version'],label+'-actual-version').decode():raise ValueError(label+'-runtime-version')
    result['native_'+label+'_verified']=True;progress(label+'-verified')
@@ -283,13 +347,17 @@ def main():
     answer=run(cli(version,'agent-openclaw','exec','--','openclaw','agent','--agent','main','--session-id',str(uuid.uuid4()),'--message','Reply with a short acknowledgement.','--json'),'synthetic-native-turn',env=env,user=True,timeout=180)
     if b'HC_SYNTHETIC_MODEL_OK' not in answer:raise ValueError('native-synthetic-turn-failed')
     result['task_delivery_verified']=True
-    run(cli(version,'agent-openclaw','exec','--','openclaw','agent','--agent','main','--session-id',str(uuid.uuid4()),'--message','HC_NATIVE_HANDOFF_CHECK: Ask researcher for its synthetic fixture evidence, then report the evidence received.','--json'),'synthetic-native-handoff',env=env,user=True,timeout=180)
+    handoff=run(cli(version,'agent-openclaw','exec','--','openclaw','agent','--agent','main','--session-id',str(uuid.uuid4()),'--message','HC_NATIVE_HANDOFF_CHECK: Ask researcher for its synthetic fixture evidence, then report the evidence received.','--json'),'synthetic-native-handoff',env=env,user=True,timeout=180)
     deadline=time.monotonic()+150
     while time.monotonic()<deadline and not Provider.parent_received:time.sleep(2)
     result.update(handoff_child_called=Provider.child_called,handoff_yield_requested=Provider.yield_requested,handoff_parent_received=Provider.parent_received)
     if not (Provider.child_called and Provider.parent_received and Provider.yield_requested):raise ValueError('native-handoff-or-tail-retention-failed')
-    result['agent_handoff_verified']=True;before=snapshot()
-  result['state_preserved']=True;result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True
+    delivered,_=json.JSONDecoder().raw_decode(handoff.decode()[handoff.index(b'{'):])
+    if delivered.get('result',{}).get('meta',{}).get('yielded') is not True:raise ValueError('native-yield-not-executed')
+    result['native_yield_verified']=True;result['agent_handoff_verified']=True
+    wait_idle(version,env);before=snapshot()
+  result['native_sqlite_integrity']=True;result['native_sqlite_databases']=SQLITE_COUNT
+  result['oci_transport_name_verified']=True;result['state_preserved']=True;result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True
  except Exception as error:
   result['error_category']=str(error) if isinstance(error,ValueError) else type(error).__name__
   logs=sorted(WORK.glob('*.log'),key=lambda p:p.stat().st_mtime_ns) if WORK.exists() else []

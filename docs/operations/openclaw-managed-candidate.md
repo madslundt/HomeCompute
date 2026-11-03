@@ -223,3 +223,21 @@ old yield overlay; the9.1 rollback retains both legacy ports. The queue installe
 also accepts an explicit `--core-version` when a separately installed compatible
 Mattermost version is retained. Profile selection remains part of the guarded
 production lifecycle after native qualification.
+
+The second VM attempt positively proved stopped state, then refused before
+rebuild because Docker's unnamed export lost the exact repository-digest lookup
+on load. The transport builder now verifies the sole authenticated manifest and
+every referenced config/layer blob, rejects duplicate, unsafe and unreferenced
+members, and adds only `io.containerd.image.name` to the top-level OCI index.
+Every blob remains byte-identical. This is Docker29/containerd2's supported
+[import naming mechanism](https://github.com/containerd/containerd/blob/v2.2.0/client/import.go#L256),
+not a replacement manifest or bypass of the digest check. Original/new archive
+and index hashes and the unchanged blob count stay in the private test evidence.
+Production uses its normal registry-backed image lookup; this transport is only
+for the networkless fixture.
+
+The fixture additionally compares the native sandbox policy, plugin grants and
+all immutable role state. It carries only allow-listed non-secret deployment
+settings into a clean environment and replaces the clone's model credential
+with a synthetic value. A real yielded terminal receipt and two independent
+zero-activity observations settle the handoff before the rollback snapshot.
