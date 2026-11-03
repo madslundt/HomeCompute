@@ -176,8 +176,8 @@ recovery proof and verifies every input hash before constructing its read-only
 qualification ISO. This is a separate receipt; it never replaces the accepted
 NAS recovery receipt.
 
-The VM uses the existing networkless unprivileged QEMU lifecycle, two visible
-vCPUs pinned to one host CPU, 8 GiB guest RAM, a 10 GiB physical memory cap and
+The VM uses the existing networkless unprivileged QEMU lifecycle, four visible
+vCPUs pinned to two host CPUs, 10 GiB guest RAM, a 12 GiB physical memory cap and
 bounded scratch I/O. Its source disk descriptor is read only, with disposable
 COW writes. It has no NIC, host share or forwarded host port. The clone-only
 provider keeps the retained endpoint/provider identity, uses clone-only hosts
@@ -244,8 +244,9 @@ zero-activity observations settle the handoff before the rollback snapshot.
 
 A subsequent attempt was refused before boot by the previous16 GiB admission
 threshold while available memory remained stable near15.6 GiB and memory
-pressure was zero. Admission now explicitly budgets the unchanged10 GiB scope
-cap plus5 GiB of host headroom. It also requires full memory pressure over ten
+pressure was zero. That attempt used a10 GiB scope
+cap plus5 GiB of host headroom. The current fixture instead requires17 GiB
+available, budgeting its12 GiB scope plus5 GiB of host reserve. It also requires full memory pressure over ten
 seconds at most0.1% and some pressure at most1%. While running, falling below
 4 GiB available terminates the owned VM immediately. Full pressure above1% or
 some pressure above5% must persist for three consecutive two-second samples.
@@ -253,8 +254,98 @@ The previous single-sample startup refusal is retained as failed evidence; each
 new sample records available bytes and both pressure values privately. Cleanup
 allows60 seconds after TERM and60 after KILL for the I/O-limited VM, then still
 requires its scope to be empty. Other restore callers retain their original
-cleanup deadlines. The guest remains8 GiB/two visible vCPUs, with
-its original read-only source disk, memory cap, CPU affinity and I/O limits.
+cleanup deadlines. The current guest uses10 GiB/four visible vCPUs and two host CPUs, with
+the same read-only source disk and I/O limits. Existing recovery callers keep
+their original one-CPU affinity and allocation.
 No production service is paused to create room for qualification. This change
 applies to the managed-upgrade fixture; the accepted NAS recovery verifier and
 its receipt are unchanged.
+
+## Guarded production lifecycle
+
+`config/openclaw-managed-deployment.json` separately controls production
+promotion. It remains disabled until an accepted restored-VM receipt establishes
+the complete native upgrade, rollback, authenticated task, real child handoff,
+yield, installed Mattermost, state integrity and immutable image gates. The
+archived candidate declaration remains historical artifact evidence. A native
+success receipt alone does not change production pins.
+
+The production controller is `scripts/upgrade-openclaw-nemoclaw.py`. Run `plan`
+to obtain the exact source bundle hash. Its mutating actions require a reviewed
+published commit staged root-owned under `/srv/homecompute/releases/FULL_SHA`
+inside the agents guest, UID 1000, an exact private qualification receipt/hash,
+and the accepted public CLI build directory. The source guard compares each
+lifecycle input with the selected Git commit; the root DNS installer also
+requires that protected release ancestry.
+
+```bash
+python3 /srv/homecompute/releases/FULL_SHA/scripts/upgrade-openclaw-nemoclaw.py plan
+python3 /srv/homecompute/releases/FULL_SHA/scripts/upgrade-openclaw-nemoclaw.py apply \
+  --revision FULL_SHA --expected-hash REVIEWED_BUNDLE_HASH \
+  --qualification-proof PRIVATE_RECEIPT --expected-qualification-sha256 RECEIPT_SHA256 \
+  --expected-config-sha256 CURRENT_COMPLETE_CONFIG_SHA256 --build-dir REVIEWED_BUILD
+```
+
+The controller independently resolves the actual authenticated production GHCR
+catalog before stopping anything. It requires the exact old image, policy,
+resource budget, known host programs and reviewed runtime-layer changes, then
+checks two idle observations. It takes the existing recovery lock and its own
+upgrade lock, stops the watchdog, writes a durable upgrade fence, and captures
+a complete cold private backup, original permissions, SQLite integrity,
+all-role conversation/workspace and queue projections before native rebuild.
+The existing global 0.0.129 installation remains retained; the OpenClaw-only
+wrapper selects the verified side-by-side 0.0.140 build. Hermes is unaffected.
+The installed old recovery program contains the previously applied two-CPU
+inspection/cap change; its exact observed public hash is required before the
+new tracked dual-profile program replaces it.
+
+After supported named rebuild, the controller records positively observed native
+UUID/generation and source/image/core ownership even when native finalization
+returns nonzero. An uncertain outcome never permits replaying rebuild. It
+installs only hash-qualified runtime ports, verifies preserved data while
+channels are paused, rebinds the existing fixed MCP/DNS/network policy and
+restores the complete prior team policy. Required plugin health, all enabled
+Mattermost connections and one private non-delivering local model probe precede
+watchdog reactivation. Family remains disabled under the retained policy.
+
+`resume` continues only a journaled Ready paused candidate before active-team
+restoration or model-probe submission. `rollback` captures current cold state
+before a supported rebuild with retained 0.0.129, preserving post-upgrade data;
+it refuses an unresolved model probe or active native turn before stopping.
+`resume-rollback` accepts only the positively recorded replacement-created
+checkpoint and verifies its cold state/projection/authority hashes. These
+continuations take the same revision, bundle and private-proof arguments as
+`apply`; they never repeat native replacement. Unknown native outcomes or an
+already active team require read-only examination of the retained journal and
+private logs. Code rollback cannot reverse an incompatible data migration;
+the isolated native rollback gate remains mandatory.
+
+
+The next native140 preflight passed artifact import but refused before deletion
+when its exact pinned BusyBox bridge container exceeded the vendor's fixed
+20-second execution budget. This was an actual container-start check after
+successful cache inspection, not a registry pull error. The fixture now records
+a120-second bounded warm-up with the same immutable BusyBox image, bridge
+network and `true` command, plus metadata-only Docker lifecycle events, before
+running the unchanged native preflight. The larger clone allocation meets the
+vendor's recommended visible CPU/RAM counts; its physical CPU and memory limits
+remain bounded separately. No native timeout, ownership rule or preflight is
+patched or skipped. See the [pinned preflight source](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/onboard/preflight.ts).
+
+A clone-only UDP resolver on its internal Docker bridge returns NXDOMAIN only
+for native `nemoclaw-dns-probe-<hex>.invalid` questions, and SERVFAIL for other
+valid names. It never forwards or logs questions. The clone's resolver file
+points to that fixture so the genuine container-DNS test has a reachable local
+negative resolver despite the absent NIC. The synthetic provider retains its
+clone-only hosts mapping. Production independently uses its ordinary DNS and
+registry paths; this resolver and its settings are never installed there.
+
+The state projection now also covers the actual native delivery queue, task
+runs, delivery routing/deduplication, cron receipts and references. Rows are
+compared in full with finite row/byte budgets. Native cron runtime-authority
+rows preserve owning job keys while their native revalidated authority fields
+are excluded; sandbox network policy is checked independently. Terminal-row
+expiry or unexpected task maintenance conservatively refuses preservation.
+The production controller additionally compares workspace ownership/modes read
+from the actual state volume; Docker copy ownership is not used as evidence of
+native UID/GID preservation.

@@ -78,10 +78,10 @@ def memory_state():
 
 
 def memory_admitted(available,pressure,*,running=False):
- # The scope's 10 GiB maximum plus a 5 GiB host reserve. A separate 4 GiB
+ # The scope's 12 GiB maximum plus a 5 GiB host reserve. A separate 4 GiB
  # live floor leaves time to terminate the owned VM during another workload's
  # burst; any sustained pressure also aborts instead of paging production.
- floor=(4 if running else 15)*1024**3
+ floor=(4 if running else 17)*1024**3
  return available>=floor and pressure['full']<=(1.0 if running else 0.1) and pressure['some']<=(5.0 if running else 1.0)
 
 
@@ -115,8 +115,8 @@ def verify(args,revision):
  with ExitStack() as stack:
   streams=[stack.enter_context(p.open('rb')) for p in (disk,iso)];descriptors=[s.fileno() for s in streams]
   output=stack.enter_context(log.open('xb'));error=stack.enter_context(errors.open('xb'))
-  command=ENGINE.vm_command(str(executable),'agents-vm',descriptors);command[command.index('-m')+1]='8192';command[command.index('-smp')+1]='2'
-  def child():ENGINE.vm_child(account.pw_uid,account.pw_gid,kvm,memory_limit=32*1024**3,cpu_seconds=2250,file_limit=12*1024**3)
+  command=ENGINE.vm_command(str(executable),'agents-vm',descriptors);command[command.index('-m')+1]='10240';command[command.index('-smp')+1]='4'
+  def child():ENGINE.vm_child(account.pw_uid,account.pw_gid,kvm,memory_limit=32*1024**3,cpu_seconds=2250,file_limit=12*1024**3,cpu_count=2)
   with ENGINE.owned_process(command,stdin=subprocess.DEVNULL,stdout=output,stderr=error,cwd=guest,env={**ENGINE.ENV,'TMPDIR':'.'},pass_fds=descriptors,preexec_fn=child,cleanup_options={'graceful_timeout':60,'kill_timeout':60}) as process:
    deadline=time.monotonic()+2100;pressure_samples=0
    while time.monotonic()<deadline:
@@ -133,7 +133,7 @@ def verify(args,revision):
  after=disk.stat()
  if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise ValueError('restored source disk changed')
  report={**result,'accepted':accepted(result),'source_revision':revision,'created_at':datetime.now(timezone.utc).isoformat(),
-  'source_disk_read_only':True,'network':False,'production_modified':False,'manifest_sha256':manifest,'assets_manifest_sha256':args.expected_assets_sha256}
+  'source_disk_read_only':True,'network':False,'production_modified':False,'manifest_sha256':manifest,'assets_manifest_sha256':args.expected_assets_sha256,'policy_sha256':args.expected_policy_sha256}
  receipt=work/'receipt.json';receipt.write_text(json.dumps(report,sort_keys=True))
  print(json.dumps({'accepted':report['accepted'],'receipt':str(receipt),'error_category':report.get('error_category'),'production_modified':False}))
  return report['accepted']
@@ -150,7 +150,7 @@ def main():
  signal.signal(signal.SIGTERM,interrupted);signal.signal(signal.SIGHUP,interrupted)
  if not a.worker:
   unit='homecompute-openclaw-upgrade-'+uuid.uuid4().hex+'.scope';dispatch=Path(tempfile.mkdtemp(prefix='openclaw-upgrade-dispatch-',dir=ENGINE.SCRATCH));dispatch.chmod(0o700)
-  command=['systemd-run','--scope','--collect','--quiet','--unit',unit,'--property=MemoryHigh=9G','--property=MemoryMax=10G','--property=IOWeight=10',
+  command=['systemd-run','--scope','--collect','--quiet','--unit',unit,'--property=MemoryHigh=11G','--property=MemoryMax=12G','--property=IOWeight=10',
    '--property=IOReadBandwidthMax=/srv/restore-tests 40M','--property=IOWriteBandwidthMax=/srv/restore-tests 20M',sys.executable,str(Path(__file__).resolve()),*sys.argv[1:],'--worker']
   try:
    result=ENGINE.run(command,timeout=2550,check=False);(dispatch/'worker.stdout').write_bytes(result.stdout);(dispatch/'worker.stderr').write_bytes(result.stderr)

@@ -4,6 +4,9 @@ import io
 import hashlib
 import tarfile
 import json
+import sqlite3
+import struct
+from contextlib import closing
 from pathlib import Path
 import tempfile
 import unittest
@@ -17,6 +20,36 @@ w=load('worker','deploy/openclaw/qualification/restored-upgrade.py')
 
 
 class RestoredUpgrade(unittest.TestCase):
+ def test_local_fixture_dns_only_denies_the_reserved_native_probe_name(self):
+  def query(name):
+   labels=b''.join(bytes([len(label)])+label.encode() for label in name.split('.'))+b'\0'
+   return struct.pack('!6H',123,0x0100,1,0,0,0)+labels+struct.pack('!2H',1,1)
+  packet=query('nemoclaw-dns-probe-123abcdef.invalid');response=w.fixture_dns_response(packet)
+  self.assertEqual(struct.unpack('!6H',response[:12]),(123,0x8183,1,0,0,0))
+  self.assertEqual(response[12:],packet[12:])
+  self.assertEqual(struct.unpack('!6H',w.fixture_dns_response(query('private.example'))[:12])[1]&15,2)
+  self.assertIsNone(w.fixture_dns_response(b'bad'))
+  self.assertIsNone(w.fixture_dns_response(struct.pack('!6H',1,0,1,0,0,0)+b'\xc0\x0c\0\1\0\1'))
+
+ def test_actual_native_delivery_and_task_state_are_preserved(self):
+  with closing(sqlite3.connect(':memory:')) as db:
+   db.execute('create table delivery_queue_entries(queue_name text,id text,status text,entry_json text)')
+   db.execute('create table task_delivery_state(task_id text,requester_origin_json text,last_notified_event_at integer)')
+   db.execute('insert into delivery_queue_entries values(?,?,?,?)',('fixture','delivery-1','completed','{"text":"synthetic fixture"}'))
+   db.execute('insert into task_delivery_state values(?,?,?)',('task-1','{"channel":"synthetic"}',123))
+   original={t:w.durable_table_digest(db,t) for t in ('delivery_queue_entries','task_delivery_state')}
+   db.execute('update task_delivery_state set last_notified_event_at=124')
+   self.assertNotEqual(original['task_delivery_state'],w.durable_table_digest(db,'task_delivery_state'))
+   db.execute('delete from delivery_queue_entries')
+   self.assertNotEqual(original['delivery_queue_entries'],w.durable_table_digest(db,'delivery_queue_entries'))
+   db.execute('create table cron_job_runtime_authorities(store_key text,job_id text,authority_json text)')
+   db.execute('insert into cron_job_runtime_authorities values(?,?,?)',('fixture','job-1','old-native-authority'))
+   before=w.durable_table_digest(db,'cron_job_runtime_authorities')
+   db.execute('update cron_job_runtime_authorities set authority_json=?',('native-revalidated-authority',))
+   self.assertEqual(before,w.durable_table_digest(db,'cron_job_runtime_authorities'))
+   db.execute('delete from cron_job_runtime_authorities')
+   self.assertNotEqual(before,w.durable_table_digest(db,'cron_job_runtime_authorities'))
+
  def test_no_acceptance_without_actual_handoff_and_rollback(self):
   data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
   self.assertTrue(m.accepted(data))
@@ -25,8 +58,8 @@ class RestoredUpgrade(unittest.TestCase):
 
  def test_memory_admission_and_runtime_pressure_preserve_host_reserve(self):
   calm={'full':0.0,'some':0.0}
-  self.assertTrue(m.memory_admitted(15*1024**3,calm))
-  self.assertFalse(m.memory_admitted(15*1024**3-1,calm))
+  self.assertTrue(m.memory_admitted(17*1024**3,calm))
+  self.assertFalse(m.memory_admitted(17*1024**3-1,calm))
   self.assertTrue(m.memory_admitted(5*1024**3,calm,running=True))
   self.assertFalse(m.memory_admitted(4*1024**3-1,calm,running=True))
   self.assertFalse(m.memory_admitted(20*1024**3,{'full':1.1,'some':1.1},running=True))

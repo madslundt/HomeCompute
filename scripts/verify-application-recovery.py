@@ -300,14 +300,16 @@ def bounded_output(file_limit: int = MAX_LOG) -> None:
 
 
 def vm_child(uid: int, gid: int, kvm_gid: int, *, memory_limit=4 * 1024**3,
-             cpu_seconds=360, file_limit=None) -> None:
+             cpu_seconds=360, file_limit=None, cpu_count=1) -> None:
+    if type(cpu_count) is not int or cpu_count not in (1, 2):
+        raise ValueError('bounded-vm-cpu-affinity-required')
     os.unshare(os.CLONE_NEWNET)
     # RLIMIT_FSIZE also governs temporary COW disks, not just the log FDs.
     # Keep SQL/import output at 16 MiB, but allow bounded normal guest writes.
     bounded_output(MAX_VM_FILE if file_limit is None else file_limit)
     resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
     resource.setrlimit(resource.RLIMIT_AS, (memory_limit, memory_limit))
-    os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
+    os.sched_setaffinity(0, set(sorted(os.sched_getaffinity(0))[:cpu_count]))
     os.setgroups([kvm_gid]); os.setgid(gid); os.setuid(uid)
 
 

@@ -11,7 +11,9 @@ from pathlib import Path
 import pwd
 import re
 import signal
+import socketserver
 import sqlite3
+import struct
 import subprocess
 import tarfile
 import threading
@@ -25,6 +27,33 @@ SECTIONS=('agents','tools','channels','cron','hooks','browser')
 ROOT=None
 COUNTER=0
 SQLITE_COUNT=0
+BRIDGE_PROBE_IMAGE='busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662'
+
+
+def fixture_dns_response(packet):
+ # The native DNS preflight expects NXDOMAIN for its reserved .invalid name.
+ # No other name is resolved, forwarded, logged or accepted as NXDOMAIN.
+ if len(packet)<12 or len(packet)>512:return None
+ identifier,flags,questions,answers,authority,additional=struct.unpack('!6H',packet[:12])
+ if flags&0x8000 or questions!=1:return None
+ offset=12;labels=[]
+ while offset<len(packet):
+  size=packet[offset];offset+=1
+  if size==0:break
+  if size>63 or offset+size>len(packet):return None
+  try:labels.append(packet[offset:offset+size].decode('ascii'))
+  except UnicodeDecodeError:return None
+  offset+=size
+ else:return None
+ if offset+4>len(packet):return None
+ name='.'.join(labels).lower();rcode=3 if re.fullmatch(r'nemoclaw-dns-probe-[a-f0-9]+\.invalid',name) else 2
+ return struct.pack('!6H',identifier,0x8080|(flags&0x0100)|rcode,1,0,0,0)+packet[12:offset+4]
+
+
+class FixtureDNS(socketserver.BaseRequestHandler):
+ def handle(self):
+  packet,sock=self.request;response=fixture_dns_response(packet)
+  if response is not None:sock.sendto(response,self.client_address)
 
 
 def module(name):
@@ -134,6 +163,21 @@ def wait_idle(version,env):
  raise ValueError('native-fixture-not-quiescent')
 
 
+def durable_table_digest(db,table):
+ # Runtime authority fingerprints are deliberately recomputed by native doctor;
+ # preserve their owning job identities, while native_policy separately fences
+ # the actual sandbox permissions. Delivery payloads/routing/dedup and task
+ # history are durable and are compared in full.
+ quoted='"'+table.replace('"','""')+'"'
+ fields='store_key,job_id' if table=='cron_job_runtime_authorities' else '*'
+ values=[];size=0
+ for row in db.execute('select '+fields+' from '+quoted):
+  encoded=json.dumps(row,sort_keys=True,default=lambda b:{'bytes':b.hex()});size+=len(encoded.encode())
+  if len(values)>=100000 or size>64*1024**2:raise ValueError('native-durable-queue-budget')
+  values.append(encoded)
+ return hashlib.sha256('\n'.join(sorted(values)).encode()).hexdigest()
+
+
 def native_data_integrity():
  global SQLITE_COUNT
  count=0;queues={};files=0
@@ -148,12 +192,8 @@ def native_data_integrity():
    if db.execute('pragma integrity_check').fetchall()!=[('ok',)]:raise ValueError('native-state-sqlite-integrity')
    count+=1
    for (table,) in db.execute('select name from sqlite_master where type="table"'):
-    if not re.fullmatch(r'(?:channel_ingress|channel_inbox|cron_jobs|cron_job_runs|tasks|reminders)[a-zA-Z0-9_]*',table):continue
-    quoted='"'+table.replace('"','""')+'"'
-    rows=db.execute('select * from '+quoted).fetchall()
-    if len(rows)>100000:raise ValueError('native-durable-queue-budget')
-    values=sorted(json.dumps(row,sort_keys=True,default=lambda b:{'bytes':b.hex()}) for row in rows)
-    queues[str(path.relative_to(STATE))+':'+table]=hashlib.sha256('\n'.join(values).encode()).hexdigest()
+    if not re.fullmatch(r'(?:channel_ingress|channel_inbox|cron_jobs|cron_job_runs|tasks|reminders)[a-zA-Z0-9_]*',table) and table not in {'delivery_queue_entries','task_runs','task_delivery_state','cron_run_receipts','cron_job_runtime_authorities','claw_cron_refs'}:continue
+    queues[str(path.relative_to(STATE))+':'+table]=durable_table_digest(db,table)
  if count<39:raise ValueError('native-restored-sqlite-inventory-incomplete')
  SQLITE_COUNT=count
  return queues
@@ -317,12 +357,21 @@ def main():
   bridge=json.loads(subprocess.check_output(['docker','network','inspect','bridge']))[0]['IPAM']['Config'][0]['Gateway']
   hosts=Path('/etc/hosts');lines=[line for line in hosts.read_text().splitlines() if 'ai.home.arpa' not in line.split()[1:]]
   hosts.write_text('\n'.join(lines)+'\n'+bridge+' ai.home.arpa\n')
+  dns=socketserver.UDPServer((bridge,53),FixtureDNS);threading.Thread(target=dns.serve_forever,daemon=True).start()
+  resolver=Path('/etc/resolv.conf');resolver.unlink();resolver.write_text('nameserver '+bridge+'\noptions timeout:1 attempts:1\n');resolver.chmod(0o644)
+  result['local_negative_dns_fixture']=True
   server=http.server.ThreadingHTTPServer(('0.0.0.0',18080),Provider);threading.Thread(target=server.serve_forever,daemon=True).start()
   run([str(HOME/'.local/bin/openshell'),'provider','update','-g','nemoclaw-9123','compatible-endpoint','--credential','COMPATIBLE_API_KEY'],'replace-clone-only-credential',env=env,user=True)
   progress('name-authenticated-oci-content');named=WORK/'named-candidate-image.tar'
   naming=prep.named_archive(assets/'candidate-image.tar',named,prep.IMAGES['0.0.140']);(WORK/'oci-naming-proof.json').write_text(json.dumps(naming,sort_keys=True))
   progress('load-candidate-image');run(['docker','image','load','--input',str(named)],'load-candidate-image',timeout=240)
   run(['docker','image','inspect',prep.IMAGES['0.0.140']],'verify-exact-candidate-cache')
+  progress('warm-native-bridge-probe');started=time.monotonic();event_start=int(time.time())
+  run(['docker','run','--rm','--pull=never','--network','bridge','--read-only','--cpus','1','--memory','128m','--memory-swap','128m','--pids-limit','64','--cap-drop','ALL','--security-opt','no-new-privileges',BRIDGE_PROBE_IMAGE,'true'],'warm-native-bridge-probe',timeout=120)
+  result['bridge_warmup_seconds']=round(time.monotonic()-started,3)
+  events=run(['docker','events','--since',str(event_start),'--until',str(int(time.time())+1),'--filter','image='+BRIDGE_PROBE_IMAGE,'--format','{{.Type}} {{.Action}} {{.TimeNano}}'],'native-bridge-warmup-events',timeout=30)
+  if len(events)>16384:raise ValueError('native-bridge-event-budget')
+  result['bridge_warmup_events']=len(events.splitlines())
   for version,core,label in [('0.0.140','2026.9.2','upgrade'),('0.0.129','2026.9.1','rollback')]:
    env=environment(version,assets);progress(label+'-native-rebuild')
    run(cli(version,'agent-openclaw','rebuild','--yes','--verbose'),label+'-native-rebuild',env=env,user=True,timeout=600)
