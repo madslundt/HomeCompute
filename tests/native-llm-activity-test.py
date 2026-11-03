@@ -16,6 +16,16 @@ spec.loader.exec_module(setup)
 
 
 class NativeActivityTest(unittest.TestCase):
+    def test_candidate_activity_port_is_explicit_and_rejects_changed_source(self):
+        source=(ROOT/'deploy/openclaw/safety-plugin/llm-queue.mjs').read_bytes()
+        self.assertEqual(setup.activity_module(source),source)
+        candidate=setup.activity_module(source,'2026.9.2')
+        self.assertIn(b'gateway-active-work-DdwRky6I.js',candidate)
+        self.assertNotIn(b'gateway-active-work-DoISxXUF.js',candidate)
+        with self.assertRaises(ValueError):setup.activity_module(candidate,'2026.9.2')
+        with self.assertRaises(ValueError):setup.activity_module(source,'unreviewed')
+        with self.assertRaises(ValueError):setup.overlay(b'unreviewed','2026.9.2')
+
     def test_fixed_metadata_command_and_authenticated_identity(self):
         runner = Mock(return_value=SimpleNamespace(stdout=json.dumps({'active_turns': 2, 'observed_at': 100}).encode()))
         self.assertEqual(activity.collect(runner, lambda: 103)['active_turns'], 2)

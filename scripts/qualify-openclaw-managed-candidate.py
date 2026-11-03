@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import runpy
 import shutil
 import socket
 import subprocess
@@ -20,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 POLICY = 'config/openclaw-managed-candidate.json'
 MANIFEST = 'deploy/openclaw/qualification/openclaw-0.0.140-linux-amd64.manifest.json'
 FILES = ('scripts/qualify-openclaw-managed-candidate.py', POLICY, MANIFEST,
-         'scripts/setup-openclaw-child-results.py',
+         'scripts/setup-openclaw-child-results.py', 'scripts/setup-openclaw-llm-queue.py',
          'deploy/openclaw/qualification/native-fixtures.mjs',
          *('deploy/openclaw/safety-plugin/' + name for name in
            ('index.mjs', 'browser-relay.mjs', 'public-dns.mjs', 'llm-queue.mjs', 'package.json', 'openclaw.plugin.json')))
@@ -245,7 +246,7 @@ def native_regressions_ok(observed: dict) -> bool:
     fixture = observed.get('native_regression_fixture', {})
     return all(fixture.get(key) is True for key in ('executed', 'native_loader', 'native_safety_policy',
         'native_hook_failure_closed', 'native_hook_veto_sticky', 'native_ingress_gate',
-        'native_ingress_shutdown', 'native_yield_acknowledgment',
+        'native_ingress_shutdown', 'native_activity_inventory', 'native_yield_acknowledgment',
         'ordinary_warning_preserved', 'terminal_answer_preserved', 'quiet_ack_rules_preserved'))
 
 
@@ -254,7 +255,9 @@ def fixture_files() -> dict:
     for name in FILES:
         if name.startswith('deploy/openclaw/safety-plugin/'):
             files['safety/' + Path(name).name] = ROOT / name
-    return {name: base64.b64encode(path.read_bytes()).decode() for name, path in files.items()}
+    activity = runpy.run_path(str(ROOT / 'scripts/setup-openclaw-llm-queue.py'))['activity_module']
+    return {name: base64.b64encode(activity(path.read_bytes(), '2026.9.2')
+            if name == 'safety/llm-queue.mjs' else path.read_bytes()).decode() for name, path in files.items()}
 
 
 def child_overlay(data: dict) -> dict:

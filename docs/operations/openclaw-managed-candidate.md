@@ -86,3 +86,31 @@ task delivery and mixed-load tests remain mandatory. Missing old hashed runtime
 paths require a port/retirement decision; do not copy old dist files into the new
 image or change refusal hashes just to pass. Until those gates pass, keep the
 existing production tuple and its recovery path.
+
+## Deployment continuation: source ports and CLI artifacts
+
+The owner subsequently authorized deployment. The 9.2 child and Mattermost
+installers now require an explicit `--runtime-version 2026.9.2`, with reviewed
+before/after hashes; their defaults remain the qualified 9.1 profiles. The queue
+installer renders the activity module's 9.2 path/hash from reviewed source.
+Unknown versions, changed modules and ambiguous native Mattermost projects refuse.
+The candidate regression also invokes the ported activity RPC through the actual
+native loader, with read scope and no real work.
+
+Prepare public CLI artifacts from a reviewed published checkout on the guest:
+
+```bash
+python3 "$HOME/.local/share/homecompute/releases/FULL_SHA/scripts/build-openclaw-managed-cli.py" plan
+python3 "$HOME/.local/share/homecompute/releases/FULL_SHA/scripts/build-openclaw-managed-cli.py" \
+  prepare --revision FULL_SHA --expected-hash REVIEWED_BUILD_BUNDLE_HASH
+```
+
+The helper uses the existing pinned Node 22.23.3, exact authenticated vendor
+source commits and lockfiles, isolated npm cache/user configuration, ignored
+package installation hooks and explicit reviewed build commands. It pins build
+processes to one guest CPU and bounds each Node heap. It never executes a runtime
+CLI, changes a global shim, operates a native registry or recreates a sandbox.
+It emits byte-hashed public archives and build identities in a new private build
+directory. Archives exclude Git metadata and reject external symlinks. These
+artifacts are inputs to the separate synthetic native lifecycle qualification;
+a successful build alone does not authorize production replacement.

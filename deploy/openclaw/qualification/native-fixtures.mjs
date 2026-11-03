@@ -35,6 +35,11 @@ assert.equal(registry.typedHooks.length, 2);
 assert.equal(services.length, 1);
 assert.equal(methods.length, 1);
 assert.ok(registry.typedHooks.every(h => h.priority <= -1000000));
+let activityResponse;
+await methods[0][1]({params:{},respond:(ok,value,error)=>{activityResponse={ok,value,error};}});
+assert.equal(activityResponse.ok,true);
+assert.equal(activityResponse.value.active_turns,0);
+assert.equal(methods[0][2].scope,'operator.read');
 reset(); initialize(registry);
 const context = role => ({ agentId: role, sessionKey: `agent:${role}:main` });
 const event = params => ({ toolName: 'browser', params });
@@ -141,5 +146,5 @@ for (const overrides of [{ isInteractive: false }, { isHeartbeat: true }, { sile
 }
 console.log(JSON.stringify({ executed: true, native_loader: true, native_safety_policy: true,
   native_hook_failure_closed: true, native_hook_veto_sticky: true, native_ingress_gate: true,
-  native_ingress_shutdown: true, native_yield_acknowledgment: true,
+  native_ingress_shutdown: true, native_activity_inventory: true, native_yield_acknowledgment: true,
   ordinary_warning_preserved: true, terminal_answer_preserved: true, quiet_ack_rules_preserved: true }));
