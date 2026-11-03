@@ -22,6 +22,25 @@ REAL_HTTP_IDLE = recovery.main_http_idle
 
 
 class ApplicationRecoveryTest(unittest.TestCase):
+    def test_completed_extraction_can_be_revalidated_but_partial_or_different_manifest_refuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);scratch=root/'scratch';scratch.mkdir();target=scratch/'restored';target.mkdir()
+            source=root/'source';source.mkdir();(source/'manifest.json').write_text('{"scope":"synthetic"}')
+            (source/'payload').write_bytes(b'complete synthetic data')
+            archive=root/'selected.tar'
+            with tarfile.open(archive,'w') as tar:
+                for name in ('manifest.json','payload'):tar.add(source/name,arcname=name)
+            for name in ('manifest.json','payload'):(target/name).write_bytes((source/name).read_bytes())
+            with patch.object(recovery,'SCRATCH',scratch),patch.object(recovery,'verify_restored',return_value={'verified':True}) as verify:
+                self.assertEqual(recovery.verify_extracted(archive,target),{'verified':True})
+                verify.assert_called_once_with(target);verify.reset_mock()
+                (target/'payload').write_bytes(b'partial')
+                with self.assertRaisesRegex(ValueError,'incomplete'):recovery.verify_extracted(archive,target)
+                verify.assert_not_called()
+                (target/'payload').write_bytes((source/'payload').read_bytes());(target/'manifest.json').write_text('{}')
+                with self.assertRaisesRegex(ValueError,'manifest differs'):recovery.verify_extracted(archive,target)
+                verify.assert_not_called()
+
     def test_busy_deployment_lock_defers_before_validation_or_source_changes(self):
         with patch.object(recovery, 'private_directory'), patch.object(recovery, 'DEPLOY_LOCK', recovery.RESUME_FILE.parent / 'deploy.lock'), \
                 patch.object(recovery.fcntl, 'flock', side_effect=BlockingIOError()), \

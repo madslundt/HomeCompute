@@ -475,8 +475,13 @@ sudo python3 "$nas_tool" enable-schedule --expected-hash "$nas_bundle_hash"
 `restore-verify` extracts the archive into a second new scratch directory beside
 the first. Restore and extraction use an automatically collected transient
 scope with idle I/O priority, 20 MB/s writes, 40 MB/s reads, 100 write IOPS
-and 200 read IOPS against the scratch filesystem's backing device. A 512 MiB
+and 8000 read IOPS against the scratch filesystem's backing device. The separate
+read budget accommodates SQLite/index verification without delaying it behind
+bulk-write limits. A 512 MiB
 memory high watermark and 2 GiB hard cap bound its file cache and process memory.
+Each restore/extraction/verification phase has a four-hour deadline under these
+limits. An operator wrapper must allow those deadlines rather than imposing a
+shorter combined download-and-verification timeout.
 These limits reduce contention with live VM filesystems even when the disk
 scheduler ignores idle-priority hints. Observe guest pressure during a drill;
 pause only its owned scratch scope if recovery work needs the disk. No
@@ -484,6 +489,20 @@ persistent unit or production service property is changed. Scheduling
 requires matching snapshot/verification receipts and does
 not imply that PostgreSQL import or VM boot has passed. OpenClaw additionally
 requires its [native restored-state and gateway proof](operations/openclaw-recovery-verification.md).
+If extraction completed but its old controller timed out, preserve that failure
+and revalidate the existing tree from a new published release. This command
+requires the latest snapshot, private selected archive and completed member
+sizes/types, checks its manifest against the archive, and reruns every integrity
+check before producing a new receipt. It does not extract or overwrite data:
+
+```bash
+sudo python3 "$nas_tool" verify-extracted --revision FULL_SHA \
+  --expected-hash INSTALLED_NAS_BUNDLE_HASH \
+  --snapshot PRIVATE_SNAPSHOT --archive PRIVATE_ARCHIVE \
+  --restored-archive /srv/restore-tests/REVIEWED_DOWNLOAD/PRIVATE_ARCHIVE \
+  --target /srv/restore-tests/REVIEWED_APPLICATION_DIRECTORY
+```
+
 `resume` retries a
 retained fixed-resource journal even if the NAS is offline; `rollback` restores
 only the pre-installation configuration. Use `retire` after the normal NixOS

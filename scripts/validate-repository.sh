@@ -247,6 +247,7 @@ if command -v node >/dev/null 2>&1; then
   node --test "$REPO_ROOT/tests/openclaw-performance.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-public-dns.test.mjs"
   node --test "$REPO_ROOT/tests/native-llm-queue.test.mjs"
+  node --check "$REPO_ROOT/deploy/openclaw/qualification/native-fixtures.mjs"
   node --test "$REPO_ROOT/tests/openclaw-native-loader.test.mjs"
   node --test "$REPO_ROOT/tests/openclaw-native-public-browser.test.mjs"
   node --test "$REPO_ROOT/tests/workflow-shopping-semantic.test.mjs"

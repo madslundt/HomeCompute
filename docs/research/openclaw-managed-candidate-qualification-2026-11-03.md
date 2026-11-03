@@ -305,3 +305,53 @@ to work around a plugin failing to load.
 [Hook runner source](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/plugins/hooks.ts),
 [tool-call enforcement](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/agents/agent-tools.before-tool-call.ts),
 [active-work source](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/infra/gateway-active-work.ts).
+
+## Native fixture preparation constraints
+
+Both the baseline `26922313…` and candidate `88fe14…` require host CLI Node
+`>=22.19.0` and the same vendored OpenShell SDK preparation. Build each exact
+checkout independently: run `scripts/check-node-version.js`, then
+`scripts/lib/openshell-sdk-install.mts prepare`, `npm ci --ignore-scripts
+--include=dev --include=optional --prefer-offline`, the SDK helper's `check`,
+`npm --prefix nemoclaw ci --ignore-scripts --include=dev`, `npm run build:cli`
+and `npm --prefix nemoclaw run build`. Verify `dist/build-identity.json` and
+invoke `node /absolute/source/bin/nemoclaw.js`; root package version `0.1.0`
+does not identify the installed release. These explicit builds avoid root
+`prepare` and global linking. [Baseline scripts](https://github.com/NVIDIA/NemoClaw/blob/26922313bba96184e65c3663b351683ebae9504d/package.json),
+[candidate SDK preparation](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/scripts/lib/openshell-sdk-install.mts),
+[identity resolution](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/core/version.ts).
+
+Use a separate non-login test account and its genuine passwd home. Populate
+`HOME` from that account: unset registry `HOME` falls back to `/tmp`. Scrub
+production XDG paths, proxy variables, credentials and tokens. Gateway 9124,
+dashboard 18792 and sandbox `agent-oc140` select a separate registry/state root
+and volume, subject to collision checks. Select verified 0.0.116 CLI, gateway
+and sandbox executables with the three explicit `NEMOCLAW_OPENSHELL_*_BIN`
+variables. Docker socket authorization must be explicit; a separate account
+does not reduce Docker's administrative authority.
+[Registry home handling](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/state/registry/persistence.ts#L124).
+
+The official 0.0.116 archives are separate. Their SHA-256 pins, confirmed against
+the exact installer and downloaded archive contents, are:
+
+| Linux amd64 asset | SHA-256 |
+| --- | --- |
+| `openshell-x86_64-unknown-linux-musl.tar.gz` | `4fb4476d80a1875a0b83547ec3aba999cf0a2e2d75f95f2f709b622e2103520e` |
+| `openshell-gateway-x86_64-unknown-linux-gnu.tar.gz` | `59c6da724eae7a00c28826f9191efbdf4fbaa5c768afdc8dea6a80a949ebcc89` |
+| `openshell-sandbox-x86_64-unknown-linux-musl.tar.gz` | `0bb160f73e5007338b94e3c868f66f50c71cd65c27c932ed9a4fa67c49e6d423` |
+
+These are under NVIDIA/OpenShell's `releases/download/v0.0.116/` path.
+[Exact installer pins](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/scripts/install-openshell.sh#L220).
+An independent Node 22.23.3 linux-x64 archive is available with SHA-256
+`df450af89261115ef9f9e3830c3eeb2cc9213b63c720b1af623cb5dcbe2e02de`.
+[Official Node checksums](https://nodejs.org/dist/v22.23.3/SHASUMS256.txt).
+
+A deterministic fixture must answer discovery and completion probes without
+forwarding to production. Arbitrary loopback ports are not automatically
+bridge-rewritten: supported ports are 11434, 11435 and the configured
+`NEMOCLAW_VLLM_PORT`. Alternatively bind a proven free, exact Docker-bridge
+private address and trust only that address. Start with wildcard-denied tools,
+no channels, cron or heartbeat. Use the genuine 129 CLI to create baseline
+synthetic data, then the 140 CLI's named rebuild and an actual rollback test.
+Unchanged agent/state schema numbers cannot substitute for that rehearsal.
+[Bridge restrictions](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/inference/native-local/eligibility.ts).

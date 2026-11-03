@@ -17,6 +17,27 @@ setup = importlib.util.module_from_spec(spec); spec.loader.exec_module(setup)
 
 
 class NASRecoverySetupTest(unittest.TestCase):
+    def test_existing_extraction_receipt_is_bound_to_published_read_only_validation(self):
+        with tempfile.TemporaryDirectory() as temporary,patch.object(setup,'STATE',Path(temporary)),patch.object(setup,'SCRATCH',Path(temporary)),patch.object(setup,'bundle',return_value=({},'hash')),patch.object(setup,'published') as published,patch.object(setup,'run'),patch.object(setup,'restore_run',return_value=subprocess.CompletedProcess([],0,'{"sqlite_integrity":"ok"}','')) as validate:
+            root=Path(temporary);(root/'last-backup.json').write_text(json.dumps({'snapshot':'a'*64}))
+            archive=root/'homecompute-applications-20261103T154708.000000Z.tar';archive.write_bytes(b'synthetic')
+            target=root/'restored';target.mkdir();(target/'manifest.json').write_text('{}')
+            args=SimpleNamespace(snapshot='a'*64,archive=archive.name,target=target,restored_archive=archive,revision='b'*40,source=root/'source')
+            result=setup.operation('verify-extracted',{'version':'/reviewed','qemu_bin':'/nix/store/synthetic/bin'},args)
+            self.assertTrue(result['restored_archive_reused']);self.assertEqual(result['snapshot'],'a'*64)
+            self.assertEqual(result['source_revision'],'b'*40);published.assert_called_once()
+            self.assertIn(str(args.source/'scripts/application-recovery.py'),validate.call_args.args[0])
+            self.assertIn('verify-extracted',validate.call_args.args[0])
+            self.assertEqual(json.loads((root/'last-application-verification.json').read_bytes()),result)
+
+    def test_existing_extraction_checks_latest_snapshot_before_running_verification(self):
+        with tempfile.TemporaryDirectory() as temporary,patch.object(setup,'STATE',Path(temporary)),patch.object(setup,'bundle',return_value=({},'hash')),patch.object(setup,'published'),patch.object(setup,'run'),patch.object(setup,'restore_run') as run:
+            root=Path(temporary);(root/'last-backup.json').write_text(json.dumps({'snapshot':'new'}))
+            args=SimpleNamespace(snapshot='old',archive='selected.tar',target=root/'target',restored_archive=root/'selected.tar',revision='a'*40,source=root)
+            with self.assertRaisesRegex(ValueError,'latest selected snapshot'):
+                setup.operation('verify-extracted',{'version':'/reviewed','qemu_bin':'/nix/store/synthetic/bin'},args)
+            run.assert_not_called()
+
     def test_only_dedicated_smb_destination_and_account_are_allowed(self):
         value = json.loads((ROOT / 'config/synology-backup.json').read_bytes())
         for changes in [{'share':'immich-library'}, {'username':'immich-svc'}, {'restic_encryption_required':False}, {'protocol':'NFS'}]:
@@ -147,7 +168,7 @@ class NASRecoverySetupTest(unittest.TestCase):
                 for prop in ('IOWriteBandwidthMax=/srv/restore-tests 20M',
                              'IOReadBandwidthMax=/srv/restore-tests 40M',
                              'IOWriteIOPSMax=/srv/restore-tests 100',
-                             'IOReadIOPSMax=/srv/restore-tests 200',
+                             'IOReadIOPSMax=/srv/restore-tests 8000',
                              'MemoryHigh=512M','MemoryMax=2G'):
                     self.assertIn('--property='+prop,args)
                 self.assertEqual(args[args.index('ionice'):args.index('ionice')+3],['ionice','-c','3'])

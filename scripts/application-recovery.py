@@ -484,6 +484,34 @@ def verify(archive_path: Path, target: Path) -> dict:
     with tarfile.open(archive_path, 'r:') as archive:
         records = safe_members(archive)
         archive.extractall(target, members=records, filter='data')
+    return verify_restored(target)
+
+
+def verify_extracted(archive_path: Path, target: Path) -> dict:
+    if archive_path.is_symlink() or not archive_path.is_file() or target.is_symlink() or not target.is_dir():
+        raise ValueError('existing archive and completed isolated extraction required')
+    if not target.is_absolute() or target.parent.resolve() != SCRATCH.resolve():
+        raise ValueError('existing verification is confined to private restore scratch')
+    with tarfile.open(archive_path, 'r:') as archive:
+        records = safe_members(archive)
+        manifest = next(item for item in records if item.name == 'manifest.json')
+        if manifest.size > 2 * 1024**2 or archive.extractfile(manifest).read() != (target / 'manifest.json').read_bytes():
+            raise ValueError('extracted manifest differs from selected archive')
+        for item in records:
+            path = target / item.name
+            if any(parent.is_symlink() for parent in path.parents if parent != target and target in parent.parents):
+                raise ValueError('symlinked extracted ancestor')
+            info = path.lstat()
+            if ((item.isfile() and (not stat.S_ISREG(info.st_mode) or info.st_size != item.size))
+                    or (item.isdir() and not stat.S_ISDIR(info.st_mode))
+                    or (item.issym() and (not stat.S_ISLNK(info.st_mode) or os.readlink(path) != item.linkname))):
+                raise ValueError('extracted archive member is incomplete')
+    return verify_restored(target)
+
+
+def verify_restored(target: Path) -> dict:
+    if not target.is_absolute() or target.parent.resolve() != SCRATCH.resolve() or target.is_symlink() or not target.is_dir():
+        raise ValueError('completed private restore directory required')
     manifest = json.loads((target / 'manifest.json').read_text())
     if (manifest.get('schema_version') != 1 or manifest.get('postgres') != sorted(POSTGRES)
             or manifest.get('vms') != ['agents-vm', 'codex-vm'] or manifest.get('sqlite') != ['n8n']):
@@ -535,6 +563,9 @@ def main() -> None:
     check = commands.add_parser('verify')
     check.add_argument('archive', type=Path)
     check.add_argument('target', type=Path)
+    existing = commands.add_parser('verify-extracted')
+    existing.add_argument('archive', type=Path)
+    existing.add_argument('target', type=Path)
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise PermissionError('trusted root operator required')
@@ -555,6 +586,8 @@ def main() -> None:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 resume()
                 RECOVERY_MARKER.unlink(missing_ok=True)
+    elif args.command == 'verify-extracted':
+        print(json.dumps(verify_extracted(args.archive, args.target), sort_keys=True))
     else:
         print(json.dumps(verify(args.archive, args.target), sort_keys=True))
 

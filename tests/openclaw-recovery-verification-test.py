@@ -19,6 +19,27 @@ m = module('native_restore', 'scripts/verify-openclaw-recovery.py')
 probe = module('guest_probe', 'deploy/openclaw/recovery/inspect-restored-state.py')
 
 class NativeRestoreTests(unittest.TestCase):
+    def test_private_startup_diagnostics_bound_and_redact_health_errors(self):
+        from types import SimpleNamespace
+        with patch.object(probe.subprocess,'run',return_value=SimpleNamespace(stdout=b'active')):
+            details=probe.private_diagnostics({'returncode':1,'stderr':'Bearer synthetic-secret token=secret https://private.example/path'})
+        self.assertNotIn('synthetic-secret',details['native_stderr'])
+        self.assertNotIn('token=secret',details['native_stderr'])
+        self.assertNotIn('private.example',details['native_stderr'])
+        self.assertEqual(details['native_exit_code'],1)
+        self.assertLessEqual(len(details['native_stderr']),2048)
+
+    def test_larger_limits_are_selected_before_engine_drops_privileges(self):
+        dropped=False
+        def drop(*args,**kwargs):
+            nonlocal dropped
+            dropped=True
+        def limit(*args,**kwargs):
+            if dropped:raise PermissionError('cannot raise hard limits after setuid')
+        with patch.object(m.ENGINE,'vm_child',side_effect=drop) as prepare,patch.object(m.resource,'setrlimit',side_effect=limit):
+            m.child(65534,65534,300)
+        self.assertEqual(prepare.call_args.kwargs,{'memory_limit':12*1024**3,'cpu_seconds':900,'file_limit':2*1024**3})
+
     def test_native_sqlite_inspection_reads_adjacent_wal_and_rejects_corruption(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);path=root/'agents/main/agent/openclaw-agent.sqlite';path.parent.mkdir(parents=True)

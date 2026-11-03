@@ -63,7 +63,32 @@ def inspect(expected):
             'roles': len(entries), 'workspace_directories': sum(p.is_dir() for p in STATE.glob('workspace*'))}
 
 
-def gateway_health():
+class GatewayUnavailable(ValueError):
+    def __init__(self, details):
+        super().__init__('restored-authenticated-gateway-unavailable')
+        self.details = details
+
+
+def private_diagnostics(last):
+    # This bounded health-command diagnostic stays in the private restore store.
+    # It contains no model turn, request body, config export or channel message.
+    def query(args):
+        try:
+            return subprocess.run(args, capture_output=True, timeout=10).stdout.decode(errors='replace')[:4096]
+        except (OSError, subprocess.SubprocessError):
+            return 'unavailable'
+    status = {name: query(['systemctl', 'is-active', name]).strip() for name in
+              ('docker.service', 'docker.socket', 'containerd.service')}
+    jobs = query(['systemctl', 'list-jobs', '--no-legend', '--plain'])
+    units = re.findall(r'\b[A-Za-z0-9@_.-]+\.(?:service|socket|target|mount)\b', jobs)
+    stderr = last.get('stderr', '')
+    stderr = re.sub(r'(?i)(bearer\s+|(?:token|api[_-]?key|password)[=:]\s*)[^\s\"\']+', r'\1[redacted]', stderr)
+    stderr = re.sub(r'https?://[^\s]+', '[endpoint]', stderr)
+    return {'units': status, 'pending_units': units, 'native_exit_code': last.get('returncode'),
+            'native_exception': last.get('exception'), 'native_stderr': stderr[-2048:]}
+
+
+def gateway_health(progress=lambda details: None):
     # Existing native credentials remain inside this isolated VM. No turn is sent.
     registry = json.loads(Path('/home/hermes-operator/.nemoclaw/gateways/9123/sandboxes.json').read_bytes())
     entry = registry['sandboxes']['agent-openclaw']
@@ -74,9 +99,12 @@ def gateway_health():
                'NEMOCLAW_GATEWAY_PORT=9123', 'nemoclaw', 'agent-openclaw', 'exec', '--',
                'openclaw', 'gateway', 'health', '--timeout', '10000', '--json']
     deadline = time.monotonic() + 360
+    last = {}
+    attempts = 0
     while time.monotonic() < deadline:
         try:
             result = subprocess.run(command, capture_output=True, timeout=35)
+            last = {'returncode': result.returncode, 'stderr': result.stderr.decode(errors='replace')}
             if result.returncode == 0 and len(result.stdout) <= 1024**2:
                 raw = result.stdout.decode()
                 health, _ = json.JSONDecoder().raw_decode(raw[raw.index('{'):])
@@ -101,10 +129,13 @@ def gateway_health():
                                 'memory-core', 'mattermost', 'nemoclaw'} <= set(health.get('plugins', {}).get('loaded', [])),
                             'gateway_plugin_errors': len(health.get('plugins', {}).get('errors', [])),
                             'openclaw_version': entry['agentVersion'], 'image': image}
-        except (subprocess.SubprocessError, ValueError, KeyError, json.JSONDecodeError):
-            pass
+        except (subprocess.SubprocessError, ValueError, KeyError, json.JSONDecodeError) as error:
+            last['exception'] = type(error).__name__
+        attempts += 1
+        if attempts == 1:
+            progress(private_diagnostics(last))
         time.sleep(5)
-    raise ValueError('restored-authenticated-gateway-unavailable')
+    raise GatewayUnavailable(private_diagnostics(last))
 
 
 def main():
@@ -120,8 +151,13 @@ def main():
         if os.geteuid() != 0 or socket.gethostname() != 'agents':
             raise ValueError('isolated-agents-root-required')
         result.update(inspect(args.expected_policy_sha256))
-        result.update(gateway_health())
+        def progress(details):
+            with open('/dev/ttyS0', 'w') as serial:
+                serial.write('\nHC_OPENCLAW_STARTUP_' + nonce + ' ' + json.dumps(details, sort_keys=True) + '\n')
+        result.update(gateway_health(progress))
     except Exception as error:
+        if isinstance(error, GatewayUnavailable):
+            result['private_diagnostics'] = error.details
         result['error_category'] = str(error) if isinstance(error, ValueError) else type(error).__name__
     with open('/dev/ttyS0', 'w') as serial:
         serial.write('\nHC_OPENCLAW_RESTORE_' + nonce + ' ' + json.dumps(result, sort_keys=True) + '\n')

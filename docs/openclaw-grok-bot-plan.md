@@ -1,9 +1,11 @@
 # OpenClaw toward a Grok Bot experience
 
-Updated: 2026-11-03. Status: implementation plan refreshed after an authorized
-read-only live audit and upstream compatibility assessment. No runtime, provider,
-credential, schedule, permission, model or deployment was changed. Proposed
-paths, interfaces, defaults and acceptance thresholds below are not installed.
+Updated: 2026-11-03. Status: implementation underway. The attended backup and
+full-team recovery repairs are published and were applied through their scoped
+lifecycles; Atlas retains its original managed version and behavior. The
+[execution receipt](operations/openclaw-recovery-upgrade-2026-11-03.md) distinguishes
+actual recovery evidence from pending gates. Proposed capability interfaces,
+schedules, defaults and acceptance thresholds below are not installed.
 
 Start with the [fresh live audit](operations/openclaw-atlas-audit-2026-11-03.md)
 and [version-pinned upgrade assessment](research/openclaw-upgrade-assessment-2026-11-03.md).

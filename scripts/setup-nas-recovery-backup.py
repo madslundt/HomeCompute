@@ -26,6 +26,7 @@ import uuid
 
 DEST = Path('/opt/homecompute/nas-recovery')
 STATE = Path('/var/lib/homecompute/nas-recovery-backup')
+SCRATCH = Path('/srv/restore-tests')
 CONFIG = Path('/etc/homecompute/nas-recovery-backup.json')
 MOUNT = Path('/mnt/homecompute-backups')
 ATTACHED = Path('/etc/systemd/system.attached')
@@ -374,7 +375,7 @@ def restore_run(arguments: list[str], *, env: dict, timeout: int):
                '--property=IOWriteBandwidthMax=/srv/restore-tests 20M',
                '--property=IOReadBandwidthMax=/srv/restore-tests 40M',
                '--property=IOWriteIOPSMax=/srv/restore-tests 100',
-               '--property=IOReadIOPSMax=/srv/restore-tests 200',
+               '--property=IOReadIOPSMax=/srv/restore-tests 8000',
                'ionice', '-c', '3', *arguments]
     try:
         return run(command, env=env, timeout=timeout)
@@ -410,14 +411,37 @@ def operation(command: str, record: dict, args) -> dict:
         # Bulk scratch writes share the disk with live VM roots. Idle priority
         # alone is insufficient on schedulers that do not honor that hint.
         result = json.loads(restore_run([*nas, 'restore-application', '--snapshot', args.snapshot, '--archive', args.archive,
-                                '--target', str(args.target)], env=env, timeout=7500).stdout)
+                                '--target', str(args.target)], env=env, timeout=14400).stdout)
         application = args.target.with_name(args.target.name + '-application')
         proof = json.loads(restore_run([*recovery, 'verify', result['restored_archive'], str(application)],
-                              env=env, timeout=7500).stdout)
+                              env=env, timeout=14400).stdout)
         manifest = application / 'manifest.json'; safe(manifest)
         output = {'snapshot': args.snapshot, 'archive': args.archive, 'verification': proof,
                   'restore_directory': str(application.resolve()),
                   'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest()}
+        write(STATE / 'last-application-verification.json', json.dumps(output).encode(), 0o600); return output
+    if command == 'verify-extracted':
+        if not args.snapshot or not args.archive or not args.target or not args.restored_archive or not args.revision:
+            raise ValueError('existing verification needs selected snapshot/archive/paths and published revision')
+        contents, _ = bundle(args.source); published(args.source, args.revision, contents)
+        backup = json.loads((STATE / 'last-backup.json').read_bytes())
+        if (backup['snapshot'] != args.snapshot or args.restored_archive.name != args.archive
+                or not re.fullmatch(r'homecompute-applications-[0-9]{8}T[0-9]{6}\.[0-9]{6}Z\.tar', args.archive)):
+            raise ValueError('latest selected snapshot and matching archive required')
+        for path in (args.target, args.restored_archive):
+            if not path.is_absolute() or SCRATCH not in path.parents:
+                raise ValueError('existing verification stays inside private restore scratch')
+            for parent in path.parents:
+                if parent == SCRATCH: break
+                safe(parent, directory=True)
+        safe(args.target, directory=True); safe(args.restored_archive, bounded=False)
+        source_recovery = [PYTHON, '-I', str(args.source / 'scripts/application-recovery.py')]
+        proof = json.loads(restore_run([*source_recovery, 'verify-extracted', str(args.restored_archive), str(args.target)],
+                                      env=env, timeout=14400).stdout)
+        manifest = args.target / 'manifest.json'; safe(manifest)
+        output = {'snapshot': args.snapshot, 'archive': args.archive, 'verification': proof,
+                  'restore_directory': str(args.target.resolve()), 'restored_archive_reused': True,
+                  'source_revision': args.revision, 'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest()}
         write(STATE / 'last-application-verification.json', json.dumps(output).encode(), 0o600); return output
     backup = json.loads((STATE / 'last-backup.json').read_bytes())
     proof = json.loads((STATE / 'last-application-verification.json').read_bytes())
@@ -491,10 +515,11 @@ def retire(record: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', nargs='?', default='plan', choices=('plan', 'apply', 'status', 'initialize', 'proof', 'check', 'backup-now', 'restore-verify', 'enable-schedule', 'resume', 'rollback', 'retire'))
+    parser.add_argument('command', nargs='?', default='plan', choices=('plan', 'apply', 'status', 'initialize', 'proof', 'check', 'backup-now', 'restore-verify', 'verify-extracted', 'enable-schedule', 'resume', 'rollback', 'retire'))
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--revision'); parser.add_argument('--expected-hash'); parser.add_argument('--acknowledge-pause', action='store_true')
     parser.add_argument('--snapshot'); parser.add_argument('--archive'); parser.add_argument('--target', type=Path)
+    parser.add_argument('--restored-archive', type=Path)
     args = parser.parse_args()
     if args.command == 'plan':
         _, digest = bundle(args.source); result = {'bundle_hash': digest, 'files': list(FILES), 'applied': False}

@@ -31,6 +31,17 @@ class CandidateTest(unittest.TestCase):
             for value in (False,None,'true'):
                 self.assertFalse(m.child_evidence_ok({'native_child_fixture':{**fixture,key:value}}))
 
+    def test_missing_or_partial_native_regressions_cannot_pass(self):
+        keys=('executed','native_loader','native_safety_policy','native_hook_failure_closed',
+              'native_hook_veto_sticky','native_yield_acknowledgment','ordinary_warning_preserved',
+              'terminal_answer_preserved','quiet_ack_rules_preserved')
+        fixture={key:True for key in keys}
+        self.assertTrue(m.native_regressions_ok({'native_regression_fixture':fixture}))
+        self.assertFalse(m.native_regressions_ok({}))
+        for key in keys:
+            for value in (False,None,'true'):
+                self.assertFalse(m.native_regressions_ok({'native_regression_fixture':{**fixture,key:value}}))
+
     def test_offline_probe_cannot_mount_credentials_publish_ports_or_contact_network(self):
         data=m.policy();args=m.command(data,'synthetic')
         for key,value in [('--network','none'),('--cap-drop','ALL'),('--entrypoint','/usr/local/bin/node')]:

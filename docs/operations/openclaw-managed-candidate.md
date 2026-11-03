@@ -57,6 +57,18 @@ nonzero when it fails. Neither the installed image nor production state is
 changed. A passing temporary overlay does not qualify an upgrade installer,
 native lifecycle, integration or rollback.
 
+The additional `native_regression_checks_passed` gate stages only the tracked
+public safety source into tmpfs. It loads the plugin through the candidate's
+actual source-transform loader, dispatches policy through its global native
+hook runner, and checks coordinator/browser authorization, sticky vetoes and
+fail-closed hook errors without starting registered services. A temporary copy
+of the exact-hash dispatcher exposes two internal entry points while retaining
+its original dependencies. Genuine tool-warning metadata exercises the native
+yield acknowledgment, ordinary-warning, terminal-answer and quiet-delivery
+rules. The production yield overlay is not applied. Missing imports, assertions
+or execution fail the separate gate; local syntax/unit checks do not count as
+native success. No gateway, channel or model is started by these regressions.
+
 `artifact_checks_passed=true` is explicitly **not production qualification**.
 Native NemoClaw fixture-provider onboarding/rebuild/rollback, actual SDK/safety
 and Mattermost integration, patch porting, state preservation, authenticated
