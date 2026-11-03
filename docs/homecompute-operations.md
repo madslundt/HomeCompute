@@ -474,15 +474,17 @@ sudo python3 "$nas_tool" enable-schedule --expected-hash "$nas_bundle_hash"
 
 `restore-verify` extracts the archive into a second new scratch directory beside
 the first. Restore and extraction use an automatically collected transient
-scope with idle I/O priority, 25 MB/s writes, 50 MB/s reads, 100 write IOPS
-and 200 read IOPS against the scratch filesystem's backing device. A 1 GiB
+scope with idle I/O priority, 20 MB/s writes, 40 MB/s reads, 100 write IOPS
+and 200 read IOPS against the scratch filesystem's backing device. A 512 MiB
 memory high watermark and 2 GiB hard cap bound its file cache and process memory.
 These limits reduce contention with live VM filesystems even when the disk
 scheduler ignores idle-priority hints. Observe guest pressure during a drill;
 pause only its owned scratch scope if recovery work needs the disk. No
 persistent unit or production service property is changed. Scheduling
 requires matching snapshot/verification receipts and does
-not imply that PostgreSQL import or VM boot has passed. `resume` retries a
+not imply that PostgreSQL import or VM boot has passed. OpenClaw additionally
+requires its [native restored-state and gateway proof](operations/openclaw-recovery-verification.md).
+`resume` retries a
 retained fixed-resource journal even if the NAS is offline; `rollback` restores
 only the pre-installation configuration. Use `retire` after the normal NixOS
 generation supplies matching canonical units, source and mount settings, removing

@@ -137,6 +137,13 @@ trust boundary, and add an ADR for any accepted decision change as required by
 
 ### 0. Establish the actual baseline and recovery gate
 
+Implementation is tracked in the [November 3 execution receipt](operations/openclaw-recovery-upgrade-2026-11-03.md).
+The attended backup admission/drain and guarded full-team recovery changes are
+published. The isolated [native recovery verifier](operations/openclaw-recovery-verification.md)
+adds actual state/database/conversation and authenticated gateway checks to the
+existing archive, PostgreSQL and VM boot gates. Its source/tests do not themselves
+establish a successful live restore; use the corresponding execution evidence.
+
 The November 3 [audit](operations/openclaw-atlas-audit-2026-11-03.md) completes
 the bounded read-only inventory. Remaining work is to inspect current broker
 activity, inventory all retained native databases/patch receipts and exact
@@ -171,6 +178,7 @@ a separately limited candidate credential and budget.
 The change must account for shared tuple pins in `config/hermes-release.json`
 and `scripts/setup-hermes-guest.sh`, `config/openclaw-nemoclaw.env.example`,
 the OpenClaw supervisor's compiled-module identity and managed recovery declarations,
+`scripts/verify-openclaw-recovery.py` and its guest probe's old-image/core gates,
 and `docs/openclaw-nemoclaw.md`, plus a reviewed candidate/upgrade lifecycle. Do not
 run the general installer or change only a recovery image constant. Preserve
 the retired Hermes state; a shared template name does not authorize recreating it.
