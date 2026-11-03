@@ -67,10 +67,8 @@ def command(executable, descriptors):
 
 
 def child(uid, gid, kvm):
-    ENGINE.vm_child(uid, gid, kvm)
-    resource.setrlimit(resource.RLIMIT_AS, (12 * 1024**3, 12 * 1024**3))
-    resource.setrlimit(resource.RLIMIT_CPU, (900, 900))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (2 * 1024**3, 2 * 1024**3))
+    ENGINE.vm_child(uid, gid, kvm, memory_limit=12 * 1024**3, cpu_seconds=900,
+                    file_limit=2 * 1024**3)
 
 
 def verify(target, snapshot, archive, expected, revision):
