@@ -79,12 +79,28 @@ def private_diagnostics(last):
             return 'unavailable'
     status = {name: query(['systemctl', 'is-active', name]).strip() for name in
               ('docker.service', 'docker.socket', 'containerd.service')}
+    status['shutdown-owner.service'] = query(['systemctl', 'is-active', 'homecompute-openclaw-shutdown.service']).strip()
+    user = ['runuser', '-u', 'hermes-operator', '--', 'env', 'XDG_RUNTIME_DIR=/run/user/1000',
+            'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus']
+    status['supervisor.service'] = query([*user, 'systemctl', '--user', 'is-active',
+                                        'homecompute-openclaw-supervisor.service']).strip()
+    journal = query(['journalctl', '-b', '--no-pager', '-o', 'cat', '-n', '80',
+                     '_SYSTEMD_USER_UNIT=homecompute-openclaw-supervisor.service'])
+    events = re.findall(r'^(?:blocked|waiting|recovery-attempt|backoff):[A-Za-z0-9-]+$', journal, re.MULTILINE)
+    containers = query(['docker', 'ps', '-a', '--filter', 'name=openshell-default--agent-openclaw-',
+                        '--format', '{{.State}}'])
+    states = [line for line in containers.splitlines() if line in ('running', 'exited', 'created', 'dead', 'restarting', 'paused')]
     jobs = query(['systemctl', 'list-jobs', '--no-legend', '--plain'])
     units = re.findall(r'\b[A-Za-z0-9@_.-]+\.(?:service|socket|target|mount)\b', jobs)
-    stderr = last.get('stderr', '')
+    command_log = Path('/home/hermes-operator/.local/state/homecompute-openclaw-supervisor/last-command.log')
+    previous = ''
+    if not command_log.is_symlink() and command_log.is_file() and command_log.stat().st_size <= 1024**2:
+        previous = command_log.read_text(errors='replace')[-2048:]
+    stderr = last.get('stderr', '') + ('\nSupervisor command: ' + previous if previous else '')
     stderr = re.sub(r'(?i)(bearer\s+|(?:token|api[_-]?key|password)[=:]\s*)[^\s\"\']+', r'\1[redacted]', stderr)
     stderr = re.sub(r'https?://[^\s]+', '[endpoint]', stderr)
-    return {'units': status, 'pending_units': units, 'native_exit_code': last.get('returncode'),
+    return {'units': status, 'pending_units': units, 'supervisor_events': events, 'container_states': states,
+            'native_exit_code': last.get('returncode'),
             'native_exception': last.get('exception'), 'native_stderr': stderr[-2048:]}
 
 
