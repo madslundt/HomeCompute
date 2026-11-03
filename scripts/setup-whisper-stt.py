@@ -18,6 +18,7 @@ from pathlib import Path
 import pwd
 import re
 import secrets
+import shlex
 import signal
 import shutil
 import socket
@@ -41,6 +42,9 @@ CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-
 CUDA_CANDIDATE_PROJECT = 'whisper-cpp-gb10-cuda'
 CPP_QUALIFIED_IMAGE_ID = 'sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3'
 CPP_QUALIFIED_SOURCE_REVISION = '50ee4f9666c26df89bccab30c83e9cd6dcc0faba'
+CPP_GATE_FAILURE_RECOVERY_REVISION = '3f5c3228e4e245b389306926930a8376640b80c9'
+CPP_GATE_FAILURE_RECOVERY_ID = 'cec07a2399ea'
+CPP_GATE_FAILURE_RELAY_IMAGE = 'sha256:6049300173bcc9505cd9779d214e498a83ffaeffcdc5620c9aad75d2e95f5c3a'
 CUDA_BASE_IMAGE = 'nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9'
 CPP_MODEL_SHA256 = '64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2'
 CPP_MODEL_SNAPSHOT = 'c521a4b02f422512d734391fdf08bb08c0862f68'
@@ -934,6 +938,12 @@ def promote_relay(tx):
             labels.get('com.docker.compose.service') != 'whisper-http' or
             not tx.get('relay_image') or not tx.get('relay_candidate_image_id')):
         raise ValueError('Healthy owned STT relay and exact candidate image are required')
+    expected = tx.get('relay_pretransition')
+    if expected and any(original.get(key) != expected.get(key) for key in
+                         ('Id', 'Image', 'Name')):
+        raise ValueError('Original STT relay changed after promotion preflight')
+    if expected and restart_policy(original) != expected.get('restart'):
+        raise ValueError('Original STT relay restart policy changed after promotion preflight')
     backup = 'gb10-whisper-http-before-cpp-' + tx['revision'][:12]
     if inspect(backup):
         raise ValueError('Previous STT relay backup name is already occupied')
@@ -1205,6 +1215,19 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
             primary.get('Config', {}).get('Image') !=
             'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d'):
         raise ValueError('Healthy pinned full Whisper primary must be restored before CUDA qualification')
+    relay_pretransition = None
+    if promotion:
+        relay = inspect('gb10-whisper-http')
+        relay_labels = (relay or {}).get('Config', {}).get('Labels') or {}
+        if (not relay or not relay.get('State', {}).get('Running') or
+                relay.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+                relay.get('Name') != '/gb10-whisper-http' or
+                relay.get('Config', {}).get('Image') != 'homecompute/stt-http:2.0.0' or
+                relay_labels.get('com.docker.compose.project') != 'whisper-large-v3-stt' or
+                relay_labels.get('com.docker.compose.service') != 'whisper-http'):
+            raise ValueError('Healthy owned original STT relay is required before promotion')
+        relay_pretransition = {'Id': relay['Id'], 'Image': relay['Image'],
+                               'Name': relay['Name'], 'restart': restart_policy(relay)}
     if inspect(CANDIDATE) or inspect(CUDA_CANDIDATE):
         raise ValueError('Another Whisper candidate container exists; inspect and rollback it first')
     prior = STATE / 'runtime-candidate.json'
@@ -1231,6 +1254,7 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
           'native_timeout_seconds': native_timeout_seconds,
           'promotion': promotion, 'image_source_revision': image_source_revision,
           'maintenance_bundle_sha256': maintenance_bundle_sha256 if promotion else None,
+          'relay_pretransition': relay_pretransition,
           'relay_image': relay_image if promotion else None,
           'relay_candidate_image_id': relay_image_id if promotion else None}
     save_cuda_candidate(tx)
@@ -1346,6 +1370,7 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
                 except Exception:
                     pass
     if failure is not None:
+        failure = public_cuda_failure_metadata(tx)
         raise CudaCandidateFailure(failure) from None
     if promotion:
         print(json.dumps({'state': 'promoted', 'image_id': image_id,
@@ -1388,6 +1413,7 @@ def ensure_spark_maintenance_ownership():
 def promote_qualified_cuda_candidate(revision):
     guards()
     qualified_cuda_candidate_image_id()
+    recover_pretransition_promotion_failure(revision)
     provision_cpp_role_key()
     verify_cpp_model(CPP_MODEL_PATH)
     relay_image = 'homecompute/stt-http:2.0.0-cpp-' + revision[:12]
@@ -1398,6 +1424,75 @@ def promote_qualified_cuda_candidate(revision):
                          native_timeout_seconds=1800, promotion=True,
                          relay_image=relay_image, relay_image_id=relay_image_id,
                          maintenance_bundle_sha256=maintenance_bundle_sha256)
+
+
+def recover_pretransition_promotion_failure(revision):
+    """Recover only a gate-install failure before either inference service changed."""
+    journal = STATE / 'cuda-candidate.json'
+    if not journal.exists() and not journal.is_symlink():
+        return
+    protected(journal)
+    tx = json.loads(journal.read_text())
+    if tx.get('state') == 'rolled-back' and tx.get('failure_stage') != 'install-intake-gate':
+        return
+    eligible_states = {'rollback-pending', 'rolled-back'}
+    rollback_stage = tx.get('rollback_stage')
+    if (tx.get('revision') != CPP_GATE_FAILURE_RECOVERY_REVISION or
+            tx.get('revision') == revision or tx.get('state') not in eligible_states or
+            tx.get('promotion') is not True or
+            tx.get('failure_stage') != 'install-intake-gate' or
+            tx.get('candidate_stage') != 'install-intake-gate' or
+            tx.get('failure_id') != CPP_GATE_FAILURE_RECOVERY_ID or
+            (tx.get('state') == 'rollback-pending' and rollback_stage is not None) or
+            (tx.get('state') == 'rolled-back' and
+             (rollback_stage != 'complete' or tx.get('rollback_status') != 'completed')) or
+            tx.get('candidate_exposed') is True or tx.get('relay_update_attempted') is True or
+            tx.get('candidate_image_id') != CPP_QUALIFIED_IMAGE_ID or
+            tx.get('image_source_revision') != CPP_QUALIFIED_SOURCE_REVISION or
+            not re.fullmatch(r'HC-STT-[0-9a-f]{12}', str(tx.get('chain') or ''))):
+        raise ValueError('Existing CUDA transaction is not a recoverable pre-transition gate failure')
+
+    primary = inspect(tx.get('primary_id', ''))
+    if (not primary or primary.get('Id') != tx.get('primary_id') or
+            primary.get('Image') != tx.get('primary_image') or
+            primary.get('Name') != '/gb10-whisper-primary' or
+            not primary.get('State', {}).get('Running') or
+            primary.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+            restart_policy(primary) != tx.get('primary_restart') or
+            MODEL not in ' '.join(primary.get('Config', {}).get('Cmd') or []) or
+            REVISION not in ' '.join(primary.get('Config', {}).get('Cmd') or []) or
+            primary.get('Config', {}).get('Image') !=
+            'nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d'):
+        raise ValueError('Original pinned Whisper primary is not unchanged and healthy; recovery held')
+    if inspect(CUDA_CANDIDATE) or inspect(CANDIDATE) or inspect('gb10-whisper-cpp-http'):
+        raise ValueError('A Whisper.cpp service exists; pre-transition recovery held')
+    relay = inspect('gb10-whisper-http')
+    labels = (relay or {}).get('Config', {}).get('Labels') or {}
+    if (not relay or not relay.get('State', {}).get('Running') or
+            relay.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+            relay.get('Name') != '/gb10-whisper-http' or
+            relay.get('Image') != CPP_GATE_FAILURE_RELAY_IMAGE or
+            restart_policy(relay) != 'unless-stopped' or
+            relay.get('Config', {}).get('Image') != 'homecompute/stt-http:2.0.0' or
+            labels.get('com.docker.compose.project') != 'whisper-large-v3-stt' or
+            labels.get('com.docker.compose.service') != 'whisper-http'):
+        raise ValueError('Original STT relay is not unchanged and healthy; recovery held')
+    relay_snapshot = tx.get('relay_pretransition')
+    if relay_snapshot and (relay.get('Id') != relay_snapshot.get('Id') or
+                           relay.get('Image') != relay_snapshot.get('Image') or
+                           relay.get('Name') != relay_snapshot.get('Name') or
+                           restart_policy(relay) != relay_snapshot.get('restart')):
+        raise ValueError('Journaled original STT relay identity changed; recovery held')
+
+    # The nonce chain may be absent or may have been partially created. `gate`
+    # first validates exact chain ownership against successful iptables listings.
+    gate(tx['chain'], False)
+    if gate_is_active(tx['chain']):
+        raise ValueError('Prior intake gate remains active; recovery held')
+    tx.update(state='rolled-back', rollback_status='completed',
+              failure_rollback_status='completed', gate_held=False,
+              pretransition_gate_recovered=True)
+    save_cuda_candidate(tx)
 
 
 def cuda_candidate_stop(revision, *, idle_timeout=None):
@@ -1524,28 +1619,120 @@ def format_cuda_candidate_failure(metadata):
             f" rollback_classification={metadata.get('rollback_failure_classification') or 'unknown'}")
 
 
-def iptables_rule_absent(result):
-    if result.returncode == 0:
+def public_cuda_failure_metadata(tx):
+    return {key: tx.get(key) for key in (
+        'failure_id', 'failure_stage', 'failure_class', 'failure_executable',
+        'failure_exit_code', 'failure_classification', 'failure_diagnostic_available',
+        'rollback_status', 'rollback_failure_stage', 'rollback_failure_class',
+        'rollback_failure_classification', 'rollback_failure_executable',
+        'rollback_failure_exit_code', 'gate_cleanup_failure_class')}
+
+
+def parse_iptables_listing(result, *, chain=None):
+    """Parse successful iptables -S output; failures never imply absence."""
+    if result.returncode != 0:
+        raise ValueError('Intake gate state is unavailable')
+    parsed = []
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            tokens = shlex.split(line, posix=True)
+        except ValueError:
+            raise ValueError('Intake gate listing is malformed') from None
+        if (not tokens or tokens[0] not in {'-P', '-N', '-A'} or len(tokens) < 2 or
+                tokens[0] == '-P' and len(tokens) != 3 or
+                tokens[0] == '-N' and len(tokens) != 2 or
+                tokens[0] == '-A' and len(tokens) < 3):
+            raise ValueError('Intake gate listing is malformed')
+        if chain is None or tokens[1] == chain:
+            parsed.append(tokens)
+    policies = [row for row in parsed if row[0] == '-P']
+    expected_policies = {'INPUT', 'FORWARD', 'OUTPUT'} if chain is None else {chain} if chain == 'OUTPUT' else set()
+    if expected_policies and {row[1] for row in policies} != expected_policies:
+        raise ValueError('Intake gate listing is incomplete')
+    if len(policies) != len(expected_policies):
+        raise ValueError('Intake gate listing is incomplete')
+    return parsed
+
+
+def filter_chain_absent(chain):
+    listing = run(['iptables', '-w', '-S'], check=False)
+    rows = parse_iptables_listing(listing)
+    if any(row[1] == chain and row[0] in {'-N', '-A'} for row in rows):
         return False
-    text = (getattr(result, 'stderr', '') or '').lower()
-    if ('no chain/target/match by that name' in text or
-            'bad rule (does a matching rule exist in that chain?)' in text):
+    return True
+
+
+def output_jump_present(chain):
+    listing = run(['iptables', '-w', '-S', 'OUTPUT'], check=False)
+    rows = parse_iptables_listing(listing, chain='OUTPUT')
+    matches = []
+    for row in rows:
+        if row[0] != '-A' or row[1] != 'OUTPUT':
+            continue
+        targets = [row[index + 1] for index, token in enumerate(row[:-1])
+                   if token in {'-j', '--jump', '-g', '--goto'}]
+        if chain in targets:
+            if row != ['-A', 'OUTPUT', '-j', chain]:
+                raise ValueError('Intake gate jump drift requires inspection')
+            matches.append(row)
+    if len(matches) > 1:
+        raise ValueError('Intake gate jump drift requires inspection')
+    return bool(matches)
+
+
+def chain_exists(result, chain):
+    if result.returncode == 0:
+        rows = parse_iptables_listing(result, chain=chain)
+        if not rows or not any(row[0] == '-N' and row[1] == chain for row in rows):
+            raise ValueError('Intake gate listing is malformed')
         return True
-    raise ValueError('Intake gate state is unavailable')
+    if filter_chain_absent(chain):
+        return False
+    raise ValueError('Intake gate state changed during inspection')
+
+
+def jump_exists(result, chain):
+    if result.returncode == 0:
+        if output_jump_present(chain):
+            return True
+        raise ValueError('Intake gate jump changed during inspection')
+    if not output_jump_present(chain):
+        return False
+    raise ValueError('Intake gate jump changed during inspection')
+
+
+def owned_gate_rule_ports(rules, chain):
+    accepted = set()
+    ports = set()
+    for port in ('8003', '8007'):
+        base = ['-A', chain, '-p', 'tcp', '-m', 'conntrack', '--ctstate', 'NEW',
+                '--ctorigdst', '127.0.0.1', '--ctorigdstport', port, '-j', 'REJECT']
+        accepted.add(tuple(base))
+        accepted.add(tuple(base + ['--reject-with', 'icmp-port-unreachable']))
+    rules_only = [tuple(rule) for rule in rules if rule[0] == '-A']
+    for rule in rules_only:
+        if rule not in accepted:
+            return None
+        ports.add(rule[rule.index('--ctorigdstport') + 1])
+    if len(rules_only) != len(ports):
+        return None
+    return ports
 
 
 def gate(chain, install):
     if not re.fullmatch('HC-STT-[0-9a-f]{12}', chain):
         raise ValueError('Invalid intake gate')
     chain_result = run(['iptables', '-w', '-S', chain], check=False)
-    exists = chain_result.returncode == 0
-    if not exists and not iptables_rule_absent(chain_result):
-        raise ValueError('Intake gate state is unavailable')
+    exists = chain_exists(chain_result, chain)
     if exists:
-        rules = chain_result.stdout.splitlines()
-        if len(rules) != 3 or any(not all(token in rule for token in
-                ('--ctstate NEW', '--ctorigdst 127.0.0.1', '--ctorigdstport ' + port, '-j REJECT'))
-                for rule, port in zip(rules[1:], ('8003', '8007'))):
+        rules = parse_iptables_listing(chain_result, chain=chain)
+        valid_rules = owned_gate_rule_ports(rules, chain)
+        expected_ports = {'8003', '8007'}
+        complete = valid_rules == expected_ports
+        valid = valid_rules is not None and (complete if install else True)
+        if (len(rules) != len([rule for rule in rules if rule[0] == '-A']) + 1 or not valid):
             raise ValueError('Intake gate drift requires inspection')
     if install:
         if not exists:
@@ -1555,27 +1742,43 @@ def gate(chain, install):
                 run(['iptables', '-w', '-A', chain, '-p', 'tcp', '-m', 'conntrack', '--ctstate', 'NEW',
                      '--ctorigdst', '127.0.0.1', '--ctorigdstport', port, '-j', 'REJECT'])
         jump = run(['iptables', '-w', '-C', 'OUTPUT', '-j', chain], check=False)
-        if iptables_rule_absent(jump):
+        if not jump_exists(jump, chain):
             run(['iptables', '-w', '-I', 'OUTPUT', '1', '-j', chain])
+            if not output_jump_present(chain):
+                raise ValueError('Intake gate jump could not be verified')
     else:
         # Delete only our exact nonce-named chain and jump; never flush a shared chain.
         if not exists:
+            jump = run(['iptables', '-w', '-C', 'OUTPUT', '-j', chain], check=False)
+            if jump_exists(jump, chain):
+                raise ValueError('Intake gate jump exists without its chain')
             return
-        run(['iptables', '-w', '-D', 'OUTPUT', '-j', chain], check=False)
-        run(['iptables', '-w', '-F', chain]); run(['iptables', '-w', '-X', chain])
+        jump = run(['iptables', '-w', '-C', 'OUTPUT', '-j', chain], check=False)
+        if jump_exists(jump, chain):
+            deleted = run(['iptables', '-w', '-D', 'OUTPUT', '-j', chain], check=False)
+            if deleted.returncode and output_jump_present(chain):
+                raise ValueError('Intake gate jump removal failed')
+        if output_jump_present(chain):
+            raise ValueError('Intake gate jump remains after removal')
+        run(['iptables', '-w', '-F', chain])
+        removed = run(['iptables', '-w', '-X', chain], check=False)
+        if removed.returncode and not filter_chain_absent(chain):
+            raise ValueError('Intake gate removal failed')
 
 
 def gate_is_active(chain):
     result = run(['iptables', '-w', '-S', chain], check=False)
-    if iptables_rule_absent(result):
+    if not chain_exists(result, chain):
+        jump = run(['iptables', '-w', '-C', 'OUTPUT', '-j', chain], check=False)
+        if jump_exists(jump, chain):
+            raise ValueError('Intake gate jump exists without its chain')
         return False
-    rules = result.stdout.splitlines()
-    if len(rules) != 3 or any(not all(token in rule for token in
-            ('--ctstate NEW', '--ctorigdst 127.0.0.1', '--ctorigdstport ' + port, '-j REJECT'))
-            for rule, port in zip(rules[1:], ('8003', '8007'))):
+    rules = parse_iptables_listing(result, chain=chain)
+    ports = owned_gate_rule_ports(rules, chain)
+    if len(rules) != 3 or ports != {'8003', '8007'}:
         raise ValueError('Intake gate drift requires inspection')
     jump = run(['iptables', '-w', '-C', 'OUTPUT', '-j', chain], check=False)
-    return not iptables_rule_absent(jump)
+    return jump_exists(jump, chain)
 
 
 def quiet(containers):

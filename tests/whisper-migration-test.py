@@ -652,14 +652,16 @@ class MigrationTests(unittest.TestCase):
         chain = 'HC-STT-' + 'a' * 12
         rules = '\n'.join([
             '-N ' + chain,
-            '-A ' + chain + ' -p tcp -m conntrack --ctstate NEW --ctorigdst 127.0.0.1 --ctorigdstport 8003 -j REJECT',
-            '-A ' + chain + ' -p tcp -m conntrack --ctstate NEW --ctorigdst 127.0.0.1 --ctorigdstport 8007 -j REJECT',
+            '-A ' + chain + ' -p tcp -m conntrack --ctstate NEW --ctorigdst 127.0.0.1 --ctorigdstport 8003 -j REJECT --reject-with icmp-port-unreachable',
+            '-A ' + chain + ' -p tcp -m conntrack --ctstate NEW --ctorigdst 127.0.0.1 --ctorigdstport 8007 -j REJECT --reject-with icmp-port-unreachable',
         ])
         def run(command, **_kwargs):
             if command[2:4] == ['-S', chain]:
                 return SimpleNamespace(returncode=0, stdout=rules)
             if command[2:4] == ['-C', 'OUTPUT']:
                 return SimpleNamespace(returncode=0, stdout='')
+            if command[2:4] == ['-S', 'OUTPUT']:
+                return SimpleNamespace(returncode=0, stdout='-P OUTPUT ACCEPT\n-A OUTPUT -j ' + chain + '\n')
             raise AssertionError('unexpected gate command')
         with patch.object(LIFECYCLE, 'run', side_effect=run):
             LIFECYCLE.gate(chain, True)
@@ -667,10 +669,20 @@ class MigrationTests(unittest.TestCase):
     def test_gate_status_distinguishes_absent_from_unavailable(self):
         chain = 'HC-STT-' + 'a' * 12
         absent = SimpleNamespace(returncode=1, stdout='', stderr='iptables: No chain/target/match by that name.')
-        with patch.object(LIFECYCLE, 'run', return_value=absent):
+        table = SimpleNamespace(returncode=0, stdout='-P INPUT ACCEPT\n-P OUTPUT ACCEPT\n-P FORWARD DROP\n')
+        output = SimpleNamespace(returncode=0, stdout='-P OUTPUT ACCEPT\n')
+        def absent_run(command, **_kwargs):
+            if command[2:4] == ['-S', chain] or command[2:4] == ['-C', 'OUTPUT']:
+                return absent
+            if command[2:4] == ['-S']:
+                return table
+            if command[2:4] == ['-S', 'OUTPUT']:
+                return output
+            raise AssertionError('unexpected gate command')
+        with patch.object(LIFECYCLE, 'run', side_effect=absent_run):
             self.assertFalse(LIFECYCLE.gate_is_active(chain))
         unavailable = SimpleNamespace(returncode=1, stdout='', stderr='iptables: permission denied')
-        with patch.object(LIFECYCLE, 'run', return_value=unavailable), \
+        with patch.object(LIFECYCLE, 'run', side_effect=lambda *_args, **_kwargs: unavailable), \
                 self.assertRaisesRegex(ValueError, 'state is unavailable'):
             LIFECYCLE.gate_is_active(chain)
 

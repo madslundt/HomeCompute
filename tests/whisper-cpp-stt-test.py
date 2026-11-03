@@ -118,6 +118,191 @@ class ModelVerifierTests(unittest.TestCase):
                 VERIFY.verify_model(link, expected_sha256=hashlib.sha256(model).hexdigest(),
                                     expected_size=len(model))
 
+
+class IntakeGateListingTests(unittest.TestCase):
+    @staticmethod
+    def result(code=0, stdout="", stderr=""):
+        return SimpleNamespace(returncode=code, stdout=stdout, stderr=stderr)
+
+    def test_absence_uses_successful_table_listing_across_backend_messages(self):
+        chain = "HC-STT-0123456789ab"
+        listing = "-P INPUT ACCEPT\n-P OUTPUT ACCEPT\n-P FORWARD DROP\n"
+        for failure in (
+            self.result(1, stderr="iptables: No chain/target/match by that name."),
+            self.result(1, stdout="iptables v1.8.10 (nf_tables): Chain does not exist."),
+            self.result(1, stderr="iptables: cible/chaîne introuvable"),
+        ):
+            with self.subTest(failure=failure):
+                with patch.object(LIFECYCLE, "run", return_value=self.result(stdout=listing)):
+                    self.assertFalse(LIFECYCLE.chain_exists(failure, chain))
+
+    def test_absence_requires_successful_well_formed_listing_and_detects_race(self):
+        chain = "HC-STT-0123456789ab"
+        failed = self.result(1, stderr="denied")
+        with patch.object(LIFECYCLE, "run", return_value=self.result(1, stderr="permission denied")):
+            with self.assertRaisesRegex(ValueError, "unavailable"):
+                LIFECYCLE.chain_exists(failed, chain)
+        with patch.object(LIFECYCLE, "run", return_value=self.result(stdout="garbage listing\n")):
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                LIFECYCLE.chain_exists(failed, chain)
+        race = self.result(stdout=f"-P INPUT ACCEPT\n-P OUTPUT ACCEPT\n-P FORWARD DROP\n-N {chain}\n")
+        with patch.object(LIFECYCLE, "run", return_value=race):
+            with self.assertRaisesRegex(ValueError, "changed during inspection"):
+                LIFECYCLE.chain_exists(failed, chain)
+
+    def test_jump_absence_uses_authoritative_output_listing_and_rejects_races(self):
+        chain = "HC-STT-0123456789ab"
+        missing = self.result(1, stdout="iptables: bad rule", stderr="localized text")
+        with patch.object(LIFECYCLE, "run", return_value=self.result(
+                stdout="-P OUTPUT ACCEPT\n-A OUTPUT -j DOCKER\n")):
+            self.assertFalse(LIFECYCLE.jump_exists(missing, chain))
+        with patch.object(LIFECYCLE, "run", return_value=self.result(
+                stdout=f"-P OUTPUT ACCEPT\n-A OUTPUT -j {chain}\n")):
+            with self.assertRaisesRegex(ValueError, "changed during inspection"):
+                LIFECYCLE.jump_exists(missing, chain)
+        with patch.object(LIFECYCLE, "run", return_value=self.result(1, stderr="permission denied")):
+            with self.assertRaisesRegex(ValueError, "unavailable"):
+                LIFECYCLE.jump_exists(missing, chain)
+
+    def test_malformed_and_duplicate_output_jumps_fail_closed(self):
+        chain = "HC-STT-0123456789ab"
+        with patch.object(LIFECYCLE, "run", return_value=self.result(stdout="-P OUTPUT ACCEPT\ninvalid\n")):
+            with self.assertRaisesRegex(ValueError, "malformed"):
+                LIFECYCLE.output_jump_present(chain)
+        duplicate = f"-P OUTPUT ACCEPT\n-A OUTPUT -j {chain}\n-A OUTPUT -j {chain}\n"
+        with patch.object(LIFECYCLE, "run", return_value=self.result(stdout=duplicate)):
+            with self.assertRaisesRegex(ValueError, "jump drift"):
+                LIFECYCLE.output_jump_present(chain)
+
+    def test_successful_but_empty_or_incomplete_listings_are_not_absence_proof(self):
+        chain = "HC-STT-0123456789ab"
+        failed = self.result(1, stdout="backend-specific missing chain")
+        with patch.object(LIFECYCLE, "run", return_value=self.result()):
+            with self.assertRaisesRegex(ValueError, "incomplete"):
+                LIFECYCLE.chain_exists(failed, chain)
+        with patch.object(LIFECYCLE, "run", return_value=self.result(stdout="-A OUTPUT -j DOCKER\n")):
+            with self.assertRaisesRegex(ValueError, "incomplete"):
+                LIFECYCLE.output_jump_present(chain)
+
+    def test_conditional_jump_to_nonce_is_drift_not_an_owned_gate(self):
+        chain = "HC-STT-0123456789ab"
+        output = self.result(stdout=f"-P OUTPUT ACCEPT\n-A OUTPUT -s 127.0.0.1 -j {chain}\n")
+        with patch.object(LIFECYCLE, "run", return_value=output):
+            with self.assertRaisesRegex(ValueError, "jump drift"):
+                LIFECYCLE.output_jump_present(chain)
+
+    def test_gate_cleanup_of_absent_nonce_is_verified_without_mutation(self):
+        chain = "HC-STT-0123456789ab"
+        absent_chain = self.result(1, stdout="nft: unknown chain")
+        absent_jump = self.result(1, stderr="translated missing-rule diagnostic")
+        table = self.result(stdout="-P INPUT ACCEPT\n-P OUTPUT ACCEPT\n-P FORWARD DROP\n")
+        output = self.result(stdout="-P OUTPUT ACCEPT\n-A OUTPUT -j DOCKER\n")
+        with patch.object(LIFECYCLE, "run", side_effect=[absent_chain, table, absent_jump, output]) as run:
+            LIFECYCLE.gate(chain, False)
+        self.assertEqual(run.call_count, 4)
+
+    def test_gate_cleanup_accepts_only_owned_partial_nonce_rules(self):
+        chain = "HC-STT-0123456789ab"
+        partial = self.result(stdout=(f"-N {chain}\n-A {chain} -p tcp -m conntrack --ctstate NEW "
+                                     "--ctorigdst 127.0.0.1 --ctorigdstport 8003 -j REJECT\n"))
+        missing_jump = self.result(1, stderr="nft backend diagnostic")
+        output = self.result(stdout="-P OUTPUT ACCEPT\n")
+        completed = self.result()
+        with patch.object(LIFECYCLE, "run", side_effect=[partial, missing_jump, output, output,
+                                                          completed, completed]) as run:
+            LIFECYCLE.gate(chain, False)
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertIn(["iptables", "-w", "-F", chain], commands)
+        self.assertIn(["iptables", "-w", "-X", chain], commands)
+
+    def test_recovery_is_restricted_to_healthy_pretransition_legacy_failure(self):
+        chain = "HC-STT-0123456789ab"
+        revision = "a" * 40
+        primary = {
+            "Id": "primary-id", "Image": "primary-image", "Name": "/gb10-whisper-primary",
+            "State": {"Running": True, "Health": {"Status": "healthy"}},
+            "Config": {"Image": "nvcr.io/nvidia/vllm@sha256:ebd2b86dd262729d44df230961bd42d623b39490adef4bf16e7f11dda5a6098d",
+                       "Cmd": [LIFECYCLE.MODEL, LIFECYCLE.REVISION]},
+            "HostConfig": {"RestartPolicy": {"Name": "unless-stopped", "MaximumRetryCount": 0}},
+        }
+        relay = {
+            "Id": "relay-id", "Image": LIFECYCLE.CPP_GATE_FAILURE_RELAY_IMAGE, "Name": "/gb10-whisper-http",
+            "State": {"Running": True, "Health": {"Status": "healthy"}},
+            "Config": {"Image": "homecompute/stt-http:2.0.0", "Labels": {
+                "com.docker.compose.project": "whisper-large-v3-stt",
+                "com.docker.compose.service": "whisper-http"}},
+            "HostConfig": {"RestartPolicy": {"Name": "unless-stopped", "MaximumRetryCount": 0}},
+        }
+        tx = {"revision": LIFECYCLE.CPP_GATE_FAILURE_RECOVERY_REVISION,
+              "state": "rollback-pending", "promotion": True,
+              "candidate_stage": "install-intake-gate", "failure_stage": "install-intake-gate",
+              "rollback_stage": None, "candidate_exposed": False, "chain": chain,
+              "candidate_image_id": LIFECYCLE.CPP_QUALIFIED_IMAGE_ID,
+              "image_source_revision": LIFECYCLE.CPP_QUALIFIED_SOURCE_REVISION,
+              "primary_id": primary["Id"], "primary_image": primary["Image"],
+              "primary_restart": "unless-stopped", "failure_id": LIFECYCLE.CPP_GATE_FAILURE_RECOVERY_ID}
+        saved = []
+        with (patch.object(LIFECYCLE, "STATE", Path("/unused")),
+              patch.object(LIFECYCLE, "protected"),
+              patch.object(LIFECYCLE, "inspect", side_effect=lambda name: {
+                  "primary-id": primary, "gb10-whisper-http": relay,
+                  LIFECYCLE.CUDA_CANDIDATE: None, "gb10-whisper-cpp-http": None}.get(name)),
+              patch.object(LIFECYCLE, "gate") as gate,
+              patch.object(LIFECYCLE, "gate_is_active", return_value=False),
+              patch.object(LIFECYCLE, "save_cuda_candidate", side_effect=lambda value: saved.append(dict(value)))):
+            with tempfile.TemporaryDirectory() as tmp:
+                journal = Path(tmp) / "cuda-candidate.json"
+                journal.write_text(json.dumps(tx))
+                with patch.object(LIFECYCLE, "STATE", Path(tmp)):
+                    LIFECYCLE.recover_pretransition_promotion_failure(revision)
+        gate.assert_called_once_with(chain, False)
+        self.assertEqual(saved[-1]["state"], "rolled-back")
+        self.assertEqual(saved[-1]["failure_id"], LIFECYCLE.CPP_GATE_FAILURE_RECOVERY_ID)
+        self.assertTrue(saved[-1]["pretransition_gate_recovered"])
+
+        completed = dict(tx, state="rolled-back", rollback_stage="complete", rollback_status="completed")
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "cuda-candidate.json").write_text(json.dumps(completed))
+            with (patch.object(LIFECYCLE, "STATE", Path(tmp)), patch.object(LIFECYCLE, "protected"),
+                  patch.object(LIFECYCLE, "inspect", side_effect=lambda name: {
+                      "primary-id": primary, "gb10-whisper-http": relay,
+                      LIFECYCLE.CUDA_CANDIDATE: None, "gb10-whisper-cpp-http": None}.get(name)),
+                  patch.object(LIFECYCLE, "gate") as gate,
+                  patch.object(LIFECYCLE, "gate_is_active", return_value=False),
+                  patch.object(LIFECYCLE, "save_cuda_candidate") as save):
+                LIFECYCLE.recover_pretransition_promotion_failure(revision)
+                gate.assert_called_once_with(chain, False)
+                self.assertEqual(save.call_args.args[0]["state"], "rolled-back")
+
+        for unsafe in (dict(tx, candidate_stage="recording-relay-update"),
+                       dict(tx, revision="c" * 40), dict(tx, failure_id="aaaaaaaaaaaa")):
+            with tempfile.TemporaryDirectory() as tmp:
+                Path(tmp, "cuda-candidate.json").write_text(json.dumps(unsafe))
+                with (patch.object(LIFECYCLE, "STATE", Path(tmp)), patch.object(LIFECYCLE, "protected"),
+                      patch.object(LIFECYCLE, "inspect", side_effect=lambda name: {
+                          "primary-id": primary, "gb10-whisper-http": relay,
+                          LIFECYCLE.CUDA_CANDIDATE: None, "gb10-whisper-cpp-http": None}.get(name)),
+                      patch.object(LIFECYCLE, "gate") as gate):
+                    with self.assertRaisesRegex(ValueError, "not a recoverable"):
+                        LIFECYCLE.recover_pretransition_promotion_failure(revision)
+                    gate.assert_not_called()
+
+    def test_public_failure_metadata_uses_final_rollback_and_gate_receipt(self):
+        receipt = {
+            "failure_id": "0123456789ab", "failure_stage": "install-intake-gate",
+            "failure_class": "ValueError", "failure_executable": None,
+            "failure_exit_code": None, "failure_classification": "unknown",
+            "failure_diagnostic_available": True, "rollback_status": "completed",
+            "rollback_failure_stage": None, "rollback_failure_class": None,
+            "rollback_failure_classification": "unknown", "rollback_failure_executable": None,
+            "rollback_failure_exit_code": None, "gate_cleanup_failure_class": None,
+        }
+        self.assertEqual(LIFECYCLE.public_cuda_failure_metadata(receipt), receipt)
+        message = LIFECYCLE.format_cuda_candidate_failure(
+            LIFECYCLE.public_cuda_failure_metadata(receipt))
+        self.assertIn("stage=install-intake-gate", message)
+        self.assertIn("rollback=completed", message)
+
     def test_candidate_api_key_must_be_a_restricted_regular_file(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "key"

@@ -362,6 +362,18 @@ sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-
   --revision FULL_SHA --action cuda-candidate-rollback
 ```
 
+The intake gate treats only successful `iptables -w -S` and `-S OUTPUT`
+snapshots as evidence that a nonce chain or jump is absent. Command errors,
+incomplete listings, conditional jumps, or unexpected rules fail closed. It
+accepts only the kernel's default `--reject-with icmp-port-unreachable`
+serialization for the gate's REJECT rules; other reject behavior is drift.
+The promotion action can recover the specifically pinned pre-transition gate
+failure on retry only when its journal matches, the exact original vLLM primary
+and relay are healthy and unchanged, no candidate services exist, and the
+journaled nonce gate can be safely verified and removed. Other journal states,
+unavailable firewall state, and failures after the model transition remain held
+for status and rollback review.
+
 Both actions use the deployment, rollout, speech-capacity and Whisper locks.
 Promotion reuses the exact qualified image, sets the long-form adapter bounds
 to 1,200 seconds / 40 MB / 1,800 seconds, and retains the required memory and
