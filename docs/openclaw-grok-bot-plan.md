@@ -225,6 +225,18 @@ candidate. Do not claim `2026.9.2` has `2026.10.10` features, or that shared
 schema numbers alone prove safe rollback. Production upgrade remains a separate
 reviewed deployment after phase 0 recovery gates.
 
+The November 3 implementation gate now has actual candidate evidence. Its
+artifact/config checks and native safety, ingress and yield regressions passed.
+The unmodified 9.2 child-result path failed required single-child tail retention;
+an exact-hash temporary port passed. The decision is **no-go as-is**, retaining
+9.1. Before promotion, port the child installer, official Mattermost gate and
+activity hash/path, retire only the new tuple's obsolete yield overlay, and
+complete native synthetic rebuild/restart/rollback and integration acceptance.
+The [execution receipt](operations/openclaw-recovery-upgrade-2026-11-03.md) records
+which gates ran and which remain unverified. This decision does not require
+replacing OpenClaw; later Atlas behavior work can use the existing qualified
+tuple, with its own acceptance and unattended-work gates.
+
 ### 2. Make Atlas a coherent, observable teammate
 
 Refine `config/openclaw-team.json`, `scripts/openclaw_team_policy.py` and the

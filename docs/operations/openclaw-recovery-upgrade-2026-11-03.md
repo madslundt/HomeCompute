@@ -1,6 +1,6 @@
 # OpenClaw recovery and managed-upgrade execution — 2026-11-03
 
-Status: recovery gate accepted; managed candidate qualification in progress.
+Status: recovery gate accepted; managed candidate is no-go as-is. Production retains NemoClaw 0.0.129 / OpenClaw 2026.9.1.
 
 A fresh encrypted NAS backup, archive integrity checks, four PostgreSQL imports,
 both isolated VM boots, and native Atlas recovery from that same snapshot have
@@ -216,17 +216,68 @@ reached DependenciesReady and passed authenticated health/version/plugin and
 post-start policy checks. The smaller one-CPU fixture did not represent the
 retained two-CPU runtime budget. No production resource or roster guard changed.
 
-Actual candidate execution passed the three runtime module hashes, declared
-Node/core/schema versions, native SDK loader and safety runner, fail-closed and
-sticky-veto cases, native ingress readiness/abort, yield warning/acknowledgment
-and quiet-delivery regressions. The stock single-child result still truncates
-required tail evidence; the exact-hash temporary child overlay passed all
-fixtures. The first config dry-run used an empty batch, which the native CLI
-correctly rejected before schema validation. That harness fixture is being
-corrected to a nonempty synthetic-name update with byte-for-byte no-write proof.
-The candidate remains unqualified and no production tuple changed.
+Actual candidate execution from published
+`2acc66c4131efc34bd029d8379c55fa008ed7aea` completed at approximately
+20:40 UTC. The corrected config dry-run passed without changing its synthetic
+configuration. Its strict result was exit 1 because the stock child-evidence
+gate failed; that failure was not converted into qualification.
 
-Outstanding: completed artifact/config gate, native fixture lifecycle/rebuild and
-rollback, integration/patch/identity tests and authenticated client acceptance.
-Do not deploy from an artifact-only pass or imply host synchronization from
-release markers. Retain the prior production tuple until those gates pass.
+| Gate | Actual result |
+| --- | --- |
+| Immutable manifest/config chain, labels, platform/user | Passed |
+| Actual Node 24.22.1, core 2026.9.2, agent/state schemas 19/15 | Passed |
+| Three runtime modules match reviewed npm hashes | Passed |
+| Native synthetic config validation, no write | Passed |
+| Actual SDK loader, safety authorization, sticky veto, failed-hook rejection | Passed |
+| Native ingress readiness/abort lifecycle | Passed with an empty in-memory queue; not real Mattermost delivery |
+| Upstream yield warning/acknowledgment and quiet-delivery rules | Passed without the old overlay |
+| Stock single-child tail evidence | **Failed**; aggregate bound/omission checks passed |
+| Exact-hash temporary child overlay | Passed, including retained tail evidence |
+| Native managed onboarding/rebuild/restart/rollback | Unverified |
+| Real integration paths and mixed-load client acceptance | Unverified |
+| Production qualification/deployment | **No-go; not deployed** |
+
+The Docker 29 inspector initially returned a manifest ID where the first harness
+expected a config ID. The source now verifies the same two pins through the
+byte-preserved public manifest, exact repository digest and descriptor. The
+first config probe also used an invalid empty batch; it now proposes a harmless
+synthetic name change and proves that no bytes were written. Neither harness
+correction changes production or blesses an unknown image.
+
+The immutable candidate image is retained in the guest cache (approximately
+0.74 GiB reported image size; over 15 GiB Docker filesystem space remained).
+Every owned candidate container was removed. All owned restore scopes and the
+backup admission chain are absent. Private snapshot, engine and native receipts
+remain outside Git; the accepted native index is mode 0600.
+
+Next implementation order:
+
+1. Port the child-result installer against the reviewed 9.2 before/after hashes;
+   the temporary module result is not an installed upgrade recipe.
+2. Port official Mattermost's pre-claim gate and the safety activity module's
+   new exact runtime path/hash. Retain finite MCP, agent-office and domain policy.
+3. Retire the yield overlay only for the new tuple after its native regression;
+   preserve the qualified old-tuple patch.
+4. Qualify synthetic native 129 → 140 rebuild/restart → 129 rollback, retained
+   data/identity, plugin integration, deterministic provider routing and task
+   handoffs before any production tuple change.
+5. Apply a qualified tuple only through a reviewed published scoped lifecycle,
+   with the owning backup/rollback procedure and actual client verification.
+
+The current 9.1 tuple remains the qualified production baseline. Expanded task,
+schedule or proactive behavior has not been rolled out. Scheduled backups keep
+the conservative idle guard; attended drain now has a reproducible source-owned
+path, while unattended admission needs a separate maintenance-window rollout.
+Both host deployment markers remain behind current source; scoped recovery and
+successful tests do not establish global synchronization.
+
+
+Final readbacks refreshed status, services, doctor and drift through the
+repository CLI, using the approved home-core SSH jump for home-spark. Both hosts
+were reachable with zero failed units; existing deployment-marker drift remained.
+Production's authenticated gateway health at approximately 20:40 UTC was good,
+with zero plugin errors and eleven of eleven enabled Mattermost accounts
+connected. Recovery transaction status was complete. Independent checks found
+zero owned candidate containers or restore scopes, no backup resume journal or
+recovery marker, and no admission chain. No real task turn or channel message
+was sent during these checks.

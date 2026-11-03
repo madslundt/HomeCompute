@@ -378,3 +378,20 @@ as the default for fresh Engine 29 installations. The first-party
 [containerd inspector implementation](https://github.com/moby/moby/blob/master/daemon/containerd/image_inspect.go)
 sets the returned ID from the target digest. The live response is the evidence
 for this installed daemon; a moving source page does not qualify the workload.
+
+
+## Actual offline runtime verdict, approximately 20:40 UTC
+
+Published HomeCompute `2acc66c4131efc34bd029d8379c55fa008ed7aea` passed
+artifact provenance, actual version/schema/module hashes and a nonempty native
+config dry-run with byte-for-byte no-write proof. Real installed runtime fixtures
+passed the native SDK/safety runner, ingress admission/abort and upstream yield
+acknowledgment paths. Stock child completion still loses the required tail;
+the exact-hash temporary overlay preserves it and all aggregate limits. Exit 1
+therefore correctly remains a no-go result for the unmodified candidate.
+
+This does not qualify an installed patch recipe, native managed migration or
+rollback, agent-office/finite MCP integration, real Mattermost delivery, model
+routing or mixed-load acceptance. Production remains on the prior qualified
+tuple. See the [execution receipt](../operations/openclaw-recovery-upgrade-2026-11-03.md)
+for actual recovery acceptance and the next ordered implementation changes.
