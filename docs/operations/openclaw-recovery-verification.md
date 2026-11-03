@@ -38,9 +38,12 @@ sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/verify-openclaw-recovery
 
 The guest checks policy, twelve roles, workspace presence and every native
 SQLite file with its adjacent restored WAL/SHM, and checks actual nonempty main
-conversation tables. It submits only authenticated gateway health queries and
-the version command, verifying the old managed image, actual core and required
-plugins, and emits a nonce-bound aggregate receipt. A login prompt, another
+conversation tables. It waits for exact native Ready metadata before invoking exec-based authenticated
+gateway health/version checks, verifying the old managed image, actual core and
+required plugins. Policy is rechecked after startup, and a nonce-bound aggregate
+receipt is emitted. Failed startup diagnostics retain native phase, container
+exit/OOM metadata and redacted error lines only from the new VM boot; historical
+production container logs and full native policy dumps are excluded. A login prompt, another
 nonce, missing databases, changed policy, plugin error or unauthenticated
 gateway cannot pass. Cloud-init uses its documented
 [base64 file and command modules](https://docs.cloud-init.io/en/25.3/reference/yaml_examples/write_files.html).

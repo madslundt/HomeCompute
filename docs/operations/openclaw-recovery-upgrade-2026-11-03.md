@@ -140,6 +140,18 @@ health was good, zero plugin errors, and all eleven enabled Mattermost accounts
 were connected. Twelve accounts remain configured; Family is deliberately
 disabled. Native cron and heartbeats retain their previous disabled state.
 
+The address-space-adjusted test reached native recovery without another thread
+allocation failure. At approximately 19:52 UTC its evidence showed that named
+host-gateway recovery succeeded and the retained sandbox start was attempted.
+The container then exited and automatic Error recovery correctly refused the
+twelve-agent roster (`agent-roster-refused`). The container was retained, not
+missing. No roster or identity guard was bypassed. A later probe revision waits
+for native Ready before exec permission housekeeping, captures structured phase
+and current-boot error/exit diagnostics, fails promptly on that known refusal,
+and rechecks policy after startup. Ten focused tests cover these gates. The
+actual start failure remains under investigation; backup data readability is
+proven, complete native recovery is not yet accepted.
+
 ## Managed candidate source
 
 The separate [candidate policy](../../config/openclaw-managed-candidate.json)

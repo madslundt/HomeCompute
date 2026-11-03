@@ -19,6 +19,41 @@ m = module('native_restore', 'scripts/verify-openclaw-recovery.py')
 probe = module('guest_probe', 'deploy/openclaw/recovery/inspect-restored-state.py')
 
 class NativeRestoreTests(unittest.TestCase):
+    def test_health_exec_requires_exact_native_ready_identity(self):
+        import subprocess
+        identifier='11111111-1111-4111-8111-111111111111'
+        identity='OPENCLAW_EXPECTED_SANDBOX_ID='+identifier+'\n'
+        for phase, ready in [('Stopped',False),('Error',False),('Ready',True)]:
+            response=subprocess.CompletedProcess([],0,json.dumps({'name':'agent-openclaw','id':identifier,'phase':phase}).encode(),b'')
+            with patch.object(probe.subprocess,'run',return_value=response),patch.object(Path,'read_text',return_value=identity):
+                self.assertEqual(probe.native_ready([]),ready)
+        response=subprocess.CompletedProcess([],0,json.dumps({'name':'agent-openclaw','id':'22222222-2222-4222-8222-222222222222','phase':'Ready'}).encode(),b'')
+        with patch.object(probe.subprocess,'run',return_value=response),patch.object(Path,'read_text',return_value=identity):
+            with self.assertRaisesRegex(ValueError,'identity-mismatch'):probe.native_ready([])
+
+    def test_policy_is_rechecked_after_native_startup(self):
+        from unittest.mock import mock_open
+        import sys
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            config={'agents':{'entries':{str(i):{} for i in range(12)}},'cron':{'enabled':False}}
+            (root/'openclaw.json').write_text(json.dumps(config))
+            expected=probe.policy_digest(config)
+            def startup(progress):
+                (root/'openclaw.json').write_text(json.dumps({**config,'tools':{'allow':['unreviewed']}}))
+                return {'authenticated_gateway_verified':True}
+            serial=mock_open()
+            argv=['probe','--nonce','11111111-1111-4111-8111-111111111111','--expected-policy-sha256',expected]
+            with patch.object(probe,'STATE',root),patch.object(probe,'inspect',return_value={'native_policy_verified':True}), \
+                    patch.object(probe,'gateway_health',side_effect=startup),patch.object(probe,'private_diagnostics',return_value={}), \
+                    patch.object(probe.os,'geteuid',return_value=0),patch.object(probe.socket,'gethostname',return_value='agents'), \
+                    patch.object(sys,'argv',argv),patch('builtins.open',serial):
+                probe.main()
+            payload=serial().write.call_args_list[-1].args[0].strip().split(' ',1)[1]
+            result=json.loads(payload)
+            self.assertFalse(result['native_policy_verified'])
+            self.assertEqual(result['error_category'],'restored-policy-digest-mismatch')
+
     def test_private_startup_diagnostics_bound_and_redact_health_errors(self):
         from types import SimpleNamespace
         with patch.object(probe.subprocess,'run',return_value=SimpleNamespace(stdout=b'active')):
