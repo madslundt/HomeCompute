@@ -106,6 +106,10 @@ def load_config() -> CandidateConfig:
 def require_cuda_device() -> None:
     """Fail closed instead of silently running a CUDA candidate on CPU."""
     try:
+        ctypes.CDLL("libcuda.so.1")
+    except OSError:
+        raise RuntimeError("CUDA driver library is unavailable") from None
+    try:
         runtime = ctypes.CDLL("libcudart.so.13")
         count = ctypes.c_int()
         status = runtime.cudaGetDeviceCount(ctypes.byref(count))

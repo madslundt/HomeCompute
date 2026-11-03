@@ -18,6 +18,7 @@ RUN nvcc --version | grep -q 'release 13.1, V13.1.115' \
  && test "$(cmake --version | head -n 1)" = 'cmake version 3.31.6' \
  && test "$(gcc -dumpfullversion)" = '13.3.0'
 COPY patch-whisper-cpp-cuda.py /opt/homecompute/patch-whisper-cpp-cuda.py
+COPY verify-cuda-linkage.py /opt/homecompute/verify-cuda-linkage.py
 RUN echo "${CUDA_PATCHER_SHA256}  /opt/homecompute/patch-whisper-cpp-cuda.py" | sha256sum -c -
 RUN git init /src \
  && git -C /src remote add origin https://github.com/ggml-org/whisper.cpp.git \
@@ -33,6 +34,12 @@ RUN cmake -S /src -B /build -DCMAKE_BUILD_TYPE=Release \
       -DGGML_OPENMP=ON -DGGML_METAL=OFF -DWHISPER_BUILD_TESTS=OFF \
       -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_SERVER=ON \
  && cmake --build /build --config Release --target whisper-server --parallel 4
+RUN printf '%s\n' 'extern int cuInit(unsigned int); int main(void) { return cuInit(0); }' > /tmp/driver-probe.c \
+ && test -f /usr/local/cuda/targets/sbsa-linux/lib/stubs/libcuda.so \
+ && gcc /tmp/driver-probe.c -L/usr/local/cuda/targets/sbsa-linux/lib/stubs -lcuda -o /tmp/driver-probe \
+ && ldd /tmp/driver-probe > /tmp/driver-probe.ldd \
+ && python3 /opt/homecompute/verify-cuda-linkage.py --driver-probe /tmp/driver-probe.ldd \
+ && rm /tmp/driver-probe.c /tmp/driver-probe /tmp/driver-probe.ldd
 
 FROM --platform=linux/arm64 ${CUDA_BASE_IMAGE} AS runtime
 ARG CUDA_BASE_IMAGE
@@ -49,7 +56,7 @@ LABEL org.opencontainers.image.source="https://github.com/ggml-org/whisper.cpp" 
       io.homecompute.whisper-cpp.backend="cuda-121a" \
       io.homecompute.whisper-cpp.cuda-base="${CUDA_BASE_IMAGE}"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
-    LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda/lib64:/usr/local/cuda/targets/sbsa-linux/lib
+    LD_LIBRARY_PATH=/usr/local/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/usr/local/cuda/lib64:/usr/local/cuda/targets/sbsa-linux/lib
 RUN groupadd --gid 10001 stt \
  && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin stt \
  && mkdir -p /opt/homecompute /models \
@@ -58,11 +65,13 @@ RUN groupadd --gid 10001 stt \
 COPY --from=build /build/bin/whisper-server /usr/local/bin/whisper-server
 COPY --from=build /build/bin/lib*.so* /usr/local/lib/
 COPY adapter.py contract.py verify_model.py /opt/homecompute/
+COPY verify-cuda-linkage.py /opt/homecompute/
 ENV WHISPER_CPP_HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION}
 RUN chmod 0555 /usr/local/bin/whisper-server /usr/local/lib/lib*.so* \
- && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/contract.py /opt/homecompute/verify_model.py \
- && ! ldd /usr/local/bin/whisper-server | grep -q 'not found' \
- && ldd /usr/local/bin/whisper-server | grep -q 'libggml-cuda'
+ && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/contract.py /opt/homecompute/verify_model.py /opt/homecompute/verify-cuda-linkage.py \
+ && ldd /usr/local/bin/whisper-server > /tmp/whisper-server.ldd \
+ && python3 /opt/homecompute/verify-cuda-linkage.py /tmp/whisper-server.ldd \
+ && rm /tmp/whisper-server.ldd
 USER 10001:10001
 EXPOSE 8000
 ENTRYPOINT ["python3", "-I", "-B", "/opt/homecompute/adapter.py"]

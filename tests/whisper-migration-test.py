@@ -870,6 +870,14 @@ class MigrationTests(unittest.TestCase):
             staging.cleanup()
             shutil.rmtree(state)
 
+    def test_qualification_failure_format_uses_nested_safe_build_stage(self):
+        outcome = {'qualification_id': 'bead1234', 'state': 'failed', 'rollback': 'completed',
+                   'failure': {'failure_stage': 'build-image', 'failure_class': 'ManagedCommandFailure'},
+                   'receipt': None}
+        public = LIFECYCLE.format_cuda_qualification_failure(outcome)
+        self.assertIn('stage=build-image', public)
+        self.assertNotIn('PRIVATE', public)
+
     def test_qualification_progress_is_content_free_and_uses_fixed_stages(self):
         staging, manifest, _audio = qualification_fixture()
         state = Path(tempfile.mkdtemp(prefix='whisper-qualification-state-'))

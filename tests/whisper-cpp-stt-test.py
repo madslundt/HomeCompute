@@ -39,6 +39,7 @@ def load_file(name: str, path: Path):
 VERIFY = load_file("verify_model", DEPLOY / "verify_model.py")
 ADAPTER = load_file("whisper_cpp_adapter", DEPLOY / "adapter.py")
 CUDA_PATCHER = load_file("whisper_cpp_cuda_patcher", DEPLOY / "patch-whisper-cpp-cuda.py")
+CUDA_LINKAGE = load_file("whisper_cuda_linkage", DEPLOY / "verify-cuda-linkage.py")
 LIFECYCLE = load_file("whisper_cpp_lifecycle", ROOT / "scripts/setup-whisper-stt.py")
 
 
@@ -127,6 +128,46 @@ class ModelVerifierTests(unittest.TestCase):
                 ADAPTER.read_api_key(path)
 
 class AdapterContractTests(unittest.TestCase):
+    def test_cuda_build_linkage_accepts_only_host_injected_driver_missing(self):
+        expected_host_driver_gap = """\
+        linux-vdso.so.1 (0x0000ffff)
+        libwhisper.so.1 => /usr/local/lib/libwhisper.so.1 (0x0000ffff)
+        libggml-cuda.so.0 => /usr/local/lib/libggml-cuda.so.0 (0x0000ffff)
+        libcuda.so.1 => not found
+        libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff)
+        """
+        valid, _message = CUDA_LINKAGE.validate_ldd_output(expected_host_driver_gap)
+        self.assertTrue(valid)
+
+    def test_cuda_linkage_rejects_unexpected_missing_or_unlinked_backend(self):
+        resolved_cuda = "libggml-cuda.so.0 => /usr/local/lib/libggml-cuda.so.0 (0x0000ffff)\n"
+        for output in (
+            resolved_cuda + "libcublas.so.13 => not found\n",
+            "libcuda.so.1 => not found\n",
+            "libggml-cuda.so.0 => not found\n",
+        ):
+            with self.subTest(output=output):
+                valid, _message = CUDA_LINKAGE.validate_ldd_output(output)
+                self.assertFalse(valid)
+
+    def test_cuda_sdk_stub_probe_detects_build_host_driver_boundary(self):
+        missing_host_driver = """\
+        linux-vdso.so.1 (0x0000ffff)
+        libcuda.so.1 => not found
+        libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff)
+        /lib/ld-linux-aarch64.so.1 (0x0000ffff)
+        """
+        valid, _message = CUDA_LINKAGE.validate_driver_probe(missing_host_driver)
+        self.assertTrue(valid)
+        for wrong in (
+            missing_host_driver.replace("libcuda.so.1 => not found", "libcuda.so.1 => /usr/local/cuda/lib64/stubs/libcuda.so.1"),
+            missing_host_driver.replace("libcuda.so.1 => not found", "libcuda.so.1 => not found\nlibcublas.so.13 => not found"),
+            missing_host_driver.replace("libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff)", "libc.so.6 => not found"),
+        ):
+            with self.subTest(wrong=wrong):
+                valid, _message = CUDA_LINKAGE.validate_driver_probe(wrong)
+                self.assertFalse(valid)
+
     def setUp(self):
         self.provenance_env = patch.dict(os.environ, {
             "WHISPER_CPP_HOME_COMPUTE_REVISION": "a" * 40,
@@ -286,6 +327,10 @@ class AdapterContractTests(unittest.TestCase):
 
     def test_cuda_runtime_refuses_missing_runtime_or_no_device(self):
         with patch.object(ADAPTER.ctypes, "CDLL", side_effect=OSError("synthetic")):
+            with self.assertRaisesRegex(RuntimeError, "CUDA driver library is unavailable"):
+                ADAPTER.require_cuda_device()
+
+        with patch.object(ADAPTER.ctypes, "CDLL", side_effect=[object(), OSError("synthetic")]):
             with self.assertRaisesRegex(RuntimeError, "CUDA runtime is unavailable"):
                 ADAPTER.require_cuda_device()
 
@@ -400,7 +445,7 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn("release 13.1, V13.1.115", dockerfile)
         self.assertIn("cmake version 3.31.6", dockerfile)
         self.assertIn("gcc -dumpfullversion", dockerfile)
-        self.assertIn("grep -q 'libggml-cuda'", dockerfile)
+        self.assertIn("verify-cuda-linkage.py", dockerfile)
         self.assertIn("platform: linux/arm64", compose)
         self.assertIn("profiles: [cuda-candidate]", compose)
         self.assertIn("WHISPER_CPP_DEVICE: cuda", compose)
@@ -413,6 +458,10 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn('io.homecompute.whisper-cpp.cuda-patch="strict-gpu-buffer-idle-proof-v2"', dockerfile)
         self.assertIn("CUDA_PATCHER_SHA256: ${WHISPER_CPP_CUDA_PATCHER_SHA256:?", compose)
         self.assertIn("gpu_model_buffer_bytes", compose)
+        self.assertIn("NVIDIA_DRIVER_CAPABILITIES: compute,utility", compose)
+        self.assertIn("LD_LIBRARY_PATH=/usr/local/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64", dockerfile)
+        self.assertIn("verify-cuda-linkage.py", dockerfile)
+        self.assertIn("/tmp/whisper-server.ldd", dockerfile)
         self.assertIn(ADAPTER.CUDA_PATCHER_SHA256, compose)
         self.assertIn("native_inference_busy", compose)
         self.assertIn("WHISPER_CPP_DEVICE", (DEPLOY / "adapter.py").read_text())

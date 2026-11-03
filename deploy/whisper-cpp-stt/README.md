@@ -179,7 +179,17 @@ the default mode and the separate CPU image is built with `GGML_CUDA=OFF`.
 Neither Compose file publishes a host port or joins the production inference
 network. The candidate has its own private Docker network, read-only model and
 credential mounts, no Docker logs, one serialized request, and 4 CPU / 12 GiB
-container bounds. It does not alter production aliases or relay routes.
+container bounds. The NVIDIA runtime mounts host driver libraries at container
+start with the `compute,utility` capabilities; the image retains those NVIDIA
+library search paths. The build-time ELF check allows only the expected
+unresolved `libcuda.so.1` host-driver dependency and requires every other
+dependency plus `libggml-cuda` to resolve. It also compiles a tiny `cuInit`
+probe against the toolkit's link-time stub and inspects its dynamic dependencies
+without running it or loading a GPU. The probe confirms the build host does not
+provide the runtime driver library. At service startup, `libcuda.so.1`, CUDA
+runtime loading and device enumeration must all succeed; native readiness then
+requires CUDA backend initialization, GPU model-buffer proof, and the native
+mutex health signal. It does not alter production aliases or relay routes.
 
 `prepare-cuda-candidate` provisions the exact pinned GGML artifact and a
 separate qualification key outside Git when they are absent. The model is

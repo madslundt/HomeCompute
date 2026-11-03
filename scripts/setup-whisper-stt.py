@@ -36,7 +36,7 @@ NEW = ('gb10-whisper-primary', 'gb10-whisper-http')
 CANDIDATE = 'gb10-whisper-candidate'
 CANDIDATE_IMAGE = 'homecompute/whisper-vllm-candidate:0.19.0-hc1'
 CUDA_CANDIDATE = 'gb10-whisper-cpp-cuda-candidate'
-CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc2'
+CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc3'
 CUDA_CANDIDATE_PROJECT = 'whisper-cpp-gb10-cuda'
 CUDA_BASE_IMAGE = 'nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9'
 CPP_MODEL_SHA256 = '64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2'
@@ -686,6 +686,23 @@ class CudaQualificationFailure(RuntimeError):
     def __init__(self, metadata):
         self.metadata = metadata
         super().__init__('Whisper.cpp CUDA qualification did not complete cleanly')
+
+
+def format_cuda_qualification_failure(metadata):
+    stage = metadata.get('stage') if isinstance(metadata, dict) else None
+    failure = metadata.get('failure') if isinstance(metadata, dict) else None
+    if not isinstance(stage, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', stage):
+        stage = failure.get('failure_stage') if isinstance(failure, dict) else None
+    if not isinstance(stage, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', stage):
+        stage = 'unknown'
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return ('Whisper.cpp qualification'
+            f" id={metadata.get('qualification_id') or 'unavailable'}"
+            f" state={metadata.get('state') or 'unknown'}"
+            f" stage={stage}"
+            f" rollback={metadata.get('rollback') or 'unknown'}"
+            f" receipt={metadata.get('receipt') or 'unavailable'}")
 
 
 def prepare_cuda_candidate(revision):
@@ -1739,13 +1756,7 @@ if __name__ == '__main__':
         elif isinstance(error, CudaPrepareFailure):
             message = format_cuda_prepare_failure(error.metadata)
         elif isinstance(error, CudaQualificationFailure):
-            metadata = error.metadata
-            message = ('Whisper.cpp qualification'
-                       f" id={metadata.get('qualification_id') or 'unavailable'}"
-                       f" state={metadata.get('state') or 'unknown'}"
-                       f" stage={metadata.get('stage') or 'unknown'}"
-                       f" rollback={metadata.get('rollback') or 'unknown'}"
-                       f" receipt={metadata.get('receipt') or 'unavailable'}")
+            message = format_cuda_qualification_failure(error.metadata)
         else:
             message = ('Whisper lifecycle refused: ' + str(error) if isinstance(error, ValueError)
                        else 'Whisper lifecycle failed: ' + type(error).__name__)

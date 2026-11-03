@@ -4,7 +4,7 @@ services:
   whisper-cpp-cuda:
     profiles: [cuda-candidate]
     platform: linux/arm64
-    image: homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc2
+    image: homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc3
     build:
       context: .
       dockerfile: Dockerfile.cuda
@@ -25,6 +25,7 @@ services:
     pids_limit: 128
     shm_size: 128m
     environment:
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
       WHISPER_CPP_DEVICE: cuda
       WHISPER_CPP_MODEL_PATH: /models/ggml-large-v3.bin
       WHISPER_CPP_API_KEY_FILE: /run/secrets/whisper_cpp_api_key
