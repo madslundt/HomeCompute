@@ -2,12 +2,14 @@
 """STT replacement gates, transaction recovery and consumer migration behavior."""
 import copy
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
 import os
 import re
 import stat
+import struct
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -113,13 +115,192 @@ class MigrationTests(unittest.TestCase):
                 LIFECYCLE.cuda_candidate_image_id('d' * 40)
 
     def test_cuda_candidate_prepare_builds_only_native_pinned_image(self):
-        with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'check_cuda_host'), \
+        with patch.object(LIFECYCLE, 'guards'), patch.object(LIFECYCLE, 'provision_cpp_model', return_value='existing') as model, \
+                patch.object(LIFECYCLE, 'provision_cpp_key', return_value='existing') as key, \
+                patch.object(LIFECYCLE, 'validate_cpp_artifact_files') as artifacts, \
+                patch.object(LIFECYCLE, 'check_cuda_host'), \
                 patch.object(LIFECYCLE, 'compose_cuda') as compose, \
                 patch.object(LIFECYCLE, 'cuda_candidate_image_id', return_value='sha256:' + 'a' * 64):
             LIFECYCLE.prepare_cuda_candidate('d' * 40)
+        model.assert_called_once_with()
+        key.assert_called_once_with()
+        artifacts.assert_called_once_with()
         compose.assert_called_once_with('--profile', 'cuda-candidate', 'build', '--pull=false',
                                         'whisper-cpp-cuda', revision='d' * 40)
         self.assertNotIn('up', compose.call_args.args)
+
+    def test_cuda_prepare_failure_is_sanitized_and_keeps_bounded_private_diagnostic(self):
+        error = LIFECYCLE.ManagedCommandFailure(
+            'docker', 23, diagnostic_text='PRIVATE_FAKE_SECRET_72 CUDA build failure')
+        metadata = {'diagnostic_id': 'a' * 12, 'stage': 'build-image',
+                    'failure_class': 'ManagedCommandFailure', 'classification': 'unknown',
+                    'executable': 'docker', 'exit_code': 23, 'diagnostic_available': True}
+        with patch.object(LIFECYCLE, 'STATE', Path('/private/state')), \
+                patch.object(LIFECYCLE, 'write_candidate_diagnostic') as write:
+            with patch.object(LIFECYCLE.os, 'urandom', return_value=bytes.fromhex('a' * 12)):
+                actual = LIFECYCLE.cuda_prepare_failure('build-image', error)
+        self.assertEqual(actual, metadata)
+        report = write.call_args.args[1]
+        self.assertIn('PRIVATE_FAKE_SECRET_72', report['private_detail'])
+        public = LIFECYCLE.format_cuda_prepare_failure(actual)
+        self.assertIn('stage=build-image', public)
+        self.assertIn('exit_code=23', public)
+        self.assertNotIn('PRIVATE_FAKE_SECRET_72', public)
+        self.assertNotIn('PRIVATE_FAKE_SECRET_72', json.dumps(actual))
+
+    def test_cuda_prepare_reports_artifact_stage_and_does_not_leak_exception_text(self):
+        with patch.object(LIFECYCLE, 'STATE', Path('/private/state')), \
+                patch.object(LIFECYCLE, 'guards'), \
+                patch.object(LIFECYCLE, 'check_cuda_host'), \
+                patch.object(LIFECYCLE, 'provision_cpp_model', side_effect=RuntimeError('PRIVATE_FAKE_SECRET_93')), \
+                patch.object(LIFECYCLE, 'write_candidate_diagnostic') as write, \
+                patch.object(LIFECYCLE.os, 'urandom', return_value=bytes.fromhex('b' * 12)):
+            with self.assertRaises(LIFECYCLE.CudaPrepareFailure) as failure:
+                LIFECYCLE.prepare_cuda_candidate('d' * 40)
+        metadata = failure.exception.metadata
+        self.assertEqual(metadata['stage'], 'provision-model')
+        self.assertEqual(metadata['failure_class'], 'RuntimeError')
+        self.assertNotIn('PRIVATE_FAKE_SECRET_93', LIFECYCLE.format_cuda_prepare_failure(metadata))
+        self.assertNotIn('PRIVATE_FAKE_SECRET_93', json.dumps(metadata))
+        self.assertIn('PRIVATE_FAKE_SECRET_93', write.call_args.args[1]['private_detail'])
+
+    def test_cuda_model_provisioning_reuses_valid_file_and_refuses_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model = Path(directory) / 'model.bin'
+            header = struct.pack('<12i', 0x67676D6C, 51866, 1500, 1280, 20, 32,
+                                 448, 1280, 20, 32, 128, 1)
+            model.write_bytes(header)
+            info = SimpleNamespace(st_mode=stat.S_IFREG | 0o440, st_uid=0, st_gid=10001, st_size=len(header))
+            with patch.object(LIFECYCLE, 'ensure_private_directory'), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_SIZE', len(header)), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_SHA256', hashlib.sha256(header).hexdigest()), \
+                    patch.object(Path, 'lstat', return_value=info):
+                self.assertEqual(LIFECYCLE.provision_cpp_model(model), 'existing')
+                model.write_bytes(b'wrong')
+                info.st_size = 5
+                with self.assertRaisesRegex(ValueError, 'size does not match'):
+                    LIFECYCLE.provision_cpp_model(model)
+                info.st_mode = stat.S_IFREG | 0o644
+                with self.assertRaisesRegex(ValueError, 'root:10001 mode 0440'):
+                    LIFECYCLE.provision_cpp_model(model)
+
+    def test_cuda_key_provisioning_is_idempotent_and_never_overwrites_existing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            key = Path(directory) / 'key'
+            key_info = SimpleNamespace(st_mode=stat.S_IFREG | 0o440, st_uid=0, st_gid=10001,
+                                       st_size=len(b'NEW_PRIVATE_KEY_VALUE'))
+            with patch.object(LIFECYCLE, 'ensure_private_directory'), \
+                    patch.object(LIFECYCLE.secrets, 'token_urlsafe', return_value='NEW_PRIVATE_KEY_VALUE'), \
+                    patch.object(LIFECYCLE.os, 'fchown'), patch.object(Path, 'lstat', return_value=key_info):
+                with patch.object(LIFECYCLE.os, 'geteuid', return_value=0):
+                    self.assertEqual(LIFECYCLE.provision_cpp_key(key), 'created')
+                    saved = key.read_bytes()
+                    self.assertEqual(LIFECYCLE.provision_cpp_key(key), 'existing')
+                self.assertEqual(key.read_bytes(), saved)
+                self.assertEqual(saved, b'NEW_PRIVATE_KEY_VALUE')
+                self.assertEqual(stat.S_IMODE(key.stat().st_mode), 0o440)
+                key_info.st_mode = stat.S_IFREG | 0o600
+                with self.assertRaisesRegex(ValueError, 'root:10001 mode 0440'):
+                    LIFECYCLE.provision_cpp_key(key)
+                key_info.st_mode = stat.S_IFREG | 0o440
+                key.chmod(0o640)
+                key.write_bytes(b'bad\n' + b'x' * 16)
+                key_info.st_size = 20
+                with self.assertRaisesRegex(ValueError, 'printable non-whitespace'):
+                    LIFECYCLE.provision_cpp_key(key)
+
+    def test_cuda_model_download_failure_removes_partial_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model = Path(directory) / 'model.bin'
+            class Response:
+                headers = {'Content-Length': '6'}
+                calls = 0
+                def __enter__(self): return self
+                def __exit__(self, *_args): return None
+                def read(self, _size):
+                    self.calls += 1
+                    return b'bad' if self.calls == 1 else b''
+            with patch.object(LIFECYCLE, 'ensure_private_directory'), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_SIZE', 6), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_FREE_SPACE_RESERVE', 0), \
+                    patch.object(LIFECYCLE.shutil, 'disk_usage', return_value=SimpleNamespace(free=100)), \
+                    patch.object(LIFECYCLE.urllib.request, 'urlopen', return_value=Response()), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_SHA256', '0' * 64):
+                with self.assertRaisesRegex(ValueError, 'size or checksum'):
+                    LIFECYCLE.provision_cpp_model(model)
+            self.assertFalse(model.exists())
+            self.assertEqual(list(Path(directory).glob('*.partial')), [])
+
+    def test_cuda_model_download_refuses_low_space_before_network_access(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model = Path(directory) / 'model.bin'
+            with patch.object(LIFECYCLE, 'ensure_private_directory'), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_SIZE', 100), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_FREE_SPACE_RESERVE', 10), \
+                    patch.object(LIFECYCLE.shutil, 'disk_usage', return_value=SimpleNamespace(free=109)), \
+                    patch.object(LIFECYCLE.urllib.request, 'urlopen') as urlopen:
+                with self.assertRaisesRegex(ValueError, 'Insufficient free space'):
+                    LIFECYCLE.provision_cpp_model(model)
+            urlopen.assert_not_called()
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_cuda_artifact_directory_preserves_safe_root_owned_metadata_and_rejects_unsafe_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory) / 'root-owned-parent'
+            parent.mkdir(mode=0o750)
+            target = parent / 'secrets'
+            target.mkdir(mode=0o750)
+            target_mode = stat.S_IMODE(target.stat().st_mode)
+            real_lstat = Path.lstat
+
+            def root_metadata(path):
+                info = real_lstat(path)
+                return SimpleNamespace(st_mode=info.st_mode, st_uid=0, st_gid=0,
+                                       st_size=info.st_size)
+
+            with patch.object(Path, 'lstat', autospec=True, side_effect=root_metadata), \
+                    patch.object(LIFECYCLE.os, 'chown') as chown:
+                LIFECYCLE.ensure_private_directory(target, gid=10001)
+                chown.assert_not_called()
+                self.assertEqual(stat.S_IMODE(target.stat().st_mode), target_mode)
+                target.chmod(0o777)
+                with self.assertRaisesRegex(ValueError, 'ownership or permissions are unsafe'):
+                    LIFECYCLE.ensure_private_directory(target, gid=10001)
+                target.chmod(0o750)
+                target.rmdir()
+                target.symlink_to(parent)
+                with self.assertRaisesRegex(ValueError, 'ownership or permissions are unsafe'):
+                    LIFECYCLE.ensure_private_directory(target, gid=10001)
+
+    def test_cuda_model_download_is_atomic_pinned_and_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model = Path(directory) / 'model.bin'
+            header = struct.pack('<12i', 0x67676D6C, 51866, 1500, 1280, 20, 32,
+                                 448, 1280, 20, 32, 128, 1)
+            digest = hashlib.sha256(header).hexdigest()
+            class Response:
+                headers = {'Content-Length': str(len(header))}
+                calls = 0
+                def __enter__(self): return self
+                def __exit__(self, *_args): return None
+                def read(self, _size):
+                    self.calls += 1
+                    return header if self.calls == 1 else b''
+            info = SimpleNamespace(st_mode=stat.S_IFREG | 0o440, st_uid=0, st_gid=10001,
+                                   st_size=len(header))
+            with patch.object(LIFECYCLE, 'ensure_private_directory'), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_SIZE', len(header)), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_SHA256', digest), \
+                    patch.object(LIFECYCLE, 'CPP_MODEL_FREE_SPACE_RESERVE', 0), \
+                    patch.object(LIFECYCLE.shutil, 'disk_usage', return_value=SimpleNamespace(free=100)), \
+                    patch.object(LIFECYCLE.urllib.request, 'urlopen', return_value=Response()) as urlopen, \
+                    patch.object(LIFECYCLE.os, 'chown'), patch.object(Path, 'lstat', return_value=info):
+                self.assertEqual(LIFECYCLE.provision_cpp_model(model, url='https://example.invalid/pinned'), 'downloaded')
+                saved = model.read_bytes()
+                self.assertEqual(LIFECYCLE.provision_cpp_model(model), 'existing')
+            self.assertEqual(saved, header)
+            self.assertEqual(urlopen.call_count, 1)
+            self.assertEqual(list(Path(directory).glob('*.partial')), [])
 
     def test_cuda_candidate_refuses_to_co_load_active_vllm_candidate(self):
         with tempfile.TemporaryDirectory() as directory:

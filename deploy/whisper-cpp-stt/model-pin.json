@@ -26,6 +26,7 @@
     "repository": "ggerganov/whisper.cpp",
     "snapshot": "c521a4b02f422512d734391fdf08bb08c0862f68",
     "filename": "ggml-large-v3.bin",
+    "download_url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/c521a4b02f422512d734391fdf08bb08c0862f68/ggml-large-v3.bin",
     "sha256": "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2",
     "size_bytes": 3095033483,
     "format": "GGML F16 conversion of full openai/whisper-large-v3",
@@ -40,7 +41,7 @@
   },
   "notes": [
     "The GGML conversion is not byte-identical to the pinned Hugging Face safetensors files.",
-    "The model must be provisioned out of band and mounted read-only; inference never downloads it.",
+    "The guarded preparation action provisions this exact public snapshot outside Git; inference never downloads it and mounts it read-only.",
     "CPU and CUDA builds are separate qualification candidates; neither has a production alias or route."
   ]
 }

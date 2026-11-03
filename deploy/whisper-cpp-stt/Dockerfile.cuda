@@ -24,7 +24,10 @@ RUN git init /src \
  && git -C /src fetch --depth=1 origin "${WHISPER_CPP_COMMIT}" \
  && git -C /src checkout --detach FETCH_HEAD \
  && test "$(git -C /src rev-parse HEAD)" = "${WHISPER_CPP_COMMIT}" \
- && python3 /opt/homecompute/patch-whisper-cpp-cuda.py --source /src
+ && python3 /opt/homecompute/patch-whisper-cpp-cuda.py --source /src \
+ && grep -Fq 'params.max_len = std::stoi(req.get_file_value("max_len").content);' /src/examples/server/server.cpp \
+ && grep -Fq 'wparams.max_len          = params.max_len == 0 ? 60 : params.max_len;' /src/examples/server/server.cpp \
+ && grep -Fq 'if (params.max_len > 0) {' /src/src/whisper.cpp
 RUN cmake -S /src -B /build -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_CUDA_ARCHITECTURES=121a-real -DGGML_CUDA=ON -DGGML_NATIVE=OFF \
       -DGGML_OPENMP=ON -DGGML_METAL=OFF -DWHISPER_BUILD_TESTS=OFF \

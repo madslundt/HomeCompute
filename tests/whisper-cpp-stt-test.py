@@ -147,12 +147,18 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn(("max_context", "0"), forwarded)
         self.assertIn(("beam_size", "5"), forwarded)
         self.assertIn(("best_of", "5"), forwarded)
+        self.assertIn(("max_len", "-1"), forwarded)
         _, defaults = ADAPTER.normalize_fields({"model": "whisper"})
         self.assertIn(("beam_size", "5"), defaults)
         self.assertIn(("best_of", "5"), defaults)
+        self.assertIn(("max_len", "-1"), defaults)
         _, greedy = ADAPTER.normalize_fields({"model": "whisper", "beam_size": "-1", "best_of": "1"})
         self.assertIn(("beam_size", "-1"), greedy)
         self.assertIn(("best_of", "1"), greedy)
+        _, unwrapped = ADAPTER.normalize_fields({"model": "whisper", "max_len": "-1"})
+        self.assertIn(("max_len", "-1"), unwrapped)
+        _, bounded_wrap = ADAPTER.normalize_fields({"model": "whisper", "max_len": "80"})
+        self.assertIn(("max_len", "80"), bounded_wrap)
 
     def test_rejects_unsupported_fields_and_word_timestamps(self):
         body, content_type = multipart([("model", "whisper"), ("initial_prompt", "unmapped")], wav_bytes())
@@ -163,7 +169,9 @@ class AdapterContractTests(unittest.TestCase):
                                       "timestamp_granularities[]": "word"})
         with self.assertRaisesRegex(ADAPTER.RequestError, "Only text, json"):
             ADAPTER.normalize_fields({"model": "whisper", "response_format": "srt"})
-        for name, value in (("beam_size", "0"), ("beam_size", "17"), ("best_of", "0"), ("best_of", "17")):
+        for name, value in (("beam_size", "0"), ("beam_size", "17"), ("best_of", "0"),
+                            ("best_of", "17"), ("max_len", "0"), ("max_len", "1001"),
+                            ("max_len", "-2")):
             with self.assertRaisesRegex(ADAPTER.RequestError, "Invalid decoding"):
                 ADAPTER.normalize_fields({"model": "whisper", name: value})
 
@@ -353,6 +361,26 @@ class AdapterContractTests(unittest.TestCase):
         self.assertIn("WHISPER_CPP_IMAGE_ID: ${WHISPER_CPP_IMAGE_ID", compose)
         self.assertIn(ADAPTER.RUNTIME_COMMIT, dockerfile)
 
+    def test_native_http_max_len_semantics_are_build_guarded_for_cpu_and_cuda(self):
+        expected = (
+            'params.max_len = std::stoi(req.get_file_value("max_len").content);',
+            'wparams.max_len          = params.max_len == 0 ? 60 : params.max_len;',
+            'if (params.max_len > 0) {',
+        )
+        for filename in ("Dockerfile", "Dockerfile.cuda"):
+            source = (DEPLOY / filename).read_text()
+            for semantic in expected:
+                with self.subTest(filename=filename, semantic=semantic):
+                    self.assertIn("grep -Fq '" + semantic + "'", source)
+        _, defaults = ADAPTER.normalize_fields({"model": "whisper"})
+        self.assertEqual(dict(defaults)["max_len"], "-1")
+
+    def test_cuda_model_provisioning_url_and_bytes_match_tracked_model_pin(self):
+        pin = json.loads((DEPLOY / "model-pin.json").read_text())["model"]
+        self.assertEqual(pin["download_url"], LIFECYCLE.CPP_MODEL_URL)
+        self.assertEqual(pin["sha256"], LIFECYCLE.CPP_MODEL_SHA256)
+        self.assertEqual(pin["size_bytes"], LIFECYCLE.CPP_MODEL_SIZE)
+
     def test_cuda_profile_is_pinned_arm64_opt_in_and_isolated(self):
         pin = json.loads((DEPLOY / "model-pin.json").read_text())
         compose = (DEPLOY / "compose-cuda.yaml").read_text()
@@ -469,6 +497,7 @@ class AdapterContractTests(unittest.TestCase):
             self.assertEqual(observed["fields"]["response_format"], "verbose_json")
             self.assertEqual(observed["fields"]["beam_size"], "5")
             self.assertEqual(observed["fields"]["best_of"], "5")
+            self.assertEqual(observed["fields"]["max_len"], "-1")
             self.assertEqual(observed["audio"], wav_bytes())
             self.assertEqual(result["segments"][0]["kind"], "segment")
             self.assertEqual(result["segments"][0]["start_offset"], 0)

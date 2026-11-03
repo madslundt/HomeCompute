@@ -60,9 +60,14 @@ and the pinned `whisper.cpp` CLI sampling defaults: beam search with
 entropy threshold `2.4`, logprob threshold `-1`, and `no_context=true`. The
 upstream server alone defaults to greedy (`beam_size=-1`, `best_of=2`), so the
 adapter sends explicit beam/best-of values to preserve CLI comparability.
+It also sends `max_len=-1`: the server's HTTP wrapper maps omitted/zero values
+to a 60-character segment wrap, while the native decoder wraps only when the
+value is positive. This avoids HTTP-only forced word splits. Both image builds
+guard these pinned source semantics before compiling.
 Explicit `language`, `prompt`, `temperature`, `temperature_inc`,
 `beam_size` (-1 or 1–16), `best_of` (1–16), `translate`,
-`carry_initial_prompt`, `max_context`, `no_timestamps` and response format
+`carry_initial_prompt`, `max_context`, `max_len` (-1 or 1–1000),
+`no_timestamps` and response format
 values are forwarded. `text`, `json` and `verbose_json` formats are supported.
 Unknown fields and unsupported values are rejected instead of silently ignored.
 Word timestamp granularity returns 422:
@@ -167,13 +172,19 @@ network. The candidate has its own private Docker network, read-only model and
 credential mounts, no Docker logs, one serialized request, and 4 CPU / 12 GiB
 container bounds. It does not alter production aliases or relay routes.
 
-Provision the exact pinned GGML artifact and a separate qualification key
-outside Git before starting. Required Spark paths are
-`/srv/gb10-ai/cache/whisper-cpp/ggml-large-v3.bin` and
-`/etc/gb10-ai/secrets/whisper_cpp_api_key`; both must be regular root-owned,
-group-10001, mode-0440 files. Candidate startup hashes and validates the model
-before stopping the primary. The key is never shown by lifecycle status or
-health output.
+`prepare-cuda-candidate` provisions the exact pinned GGML artifact and a
+separate qualification key outside Git when they are absent. The model is
+downloaded only from the immutable Hugging Face snapshot URL in `model-pin.json`,
+streamed to a same-filesystem temporary file, checked for its exact byte count,
+SHA-256 and full Large-v3 F16 header, then atomically installed as
+root:10001 mode 0440. It requires the model size plus a 512-MiB staging reserve
+free before downloading. Existing valid files are reused; invalid or
+wrong-permission files fail closed and are never replaced. A new private
+qualification key is generated locally once as root:10001 mode 0440. An
+existing valid key is preserved byte-for-byte. Neither model nor key contents
+are printed or committed. A failed preparation prints only a diagnostic ID,
+known stage, class, classification and command exit code; bounded details are
+stored root-only in the lifecycle state directory.
 
 Use only the source-owned lifecycle from an exact reviewed release:
 
@@ -184,9 +195,10 @@ sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.
 sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/setup-whisper-stt.py cuda-candidate-rollback --revision FULL_SHA
 ```
 
-`prepare-cuda-candidate` checks the native ARM64 host, local pinned base image,
-GB10 compute capability and driver floor, then builds and verifies the image;
-it does not attach a GPU or start a model. `cuda-candidate` requires a
+`prepare-cuda-candidate` provisions/verifies the external artifacts, checks the
+native ARM64 host, local pinned base image, GB10 compute capability and driver
+floor, then builds and verifies the image; it does not attach a GPU or start a
+model. `cuda-candidate` requires a
 successfully applied or legacy-retired full Whisper transaction, a healthy
 pinned vLLM primary, and no active vLLM candidate. It validates the pinned
 model/key, applies the existing intake gate and drain, stops only the exact

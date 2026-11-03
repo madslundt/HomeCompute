@@ -13,7 +13,10 @@ RUN git init /src \
  && git -C /src remote add origin https://github.com/ggml-org/whisper.cpp.git \
  && git -C /src fetch --depth=1 origin "${WHISPER_CPP_COMMIT}" \
  && git -C /src checkout --detach FETCH_HEAD \
- && test "$(git -C /src rev-parse HEAD)" = "${WHISPER_CPP_COMMIT}"
+ && test "$(git -C /src rev-parse HEAD)" = "${WHISPER_CPP_COMMIT}" \
+ && grep -Fq 'params.max_len = std::stoi(req.get_file_value("max_len").content);' /src/examples/server/server.cpp \
+ && grep -Fq 'wparams.max_len          = params.max_len == 0 ? 60 : params.max_len;' /src/examples/server/server.cpp \
+ && grep -Fq 'if (params.max_len > 0) {' /src/src/whisper.cpp
 RUN cmake -S /src -B /build -DCMAKE_BUILD_TYPE=Release \
       -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_SERVER=ON \
       -DGGML_NATIVE=OFF -DGGML_OPENMP=ON -DGGML_CUDA=OFF -DGGML_METAL=OFF \

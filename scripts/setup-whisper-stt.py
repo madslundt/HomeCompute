@@ -9,18 +9,24 @@ from __future__ import annotations
 import argparse
 from contextlib import ExitStack
 import fcntl
+import hashlib
+import importlib.util
 import json
 import os
 import platform
 from pathlib import Path
 import pwd
 import re
+import secrets
 import signal
 import shutil
 import socket
 import stat
 import subprocess
+import tempfile
 import time
+import urllib.error
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path('/var/lib/homecompute/whisper-stt')
@@ -35,6 +41,12 @@ CUDA_BASE_IMAGE = 'nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29
 CPP_MODEL_SHA256 = '64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2'
 CPP_MODEL_PATH = Path('/srv/gb10-ai/cache/whisper-cpp/ggml-large-v3.bin')
 CPP_API_KEY_PATH = Path('/etc/gb10-ai/secrets/whisper_cpp_api_key')
+CPP_MODEL_SIZE = 3_095_033_483
+CPP_MODEL_URL = ('https://huggingface.co/ggerganov/whisper.cpp/resolve/'
+                 'c521a4b02f422512d734391fdf08bb08c0862f68/ggml-large-v3.bin')
+CPP_MODEL_FREE_SPACE_RESERVE = 512 * 1024 * 1024
+CPP_DOWNLOAD_TIMEOUT = 60
+CPP_DOWNLOAD_MAX_SECONDS = 3600
 CPP_RUNTIME_COMMIT = 'f049fff95a089aa9969deb009cdd4892b3e74916'
 CPP_CUDA_PATCH_VERSION = 'strict-gpu-buffer-proof-v1'
 CPP_CUDA_PATCHER_SHA256 = '5c8e2036dce08d2d4ba6c6f065d09f1aa7e0db792b9be9d9120d452ee3f533ca'
@@ -457,8 +469,6 @@ def cuda_candidate_image_id(revision):
         'io.homecompute.whisper-cpp.cuda-patch': CPP_CUDA_PATCH_VERSION,
         'io.homecompute.whisper-cpp.cuda-patcher-sha256': CPP_CUDA_PATCHER_SHA256,
         'io.homecompute.whisper-cpp.cuda-base': CUDA_BASE_IMAGE,
-        'io.homecompute.whisper-cpp.cuda-patch': CPP_CUDA_PATCH_VERSION,
-        'io.homecompute.whisper-cpp.cuda-patcher-sha256': CPP_CUDA_PATCHER_SHA256,
     }
     if (image.get('Os') != 'linux' or image.get('Architecture') != 'arm64' or
             any(labels.get(key) != value for key, value in expected.items())):
@@ -468,13 +478,213 @@ def cuda_candidate_image_id(revision):
     return image['Id']
 
 
+def verify_cpp_model(path, *, expected_sha256=None, expected_size=None):
+    verifier_path = ROOT / 'deploy/whisper-cpp-stt/verify_model.py'
+    spec = importlib.util.spec_from_file_location('_homecompute_whisper_cpp_model_verifier', verifier_path)
+    if spec is None or spec.loader is None:
+        raise ValueError('Pinned GGML model verifier is unavailable')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.verify_model(
+        path,
+        expected_sha256=CPP_MODEL_SHA256 if expected_sha256 is None else expected_sha256,
+        expected_size=CPP_MODEL_SIZE if expected_size is None else expected_size,
+    )
+
+
+def ensure_private_directory(path, *, gid):
+    parent = path.parent
+    if not parent.is_dir() or parent.is_symlink():
+        raise ValueError('Artifact parent directory is unavailable or unsafe')
+    parent_info = parent.lstat()
+    if not stat.S_ISDIR(parent_info.st_mode) or parent_info.st_uid != 0 or parent_info.st_mode & 0o022:
+        raise ValueError('Artifact parent directory ownership or permissions are unsafe')
+    if path.exists() or path.is_symlink():
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise ValueError('Artifact directory ownership or permissions are unsafe')
+        return
+    path.mkdir(mode=0o750)
+    os.chown(path, 0, gid)
+    os.chmod(path, 0o750)
+
+
+def validate_provisioned_key(path):
+    info = path.lstat()
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 10001 or
+            stat.S_IMODE(info.st_mode) != 0o440 or not 16 <= info.st_size <= 512):
+        raise ValueError('CUDA qualification key must be root:10001 mode 0440 and 16–512 bytes')
+    value = path.read_bytes()
+    if any(byte < 0x21 or byte > 0x7e for byte in value):
+        raise ValueError('CUDA qualification key must contain printable non-whitespace ASCII')
+
+
+def provision_cpp_key(path=CPP_API_KEY_PATH):
+    ensure_private_directory(path.parent, gid=10001)
+    if path.exists() or path.is_symlink():
+        validate_provisioned_key(path)
+        return 'existing'
+    value = secrets.token_urlsafe(48).encode('ascii')
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o440)
+    try:
+        os.fchown(fd, 0, 10001)
+        os.fchmod(fd, 0o440)
+        with os.fdopen(fd, 'wb', closefd=False) as stream:
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        os.close(fd)
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    validate_provisioned_key(path)
+    return 'created'
+
+
+def provision_cpp_model(path=CPP_MODEL_PATH, *, url=CPP_MODEL_URL):
+    ensure_private_directory(path.parent, gid=10001)
+    if path.exists() or path.is_symlink():
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 10001 or
+                stat.S_IMODE(info.st_mode) != 0o440):
+            raise ValueError('Existing GGML model must be root:10001 mode 0440')
+        verify_cpp_model(path)
+        return 'existing'
+    free_bytes = shutil.disk_usage(path.parent).free
+    if free_bytes < CPP_MODEL_SIZE + CPP_MODEL_FREE_SPACE_RESERVE:
+        raise ValueError('Insufficient free space for pinned GGML model and staging reserve')
+    descriptor, temporary_name = tempfile.mkstemp(prefix='.ggml-large-v3.', suffix='.partial', dir=path.parent)
+    temporary = Path(temporary_name)
+    digest = hashlib.sha256()
+    received = 0
+    try:
+        with os.fdopen(descriptor, 'wb') as output:
+            request = urllib.request.Request(url, headers={'User-Agent': 'HomeCompute-whisper-candidate/1'})
+            try:
+                response = urllib.request.urlopen(request, timeout=CPP_DOWNLOAD_TIMEOUT)
+            except (OSError, urllib.error.URLError, TimeoutError):
+                raise RuntimeError('Pinned GGML download could not be opened') from None
+            with response:
+                length = response.headers.get('Content-Length')
+                if length is not None and (not length.isdecimal() or int(length) != CPP_MODEL_SIZE):
+                    raise ValueError('Pinned GGML download length differs from the declared artifact')
+                started = time.monotonic()
+                while True:
+                    if time.monotonic() - started > CPP_DOWNLOAD_MAX_SECONDS:
+                        raise TimeoutError('Pinned GGML download exceeded its bounded duration')
+                    block = response.read(1024 * 1024)
+                    if not block:
+                        break
+                    received += len(block)
+                    if received > CPP_MODEL_SIZE:
+                        raise ValueError('Pinned GGML download exceeds the declared artifact size')
+                    output.write(block)
+                    digest.update(block)
+            output.flush()
+            os.fsync(output.fileno())
+        if received != CPP_MODEL_SIZE or digest.hexdigest() != CPP_MODEL_SHA256:
+            raise ValueError('Pinned GGML download size or checksum does not match')
+        verify_cpp_model(temporary)
+        os.chown(temporary, 0, 10001)
+        os.chmod(temporary, 0o440)
+        os.link(temporary, path)
+        temporary.unlink()
+        return 'downloaded'
+    except BaseException:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def cuda_prepare_failure(stage, error):
+    diagnostic_id = os.urandom(6).hex()
+    command = safe_command_metadata(error)
+    if isinstance(error, ManagedCommandFailure):
+        private = error.private_diagnostic
+        classification = error.classification
+        failure_kind = error.failure_kind
+    else:
+        private = bounded_private_excerpt(f'{type(error).__name__}: {error}')
+        classification = 'unknown'
+        failure_kind = None
+    report = {
+        'diagnostic_id': diagnostic_id, 'stage': stage,
+        'failure_class': safe_class_name(error), 'classification': classification,
+        'executable': command['executable'], 'exit_code': command['exit_code'],
+        'failure_kind': failure_kind, 'private_detail': private,
+    }
+    try:
+        write_candidate_diagnostic(diagnostic_id, report)
+        available = True
+    except Exception:
+        available = False
+    return {'diagnostic_id': diagnostic_id, 'stage': stage,
+            'failure_class': safe_class_name(error), 'classification': classification,
+            'executable': command['executable'], 'exit_code': command['exit_code'],
+            'diagnostic_available': available}
+
+
+def format_cuda_prepare_failure(metadata):
+    return ('Whisper.cpp CUDA preparation failed: '
+            f"id={metadata['diagnostic_id']} stage={metadata['stage']} "
+            f"class={metadata['failure_class']} classification={metadata['classification']} "
+            f"executable={metadata['executable']} exit_code={metadata['exit_code']} "
+            f"diagnostic_available={str(metadata['diagnostic_available']).lower()}")
+
+
+class CudaPrepareFailure(RuntimeError):
+    """Safe summary for model/key provisioning or CUDA image preparation."""
+
+    def __init__(self, metadata):
+        self.metadata = metadata
+        super().__init__('Whisper.cpp CUDA candidate preparation failed')
+
+
 def prepare_cuda_candidate(revision):
-    guards()
-    check_cuda_host()
-    compose_cuda('--profile', 'cuda-candidate', 'build', '--pull=false', 'whisper-cpp-cuda',
-                 revision=revision)
-    cuda_candidate_image_id(revision)
-    print('Pinned native ARM64 Whisper.cpp CUDA candidate image built and verified; no GPU model was started', flush=True)
+    stage = 'preflight'
+    try:
+        guards()
+        stage = 'host-preflight'
+        check_cuda_host()
+        stage = 'provision-model'
+        model_status = provision_cpp_model()
+        stage = 'provision-key'
+        key_status = provision_cpp_key()
+        stage = 'verify-artifacts'
+        validate_cpp_artifact_files()
+        stage = 'build-image'
+        compose_cuda('--profile', 'cuda-candidate', 'build', '--pull=false', 'whisper-cpp-cuda',
+                     revision=revision)
+        stage = 'verify-image'
+        image_id = cuda_candidate_image_id(revision)
+    except Exception as error:
+        raise CudaPrepareFailure(cuda_prepare_failure(stage, error)) from None
+    print(json.dumps({'state': 'prepared', 'image_id': image_id,
+                      'model': model_status, 'qualification_key': key_status,
+                      'gpu_model_started': False}, sort_keys=True), flush=True)
+
+
+def validate_cpp_artifact_files():
+    for path in (CPP_MODEL_PATH, CPP_API_KEY_PATH):
+        try:
+            info = path.lstat()
+        except OSError:
+            raise ValueError('Whisper.cpp CUDA model or qualification key is unavailable') from None
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_gid != 10001 or
+                stat.S_IMODE(info.st_mode) != 0o440):
+            raise ValueError('Whisper.cpp CUDA artifact must be root:10001 mode 0440')
+    validate_provisioned_key(CPP_API_KEY_PATH)
+    verify_cpp_model(CPP_MODEL_PATH)
 
 
 def validate_cuda_artifacts(image_id, revision):
@@ -1463,6 +1673,8 @@ if __name__ == '__main__':
             message = format_candidate_failure(error.metadata)
         elif isinstance(error, CudaCandidateFailure):
             message = format_cuda_candidate_failure(error.metadata)
+        elif isinstance(error, CudaPrepareFailure):
+            message = format_cuda_prepare_failure(error.metadata)
         else:
             message = ('Whisper lifecycle refused: ' + str(error) if isinstance(error, ValueError)
                        else 'Whisper lifecycle failed: ' + type(error).__name__)

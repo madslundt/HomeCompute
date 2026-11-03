@@ -233,6 +233,7 @@ class CandidateHandler(BaseHTTPRequestHandler):
                     "strategy": "beam_search", "beam_size": 5, "best_of": 5,
                     "temperature": 0.0, "temperature_inc": 0.2,
                     "entropy_thold": 2.4, "logprob_thold": -1.0,
+                    "max_len": -1,
                     "no_context": True, "translate": False,
                     "carry_initial_prompt": False,
                 },

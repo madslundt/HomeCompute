@@ -21,7 +21,7 @@ CONTROL_TOKEN = re.compile(r"<\|[^|\r\n]{1,80}\|>")
 FIELD_NAME = re.compile(r"^[A-Za-z0-9_.\[\]-]{1,80}$")
 ALLOWED_FIELDS = {"model", "response_format", "language", "prompt", "temperature",
                   "temperature_inc", "no_timestamps", "max_context",
-                  "translate", "carry_initial_prompt", "beam_size", "best_of"}
+                  "translate", "carry_initial_prompt", "beam_size", "best_of", "max_len"}
 
 class RequestError(ValueError):
     def __init__(self, status: int, message: str):
@@ -155,7 +155,10 @@ def normalize_fields(fields: dict[str, str]) -> tuple[str, list[tuple[str, str]]
     beam_size = _bounded_integer(fields.get("beam_size", "5"), "beam_size", -1, 16,
                                  allow_minus_one=True)
     best_of = _bounded_integer(fields.get("best_of", "5"), "best_of", 1, 16)
-    native.extend((("beam_size", str(beam_size)), ("best_of", str(best_of))))
+    max_len = _bounded_integer(fields.get("max_len", "-1"), "max_len", -1, 1000,
+                               allow_minus_one=True)
+    native.extend((("beam_size", str(beam_size)), ("best_of", str(best_of)),
+                   ("max_len", str(max_len))))
     return response_format, native
 
 
