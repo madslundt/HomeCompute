@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import base64
 import hashlib
 import json
 import os
@@ -18,7 +19,10 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = 'config/openclaw-managed-candidate.json'
 FILES = ('scripts/qualify-openclaw-managed-candidate.py', POLICY,
-         'scripts/setup-openclaw-child-results.py')
+         'scripts/setup-openclaw-child-results.py',
+         'deploy/openclaw/qualification/native-fixtures.mjs',
+         *('deploy/openclaw/safety-plugin/' + name for name in
+           ('index.mjs', 'browser-relay.mjs', 'public-dns.mjs', 'llm-queue.mjs', 'package.json', 'openclaw.plugin.json')))
 PROBE = r'''
 const fs = require('node:fs');
 const cp = require('node:child_process');
@@ -95,6 +99,17 @@ if (verified) {
   fs.writeFileSync(target, childSource, {flag:'wx',mode:0o400});
   output.proposed_child_overlay.fixture = checkChild(target, 'proposed-child-overlay-fixture');
 }
+const fixtureRoot = '/tmp/hc-native-fixtures';
+fs.mkdirSync(fixtureRoot + '/safety', {recursive:true});
+for (const [name, content] of Object.entries(__NATIVE_FIXTURE_FILES__)) {
+  fs.writeFileSync(fixtureRoot + '/' + name, Buffer.from(content, 'base64'), {flag:'wx',mode:0o400});
+}
+const nativeFixture = cp.spawnSync('/usr/local/bin/node',[fixtureRoot + '/native-fixtures.mjs'],
+  {encoding:'utf8',timeout:30000,env,maxBuffer:1048576});
+output.native_regression_fixture = {executed:false};
+if (nativeFixture.status === 0) output.native_regression_fixture = JSON.parse(nativeFixture.stdout.trim().split('\n').at(-1));
+else process.stderr.write(JSON.stringify({phase:'native-regression-fixture',
+  stderr:(nativeFixture.stderr || '').slice(0,32768)}) + '\n');
 output.patch_modules = {};
 for (const name of ['subagent-announce-output-CgCr3vGC.js','embedded-agent-DaSvA-Yk.js']) {
   const path = base + '/dist/' + name;
@@ -179,6 +194,21 @@ def child_evidence_ok(observed: dict) -> bool:
         'aggregate_retains_evidence', 'aggregate_reports_omission'))
 
 
+def native_regressions_ok(observed: dict) -> bool:
+    fixture = observed.get('native_regression_fixture', {})
+    return all(fixture.get(key) is True for key in ('executed', 'native_loader', 'native_safety_policy',
+        'native_hook_failure_closed', 'native_hook_veto_sticky', 'native_yield_acknowledgment',
+        'ordinary_warning_preserved', 'terminal_answer_preserved', 'quiet_ack_rules_preserved'))
+
+
+def fixture_files() -> dict:
+    files = {'native-fixtures.mjs': ROOT / 'deploy/openclaw/qualification/native-fixtures.mjs'}
+    for name in FILES:
+        if name.startswith('deploy/openclaw/safety-plugin/'):
+            files['safety/' + Path(name).name] = ROOT / name
+    return {name: base64.b64encode(path.read_bytes()).decode() for name, path in files.items()}
+
+
 def child_overlay(data: dict) -> dict:
     tree = ast.parse((ROOT / 'scripts/setup-openclaw-child-results.py').read_text())
     changes = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
@@ -218,7 +248,7 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
         raise ValueError('managed image provenance mismatch')
     name='hc-oc140-'+uuid.uuid4().hex[:12]
     try:
-        probe=PROBE.replace('__RUNTIME_MODULES__',json.dumps(data['runtime_modules'])).replace('__CHILD_OVERLAY__',json.dumps(child_overlay(data)))
+        probe=PROBE.replace('__RUNTIME_MODULES__',json.dumps(data['runtime_modules'])).replace('__CHILD_OVERLAY__',json.dumps(child_overlay(data))).replace('__NATIVE_FIXTURE_FILES__',json.dumps(fixture_files()))
         result=call(command(data,name),input=probe,
                     timeout=data['probe_timeout_seconds'])
     finally:
@@ -231,8 +261,10 @@ def run(data: dict, evidence: Path, *, pull: bool) -> dict:
     observed=json.loads(result.stdout.strip().splitlines()[-1])
     artifact_passed=(observed['node']==data['node_version'] and observed['core']==data['openclaw_version']
                      and observed['schemas']==data['schema_versions']
-                     and observed['uid']!=0 and observed['cli_version_ok'] and observed['synthetic_config_valid'])
-    report={'artifact_checks_passed':artifact_passed,'child_evidence_checks_passed':child_evidence_ok(observed),
+                     and observed['uid']!=0 and observed['cli_version_ok'] and observed['synthetic_config_valid']
+                     and all(observed.get('runtime_modules',{}).get(name,{}).get('matches_published_npm') is True
+                             for name in data['runtime_modules']))
+    report={'artifact_checks_passed':artifact_passed,'native_regression_checks_passed':native_regressions_ok(observed),'child_evidence_checks_passed':child_evidence_ok(observed),
             'proposed_child_overlay_checks_passed':observed.get('proposed_child_overlay',{}).get('source_verified') is True
                 and child_evidence_ok({'native_child_fixture':observed.get('proposed_child_overlay',{}).get('fixture',{})}),
             'production_qualified':False,'observed':observed,
@@ -253,7 +285,7 @@ def main() -> None:
     if not args.revision or not args.expected_hash or not args.evidence:parser.error('probe requires revision, reviewed hash and new evidence directory')
     published(args.revision,args.expected_hash)
     result=run(data,args.evidence,pull=args.pull);print(json.dumps(result))
-    if not result['artifact_checks_passed'] or not result['child_evidence_checks_passed']:raise SystemExit(1)
+    if not all(result[key] for key in ('artifact_checks_passed','child_evidence_checks_passed','native_regression_checks_passed')):raise SystemExit(1)
 
 
 if __name__=='__main__':main()

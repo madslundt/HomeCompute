@@ -56,9 +56,9 @@ At 16:25 UTC the existing Atlas container was OOM-killed within its existing
 exhaustion was not observed. Contention preceded this event, but causation of
 the OOM is not established. The supervisor refused automatic replacement of the
 twelve-agent production roster using its narrow single-agent recovery policy.
-The current stopped configuration and private kernel evidence were preserved;
-the documented complete-team recovery lifecycle is being evaluated before any
-candidate work. No upgrade or agent turn has been submitted.
+The stopped configuration and private kernel evidence were preserved. The
+complete-team recovery described below subsequently restored the original tuple.
+No upgrade or agent turn was submitted during recovery.
 
 The published full-team recovery at `d6f589db26f4c20896a7bea6a0488c5b75118e03`
 verified and retained complete state before native deletion. Deletion succeeded,
@@ -88,11 +88,45 @@ health returned `ok=true`, no plugin errors and connected Mattermost accounts.
 This is current-runtime recovery, not upgrade qualification or a synthetic
 end-user task/delivery test.
 
-The owned restore scope was thawed at 16:59:05 UTC. Memory charges fell from
-approximately 10 GiB to the bounded cache without an OOM. The final high
-watermark is 1 GiB, hard maximum 2 GiB, retaining the 25/50 MB/s and 100/200 IOPS
-limits. Extraction is progressing and production remains healthy. All transient
-properties must disappear with scope completion; that check is still pending.
+The owned restore scope was thawed at 16:59:05 UTC. The final source limits
+are 512 MiB memory high / 2 GiB maximum, 20 MB/s writes / 100 write IOPS,
+and 40 MB/s reads / 8,000 read IOPS. The first outer controller timed out
+after extraction; the bounded integrity reader subsequently finished, and its
+scope was collected. No owned restore process remains frozen. All 93 GB had
+already been extracted, so repeating the bulk transfer would add contention
+without improving evidence.
+
+Published `9865c00a028f063c275996b6a0072a4592234118` adds a guarded
+`verify-extracted` continuation. It requires the latest successful snapshot,
+private scratch ownership, exact archive/target manifest agreement and complete
+member types/sizes/links before rerunning every original integrity check. It
+never overwrites the extraction or invents a successful receipt. Actual
+revalidation passed: three qcow2 disks, four compressed dumps and 39 SQLite
+databases. Four isolated PostgreSQL imports and both networkless VM boots
+also passed; the fresh engine receipt was written at approximately 18:57 UTC.
+Media was excluded by the declared backup policy.
+
+The remaining recovery gate boots the restored agents disk read-only with a
+synthetic seed, unprivileged one-CPU QEMU, 8 GiB guest RAM, bounded COW/logs
+and no NIC or host sharing. The guest checks policy, all native SQLite files
+with adjacent WAL/SHM, retained main conversations, exact image/core version,
+authenticated gateway health and required plugins. The first attempt failed
+before QEMU execution because hard resource limits were raised after dropping
+privileges. A regression reproduced that failure; published
+`e66542a9ea3d650b6276e6f8ce672966a548daa1` selects limits before dropping
+privileges. Seven focused tests and full repository validation pass. The actual
+native gate executed and verified the original policy, all 39 native SQLite
+databases, twelve workspaces and retained main conversations (89 session nodes,
+89 session windows and 1,034 transcript events). Its authenticated gateway check
+failed. The gate therefore remains red. Published
+`791a7a34e251bf695f4baa5026489e2f48edb215` adds bounded private startup
+diagnostics and is being rerun without modifying the production VM or source
+disk. Neither data readability nor a login prompt alone is restore acceptance.
+
+Production was checked independently during the isolated boot: authenticated
+health was good, zero plugin errors, and all eleven enabled Mattermost accounts
+were connected. Twelve accounts remain configured; Family is deliberately
+disabled. Native cron and heartbeats retain their previous disabled state.
 
 ## Managed candidate source
 
@@ -116,7 +150,7 @@ qualification.
 
 The attended backup has 10 focused tests covering admission order, safe retry
 handling, no backup on a failed drain, interruption/resumption ordering, early
-hold release and truthful completion. The offline candidate has eight focused
+hold release and truthful completion. The offline candidate has nine focused
 isolation/provenance-refusal/ownership-cleanup tests. Both repository validation
 runs passed, including containerized Nix flake evaluation. The later probe
 instrumentation changes also passed focused tests and whitespace checks.
@@ -128,9 +162,8 @@ including refusal under high or unavailable I/O pressure. The complete
 repository validator passed after the resource limits were added, including
 containerized Nix flake evaluation.
 
-Outstanding: production Atlas recovery, isolated NAS restore/integrity,
-four PostgreSQL imports and both network-isolated VM
-boots; then actual managed-artifact checks, native fixture lifecycle/rebuild and
+Outstanding: successful authenticated gateway startup in the restored copy;
+then actual managed-artifact checks, native fixture lifecycle/rebuild and
 rollback, integration/patch/identity tests and authenticated client acceptance.
 Do not deploy from an artifact-only pass or imply host synchronization from
 release markers. Retain the prior production tuple until those gates pass.
