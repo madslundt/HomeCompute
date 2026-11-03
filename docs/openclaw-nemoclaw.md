@@ -472,6 +472,14 @@ it cannot start a new replacement or restore over an active team. Do not clear
 its journal to retry. Restoring data after the active team has resumed requires
 a separate application-consistent recovery decision, preserving newer writes.
 
+If native deletion succeeded but its final observation failed, `--resume --apply`
+also supports that exact failed delete checkpoint. It requires the original
+UUID/generation and registry, intact complete backup hashes, original permissions
+and qualified patches, native `sandbox not found` and independent exact-container
+absence. It retries native destroy to finish local cleanup, rechecks absence,
+then continues the same replacement transaction. Transport failure, an existing
+sandbox/container or changed backup refuses; no journal is cleared.
+
 Verify all agent identities, authenticated native readiness, model access,
 Mattermost connectivity, private DNS, specialist workspaces and the office feed.
 A successful restoration is runtime recovery, not reconciliation of unrelated

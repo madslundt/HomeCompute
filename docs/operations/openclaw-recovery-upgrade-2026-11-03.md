@@ -60,6 +60,23 @@ The current stopped configuration and private kernel evidence were preserved;
 the documented complete-team recovery lifecycle is being evaluated before any
 candidate work. No upgrade or agent turn has been submitted.
 
+The published full-team recovery at `d6f589db26f4c20896a7bea6a0488c5b75118e03`
+verified and retained complete state before native deletion. Deletion succeeded,
+but NemoClaw's final observation failed, leaving its failed transaction fence
+and local cleanup records intact. Native not-found and exact-container absence
+were independently observed. The source now adds an operator-only continuation
+for that exact checkpoint, with backup/identity/patch verification, native cleanup
+retry and repeated absence proof before creation. Existing mutation fences stay
+in place. Fourteen retained-team and nineteen base recovery tests pass.
+
+Extraction again increased guest I/O pressure despite bandwidth limits. Its
+owned scratch scope was frozen while production recovery proceeds. Its cache
+had reached approximately 10 GiB; the tightened source and transient properties
+now bound memory at 512 MiB high / 2 GiB maximum, writes at 25 MB/s / 100 IOPS
+and reads at 50 MB/s / 200 IOPS. Actual `io.max`, memory limits and frozen state
+were verified. This is an in-progress incident record; thaw/cleanup and resulting
+guest readiness must still be recorded.
+
 ## Managed candidate source
 
 The separate [candidate policy](../../config/openclaw-managed-candidate.json)

@@ -144,8 +144,12 @@ class NASRecoverySetupTest(unittest.TestCase):
             self.assertEqual(len(work),2)
             for args in work:
                 self.assertEqual(args[:4],['systemd-run','--scope','--collect','--quiet'])
-                self.assertIn('--property=IOWriteBandwidthMax=/srv/restore-tests 50M',args)
-                self.assertIn('--property=IOReadBandwidthMax=/srv/restore-tests 100M',args)
+                for prop in ('IOWriteBandwidthMax=/srv/restore-tests 25M',
+                             'IOReadBandwidthMax=/srv/restore-tests 50M',
+                             'IOWriteIOPSMax=/srv/restore-tests 100',
+                             'IOReadIOPSMax=/srv/restore-tests 200',
+                             'MemoryHigh=512M','MemoryMax=2G'):
+                    self.assertIn('--property='+prop,args)
                 self.assertEqual(args[args.index('ionice'):args.index('ionice')+3],['ionice','-c','3'])
 
     def test_restore_timeout_stops_only_its_generated_scope(self):

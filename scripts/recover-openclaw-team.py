@@ -220,6 +220,8 @@ class RetainedTransaction(BASE.Transaction):
         root = Path(record.get('backup', ''))
         if root.is_symlink() or root.resolve().parent != self.ctx.state.resolve():
             raise ValueError('resume-backup-path-refused')
+        if record.get('failedStage') == 'native-destroy-starting' and not record.get('newId'):
+            return self.resume_deleted(record, root)
         candidate = root / 'restored-config.json'
         # A merge refusal can occur after native creation but before a candidate
         # exists. Resume that exact pristine replacement after verifying its
@@ -244,6 +246,49 @@ class RetainedTransaction(BASE.Transaction):
             code,_=self.ctx.run([self.ctx.cli,BASE.NAME,'stop'],'resume-pristine-native-stop',timeout=180)
             if self.ctx.observe()!='Stopped':raise ValueError('resume-positive-stopped-required')
         return super().resume()
+
+    def absent(self):
+        code, raw = self.ctx.run([self.ctx.openshell, 'sandbox', 'get', '-g', BASE.GATEWAY,
+                                  BASE.NAME, '-o', 'json'], 'resume-native-absence')
+        # An unavailable transport is not absence. Require the native not-found
+        # code/message and an independent exact-container absence observation.
+        if code != 1 or not re.fullmatch(
+                r"\s*Error:\s*× code: 'Some requested entity was not found', message: \"sandbox not found\"\s*", raw.decode()):
+            raise ValueError('positive-native-absence-required')
+        code, raw = self.ctx.run(['/usr/bin/docker', 'ps', '-aq', '--no-trunc',
+                                  '--filter', 'name=^/' + self.ctx.container + '$'], 'resume-container-absence')
+        if code or raw.strip():
+            raise ValueError('positive-container-absence-required')
+
+    def resume_deleted(self, record, root):
+        if (record.get('status') != 'failed' or record.get('oldId') != self.ctx.uuid
+                or record.get('oldGeneration') != self.ctx.generation):
+            raise ValueError('exact-failed-delete-journal-required')
+        self.ctx.check_registry()
+        backup = root / '.openclaw'
+        hashes = self.verify_backup(backup)
+        if hashes != json.loads((root / 'conversation-hashes.json').read_bytes()):
+            raise ValueError('resume-complete-backup-hash-drift')
+        if not (root / 'permissions.json').is_file():
+            raise ValueError('resume-original-permissions-required')
+        for patch in PATCHES:
+            data = (root / patch.RUNTIME.name).read_bytes()
+            if patch.overlay(data) != data:
+                raise ValueError('resume-qualified-runtime-patches-required')
+        self.absent()
+        self.record = record
+        try:
+            # Complete native local cleanup through its own supported retry.
+            self.command([self.ctx.cli, BASE.NAME, 'destroy', '--yes', '--no-cleanup-gateway'],
+                         'resume-native-destroy', timeout=240)
+            self.absent()
+            return self.create_replacement(root, backup,
+                json.loads((backup / 'openclaw.json').read_bytes()), hashes, BASE.logical_conversations(backup))
+        except Exception as error:
+            self.record['failedStage'] = self.record.get('stage') if self.record.get('stage') != 'failed-after-mutation' else 'native-destroy-starting'
+            self.record['failureCode'] = str(error) if isinstance(error, (ValueError, BASE.RecoveryRefused)) else type(error).__name__
+            self.stage('failed-after-mutation', 'failed')
+            raise
 
     def merge_config(self, old, native):
         self.previous_auth=copy.deepcopy(old['gateway']['auth'])

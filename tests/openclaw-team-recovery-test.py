@@ -5,13 +5,46 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('team_recovery', ROOT / 'scripts/recover-openclaw-team.py')
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 class TeamRecoveryTests(unittest.TestCase):
+    def test_absence_requires_native_not_found_and_independent_empty_exact_container_query(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=Mock(state=Path(tmp),container='exact-old-container')
+            tx=m.RetainedTransaction(ctx,'a'*64)
+            absent=b'Error:   \xc3\x97 code: \'Some requested entity was not found\', message: "sandbox not found"\n'
+            ctx.run.side_effect=[(1,absent),(0,b'')]
+            tx.absent()
+            self.assertIn('name=^/exact-old-container$',ctx.run.call_args.args[0])
+            for outputs in ([(1,b'transport unavailable')],[(0,b'{}')],[(1,absent),(0,b'foreign-id')],[(1,absent),(1,b'')]):
+                ctx.run.side_effect=outputs
+                with self.assertRaises(ValueError):tx.absent()
+
+    def test_deleted_checkpoint_reuses_verified_backup_and_never_replays_destroy_on_uncertain_absence(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(m,'PATCHES',[]):
+            state=Path(tmp);root=state/'backup';backup=root/'.openclaw'
+            (backup/'agents/main').mkdir(parents=True);(backup/'agents/main/retained').write_text('synthetic conversation')
+            raw=json.dumps(self.config()).encode();(backup/'openclaw.json').write_bytes(raw)
+            ctx=Mock(state=state,uuid='old-id',generation='old-generation',cli='/fixed/nemoclaw')
+            tx=m.RetainedTransaction(ctx,m.digest(raw));hashes=tx.verify_backup(backup)
+            (root/'conversation-hashes.json').write_text(json.dumps(hashes));(root/'permissions.json').write_text('{}')
+            record={'status':'failed','stage':'failed-after-mutation','failedStage':'native-destroy-starting',
+                    'oldId':'old-id','oldGeneration':'old-generation','backup':str(root)}
+            tx.absent=Mock(side_effect=ValueError('uncertain'));tx.command=Mock();tx.create_replacement=Mock()
+            with self.assertRaises(ValueError):tx.resume_deleted(record,root)
+            tx.command.assert_not_called();tx.create_replacement.assert_not_called()
+            tx.absent=Mock();tx.create_replacement.return_value=('new-id','new-generation')
+            self.assertEqual(tx.resume_deleted(record,root),('new-id','new-generation'))
+            self.assertEqual(tx.absent.call_count,2)
+            self.assertEqual(tx.command.call_args.args[0],[ctx.cli,m.BASE.NAME,'destroy','--yes','--no-cleanup-gateway'])
+            tx.command.reset_mock();(backup/'agents/main/retained').write_text('tampered')
+            with self.assertRaisesRegex(ValueError,'hash-drift'):tx.resume_deleted(record,root)
+            tx.command.assert_not_called()
+
     def test_only_known_browser_installer_scratch_explains_var_tmp_metadata(self):
         known='C /var/tmp\nA /var/tmp/homecompute-browser-before-g6gnd88c\nA /var/tmp/homecompute-browser-before-g6gnd88c/0\nA /var/tmp/homecompute-browser-before-g6gnd88c/paths.json\n'
         self.assertEqual(m.unreviewed_layer_paths(known),[])

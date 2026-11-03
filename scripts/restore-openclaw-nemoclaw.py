@@ -345,35 +345,7 @@ print("config-owner-mode-verified")'''
             mutated = True
             self.command([self.ctx.cli, NAME, "destroy", "--yes", "--no-cleanup-gateway"],
                          "native-destroy", timeout=240)
-            self.stage("native-onboard-starting")
-            self.command([self.ctx.cli, "onboard", "--non-interactive",
-                          "--yes-i-accept-third-party-software", "--agents",
-                          "/etc/homecompute-openclaw/openclaw-nemoclaw-agents.json"],
-                         "native-replacement-onboard", onboarding=True, timeout=900)
-            output = self.command([self.ctx.openshell, "sandbox", "get", "-g", GATEWAY,
-                                   NAME, "-o", "json"], "new-sandbox-metadata")
-            metadata = json.loads(output)
-            new_id = str(uuid.UUID(metadata["id"]))
-            if metadata["name"] != NAME or metadata["phase"] != "Ready" or new_id == self.ctx.uuid:
-                raise RecoveryRefused("replacement-identity-refused")
-            registry = json.loads(self.ctx.registry.read_bytes())["sandboxes"][NAME]
-            generation = str(uuid.UUID(registry["lifecycleGeneration"]))
-            self.ctx.uuid, self.ctx.generation = new_id, generation
-            self.ctx.container = f"openshell-default--{NAME}-{new_id}"
-            self.ctx.check_registry()
-            self.record.update(newId=new_id, newGeneration=generation)
-            self.stage("replacement-created")
-            # Restore the approved CPU/memory budget without extra swap allowance.
-            self.command(["/usr/bin/docker", "update", "--cpus", str(CPUS), "--memory", str(MEMORY),
-                          "--memory-swap", str(MEMORY), self.ctx.container], "cap-replacement-memory")
-            self.inspect()
-            native_path = backup_root / "replacement-native.json"
-            self.command(["/usr/bin/docker", "cp", f"{self.ctx.container}:/sandbox/.openclaw/openclaw.json",
-                          str(native_path)], "capture-new-native-config")
-            native = json.loads(native_path.read_bytes())
-            candidate = backup_root / "restored-config.json"
-            atomic_json(candidate, self.merge_config(old, native))
-            return self.complete_restore(backup_root, backup, candidate, hashes, conversations)
+            return self.create_replacement(backup_root, backup, old, hashes, conversations)
         except Exception as exc:
             self.record["failedStage"] = self.record.get("stage")
             self.record["failureCode"] = str(exc) if isinstance(exc, RecoveryRefused) else "private-exception"
@@ -382,6 +354,37 @@ print("config-owner-mode-verified")'''
                        "failed" if mutated else "refused")
             raise RecoveryRefused("transaction-needs-operator" if mutated else "transaction-refused") from None
 
+
+    def create_replacement(self, backup_root, backup, old, hashes, conversations):
+        self.stage("native-onboard-starting")
+        self.command([self.ctx.cli, "onboard", "--non-interactive",
+                      "--yes-i-accept-third-party-software", "--agents",
+                      "/etc/homecompute-openclaw/openclaw-nemoclaw-agents.json"],
+                     "native-replacement-onboard", onboarding=True, timeout=900)
+        output = self.command([self.ctx.openshell, "sandbox", "get", "-g", GATEWAY,
+                               NAME, "-o", "json"], "new-sandbox-metadata")
+        metadata = json.loads(output)
+        new_id = str(uuid.UUID(metadata["id"]))
+        if metadata["name"] != NAME or metadata["phase"] != "Ready" or new_id == self.ctx.uuid:
+            raise RecoveryRefused("replacement-identity-refused")
+        registry = json.loads(self.ctx.registry.read_bytes())["sandboxes"][NAME]
+        generation = str(uuid.UUID(registry["lifecycleGeneration"]))
+        self.ctx.uuid, self.ctx.generation = new_id, generation
+        self.ctx.container = f"openshell-default--{NAME}-{new_id}"
+        self.ctx.check_registry()
+        self.record.update(newId=new_id, newGeneration=generation)
+        self.stage("replacement-created")
+        # Restore the approved CPU/memory budget without extra swap allowance.
+        self.command(["/usr/bin/docker", "update", "--cpus", str(CPUS), "--memory", str(MEMORY),
+                      "--memory-swap", str(MEMORY), self.ctx.container], "cap-replacement-memory")
+        self.inspect()
+        native_path = backup_root / "replacement-native.json"
+        self.command(["/usr/bin/docker", "cp", f"{self.ctx.container}:/sandbox/.openclaw/openclaw.json",
+                      str(native_path)], "capture-new-native-config")
+        native = json.loads(native_path.read_bytes())
+        candidate = backup_root / "restored-config.json"
+        atomic_json(candidate, self.merge_config(old, native))
+        return self.complete_restore(backup_root, backup, candidate, hashes, conversations)
 
     def complete_restore(self, backup_root: Path, backup: Path, candidate: Path,
                          hashes: dict[str, str], conversations: dict[str, Any]) -> tuple[str, str]:
