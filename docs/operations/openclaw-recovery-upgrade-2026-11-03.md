@@ -356,8 +356,18 @@ from the seven tracked installer/skill files at
 staging prefix. Classification ignores only bounded CPython caches whose module
 has a matching source file; complete copy and removal inventories still verify
 those caches byte for byte with original ownership and modes. Extra or changed
-source files are refused. The private office idle bundle requires its exact
-known layout and the tracked installer script from
-`c0936f46f122217db60f60a13351f23bcd4a77f6`. All stages must be unused by
+source files are refused. The agent-owned office idle bundle remains in native home: its generated art
+was not reproduced from the directory-named revision, so it is excluded from
+retirement rather than assigned exact source provenance. Its active installed
+copy is retained unchanged. All stages must be unused by
 processes and runtime configuration, including home-relative references. No
 native credential-filter exception was added.
+
+The next attempt stopped on one plugin health error in the paused original
+sandbox, before archival/rebuild. All required plugins were loaded, the gateway
+reported healthy, and channels remained stopped; the count-only receipt did not
+identify the plugin error. Qualification now retains bounded redacted plugin
+error details and waits up to 180 seconds for positive zero-error readiness, as
+the production verifier already does. Persistent errors still refuse; a running
+paused channel is refused immediately. No model task or channel message is
+issued by these readiness retries.

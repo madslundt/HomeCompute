@@ -32,8 +32,6 @@ CHECKOUTS={
  'homecompute-workflow-skills-9609afc6':'25e657ee037dd935e8b42f3964694421830585f9ed65b6297b957026b2474313',
  'homecompute-workflow-skills-19131206':'6c6d5a7647c3eb80a49cb284b913b1fe821600adcf692cd29432778fa088abb5',
 }
-OFFICE_IDLE='homecompute-office-idle-c0936f4'
-OFFICE_IDLE_SCRIPT='3b19ebdf1febd2ffc8be2a26143067d0b0107185f0961bebfe030ee354763f88'
 ROOTS=('tool-install-backups','child-result-backups','yield-acknowledgment-backups',
  'llm-queue-backups','search-fallback-backups','lyra-browser-backups','mattermost-setup/__pycache__')
 def selected():
@@ -41,7 +39,7 @@ def selected():
  office=BASE/'homecompute-agent-office'
  out.extend(p for p in office.glob('config-before-*.json') if re.fullmatch(r'config-before-[a-f0-9]{64}\.json',p.name))
  out.extend(p for p in pathlib.Path('/sandbox').glob('homecompute-office-install-*') if re.fullmatch('homecompute-office-install-[0-9]+',p.name))
- out.extend(pathlib.Path('/sandbox')/name for name in (*CHECKOUTS,OFFICE_IDLE) if (pathlib.Path('/sandbox')/name).exists() or (pathlib.Path('/sandbox')/name).is_symlink())
+ out.extend(pathlib.Path('/sandbox')/name for name in CHECKOUTS if (pathlib.Path('/sandbox')/name).exists() or (pathlib.Path('/sandbox')/name).is_symlink())
  return sorted(out)
 def inventory(root):
  result={};total=0;stack=[root];seen=1
@@ -94,7 +92,7 @@ def collect():
    if parent.is_symlink():raise ValueError('operator-artifact-root-link')
    if parent==pathlib.Path('/sandbox'):break
   if referenced(root,cfg):raise ValueError('operator-artifact-is-runtime-input')
-  if root.name.startswith('homecompute-office-install-') or root.name in CHECKOUTS or root.name==OFFICE_IDLE:
+  if root.name.startswith('homecompute-office-install-') or root.name in CHECKOUTS:
 
    info=root.stat()
    if root.name.startswith('homecompute-office-install-'):
@@ -113,9 +111,6 @@ def collect():
   if root.name in CHECKOUTS:
    if any(row['uid'] not in (0,998,1000) or row['gid']!=row['uid'] or row['mode']&0o002 for row in rows.values()):raise ValueError('retired-checkout-owner-or-world-write-drift')
    if checkout_digest(rows)!=CHECKOUTS[root.name]:raise ValueError('retired-checkout-public-source-drift')
-  if root.name==OFFICE_IDLE:
-   top={path.split('/')[0] for path in rows if path!='.'}
-   if top!={'bundle','deploy','scripts','release.json'} or rows.get('scripts/setup-agent-office.mjs',{}).get('sha256')!=OFFICE_IDLE_SCRIPT or stat.S_IMODE(root.stat().st_mode)!=0o700:raise ValueError('retired-office-install-source-drift')
   if root.name.startswith('config-before-') and rows['.']['sha256']!=root.name[14:-5]:raise ValueError('office-before-image-name-digest-mismatch')
   result[str(root)]=rows
   if len(result)>128 or sum(r.get('bytes',0) for rr in result.values() for r in rr.values())>256*1024**2:raise ValueError('operator-archive-total-budget')

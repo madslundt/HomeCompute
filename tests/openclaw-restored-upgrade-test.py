@@ -54,22 +54,29 @@ class RestoredUpgrade(unittest.TestCase):
    current.pop('mcp')
    with self.assertRaisesRegex(ValueError,'fixed-mcp'):w.policy_projection(current)
 
+ def test_health_waits_for_zero_errors_but_never_accepts_persistent_failure(self):
+  with patch.object(w,'health_once',side_effect=[ValueError('gateway-or-plugin-health-failed'),{'ok':True}]) as once,patch.object(w.time,'monotonic',return_value=0),patch.object(w.time,'sleep'),patch.object(w,'LAST_HEALTH',{}):
+   self.assertTrue(w.health('0.0.129',{})['ok']);self.assertEqual(once.call_count,2);self.assertEqual(w.LAST_HEALTH['readiness_retries'],1)
+  with patch.object(w,'health_once',side_effect=ValueError('gateway-or-plugin-health-failed')),patch.object(w.time,'monotonic',side_effect=[0,181]),self.assertRaisesRegex(ValueError,'plugin-health-failed'):w.health('0.0.129',{})
+  with patch.object(w,'health_once',side_effect=ValueError('paused-mattermost-account-running')) as once,patch.object(w.time,'sleep') as sleep,self.assertRaisesRegex(ValueError,'paused-mattermost'):w.health('0.0.129',{})
+  self.assertEqual(once.call_count,1);sleep.assert_not_called()
+
  def test_health_distinguishes_intentionally_paused_channel_from_plugin_failure(self):
   with tempfile.TemporaryDirectory() as tmp:
    state=Path(tmp);config=state/'openclaw.json';config.write_text('{"channels":{"mattermost":{"enabled":false}}}')
    healthy={'ok':True,'plugins':{'loaded':['homecompute-safety','homecompute-agent-office','memory-core','nemoclaw'],'errors':[],'unavailable':[]},'channels':{'mattermost':{'accounts':{'fixture':{'running':False,'connected':False}}}}}
-   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()):w.health('0.0.129',{})
+   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()):w.health_once('0.0.129',{})
    for change in ('missing-runtime','plugin-error','unavailable','channel-running'):
     value=copy.deepcopy(healthy)
     if change=='missing-runtime':value['plugins']['loaded'].remove('homecompute-safety')
     elif change=='plugin-error':value['plugins']['errors']=['fixture']
     elif change=='unavailable':value['plugins']['unavailable']=['fixture']
     else:value['channels']['mattermost']['accounts']['fixture']['running']=True
-    with self.subTest(change=change),patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(value).encode()),self.assertRaises(ValueError):w.health('0.0.140',{})
+    with self.subTest(change=change),patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(value).encode()),self.assertRaises(ValueError):w.health_once('0.0.140',{})
    config.write_text('{"channels":{"mattermost":{"enabled":true}}}')
-   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()),self.assertRaises(ValueError):w.health('0.0.140',{})
+   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()),self.assertRaises(ValueError):w.health_once('0.0.140',{})
    healthy['plugins']['loaded'].append('mattermost')
-   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()):w.health('0.0.140',{})
+   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()):w.health_once('0.0.140',{})
 
  def test_local_fixture_dns_only_denies_the_reserved_native_probe_name(self):
   def query(name):

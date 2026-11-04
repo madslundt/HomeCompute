@@ -28,6 +28,7 @@ ROOT=None
 COUNTER=0
 SQLITE_COUNT=0
 LAST_HEALTH=None
+HEALTH_REDACTOR=None
 SNAPSHOT_METRICS={}
 BRIDGE_PROBE_IMAGE='busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662'
 
@@ -147,12 +148,25 @@ def start_native(version,env,label):
 
 
 def health(version,env):
+ deadline=time.monotonic()+180;retries=0
+ while True:
+  try:
+   result=health_once(version,env)
+   LAST_HEALTH['readiness_retries']=retries
+   return result
+  except ValueError as error:
+   if str(error) not in ('gateway-or-plugin-health-failed','failed:gateway-health','timeout:gateway-health') or time.monotonic()>=deadline:raise
+   retries+=1;time.sleep(3)
+
+
+def health_once(version,env):
  global LAST_HEALTH
  raw=run(cli(version,'agent-openclaw','exec','--','openclaw','gateway','health','--timeout','10000','--json'),'gateway-health',env=env,user=True,timeout=90)
  data,_=json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])
  plugins=data.get('plugins',{})
  LAST_HEALTH={'ok':data.get('ok') is True,'loaded':sorted(p for p in plugins.get('loaded',[]) if isinstance(p,str)),
   'error_count':len(plugins.get('errors',[])),'unavailable_count':len(plugins.get('unavailable',[]))}
+ if HEALTH_REDACTOR and (plugins.get('errors') or plugins.get('unavailable')):LAST_HEALTH['private_plugin_diagnostics']=HEALTH_REDACTOR(json.dumps({key:plugins.get(key,[]) for key in ('errors','unavailable')},sort_keys=True))[:4096]
  paused=json.loads((STATE/'openclaw.json').read_bytes()).get('channels',{}).get('mattermost',{}).get('enabled') is False
  required={'homecompute-safety','homecompute-agent-office','memory-core','nemoclaw'}
  if not paused:required.add('mattermost')
@@ -427,7 +441,7 @@ class Provider(http.server.BaseHTTPRequestHandler):
 
 
 def main():
- global ROOT
+ global ROOT,HEALTH_REDACTOR
  p=argparse.ArgumentParser();p.add_argument('--nonce',required=True);p.add_argument('--expected-policy',required=True);p.add_argument('--manifest-sha256',required=True);a=p.parse_args()
  nonce=str(uuid.UUID(a.nonce));result={'native_upgrade_verified':False,'native_rollback_verified':False,'state_preserved':False,'registry_metadata_replay':True}
  def progress(stage):
@@ -451,7 +465,7 @@ def main():
    for path in [WORK/('nemoclaw-'+version),*(WORK/('nemoclaw-'+version)).rglob('*')]:
     os.chown(path,1000,1000,follow_symlinks=False)
   WORK.chmod(0o755)
-  restore_spec=importlib.util.spec_from_file_location('inspect_restore',ROOT/'deploy/openclaw/recovery/inspect-restored-state.py');restore=importlib.util.module_from_spec(restore_spec);restore_spec.loader.exec_module(restore)
+  restore_spec=importlib.util.spec_from_file_location('inspect_restore',ROOT/'deploy/openclaw/recovery/inspect-restored-state.py');restore=importlib.util.module_from_spec(restore_spec);restore_spec.loader.exec_module(restore);HEALTH_REDACTOR=restore.redact_diagnostic
   restore.verify_policy(a.expected_policy);progress('baseline-startup')
   restore.gateway_health(lambda _:None)
   env=environment('0.0.129',assets)
