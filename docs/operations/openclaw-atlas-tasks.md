@@ -84,6 +84,8 @@ new helper for reproduction on a rebuilt host.
 
 The guest requires the original exact managed tuple, full twelve-role roster,
 ready/idle gateway, serial depth-one delegation and existing recovery fences.
+The retained image owns native state as UID/GID 998; this is verified separately
+from the host operator UID 1000 before staging or native file operations.
 It stages tracked public source outside native durable state, uses the existing
 workflow-skill and identity installers, and compares the full configuration with
 only role skill assignments normalized. Only Atlas gains `task-ownership`;

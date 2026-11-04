@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('atlas_deploy', ROOT/'scripts/deploy-openclaw-atlas-tasks.py')
@@ -53,6 +53,13 @@ class DeploymentTests(unittest.TestCase):
     def test_release_guard_rejects_workstation_and_short_revisions(self):
         for revision in ('master','a'*40):
             with self.assertRaisesRegex(ValueError,'release directory'):m.source_guard(revision)
+
+    def test_native_principal_is_checked_separately_from_host_operator(self):
+        context=Mock();context.container='exact-retained-container'
+        context.run.return_value=(0,b'998:998\n')
+        self.assertEqual(m.guest_owner(context),998)
+        context.run.return_value=(0,b'1000:1000\n')
+        with self.assertRaisesRegex(ValueError,'sandbox principal'):m.guest_owner(context)
 
     def test_routine_inventory_renders_idempotently_and_does_not_enable_native_cron(self):
         spec=importlib.util.spec_from_file_location('routines',ROOT/'scripts/setup-openclaw-routines.py')

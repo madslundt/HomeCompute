@@ -51,3 +51,19 @@ local capability-dependent skips remain identified in the validation log.
 `git diff --check`, the generated routine-index check and runbook local links
 passed. The native handoff verifier is prepared but has not yet run against
 the deployed instructions.
+
+
+Core apply from `4e935e65175987eac0deefec7fe08db5647a6ce6` completed with
+both empty task stores and all task/request/event counts preserved, the additive
+purpose column present, four installed modules matching source, active adapter,
+location service and both reminder timers, and zero failed Core units. Both
+fixed destinations authenticated with `--check`, sending no messages. Its private
+backup is `/var/lib/homecompute-atlas-tasks/backup-a8117862f4ce40c48f58109f228271b6`.
+
+The initial guest apply stopped before any native mutation while collecting
+before images: host UID 1000 differs from the retained image's native sandbox
+UID/GID 998, whose state is mode 0700. Native config, identities and skills were
+unchanged; the supervisor remained active, and no transaction mutation stage was
+entered. Source now explicitly verifies 998:998 and stages/runs file operations
+under that native principal. A regression distinguishes it from host UID 1000.
+The preserved incomplete operator backup is evidence only, not an applied change.

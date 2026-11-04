@@ -21,6 +21,7 @@ import uuid
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = '12925c9b6d60dd9881a224d29ae45b0a79610346'
+SANDBOX_UID = 998  # The retained managed image's sandbox principal; host operator is UID 1000.
 CORE = Path('/opt/homecompute/openclaw-communication/scripts')
 TARGETS = ('openclaw_household_tasks.py', 'openclaw_task_location.py',
            'openclaw-household-task-reminders.py', 'openclaw_task_followups.py')
@@ -200,11 +201,18 @@ def core_apply(revision, expected):
                 'task_records_preserved': True, 'timer_boot_ownership_verified': True}
 
 
+def guest_owner(ctx):
+    code, raw = ctx.run(['docker','exec',ctx.container,'stat','-c','%u:%g','/sandbox/.openclaw'], 'atlas-native-owner')
+    if code or raw.decode().strip() != str(SANDBOX_UID)+':'+str(SANDBOX_UID):
+        raise ValueError('Retained native sandbox principal required')
+    return SANDBOX_UID
+
+
 def guest_context(*, recovery=False):
     if os.getuid() != 1000 or socket.gethostname() != 'agents': raise ValueError('Existing operator guest required')
     u = module('upgrade-openclaw-nemoclaw'); ctx = u.SUP.Supervisor(u.environment())
     if ctx.revision != u.SUP.REVISION: raise ValueError('Retained version required')
-    ctx.check_registry(); ctx.check_container()
+    ctx.check_registry(); ctx.check_container(); guest_owner(ctx)
     if ctx.observe() != 'Ready' or not ctx.ready(): raise ValueError('Healthy retained runtime required')
     transaction = ctx.state/'atlas-tasks-transaction.json'
     if not recovery and transaction.exists() and json.loads(transaction.read_bytes()).get('status') != 'complete':
@@ -256,15 +264,15 @@ for name in json.loads(__import__('sys').argv[1]):
  if not stat.S_ISREG(st.st_mode) or st.st_uid!=os.getuid() or st.st_nlink!=1 or st.st_size>1048576:raise ValueError('Scoped file refused')
  result[name]={'data':base64.b64encode(p.read_bytes()).decode(),'mode':stat.S_IMODE(st.st_mode)}
 print(json.dumps(result))"""
-    raw=guest_command(ctx,['docker','exec','--user','1000',ctx.container,'python3','-c',code,json.dumps(paths)],'atlas-scoped-file-images')
+    raw=guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'python3','-c',code,json.dumps(paths)],'atlas-scoped-file-images')
     return json.loads(raw)
 
 
 def guest_stage(ctx, revision):
     stage='/tmp/homecompute-atlas-tasks-'+uuid.uuid4().hex
-    guest_command(ctx,['docker','exec','--user','1000',ctx.container,'mkdir','-m','700',stage],'atlas-stage-source')
+    guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'mkdir','-m','700',stage],'atlas-stage-source')
     archive=run(['git','-c','safe.directory='+str(ROOT),'-C',str(ROOT),'archive',revision,*GUEST_FILES])
-    run(['docker','exec','-i','--user','1000',ctx.container,'tar','-x','-C',stage],input=archive)
+    run(['docker','exec','-i','--user',str(SANDBOX_UID),ctx.container,'tar','-x','-C',stage],input=archive)
     return stage
 
 
@@ -295,7 +303,7 @@ def guest_apply(revision, expected):
             run(['systemctl','--user','stop','homecompute-openclaw-supervisor.service'])
             u.require_idle(ctx,{})
             def command(script,*args):
-                raw=guest_command(ctx,['docker','exec','--user','1000',ctx.container,'python3',stage+'/scripts/'+script,*args],'atlas-'+script)
+                raw=guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'python3',stage+'/scripts/'+script,*args],'atlas-'+script)
                 return json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])[0]
             workflow=command('setup-openclaw-workflow-skills.py','--source',stage)
             command('setup-openclaw-workflow-skills.py','--source',stage,'--apply','--expected-plan-sha256',workflow['plan_sha256'])
@@ -416,10 +424,10 @@ for name,value in payload['wanted'].items():
             run(['systemctl','--user','stop','homecompute-openclaw-supervisor.service'])
             try:
                 u.require_idle(ctx,{})
-                run(['docker','exec','-i','--user','1000',ctx.container,'python3','-c',code],input=canonical({'current':files,'wanted':wanted}))
+                run(['docker','exec','-i','--user',str(SANDBOX_UID),ctx.container,'python3','-c',code],input=canonical({'current':files,'wanted':wanted}))
                 changes=[{'path':'agents.entries.'+role+'.skills','value':entry['skills']} for role,entry in original['agents']['entries'].items()
                          if current['agents']['entries'][role]['skills']!=entry['skills']]
-                guest_command(ctx,['docker','exec','--user','1000',ctx.container,'openclaw','config','set','--batch-json',json.dumps(changes)],'atlas-rollback-native-skills')
+                guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'openclaw','config','set','--batch-json',json.dumps(changes)],'atlas-rollback-native-skills')
                 guest_command(ctx,[ctx.cli,u.SUP.NAME,'mcp','restart','homecompute'],'atlas-rollback-refresh')
                 after=json.loads(guest_command(ctx,['docker','exec',ctx.container,'cat','/sandbox/.openclaw/openclaw.json'],'atlas-rollback-readback'))
                 if u.SUP.mcp_authority(after)!=u.SUP.mcp_authority(original) or guest_files(ctx,after)!=wanted:raise ValueError('Rollback verification failed')
