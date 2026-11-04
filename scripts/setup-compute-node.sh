@@ -63,6 +63,7 @@ usage() {
 Usage: setup-compute-node.sh COMMAND [OPTIONS]
 Commands:
   preflight  Read-only platform, Docker/NVIDIA, disk, and clock gates
+  prepare-cache  Fetch and accept the existing pinned text-model cache only
   init       Create the service account, directories, config, and secret files
   firewall   Install/reapply and verify the persistent compute ingress policy
   migrate-config  Migrate the trusted host config to this release's schema
@@ -363,6 +364,21 @@ model_tuple_digest() {
     sha256sum | awk '{print $1}'
 }
 tuple_cache_manifest() { printf '%s/manifests/accepted-model-cache-%s.json' "$GB10_ROOT" "$(model_tuple_digest)"; }
+verify_fetch_cache_helper() {
+  local installed current
+  installed="$(runtime_cache_helper)"
+  config_path_is_trusted "$installed" 0 "Installed model-cache helper" ||
+    die "Installed model-cache helper is missing or untrusted"
+  current="$(sha256sum "$CACHE_INTEGRITY_HELPER" | awk '{print $1}')"
+  case "$(sha256sum "$installed" | awk '{print $1}')" in
+    "$current") ;;
+    # This prior owner helper has the same bounded full-snapshot fetch and
+    # verification behavior. Its only difference is optional --include-file
+    # support, which the retained-model fetch does not use.
+    a8dd8d68e1bafdcebf2d79e1eb30ea1ab3fa42687024d430953a02ade73fcc44) ;;
+    *) die "Installed model-cache helper is not a reviewed compatible version; run the normal owner install first" ;;
+  esac
+}
 cache_integrity() {
   local action="$1"
   shift
@@ -403,7 +419,7 @@ verify_runtime_cache_helper() {
   done
 }
 accept_model_cache() {
-  local manifest temporary
+  local existing_only="${1:-false}" manifest temporary
   manifest="$(tuple_cache_manifest)"
   path_must_be_missing_or_regular "$manifest" "Tuple model-cache manifest"
   if [[ -e "$manifest" ]]; then
@@ -412,6 +428,7 @@ accept_model_cache() {
     cache_integrity verify --manifest "$manifest" ||
       die "Refusing to re-accept a mutated previously accepted model tuple"
   else
+    [[ "$existing_only" != true ]] || die "Accepted tuple model-cache manifest disappeared; refusing to create a new acceptance"
     temporary="$(mktemp "$GB10_ROOT/manifests/.accepted-model-cache.XXXXXX")"
     if ! cache_integrity create >"$temporary"; then rm -f -- "$temporary"; die "Could not create accepted model-cache manifest"; fi
     chown root:gb10-ai "$temporary"; chmod 0440 "$temporary"
@@ -502,6 +519,72 @@ prepare_model_artifacts() {
   accept_model_cache
   verify_model_cache
 }
+acquire_spark_deployment_lock() {
+  local path=/var/lib/homecompute/home-spark-deploy.lock parent
+  parent="$(dirname -- "$path")"
+  [[ -d "$parent" && ! -L "$parent" && "$(stat -c '%u' "$parent")" == 0 ]] ||
+    die "Spark deployment lock directory is missing or untrusted"
+  [[ "$(file_mode "$parent")" == 700 ]] || die "Spark deployment lock directory must have mode 0700"
+  [[ -f "$path" && ! -L "$path" && "$(stat -c '%u' "$path")" == 0 &&
+     "$(file_mode "$path")" == 600 && "$(file_links "$path")" == 1 ]] ||
+    die "Spark deployment lock file is missing or untrusted"
+  exec {SPARK_DEPLOYMENT_LOCK_FD}>>"$path"
+  if ! flock -n "$SPARK_DEPLOYMENT_LOCK_FD"; then
+    exec {SPARK_DEPLOYMENT_LOCK_FD}>&-
+    die "Another Spark release deployment is in progress"
+  fi
+}
+require_active_immutable_release() {
+  local active releases_root status
+  [[ -L /srv/homecompute/current && "$(stat -c '%u' /srv/homecompute/current)" == 0 ]] ||
+    die "Active HomeCompute release link is missing or untrusted"
+  active="$(readlink -e /srv/homecompute/current 2>/dev/null || true)"
+  releases_root="$(readlink -e /srv/homecompute/releases 2>/dev/null || true)"
+  [[ -n "$active" && "$active" == "$REPO_ROOT" && -n "$releases_root" ]] ||
+    die "Run prepare-cache through the active immutable HomeCompute release"
+  case "$active" in "$releases_root"/*) ;; *) die "Active source is outside the immutable releases directory" ;; esac
+  [[ -d "$REPO_ROOT/.git" || -f "$REPO_ROOT/.git" ]] || die "Active HomeCompute release has no Git identity"
+  status="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" || die "Could not verify active release cleanliness"
+  [[ -z "$status" ]] || die "Active HomeCompute release is not clean"
+}
+prepare_cache_only() {
+  local tuple_manifest active_manifest image_id
+  require_root
+  acquire_spark_deployment_lock
+  require_active_immutable_release
+  acquire_text_model_runtime_lock
+  load_env
+  validate_config
+  [[ "$MODEL_DEPLOYMENT_ID" == general-spark-qwen38 && "$MODEL_ID" == unsloth/Qwen3.8-27B-NVFP4 ]] ||
+    die "prepare-cache is restricted to the catalog-pinned retained 27B deployment"
+  preflight
+  tuple_manifest="$(tuple_cache_manifest)"
+  config_path_is_trusted "$tuple_manifest" 0 "Tuple model-cache manifest" ||
+    die "The accepted tuple model-cache manifest is missing or untrusted; refusing to create a new acceptance"
+  active_manifest="$(active_cache_manifest)"
+  if [[ -e "$active_manifest" || -L "$active_manifest" ]]; then
+    config_path_is_trusted "$active_manifest" 0 "Active model-cache manifest" ||
+      die "The active model-cache manifest is untrusted"
+    cmp -s "$tuple_manifest" "$active_manifest" ||
+      die "The active model-cache manifest belongs to a different accepted tuple"
+  fi
+  verify_fetch_cache_helper
+  image_id="$(docker image inspect --format '{{.Id}}' "$VLLM_IMAGE" 2>/dev/null)" ||
+    die "The pinned model-fetch image is not cached locally; refusing an image pull"
+  [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]] || die "The cached model-fetch image identity is invalid"
+  log "Fetching only the existing catalog-pinned model tuple; runtime services are not started or stopped"
+  compose --profile prepare run --pull never --no-deps --rm model-fetch
+  if [[ ! -e "$active_manifest" ]]; then
+    # This owner path verifies the existing tuple manifest before activating
+    # it; it refuses to recreate or replace a previously accepted tuple.
+    accept_model_cache true
+  else
+    cache_integrity verify --manifest "$tuple_manifest" ||
+      die "Fetched model cache differs from the immutable accepted tuple"
+  fi
+  verify_model_cache
+  log "Pinned model cache verified and active; no runtime service was changed"
+}
 configure_firewall() {
   require_root; load_env
   if ! is_ipv4_address "$GB10_BIND_ADDRESS" || [[ "$GB10_BIND_ADDRESS" == 0.0.0.0 ]]; then
@@ -536,19 +619,22 @@ migrate_configuration() {
   load_env
   log "Configuration schema is current; configured values were preserved"
 }
-parse_options "$@"
-case "$COMMAND" in
-  help) usage ;;
-  preflight) load_env; preflight ;;
-  init) initialize ;;
-  firewall) configure_firewall ;;
-  migrate-config) migrate_configuration ;;
-  validate) validate_config ;;
-  install|rollback) require_root; acquire_text_model_runtime_lock; deploy_release ;;
-  up) require_root; acquire_text_model_runtime_lock; start_release ;;
-  status) show_status ;;
-  smoke) smoke_test ;;
-  logs) load_env; compose logs --tail 200 text-primary text-edge ;;
-  down) require_root; acquire_text_model_runtime_lock; load_env; compose stop text-primary text-edge; log "Stopped text runtime and edge; modality services and persistent artifacts retained" ;;
-  *) usage >&2; die "Unknown command: $COMMAND" ;;
-esac
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  parse_options "$@"
+  case "$COMMAND" in
+    help) usage ;;
+    preflight) load_env; preflight ;;
+    prepare-cache) prepare_cache_only ;;
+    init) initialize ;;
+    firewall) configure_firewall ;;
+    migrate-config) migrate_configuration ;;
+    validate) validate_config ;;
+    install|rollback) require_root; acquire_text_model_runtime_lock; deploy_release ;;
+    up) require_root; acquire_text_model_runtime_lock; start_release ;;
+    status) show_status ;;
+    smoke) smoke_test ;;
+    logs) load_env; compose logs --tail 200 text-primary text-edge ;;
+    down) require_root; acquire_text_model_runtime_lock; load_env; compose stop text-primary text-edge; log "Stopped text runtime and edge; modality services and persistent artifacts retained" ;;
+    *) usage >&2; die "Unknown command: $COMMAND" ;;
+  esac
+fi

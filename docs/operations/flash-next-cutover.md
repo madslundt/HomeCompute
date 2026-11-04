@@ -72,6 +72,32 @@ Spark target.
 
 ## Private retained-27B comparison
 
+### Restore a missing accepted cache pointer
+
+The retained-model comparison remains cache-only. If the pinned weights are
+missing while the immutable accepted tuple manifest is still present, first
+run the compute-node owner's `prepare-cache` action from the active immutable
+release:
+
+```sh
+sudo /srv/homecompute/current/scripts/setup-compute-node.sh \
+  prepare-cache --env /etc/gb10-ai/gb10.env
+```
+
+This preparation action may download only the catalog-pinned retained 27B
+tuple through the existing bounded, isolated `model-fetch` job. It requires the
+accepted tuple manifest to exist already, uses only a locally cached pinned
+fetch image, and refuses a different active cache pointer or pending lifecycle
+recovery. It holds the Spark deployment and shared text-model locks. It does
+not install runtime helpers, pull images, or start/stop any model or modality
+service. After fetching, the existing acceptance owner verifies the immutable
+tuple and may restore the active manifest pointer only from those accepted
+bytes. A mismatch is a hard failure; it does not replace the prior acceptance.
+
+Run `qualify-qwen27b` only after `prepare-cache` has completed successfully.
+Qualification itself never downloads, creates an accepted tuple, or repairs a
+missing cache pointer.
+
 `setup-compute-flash-next.sh qualify-qwen27b` is an opt-in, temporary
 same-request comparison. It does not change the model catalog, aliases, or
 gateway routes. It briefly stops the active UltraFast container, starts the
