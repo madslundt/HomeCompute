@@ -446,7 +446,7 @@ def export_private_outputs(export_fd: int, evidence_dir: Path, receipt_path: Pat
             source = evidence_dir / name
             if not source.exists() and not source.is_symlink():
                 continue
-            file_fingerprint(source, exact_mode=0o600)
+            file_fingerprint(source, exact_mode=0o600, role="captured-response")
             data = source.read_bytes()
             if len(data) > MAX_RESPONSE_BYTES:
                 fail("export", "export-artifact-oversized")
@@ -721,21 +721,48 @@ def check_whisper_same(before: dict[str, dict[str, str]]) -> None:
         fail("whisper-health", "whisper-service-identity-changed")
 
 
+FINGERPRINT_ROLES = {
+    "owner-state": ("owner-state", "owner-state"),
+    "flash-owner-record": ("owner-state", "flash-owner-record"),
+    "candidate-cache-manifest": ("cache", "candidate-cache-manifest"),
+    "active-cache-manifest": ("cache", "active-cache-manifest"),
+    "compute-config": ("preflight", "compute-config"),
+    "qualification-journal": ("recovery", "qualification-journal"),
+    "captured-response": ("export", "captured-response"),
+}
+
+
+def fingerprint_failure(role: str, state: str) -> None:
+    if role not in FINGERPRINT_ROLES or state not in {"missing", "unreadable", "untrusted"}:
+        fail("owner-state", "owner-state-file-unavailable")
+    stage, label = FINGERPRINT_ROLES[role]
+    fail(stage, f"{label}-file-{state}")
+
+
 def file_fingerprint(path: Path, *, owner: int = 0, mode_mask: int = 0o022,
-                     exact_mode: int | None = None) -> str:
+                     exact_mode: int | None = None, role: str = "owner-state") -> str:
+    if role not in FINGERPRINT_ROLES:
+        fail("owner-state", "owner-state-file-untrusted")
     try:
         st = path.lstat()
-        if (not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode)
-                or st.st_uid != owner or st.st_mode & mode_mask
-                or (exact_mode is not None and stat.S_IMODE(st.st_mode) != exact_mode)):
-            fail("owner-state", "owner-state-file-untrusted")
-        return sha256(path.read_bytes())
+    except FileNotFoundError:
+        fingerprint_failure(role, "missing")
     except OSError:
-        fail("owner-state", "owner-state-file-unavailable")
+        fingerprint_failure(role, "unreadable")
+    if (not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode)
+                or st.st_uid != owner or st.st_mode & mode_mask
+            or (exact_mode is not None and stat.S_IMODE(st.st_mode) != exact_mode)):
+        fingerprint_failure(role, "untrusted")
+    try:
+        return sha256(path.read_bytes())
+    except FileNotFoundError:
+        fingerprint_failure(role, "missing")
+    except OSError:
+        fingerprint_failure(role, "unreadable")
 
 
 def parse_record(path: Path, required: set[str], *, exact_mode: int = 0o440) -> dict[str, str]:
-    file_fingerprint(path, exact_mode=exact_mode)
+    file_fingerprint(path, exact_mode=exact_mode, role="flash-owner-record")
     data: dict[str, str] = {}
     try:
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -743,7 +770,11 @@ def parse_record(path: Path, required: set[str], *, exact_mode: int = 0o440) -> 
             if not match or match.group(1) in data:
                 fail("owner-state", "owner-state-record-invalid")
             data[match.group(1)] = match.group(2)
-    except (OSError, UnicodeError):
+    except FileNotFoundError:
+        fingerprint_failure("flash-owner-record", "missing")
+    except OSError:
+        fingerprint_failure("flash-owner-record", "unreadable")
+    except UnicodeError:
         fail("owner-state", "owner-state-record-invalid")
     if not required <= data.keys():
         fail("owner-state", "owner-state-record-incomplete")
@@ -779,9 +810,11 @@ def verify_model_cache(env: dict[str, str], source_root: Path) -> dict[str, str]
                   f"code={MODEL_REVISION}\nrepo={MODEL_ID}\n").encode()
     manifest = root / "manifests" / f"accepted-model-cache-{sha256(tuple_data)}.json"
     active = root / "manifests/accepted-model-cache.json"
-    if file_fingerprint(manifest) != file_fingerprint(active):
+    manifest_digest = file_fingerprint(manifest, role="candidate-cache-manifest")
+    active_digest = file_fingerprint(active, role="active-cache-manifest")
+    if manifest_digest != active_digest:
         fail("cache", "active-cache-manifest-mismatch")
-    cache_digest = sha256(manifest.read_bytes())
+    cache_digest = manifest_digest
     command = [sys.executable, str(source_root / "scripts/model-cache-integrity.py"), "verify",
                "--cache-root", str(root / "cache/huggingface"), "--repo-id", MODEL_ID,
                "--revision", MODEL_REVISION, "--manifest", str(manifest)]
@@ -817,9 +850,9 @@ def check_current_profile(env: dict[str, str], source_root: Path) -> tuple[dict[
         fail("preflight", "ultrafast-image-changed")
     profile_path = Path(env["FLASH_NEXT_STATE_DIR"]) / "active-profile"
     previous_path = Path(env["FLASH_NEXT_STATE_DIR"]) / "previous-text-containers"
-    if file_fingerprint(profile_path, exact_mode=0o600) != sha256(b"ultrafast\n"):
+    if file_fingerprint(profile_path, exact_mode=0o600, role="flash-owner-record") != sha256(b"ultrafast\n"):
         fail("preflight", "active-profile-not-ultrafast")
-    previous_sha = file_fingerprint(previous_path, exact_mode=0o600)
+    previous_sha = file_fingerprint(previous_path, exact_mode=0o600, role="flash-owner-record")
     prior_names = previous_path.read_text(encoding="utf-8").splitlines()
     if not prior_names or any(name not in TEXT_CONTAINER_NAMES or name == candidate["name"] for name in prior_names):
         fail("preflight", "flash-rollback-record-invalid")
@@ -837,9 +870,9 @@ def check_current_profile(env: dict[str, str], source_root: Path) -> tuple[dict[
     expected_ids = {"id": candidate["id"], "image_id": candidate["image_id"],
                     "image_ref": candidate["image_ref"], "restart": candidate["restart"],
                     "managed": candidate["managed"], "name": candidate["name"]}
-    return {"candidate": expected_ids, "profile_sha256": file_fingerprint(profile_path),
+    return {"candidate": expected_ids, "profile_sha256": file_fingerprint(profile_path, role="flash-owner-record"),
             "previous_sha256": previous_sha,
-            "ultrafast_record_sha256": file_fingerprint(state_dir / "runtime.env"),
+            "ultrafast_record_sha256": file_fingerprint(state_dir / "runtime.env", role="flash-owner-record"),
             "profile_path": str(profile_path), "previous_path": str(previous_path)}, record
 
 
@@ -945,10 +978,11 @@ def check_saved_profile(journal: dict[str, Any]) -> None:
     for field in ("profile_path", "previous_path"):
         path = Path(journal["owner_state"][field])
         expected = journal["owner_state"]["profile_sha256" if field == "profile_path" else "previous_sha256"]
-        if file_fingerprint(path) != expected:
+        if file_fingerprint(path, role="flash-owner-record") != expected:
             fail("restore", "flash-owner-journal-changed")
     runtime_path = Path(journal["owner_state"]["runtime_path"])
-    if file_fingerprint(runtime_path, exact_mode=0o440) != journal["owner_state"]["runtime_sha256"]:
+    if file_fingerprint(runtime_path, exact_mode=0o440,
+                        role="flash-owner-record") != journal["owner_state"]["runtime_sha256"]:
         fail("restore", "flash-runtime-record-changed")
 
 
@@ -969,7 +1003,7 @@ def validate_restore_preflight(journal: dict[str, Any], *, env: dict[str, str],
                                source_root: Path, env_path: Path) -> None:
     if str(env_path) != journal.get("env_path"):
         fail("restore", "compute-config-path-changed")
-    if file_fingerprint(env_path, exact_mode=0o600) != journal.get("env_sha256"):
+    if file_fingerprint(env_path, exact_mode=0o600, role="compute-config") != journal.get("env_sha256"):
         fail("restore", "compute-config-changed")
     if current_source_revision(source_root, stage="restore") != journal.get("source_revision"):
         fail("restore", "source-revision-changed")
@@ -1078,7 +1112,7 @@ def restore(journal: dict[str, Any], *, env: dict[str, str], source_root: Path,
 
 
 def load_journal(path: Path) -> dict[str, Any]:
-    file_fingerprint(path, exact_mode=0o600)
+    file_fingerprint(path, exact_mode=0o600, role="qualification-journal")
     value = safe_json(path)
     if (type(value.get("schema_version")) is not int or value.get("schema_version") != 1
             or not isinstance(value.get("owner_state"), dict)
@@ -1177,7 +1211,7 @@ def perform(args: argparse.Namespace) -> int:
          str(env_path)], timeout=120, stage="preflight")
     compose_config_sha256 = current_compose_config_hash(env_path, source_root)
     source_revision = current_source_revision(source_root)
-    env_sha256 = file_fingerprint(env_path, exact_mode=0o600)
+    env_sha256 = file_fingerprint(env_path, exact_mode=0o600, role="compute-config")
     names = {
         "profile_path": str(Path(env["FLASH_NEXT_STATE_DIR"]) / "active-profile"),
         "previous_path": str(Path(env["FLASH_NEXT_STATE_DIR"]) / "previous-text-containers"),
@@ -1185,7 +1219,7 @@ def perform(args: argparse.Namespace) -> int:
     }
     owner, _record = check_current_profile(env, source_root)
     owner.update({"runtime_path": names["runtime_path"],
-                  "runtime_sha256": file_fingerprint(Path(names["runtime_path"]))})
+                  "runtime_sha256": file_fingerprint(Path(names["runtime_path"]), role="flash-owner-record")})
     whisper = validate_whisper_preflight(env, source_root, env_path)
     capacity_before = memory_gate(postload=False)
     key_bytes = read_api_key(Path(env["VLLM_API_KEY_FILE"]))

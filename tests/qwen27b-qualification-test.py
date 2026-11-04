@@ -294,6 +294,61 @@ data: [DONE]
                 qualification.verify_model_cache(env, Path(__file__).resolve().parents[1])
         self.assertEqual(caught.exception.classification, "configured-fallback-tuple-mismatch")
 
+    def test_missing_candidate_or_active_cache_manifest_has_role_specific_preflight_failure(self) -> None:
+        catalog = json.loads((Path(__file__).resolve().parents[1] / "config/model-catalog.json").read_text())
+        deployment = catalog["deployments"][qualification.DEPLOYMENT_ID]
+        runtime = catalog["runtime_profiles"][deployment["runtime_profile"]]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            manifests = root / "manifests"
+            manifests.mkdir(mode=0o700)
+            tuple_data = (f"schema=1\nmodel={qualification.MODEL_REVISION}\n"
+                          f"tokenizer={qualification.MODEL_REVISION}\ncode={qualification.MODEL_REVISION}\n"
+                          f"repo={qualification.MODEL_ID}\n").encode()
+            candidate_manifest = manifests / (
+                f"accepted-model-cache-{qualification.sha256(tuple_data)}.json")
+            env = {
+                "MODEL_DEPLOYMENT_ID": qualification.DEPLOYMENT_ID,
+                "MODEL_ID": qualification.MODEL_ID,
+                "MODEL_REVISION": qualification.MODEL_REVISION,
+                "TOKENIZER_REVISION": qualification.MODEL_REVISION,
+                "CODE_REVISION": qualification.MODEL_REVISION,
+                "VLLM_IMAGE": runtime["image"], "GB10_ROOT": str(root),
+            }
+            image_id = "sha256:" + "a" * 64
+            with mock.patch.object(qualification, "run", return_value=image_id) as managed:
+                with self.assertRaises(qualification.QualificationError) as caught:
+                    qualification.verify_model_cache(env, Path(__file__).resolve().parents[1])
+            self.assertEqual(caught.exception.stage, "cache")
+            self.assertEqual(caught.exception.classification, "candidate-cache-manifest-file-missing")
+            self.assertEqual(managed.call_count, 1)
+            self.assertEqual(managed.call_args.args[0][:3], ["docker", "image", "inspect"])
+
+            candidate_manifest.write_bytes(tuple_data)
+            candidate_manifest.chmod(0o600)
+            real_fingerprint = qualification.file_fingerprint
+
+            def current_user_fingerprint(path: Path, **kwargs: object) -> str:
+                return real_fingerprint(path, owner=os.getuid(), **kwargs)
+
+            with mock.patch.object(qualification, "file_fingerprint", side_effect=current_user_fingerprint), \
+                    mock.patch.object(qualification, "run", return_value=image_id) as managed:
+                with self.assertRaises(qualification.QualificationError) as caught:
+                    qualification.verify_model_cache(env, Path(__file__).resolve().parents[1])
+            self.assertEqual(caught.exception.stage, "cache")
+            self.assertEqual(caught.exception.classification, "active-cache-manifest-file-missing")
+            self.assertEqual(managed.call_count, 1)
+            self.assertTrue(all(call.args[0][:3] == ["docker", "image", "inspect"]
+                                for call in managed.call_args_list))
+
+    def test_missing_flash_owner_record_is_distinct_from_missing_cache_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            missing_record = Path(directory) / "runtime.env"
+            with self.assertRaises(qualification.QualificationError) as caught:
+                qualification.parse_record(missing_record, {"PROFILE"})
+        self.assertEqual(caught.exception.stage, "owner-state")
+        self.assertEqual(caught.exception.classification, "flash-owner-record-file-missing")
+
     def test_qualifier_requires_source_under_the_active_immutable_release(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -583,7 +638,7 @@ class QualificationTransactionTests(unittest.TestCase):
             return previous
 
         def test_fingerprint(path: Path, *, owner: int = 0, mode_mask: int = 0o022,
-                             exact_mode: int | None = None) -> str:
+                             exact_mode: int | None = None, role: str = "owner-state") -> str:
             st = path.lstat()
             if (not stat.S_ISREG(st.st_mode) or stat.S_ISLNK(st.st_mode)
                     or st.st_mode & mode_mask

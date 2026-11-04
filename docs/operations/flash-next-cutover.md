@@ -92,6 +92,13 @@ command prints only the receipt identifier, status, and protected receipt
 path. Do not put recording, household, credential, or other sensitive content
 in a committed manifest or fixture.
 
+Cache preflight failures use fixed role-specific classifications for the
+pinned candidate cache manifest and the active accepted-cache manifest.
+`owner-state` failures identify the Flash owner-record category separately.
+These checks remain fail-closed: do not recreate a missing manifest or bypass
+cache verification; reconcile the missing or untrusted state through its
+documented provisioning owner, then retry the private qualification.
+
 If the invoking user needs to inspect results outside the protected root state,
 pass `--export-dir` pointing to a pre-existing mode-0700 directory owned by
 that same user. Only `receipt.json` and the raw `flash.response` and
