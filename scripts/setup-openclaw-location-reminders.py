@@ -29,7 +29,7 @@ UNIT = 'homecompute-openclaw-location-reminders.service'
 PYTHON = Path('/run/current-system/sw/bin/python3')
 USER = 'homecompute-openclaw'
 FILES = ('openclaw_location_policy.py', 'openclaw_location_transport.py', 'openclaw_task_location.py',
-         'openclaw-location-reminders.py', 'setup-openclaw-location-reminders.py')
+         'openclaw_task_followups.py', 'openclaw-location-reminders.py', 'setup-openclaw-location-reminders.py')
 PERSONS = {'mads': {'name': 'Mads', 'entity_id': 'person.madslundt', 'notify_service': 'mobile_app_mads_iphone'},
            'kristina': {'name': 'Kristina', 'entity_id': 'person.kristinasorensen', 'notify_service': 'mobile_app_kristina_iphone'}}
 

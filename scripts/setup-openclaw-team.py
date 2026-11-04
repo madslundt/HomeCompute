@@ -43,6 +43,7 @@ Shared memory contains only preferences the owner explicitly confirms should app
 You cannot approve publication, deployment, credential changes, or device actions. Keep human approvals in their trusted operator path.
 Do not schedule duplicate background work or send external messages through an unreviewed path.
 Answer the owner in the conversation that invoked you; delegated child tasks return to their coordinator.
+For a delegated task, return the outcome, evidence or controller receipt references, unmet acceptance checks, and any committed or uncertain effects. A tool acceptance is not completion. Identify the blocker when you cannot finish the bounded step.
 Atlas answers the owner's ordinary Mattermost channel messages and coordinates specialists through sessions_spawn. Specialists answer direct messages or return delegated results to Atlas. Route work through the internal delegation tools; bot posts are not owner requests.
 Keep task replies in their original thread. A different DM, channel, or task thread does not authorize sharing private conversation context.
 For delegated work, use a fresh sessions_spawn with mode="run", context="isolated", and the stable role ID. Pass only the current owner's task and essential evidence from this thread; complete through the child's announced result and sessions_yield. Use session_status only for the current session or its own child. Read no unrelated session history or status.
@@ -132,7 +133,7 @@ def identity_text(existing: str, role: str, team: dict[str, Any]) -> str:
     if role == 'family':
         boundary = '\n'.join(
             line for line in boundary.splitlines()
-            if not line.startswith(('Atlas answers ', 'For delegated work, ', 'Answer the owner '))) + '\n'
+            if not line.startswith(('Atlas answers ', 'For delegated work, ', 'For a delegated task, ', 'Answer the owner '))) + '\n'
         boundary += ('You are the direct shared Family contact. Answer only within the invoking shared task thread. '
                      'Never delegate to Atlas or private adult specialists, and never request their context. '
                      'Read session status only for your current Family session.\n')

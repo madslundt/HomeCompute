@@ -144,16 +144,13 @@ class HouseholdTaskTests(unittest.TestCase):
         self.assertEqual(client.send.call_count, 1)
         self.assertEqual(self.call('list', {})['tasks'][0]['reminder_delivery'], 'delivered')
 
-    def test_quiet_hours_defer_past_due_delivery_and_cancellation_suppresses_pending(self):
+    def test_explicit_timed_reminders_ignore_watch_quiet_hours_and_cancellation_still_fences(self):
         self.now = datetime(2026, 10, 27, 22, tzinfo=timezone.utc)
-        first = self.create(due_at='2026-10-27T22:00:00+01:00', remind_at='2026-10-27T22:00:00+01:00')
-        self.create(title='Another task', due_at='2026-10-27T22:00:00+01:00', remind_at='2026-10-27T22:00:00+01:00')
+        self.create(due_at='2026-10-27T22:00:00+01:00', remind_at='2026-10-27T22:00:00+01:00')
+        cancelled = self.create(title='Cancelled', remind_at='2026-10-27T22:00:00+01:00')
+        self.change('cancel', cancelled)
         client = Mock(); client.send.return_value = 'a' * 26
-        self.assertTrue(worker.tick(self.tasks, client, self.now)['quiet'])
-        client.send.assert_not_called()
-        self.change('cancel', first)
-        self.now = datetime(2026, 10, 28, 6, tzinfo=timezone.utc)
-        self.assertEqual(worker.tick(self.tasks, client, self.now)['delivered'], 1)
+        self.assertFalse(worker.tick(self.tasks, client, self.now)['quiet'])
         self.assertEqual(client.send.call_count, 1)
 
     def test_interrupted_or_lost_receipt_reconciles_without_sending_twice(self):
@@ -198,9 +195,12 @@ class HouseholdTaskTests(unittest.TestCase):
         self.assertEqual(first['total'], 25)
         self.assertLessEqual(len(first['tasks']), 20)
         self.assertIsNotNone(first['next_offset'])
-        second = self.call('list', {'offset': first['next_offset']})
-        self.assertIsNone(second['next_offset'])
-        self.assertEqual(len(first['tasks']) + len(second['tasks']), 25)
+        rows, page = first['tasks'], first
+        while page['next_offset'] is not None:
+            page = self.call('list', {'offset': page['next_offset']})
+            self.assertTrue(page['tasks'])
+            rows += page['tasks']
+        self.assertEqual(len({row['task_id'] for row in rows}), 25)
 
 
 class FamilyTaskTests(unittest.TestCase):

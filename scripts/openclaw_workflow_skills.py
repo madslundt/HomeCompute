@@ -1,6 +1,7 @@
 """Instruction-only workflow assignments for the already installed native team."""
 
 WORKFLOWS = {
+    'main': ('task-ownership', 'delegated or multi-step work, task status, cancellation, schedules or follow-ups'),
     'cook': ('meal-planning', 'meal plans or recipes'),
     'administrator': ('household-paperwork', 'household documents or deadlines'),
     'finance': ('budget-analysis', 'budgets or spending records'),

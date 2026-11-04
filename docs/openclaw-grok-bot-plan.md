@@ -13,6 +13,13 @@ accepted restore proof. The
 actual recovery evidence from pending gates. Proposed capability interfaces,
 schedules, defaults and acceptance thresholds below are not installed.
 
+The next retained-version task phase is implemented and being qualified through
+[its scoped lifecycle](operations/openclaw-atlas-tasks.md), with actual apply and
+acceptance tracked in [the November 4 receipt](operations/openclaw-atlas-tasks-2026-11-04.md).
+Native task ownership/status/cancellation and opt-in unfinished-task watches
+reuse existing controllers. General recurring research and arbitrary source
+watches remain separate qualification work.
+
 Start with the [fresh live audit](operations/openclaw-atlas-audit-2026-11-03.md)
 and [version-pinned upgrade assessment](research/openclaw-upgrade-assessment-2026-11-03.md).
 They supersede older stopped-worker and host-revision assumptions for this plan.

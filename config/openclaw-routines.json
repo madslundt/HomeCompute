@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "timezone": "Europe/Copenhagen",
+  "inventory_checked_at": "2026-11-04",
+  "native_cron_enabled": false,
+  "ambient_heartbeats_enabled": false,
+  "task_follow_up": {
+    "backend": "existing-household-task-timers",
+    "scope": "selected-task-store",
+    "activation": "explicit-check-time-and-expiry",
+    "max_lifetime_days": 30,
+    "notifications_per_occurrence": 1,
+    "quiet_hours": {"start": "22:00", "end": "07:00"},
+    "timed_reminders_observe_quiet_hours": false
+  },
+  "existing_routines": [
+    {"name": "Morning overview", "backend": "n8n", "workflow_id": "WxRovre260928abc", "schedule": "Kitchen activity checks each minute from 05:00 through 11:59; existing once-per-adult delivery guard", "specialist": "personal"},
+    {"name": "Tomorrow preparation", "backend": "n8n", "workflow_id": "WKu7Zv4dE4ztnaRY", "schedule": "20:30, 20:45, 21:00, 21:15; existing occurrence and delivery guards", "specialist": "personal"},
+    {"name": "Daily technology news", "backend": "n8n", "workflow_id": "FC7HqrZ9UGsMJKao", "schedule": "Daily at 10:00", "specialist": "researcher"},
+    {"name": "Family holiday bargains", "backend": "n8n", "workflow_id": "s91pCneog66WfwG7", "schedule": "Monday at 09:00", "specialist": "travel"}
+  ]
+}

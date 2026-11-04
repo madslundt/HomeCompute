@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import openclaw_task_followups as followups
 from typing import Any
 
 LOCATION_FIELDS = {
@@ -83,6 +84,8 @@ def configure(task: dict[str, Any], args: dict[str, Any], previous: dict[str, An
 
 def initialize(db: sqlite3.Connection) -> None:
     columns = {row[1] for row in db.execute('PRAGMA table_info(household_task_reminders)')}
+    if 'purpose' not in columns:
+        db.execute("ALTER TABLE household_task_reminders ADD COLUMN purpose TEXT NOT NULL DEFAULT 'reminder'")
     if 'location_context' not in columns:
         db.execute('ALTER TABLE household_task_reminders ADD COLUMN location_context TEXT')
     db.execute('CREATE TABLE IF NOT EXISTS household_location_events '
@@ -94,6 +97,8 @@ def once_key(task: dict[str, Any]) -> str:
 
 
 def eligible(row: dict[str, Any], task: dict[str, Any], now: datetime) -> bool:
+    if row.get('purpose') == 'follow_up':
+        return followups.eligible(row, task, now)
     if task['status'] != 'open':
         return False
     expiry = task.get('trigger_expires_at')
@@ -121,7 +126,8 @@ def synchronize(db: sqlite3.Connection, task: dict[str, Any], now: datetime) -> 
             db.execute("UPDATE household_task_reminders SET state='skipped',updated=? WHERE key=? AND state='pending'",
                        (now.timestamp(), row['key']))
         context = json.loads(row['location_context']) if row.get('location_context') else None
-        same = (context.get('generation') == task.get('trigger_generation') if context else
+        same = (row['key'] == followups.key(task) if row.get('purpose') == 'follow_up' else
+                context.get('generation') == task.get('trigger_generation') if context else
                 row['key'] == hashlib.sha256(f"{task['task_id']}:{task['remind_at']}".encode()).hexdigest())
         if same:
             db.execute('UPDATE household_task_reminders SET revision=? WHERE key=?', (task['revision'], row['key']))

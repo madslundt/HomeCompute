@@ -12,6 +12,7 @@ import uuid
 from openclaw_workflow_skills import WORKFLOWS
 
 FIXTURES = {
+    'main': 'Explanation only: plan a bounded Ceres stock read, Hestia meal proposal and expressly requested Vega list edit. Explain status, cancellation, uncertain effects, private reminders and one expiring unfinished-task follow-up. Do not delegate or make changes in this fixture.',
     'cook': 'Four diners, one dinner. Supplied pantry: 500 g dry lentils and 400 g rice. The shopping list already has carrots. Offer prices are unknown. Propose a feasible meal, quantities, missing purchases and who would own list/stock changes. Do not claim purchases or verified prices.',
     'administrator': 'Supplied synthetic renewal letter: page 1 states renewal on 2027-02-01; page 2 says cancel at least 30 calendar days before renewal. No other pages are supplied. Explain the notice deadline with page references and assumptions. The owner asked for explanation only, not a reminder or message.',
     'finance': 'Supplied synthetic DKK records for January: card grocery purchase 150; streaming expense 50; bank card repayment 150, possibly an internal transfer covering that same grocery purchase. Show confirmed expenses and the unresolved transfer separately; do not double count or invent balances.',
@@ -36,7 +37,7 @@ def verify(role, output, *, state_root=Path('/sandbox/.openclaw'), runner=subpro
         raise ValueError('Owned output directory required')
     root = state_root
     skill = WORKFLOWS[role][0]
-    path = root / ('workspace-' + role) / 'skills' / skill / 'SKILL.md'
+    path = root / ('workspace' if role == 'main' else 'workspace-' + role) / 'skills' / skill / 'SKILL.md'
     content = path.read_bytes()
     session = str(uuid.uuid4())
     db_path = root / 'agents' / role / 'agent/openclaw-agent.sqlite'

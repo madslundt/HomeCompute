@@ -62,7 +62,7 @@ class WorkflowTests(unittest.TestCase):
         return subprocess.CompletedProcess(argv, 0)
 
     def test_real_bundles_install_only_in_assigned_roles_without_widening_authority(self):
-        self.assertEqual(SKILLS, {'meal-planning', 'household-paperwork', 'budget-analysis', 'tasks-and-reminders'})
+        self.assertEqual(SKILLS, {'meal-planning', 'household-paperwork', 'budget-analysis', 'tasks-and-reminders', 'task-ownership'})
         self.assertTrue(SKILLS <= policy.MANAGED_SKILLS)
         initial = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
         dry = module.setup(self.config, ROOT, runner=self.runner)
@@ -91,7 +91,7 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual((workspace / 'AGENTS.md').read_bytes(), self.original)
         ledger = json.loads(self.ledger.read_text())
         self.assertEqual(ledger['workspace/skills/retained/SKILL.md'], 'a' * 64)
-        self.assertEqual(len(ledger), 7)
+        self.assertEqual(len(ledger), 8)
         self.assertTrue(Path(applied['backup_directory'], 'openclaw-before.json').exists())
         again = module.setup(self.config, ROOT, runner=self.runner)
         self.assertEqual(again['changed_files'], 0)

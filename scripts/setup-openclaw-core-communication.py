@@ -45,6 +45,7 @@ FILES = (
     'scripts/openclaw_household_shopping.py', 'scripts/openclaw_household_storage.py',
     'scripts/openclaw_household_tasks.py', 'scripts/openclaw-household-task-reminders.py',
     'scripts/openclaw_family_task_projection.py', 'scripts/openclaw_task_location.py',
+    'scripts/openclaw_task_followups.py',
     'scripts/openclaw_location_policy.py', 'scripts/openclaw_location_transport.py',
     'scripts/openclaw_mail.py', 'scripts/openclaw_outlook.py', 'scripts/setup-openclaw-outlook.py',
     'scripts/openclaw_calendar.py', 'scripts/openclaw_calendar_events.py',

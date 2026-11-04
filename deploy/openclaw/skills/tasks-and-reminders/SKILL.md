@@ -68,6 +68,24 @@ and report uncertainty when the receipt/read-back cannot establish the outcome.
   `remind_at` alone does not disable a zone trigger. Setting `remind_at` on a zone
   reminder changes it to a timed snooze while retaining its phone destination.
 
+## Save an unfinished-task follow-up
+
+For an explicit request to check back if a task is still open, update that exact
+record with `follow_up_at` and `follow_up_expires_at`. Resolve both instants with
+the owner, use offset-bearing RFC3339 values, and keep expiry within thirty days.
+This is one read-only task watch in the existing reminder timer, not a scheduled
+agent run. It sends once through the selected store's fixed Mattermost room if
+the task is still open. Owner tasks remain private. A phone reminder on the task
+does not redirect this watch to that phone or another person.
+
+The watch remains quiet from 22:00 to 07:00 Europe/Copenhagen. A pending watch
+that expires overnight is skipped, not sent late. Explicit timed reminders run
+at their requested time, including overnight. Completion, cancellation or empty
+`follow_up_at` stops the watch; completing a recurring task does not rearm it.
+Changing a title does not resend a delivered watch. Report `follow_up_delivery`
+separately from `reminder_delivery`; uncertain delivery is held for receipt
+reconciliation and never retried with a new request ID.
+
 ## Verify the result
 
 Read back the exact task and report its scope, title, revision, local due time,

@@ -557,3 +557,13 @@ authenticated MCP credential resolution and complete tool discovery. It may
 reload the inner gateway through native MCP lifecycle. Its private transaction
 is `runtime-repairs-transaction.json`; a failed/pending transaction requires
 review. Version-change actions retain their separate native qualification gate.
+
+## Atlas task ownership on the retained version
+
+The [scoped Atlas task rollout](operations/openclaw-atlas-tasks.md) installs
+reviewed task ownership and reminder skills and updates the existing Core task
+store/dispatcher. It preserves the managed image/version, native role authority,
+external secret custody and existing schedulers. Use its exact published-source
+plan/apply and rollback lifecycle rather than the full bootstrap or version
+upgrade command. [November 4 evidence](operations/openclaw-atlas-tasks-2026-11-04.md)
+separates installed behavior from pending acceptance.

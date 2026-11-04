@@ -23,10 +23,12 @@ MARKER = 'homecompute_household_task_reminder'
 FAMILY_MARKER = 'homecompute_family_task_reminder'
 
 
-def render_reminder(task: dict, scope: str) -> str:
+def render_reminder(task: dict, scope: str, purpose: str = 'reminder') -> str:
     title = task['title'].replace('@', '@\u200b')
     due = instant(task['due_at']).astimezone(ZONE).strftime('%Y-%m-%d %H:%M %Z') if task['due_at'] else 'No due time'
     label = 'Family task reminder' if scope == 'family' else 'Household task reminder'
+    if purpose == 'follow_up':
+        label = 'Family task still open' if scope == 'family' else 'Task still open'
     summary = f'{label}: {" ".join(title.split())}'
     if len(summary) > 180:
         summary = summary[:179].rstrip() + '…'
@@ -98,7 +100,7 @@ class Mattermost:
         return None
 
     def send(self, row: dict) -> str:
-        text = render_reminder(row['task'], getattr(self, 'scope', 'owner'))
+        text = render_reminder(row['task'], getattr(self, 'scope', 'owner'), row.get('purpose', 'reminder'))
         post = self.request('/posts', {'channel_id': self.config['channel_id'], 'message': text,
                                       'props': {getattr(self, 'marker', MARKER): row['key']}})
         return self.receipt(post, row['key'])
@@ -117,7 +119,7 @@ class DeliveryRouter:
         return self._mattermost
 
     def send(self, row: dict) -> str:
-        if row['task'].get('delivery_target', 'mattermost') == 'person':
+        if row.get('purpose') != 'follow_up' and row['task'].get('delivery_target', 'mattermost') == 'person':
             if self.policy is None:
                 raise ValueError('Configured personal reminder delivery required')
             self.policy.validate_task(row['task'], self.scope)
@@ -126,12 +128,12 @@ class DeliveryRouter:
         return self.mattermost().send(row)
 
     def reconcile(self, row: dict) -> str | None:
-        if row['task'].get('delivery_target', 'mattermost') == 'person':
+        if row.get('purpose') != 'follow_up' and row['task'].get('delivery_target', 'mattermost') == 'person':
             return None
         return self.mattermost().reconcile(row)
 
     def terminal_state(self, row: dict) -> str:
-        return 'accepted' if row['task'].get('delivery_target', 'mattermost') == 'person' else 'delivered'
+        return 'accepted' if row.get('purpose') != 'follow_up' and row['task'].get('delivery_target', 'mattermost') == 'person' else 'delivered'
 
 
 def tick(tasks: HouseholdTasks, client: Any, now: datetime) -> dict:
@@ -148,10 +150,10 @@ def tick(tasks: HouseholdTasks, client: Any, now: datetime) -> dict:
             tasks.reminder_transition(row['key'], 'uncertain', 'uncertain', now)
             result['uncertain'] += 1
     tasks.reminders(now)
-    if now.astimezone(ZONE).hour >= 22 or now.astimezone(ZONE).hour < 7:
-        result['quiet'] = True
-        return result
     for row in tasks.reminder_rows('pending')[:8]:
+        if row.get('purpose') == 'follow_up' and (now.astimezone(ZONE).hour >= 22 or now.astimezone(ZONE).hour < 7):
+            result['quiet'] = True
+            continue
         if not tasks.reminder_transition(row['key'], 'pending', 'sending', now,
                                          expected_revision=row['revision']): continue
         try:

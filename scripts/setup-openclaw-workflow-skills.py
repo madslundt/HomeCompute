@@ -68,7 +68,7 @@ def candidate(before, root):
             raise ValueError('Unexpected workflow assignment refused')
     for role, (name, _) in WORKFLOWS.items():
         entry = entries[role]
-        if entry['workspace'] != str(root / ('workspace-' + role)):
+        if entry['workspace'] != str(root / ('workspace' if role == 'main' else 'workspace-' + role)):
             raise ValueError('Canonical assigned workspace required')
         if 'read' not in entry['tools'].get('allow', []) or 'read' in entry['tools'].get('deny', []):
             raise ValueError('Qualified skill reader required')
@@ -199,7 +199,8 @@ def rollback(config, backup, *, apply=False, expected_plan_sha256=None, runner=s
     receipt = json.loads(read(backup / 'plan.json', private=True))
     allowed = {'team-skill-ownership.json'}
     for role, (skill, _) in WORKFLOWS.items():
-        allowed |= {'workspace-' + role + '/AGENTS.md', 'workspace-' + role + '/skills/' + skill + '/SKILL.md'}
+        allowed |= {('workspace' if role == 'main' else 'workspace-' + role) + '/AGENTS.md',
+                    ('workspace' if role == 'main' else 'workspace-' + role) + '/skills/' + skill + '/SKILL.md'}
     rows = receipt['files']
     if len(rows) != len(allowed) or {row['path'] for row in rows} != allowed:
         raise ValueError('Scoped backup paths required')
