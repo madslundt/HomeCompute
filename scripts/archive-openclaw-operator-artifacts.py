@@ -61,6 +61,8 @@ def referenced(root,config):
  if isinstance(config,dict):return any(referenced(root,v) for v in config.values())
  if isinstance(config,list):return any(referenced(root,v) for v in config)
  return False
+def protected_stage(info):
+ return stat.S_ISDIR(info.st_mode) and info.st_uid in (0,1000) and info.st_gid==info.st_uid and stat.S_IMODE(info.st_mode)==0o700
 def collect():
  cfg=json.loads((BASE/'openclaw.json').read_bytes());result={}
  for root in selected():
@@ -70,7 +72,7 @@ def collect():
   if referenced(root,cfg):raise ValueError('operator-artifact-is-runtime-input')
   if root.name.startswith('homecompute-office-install-'):
    info=root.stat()
-   if not root.is_dir() or info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o700:raise ValueError('retired-root-install-stage-required')
+   if not protected_stage(info):raise ValueError('retired-protected-install-stage-required')
    for process in pathlib.Path('/proc').glob('[0-9]*'):
     if process.name==str(os.getpid()):continue
     try:

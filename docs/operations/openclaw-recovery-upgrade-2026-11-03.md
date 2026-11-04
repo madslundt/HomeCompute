@@ -294,7 +294,7 @@ configuration copies agent-readable would expose historical credentials.
 now owns their archival lifecycle. From an exact published root-protected guest
 release, it checks the managed sandbox identity, generation and image, and selects
 only the documented operator backup directories, digest-named office before-images,
-retired root-private office staging, and Python installer bytecode. It refuses
+retired root- or operator-private office staging, and Python installer bytecode. It refuses
 runtime references, links, special files, in-use staging and unexpected changes.
 It copies them with original ownership and modes into root-private
 `/var/lib/homecompute-openclaw-operator-archives`, verifies every file digest and
@@ -311,3 +311,11 @@ prove operator archival as an additional acceptance gate. Archival unit tests
 cover copy verification before removal, changed-source refusal, pending-operation
 fences, runtime references and links. Actual native upgrade/rollback acceptance
 is still required before production promotion.
+
+A metadata-only networkless boot confirmed the historical office staging tree
+uses UID/GID 1000 (the operator), mode 0700, with bundle/deploy/scripts children.
+The initial root-only guard correctly refused before copying/removing anything;
+it now accepts only root/root or operator/operator private staging. Agent UID
+998, unexpected groups, public staging and non-directories remain refused. The
+diagnostic scope was collected; this metadata check is not native upgrade
+acceptance.

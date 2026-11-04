@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import stat
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[1]
@@ -54,6 +56,12 @@ class OperatorArchive(unittest.TestCase):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp);(root/'data').write_text('private');(root/'link').symlink_to('data')
    with self.assertRaisesRegex(ValueError,'link-or-special'):m.host_inventory(root)
+
+ def test_staging_requires_root_or_operator_private_ownership(self):
+  namespace={};exec(m.CONTAINER_CODE.split('request=json.load(sys.stdin)')[0],namespace)
+  for uid,gid,mode,allowed in ((0,0,0o700,True),(1000,1000,0o700,True),(998,998,0o700,False),(1000,1000,0o755,False),(1000,998,0o700,False)):
+   with self.subTest(uid=uid,gid=gid,mode=mode):self.assertEqual(namespace['protected_stage'](SimpleNamespace(st_uid=uid,st_gid=gid,st_mode=stat.S_IFDIR|mode)),allowed)
+  self.assertFalse(namespace['protected_stage'](SimpleNamespace(st_uid=1000,st_gid=1000,st_mode=stat.S_IFREG|0o700)))
 
  def test_container_inventory_bounds_before_hashing(self):
   namespace={};exec(m.CONTAINER_CODE.split('request=json.load(sys.stdin)')[0],namespace)
