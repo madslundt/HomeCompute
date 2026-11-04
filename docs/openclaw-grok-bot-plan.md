@@ -2,7 +2,13 @@
 
 Updated: 2026-11-04. Status: implementation underway. The attended backup and
 full-team recovery repairs are published and were applied through their scoped
-lifecycles; Atlas retains NemoClaw 0.0.129 / OpenClaw 2026.9.1; the managed upgrade is blocked by Mattermost credential custody. Retained-version MCP/watchdog/recovery repairs are being deployed through a scoped lifecycle. The
+lifecycles. Atlas retains NemoClaw 0.0.129 / OpenClaw 2026.9.1; the managed
+upgrade is blocked by Mattermost credential custody. Retained-version MCP,
+watchdog and recovery repairs were deployed through the scoped lifecycle at
+`49216e9`. Authenticated MCP discovery verifies all sixty-nine tools, including
+after the backup restart. A new encrypted NAS snapshot completed successfully
+on November 4 at 04:53 UTC; the earlier November 3 snapshot retains its separate
+accepted restore proof. The
 [execution receipt](operations/openclaw-recovery-upgrade-2026-11-03.md) distinguishes
 actual recovery evidence from pending gates. Proposed capability interfaces,
 schedules, defaults and acceptance thresholds below are not installed.
@@ -467,8 +473,11 @@ expanded personalization; computer work (6) precedes visual teaching (7).
 Voice can be developed after the model/speech capacity audit independently of
 computer work. Do not wait for every feature to release useful increments.
 
-The audit/upgrade documentation is now prepared as a source-only patch. The
-first implementation packages are:
+P0 backup/recovery and retained-version runtime repairs are now deployed with
+the evidence recorded above. P1 reached a no-go decision for 0.0.140 because
+full-team Mattermost credential custody is unsupported. Continue P2 onward on
+the retained qualified tuple; reopen the version change only after separately
+qualifying that integration. The implementation packages are:
 
 | Package | Concrete source change | Acceptance before production |
 | --- | --- | --- |
@@ -479,9 +488,9 @@ first implementation packages are:
 | P4: reminder semantics | Tasks-and-reminders skill, Luna/Orion instructions, task-store/delivery policy and timer ownership | Private/shared destination conflict removed; timed/zone/recurrence/cancel/DST and delivery checks pass |
 | P5: routines/proactivity | Routine schema/patch builder, finite status facade, metadata receipts and quiet/change policy | Existing schedules preserved; one expiring watch survives restart, stays quiet unchanged, notifies once and stops on expiry |
 
-P2/P4 fixture and instruction work can proceed against the current pinned
-runtime while P1 is qualified, without production apply. P3/P5 behavior must be
-evaluated on the tuple actually selected. Memory, computer UI and live voice are
+P2/P4 fixture and instruction work can proceed against the retained pinned
+runtime, followed by their own acceptance and deployment. P3/P5 behavior must be
+evaluated on that same tuple. Memory, computer UI and live voice are
 later packages; they do not block a useful task/reminder release.
 
 Extend the existing tests rather than mirroring prompts: `openclaw-team-test.py`,

@@ -1,6 +1,9 @@
 # OpenClaw recovery and managed-upgrade execution — 2026-11-03
 
-Status: recovery gate accepted; managed candidate is blocked by Mattermost credential custody. Retained-version runtime repairs are prepared for scoped deployment. Production retains NemoClaw 0.0.129 / OpenClaw 2026.9.1.
+Status: recovery gate accepted; managed candidate is blocked by Mattermost
+credential custody. Retained-version runtime repairs are deployed at `49216e9`;
+the post-repair encrypted NAS backup completed successfully. Production retains
+NemoClaw 0.0.129 / OpenClaw 2026.9.1.
 
 A fresh encrypted NAS backup, archive integrity checks, four PostgreSQL imports,
 both isolated VM boots, and native Atlas recovery from that same snapshot have
@@ -450,3 +453,75 @@ inodes, and retained a private retirement receipt. Both completed local archive
 generations remain present. Available space rose to approximately 240.9 GB; no
 headroom guard was relaxed. The previously failed scheduled service still needs
 a successful canonical backup run before it can be described as recovered.
+
+## Applied retained-version runtime repairs
+
+Published `49216e9b73d0c1ff36735c13f252cf9e19e8ea02` was applied through
+the guarded `repair` action at approximately 04:05–04:08 UTC. Both installed
+watchdog/recovery programs match that source. The CPU declaration now equals
+the existing two-CPU limit; the CLI wrapper, original NemoClaw/core/OpenShell
+tuple, sandbox identity/generation/image and full-team policy remain retained.
+The private rollback copies and completed repair transaction are in the owning
+operator state directory. No native-history archive or version-change action
+was applied to production.
+
+The supported native MCP refresh corrected the existing counter-reference
+mismatch. Postconditions passed: unchanged normalized full authority, canonical
+gateway readiness, all required plugins, all eleven enabled Mattermost
+connections, actual provider credential resolution, adapter registration and
+complete authenticated discovery of sixty-nine tools. The new watchdog is
+active. Family remains disabled and no real task/channel message was submitted.
+This establishes current-runtime/client repair, not feature acceptance for new
+schedules, reminders or proactive routines.
+
+After the space cleanup and installed NAS bundle verification, the attended
+backup was launched from the same published release at approximately 04:09 UTC.
+It passed admission and entered canonical cold preparation with the agents VM
+stopped and resume journal retained. The local cold archive completed and
+services resumed at approximately 04:48 UTC. Encrypted off-host publication
+completed at `2026-11-04T04:53:50.169445Z`, snapshot
+`3b8cfb7cd434f1205fbaf3269dd439c8b4b5d01482fbb874b5e7b13351ac9edd`.
+The canonical service and attended wrapper exited successfully. Independent
+readback verified the exact separate NAS mount and that recorded snapshot in
+Restic. Admission chain, resume journal and recovery marker are absent. The new
+100,379,699,200-byte application archive and the November 3 generation remain
+local; approximately 233 GB is available. This establishes successful backup
+publication, not a new restore test: accepted restore evidence still belongs to
+the November 3 snapshot described above.
+
+The new watchdog journal records host-gateway recovery, retained-sandbox start
+and readiness after the agents VM restart. Independent post-restart checks
+confirmed the same sandbox UUID/generation and original managed tuple, both
+installed host programs matching `49216e9`, unchanged CLI/DNS hashes, two CPUs,
+8 GiB memory/swap and no GPU request. Authenticated gateway health reports
+`ok=true`, zero plugin errors, all required plugins and eleven enabled
+Mattermost accounts connected; Family remains disabled. The actual MCP probe
+again verified provider credential resolution, adapter/policy presence and all
+sixty-nine tools without truncation. No real task or message was submitted.
+
+## Final verification and remaining scope
+
+Repository validation passed, including containerized Nix evaluation. Focused
+archive, restored-upgrade, deployment and supervisor tests passed; subsequent
+media-retirement changes passed their focused checks. `git diff --check` passed.
+These checks establish source behavior separately from the live evidence above.
+
+The required `homecompute status --json`, `services`, `doctor` and `drift` were
+run after resumption. Core reports zero failed units and healthy affected
+containers. Its independently observed general release marker is now
+`7df6e792262ac330027b47b188eb9c156eaa68b8`, rather than this scoped repair's
+revision; no general host deployment was performed by this lifecycle. Direct
+workstation access to Spark timed out, so the four CLI commands returned a
+nonzero result with Spark unverified. A supplemental invocation of the same
+repository status collector through Core reached Spark: zero failed units,
+fifteen observed containers and release marker
+`b0e8b106dd79e30d765ddd38970c29649ebfb37b`. Neither marker establishes that all
+independently managed workloads match current source. Broad host reconciliation,
+authenticated inference/task delivery and Spark model qualification remain
+outside this scoped deployment's verification.
+
+The retained-version repairs are deployed; the 0.0.140 version-change gate stays
+closed. The next Atlas work remains task ownership, handoffs, schedule/reminder
+acceptance and bounded proactive follow-ups in the ordered plan. Native cron
+and heartbeats remain disabled; this deployment does not claim those new
+features are installed or accepted.
