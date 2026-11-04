@@ -442,6 +442,7 @@ data: [DONE]
 class QualificationTransactionTests(unittest.TestCase):
     def run_transaction(self, *, baseline_status: int = 200, fallback_status: int = 200,
                         rollback_failure: bool = False, interrupt_during_fallback: bool = False,
+                        interrupt_signal: int | None = None,
                         idle_guard_failure: bool = False, restore_drift: str | None = None,
                         export_results: bool = False
                         ) -> tuple[dict[str, object], str, str, dict[str, dict[str, object]]]:
@@ -569,7 +570,8 @@ class QualificationTransactionTests(unittest.TestCase):
             request_bodies.append(body)
             if key:
                 if interrupt_during_fallback:
-                    handlers[qualification.signal.SIGTERM](qualification.signal.SIGTERM, None)
+                    signum = interrupt_signal or qualification.signal.SIGTERM
+                    handlers[signum](signum, None)
                 if restore_drift == "environment":
                     env_file.write_text("SYNTHETIC_TEST_CONFIG=changed\n")
                 return failure_state["fallback"], stream("Qwen synthetic")
@@ -654,8 +656,11 @@ class QualificationTransactionTests(unittest.TestCase):
             self.assertIs(receipt["request_hashes_match_except_model_alias"], True)
         if export_results:
             self.assertEqual(result["export_status"], "complete")
+            expected_exports = ["flash.response", "receipt.json"]
+            if not interrupt_during_fallback:
+                expected_exports.insert(1, "qwen27b.response")
             self.assertEqual(sorted(path.name for path in export_dir.iterdir()),
-                             ["flash.response", "qwen27b.response", "receipt.json"])
+                             expected_exports)
             self.assertEqual(json.loads((export_dir / "receipt.json").read_text())["export_status"], "complete")
             for path in export_dir.iterdir():
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
@@ -690,6 +695,16 @@ class QualificationTransactionTests(unittest.TestCase):
         self.assertEqual(receipt["interrupted_by_signal"], qualification.signal.SIGTERM)
         self.assertEqual(receipt["failure_class"], "KeyboardInterrupt")
         self.assertEqual(containers["qwen38-flash-ultrafast"]["status"], "running")
+
+    def test_sighup_during_inference_restores_and_exports_partial_receipt(self) -> None:
+        result, _stdout, _stderr, containers = self.run_transaction(
+            interrupt_during_fallback=True, interrupt_signal=qualification.signal.SIGHUP,
+            export_results=True)
+        receipt = json.loads(Path(result["receipt_path"]).read_text())
+        self.assertEqual(result["status"], "restored")
+        self.assertEqual(receipt["interrupted_by_signal"], qualification.signal.SIGHUP)
+        self.assertEqual(containers["qwen38-flash-ultrafast"]["status"], "running")
+        self.assertEqual(result["export_status"], "complete")
 
     def test_rollback_failure_keeps_pending_journal_and_distinct_cause(self) -> None:
         result, _stdout, _stderr, _containers = self.run_transaction(fallback_status=502, rollback_failure=True)

@@ -1235,7 +1235,8 @@ def perform(args: argparse.Namespace) -> int:
         interrupted["signal"] = signum
         raise KeyboardInterrupt
 
-    old_handlers = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGINT, signal.SIGTERM)}
+    old_handlers = {sig: signal.signal(sig, interrupt)
+                    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
     failure: BaseException | None = None
     try:
         # Snapshot current output before swapping; both calls use the same
