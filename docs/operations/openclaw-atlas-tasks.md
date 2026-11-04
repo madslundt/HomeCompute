@@ -85,7 +85,9 @@ new helper for reproduction on a rebuilt host.
 The guest requires the original exact managed tuple, full twelve-role roster,
 ready/idle gateway, serial depth-one delegation and existing recovery fences.
 The retained image owns native state as UID/GID 998; this is verified separately
-from the host operator UID 1000 before staging or native file operations.
+from the host operator UID 1000 before staging or native file operations. Native
+commands also set the image’s sandbox home explicitly; Docker otherwise retains
+root’s home even after selecting the sandbox UID.
 It stages tracked public source outside native durable state, uses the existing
 workflow-skill and identity installers, and compares the full configuration with
 only role skill assignments normalized. Only Atlas gains `task-ownership`;
@@ -128,3 +130,12 @@ receipts through either rollback or forward reconciliation.
 
 Implementation and deployment evidence is recorded in
 [the November 4 receipt](openclaw-atlas-tasks-2026-11-04.md).
+
+For a failed preparation that provably changed no native files or configuration,
+`guest --reconcile-unmodified GUEST_BACKUP --revision FULL_SHA` creates a bounded
+reconciliation plan. Its hash-bound `--apply` compares the entire config and all
+captured identity/skill/ownership before images again under the lifecycle locks
+before marking only that failed preparation reconciled. Any changed file,
+identity/generation, transaction stage or config refuses this path and requires
+recovery. Private failure output is retained per operation rather than depending
+on the watchdog's rotating diagnostic log.

@@ -67,3 +67,22 @@ unchanged; the supervisor remained active, and no transaction mutation stage was
 entered. Source now explicitly verifies 998:998 and stages/runs file operations
 under that native principal. A regression distinguishes it from host UID 1000.
 The preserved incomplete operator backup is evidence only, not an applied change.
+
+
+The corrected-UID attempt reached the native dry-run, which refused because
+Docker retained `HOME=/root` for UID 998. Read-only diagnosis proved the same
+native dry-run passes with `HOME=/sandbox`. No config or scoped files changed;
+the failed `prepared` transaction is retained at backup
+`atlas-tasks-backup-1dd899775a7f49d391b72aa214c0a872`. Source now sets the native
+home explicitly, retains per-operation failure diagnostics, and provides a
+hash-bound reconciliation path that requires complete before-image equality
+before allowing another apply. It never clears a mutated or unknown checkpoint.
+
+The actual authenticated Core MCP path advertised all sixty-nine tools and both
+follow-up fields on all four owner/shared create/update definitions. A single
+synthetic private owner task was created with a future watch, read back, replayed
+with the same UUID without duplication, then cancelled before dispatch. Saved
+follow-up and ordinary reminder states were distinct; cancellation disabled the
+watch. No notification was sent. Its private RPC evidence is
+`/var/lib/homecompute-atlas-tasks/qualification/synthetic-mcp-task.json`; the
+cancelled synthetic record remains ordinary durable qualification history.

@@ -223,7 +223,10 @@ def guest_context(*, recovery=False):
 
 def guest_command(ctx, argv, label):
     code, raw = ctx.run(argv, label, timeout=120)
-    if code: raise ValueError('Scoped native task operation failed: '+label)
+    if code:
+        safe=re.sub('[^a-zA-Z0-9_.-]','_',label)[:128]
+        private_write(ctx.state/('atlas-task-failed-'+safe+'.log'),raw)
+        raise ValueError('Scoped native task operation failed: '+label)
     return raw
 
 
@@ -264,15 +267,15 @@ for name in json.loads(__import__('sys').argv[1]):
  if not stat.S_ISREG(st.st_mode) or st.st_uid!=os.getuid() or st.st_nlink!=1 or st.st_size>1048576:raise ValueError('Scoped file refused')
  result[name]={'data':base64.b64encode(p.read_bytes()).decode(),'mode':stat.S_IMODE(st.st_mode)}
 print(json.dumps(result))"""
-    raw=guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'python3','-c',code,json.dumps(paths)],'atlas-scoped-file-images')
+    raw=guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),'--env','HOME=/sandbox',ctx.container,'python3','-c',code,json.dumps(paths)],'atlas-scoped-file-images')
     return json.loads(raw)
 
 
 def guest_stage(ctx, revision):
     stage='/tmp/homecompute-atlas-tasks-'+uuid.uuid4().hex
-    guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'mkdir','-m','700',stage],'atlas-stage-source')
+    guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),'--env','HOME=/sandbox',ctx.container,'mkdir','-m','700',stage],'atlas-stage-source')
     archive=run(['git','-c','safe.directory='+str(ROOT),'-C',str(ROOT),'archive',revision,*GUEST_FILES])
-    run(['docker','exec','-i','--user',str(SANDBOX_UID),ctx.container,'tar','-x','-C',stage],input=archive)
+    run(['docker','exec','-i','--user',str(SANDBOX_UID),'--env','HOME=/sandbox',ctx.container,'tar','-x','-C',stage],input=archive)
     return stage
 
 
@@ -303,7 +306,7 @@ def guest_apply(revision, expected):
             run(['systemctl','--user','stop','homecompute-openclaw-supervisor.service'])
             u.require_idle(ctx,{})
             def command(script,*args):
-                raw=guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'python3',stage+'/scripts/'+script,*args],'atlas-'+script)
+                raw=guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),'--env','HOME=/sandbox',ctx.container,'python3',stage+'/scripts/'+script,*args],'atlas-'+script)
                 return json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])[0]
             workflow=command('setup-openclaw-workflow-skills.py','--source',stage)
             command('setup-openclaw-workflow-skills.py','--source',stage,'--apply','--expected-plan-sha256',workflow['plan_sha256'])
@@ -339,6 +342,39 @@ def guest_apply(revision, expected):
             if 'watchdog' in locals() and watchdog=='active':
                 run(['systemctl','--user','start','homecompute-openclaw-supervisor.service'])
             for f in locks:f.close()
+
+
+def guest_reconcile_unmodified(revision, backup, *, apply=False, expected=None):
+    source_guard(revision);u,ctx=guest_context(recovery=True)
+    if backup.parent!=ctx.state or backup.is_symlink():raise ValueError('Owned failed backup required')
+    transaction=ctx.state/'atlas-tasks-transaction.json'
+    record=json.loads(u.SUP.private_file(transaction));saved=json.loads(u.SUP.private_file(backup/'plan.json'))
+    if (record.get('status')!='failed' or record.get('stage')!='prepared' or record.get('backup')!=str(backup)
+            or record.get('source_revision')!=saved.get('source_revision')
+            or saved.get('sandbox_id')!=ctx.uuid or saved.get('generation')!=ctx.generation):
+        raise ValueError('Exact failed preparation checkpoint required')
+    before=u.SUP.private_file(backup/'openclaw-before.json')
+    files=json.loads(u.SUP.private_file(backup/'before-files.json'))
+    def unchanged():
+        raw=guest_command(ctx,['docker','exec',ctx.container,'cat','/sandbox/.openclaw/openclaw.json'],'atlas-reconcile-unmodified-config')
+        if raw!=before or guest_files(ctx,json.loads(before))!=files:
+            raise ValueError('Native state changed; failed transaction requires recovery')
+    unchanged()
+    result={'backup':str(backup),'failed_source_revision':saved['source_revision'],'source_revision':revision,
+            'native_state_unchanged':True,'sandbox_id':ctx.uuid,'generation':ctx.generation}
+    result['plan_sha256']=sha(canonical(result))
+    if apply:
+        if expected!=result['plan_sha256']:raise ValueError('Unmodified reconciliation plan changed')
+        locks=[]
+        try:
+            for name in ('atlas-tasks.lock','error-recovery.lock','managed-upgrade.lock','mcp-binding.lock'):
+                f=open(ctx.state/name,'a');locks.append(f);fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            if json.loads(u.SUP.private_file(transaction))!=record:raise ValueError('Failure checkpoint changed')
+            unchanged()
+            private_write(transaction,canonical({**record,'status':'complete','reconciled_unmodified':True,'reconciliation_source':revision}))
+        finally:
+            for f in locks:f.close()
+    return {**result,'applied':apply}
 
 
 def core_rollback(revision, backup, *, apply=False, expected=None):
@@ -424,10 +460,10 @@ for name,value in payload['wanted'].items():
             run(['systemctl','--user','stop','homecompute-openclaw-supervisor.service'])
             try:
                 u.require_idle(ctx,{})
-                run(['docker','exec','-i','--user',str(SANDBOX_UID),ctx.container,'python3','-c',code],input=canonical({'current':files,'wanted':wanted}))
+                run(['docker','exec','-i','--user',str(SANDBOX_UID),'--env','HOME=/sandbox',ctx.container,'python3','-c',code],input=canonical({'current':files,'wanted':wanted}))
                 changes=[{'path':'agents.entries.'+role+'.skills','value':entry['skills']} for role,entry in original['agents']['entries'].items()
                          if current['agents']['entries'][role]['skills']!=entry['skills']]
-                guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),ctx.container,'openclaw','config','set','--batch-json',json.dumps(changes)],'atlas-rollback-native-skills')
+                guest_command(ctx,['docker','exec','--user',str(SANDBOX_UID),'--env','HOME=/sandbox',ctx.container,'openclaw','config','set','--batch-json',json.dumps(changes)],'atlas-rollback-native-skills')
                 guest_command(ctx,[ctx.cli,u.SUP.NAME,'mcp','restart','homecompute'],'atlas-rollback-refresh')
                 after=json.loads(guest_command(ctx,['docker','exec',ctx.container,'cat','/sandbox/.openclaw/openclaw.json'],'atlas-rollback-readback'))
                 if u.SUP.mcp_authority(after)!=u.SUP.mcp_authority(original) or guest_files(ctx,after)!=wanted:raise ValueError('Rollback verification failed')
@@ -445,7 +481,11 @@ def main():
     p.add_argument('host',choices=('core','guest'));p.add_argument('--revision',required=True)
     p.add_argument('--apply',action='store_true');p.add_argument('--expected-plan-sha256')
     p.add_argument('--rollback',type=Path)
+    p.add_argument('--reconcile-unmodified',type=Path)
     a=p.parse_args();os.umask(0o077)
+    if a.reconcile_unmodified:
+        if a.host!='guest' or a.rollback:raise ValueError('Only an unmodified failed guest preparation can be reconciled')
+        print(json.dumps(guest_reconcile_unmodified(a.revision,a.reconcile_unmodified,apply=a.apply,expected=a.expected_plan_sha256),sort_keys=True));return
     if a.rollback:
         result=(core_rollback if a.host=='core' else guest_rollback)(a.revision,a.rollback,apply=a.apply,expected=a.expected_plan_sha256)
         print(json.dumps(result,sort_keys=True));return
