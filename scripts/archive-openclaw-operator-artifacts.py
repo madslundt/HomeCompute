@@ -18,6 +18,7 @@ import stat
 import subprocess
 import tempfile
 import time
+import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 ARCHIVES=Path('/var/lib/homecompute-openclaw-operator-archives')
@@ -155,6 +156,24 @@ def host_inventory(root):
  return result
 
 
+def preserve_copy_ownership(root,expected):
+ # Docker 29 can copy all entries as root despite --archive. Restore captured
+ # numeric ownership only after bytes, modes and file types match exactly.
+ observed=host_inventory(root)
+ without_owner=lambda rows:{key:{k:v for k,v in row.items() if k not in ('uid','gid')} for key,row in rows.items()}
+ if without_owner(observed)!=without_owner(expected):
+  changed={key:[field for field in sorted(set(observed.get(key,{}))|set(expected.get(key,{}))) if field not in ('uid','gid') and observed.get(key,{}).get(field)!=expected.get(key,{}).get(field)] for key in sorted(set(observed)|set(expected)) if without_owner({key:observed.get(key,{})})!=without_owner({key:expected.get(key,{})})}
+  raise ValueError('external-operator-archive-verification-failed:'+json.dumps(dict(list(changed.items())[:8]),sort_keys=True)[:2048])
+ for key,row in observed.items():
+  if (row['uid'],row['gid']) not in ((0,0),(expected[key]['uid'],expected[key]['gid'])):raise ValueError('unexpected-operator-copy-ownership')
+ for key,row in expected.items():
+  path=root if key=='.' else root/key
+  if (observed[key]['uid'],observed[key]['gid'])!=(row['uid'],row['gid']):
+   os.chown(path,row['uid'],row['gid'],follow_symlinks=False)
+   os.chmod(path,row['mode'],follow_symlinks=False)
+ if host_inventory(root)!=expected:raise ValueError('external-operator-archive-ownership-verification-failed')
+
+
 def protected(path):
  for p in (path,*path.parents):
   s=p.lstat()
@@ -191,7 +210,7 @@ def archive_owned(container,guard,*,apply=False,archive_root=ARCHIVES):
   try:
    for i,(source,expected) in enumerate(entries.items()):
     target=destination/('entry-'+str(i));run(['docker','cp','--archive',container+':'+source,str(target)])
-    if host_inventory(target)!=expected:raise ValueError('external-operator-archive-verification-failed')
+    preserve_copy_ownership(target,expected)
     record['copies'][source]=target.name
    record['status']='copied-verified';atomic(destination/'manifest.json',record)
    guard()
@@ -207,7 +226,15 @@ def archive_owned(container,guard,*,apply=False,archive_root=ARCHIVES):
  finally:os.close(fd)
 
 
-def current_guard():
+def witness(identifier,generation,revision):
+ values=(identifier,generation,revision)
+ if all(value is None for value in values):return None
+ if not all(values) or not re.fullmatch('[a-f0-9]{40}',revision):raise ValueError('complete-native-archive-witness-required')
+ if any(str(uuid.UUID(value))!=value for value in (identifier,generation)):raise ValueError('canonical-native-archive-witness-required')
+ return {'OPENCLAW_EXPECTED_SANDBOX_ID':identifier,'OPENCLAW_EXPECTED_GENERATION':generation,'NEMOCLAW_INSTALL_REF':revision}
+
+
+def current_guard(expected=None):
  home=Path('/home/hermes-operator');etc=Path('/etc/homecompute-openclaw');settings={}
  for name in ('agent-openclaw.env','supervisor-identity.env'):
   path=etc/name;s=path.lstat()
@@ -215,6 +242,7 @@ def current_guard():
   for line in path.read_text().splitlines():
    if line and not line.startswith('#'):
     key,value=line.split('=',1);settings[key]=value.strip('"')
+ if expected:settings.update(expected)
  spec=importlib.util.spec_from_file_location('archive_profiles',ROOT/'scripts/supervise-openclaw-nemoclaw.py');supervisor=importlib.util.module_from_spec(spec);spec.loader.exec_module(supervisor)
  profile=supervisor.PROFILES[settings['NEMOCLAW_INSTALL_REF']];identifier=settings['OPENCLAW_EXPECTED_SANDBOX_ID'];generation=settings['OPENCLAW_EXPECTED_GENERATION']
  container='openshell-default--agent-openclaw-'+identifier
@@ -229,13 +257,15 @@ def current_guard():
 
 
 def main():
- parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--revision',required=True);parser.add_argument('--apply',action='store_true');args=parser.parse_args()
+ parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--revision',required=True);parser.add_argument('--apply',action='store_true')
+ for name in ('sandbox-id','generation','source-revision'):parser.add_argument('--'+name)
+ args=parser.parse_args()
  if os.geteuid()!=0 or socket.gethostname()!='agents' or not re.fullmatch('[a-f0-9]{40}',args.revision) or ROOT!=Path('/srv/homecompute/releases')/args.revision:raise ValueError('published-guest-root-lifecycle-required')
  protected(ROOT)
  for name in ('scripts/archive-openclaw-operator-artifacts.py','scripts/supervise-openclaw-nemoclaw.py'):
   if run(['git','-C',str(ROOT),'show',args.revision+':'+name])!=(ROOT/name).read_bytes():raise ValueError('published-operator-archive-source-mismatch')
  run(['git','-C',str(ROOT),'merge-base','--is-ancestor',args.revision,'origin/master'])
- os.umask(0o077);container,guard=current_guard();print(json.dumps(archive_owned(container,guard,apply=args.apply),sort_keys=True))
+ os.umask(0o077);container,guard=current_guard(witness(args.sandbox_id,args.generation,args.source_revision));print(json.dumps(archive_owned(container,guard,apply=args.apply),sort_keys=True))
 
 
 if __name__=='__main__':main()

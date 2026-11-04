@@ -13,6 +13,12 @@ spec=importlib.util.spec_from_file_location('archive',ROOT/'scripts/archive-open
 CONTAINER='openshell-default--agent-openclaw-aabbccdd-0000-4000-8000-000000000001'
 
 class OperatorArchive(unittest.TestCase):
+ def test_explicit_native_identity_requires_complete_canonical_witness(self):
+  identifier='aabbccdd-0000-4000-8000-000000000001';generation='aabbccdd-0000-4000-8000-000000000002';revision='a'*40
+  self.assertIsNone(m.witness(None,None,None));self.assertEqual(m.witness(identifier,generation,revision)['OPENCLAW_EXPECTED_SANDBOX_ID'],identifier)
+  for values in (('','',''),(identifier,None,revision),(identifier,generation,'bad'),(identifier.upper(),generation,revision)):
+   with self.subTest(values=values),self.assertRaises(ValueError):m.witness(*values)
+
  def test_plan_never_copies_or_removes(self):
   with tempfile.TemporaryDirectory() as tmp,patch.object(m.os,'geteuid',return_value=0),patch.object(m,'container_inventory',return_value={'/sandbox/retired':{'.':{'kind':'file'}}}) as inventory,patch.object(m,'run') as run:
    result=m.archive_owned(CONTAINER,lambda:None,archive_root=Path(tmp))
@@ -46,6 +52,18 @@ class OperatorArchive(unittest.TestCase):
  def test_verified_private_copy_precedes_removal(self):self.exercise()
  def test_failed_copy_cannot_remove_or_replay(self):self.exercise(mismatch=True)
  def test_changed_live_material_cannot_remove_or_replay(self):self.exercise(drift=True)
+
+ def test_root_copy_ownership_restored_after_content_check(self):
+  expected={'.':{'uid':1000,'gid':1000,'kind':'file','mode':0o600,'sha256':'a'*64,'bytes':5}}
+  copied={'.':{**expected['.'],'uid':0,'gid':0}}
+  with patch.object(m,'host_inventory',side_effect=[copied,expected]),patch.object(m.os,'chown') as chown,patch.object(m.os,'chmod') as chmod:
+   m.preserve_copy_ownership(Path('/private/copy'),expected)
+   chown.assert_called_once_with(Path('/private/copy'),1000,1000,follow_symlinks=False);chmod.assert_called_once_with(Path('/private/copy'),0o600,follow_symlinks=False)
+  for field,value in (('sha256','b'*64),('mode',0o644),('uid',998)):
+   changed={'.':{**copied['.'],field:value}}
+   with self.subTest(field=field),patch.object(m,'host_inventory',return_value=changed),patch.object(m.os,'chown') as chown:
+    with self.assertRaises(ValueError):m.preserve_copy_ownership(Path('/private/copy'),expected)
+    chown.assert_not_called()
 
  def test_pending_operation_cannot_be_bypassed_by_empty_inventory(self):
   with tempfile.TemporaryDirectory() as tmp,patch.object(m.os,'geteuid',return_value=0),patch.object(m,'container_inventory',return_value={}):

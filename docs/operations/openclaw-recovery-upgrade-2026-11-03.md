@@ -319,3 +319,19 @@ it now accepts only root/root or operator/operator private staging. Agent UID
 998, unexpected groups, public staging and non-directories remain refused. The
 diagnostic scope was collected; this metadata check is not native upgrade
 acceptance.
+
+The next rehearsal refused a copied-archive metadata mismatch before removing
+originals. A disposable networkless public-data Docker fixture reproduced root
+ownership after `docker cp --archive` on this Docker 29 installation. The
+archiver now first verifies exact bytes, modes and types, accepts only original
+or root copy ownership, restores the captured numeric UID/GID, and verifies the
+complete inventory again before the durable removal fence. Source ownership and
+permissions remain unchanged. Focused tests require content/mode/foreign-owner
+refusal before any ownership adjustment. The fixture container was collected.
+
+The controller also passes its fenced full sandbox UUID, lifecycle generation
+and managed source revision to archival. This permits rollback after a positively
+observed replacement but before the final supervisor identity-file commit. The
+root helper independently checks that exact named Ready sandbox, registry tuple
+and image; partial or noncanonical witnesses are refused. Default manual plans
+still use the retained supervisor identity files.
