@@ -1,8 +1,9 @@
 # Atlas task phase execution — 2026-11-04
 
-Status: task/reminder code and role instructions deployed; final-answer handoff
-qualification is in progress. Runtime stays on 2026.9.1. Context allowance
-correction is being applied through its separate guarded lifecycle.
+Status: task/reminder code, owner-private delivery and role instructions deployed;
+English and Danish final-answer handoffs passed. Runtime stays on 2026.9.1.
+The qualified 65,536-token context allowance is applied. Earlier pending gates
+below describe intermediate publication points; final results close this record.
 
 The scope and guarded lifecycle are in [the runbook](openclaw-atlas-tasks.md).
 Source changes add Atlas task ownership instructions, native status/cancellation
@@ -169,3 +170,54 @@ receipt resolved it to `isolated`, as configured. The verifier is corrected to
 require that actual accepted isolated execution, reject an explicit fork or
 unverified default, and require a terminal final answer. Fresh English/Danish
 acceptance remains pending for that verifier correction.
+
+
+Final English and Danish acceptance passed using published verifier source
+`0d5ec8da869e4e25d0cc2ece523ec68af11183a1`, staged without a runtime change.
+Private native output directories are
+`/tmp/homecompute-atlas-handoff-en-final-20261104T0823` and
+`/tmp/homecompute-atlas-handoff-da-final-20261104T0825`. Each fresh session
+loaded the installed ownership skill, accepted one isolated Nova run with the
+300-second cap, yielded once, checked the actual child result and produced
+the correct reviewed final answer. Parent tools were only read/spawn/yield;
+children used no tools. Both final stops were `stop`, with input/cache counts
+29,207 and 29,492 and output counts 276 and 294. The native queued-completion
+yield control was recorded separately, with no unexpected tool failures.
+No channel delivery was requested or sent.
+
+Final `homecompute status --json`, `services`, `doctor` and `drift` were inspected.
+Core reports forty-six inventory rows and zero failed units. Its general host
+marker remains `7df6e792262ac330027b47b188eb9c156eaa68b8`; the task and context
+changes are applied through their dedicated lifecycles above. The wrapper
+therefore still reports general revision drift; no broad host deployment or
+claim of full platform synchronization was made. Direct workstation SSH to
+Spark timed out. The same repository status collector through Core observed
+fifteen containers, no unhealthy containers and no failed units. Its current
+release pointer is `f7afef24b1259b7c882d8681c729533d64d5e030`; its private revision
+marker remains unreadable to that non-sudo account and is unverified.
+
+Existing scheduled n8n routines remain unchanged. Arbitrary new recurring agent
+jobs and source monitors still require separate source-owned qualification;
+native cron/heartbeat remain disabled. Real Mattermost notification dispatch
+and phone delivery were not exercised by this acceptance. Synthetic delivery
+state/idempotency tests and authenticated destination checks are distinct from
+real user delivery evidence.
+
+
+Luna's fresh native read-only reminder fixture also passed from the same staged
+source: `/tmp/homecompute-atlas-luna-task-final-20261104T0826`. Its transcript
+contains only the installed skill read and a proposal, with no tool failures.
+Manual review confirmed private owner scope, Copenhagen UTC+1 resolution for
+January, due time distinct from a reminder request, disabled unrequested watch,
+recurrence/read-back semantics and the zone-trigger boundary. Manual review of
+the Danish handoff confirmed the correct sum; its source labels were translated
+while its prose called them verbatim. Literal quotation fidelity is a remaining
+model presentation gap, separate from the passed handoff/control checks.
+
+Post-probe native readiness, sandbox identity/generation and the active supervisor
+were verified again. The selected model remains `automation-moe`, output cap
+4,096, native context 65,536, serial depth-one children with a 300-second default,
+cron disabled and heartbeat `0m`. No runtime upgrade, model replacement, native
+cron grant or additional user watch was made. The original dirty workstation
+checkout and its research/speech work were preserved; all task source was
+authored and published from the isolated worktree.

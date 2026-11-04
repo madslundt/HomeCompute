@@ -2,8 +2,9 @@
 
 The selected runtime remains NemoClaw 0.0.129 / OpenClaw 2026.9.1 /
 OpenShell 0.0.116. This change uses native session-tree tasks and the existing
-household task/reminder stores. It adds no general execution engine, model,
-channel, credential, unrestricted messaging or native cron grant.
+household task/reminder stores. It adds one owner-only notification room and
+no general execution engine, model, credential, unrestricted messaging or
+native cron grant.
 
 Atlas loads `task-ownership` for multi-step work, progress, cancellation,
 schedules and follow-ups. Native task IDs stay authoritative for specialist
@@ -16,8 +17,8 @@ runtime's serial/depth-one/300-second child limits; it is not a durable token
 quota or proof that every model follows the instructions.
 
 Luna's conflicting Family default is removed. Private owner reminders use the
-existing private Tasks destination; explicit shared records use Family. A new
-`follow_up_at` plus `follow_up_expires_at` on an existing task authorizes one
+fixed owner-only Private tasks destination; explicit shared records use Family.
+A new `follow_up_at` plus `follow_up_expires_at` on an existing task authorizes one
 unfinished-task check, expiring within thirty days. Existing task timers own the
 check and delivery. Completed/cancelled tasks and cleared or expired watches do
 not dispatch. Changing only a title never resends a delivered watch. A watch

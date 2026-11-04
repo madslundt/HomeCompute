@@ -14,12 +14,16 @@ actual recovery evidence from pending gates. Atlas task ownership instructions
 and finite task follow-ups are now installed; broader proposed interfaces,
 general recurring agent jobs and acceptance thresholds below remain design targets.
 
-The retained-version task phase is deployed and being qualified through
-[its scoped lifecycle](operations/openclaw-atlas-tasks.md), with actual apply and
+The retained-version task phase is deployed with English/Danish handoff
+acceptance through [its scoped lifecycle](operations/openclaw-atlas-tasks.md), with actual apply and
 acceptance tracked in [the November 4 receipt](operations/openclaw-atlas-tasks-2026-11-04.md).
 Native task ownership/status/cancellation and opt-in unfinished-task watches
-reuse existing controllers. General recurring research and arbitrary source
-watches remain separate qualification work.
+reuse existing controllers. Owner-private reminders now have a separately
+provisioned room with send-time audience checks; explicit finite unfinished-task
+follow-ups stop on completion, cancellation or expiry and stay quiet overnight.
+The installed native context allowance is 65,536 tokens, qualified against the
+actual backend. General recurring research and arbitrary source watches remain
+separate qualification work.
 
 Start with the [fresh live audit](operations/openclaw-atlas-audit-2026-11-03.md)
 and [version-pinned upgrade assessment](research/openclaw-upgrade-assessment-2026-11-03.md).
