@@ -9,10 +9,13 @@ Stop/disable this service before an intentional `nemoclaw ... stop`.
 from __future__ import annotations
 
 from contextlib import closing
+import copy
+import fcntl
 import json
 import importlib.util
 import hashlib
 import os
+import re
 from pathlib import Path
 import signal
 import socket
@@ -20,6 +23,7 @@ import sqlite3
 import stat
 import subprocess
 import threading
+import tempfile
 import time
 import urllib.request
 import uuid
@@ -75,6 +79,104 @@ REQUIRED_ENV = {
 
 class Refused(Exception):
     """Unsafe identity or lifecycle; never include private source data."""
+
+
+class MCPBusy(Refused):
+    """Readiness repair waits for native turns; no mutation was attempted."""
+
+
+def mcp_authority(config):
+    value=copy.deepcopy(config)
+    entry=value.get('mcp',{}).get('servers',{}).get('homecompute')
+    if entry is None:return None
+    header=entry.get('headers',{}).get('Authorization','')
+    if (set(entry)!={'url','transport','headers'} or entry.get('transport')!='streamable-http'
+            or set(entry.get('headers',{}))!={'Authorization'} or 'bundle-mcp' not in value.get('tools',{}).get('alsoAllow',[])
+            or entry.get('url')!='https://homecompute-capabilities.home.arpa:19445/mcp'
+            or not re.fullmatch(r'Bearer openshell:resolve:env:(?:v[0-9]{1,20}|s[a-f0-9]{64})_HOMECOMPUTE_OPENCLAW_MCP_TOKEN',header)):
+        raise Refused('fixed-mcp-binding-required')
+    entry['headers']['Authorization']='<native-fixed-mcp-reference>'
+    auth=value.get('gateway',{}).get('auth',{})
+    if set(auth)!={'token'} or not isinstance(auth['token'],str) or not 16<=len(auth['token'])<=1024:
+        raise Refused('native-gateway-auth-required')
+    auth['token']='<native-gateway-token>'
+    return value
+
+
+def reconcile_mcp(ctx, *, read_config=None, required=False):
+    """Repair only the fixed static binding after startup, never an active turn."""
+    fd=os.open(ctx.state/'mcp-binding.lock',os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    try:
+        try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:raise MCPBusy('mcp-reconciliation-busy') from None
+        return _reconcile_mcp(ctx,read_config=read_config,required=required)
+    finally:os.close(fd)
+
+
+def _reconcile_mcp(ctx, *, read_config=None, required=False):
+    def guard():
+        ctx.check_registry();ctx.check_container()
+        if ctx.observe()!='Ready':raise Refused('mcp-exact-ready-required')
+    def command(argv,label,timeout=60):
+        code,raw=ctx.run(argv,label,timeout=timeout)
+        if code:raise Refused('mcp-supported-command-failed')
+        return raw
+    def decoded(raw):
+        try:return json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])[0]
+        except (ValueError,TypeError):raise Refused('mcp-native-receipt-invalid') from None
+    def configuration():
+        if read_config is not None:return read_config()
+        with tempfile.TemporaryDirectory(prefix='mcp-config-',dir=ctx.state) as temporary:
+            path=Path(temporary)/'config.json'
+            command(['/usr/bin/docker','cp',ctx.container+':/sandbox/.openclaw/openclaw.json',str(path)],'mcp-read-owned-config')
+            raw=private_file(path)
+            if len(raw)>2*1024**2:raise Refused('mcp-config-budget')
+            return json.loads(raw)
+    def status():
+        report=decoded(command([ctx.cli,NAME,'mcp','status','homecompute','--no-probe','--json'],'mcp-local-binding-status'))
+        provider=report.get('provider',{})
+        if (provider.get('name')!='agent-openclaw-mcp-homecompute' or not all(provider.get(k) is True for k in ('present','attached','credentialReady'))
+                or report.get('policy',{}).get('present') is not True):raise Refused('mcp-existing-policy-provider-required')
+        return report.get('adapter',{})
+    def save(value):
+        path=ctx.state/'mcp-binding-reconciliation.json';temporary=path.with_suffix('.new')
+        fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        with os.fdopen(fd,'w') as stream:json.dump(value,stream,sort_keys=True);stream.flush();os.fsync(stream.fileno())
+        temporary.replace(path)
+        fd=os.open(path.parent,os.O_RDONLY)
+        try:os.fsync(fd)
+        finally:os.close(fd)
+    guard()
+    marker=ctx.state/'mcp-binding-reconciliation.json'
+    if marker.exists() and json.loads(private_file(marker)).get('status') not in ('complete','refused'):
+        raise Refused('mcp-reconciliation-needs-operator')
+    before=configuration();authority=mcp_authority(before)
+    if authority is None:
+        if required or set(before.get('agents',{}).get('entries',{}))!={'main'}:raise Refused('full-team-fixed-mcp-required')
+        return False
+    observed=status()
+    if observed.get('registered') is True:return False
+    header=before['mcp']['servers']['homecompute']['headers']['Authorization']
+    if observed.get('detail')!='mismatch' or not header.startswith('Bearer openshell:resolve:env:v'):
+        raise Refused('mcp-counter-only-repair-required')
+    for sample in range(2):
+        activity=decoded(command([ctx.cli,NAME,'exec','--','openclaw','gateway','call','homecompute-safety.llm.activity','--params','{}','--json'],'mcp-native-idle'))
+        if activity.get('active_turns')!=0:raise MCPBusy('mcp-waiting-for-idle')
+        if sample==0:time.sleep(1)
+    guard()
+    record={'status':'active','sandbox_id':ctx.uuid,'generation':ctx.generation,'started_at':time.time(),
+            'authority_sha256':hashlib.sha256(json.dumps(authority,sort_keys=True).encode()).hexdigest()}
+    save(record)
+    try:
+        command([ctx.cli,NAME,'mcp','restart','homecompute'],'mcp-refresh-fixed-binding',timeout=240)
+        guard()
+        if status().get('registered') is not True or not ctx.ready():raise Refused('mcp-refreshed-binding-unverified')
+        if mcp_authority(configuration())!=authority:raise Refused('mcp-repair-authority-drift')
+        record['status']='complete';save(record)
+        return True
+    except Exception:
+        record['status']='failed';save(record)
+        raise
 
 
 def event(message: str) -> None:
@@ -172,6 +274,7 @@ class Supervisor:
         self.attempts: list[float] = []
         self.failures = 0
         self.last_event = ""
+        self.mcp_ready_identity = None
 
     def stop(self, *_: object) -> None:
         self.stopping.set()
@@ -406,9 +509,15 @@ class Supervisor:
         self.check_container()
         phase = self.observe()
         if phase == "Ready" and self.ready():
+            if self.mcp_ready_identity != (self.uuid,self.generation):
+                try:reconcile_mcp(self)
+                except MCPBusy:
+                    self.report('waiting:mcp-native-idle');return
+                self.mcp_ready_identity=(self.uuid,self.generation)
             self.failures = 0
             self.report("ready")
             return
+        self.mcp_ready_identity=None
         if phase not in ("Ready", "Stopped", "host-gateway-down", "Error"):
             self.failures = 0
             self.report("blocked:terminal-or-unavailable-runtime")
@@ -426,6 +535,11 @@ class Supervisor:
             return
         self.attempts.append(now)
         self.recover(phase)
+        if self.observe()=='Ready' and self.ready():
+            try:reconcile_mcp(self)
+            except MCPBusy:
+                self.report('waiting:mcp-native-idle');return
+            self.mcp_ready_identity=(self.uuid,self.generation)
 
     def serve(self) -> None:
         signal.signal(signal.SIGTERM, self.stop)

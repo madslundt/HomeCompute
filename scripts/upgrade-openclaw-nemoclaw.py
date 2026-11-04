@@ -61,7 +61,7 @@ def declaration():
 
 def qualified(policy,proof):
  keys=('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified',
-  'task_delivery_verified','agent_handoff_verified','native_yield_verified','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
+  'task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
  if (not re.fullmatch('[0-9a-f]{40}',policy.get('qualification_revision') or '') or policy.get('mattermost_version')!='2026.9.1'
   or policy.get('production_qualified') is not True or not all(proof.get(k) is True for k in keys)
   or proof.get('network') is not False or proof.get('production_modified') is not False or proof.get('roles')!=12 or type(proof.get('native_sqlite_databases')) is not int or proof['native_sqlite_databases']<39
@@ -373,6 +373,7 @@ def apply(args,policy,proof):
  if tx.path.exists() and json.loads(SUP.private_file(tx.path)).get('status') not in ('complete','refused'):raise ValueError('retained upgrade needs reviewed continuation')
  before,path=native_config(tx,'upgrade-preflight-config')
  if digest(path.read_bytes())!=args.expected_config_sha256 or len(before['agents']['entries'])!=12:raise ValueError('selected complete policy required')
+ if SUP.mcp_authority(before) is None:raise ValueError('full team fixed MCP binding required')
  projected={key:before.get(key) for key in ('agents','tools','channels','cron','hooks','browser')}
  if digest(json.dumps(projected,sort_keys=True,separators=(',',':')).encode())!=policy['qualification_policy_sha256']:raise ValueError('production authority differs from qualified policy')
  tx.inspect()
@@ -413,6 +414,7 @@ def apply(args,policy,proof):
   tx.volume_command("import os;os.chown('/state/openclaw.json',998,998);os.chmod('/state/openclaw.json',0o600)",'paused-policy-owner-mode')
   tx.stage('verified-backup-before-native-rebuild')
   tx.command([ctx.cli,SUP.NAME,'start'],'start-paused-upgrade-source',timeout=420)
+  SUP.reconcile_mcp(ctx,required=True)
   ownership_merge(before,native_config(tx,'verify-ready-paused-upgrade-source')[0])
   require_idle(ctx,tx.record);tx.stage('ready-paused-source-before-native-rebuild')
   next_env=dict(ctx.env,OPENCLAW_NEMOCLAW_MODEL_KEY_FILE=str(ctx.keyfile),NEMOCLAW_INSTALL_REF=policy['target_revision'],NEMOCLAW_INSTALL_TAG=policy['target_tag'],NEMOCLAW_CPU='2')
@@ -519,6 +521,7 @@ def rollback_transition(args,policy,proof):
  if legacy!=HOME/'.nemoclaw/releases'/('v0.0.129-'+SUP.REVISION):raise ValueError('retained qualified CLI path required')
  if ctx.revision!=SUP.REVISION:
   tx.command([ctx.cli,SUP.NAME,'start'],'start-paused-rollback-source',timeout=420)
+  SUP.reconcile_mcp(ctx,required=True)
   ownership_merge(original,native_config(tx,'verify-ready-paused-rollback-source')[0])
   require_idle(ctx,record)
   tx.ctx.env.update(NEMOCLAW_INSTALL_REF=SUP.REVISION,NEMOCLAW_INSTALL_TAG=previous['tag'],NEMOCLAW_CPU='2')

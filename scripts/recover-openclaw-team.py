@@ -490,6 +490,12 @@ r=pathlib.Path('/state');print(json.dumps({str(p.relative_to(r)):{'uid':p.lstat(
         self.command([self.ctx.cli, BASE.NAME, 'start'], 'start-retained-team', timeout=420)
         if self.ctx.observe() != 'Ready' or not self.ctx.ready():
             raise ValueError('active-team-not-ready')
+        SUPERVISOR.reconcile_mcp(self.ctx,required=True)
+        refreshed=backup_root/('active-mcp-refreshed-'+str(time.time_ns())+'.json')
+        self.command(['/usr/bin/docker','cp',self.ctx.container+':/sandbox/.openclaw/openclaw.json',str(refreshed)],'verify-active-mcp-authority')
+        actual=json.loads(refreshed.read_bytes())
+        self.policy['gateway']['auth']=copy.deepcopy(native_auth_rotation(self.policy,actual,self.previous_auth))
+        retain_mcp_handle(self.policy,actual)
         self.stage('complete-active-team', 'complete')
         return result
 

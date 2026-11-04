@@ -32,7 +32,7 @@ XORRISO=Path('/nix/var/nix/gcroots/homecompute-codex-vm/xorriso/bin/xorriso')
 
 
 def accepted(data):
- return all(data.get(key) is True for key in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')) and data.get('roles')==12 and type(data.get('native_sqlite_databases')) is int and data['native_sqlite_databases']>=39
+ return all(data.get(key) is True for key in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')) and data.get('roles')==12 and type(data.get('native_sqlite_databases')) is int and data['native_sqlite_databases']>=39
 
 
 def result_from_log(raw,nonce):

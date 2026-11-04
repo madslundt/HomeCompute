@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Recovery routing, identity fences, retry bounds, and secret isolation."""
 import importlib.util
+import copy
+import fcntl
+import os
 from contextlib import closing
 import json
 import hashlib
@@ -39,6 +42,8 @@ class SupervisionTests(unittest.TestCase):
             str(self.supervisor.home / ".nemoclaw/source/dist/lib/gateway-runtime-action.js")])
         self.supervisor.observe = Mock(return_value="Ready")
         self.supervisor.ready = Mock(return_value=True)
+        reconciler=patch.object(MOD,'reconcile_mcp',return_value=False)
+        reconciler.start();self.addCleanup(reconciler.stop)
 
     def test_runtime_down_requires_confirmation_and_bounded_backoff(self):
         s = self.supervisor
@@ -359,6 +364,96 @@ class ManagedReleaseFences(unittest.TestCase):
             journal.write_text(json.dumps({"status":"failed"}));journal.chmod(0o600)
             with self.assertRaisesRegex(MOD.Refused,"managed-upgrade-needs-operator"):MOD.Supervisor(env)
             MOD.Supervisor(env,operator_resume=True)
+
+
+class MCPBindingTests(unittest.TestCase):
+    class Context:
+        cli='/fixed/nemoclaw';uuid=ID;generation=GEN
+        def __init__(self,state,stale=True):
+            self.state=Path(state);self.stale=stale;self.active=0;self.restarts=0;self.restart_code=0;self.tamper=False
+            self.config={'gateway':{'auth':{'token':'a'*32}},'tools':{'allow':['session_status'],'alsoAllow':['bundle-mcp']},
+                         'mcp':{'servers':{'homecompute':{'url':'https://homecompute-capabilities.home.arpa:19445/mcp',
+                         'transport':'streamable-http','headers':{'Authorization':'Bearer openshell:resolve:env:v1_HOMECOMPUTE_OPENCLAW_MCP_TOKEN'}}}}}
+        def check_registry(self):pass
+        def check_container(self):pass
+        def observe(self):return 'Ready'
+        def ready(self):return True
+        def run(self,args,label,**kwargs):
+            if label=='mcp-local-binding-status':
+                value={'provider':{'name':'agent-openclaw-mcp-homecompute','present':True,'attached':True,'credentialReady':True},
+                       'policy':{'present':True},'adapter':{'registered':not self.stale,'detail':'mismatch' if self.stale else 'registered'}}
+            elif label=='mcp-native-idle':value={'active_turns':self.active}
+            elif label=='mcp-refresh-fixed-binding':
+                self.restarts+=1
+                if self.restart_code:return self.restart_code,b'failure'
+                self.stale=False;self.config['mcp']['servers']['homecompute']['headers']['Authorization']='Bearer openshell:resolve:env:v2_HOMECOMPUTE_OPENCLAW_MCP_TOKEN'
+                if self.tamper:self.config['tools']['allow'].append('exec')
+                value={}
+            else:raise AssertionError(label)
+            return 0,json.dumps(value).encode()
+
+    def invoke(self,ctx):
+        with patch.object(MOD.time,'sleep'):
+            return MOD.reconcile_mcp(ctx,read_config=lambda:copy.deepcopy(ctx.config))
+
+    def test_current_binding_is_read_only_and_stale_counter_is_repaired_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=self.Context(tmp,stale=False);self.assertFalse(self.invoke(ctx));self.assertEqual(ctx.restarts,0)
+            ctx.stale=True;self.assertTrue(self.invoke(ctx));self.assertEqual(ctx.restarts,1)
+            self.assertEqual(ctx.config['tools']['allow'],['session_status'])
+            self.assertEqual(json.loads((ctx.state/'mcp-binding-reconciliation.json').read_bytes())['status'],'complete')
+            self.assertFalse(self.invoke(ctx));self.assertEqual(ctx.restarts,1)
+
+    def test_active_turn_or_foreign_binding_prevents_every_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=self.Context(tmp);ctx.active=1
+            with self.assertRaises(MOD.MCPBusy):self.invoke(ctx)
+            self.assertEqual(ctx.restarts,0);self.assertFalse((ctx.state/'mcp-binding-reconciliation.json').exists())
+            ctx.active=0;ctx.config['mcp']['servers']['homecompute']['url']='https://foreign.invalid/mcp'
+            with self.assertRaises(MOD.Refused):self.invoke(ctx)
+            self.assertEqual(ctx.restarts,0)
+
+    def test_failed_or_authority_changing_repair_never_replays(self):
+        for tamper in (False,True):
+            with self.subTest(tamper=tamper),tempfile.TemporaryDirectory() as tmp:
+                ctx=self.Context(tmp);ctx.tamper=tamper;ctx.restart_code=0 if tamper else 1
+                with self.assertRaises(MOD.Refused):self.invoke(ctx)
+                marker=json.loads((ctx.state/'mcp-binding-reconciliation.json').read_bytes());self.assertEqual(marker['status'],'failed')
+                with self.assertRaisesRegex(MOD.Refused,'needs-operator'):self.invoke(ctx)
+                self.assertEqual(ctx.restarts,1)
+
+    def test_canary_without_the_fixed_bridge_is_untouched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=self.Context(tmp);ctx.config['agents']={'entries':{'main':{}}};ctx.config.pop('mcp');self.assertFalse(self.invoke(ctx));self.assertEqual(ctx.restarts,0)
+
+    def test_concurrent_binding_reconciliation_is_exclusive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=self.Context(tmp);fd=os.open(ctx.state/'mcp-binding.lock',os.O_WRONLY|os.O_CREAT,0o600)
+            try:
+                fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                with self.assertRaises(MOD.MCPBusy):self.invoke(ctx)
+                self.assertEqual(ctx.restarts,0)
+            finally:os.close(fd)
+
+    def test_non_counter_drift_and_missing_grants_refuse_before_mutation(self):
+        for change in ('transport','extra-header','missing-grant','missing-entry'):
+            with self.subTest(change=change),tempfile.TemporaryDirectory() as tmp:
+                ctx=self.Context(tmp);ctx.config['agents']={'entries':{'main':{},'researcher':{}}}
+                entry=ctx.config['mcp']['servers']['homecompute']
+                if change=='transport':entry['transport']='sse'
+                elif change=='extra-header':entry['headers']['Extra']='unapproved'
+                elif change=='missing-grant':ctx.config['tools']['alsoAllow']=[]
+                else:ctx.config.pop('mcp')
+                with self.assertRaises(MOD.Refused):self.invoke(ctx)
+                self.assertEqual(ctx.restarts,0)
+
+    def test_missing_entry_cannot_bypass_unknown_repair_fence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx=self.Context(tmp);ctx.restart_code=1
+            with self.assertRaises(MOD.Refused):self.invoke(ctx)
+            ctx.config.pop('mcp');ctx.config['agents']={'entries':{'main':{}}}
+            with self.assertRaisesRegex(MOD.Refused,'needs-operator'):self.invoke(ctx)
+            self.assertEqual(ctx.restarts,1)
 
 
 if __name__ == "__main__":

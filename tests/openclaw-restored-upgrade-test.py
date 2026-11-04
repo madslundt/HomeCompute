@@ -6,6 +6,7 @@ import tarfile
 import json
 import sqlite3
 import struct
+import copy
 from contextlib import closing
 from pathlib import Path
 import tempfile
@@ -20,6 +21,34 @@ w=load('worker','deploy/openclaw/qualification/restored-upgrade.py')
 
 
 class RestoredUpgrade(unittest.TestCase):
+ def test_mcp_policy_preserves_fixed_binding_and_cannot_accept_its_loss(self):
+  config={'gateway':{'auth':{'token':'a'*32}},'tools':{'alsoAllow':['bundle-mcp']},
+          'mcp':{'servers':{'homecompute':{'transport':'streamable-http','url':'https://homecompute-capabilities.home.arpa:19445/mcp',
+          'headers':{'Authorization':'Bearer openshell:resolve:env:v1_HOMECOMPUTE_OPENCLAW_MCP_TOKEN'}}}}}
+  with patch.object(w,'ROOT',ROOT):
+   original=w.policy_projection(config)
+   current=copy.deepcopy(config);current['mcp']['servers']['homecompute']['headers']['Authorization']='Bearer openshell:resolve:env:v2_HOMECOMPUTE_OPENCLAW_MCP_TOKEN'
+   self.assertEqual(original,w.policy_projection(current))
+   current.pop('mcp')
+   with self.assertRaisesRegex(ValueError,'fixed-mcp'):w.policy_projection(current)
+
+ def test_health_distinguishes_intentionally_paused_channel_from_plugin_failure(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   state=Path(tmp);config=state/'openclaw.json';config.write_text('{"channels":{"mattermost":{"enabled":false}}}')
+   healthy={'ok':True,'plugins':{'loaded':['homecompute-safety','homecompute-agent-office','memory-core','nemoclaw'],'errors':[],'unavailable':[]},'channels':{'mattermost':{'accounts':{'fixture':{'running':False,'connected':False}}}}}
+   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()):w.health('0.0.129',{})
+   for change in ('missing-runtime','plugin-error','unavailable','channel-running'):
+    value=copy.deepcopy(healthy)
+    if change=='missing-runtime':value['plugins']['loaded'].remove('homecompute-safety')
+    elif change=='plugin-error':value['plugins']['errors']=['fixture']
+    elif change=='unavailable':value['plugins']['unavailable']=['fixture']
+    else:value['channels']['mattermost']['accounts']['fixture']['running']=True
+    with self.subTest(change=change),patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(value).encode()),self.assertRaises(ValueError):w.health('0.0.140',{})
+   config.write_text('{"channels":{"mattermost":{"enabled":true}}}')
+   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()),self.assertRaises(ValueError):w.health('0.0.140',{})
+   healthy['plugins']['loaded'].append('mattermost')
+   with patch.object(w,'STATE',state),patch.object(w,'run',return_value=json.dumps(healthy).encode()):w.health('0.0.140',{})
+
  def test_local_fixture_dns_only_denies_the_reserved_native_probe_name(self):
   def query(name):
    labels=b''.join(bytes([len(label)])+label.encode() for label in name.split('.'))+b'\0'
@@ -51,9 +80,9 @@ class RestoredUpgrade(unittest.TestCase):
    self.assertNotEqual(before,w.durable_table_digest(db,'cron_job_runtime_authorities'))
 
  def test_no_acceptance_without_actual_handoff_and_rollback(self):
-  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
+  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
   self.assertTrue(m.accepted(data))
-  for key in ('native_rollback_verified','agent_handoff_verified','state_preserved'):
+  for key in ('native_rollback_verified','agent_handoff_verified','state_preserved','mcp_binding_verified'):
    with self.subTest(key=key):self.assertFalse(m.accepted({**data,key:False}))
 
  def test_memory_admission_and_runtime_pressure_preserve_host_reserve(self):

@@ -27,6 +27,7 @@ SECTIONS=('agents','tools','channels','cron','hooks','browser')
 ROOT=None
 COUNTER=0
 SQLITE_COUNT=0
+LAST_HEALTH=None
 BRIDGE_PROBE_IMAGE='busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662'
 
 
@@ -145,16 +146,29 @@ def start_native(version,env,label):
 
 
 def health(version,env):
+ global LAST_HEALTH
  raw=run(cli(version,'agent-openclaw','exec','--','openclaw','gateway','health','--timeout','10000','--json'),'gateway-health',env=env,user=True,timeout=90)
  data,_=json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])
- required={'homecompute-safety','homecompute-agent-office','memory-core','mattermost','nemoclaw'}
- if data.get('ok') is not True or data.get('plugins',{}).get('errors') or not required<=set(data.get('plugins',{}).get('loaded',[])):raise ValueError('gateway-or-plugin-health-failed')
+ plugins=data.get('plugins',{})
+ LAST_HEALTH={'ok':data.get('ok') is True,'loaded':sorted(p for p in plugins.get('loaded',[]) if isinstance(p,str)),
+  'error_count':len(plugins.get('errors',[])),'unavailable_count':len(plugins.get('unavailable',[]))}
+ paused=json.loads((STATE/'openclaw.json').read_bytes()).get('channels',{}).get('mattermost',{}).get('enabled') is False
+ required={'homecompute-safety','homecompute-agent-office','memory-core','nemoclaw'}
+ if not paused:required.add('mattermost')
+ accounts=data.get('channels',{}).get('mattermost',{}).get('accounts',{})
+ running=sum(value.get('running') is True or value.get('connected') is True for value in accounts.values())
+ LAST_HEALTH.update(mattermost_paused=paused,running_mattermost_accounts=running)
+ if data.get('ok') is not True or plugins.get('errors') or plugins.get('unavailable') or not required<=set(plugins.get('loaded',[])):raise ValueError('gateway-or-plugin-health-failed')
+ if paused and running:raise ValueError('paused-mattermost-account-running')
  return data
 
 
 def policy_projection(config):
  value={key:copy.deepcopy(config.get(key)) for key in SECTIONS}
  value['plugins']={key:copy.deepcopy(val) for key,val in config.get('plugins',{}).items() if key!='installs'}
+ authority=module('supervise-openclaw-nemoclaw').mcp_authority(config)
+ if authority is None:raise ValueError('full-team-fixed-mcp-required')
+ value['mcp']=authority['mcp']
  return value
 
 
@@ -174,6 +188,34 @@ def wait_idle(version,env):
   else:empty=0
   time.sleep(1)
  raise ValueError('native-fixture-not-quiescent')
+
+
+def synchronize_mcp(version,env):
+ supervisor=module('supervise-openclaw-nemoclaw');prep=module('prepare-openclaw-upgrade-assets')
+ registry=HOME/'.nemoclaw/gateways/9123/sandboxes.json'
+ query=[str(HOME/'.local/bin/openshell'),'sandbox','get','-g','nemoclaw-9123','agent-openclaw','-o','json']
+ metadata=json.loads(run(query,'mcp-current-native-identity',env=env,user=True));identifier=metadata['id']
+ generation=json.loads(registry.read_bytes())['sandboxes']['agent-openclaw']['lifecycleGeneration']
+ class Context:
+  cli='qualified-native-cli';uuid=identifier
+  state=WORK/'mcp-reconciliation';container='openshell-default--agent-openclaw-'+identifier
+  def check_registry(self):
+   entry=json.loads(registry.read_bytes())['sandboxes']['agent-openclaw']
+   if entry['lifecycleGeneration']!=generation or entry['workload']['reference']!=prep.IMAGES[version] or entry['workload']['sourceRevision']!=prep.VERSIONS[version]:raise ValueError('mcp-native-registry-drift')
+  def check_container(self):
+   image=subprocess.check_output(['docker','inspect','--format','{{.Config.Image}}',self.container],timeout=15).decode().strip()
+   if image not in (prep.IMAGES[version],prep.IMAGES[version].split('@')[1]):raise ValueError('mcp-native-image-drift')
+  def observe(self):
+   value=json.loads(run(query,'mcp-native-observation',env=env,user=True))
+   if value['id']!=identifier:raise ValueError('mcp-native-identity-drift')
+   return value['phase']
+  def ready(self):health(version,env);return True
+  def run(self,argv,label,**kwargs):
+   if argv[0]==self.cli:argv=cli(version,*argv[1:])
+   return 0,run(argv,label,env=env,user=True,**kwargs)
+ ctx=Context();ctx.generation=generation;ctx.state.mkdir(mode=0o700,exist_ok=True)
+ try:supervisor.reconcile_mcp(ctx,read_config=lambda:json.loads((STATE/'openclaw.json').read_bytes()),required=True)
+ except supervisor.Refused as error:raise ValueError('native-mcp-binding:'+str(error)) from None
 
 
 def durable_table_digest(db,table):
@@ -376,6 +418,7 @@ def main():
   server=http.server.ThreadingHTTPServer(('0.0.0.0',18080),Provider);threading.Thread(target=server.serve_forever,daemon=True).start()
   run([str(HOME/'.local/bin/openshell'),'provider','update','-g','nemoclaw-9123','compatible-endpoint','--credential','COMPATIBLE_API_KEY'],'replace-clone-only-credential',env=env,user=True)
   progress('start-paused-native-rebuild-source');start_native('0.0.129',env,'start-paused-native-rebuild-source')
+  synchronize_mcp('0.0.129',env)
   if policy_projection(json.loads((STATE/'openclaw.json').read_bytes()))!=policy or snapshot()!=before:raise ValueError('paused-source-state-drift')
   wait_idle('0.0.129',env)
   progress('name-authenticated-oci-content');named=WORK/'named-candidate-image.tar'
@@ -399,6 +442,7 @@ def main():
    mm_runtime,mm_sha,mm_version=mattermost_port(version,env)
    stop_native(version,env,label+'-stop-for-ports')
    start_native(version,env,label+'-start-with-ports')
+   synchronize_mcp(version,env)
    health(version,env)
    if label=='upgrade':
     mattermost_probe(mm_runtime,mm_sha);result['installed_mattermost_ingress_verified']=True;result['mattermost_version']=mm_version
@@ -422,9 +466,10 @@ def main():
     result['native_yield_verified']=True;result['agent_handoff_verified']=True
     wait_idle(version,env);before=snapshot()
   result['native_sqlite_integrity']=True;result['native_sqlite_databases']=SQLITE_COUNT
-  result['oci_transport_name_verified']=True;result['state_preserved']=True;result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True
+  result['oci_transport_name_verified']=True;result['state_preserved']=True;result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True;result['mcp_binding_verified']=True
  except Exception as error:
   result['error_category']=str(error) if isinstance(error,ValueError) else type(error).__name__
+  if LAST_HEALTH is not None:result['last_health']=LAST_HEALTH
   logs=sorted(WORK.glob('*.log'),key=lambda p:p.stat().st_mtime_ns) if WORK.exists() else []
   if logs and 'restore' in locals():
    result['private_diagnostic']=restore.redact_diagnostic(logs[-1].read_text(errors='replace')[-8192:])

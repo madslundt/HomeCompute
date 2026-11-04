@@ -368,3 +368,66 @@ own those reachability checks. Positive nativeReady, same UUID, running Docker
 state and authenticated plugin health are mandatory after each paused start,
 including when optional CLI finalization returns nonzero. These failed receipts
 remain evidence of fixture corrections; production qualification is still false.
+
+The next attempt reached exact nativeReady/running after its paused start, then
+the fixture's original health assertion refused. That assertion incorrectly
+required Mattermost to be loaded while its channel was disabled. Both cores
+explicitly give channel `enabled:false` precedence over plugin enablement and
+omit disabled plugins from `health.plugins.loaded`:
+[pinned9.1 activation](https://github.com/openclaw/openclaw/blob/v2026.9.1/src/plugins/config-activation-shared.ts#L188),
+[pinned9.2 health collector](https://github.com/openclaw/openclaw/blob/3928bad9badfcb6c7d140530435e806fb8092190/src/gateway/health/collector.ts#L165).
+The fixture now requires all four runtime plugins, gateway health, zero plugin
+errors/unavailable records and zero running/connected Mattermost accounts while
+that channel is explicitly paused. An active channel still requires its plugin;
+the independent installed-Mattermost factory/SDK/queue test remains mandatory,
+and production verification still requires all five plugins and every enabled
+account connected. Failed receipts now preserve a bounded structured health
+summary so missing runtime plugins or other failures remain diagnosable without
+relying on a truncated private health log. No candidate has yet been promoted.
+
+## Fixed MCP readiness through startup and recovery
+
+A read-only production baseline enumerated69 advertised MCP tools successfully,
+while native status reported `adapter.registered=false` / `mismatch` and skipped
+the credential-resolution probe. Discovery alone was not an agent-adapter proof.
+The managed startup placeholder refresh does not match an Authorization value
+prefixed with `Bearer `, so a prior MCP counter can survive native startup.
+Native `mcp restart homecompute` is the supported scoped repair: it registers
+at the current revision and reloads only the inner gateway. Its inner restart
+skips ordinary deferral, so native turns must be idle before repair.
+[Restart implementation](https://github.com/NVIDIA/NemoClaw/blob/88fe14f3fb9a0bf72997cce19ec88b5b2ee08391/src/lib/actions/sandbox/mcp-bridge-restart.ts#L90).
+
+The tracked supervisor reconciles once on initial authenticated readiness and
+after owned recovery. It verifies the exact sandbox/registry identity, canonical
+HomeCompute URL, streamable-HTTP transport, sole Authorization header, existing
+`bundle-mcp` grant, fixed provider/credential and native policy before admitting
+a counter-only mismatch. It serializes reconciliation, requires two zero-turn
+observations, invokes only the supported scoped restart, and checks readiness,
+registration and the complete normalized authority afterward. The admitted
+changes are the same native MCP reference and native gateway authentication.
+A failed or interrupted mutation leaves a private journal that blocks automatic
+replay; inspect its exact identity, authority hash and private native diagnostics
+before a reviewed continuation. Never delete its marker to bypass the refusal.
+A single-main canary without this bridge stays compatible; full-team callers
+require it, and absence cannot bypass an unresolved journal.
+
+The upgrade and reverse-version controller synchronize the paused source before
+rebuild. Full-team recovery synchronizes after its final sandbox start and
+verifies the resulting policy, with no further sandbox restart afterward.
+The restored qualification also requires that binding and compares the complete
+MCP section across both native transitions, normalizing only the owned resolver
+revision. `mcp_binding_verified` is a mandatory promotion gate. No MCP token is
+rotated or installed by this reconciliation, and its receipts contain metadata
+and hashes rather than credentials or tool payloads.
+
+After rollout, verify the real private endpoint without executing tools:
+
+```bash
+NEMOCLAW_GATEWAY_PORT=9123 nemoclaw agent-openclaw \
+  mcp status homecompute --probe --tools --json
+```
+
+Require registered adapter, present policy, attached credential-ready provider,
+successful credential resolution and successful bounded tool discovery. Check
+the JSON fields; exit zero alone does not prove authorization succeeded. Keep
+raw receipts private and retain only sanitized counts/results in source.
