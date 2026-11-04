@@ -10,10 +10,11 @@ after the backup restart. A new encrypted NAS snapshot completed successfully
 on November 4 at 04:53 UTC; the earlier November 3 snapshot retains its separate
 accepted restore proof. The
 [execution receipt](operations/openclaw-recovery-upgrade-2026-11-03.md) distinguishes
-actual recovery evidence from pending gates. Proposed capability interfaces,
-schedules, defaults and acceptance thresholds below are not installed.
+actual recovery evidence from pending gates. Atlas task ownership instructions
+and finite task follow-ups are now installed; broader proposed interfaces,
+general recurring agent jobs and acceptance thresholds below remain design targets.
 
-The next retained-version task phase is implemented and being qualified through
+The retained-version task phase is deployed and being qualified through
 [its scoped lifecycle](operations/openclaw-atlas-tasks.md), with actual apply and
 acceptance tracked in [the November 4 receipt](operations/openclaw-atlas-tasks-2026-11-04.md).
 Native task ownership/status/cancellation and opt-in unfinished-task watches

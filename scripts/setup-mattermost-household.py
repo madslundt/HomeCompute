@@ -23,6 +23,7 @@ sync = load('household_sync', 'sync-mattermost-atlas.py')
 USERNAME = 'kristina'
 EMAIL = 'kristina@home.arpa'
 SYSTEM_CHANNELS = frozenset({'home-operations', 'openclaw'})
+OWNER_PRIVATE_CHANNELS = frozenset({json.loads((Path(__file__).resolve().parents[1] / 'config/openclaw-task-delivery.json').read_text())['owner_channel']['name']})
 
 
 def audience(rows: list[dict], directory: Path, access: dict | None, family_id: str,
@@ -53,7 +54,8 @@ def audience(rows: list[dict], directory: Path, access: dict | None, family_id: 
                 or not isinstance(approved, list) or len(set(approved)) != len(approved)
                 or any(b.identity({'id': value}, 'shared channel') in systems for value in approved)):
             raise b.BootstrapError('retained household audience identities differ')
-    return identifiers - systems, systems, True
+    owner_private = {row['id'] for row in active if row.get('name') in OWNER_PRIVATE_CHANNELS}
+    return identifiers - systems - owner_private, systems, True
 
 
 def public_rooms(api, team_id: str) -> list[dict]:

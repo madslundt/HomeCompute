@@ -76,6 +76,22 @@ class Mattermost:
                 or channel.get('delete_at') != 0):
             raise ValueError('Private task room and exact delivery bot required')
 
+        humans = self.config.get('allowed_human_ids')
+        bots = self.config.get('allowed_bot_ids')
+        if self.scope == 'owner' and (not humans or not bots):
+            raise ValueError('Owner-only task audience must be provisioned before delivery')
+        if humans is not None:
+            members = self.request('/channels/' + self.config['channel_id'] + '/members?page=0&per_page=100')
+            if not isinstance(members, list) or len(members) >= 100:
+                raise ValueError('Bounded task audience required')
+            observed_humans, observed_bots = set(), set()
+            for member in members:
+                user = self.request('/users/' + member['user_id'])
+                selected = observed_bots if user.get('is_bot') is True else observed_humans
+                selected.add(user['id'])
+            if observed_humans != set(humans) or not observed_bots <= set(bots) or self.config['bot_id'] not in observed_bots:
+                raise ValueError('Task room audience changed; delivery held')
+
     def receipt(self, post: Any, key: str) -> str:
         if (not isinstance(post, dict) or post.get('channel_id') != self.config['channel_id']
                 or post.get('user_id') != self.config['bot_id'] or not isinstance(post.get('props'), dict)

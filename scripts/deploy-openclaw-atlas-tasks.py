@@ -33,7 +33,10 @@ GUEST_FILES = ('scripts/verify-openclaw-atlas-handoff.py', 'scripts/verify-openc
  'config/openclaw-team.json', 'config/openclaw-routines.json',
  *('deploy/openclaw/skills/' + name + '/SKILL.md' for name in SKILLS))
 FILES = ('scripts/deploy-openclaw-atlas-tasks.py', 'scripts/configure-openclaw-task-context.py',
-         'config/openclaw-nemoclaw.env.example', 'config/openclaw-nemoclaw.json', *('scripts/' + n for n in TARGETS),
+         'config/openclaw-nemoclaw.env.example', 'config/openclaw-nemoclaw.json',
+         'scripts/setup-openclaw-owner-task-delivery.py', 'config/openclaw-task-delivery.json',
+         'scripts/bootstrap-mattermost.py', 'scripts/sync-mattermost-atlas.py',
+         'scripts/setup-mattermost-household.py', 'scripts/organize-mattermost.py', *('scripts/' + n for n in TARGETS),
          'scripts/upgrade-openclaw-nemoclaw.py', 'scripts/supervise-openclaw-nemoclaw.py',
          'scripts/restore-openclaw-nemoclaw.py', 'scripts/recover-openclaw-team.py',
          'scripts/prepare-openclaw-upgrade-assets.py', *GUEST_FILES)
@@ -127,7 +130,8 @@ def core_plan(revision):
         current = protected(CORE/name, optional=name == 'openclaw_task_followups.py')
         target = protected(ROOT/'scripts'/name)
         old = None if name == 'openclaw_task_followups.py' else run(['git','-C',str(ROOT),'show',BASELINE+':scripts/'+name])
-        if current not in (old, target): raise ValueError('Unreviewed installed task module')
+        previous = run(['git','-C',str(ROOT),'show','4e935e65175987eac0deefec7fe08db5647a6ce6:scripts/'+name])
+        if current not in (old, previous, target): raise ValueError('Unreviewed installed task module')
         compile(target, name, 'exec')
         rows.append({'name': name, 'before': sha(current) if current is not None else None, 'after': sha(target)})
     states = {name: unit(name) for name in (*TIMERS, *SENDERS, *SERVICES)}

@@ -11,6 +11,16 @@ import time
 import uuid
 
 
+def classify_tool_results(results, child_verified, answer):
+    observed=[m.get('toolName') for m in results if m.get('isError')]
+    queued=[m for m in results if m.get('toolName')=='sessions_yield' and m.get('isError')
+            and m.get('details',{}).get('status')=='skipped'
+            and m.get('details',{}).get('deniedReason')=='steering']
+    ignored=queued[0] if child_verified and '42' in answer and len(queued)==1 else None
+    failures=[m.get('toolName') for m in results if m.get('isError') and m is not ignored]
+    return observed,failures,bool(ignored)
+
+
 def verify(output, language):
     os.umask(0o077)
     if any(p.is_symlink() for p in (output,*output.parents)):raise ValueError('Private output required')
@@ -67,6 +77,7 @@ def verify(output, language):
         if (('42' in answer and spawns and yields and child_verified) or time.monotonic()>=deadline
                 or process.returncode!=0 or terminal in {'length','error','aborted'}):break
         time.sleep(2)
+    observed_failures,failures,queued_completion_yield=classify_tool_results(results,child_verified,answer)
     safe_names={'read','agents_list','sessions_spawn','sessions_yield','subagents','session_status'}
     args=spawns[0].get('arguments',{}) if len(spawns)==1 else {}
     passed=(process.returncode==0 and len(spawns)==1 and len(yields)==1 and args.get('agentId')=='researcher'
@@ -78,7 +89,8 @@ def verify(output, language):
            for m in assistant_messages]
     receipt={'session_id':session,'language':language,'native_exit':process.returncode,'turn_usage':usage,
         'parent_tool_names':[x.get('name') for x in calls],'spawn_count':len(spawns),'yield_count':len(yields),
-        'tool_failures':failures,'child_result_verified':child_verified,'child_tool_names':child_tool_names,'answer_contains_supplied_sum':'42' in answer,'passed':bool(passed),
+        'tool_failures':failures,'observed_tool_error_flags':observed_failures,
+        'yield_skipped_for_queued_completion':bool(queued_completion_yield),'child_result_verified':child_verified,'child_tool_names':child_tool_names,'answer_contains_supplied_sum':'42' in answer,'passed':bool(passed),
         'synthetic_only':True,'channel_delivery_requested':False}
     p=output/'receipt.json';p.write_text(json.dumps(receipt,indent=2)+'\n');p.chmod(0o600)
     p=output/'parent-events.json';p.write_text(json.dumps(events));p.chmod(0o600)

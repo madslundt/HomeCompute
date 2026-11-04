@@ -78,12 +78,22 @@ def configuration(path: Path, *, scope: str = 'owner') -> dict:
         raise ValueError('Explicit household task scope required')
     token_path = FAMILY_TOKEN_PATH if scope == 'family' else TOKEN_PATH
     config = json.loads(private(path, 4096))
-    if (not isinstance(config, dict) or set(config) != {'schema_version', 'channel_id', 'bot_id', 'token_file'}
+    if (not isinstance(config, dict) or set(config) not in ({'schema_version', 'channel_id', 'bot_id', 'token_file'},
+                                   {'schema_version', 'channel_id', 'bot_id', 'token_file', 'allowed_human_ids', 'allowed_bot_ids'})
             or type(config['schema_version']) is not int or config['schema_version'] != 1
             or config['token_file'] != str(token_path)
             or any(not isinstance(config[k], str) or not re.fullmatch(r'[a-z0-9]{26}', config[k])
                    for k in ('channel_id', 'bot_id'))):
         raise ValueError('Fixed private household task delivery configuration required')
+    if 'allowed_human_ids' in config:
+        for field, minimum, maximum in [('allowed_human_ids', 1 if scope == 'owner' else 2, 1 if scope == 'owner' else 2), ('allowed_bot_ids', 1, 32)]:
+            values = config[field]
+            if (not isinstance(values, list) or not minimum <= len(values) <= maximum
+                    or any(not isinstance(x, str) or not re.fullmatch(r'[a-z0-9]{26}', x) for x in values)
+                    or len(set(values)) != len(values)):
+                raise ValueError('Fixed task delivery audience required')
+        if config['bot_id'] not in config['allowed_bot_ids']:
+            raise ValueError('Delivery bot must belong to the fixed audience')
     return config
 
 

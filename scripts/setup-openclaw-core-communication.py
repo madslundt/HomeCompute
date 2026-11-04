@@ -306,7 +306,8 @@ def validate_ready(uid: int, telegram: bool = False) -> None:
             continue
         tasks = private_file(CONFIG / filename, uid)
         token_file = CONFIG / (scope + '-task-mattermost-token')
-        if (set(tasks) != {'schema_version', 'channel_id', 'bot_id', 'token_file'}
+        if (set(tasks) not in ({'schema_version', 'channel_id', 'bot_id', 'token_file'},
+                                       {'schema_version', 'channel_id', 'bot_id', 'token_file', 'allowed_human_ids', 'allowed_bot_ids'})
                 or type(tasks['schema_version']) is not int or tasks['schema_version'] != 1
                 or tasks['token_file'] != str(token_file)
                 or any(not isinstance(tasks[k], str) or len(tasks[k]) != 26

@@ -22,28 +22,20 @@ spec.loader.exec_module(organization)
 
 
 class ConsolidationTests(unittest.TestCase):
-    def test_reminder_retarget_preserves_credentials_mode_owner_and_retries_without_changes(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary).resolve()
-            path = root / 'household-tasks.json'
-            current = {'schema_version': 1, 'channel_id': 'hrnwimmho7b4fkaa5xcm9d9i8h',
-                       'bot_id': 'b' * 26, 'token_file': '/private/unchanged-token'}
-            path.write_text(json.dumps(current)); path.chmod(0o600)
-            with patch.object(organization, 'TASK_CONFIG', path), patch.object(organization.b, 'PRIVATE', root), \
-                    patch('pwd.getpwnam', return_value=SimpleNamespace(pw_uid=os.getuid())):
-                organization.reconcile_task_destination()
-                self.assertEqual(json.loads(path.read_text()), current)
-                organization.reconcile_task_destination(apply=True)
-                self.assertEqual(json.loads(path.read_text()),
-                                 {**current, 'channel_id': 'fth7yi7ea7yutyscphhbjgehce'})
-                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-                self.assertEqual(path.stat().st_uid, os.getuid())
-                self.assertFalse(organization.reconcile_task_destination(apply=True)['changed'])
-                self.assertEqual(len(list(root.glob('task-destination-*.json'))), 1)
-                current['channel_id'] = 'x' * 26
-                path.write_text(json.dumps(current))
-                with self.assertRaises(organization.b.BootstrapError):
-                    organization.reconcile_task_destination(apply=True)
+    def test_historical_shared_retarget_refuses_without_changing_private_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / 'household-tasks.json'
+            current = {'schema_version': 1, 'channel_id': 'a' * 26,
+                       'bot_id': 'b' * 26, 'token_file': '/external/fixed-token'}
+            config.write_text(json.dumps(current)); config.chmod(0o600)
+            before = config.read_bytes()
+            with patch.object(organization, 'TASK_CONFIG', config):
+                for apply in (False, True):
+                    with self.assertRaisesRegex(organization.b.BootstrapError, 'retired'):
+                        organization.reconcile_task_destination(apply=apply)
+            self.assertEqual(config.read_bytes(), before)
+            self.assertEqual(list(root.iterdir()), [config])
 
     def test_family_retirement_only_revokes_gaia_ingress_and_retains_private_settings(self):
         owner, partner, family = 'o' * 26, 'p' * 26, 'f' * 26

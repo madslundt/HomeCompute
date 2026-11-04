@@ -1,7 +1,8 @@
 # Atlas task phase execution — 2026-11-04
 
-Status: source implementation and qualification in progress; production apply
-has not yet been established by this receipt. Runtime stays on 2026.9.1.
+Status: task/reminder code and role instructions deployed; final-answer handoff
+qualification is in progress. Runtime stays on 2026.9.1. Context allowance
+correction is being applied through its separate guarded lifecycle.
 
 The scope and guarded lifecycle are in [the runbook](openclaw-atlas-tasks.md).
 Source changes add Atlas task ownership instructions, native status/cancellation
@@ -117,3 +118,26 @@ The context-change source passed its complete repository validation, including
 containerized Nix evaluation, plus focused context projection/env fencing and
 unmodified-preparation reconciliation regressions. Its live apply and real
 English/Danish final-answer results remain pending at this publication point.
+
+
+The context allowance was applied from `30c0e90656fa41707bc7fb714a268269a601f57f`
+with complete authority/identity/version preservation and all sixty-nine MCP
+tools verified. Backup: `atlas-context-backup-0ffa6abca4434acca136fb1434d6341e`.
+A subsequent real English handoff returned the correct reviewed result: final
+input/cache 29,158 tokens, output 209, stop `stop`, versus the previous one-token
+length stop. The strict probe initially flagged `sessions_yield` as an error;
+its typed native result was `skipped/steering` because Nova's completion was
+already queued. Atlas consumed that result and answered. Qualification now
+records that control race separately, accepting it only with the exact verified
+child result and correct final answer; genuine tool errors remain failures.
+
+A separate fresh membership check found both humans in the configured owner
+reminder destination, which was the historical shared Family alias. This is an
+actual privacy mismatch, not a failed token check. No private reminder was sent;
+the owner store held only the cancelled synthetic fixture. The owner timer was
+paused using the published lifecycle's control helper, with prior active state
+and unit hash retained in `owner-destination-maintenance.json`. Family's timer
+and all boot links stayed unchanged. Source now adds a fixed owner-only room
+provisioner, send-time human/bot audience enforcement, exclusion from later
+household sharing and retirement of the old shared retarget action. Its live
+apply remains pending until source qualification/publication completes.

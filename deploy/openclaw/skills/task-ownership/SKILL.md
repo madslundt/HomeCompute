@@ -23,7 +23,9 @@ description: Owns an accepted request through specialist handoffs, status, cance
    from the accepted receipt; acceptance means queued/working, not completed.
 4. Yield with `sessions_yield`, one short same-language `acknowledgment` naming
    the specialist and expected result. Put continuation context in `message`.
-   Wait for the announced result instead of polling. On its return, check the
+   Wait for the announced result instead of polling. If yield is skipped because
+   a message is queued, consume that completion or owner steering before more
+   work; preserve the accepted reference rather than spawning it again. Check the
    evidence and requested acceptance checks before choosing the next step.
 5. Return a reviewed result, a concrete blocker requiring owner action, or the
    observed cancellation/expiry in the original thread. Cite usable evidence

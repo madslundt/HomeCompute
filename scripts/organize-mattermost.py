@@ -219,41 +219,8 @@ def human_audience(api: Any, channel_id: str) -> set[str]:
 
 
 def reconcile_task_destination(*, apply: bool = False) -> dict:
-    """Retarget the existing reminder configuration, preserving its identity and token path."""
-    import pwd
-    import stat
-    import tempfile
-    path = TASK_CONFIG
-    if any(p.is_symlink() for p in (path, *path.parents)):
-        raise b.BootstrapError('canonical reminder configuration required')
-    info = path.stat()
-    if info.st_uid != pwd.getpwnam('homecompute-openclaw').pw_uid or stat.S_IMODE(info.st_mode) != 0o600:
-        raise b.BootstrapError('private service-owned reminder configuration required')
-    raw = path.read_bytes()
-    current = json.loads(raw)
-    expected = {'schema_version', 'channel_id', 'bot_id', 'token_file'}
-    if set(current) != expected or current['channel_id'] not in {'hrnwimmho7b4fkaa5xcm9d9i8h', 'fth7yi7ea7yutyscphhbjgehce'}:
-        raise b.BootstrapError('retained reminder destination differs')
-    after = {**current, 'channel_id': 'fth7yi7ea7yutyscphhbjgehce'}
-    result = {'changed': current != after, 'applied': apply}
-    if apply and current != after:
-        backup = b.PRIVATE / ('task-destination-' + uuid.uuid4().hex + '.json')
-        b.save(backup, current)
-        if path.read_bytes() != raw:
-            raise b.BootstrapError('reminder configuration changed during validation')
-        fd, temporary = tempfile.mkstemp(prefix='.channel-', dir=path.parent)
-        try:
-            os.fchown(fd, info.st_uid, info.st_gid)
-            with os.fdopen(fd, 'w') as stream:
-                json.dump(after, stream, indent=2)
-                stream.write('\n'); stream.flush(); os.fsync(stream.fileno())
-            os.replace(temporary, path)
-        finally:
-            Path(temporary).unlink(missing_ok=True)
-        if json.loads(path.read_bytes()) != after:
-            raise b.BootstrapError('reminder destination readback differs')
-        result['backup_file'] = str(backup)
-    return result
+    """The old Family retarget is retired; owner delivery has a separate lifecycle."""
+    raise b.BootstrapError('Shared task retarget retired; use setup-openclaw-owner-task-delivery.py')
 
 
 def organize_partner(directory: Path = b.PRIVATE, *, apply: bool = False) -> dict:
@@ -346,7 +313,7 @@ def main() -> None:
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--household-sidebar', action='store_true', help="organize Kristina's approved non-Systems rooms")
     parser.add_argument('--refresh-directory', action='store_true', help='update only the retained agent directory post from repository source')
-    parser.add_argument('--task-destination', action='store_true', help='retarget existing household reminders to the retained Family channel')
+    parser.add_argument('--task-destination', action='store_true', help='retired; private owner delivery uses its separate guarded provisioning lifecycle')
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')

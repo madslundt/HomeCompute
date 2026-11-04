@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "owner_channel": {
+    "name": "owner-tasks",
+    "display_name": "Private tasks",
+    "purpose": "Owner-private task and reminder notifications. Manage tasks with Atlas or Luna in your private conversation.",
+    "human_audience": "owner_only"
+  },
+  "family_channel": {"name": "family", "human_audience": "approved_adults"}
+}

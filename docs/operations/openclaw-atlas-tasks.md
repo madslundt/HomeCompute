@@ -186,3 +186,37 @@ verifier checks the actual fresh parent and child transcripts, one accepted
 isolated researcher run, one yield acknowledgment and a reviewed final answer.
 It preserves failed runs, including terminal length stops; it sends no channel
 message. A matching RPC success alone is insufficient.
+
+
+## Owner-private destination and audience enforcement
+
+The former `tasks → Family` alias is shared UI history, not a private delivery
+boundary. The root-only `setup-openclaw-owner-task-delivery.py` lifecycle reads
+`config/openclaw-task-delivery.json`, verifies retained owner/partner/team/bot
+identities, and creates or verifies the fixed private `owner-tasks` room. It adds
+only the existing delivery bot and owner; existing Family memberships/messages
+are preserved. It installs the reviewed Core task modules through their scoped
+lifecycle while timers are paused, writes service-owned destination configs
+with explicit human/bot allowlists, verifies authenticated destinations and
+resumes the intended timers. No new account, token or message is created.
+
+```bash
+python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-openclaw-owner-task-delivery.py --revision FULL_SHA
+python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-openclaw-owner-task-delivery.py --revision FULL_SHA --apply --expected-plan-sha256 REVIEWED_DESTINATION_PLAN_SHA256
+```
+
+Owner delivery requires exactly its admitted human, the existing delivery bot,
+and only admitted bots before each delivery pass. A joined partner or unknown
+bot holds delivery. Family verifies its approved two-human audience separately.
+Legacy owner configs without an explicit audience fail closed. The household
+all-except-Systems reconciler excludes the declared owner room; the historical
+organizer action that retargeted owner reminders to Family is retired.
+
+Private before-configs and an exact new-room creation receipt remain in the
+returned backup. Restore code only after task/watch reconciliation; never
+rollback the owner destination to shared Family. A failure keeps owner delivery
+paused and retains the safe private room/config for forward reconciliation;
+Family's original timer state is preserved. Source-owned maintenance receipts
+retain the prior intended owner timer state across an attended privacy repair.
+The notifications room does not add a new agent ingress grant: manage tasks
+through the existing private Atlas/Luna conversation paths.
