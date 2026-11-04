@@ -16,6 +16,36 @@ ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('deployment',ROOT/'scripts/upgrade-openclaw-nemoclaw.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class ManagedDeployment(unittest.TestCase):
+ def test_retained_repair_uses_transaction_locks_without_enabling_upgrade(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   home=Path(tmp);state=home/'.local/state/homecompute-openclaw-supervisor';state.mkdir(parents=True)
+   def mutation(*args):
+    for name in ('error-recovery.lock','managed-upgrade.lock'):
+     fd=os.open(state/name,os.O_WRONLY)
+     try:
+      with self.assertRaises(BlockingIOError):fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+     finally:os.close(fd)
+    return {'version_changed':False,'verified':True}
+   argv=['tool','repair','--revision','a'*40,'--expected-hash','b'*64,'--expected-config-sha256','c'*64]
+   with patch.object(m,'HOME',home),patch.object(m,'declaration',return_value={'production_qualified':False}),patch.object(m,'source_guard') as guard,patch.object(m,'qualified') as qualified,patch.object(m,'apply') as upgrade,patch.object(m,'repair_runtime',side_effect=mutation),patch.object(sys,'argv',argv),patch('builtins.print'):m.main()
+   guard.assert_called_once_with('a'*40,'b'*64);qualified.assert_not_called();upgrade.assert_not_called()
+
+ def test_retained_repair_refuses_a_new_managed_tuple_before_mutation(self):
+  with patch.object(m,'environment',return_value={}),patch.object(m.SUP,'Supervisor',return_value=SimpleNamespace(revision=m.ASSETS.VERSIONS['0.0.140'])),patch.object(m,'user_service') as service:
+   with self.assertRaisesRegex(ValueError,'retained 0.0.129'):m.repair_runtime(SimpleNamespace(),{})
+   service.assert_not_called()
+
+ def test_authenticated_mcp_probe_requires_resolution_and_complete_discovery(self):
+  report={'adapter':{'registered':True},'provider':{'present':True,'attached':True,'credentialReady':True,'credentialResolution':{'ok':True}},'policy':{'present':True},'toolDiscovery':{'ok':True,'count':69,'truncated':False}}
+  ctx=SimpleNamespace(cli='nemoclaw',run=lambda *a,**k:(0,json.dumps(report).encode()))
+  self.assertEqual(m.verify_mcp_client(ctx),69)
+  for section,key,value in (('adapter','registered',False),('toolDiscovery','count',68),('toolDiscovery','truncated',True)):
+   original=report[section][key];report[section][key]=value
+   with self.subTest(section=section,key=key),self.assertRaises(ValueError):m.verify_mcp_client(ctx)
+   report[section][key]=original
+  report['provider']['credentialResolution']['ok']=None
+  with self.assertRaises(ValueError):m.verify_mcp_client(ctx)
+
  def test_journal_fences_uuid_and_generation_together(self):
   identifier='aabbccdd-0000-4000-8000-000000000001';generation='aabbccdd-0000-4000-8000-000000000002'
   record={'newId':identifier,'newGeneration':generation}
@@ -50,7 +80,7 @@ class ManagedDeployment(unittest.TestCase):
   policy=m.declaration()
   with self.assertRaises(ValueError):m.qualified(policy,{})
   policy.update(production_qualified=True,qualification_revision='a'*40,mattermost_version='2026.9.1')
-  proof={k:True for k in ('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')}
+  proof={k:True for k in ('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','native_backup_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')}
   proof.update(network=False,production_modified=False,roles=12,native_sqlite_databases=39,source_revision='a'*40,assets_manifest_sha256=policy['qualification_assets_sha256'],mattermost_version='2026.9.1',policy_sha256=policy['qualification_policy_sha256'])
   m.qualified(policy,proof)
   for key,value in [('native_rollback_verified',False),('network',True),('roles',11),('mattermost_version','2026.9.2'),('source_revision','b'*40)]:

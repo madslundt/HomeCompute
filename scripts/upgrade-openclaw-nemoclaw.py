@@ -61,7 +61,7 @@ def declaration():
 
 def qualified(policy,proof):
  keys=('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified',
-  'task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
+  'task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','native_backup_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
  if (not re.fullmatch('[0-9a-f]{40}',policy.get('qualification_revision') or '') or policy.get('mattermost_version')!='2026.9.1'
   or policy.get('production_qualified') is not True or not all(proof.get(k) is True for k in keys)
   or proof.get('network') is not False or proof.get('production_modified') is not False or proof.get('roles')!=12 or type(proof.get('native_sqlite_databases')) is not int or proof['native_sqlite_databases']<39
@@ -573,20 +573,107 @@ def resume_rollback(args,policy,proof):
  return finish_rollback(args,policy,record,path,backup,cold,original,expected)
 
 
+def verify_mcp_client(ctx):
+ code,raw=ctx.run([ctx.cli,SUP.NAME,'mcp','status','homecompute','--probe','--tools','--json'],'runtime-repair-authenticated-mcp',timeout=180)
+ if code:raise ValueError('authenticated MCP probe failed')
+ try:report,_=json.JSONDecoder().raw_decode(raw.decode()[raw.index(b'{'):])
+ except (ValueError,TypeError):raise ValueError('authenticated MCP receipt invalid') from None
+ provider=report.get('provider',{});discovery=report.get('toolDiscovery',{})
+ if (report.get('adapter',{}).get('registered') is not True or report.get('policy',{}).get('present') is not True
+  or not all(provider.get(key) is True for key in ('present','attached','credentialReady'))
+  or provider.get('credentialResolution',{}).get('ok') is not True or discovery.get('ok') is not True
+  or discovery.get('count')!=69 or discovery.get('truncated') is not False):raise ValueError('complete authenticated MCP binding and tool discovery required')
+ return discovery['count']
+
+
+def repair_runtime(args,policy):
+ # This action has no version-change, sandbox-stop, rebuild or archive path.
+ env=environment();ctx=SUP.Supervisor(env)
+ if ctx.revision!=SUP.REVISION:raise ValueError('runtime repair requires retained 0.0.129 tuple')
+ ctx.check_registry();ctx.check_container()
+ if ctx.observe()!='Ready' or not ctx.ready():raise ValueError('healthy retained runtime required')
+ tx=ManagedTransaction(ctx,args.expected_config_sha256);tx.path=ctx.state/'runtime-repairs-transaction.json'
+ if tx.path.exists() and json.loads(SUP.private_file(tx.path)).get('status') not in ('complete','refused'):raise ValueError('retained runtime repair needs operator review')
+ before,path=native_config(tx,'runtime-repair-before-config')
+ if digest(path.read_bytes())!=args.expected_config_sha256 or len(before['agents']['entries'])!=12:raise ValueError('selected complete repair policy required')
+ authority=SUP.mcp_authority(before)
+ if authority is None:raise ValueError('fixed full-team MCP binding required')
+ projected={key:before.get(key) for key in ('agents','tools','channels','cron','hooks','browser')}
+ if digest(json.dumps(projected,sort_keys=True,separators=(',',':')).encode())!=policy['qualification_policy_sha256']:raise ValueError('runtime repair authority differs from reviewed policy')
+ tx.inspect();verify_runtime(ctx,before);require_idle(ctx,{})
+ layer=tx.command(['docker','diff',ctx.container],'runtime-repair-prior-layer',timeout=90).decode()
+ if TEAM.unreviewed_layer_paths(layer,tx.patches):raise ValueError('unreviewed retained runtime layer')
+ safety=tx.command(['docker','exec','--user','0',ctx.container,'cat','/sandbox/.openclaw/extensions/homecompute-safety/index.mjs'],'runtime-repair-prior-safety')
+ if safety!=module('setup-openclaw-llm-queue').safety_overlay((ROOT/'deploy/openclaw/safety-plugin/index.mjs').read_bytes()):raise ValueError('retained safety source drift')
+ if digest((HOME/'.local/bin/nemoclaw').read_bytes())!=LEGACY_WRAPPER_SHA or digest(Path('/etc/homecompute-public-dns/openclaw-public-dns.py').read_bytes())!=LEGACY_DNS_SHA:raise ValueError('retained CLI or DNS drift requires review')
+ programs={'supervise-openclaw-nemoclaw.py':LEGACY_SUPERVISOR_SHA,'restore-openclaw-nemoclaw.py':LEGACY_RECOVERY_SHA}
+ original={};modes={}
+ for name,legacy in programs.items():
+  target=ETC/name;info=target.lstat();raw=target.read_bytes()
+  if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0,1000) or digest(raw) not in (legacy,digest((ROOT/'scripts'/name).read_bytes())):raise ValueError('unreviewed retained host program')
+  original[name]=raw;modes[name]=stat.S_IMODE(info.st_mode)
+ original['agent-openclaw.env']=SUP.private_file(ETC/'agent-openclaw.env');modes['agent-openclaw.env']=0o600
+ if env.get('NEMOCLAW_CPU') not in ('1','2'):raise ValueError('unreviewed retained CPU declaration')
+ backup=ctx.state/('runtime-repairs-backup-'+str(time.time_ns()));backup.mkdir(mode=0o700)
+ for name,raw in original.items():replace(backup/name,raw)
+ replace(backup/'active-before.json',path.read_bytes())
+ tx.record={'schemaVersion':1,'sourceRevision':args.revision,'startedAt':time.time(),'sandboxId':ctx.uuid,'generation':ctx.generation,'backup':str(backup),'versionChanged':False}
+ tx.stage('retained-runtime-repair-starting')
+ stopped=False
+ try:
+  user_service('stop');stopped=True
+  ctx.check_registry();ctx.check_container();require_idle(ctx,{})
+  current,_=native_config(tx,'runtime-repair-pre-mutation-config')
+  if current!=before:raise ValueError('runtime policy changed before repair')
+  for name in programs:replace(ETC/name,(ROOT/'scripts'/name).read_bytes(),modes[name])
+  lines=original['agent-openclaw.env'].decode().splitlines();updated=[];seen=False
+  for line in lines:
+   if line.startswith('NEMOCLAW_CPU='):updated.append('NEMOCLAW_CPU=2');seen=True
+   else:updated.append(line)
+  if not seen:updated.append('NEMOCLAW_CPU=2')
+  replace(ETC/'agent-openclaw.env',('\n'.join(updated)+'\n').encode());ctx.env['NEMOCLAW_CPU']='2'
+  tx.stage('retained-host-programs-installed')
+  changed=SUP.reconcile_mcp(ctx,required=True)
+  after,_=native_config(tx,'runtime-repair-after-config')
+  if SUP.mcp_authority(after)!=authority:raise ValueError('runtime repair expanded authority')
+  ctx.check_registry();ctx.check_container()
+  if ctx.observe()!='Ready' or not ctx.ready():raise ValueError('retained runtime readiness lost')
+  verify_runtime(ctx,before);tools=verify_mcp_client(ctx)
+  for name in programs:
+   if (ETC/name).read_bytes()!=(ROOT/'scripts'/name).read_bytes():raise ValueError('installed retained program drift')
+  tx.record.update(mcpReconciled=changed,mcpTools=tools,hostProgramsVerified=True)
+  tx.stage('retained-runtime-repairs-complete','complete')
+  user_service('start');stopped=False
+  return {'deployed_revision':args.revision,'nemoclaw_version':'0.0.129','openclaw_version':'2026.9.1','version_changed':False,'mcp_reconciled':changed,'mcp_tools':tools,'backup':str(backup),'verified':True}
+ except Exception as error:
+  # Restore host code/settings only. Never guess or replay a native credential
+  # mutation after an unresolved MCP result; its own failed fence is retained.
+  for name,raw in original.items():replace(ETC/name,raw,modes[name])
+  tx.record['hostRollbackVerified']=all((ETC/name).read_bytes()==raw for name,raw in original.items())
+  tx.record['failureCode']=str(error) if isinstance(error,(ValueError,SUP.Refused)) else type(error).__name__
+  tx.stage('retained-runtime-repair-failed','failed')
+  if stopped:user_service('start')
+  raise
+
+
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=('plan','apply','resume','rollback','resume-rollback'),default='plan',nargs='?')
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('action',choices=('plan','repair','apply','resume','rollback','resume-rollback'),default='plan',nargs='?')
  p.add_argument('--revision');p.add_argument('--expected-hash');p.add_argument('--qualification-proof',type=Path);p.add_argument('--expected-qualification-sha256');p.add_argument('--expected-config-sha256');p.add_argument('--build-dir',type=Path);a=p.parse_args()
  os.umask(0o077)
  policy=declaration()
- if a.action=='plan':print(json.dumps({'bundle_hash':bundle(),'declaration':policy,'deployment_enabled':policy.get('production_qualified') is True}));return
- for name,value,length in (('revision',a.revision,40),('expected-hash',a.expected_hash,64),('expected-qualification-sha256',a.expected_qualification_sha256,64)):
+ if a.action=='plan':print(json.dumps({'bundle_hash':bundle(),'declaration':policy,'deployment_enabled':policy.get('production_qualified') is True,'repair_tuple':{'nemoclaw':'0.0.129','openclaw':'2026.9.1'}}));return
+ for name,value,length in (('revision',a.revision,40),('expected-hash',a.expected_hash,64)):
   if not re.fullmatch('[0-9a-f]{'+str(length)+'}',value or ''):p.error(name+' requires a complete reviewed hash')
- if not a.qualification_proof:p.error('qualification-proof is required')
  source_guard(a.revision,a.expected_hash)
- raw=SUP.private_file(a.qualification_proof)
- if len(raw)>65536 or digest(raw)!=a.expected_qualification_sha256:raise ValueError('selected private qualification receipt mismatch')
- proof=json.loads(raw);qualified(policy,proof)
- if a.action=='apply' and (not a.build_dir or not re.fullmatch('[0-9a-f]{64}',a.expected_config_sha256 or '')):p.error('apply requires reviewed build-dir and exact config hash')
+ proof=None
+ if a.action=='repair':
+  if not re.fullmatch('[0-9a-f]{64}',a.expected_config_sha256 or ''):p.error('repair requires exact config hash')
+ else:
+  if not a.qualification_proof or not re.fullmatch('[0-9a-f]{64}',a.expected_qualification_sha256 or ''):p.error('accepted qualification proof and exact hash required')
+  raw=SUP.private_file(a.qualification_proof)
+  if len(raw)>65536 or digest(raw)!=a.expected_qualification_sha256:raise ValueError('selected private qualification receipt mismatch')
+  proof=json.loads(raw);qualified(policy,proof)
+  if a.action=='apply' and (not a.build_dir or not re.fullmatch('[0-9a-f]{64}',a.expected_config_sha256 or '')):p.error('apply requires reviewed build-dir and exact config hash')
  state=HOME/'.local/state/homecompute-openclaw-supervisor'
  handles=[]
  try:
@@ -594,7 +681,7 @@ def main():
   # continuation edge exclusive, including the final health verification.
   for name in ('error-recovery.lock','managed-upgrade.lock'):
    fd=os.open(state/name,os.O_WRONLY|os.O_CREAT|os.O_NOFOLLOW,0o600);handles.append(fd);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
-  result={'apply':apply,'resume':resume,'rollback':rollback,'resume-rollback':resume_rollback}[a.action](a,policy,proof)
+  result=repair_runtime(a,policy) if a.action=='repair' else {'apply':apply,'resume':resume,'rollback':rollback,'resume-rollback':resume_rollback}[a.action](a,policy,proof)
   print(json.dumps(result,sort_keys=True))
  finally:
   for fd in reversed(handles):os.close(fd)

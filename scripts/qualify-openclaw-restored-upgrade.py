@@ -32,7 +32,7 @@ XORRISO=Path('/nix/var/nix/gcroots/homecompute-codex-vm/xorriso/bin/xorriso')
 
 
 def accepted(data):
- return all(data.get(key) is True for key in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')) and data.get('roles')==12 and type(data.get('native_sqlite_databases')) is int and data['native_sqlite_databases']>=39
+ return all(data.get(key) is True for key in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','native_backup_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')) and data.get('roles')==12 and type(data.get('native_sqlite_databases')) is int and data['native_sqlite_databases']>=39
 
 
 def result_from_log(raw,nonce):
@@ -135,6 +135,10 @@ def verify(args,revision):
  report={**result,'accepted':accepted(result),'source_revision':revision,'created_at':datetime.now(timezone.utc).isoformat(),
   'source_disk_read_only':True,'network':False,'production_modified':False,'manifest_sha256':manifest,'assets_manifest_sha256':args.expected_assets_sha256,'policy_sha256':args.expected_policy_sha256}
  receipt=work/'receipt.json';receipt.write_text(json.dumps(report,sort_keys=True))
+ # Public source/assets media is reproducible; retain private receipts and
+ # restored inputs, then release the duplicate ISO after owned VM cleanup.
+ media_bytes=iso.stat().st_size;iso.unlink()
+ (work/'media-retired.json').write_text(json.dumps({'source_revision':revision,'public_iso_bytes':media_bytes,'restored_data_retained':True},sort_keys=True))
  print(json.dumps({'accepted':report['accepted'],'receipt':str(receipt),'error_category':report.get('error_category'),'production_modified':False}))
  return report['accepted']
 

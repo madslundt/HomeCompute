@@ -25,6 +25,7 @@ ARCHIVES=Path('/var/lib/homecompute-openclaw-operator-archives')
 CONTAINER_CODE=r'''
 import hashlib,json,os,pathlib,re,shutil,stat,sys,tempfile
 BASE=pathlib.Path('/sandbox/.openclaw')
+CONFIG_HISTORY=('openclaw.json.bak',*(f'openclaw.json.bak.{i}' for i in range(1,5)))
 CHECKOUTS={
  'homecompute-browser-policy-cb9cc4a63f2de48053947e3a0fceb8ca18efad66':'f7c24b396e91e62b0383830165e517d2fa1d969f9d6feb78b0aea39041806c05',
  'homecompute-browser-policy-07d8f8aa804c613eeb62f28d13efce8547dcb88c':'c3661794b7011ae60858d8deb9ed227118fd28469fc745997959c0e1cf3b03e6',
@@ -35,7 +36,7 @@ CHECKOUTS={
 ROOTS=('tool-install-backups','child-result-backups','yield-acknowledgment-backups',
  'llm-queue-backups','search-fallback-backups','lyra-browser-backups','mattermost-setup/__pycache__')
 def selected():
- out=[BASE/name for name in ROOTS if (BASE/name).exists() or (BASE/name).is_symlink()]
+ out=[BASE/name for name in (*ROOTS,*CONFIG_HISTORY) if (BASE/name).exists() or (BASE/name).is_symlink()]
  office=BASE/'homecompute-agent-office'
  out.extend(p for p in office.glob('config-before-*.json') if re.fullmatch(r'config-before-[a-f0-9]{64}\.json',p.name))
  out.extend(p for p in pathlib.Path('/sandbox').glob('homecompute-office-install-*') if re.fullmatch('homecompute-office-install-[0-9]+',p.name))
@@ -92,6 +93,9 @@ def collect():
    if parent.is_symlink():raise ValueError('operator-artifact-root-link')
    if parent==pathlib.Path('/sandbox'):break
   if referenced(root,cfg):raise ValueError('operator-artifact-is-runtime-input')
+  if root.name in CONFIG_HISTORY:
+   info=root.lstat()
+   if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0,998,1000) or info.st_gid!=info.st_uid or stat.S_IMODE(info.st_mode)!=0o600:raise ValueError('private-native-config-history-required')
   if root.name.startswith('homecompute-office-install-') or root.name in CHECKOUTS:
 
    info=root.stat()

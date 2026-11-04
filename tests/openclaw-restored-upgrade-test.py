@@ -54,6 +54,18 @@ class RestoredUpgrade(unittest.TestCase):
    current.pop('mcp')
    with self.assertRaisesRegex(ValueError,'fixed-mcp'):w.policy_projection(current)
 
+ def test_backup_all_is_scoped_to_one_registry_and_never_skips_failures(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   home=Path(tmp);registry=home/'.nemoclaw/gateways/9123/sandboxes.json';registry.parent.mkdir(parents=True)
+   registry.write_text(json.dumps({'sandboxes':{'agent-openclaw':{},'another':{}}}))
+   with patch.object(w,'HOME',home),patch.object(w,'run') as run:
+    with self.assertRaisesRegex(ValueError,'single-sandbox'):w.backup_native_source(Path('/fixture'))
+    run.assert_not_called()
+   registry.write_text(json.dumps({'sandboxes':{'agent-openclaw':{}}}))
+   with patch.object(w,'HOME',home),patch.object(w,'environment',return_value={'NEMOCLAW_SKIP_UNREACHABLE_SANDBOX_BACKUP':'1'}),patch.object(w,'cli',return_value=['fixture-cli','backup-all']),patch.object(w,'run') as run:w.backup_native_source(Path('/fixture'))
+   self.assertEqual(run.call_args.kwargs['env'],{'NEMOCLAW_REQUIRE_ALL_SANDBOX_BACKUPS':'1'})
+   self.assertEqual(run.call_args.args[0],['fixture-cli','backup-all'])
+
  def test_health_waits_for_zero_errors_but_never_accepts_persistent_failure(self):
   with patch.object(w,'health_once',side_effect=[ValueError('gateway-or-plugin-health-failed'),{'ok':True}]) as once,patch.object(w.time,'monotonic',return_value=0),patch.object(w.time,'sleep'),patch.object(w,'LAST_HEALTH',{}):
    self.assertTrue(w.health('0.0.129',{})['ok']);self.assertEqual(once.call_count,2);self.assertEqual(w.LAST_HEALTH['readiness_retries'],1)
@@ -109,7 +121,7 @@ class RestoredUpgrade(unittest.TestCase):
    self.assertNotEqual(before,w.durable_table_digest(db,'cron_job_runtime_authorities'))
 
  def test_no_acceptance_without_actual_handoff_and_rollback(self):
-  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
+  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','native_backup_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
   self.assertTrue(m.accepted(data))
   for key in ('native_rollback_verified','agent_handoff_verified','state_preserved','mcp_binding_verified'):
    with self.subTest(key=key):self.assertFalse(m.accepted({**data,key:False}))

@@ -1,6 +1,6 @@
 # OpenClaw recovery and managed-upgrade execution — 2026-11-03
 
-Status: recovery gate accepted; managed candidate is no-go as-is. Production retains NemoClaw 0.0.129 / OpenClaw 2026.9.1.
+Status: recovery gate accepted; managed candidate is blocked by Mattermost credential custody. Retained-version runtime repairs are prepared for scoped deployment. Production retains NemoClaw 0.0.129 / OpenClaw 2026.9.1.
 
 A fresh encrypted NAS backup, archive integrity checks, four PostgreSQL imports,
 both isolated VM boots, and native Atlas recovery from that same snapshot have
@@ -371,3 +371,82 @@ error details and waits up to 180 seconds for positive zero-error readiness, as
 the production verifier already does. Persistent errors still refuse; a running
 paused channel is refused immediately. No model task or channel message is
 issued by these readiness retries.
+
+The `92013fc` rehearsal passed zero-error paused health, all verified checkout
+archival, and complete preparation preservation. Native backup then refused
+`openclaw.json.bak.1` before deletion. Core's exact recovery-history ring is
+`.bak` through `.bak.4`; these contain earlier credentials that are no longer
+supported by native backup even when canonical configuration is valid. They
+are now preserved in the same verified external private archive, with the
+complete pre-upgrade cold copy retained. This is intentional retirement of
+native recovery history, not disposal of cache. Canonical `openclaw.json` and
+`openclaw.json.last-good` remain untouched by archival.
+
+Qualification now proves the strict actual native backup before loading the
+candidate image. Vendor `backup-all` has no named-sandbox selector, so this
+networkless gate first requires that the selected port-9123 registry contains
+only `agent-openclaw`, enables `NEMOCLAW_REQUIRE_ALL_SANDBOX_BACKUPS=1`, and
+removes the unreachable-backup skip setting. It writes real private native
+backup/provider/policy recovery metadata; it performs no image load, rebuild or
+sandbox deletion. Its success is an additional required acceptance flag, and
+normal native upgrade and rollback still perform their own backups.
+
+## Managed qualification decision and retained-version repair — November 4
+
+The pinned vendor scanner rejects nonplaceholder Mattermost `botToken` values
+under current configuration, irrespective of channel enablement. Its managed
+messaging registry supports seven other channel types and has no Mattermost
+credential handoff. A value-free live classification counted twelve literal
+Mattermost token fields. SecretRef objects are also rejected by this scanner;
+Mattermost's one default-account environment fallback does not solve a twelve
+account setup. This is a compatibility blocker, beyond the retired-file issues.
+Native upgrade/rollback qualification has not passed and the deployment policy
+remains false, with the blocker recorded in source. No credentials were printed,
+no scanner exception added, and no production version changed.
+
+The new `repair` action in
+[`upgrade-openclaw-nemoclaw.py`](../../scripts/upgrade-openclaw-nemoclaw.py) is
+limited to the retained 0.0.129 tuple. It uses the same exact published-source
+guard, reviewed bundle/config hashes and transaction locks. It validates the
+current twelve-role authority, canonical health, existing host-program hashes
+and idle state, retains private host/config backups, then installs the tracked
+watchdog/recovery programs and reconciles the CPU declaration to the actual two
+CPUs. Supported native MCP restart repairs only the existing fixed binding.
+Whole-config authority comparison, unchanged sandbox identity/generation/image,
+five required plugins, enabled account connections and authenticated discovery
+of all sixty-nine MCP tools are mandatory. It neither stops/recreates the
+sandbox nor changes its version or CLI wrapper. Failed host-code deployment
+restores the retained host files; unresolved native MCP fences stay intact for
+review rather than replay.
+
+This repair does not need a successful 0.0.140 qualification receipt because it
+cannot select that tuple. The `apply`, `resume` and version-rollback paths still
+require the complete matching native qualification proof. Native history
+archival is not applied independently while the managed upgrade is blocked.
+
+The credential integration must be designed and qualified before reconsidering
+0.0.140: supported per-account custody, HTTP and websocket authentication, full
+team backup/restore and rollback, no raw credential disclosure, and unchanged
+private/shared boundaries. Tasks, schedules and proactive-follow-up work can
+continue on the retained core using the ordered Atlas plan.
+
+The subsequent scheduled NAS attempt failed before quiescence because available
+space was below source-file sizes plus the mandatory 100 GiB reserve. Storage
+inspection found two retained completed local generations, the verified extracted
+restore, an extra Restic-restored copy of the same newest archive, and duplicate
+public qualification ISOs. The local backup generations and extracted native
+data remain retained. Completed qualification now retires only its reproducible
+public ISO after owned VM cleanup and durable receipt creation; source/assets
+and private evidence remain available. Scratch cleanup and the next actual
+backup result must be recorded separately from the earlier restore acceptance.
+
+Scratch retirement at approximately 04:02 UTC released 109,324,787,712 allocated
+bytes: thirteen duplicate public qualification ISOs and the extra Restic-restored
+copy of the already verified newest archive. The selected accepted native and
+application receipts agreed on archive/snapshot; the original local archive and
+the complete extracted restore remain retained. The cleanup held the engine
+lock, refused open file descriptors, checked private ownership/types and distinct
+inodes, and retained a private retirement receipt. Both completed local archive
+generations remain present. Available space rose to approximately 240.9 GB; no
+headroom guard was relaxed. The previously failed scheduled service still needs
+a successful canonical backup run before it can be described as recovered.

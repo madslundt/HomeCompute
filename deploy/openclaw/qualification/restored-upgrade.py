@@ -251,6 +251,14 @@ def archive_operator_material(version,env):
  return archiver.archive_owned(owned,guard,apply=True,archive_root=WORK/'operator-archives')
 
 
+def backup_native_source(assets):
+ # backup-all is global: permit it only for this single-sandbox clone registry.
+ registry=json.loads((HOME/'.nemoclaw/gateways/9123/sandboxes.json').read_bytes())
+ if set(registry.get('sandboxes',{}))!={'agent-openclaw'}:raise ValueError('single-sandbox-native-backup-required')
+ env=environment('0.0.140',assets);env.pop('NEMOCLAW_SKIP_UNREACHABLE_SANDBOX_BACKUP',None);env['NEMOCLAW_REQUIRE_ALL_SANDBOX_BACKUPS']='1'
+ run(cli('0.0.140','backup-all'),'strict-native-backup-before-image-load',env=env,user=True,timeout=300)
+
+
 def durable_table_digest(db,table,metrics=None):
  # Runtime authority fingerprints are deliberately recomputed by native doctor;
  # preserve their owning job identities, while native_policy separately fences
@@ -500,6 +508,7 @@ def main():
   # the final preservation gate still requires the original preparation.
   before=after;before_metrics=copy.deepcopy(SNAPSHOT_METRICS)
   wait_idle('0.0.129',env)
+  progress('strict-native-backup-before-image-load');backup_native_source(assets);result['native_backup_verified']=True
   progress('name-authenticated-oci-content');named=WORK/'named-candidate-image.tar'
   naming=prep.named_archive(assets/'candidate-image.tar',named,prep.IMAGES['0.0.140']);(WORK/'oci-naming-proof.json').write_text(json.dumps(naming,sort_keys=True))
   progress('load-candidate-image');run(['docker','image','load','--input',str(named)],'load-candidate-image',timeout=240)

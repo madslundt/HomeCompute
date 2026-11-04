@@ -11,5 +11,9 @@
   "qualification_revision": null,
   "qualification_policy_sha256": "1ea98b7a62347a33f9c39dcb2addb0512728d6652328376b1b0298c0f9f03dd7",
   "qualification_assets_sha256": "4a5b1f4800beaca15333b23bc78603bb0c26ad1324d66ba3d12f52d551d542cf",
-  "mattermost_version": null
+  "mattermost_version": null,
+  "qualification_status": "blocked-mattermost-credential-custody",
+  "qualification_blockers": [
+    "Twelve inline Mattermost account credentials are incompatible with managed native backup; NemoClaw 0.0.140 has no Mattermost messaging credential handoff."
+  ]
 }

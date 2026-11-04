@@ -1,8 +1,8 @@
 # OpenClaw toward a Grok Bot experience
 
-Updated: 2026-11-03. Status: implementation underway. The attended backup and
+Updated: 2026-11-04. Status: implementation underway. The attended backup and
 full-team recovery repairs are published and were applied through their scoped
-lifecycles; Atlas retains its original managed version and behavior. The
+lifecycles; Atlas retains NemoClaw 0.0.129 / OpenClaw 2026.9.1; the managed upgrade is blocked by Mattermost credential custody. Retained-version MCP/watchdog/recovery repairs are being deployed through a scoped lifecycle. The
 [execution receipt](operations/openclaw-recovery-upgrade-2026-11-03.md) distinguishes
 actual recovery evidence from pending gates. Proposed capability interfaces,
 schedules, defaults and acceptance thresholds below are not installed.
@@ -25,7 +25,7 @@ Qualify the latest compatible managed tuple rather than installing the latest
 core package into a live sandbox. The deployed verified tuple is NemoClaw
 `0.0.129` / OpenClaw `2026.9.1` / OpenShell `0.0.116`. The newest reviewed
 managed-source candidate is NemoClaw tag `v0.0.140`, locking OpenClaw
-`2026.9.2` and OpenShell `0.0.116`; it is not yet HomeCompute-qualified.
+`2026.9.2` and OpenShell `0.0.116`; it is not HomeCompute-qualified. Native backup rejects inline Mattermost account credentials, and NemoClaw 0.0.140 provides no managed Mattermost messaging-credential handoff. All twelve live accounts use that representation. Keep the current tuple until a separately qualified credential integration supports the full team; do not weaken the native scanner or promote standalone core.
 Standalone core `2026.10.10` is the latest stable release found on November 3,
 but its managed build, plugins, state migration and local patches are unqualified.
 Its features must not be promised on the `2026.9.2` candidate. See the cited

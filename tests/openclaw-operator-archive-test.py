@@ -19,6 +19,13 @@ class OperatorArchive(unittest.TestCase):
   for values in (('','',''),(identifier,None,revision),(identifier,generation,'bad'),(identifier.upper(),generation,revision)):
    with self.subTest(values=values),self.assertRaises(ValueError):m.witness(*values)
 
+ def test_native_config_history_never_selects_canonical_or_last_good(self):
+  namespace={};exec(m.CONTAINER_CODE.split('request=json.load(sys.stdin)')[0],namespace)
+  with tempfile.TemporaryDirectory() as tmp:
+   namespace['BASE']=Path(tmp)
+   for name in ('openclaw.json','openclaw.json.last-good','openclaw.json.bak','openclaw.json.bak.1','openclaw.json.bak.4','openclaw.json.bak.5','openclaw.json.bak.other'):(Path(tmp)/name).write_text('synthetic fixture')
+   self.assertEqual({p.name for p in namespace['selected']()},{'openclaw.json.bak','openclaw.json.bak.1','openclaw.json.bak.4'})
+
  def test_plan_never_copies_or_removes(self):
   with tempfile.TemporaryDirectory() as tmp,patch.object(m.os,'geteuid',return_value=0),patch.object(m,'container_inventory',return_value={'/sandbox/retired':{'.':{'kind':'file'}}}) as inventory,patch.object(m,'run') as run:
    result=m.archive_owned(CONTAINER,lambda:None,archive_root=Path(tmp))

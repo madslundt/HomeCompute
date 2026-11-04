@@ -534,3 +534,26 @@ same fixed key; endpoint, other headers and all retained policy remain exact.
 It reads and verifies the refreshed native config before reactivating channels,
 then preserves that latest handle rather than restoring a stale revision.
 Raw bearer credentials, another resolver key or unrelated changes are refused.
+
+## Retained-version runtime repairs
+
+Managed 0.0.140 remains unqualified for the current twelve Mattermost accounts;
+see the [execution receipt](operations/openclaw-recovery-upgrade-2026-11-03.md).
+To deploy source-owned watchdog/recovery/MCP fixes while retaining 0.0.129,
+review the default plan from a root-protected published guest release:
+
+```bash
+python3 /srv/homecompute/releases/FULL_SHA/scripts/upgrade-openclaw-nemoclaw.py plan
+python3 /srv/homecompute/releases/FULL_SHA/scripts/upgrade-openclaw-nemoclaw.py repair \
+  --revision FULL_SHA --expected-hash REVIEWED_BUNDLE_SHA256 \
+  --expected-config-sha256 REVIEWED_NATIVE_CONFIG_SHA256
+```
+
+Run as `hermes-operator` on the agents VM. The action preserves the CLI wrapper,
+image, sandbox identity, team policy and all native data. It requires idle
+state, keeps private rollback copies, compares authority after the supported
+MCP binding repair, and verifies all enabled account connections plus actual
+authenticated MCP credential resolution and complete tool discovery. It may
+reload the inner gateway through native MCP lifecycle. Its private transaction
+is `runtime-repairs-transaction.json`; a failed/pending transaction requires
+review. Version-change actions retain their separate native qualification gate.
