@@ -61,7 +61,7 @@ def declaration():
 
 def qualified(policy,proof):
  keys=('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified',
-  'task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
+  'task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
  if (not re.fullmatch('[0-9a-f]{40}',policy.get('qualification_revision') or '') or policy.get('mattermost_version')!='2026.9.1'
   or policy.get('production_qualified') is not True or not all(proof.get(k) is True for k in keys)
   or proof.get('network') is not False or proof.get('production_modified') is not False or proof.get('roles')!=12 or type(proof.get('native_sqlite_databases')) is not int or proof['native_sqlite_databases']<39

@@ -21,6 +21,26 @@ w=load('worker','deploy/openclaw/qualification/restored-upgrade.py')
 
 
 class RestoredUpgrade(unittest.TestCase):
+ def test_pausing_preserves_heartbeat_isolation_and_other_authority(self):
+  original={'agents':{'defaults':{'heartbeat':{'every':'30m','isolatedSession':True}},'entries':{'main':{'heartbeat':{'every':'10m','isolatedSession':True,'target':'owner'}}}},'channels':{'mattermost':{'enabled':True}},'tools':{'allow':['read']},'cron':{'enabled':True}}
+  saved=copy.deepcopy(original);paused=w.paused_config(original)
+  self.assertEqual(original,saved);self.assertEqual(paused['tools'],original['tools'])
+  self.assertEqual(paused['agents']['defaults']['heartbeat'],{'every':'0m','isolatedSession':True})
+  self.assertEqual(paused['agents']['entries']['main']['heartbeat'],{'every':'0m','isolatedSession':True,'target':'owner'})
+  self.assertFalse(paused['channels']['mattermost']['enabled']);self.assertFalse(paused['cron']['enabled'])
+
+ def test_state_diagnostics_name_columns_without_recording_payloads(self):
+  with closing(sqlite3.connect(':memory:')) as db:
+   db.execute('create table tasks(id text,status text,payload text)');db.execute('insert into tasks values(?,?,?)',('fixture','done','PRIVATE_FIXTURE_PAYLOAD'))
+   old={};digest=w.durable_table_digest(db,'tasks',old)
+   db.execute('update tasks set status=?',('expired',));new={};updated=w.durable_table_digest(db,'tasks',new)
+   before={'conversations':{},'workspaces':{},'durable_queues':{'state.sqlite:tasks':digest}}
+   after={**before,'durable_queues':{'state.sqlite:tasks':updated}}
+   result=w.preparation_diff(before,after,{'state.sqlite:tasks':old},{'state.sqlite:tasks':new})
+   self.assertEqual(result['durable_tables']['state.sqlite:tasks']['changed_columns'],['status'])
+   self.assertNotIn('PRIVATE_FIXTURE_PAYLOAD',json.dumps(result));self.assertLessEqual(len(json.dumps(result).encode()),4096)
+   self.assertEqual(w.changed_policy_paths({'tools':{'allow':['read']}},{'tools':{'allow':['exec']}}),['tools.allow'])
+
  def test_mcp_policy_preserves_fixed_binding_and_cannot_accept_its_loss(self):
   config={'gateway':{'auth':{'token':'a'*32}},'tools':{'alsoAllow':['bundle-mcp']},
           'mcp':{'servers':{'homecompute':{'transport':'streamable-http','url':'https://homecompute-capabilities.home.arpa:19445/mcp',
@@ -80,7 +100,7 @@ class RestoredUpgrade(unittest.TestCase):
    self.assertNotEqual(before,w.durable_table_digest(db,'cron_job_runtime_authorities'))
 
  def test_no_acceptance_without_actual_handoff_and_rollback(self):
-  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
+  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
   self.assertTrue(m.accepted(data))
   for key in ('native_rollback_verified','agent_handoff_verified','state_preserved','mcp_binding_verified'):
    with self.subTest(key=key):self.assertFalse(m.accepted({**data,key:False}))

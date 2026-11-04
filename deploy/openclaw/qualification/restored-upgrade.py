@@ -28,6 +28,7 @@ ROOT=None
 COUNTER=0
 SQLITE_COUNT=0
 LAST_HEALTH=None
+SNAPSHOT_METRICS={}
 BRIDGE_PROBE_IMAGE='busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662'
 
 
@@ -172,6 +173,15 @@ def policy_projection(config):
  return value
 
 
+def paused_config(original):
+ value=copy.deepcopy(original);value.setdefault('cron',{})['enabled']=False
+ for name,channel in value.get('channels',{}).items():
+  if name!='defaults' and isinstance(channel,dict):channel['enabled']=False
+ for agent in [value['agents'].get('defaults',{}),*value['agents']['entries'].values()]:
+  agent.setdefault('heartbeat',{})['every']='0m'
+ return value
+
+
 def native_policy(env,label):
  raw=run([str(HOME/'.local/bin/openshell'),'policy','get','-g','nemoclaw-9123','agent-openclaw','--base','-o','json'],label,env=env,user=True)
  return json.loads(raw)['policy']
@@ -218,23 +228,28 @@ def synchronize_mcp(version,env):
  except supervisor.Refused as error:raise ValueError('native-mcp-binding:'+str(error)) from None
 
 
-def durable_table_digest(db,table):
+def durable_table_digest(db,table,metrics=None):
  # Runtime authority fingerprints are deliberately recomputed by native doctor;
  # preserve their owning job identities, while native_policy separately fences
  # the actual sandbox permissions. Delivery payloads/routing/dedup and task
  # history are durable and are compared in full.
  quoted='"'+table.replace('"','""')+'"'
  fields='store_key,job_id' if table=='cron_job_runtime_authorities' else '*'
- values=[];size=0
- for row in db.execute('select '+fields+' from '+quoted):
+ values=[];size=0;cursor=db.execute('select '+fields+' from '+quoted)
+ columns=[column[0] for column in cursor.description];per_column=[[] for _ in columns] if metrics is not None else None
+ for row in cursor:
   encoded=json.dumps(row,sort_keys=True,default=lambda b:{'bytes':b.hex()});size+=len(encoded.encode())
   if len(values)>=100000 or size>64*1024**2:raise ValueError('native-durable-queue-budget')
   values.append(encoded)
+  if per_column is not None:
+   for i,value in enumerate(row):per_column[i].append(json.dumps(value,sort_keys=True,default=lambda b:{'bytes':b.hex()}))
+ if metrics is not None:metrics.update(rows=len(values),columns={name:hashlib.sha256('\n'.join(sorted(per_column[i])).encode()).hexdigest() for i,name in enumerate(columns)})
  return hashlib.sha256('\n'.join(sorted(values)).encode()).hexdigest()
 
 
 def native_data_integrity():
- global SQLITE_COUNT
+ global SQLITE_COUNT,SNAPSHOT_METRICS
+ SNAPSHOT_METRICS={}
  count=0;queues={};files=0
  for path in STATE.rglob('*'):
   if path.is_symlink() or not path.is_file():continue
@@ -248,10 +263,43 @@ def native_data_integrity():
    count+=1
    for (table,) in db.execute('select name from sqlite_master where type="table"'):
     if not re.fullmatch(r'(?:channel_ingress|channel_inbox|cron_jobs|cron_job_runs|tasks|reminders)[a-zA-Z0-9_]*',table) and table not in {'delivery_queue_entries','task_runs','task_delivery_state','cron_run_receipts','cron_job_runtime_authorities','claw_cron_refs'}:continue
-    queues[str(path.relative_to(STATE))+':'+table]=durable_table_digest(db,table)
+    key=str(path.relative_to(STATE))+':'+table;metrics={}
+    queues[key]=durable_table_digest(db,table,metrics);SNAPSHOT_METRICS[key]=metrics
  if count<39:raise ValueError('native-restored-sqlite-inventory-incomplete')
  SQLITE_COUNT=count
  return queues
+
+
+def preparation_diff(before,after,old_metrics,new_metrics):
+ work_before=before['workspaces'];work_after=after['workspaces']
+ changed_work=[key for key in sorted(set(work_before)|set(work_after)) if work_before.get(key)!=work_after.get(key)]
+ changed_tables=[key for key in sorted(set(before['durable_queues'])|set(after['durable_queues'])) if before['durable_queues'].get(key)!=after['durable_queues'].get(key)]
+ tables={}
+ for key in changed_tables[:8]:
+  old=old_metrics.get(key,{});new=new_metrics.get(key,{})
+  columns=set(old.get('columns',{}))|set(new.get('columns',{}))
+  tables[key]={'before_rows':old.get('rows'),'after_rows':new.get('rows'),'changed_columns':[c for c in sorted(columns) if old.get('columns',{}).get(c)!=new.get('columns',{}).get(c)]}
+ result={'conversation_roles':[role for role in sorted(set(before['conversations'])|set(after['conversations'])) if before['conversations'].get(role)!=after['conversations'].get(role)],
+  'workspace_changed_count':len(changed_work),'workspace_changed_paths':changed_work[:16],
+  'durable_changed_count':len(changed_tables),'durable_tables':tables}
+ while len(json.dumps(result).encode())>4096:
+  result['truncated']=True
+  if result['workspace_changed_paths']:result['workspace_changed_paths'].pop()
+  elif result['durable_tables']:result['durable_tables'].pop(next(reversed(result['durable_tables'])))
+  else:break
+ return result
+
+
+def changed_policy_paths(before,after,prefix=''):
+ if before==after:return []
+ if isinstance(before,dict) and isinstance(after,dict):
+  paths=[]
+  for key in sorted(set(before)|set(after)):
+   path=prefix+'.'+key if prefix else key
+   paths.extend(changed_policy_paths(before.get(key),after.get(key),path))
+   if len(paths)>=64:break
+  return paths[:64]
+ return [prefix]
 
 
 def snapshot():
@@ -400,13 +448,9 @@ def main():
   env=environment('0.0.129',assets)
   run(['systemctl','--user','stop','homecompute-openclaw-supervisor.service'],'stop-clone-watchdog',env=env,user=True)
   stop_native('0.0.129',env,'pause-clone-native')
-  original=json.loads((STATE/'openclaw.json').read_bytes());paused=copy.deepcopy(original)
-  paused.setdefault('cron',{})['enabled']=False
-  for name,value in paused.get('channels',{}).items():
-   if name!='defaults' and isinstance(value,dict):value['enabled']=False
-  for value in [paused['agents'].get('defaults',{}),*paused['agents']['entries'].values()]:value['heartbeat']={'every':'0m'}
+  original=json.loads((STATE/'openclaw.json').read_bytes());paused=paused_config(original)
   target=STATE/'openclaw.json';target.write_text(json.dumps(paused));os.chown(target,998,998);target.chmod(0o600)
-  before=snapshot();policy=policy_projection(paused);sandbox_policy=native_policy(env,'capture-native-policy')
+  before=snapshot();before_metrics=copy.deepcopy(SNAPSHOT_METRICS);policy=policy_projection(paused);sandbox_policy=native_policy(env,'capture-native-policy')
   # Retain the exact provider/registry endpoint identity, with clone-only DNS
   # and a synthetic credential. The VM has no NIC or host share.
   bridge=json.loads(subprocess.check_output(['docker','network','inspect','bridge']))[0]['IPAM']['Config'][0]['Gateway']
@@ -419,7 +463,17 @@ def main():
   run([str(HOME/'.local/bin/openshell'),'provider','update','-g','nemoclaw-9123','compatible-endpoint','--credential','COMPATIBLE_API_KEY'],'replace-clone-only-credential',env=env,user=True)
   progress('start-paused-native-rebuild-source');start_native('0.0.129',env,'start-paused-native-rebuild-source')
   synchronize_mcp('0.0.129',env)
-  if policy_projection(json.loads((STATE/'openclaw.json').read_bytes()))!=policy or snapshot()!=before:raise ValueError('paused-source-state-drift')
+  current_policy=policy_projection(json.loads((STATE/'openclaw.json').read_bytes()));after=snapshot()
+  result['preparation_preserved']=current_policy==policy and after==before
+  if after!=before:result['private_preparation_diff']=preparation_diff(before,after,before_metrics,SNAPSHOT_METRICS)
+  if current_policy!=policy:
+   result['preparation_policy_changed_sections']=[key for key in sorted(set(policy)|set(current_policy)) if policy.get(key)!=current_policy.get(key)]
+   result['private_preparation_policy_paths']=changed_policy_paths(policy,current_policy)
+   raise ValueError('paused-source-policy-drift')
+  # Diagnostic continuation remains networkless and cannot be promoted when
+  # preparation changed data. Collect native transition evidence in one run;
+  # the final preservation gate still requires the original preparation.
+  before=after;before_metrics=copy.deepcopy(SNAPSHOT_METRICS)
   wait_idle('0.0.129',env)
   progress('name-authenticated-oci-content');named=WORK/'named-candidate-image.tar'
   naming=prep.named_archive(assets/'candidate-image.tar',named,prep.IMAGES['0.0.140']);(WORK/'oci-naming-proof.json').write_text(json.dumps(naming,sort_keys=True))
@@ -449,7 +503,8 @@ def main():
    actual=json.loads((STATE/'openclaw.json').read_bytes())
    if policy_projection(actual)!=policy:raise ValueError(label+'-retained-policy-drift')
    if native_policy(env,label+'-native-policy')!=sandbox_policy:raise ValueError(label+'-native-policy-drift')
-   if snapshot()!=before:raise ValueError(label+'-immutable-state-drift')
+   current=snapshot();result[label+'_state_preserved']=current==before
+   if current!=before:result['private_'+label+'_state_diff']=preparation_diff(before,current,before_metrics,SNAPSHOT_METRICS)
    if core not in run(['docker','exec',container(),'openclaw','--version'],label+'-actual-version').decode():raise ValueError(label+'-runtime-version')
    result['native_'+label+'_verified']=True;progress(label+'-verified')
    if label=='upgrade':
@@ -464,9 +519,10 @@ def main():
     delivered,_=json.JSONDecoder().raw_decode(handoff.decode()[handoff.index(b'{'):])
     if delivered.get('result',{}).get('meta',{}).get('yielded') is not True:raise ValueError('native-yield-not-executed')
     result['native_yield_verified']=True;result['agent_handoff_verified']=True
-    wait_idle(version,env);before=snapshot()
+    wait_idle(version,env);before=snapshot();before_metrics=copy.deepcopy(SNAPSHOT_METRICS)
   result['native_sqlite_integrity']=True;result['native_sqlite_databases']=SQLITE_COUNT
-  result['oci_transport_name_verified']=True;result['state_preserved']=True;result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True;result['mcp_binding_verified']=True
+  result['oci_transport_name_verified']=True;result['state_preserved']=all(result.get(k) is True for k in ('preparation_preserved','upgrade_state_preserved','rollback_state_preserved'));result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True;result['mcp_binding_verified']=True
+  if result['state_preserved'] is not True:result['error_category']='state-comparison-refused'
  except Exception as error:
   result['error_category']=str(error) if isinstance(error,ValueError) else type(error).__name__
   if LAST_HEALTH is not None:result['last_health']=LAST_HEALTH

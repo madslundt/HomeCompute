@@ -50,7 +50,7 @@ class ManagedDeployment(unittest.TestCase):
   policy=m.declaration()
   with self.assertRaises(ValueError):m.qualified(policy,{})
   policy.update(production_qualified=True,qualification_revision='a'*40,mattermost_version='2026.9.1')
-  proof={k:True for k in ('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')}
+  proof={k:True for k in ('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')}
   proof.update(network=False,production_modified=False,roles=12,native_sqlite_databases=39,source_revision='a'*40,assets_manifest_sha256=policy['qualification_assets_sha256'],mattermost_version='2026.9.1',policy_sha256=policy['qualification_policy_sha256'])
   m.qualified(policy,proof)
   for key,value in [('native_rollback_verified',False),('network',True),('roles',11),('mattermost_version','2026.9.2'),('source_revision','b'*40)]:

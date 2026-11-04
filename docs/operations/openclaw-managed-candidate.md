@@ -431,3 +431,26 @@ Require registered adapter, present policy, attached credential-ready provider,
 successful credential resolution and successful bounded tool discovery. Check
 the JSON fields; exit zero alone does not prove authorization succeeded. Keep
 raw receipts private and retain only sanitized counts/results in source.
+
+The next run confirmed the paused health contract (all runtime plugins loaded,
+zero errors/unavailable entries and no running Mattermost account) and completed
+its fixed MCP reconciliation. The original preparation-state equality then
+refused before upgrade. Its previous combined error did not identify whether
+policy, conversations, workspaces or durable rows differed. No preservation
+exception is inferred from that incomplete evidence.
+The fixture now records bounded changed policy paths, conversation roles,
+workspace paths, durable table row counts and changed column names derived from
+hashes. It records no row values or task payloads in those summaries. Unknown
+policy changes still stop immediately. Valid but changed data may continue in
+the same networkless disposable VM to collect the remaining native lifecycle
+checks, with separate preparation/upgrade/rollback preservation flags.
+Promotion requires **all three** flags and the overall preservation flag; a
+diagnostic continuation cannot turn a failed state comparison into acceptance.
+
+Inspection also found a preparation defect: the fixture replaced complete
+heartbeat objects with `{every:"0m"}`, dropping the retained
+`isolatedSession:true` and other heartbeat settings. Both pinned vendor
+generators emit that isolation setting. Pausing now copies the policy and
+changes only heartbeat intervals, channel enablement and cron enablement;
+heartbeat isolation and other options stay intact. The changed-data diagnostics
+remain required to establish whether any other preparation difference exists.
