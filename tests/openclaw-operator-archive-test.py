@@ -92,11 +92,29 @@ class OperatorArchive(unittest.TestCase):
    for i in range(2048):(root/str(i)).touch()
    with self.assertRaisesRegex(ValueError,'artifact-budget'):namespace['inventory'](root)
 
+ def test_retired_public_tree_requires_exact_source_and_module_linked_cache(self):
+  namespace={};exec(m.CONTAINER_CODE.split('request=json.load(sys.stdin)')[0],namespace)
+  rows={'.':{'kind':'directory','uid':0,'gid':0,'mode':0o755},'scripts':{'kind':'directory','uid':0,'gid':0,'mode':0o755},'scripts/mod.py':{'kind':'file','uid':0,'gid':0,'mode':0o644,'bytes':12,'sha256':'a'*64}}
+  original=namespace['checkout_digest'](rows)
+  rows['scripts/__pycache__']={'kind':'directory','uid':0,'gid':0,'mode':0o755}
+  cache='scripts/__pycache__/mod.cpython-313.pyc';rows[cache]={'kind':'file','uid':0,'gid':0,'mode':0o644,'bytes':32,'sha256':'b'*64}
+  self.assertEqual(namespace['checkout_digest'](rows),original)
+  rows[cache]['bytes']=2*1024**2+1
+  with self.assertRaisesRegex(ValueError,'unknown-code-cache'):namespace['checkout_digest'](rows)
+  rows[cache]['bytes']=32;rows['scripts/__pycache__/private.json']=rows[cache]
+  with self.assertRaisesRegex(ValueError,'unknown-code-cache'):namespace['checkout_digest'](rows)
+  del rows['scripts/__pycache__/private.json'];rows['private.txt']={**rows['scripts/mod.py']}
+  self.assertNotEqual(namespace['checkout_digest'](rows),original)
+  del rows['private.txt'];rows['scripts/mod.py']['sha256']='c'*64
+  self.assertNotEqual(namespace['checkout_digest'](rows),original)
+
  def test_container_reference_fences_active_inputs(self):
   definitions=m.CONTAINER_CODE.split('request=json.load(sys.stdin)')[0];namespace={};exec(definitions,namespace)
   root=Path('/sandbox/.openclaw/tool-install-backups')
   for value in (str(root)+'/private.json','~/.openclaw/tool-install-backups/private.json','tool-install-backups/private.json','file://'+str(root)+'/private.json'):
    with self.subTest(value=value):self.assertTrue(namespace['referenced'](root,{'nested':[value]}))
   self.assertFalse(namespace['referenced'](root,{'path':'/sandbox/.openclaw/openclaw.json'}))
+  stage=Path('/sandbox/homecompute-office-install-1234')
+  self.assertTrue(namespace['referenced'](stage,{'path':'./homecompute-office-install-1234/scripts/setup.mjs'}))
 
 if __name__=='__main__':unittest.main()

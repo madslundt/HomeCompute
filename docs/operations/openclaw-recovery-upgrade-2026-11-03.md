@@ -335,3 +335,29 @@ observed replacement but before the final supervisor identity-file commit. The
 root helper independently checks that exact named Ready sandbox, registry tuple
 and image; partial or noncanonical witnesses are refused. Default manual plans
 still use the retained supervisor identity files.
+
+The `8c5629e` rehearsal verified operator archival and complete preparation
+preservation (including the unchanged scheduler rows). Native backup then
+refused a historical installer checkout containing public setup scripts, before
+deletion. A metadata-only read-only boot inventoried all remaining installer
+residue together: three browser-policy checkouts, two workflow-skill staging
+trees and an office idle-install bundle. Their source directories are not active
+configuration paths; current production's read-only archival plan found fourteen
+groups / forty-four files and no pending archive.
+
+The archiver now selects only those exact historical staging names. Browser
+checkout fingerprints are derived from Git archives of full revisions
+`cb9cc4a63f2de48053947e3a0fceb8ca18efad66`,
+`07d8f8aa804c613eeb62f28d13efce8547dcb88c` and
+`d187627d62be119311de27ebde72246806213f65`. Workflow fingerprints derive
+from the seven tracked installer/skill files at
+`9609afc633f95603655e4a07a684359a72cec9b3` and
+`19131206e8c28a86336a6368cadcf5682a3c1704`, with the historical nested
+staging prefix. Classification ignores only bounded CPython caches whose module
+has a matching source file; complete copy and removal inventories still verify
+those caches byte for byte with original ownership and modes. Extra or changed
+source files are refused. The private office idle bundle requires its exact
+known layout and the tracked installer script from
+`c0936f46f122217db60f60a13351f23bcd4a77f6`. All stages must be unused by
+processes and runtime configuration, including home-relative references. No
+native credential-filter exception was added.

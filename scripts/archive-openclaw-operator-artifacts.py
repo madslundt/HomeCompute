@@ -25,6 +25,15 @@ ARCHIVES=Path('/var/lib/homecompute-openclaw-operator-archives')
 CONTAINER_CODE=r'''
 import hashlib,json,os,pathlib,re,shutil,stat,sys,tempfile
 BASE=pathlib.Path('/sandbox/.openclaw')
+CHECKOUTS={
+ 'homecompute-browser-policy-cb9cc4a63f2de48053947e3a0fceb8ca18efad66':'f7c24b396e91e62b0383830165e517d2fa1d969f9d6feb78b0aea39041806c05',
+ 'homecompute-browser-policy-07d8f8aa804c613eeb62f28d13efce8547dcb88c':'c3661794b7011ae60858d8deb9ed227118fd28469fc745997959c0e1cf3b03e6',
+ 'homecompute-browser-policy-d187627d62be119311de27ebde72246806213f65':'4dd54c8cc7fe79510b7f1137ad87ee280a08ad2343e54544fd0c22455d0d6420',
+ 'homecompute-workflow-skills-9609afc6':'25e657ee037dd935e8b42f3964694421830585f9ed65b6297b957026b2474313',
+ 'homecompute-workflow-skills-19131206':'6c6d5a7647c3eb80a49cb284b913b1fe821600adcf692cd29432778fa088abb5',
+}
+OFFICE_IDLE='homecompute-office-idle-c0936f4'
+OFFICE_IDLE_SCRIPT='3b19ebdf1febd2ffc8be2a26143067d0b0107185f0961bebfe030ee354763f88'
 ROOTS=('tool-install-backups','child-result-backups','yield-acknowledgment-backups',
  'llm-queue-backups','search-fallback-backups','lyra-browser-backups','mattermost-setup/__pycache__')
 def selected():
@@ -32,6 +41,7 @@ def selected():
  office=BASE/'homecompute-agent-office'
  out.extend(p for p in office.glob('config-before-*.json') if re.fullmatch(r'config-before-[a-f0-9]{64}\.json',p.name))
  out.extend(p for p in pathlib.Path('/sandbox').glob('homecompute-office-install-*') if re.fullmatch('homecompute-office-install-[0-9]+',p.name))
+ out.extend(pathlib.Path('/sandbox')/name for name in (*CHECKOUTS,OFFICE_IDLE) if (pathlib.Path('/sandbox')/name).exists() or (pathlib.Path('/sandbox')/name).is_symlink())
  return sorted(out)
 def inventory(root):
  result={};total=0;stack=[root];seen=1
@@ -57,6 +67,7 @@ def inventory(root):
 def referenced(root,config):
  if isinstance(config,str):
   aliases=[str(root),str(root).replace('/sandbox/','~/',1)]
+  if pathlib.Path('/sandbox') in root.parents:aliases.extend([str(root.relative_to('/sandbox')),'./'+str(root.relative_to('/sandbox'))])
   if BASE in root.parents:aliases.extend([str(root.relative_to(BASE)),'./'+str(root.relative_to(BASE))])
   return any(config==alias or config.startswith(alias+'/') or config.startswith('file://'+alias) for alias in aliases)
  if isinstance(config,dict):return any(referenced(root,v) for v in config.values())
@@ -64,6 +75,18 @@ def referenced(root,config):
  return False
 def protected_stage(info):
  return stat.S_ISDIR(info.st_mode) and info.st_uid in (0,1000) and info.st_gid==info.st_uid and stat.S_IMODE(info.st_mode)==0o700
+def checkout_digest(rows):
+ projected={}
+ for name,row in rows.items():
+  path=pathlib.PurePosixPath(name)
+  if path.name=='__pycache__' and row['kind']=='directory':continue
+  if path.parent.name=='__pycache__':
+   match=re.fullmatch(r'(.+)\.cpython-(?:312|313)(?:\.opt-[12])?\.pyc',path.name)
+   source=str(path.parent.parent/(match[1]+'.py')) if match else None
+   if not match or row['kind']!='file' or row['bytes']>2*1024**2 or rows.get(source,{}).get('kind')!='file':raise ValueError('retired-checkout-unknown-code-cache')
+   continue
+  projected[name]={key:value for key,value in row.items() if key not in ('uid','gid','mode')}
+ return hashlib.sha256(json.dumps(projected,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 def collect():
  cfg=json.loads((BASE/'openclaw.json').read_bytes());result={}
  for root in selected():
@@ -71,19 +94,28 @@ def collect():
    if parent.is_symlink():raise ValueError('operator-artifact-root-link')
    if parent==pathlib.Path('/sandbox'):break
   if referenced(root,cfg):raise ValueError('operator-artifact-is-runtime-input')
-  if root.name.startswith('homecompute-office-install-'):
+  if root.name.startswith('homecompute-office-install-') or root.name in CHECKOUTS or root.name==OFFICE_IDLE:
+
    info=root.stat()
-   if not protected_stage(info):raise ValueError('retired-protected-install-stage-required')
+   if root.name.startswith('homecompute-office-install-'):
+    if not protected_stage(info):raise ValueError('retired-protected-install-stage-required')
+   elif not root.is_dir() or info.st_uid not in (0,998,1000) or info.st_gid!=info.st_uid or stat.S_IMODE(info.st_mode) not in (0o700,0o755):raise ValueError('retired-known-install-stage-required')
    for process in pathlib.Path('/proc').glob('[0-9]*'):
     if process.name==str(os.getpid()):continue
     try:
      args=(process/'cmdline').read_bytes().split(b'\0')
-     if any(str(root).encode() in arg for arg in args):raise ValueError('operator-install-stage-in-use')
+     if any(root.name.encode() in arg for arg in args):raise ValueError('operator-install-stage-in-use')
      try:cwd=(process/'cwd').readlink()
      except OSError:cwd=None
      if cwd is not None and (cwd==root or root in cwd.parents):raise ValueError('operator-install-stage-in-use')
     except (FileNotFoundError,ProcessLookupError):pass
   rows=inventory(root)
+  if root.name in CHECKOUTS:
+   if any(row['uid'] not in (0,998,1000) or row['gid']!=row['uid'] or row['mode']&0o002 for row in rows.values()):raise ValueError('retired-checkout-owner-or-world-write-drift')
+   if checkout_digest(rows)!=CHECKOUTS[root.name]:raise ValueError('retired-checkout-public-source-drift')
+  if root.name==OFFICE_IDLE:
+   top={path.split('/')[0] for path in rows if path!='.'}
+   if top!={'bundle','deploy','scripts','release.json'} or rows.get('scripts/setup-agent-office.mjs',{}).get('sha256')!=OFFICE_IDLE_SCRIPT or stat.S_IMODE(root.stat().st_mode)!=0o700:raise ValueError('retired-office-install-source-drift')
   if root.name.startswith('config-before-') and rows['.']['sha256']!=root.name[14:-5]:raise ValueError('office-before-image-name-digest-mismatch')
   result[str(root)]=rows
   if len(result)>128 or sum(r.get('bytes',0) for rr in result.values() for r in rr.values())>256*1024**2:raise ValueError('operator-archive-total-budget')
