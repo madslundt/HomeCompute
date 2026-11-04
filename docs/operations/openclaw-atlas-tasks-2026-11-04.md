@@ -141,3 +141,31 @@ and all boot links stayed unchanged. Source now adds a fixed owner-only room
 provisioner, send-time human/bot audience enforcement, exclusion from later
 household sharing and retirement of the old shared retarget action. Its live
 apply remains pending until source qualification/publication completes.
+
+
+Privacy apply completed from `cb4099e2c2e64954e935e77f65b56df60bf0fe0d`.
+Fresh authenticated readback found exactly one human in the new fixed private
+owner room and the same two approved humans in Family. Both service-owned
+configs now contain explicit human/bot allowlists; both timers and their
+attached boot links are active/preserved, adapter/location are active, and all
+four task modules match source. The owner maintenance marker is complete.
+No messages were sent. The owner configuration backup is
+`/var/lib/homecompute-atlas-tasks/owner-delivery-backup-646e1d71563747628f6ba1598ca9b902`;
+the nested code/SQL backup is `backup-e04dded611194f86833f794012c081b4`.
+Task/request/event counts remain owner 1/2/2 (the cancelled synthetic fixture)
+and Family 0/0/0.
+
+The same release refreshed guest instructions, with twelve roles, all required
+account/plugin connections and sixty-nine authenticated tools verified. Backup:
+`atlas-tasks-backup-994fb1552e2f4ae9826559c96df3a817`. Runtime and authority
+were preserved. Full stable repository validation passed, including Nix, before
+publication; the separately advanced model-cache source was preserved and its
+additional thirty-seven focused tests passed after integration.
+
+A fresh English run at 08:19 UTC again completed a correct reviewed answer with
+one Nova child and no child tools. Its original strict receipt remains failed:
+the model omitted the explicit context argument, while the native acceptance
+receipt resolved it to `isolated`, as configured. The verifier is corrected to
+require that actual accepted isolated execution, reject an explicit fork or
+unverified default, and require a terminal final answer. Fresh English/Danish
+acceptance remains pending for that verifier correction.

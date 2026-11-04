@@ -15,4 +15,16 @@ class VerifierTests(unittest.TestCase):
   self.assertEqual(m.classify_tool_results([queued,failure],True,'42')[1],['sessions_yield'])
   self.assertEqual(m.classify_tool_results([failure],True,'42')[1],['sessions_yield'])
 
+ def test_native_acceptance_receipt_proves_omitted_context_default(self):
+  call={'name':'sessions_spawn','arguments':{'agentId':'researcher','mode':'run','runTimeoutSeconds':300}}
+  details={'status':'accepted','mode':'run','context':'isolated','runId':'synthetic','childSessionKey':'agent:researcher:subagent:'+'a'*8+'-'+'a'*4+'-'+'a'*4+'-'+'a'*4+'-'+'a'*12}
+  result={'toolName':'sessions_spawn','isError':False,'details':details}
+  self.assertTrue(m.accepted_isolated_spawn([call],[result]))
+  self.assertFalse(m.accepted_isolated_spawn([call],[]))
+  self.assertFalse(m.accepted_isolated_spawn([call],[result,result]))
+  self.assertFalse(m.accepted_isolated_spawn([call],[{**result,'isError':True}]))
+  self.assertFalse(m.accepted_isolated_spawn([call],[{**result,'details':{**details,'context':'fork'}}]))
+  call['arguments']['context']='fork'
+  self.assertFalse(m.accepted_isolated_spawn([call],[result]))
+
 if __name__=='__main__':unittest.main()

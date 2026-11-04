@@ -183,7 +183,9 @@ NEMOCLAW_GATEWAY_PORT=9123 ~/.local/bin/nemoclaw agent-openclaw exec -- python3 
 
 Use `--language da` with a separate new output for the Danish control. The
 verifier checks the actual fresh parent and child transcripts, one accepted
-isolated researcher run, one yield acknowledgment and a reviewed final answer.
+isolated researcher run, one yield acknowledgment and a reviewed terminal final answer.
+Isolation must be confirmed by the native acceptance receipt; an omitted context
+argument is accepted only when that receipt resolves it to `isolated`.
 It preserves failed runs, including terminal length stops; it sends no channel
 message. A matching RPC success alone is insufficient.
 

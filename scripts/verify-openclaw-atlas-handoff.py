@@ -21,6 +21,19 @@ def classify_tool_results(results, child_verified, answer):
     return observed,failures,bool(ignored)
 
 
+def accepted_isolated_spawn(calls, results):
+    spawns=[x for x in calls if x.get('name')=='sessions_spawn']
+    receipts=[m.get('details',{}) for m in results if m.get('toolName')=='sessions_spawn' and not m.get('isError')]
+    if len(spawns)!=1 or len(receipts)!=1:return False
+    args=spawns[0].get('arguments',{});receipt=receipts[0]
+    return (args.get('agentId')=='researcher' and args.get('mode')=='run'
+            and args.get('context') in (None,'isolated') and args.get('runTimeoutSeconds')==300
+            and receipt.get('status')=='accepted' and receipt.get('mode')=='run'
+            and receipt.get('context')=='isolated'
+            and bool(re.fullmatch(r'agent:researcher:subagent:[0-9a-f-]{36}',receipt.get('childSessionKey','')))
+            and bool(receipt.get('runId')))
+
+
 def verify(output, language):
     os.umask(0o077)
     if any(p.is_symlink() for p in (output,*output.parents)):raise ValueError('Private output required')
@@ -77,18 +90,19 @@ def verify(output, language):
         if (('42' in answer and spawns and yields and child_verified) or time.monotonic()>=deadline
                 or process.returncode!=0 or terminal in {'length','error','aborted'}):break
         time.sleep(2)
+    final=assistant_messages[-1] if assistant_messages else {}
+    answer='\n'.join(x.get('text','') for x in final.get('content',[]) if x.get('type')=='text')
     observed_failures,failures,queued_completion_yield=classify_tool_results(results,child_verified,answer)
     safe_names={'read','agents_list','sessions_spawn','sessions_yield','subagents','session_status'}
-    args=spawns[0].get('arguments',{}) if len(spawns)==1 else {}
-    passed=(process.returncode==0 and len(spawns)==1 and len(yields)==1 and args.get('agentId')=='researcher'
-        and args.get('mode')=='run' and args.get('context')=='isolated' and args.get('runTimeoutSeconds')==300
+    isolated=accepted_isolated_spawn(calls,results)
+    passed=(process.returncode==0 and len(spawns)==1 and len(yields)==1 and isolated and terminal=='stop'
         and child_verified and bool(yields[0].get('arguments',{}).get('acknowledgment')) and '42' in answer and not failures
         and all(x.get('name') in safe_names for x in calls))
     usage=[{'stop_reason':m.get('stopReason'),'input_tokens':sum(m.get('usage',{}).get(k,0) for k in ['input','cacheRead','cacheWrite']),
             'output_tokens':m.get('usage',{}).get('output'),'reasoning_tokens':m.get('usage',{}).get('reasoningTokens')}
            for m in assistant_messages]
     receipt={'session_id':session,'language':language,'native_exit':process.returncode,'turn_usage':usage,
-        'parent_tool_names':[x.get('name') for x in calls],'spawn_count':len(spawns),'yield_count':len(yields),
+        'parent_tool_names':[x.get('name') for x in calls],'spawn_count':len(spawns),'yield_count':len(yields),'accepted_isolated_run':bool(isolated),
         'tool_failures':failures,'observed_tool_error_flags':observed_failures,
         'yield_skipped_for_queued_completion':bool(queued_completion_yield),'child_result_verified':child_verified,'child_tool_names':child_tool_names,'answer_contains_supplied_sum':'42' in answer,'passed':bool(passed),
         'synthetic_only':True,'channel_delivery_requested':False}
