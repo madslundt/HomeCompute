@@ -62,7 +62,10 @@ def verify(output, language):
                     child_answers += [x.get('text','') for x in body if x.get('type')=='text']
                     child_tool_names += [x.get('name') for x in body if x.get('type')=='toolCall']
                 child_verified='42' in '\n'.join(child_answers) and all(n in {'read','session_status'} for n in child_tool_names)
-        if ('42' in answer and spawns and yields and child_verified) or time.monotonic()>=deadline:break
+        assistant_messages=[e.get('message',{}) for e in events if e.get('message',{}).get('role')=='assistant']
+        terminal=assistant_messages[-1].get('stopReason') if assistant_messages else None
+        if (('42' in answer and spawns and yields and child_verified) or time.monotonic()>=deadline
+                or process.returncode!=0 or terminal in {'length','error','aborted'}):break
         time.sleep(2)
     safe_names={'read','agents_list','sessions_spawn','sessions_yield','subagents','session_status'}
     args=spawns[0].get('arguments',{}) if len(spawns)==1 else {}
@@ -70,7 +73,10 @@ def verify(output, language):
         and args.get('mode')=='run' and args.get('context')=='isolated' and args.get('runTimeoutSeconds')==300
         and child_verified and bool(yields[0].get('arguments',{}).get('acknowledgment')) and '42' in answer and not failures
         and all(x.get('name') in safe_names for x in calls))
-    receipt={'session_id':session,'language':language,'native_exit':process.returncode,
+    usage=[{'stop_reason':m.get('stopReason'),'input_tokens':sum(m.get('usage',{}).get(k,0) for k in ['input','cacheRead','cacheWrite']),
+            'output_tokens':m.get('usage',{}).get('output'),'reasoning_tokens':m.get('usage',{}).get('reasoningTokens')}
+           for m in assistant_messages]
+    receipt={'session_id':session,'language':language,'native_exit':process.returncode,'turn_usage':usage,
         'parent_tool_names':[x.get('name') for x in calls],'spawn_count':len(spawns),'yield_count':len(yields),
         'tool_failures':failures,'child_result_verified':child_verified,'child_tool_names':child_tool_names,'answer_contains_supplied_sum':'42' in answer,'passed':bool(passed),
         'synthetic_only':True,'channel_delivery_requested':False}

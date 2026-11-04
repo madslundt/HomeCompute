@@ -241,6 +241,7 @@ python3 "$REPO_ROOT/tests/openclaw-team-household-test.py"
 python3 "$REPO_ROOT/tests/openclaw-workflow-skills-test.py"
 python3 "$REPO_ROOT/tests/openclaw-task-followups-test.py"
 python3 "$REPO_ROOT/tests/openclaw-atlas-deployment-test.py"
+python3 "$REPO_ROOT/tests/openclaw-task-context-test.py"
 python3 "$REPO_ROOT/scripts/setup-openclaw-routines.py" --check
 python3 "$REPO_ROOT/tests/openclaw-mattermost-test.py"
 python3 "$REPO_ROOT/tests/agent-roster-test.py"

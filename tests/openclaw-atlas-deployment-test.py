@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch, Mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +54,33 @@ class DeploymentTests(unittest.TestCase):
     def test_release_guard_rejects_workstation_and_short_revisions(self):
         for revision in ('master','a'*40):
             with self.assertRaisesRegex(ValueError,'release directory'):m.source_guard(revision)
+
+    def test_unmodified_reconciliation_requires_exact_before_images_and_preserves_failed_fence(self):
+        state=self.root/'operator';state.mkdir(mode=0o700)
+        backup=state/'atlas-tasks-backup-fixture';backup.mkdir(mode=0o700)
+        record={'status':'failed','stage':'prepared','backup':str(backup),'source_revision':'b'*40}
+        tx=state/'atlas-tasks-transaction.json';tx.write_text(json.dumps(record))
+        saved={'source_revision':'b'*40,'sandbox_id':'s','generation':'g'}
+        (backup/'plan.json').write_text(json.dumps(saved))
+        before=b'{"model":"retained"}';(backup/'openclaw-before.json').write_bytes(before)
+        files={'workspace/AGENTS.md':{'data':'c3ludGhldGlj','mode':384}}
+        (backup/'before-files.json').write_text(json.dumps(files))
+        ctx=SimpleNamespace(state=state,uuid='s',generation='g',container='exact')
+        u=SimpleNamespace(SUP=SimpleNamespace(private_file=lambda p:p.read_bytes()))
+        with patch.object(m,'source_guard'),patch.object(m,'guest_context',return_value=(u,ctx)),patch.object(m,'guest_command',return_value=before) as command,patch.object(m,'guest_files',return_value=files) as current:
+            plan=m.guest_reconcile_unmodified('a'*40,backup)
+            self.assertTrue(plan['native_state_unchanged']);self.assertEqual(json.loads(tx.read_text()),record)
+            current.return_value={}
+            with self.assertRaisesRegex(ValueError,'state changed'):m.guest_reconcile_unmodified('a'*40,backup)
+            self.assertEqual(json.loads(tx.read_text()),record)
+            current.return_value=files;command.return_value=b'{"model":"changed"}'
+            with self.assertRaisesRegex(ValueError,'state changed'):m.guest_reconcile_unmodified('a'*40,backup)
+            command.return_value=before
+            with self.assertRaisesRegex(ValueError,'plan changed'):m.guest_reconcile_unmodified('a'*40,backup,apply=True,expected='stale')
+            self.assertEqual(json.loads(tx.read_text()),record)
+            m.guest_reconcile_unmodified('a'*40,backup,apply=True,expected=plan['plan_sha256'])
+            self.assertTrue(json.loads(tx.read_text())['reconciled_unmodified'])
+            self.assertEqual(json.loads(tx.read_text())['status'],'complete')
 
     def test_native_principal_is_checked_separately_from_host_operator(self):
         context=Mock();context.container='exact-retained-container'

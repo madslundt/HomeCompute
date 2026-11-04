@@ -32,7 +32,8 @@ GUEST_FILES = ('scripts/verify-openclaw-atlas-handoff.py', 'scripts/verify-openc
  'scripts/setup-openclaw-workflow-skills.py', 'scripts/openclaw_workflow_skills.py',
  'config/openclaw-team.json', 'config/openclaw-routines.json',
  *('deploy/openclaw/skills/' + name + '/SKILL.md' for name in SKILLS))
-FILES = ('scripts/deploy-openclaw-atlas-tasks.py', *('scripts/' + n for n in TARGETS),
+FILES = ('scripts/deploy-openclaw-atlas-tasks.py', 'scripts/configure-openclaw-task-context.py',
+         'config/openclaw-nemoclaw.env.example', 'config/openclaw-nemoclaw.json', *('scripts/' + n for n in TARGETS),
          'scripts/upgrade-openclaw-nemoclaw.py', 'scripts/supervise-openclaw-nemoclaw.py',
          'scripts/restore-openclaw-nemoclaw.py', 'scripts/recover-openclaw-team.py',
          'scripts/prepare-openclaw-upgrade-assets.py', *GUEST_FILES)

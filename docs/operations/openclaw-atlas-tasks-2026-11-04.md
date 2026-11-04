@@ -86,3 +86,34 @@ follow-up and ordinary reminder states were distinct; cancellation disabled the
 watch. No notification was sent. Its private RPC evidence is
 `/var/lib/homecompute-atlas-tasks/qualification/synthetic-mcp-task.json`; the
 cancelled synthetic record remains ordinary durable qualification history.
+
+
+Guest task apply completed at approximately 08:14 Copenhagen from
+`5bf5adad7868487c23621477cb3394d39ae45cc1`, with unchanged runtime version and
+authority apart from the reviewed Atlas skill assignment. All twelve roles,
+required plugin/account health and sixty-nine authenticated MCP tools passed.
+Its private backup is `atlas-tasks-backup-6d7fd3952e85440e82013dcc1bc0a137`.
+
+The first direct-Docker handoff probe never reached the gateway: the local
+client selected dashboard port 18791, which is not the managed internal route.
+The subsequent managed native invocation ran successfully: Atlas read its skill,
+spawned exactly one isolated Nova run with a 300-second cap, yielded once with an
+acknowledgment, and received Nova's correct 13 + 29 = 42 result. No other child
+tools or effects occurred. However, the parent continuation produced no answer:
+it ended with `length`, one output token, and about 29,230 input/cache tokens.
+This run is retained as failed final-answer acceptance; no success claim was
+made from the CLI's `status=ok`.
+
+A fresh live path check joined Core's `automation-moe` mapping to SSH forward
+`172.28.200.1:18005` → Spark loopback 18400. The admitted `/v1/models` response
+advertises context 262,144 for `automation-qualification`; the running
+`qwen38-flash-ultrafast` vLLM process declares that same capacity. The selected
+bounded correction is a 65,536-token OpenClaw allowance, retaining the model,
+4,096 output-token cap and reasoning settings. Its separate hash-bound context
+lifecycle and rollback are source-owned; real final-answer qualification remains
+pending until the corrected context is applied and tested.
+
+The context-change source passed its complete repository validation, including
+containerized Nix evaluation, plus focused context projection/env fencing and
+unmodified-preparation reconciliation regressions. Its live apply and real
+English/Danish final-answer results remain pending at this publication point.

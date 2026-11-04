@@ -139,3 +139,50 @@ before marking only that failed preparation reconciled. Any changed file,
 identity/generation, transaction stage or config refuses this path and requires
 recovery. Private failure output is retained per operation rather than depending
 on the watchdog's rotating diagnostic log.
+
+
+## Context allowance for full-team continuation
+
+The full native team/tool prompt can crowd the original 32,768-token model
+context declaration. A November 4 real handoff received the child's correct
+answer, then ended with a length stop and only one output token. The actual
+provider path was checked: Core `automation-moe` maps through its SSH forward
+to Spark's text admission endpoint, whose `/v1/models` advertises 262,144 tokens
+for the selected `automation-qualification` model. Model identity, output limit,
+reasoning configuration and serving process stay unchanged.
+
+`configure-openclaw-task-context.py` plans an allowance of 65,536, from the
+source-owned native declaration and managed env template. It verifies the
+retained model and 4,096 output limit, exact source/config/env hashes and idle
+native identity. Its hash-bound apply retains private model/env before images,
+changes only the context allowance, uses native validation/config lifecycle,
+updates the matching supervised env setting, reloads via native MCP and verifies
+full authority, connections and all sixty-nine tools. A failed transaction is
+fenced. This is a current-version parameter qualification, not the blocked
+managed version upgrade.
+
+```bash
+python3 /srv/homecompute/releases/FULL_SHA/scripts/configure-openclaw-task-context.py --revision FULL_SHA --verified-backend-context 262144
+python3 /srv/homecompute/releases/FULL_SHA/scripts/configure-openclaw-task-context.py --revision FULL_SHA --verified-backend-context 262144 --apply --expected-plan-sha256 REVIEWED_CONTEXT_PLAN_SHA256
+```
+
+The explicit capacity argument records the operator's actual route/capacity
+verification; it is not discovered or guessed from an old model catalog.
+Rollback uses the same plan/apply command with `--rollback CONTEXT_BACKUP` and
+its new plan hash, retaining current MCP credentials and refusing later authority
+changes. Reconcile any retained failed context transaction before a new apply.
+Rollback to the smaller allowance also needs its desired declarations restored
+in source; code rollback does not erase task history.
+
+Run native probes through the managed execution route, whose gateway transport
+is required; a direct Docker CLI uses the dashboard port and fails admission:
+
+```bash
+NEMOCLAW_GATEWAY_PORT=9123 ~/.local/bin/nemoclaw agent-openclaw exec -- python3 PUBLIC_SOURCE_STAGE/scripts/verify-openclaw-atlas-handoff.py --output NEW_PRIVATE_OUTPUT --language en
+```
+
+Use `--language da` with a separate new output for the Danish control. The
+verifier checks the actual fresh parent and child transcripts, one accepted
+isolated researcher run, one yield acknowledgment and a reviewed final answer.
+It preserves failed runs, including terminal length stops; it sends no channel
+message. A matching RPC success alone is insufficient.

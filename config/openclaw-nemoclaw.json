@@ -50,8 +50,8 @@
             "input": [
               "text"
             ],
-            "contextWindow": 262144,
-            "contextTokens": 32768,
+            "contextWindow": 65536,
+            "contextTokens": 65536,
             "maxTokens": 4096,
             "compat": {
               "supportsDeveloperRole": false,
