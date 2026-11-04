@@ -22,7 +22,7 @@ HOME=Path('/home/hermes-operator')
 ETC=Path('/etc/homecompute-openclaw')
 POLICY='config/openclaw-managed-deployment.json'
 FILES=('scripts/upgrade-openclaw-nemoclaw.py',POLICY,'scripts/supervise-openclaw-nemoclaw.py',
- 'scripts/restore-openclaw-nemoclaw.py','scripts/recover-openclaw-team.py','scripts/approve-native-openclaw-cli.py',
+ 'scripts/restore-openclaw-nemoclaw.py','scripts/recover-openclaw-team.py','scripts/approve-native-openclaw-cli.py','scripts/archive-openclaw-operator-artifacts.py',
  'scripts/setup-openclaw-child-results.py','scripts/setup-openclaw-llm-queue.py','scripts/setup-openclaw-yield-acknowledgment.py',
  'scripts/setup-openclaw-public-dns.py','scripts/openclaw-public-dns.py','scripts/prepare-openclaw-upgrade-assets.py',
  'deploy/openclaw/qualification/restored-upgrade.py','deploy/openclaw/safety-plugin/index.mjs','deploy/openclaw/safety-plugin/browser-relay.mjs','deploy/openclaw/safety-plugin/llm-queue.mjs','deploy/openclaw/safety-plugin/public-dns.mjs',
@@ -61,7 +61,7 @@ def declaration():
 
 def qualified(policy,proof):
  keys=('accepted','native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified',
-  'task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
+  'task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','installed_mattermost_ingress_verified','oci_transport_name_verified','native_sqlite_integrity','source_disk_read_only','registry_metadata_replay')
  if (not re.fullmatch('[0-9a-f]{40}',policy.get('qualification_revision') or '') or policy.get('mattermost_version')!='2026.9.1'
   or policy.get('production_qualified') is not True or not all(proof.get(k) is True for k in keys)
   or proof.get('network') is not False or proof.get('production_modified') is not False or proof.get('roles')!=12 or type(proof.get('native_sqlite_databases')) is not int or proof['native_sqlite_databases']<39
@@ -417,6 +417,7 @@ def apply(args,policy,proof):
   SUP.reconcile_mcp(ctx,required=True)
   ownership_merge(before,native_config(tx,'verify-ready-paused-upgrade-source')[0])
   require_idle(ctx,tx.record);tx.stage('ready-paused-source-before-native-rebuild')
+  tx.command(['sudo','/usr/bin/python3',str(ROOT/'scripts/archive-openclaw-operator-artifacts.py'),'--revision',args.revision,'--apply'],'archive-retired-operator-material',timeout=300)
   next_env=dict(ctx.env,OPENCLAW_NEMOCLAW_MODEL_KEY_FILE=str(ctx.keyfile),NEMOCLAW_INSTALL_REF=policy['target_revision'],NEMOCLAW_INSTALL_TAG=policy['target_tag'],NEMOCLAW_CPU='2')
   ctx.env.update({key:next_env[key] for key in ('NEMOCLAW_INSTALL_REF','NEMOCLAW_INSTALL_TAG','NEMOCLAW_CPU')})
   identifier,generation=rebuild_observed(tx,cli140,policy['target_revision'],'managed-qualified-rebuild','newId','newGeneration')
@@ -524,6 +525,7 @@ def rollback_transition(args,policy,proof):
   SUP.reconcile_mcp(ctx,required=True)
   ownership_merge(original,native_config(tx,'verify-ready-paused-rollback-source')[0])
   require_idle(ctx,record)
+  tx.command(['sudo','/usr/bin/python3',str(ROOT/'scripts/archive-openclaw-operator-artifacts.py'),'--revision',args.revision,'--apply'],'archive-retired-rollback-material',timeout=300)
   tx.ctx.env.update(NEMOCLAW_INSTALL_REF=SUP.REVISION,NEMOCLAW_INSTALL_TAG=previous['tag'],NEMOCLAW_CPU='2')
   record['rollback_checkpoint']['phase']='native-rebuild-starting';tx.stage('rollback-native-rebuild-starting')
   rebuild_observed(tx,legacy,SUP.REVISION,'qualified-retained-version-rebuild','rollbackId','rollbackGeneration')

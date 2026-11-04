@@ -281,3 +281,33 @@ connected. Recovery transaction status was complete. Independent checks found
 zero owned candidate containers or restore scopes, no backup resume journal or
 recovery marker, and no admission chain. No real task turn or channel message
 was sent during these checks.
+
+## Retired installer material and native backup — November 4
+
+The isolated native rebuild reached its backup gate and refused unreadable
+root-owned operator before-images in `/sandbox/.openclaw` and a retired office
+installer staging directory in the historical container layer. It stopped before
+native deletion. Production remains on the original tuple. Making these private
+configuration copies agent-readable would expose historical credentials.
+
+[`archive-openclaw-operator-artifacts.py`](../../scripts/archive-openclaw-operator-artifacts.py)
+now owns their archival lifecycle. From an exact published root-protected guest
+release, it checks the managed sandbox identity, generation and image, and selects
+only the documented operator backup directories, digest-named office before-images,
+retired root-private office staging, and Python installer bytecode. It refuses
+runtime references, links, special files, in-use staging and unexpected changes.
+It copies them with original ownership and modes into root-private
+`/var/lib/homecompute-openclaw-operator-archives`, verifies every file digest and
+metadata, fsyncs the private receipt, and then removes only the verified retired
+copies through a root-private quarantine. An interrupted or failed operation
+retains its pending fence and requires review; it is never blindly replayed.
+Active configuration, office authentication and agent workspaces are not selected.
+The whole-VM NAS backup covers the external archive.
+
+The managed upgrade controller invokes this lifecycle only after pausing channels,
+reconciling MCP and verifying idle state, before each native rebuild, including
+rollback. The networkless restored qualification runs the same helper and must
+prove operator archival as an additional acceptance gate. Archival unit tests
+cover copy verification before removal, changed-source refusal, pending-operation
+fences, runtime references and links. Actual native upgrade/rollback acceptance
+is still required before production promotion.

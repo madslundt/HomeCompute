@@ -28,6 +28,8 @@ class RestoredUpgrade(unittest.TestCase):
   self.assertEqual(paused['agents']['defaults']['heartbeat'],{'every':'0m','isolatedSession':True})
   self.assertEqual(paused['agents']['entries']['main']['heartbeat'],{'every':'0m','isolatedSession':True,'target':'owner'})
   self.assertFalse(paused['channels']['mattermost']['enabled']);self.assertFalse(paused['cron']['enabled'])
+  original['agents']['entries']['researcher']={}
+  self.assertNotIn('heartbeat',w.paused_config(original)['agents']['entries']['researcher'])
 
  def test_state_diagnostics_name_columns_without_recording_payloads(self):
   with closing(sqlite3.connect(':memory:')) as db:
@@ -100,7 +102,7 @@ class RestoredUpgrade(unittest.TestCase):
    self.assertNotEqual(before,w.durable_table_digest(db,'cron_job_runtime_authorities'))
 
  def test_no_acceptance_without_actual_handoff_and_rollback(self):
-  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
+  data={k:True for k in ('native_upgrade_verified','native_rollback_verified','state_preserved','authenticated_gateway_verified','task_delivery_verified','agent_handoff_verified','native_yield_verified','mcp_binding_verified','operator_archives_verified','preparation_preserved','upgrade_state_preserved','rollback_state_preserved','oci_transport_name_verified','native_sqlite_integrity','installed_mattermost_ingress_verified','registry_metadata_replay')};data['roles']=12;data['native_sqlite_databases']=39
   self.assertTrue(m.accepted(data))
   for key in ('native_rollback_verified','agent_handoff_verified','state_preserved','mcp_binding_verified'):
    with self.subTest(key=key):self.assertFalse(m.accepted({**data,key:False}))

@@ -177,7 +177,7 @@ def paused_config(original):
  value=copy.deepcopy(original);value.setdefault('cron',{})['enabled']=False
  for name,channel in value.get('channels',{}).items():
   if name!='defaults' and isinstance(channel,dict):channel['enabled']=False
- for agent in [value['agents'].get('defaults',{}),*value['agents']['entries'].values()]:
+ for agent in [value['agents'].setdefault('defaults',{}),*(a for a in value['agents']['entries'].values() if 'heartbeat' in a)]:
   agent.setdefault('heartbeat',{})['every']='0m'
  return value
 
@@ -226,6 +226,15 @@ def synchronize_mcp(version,env):
  ctx=Context();ctx.generation=generation;ctx.state.mkdir(mode=0o700,exist_ok=True)
  try:supervisor.reconcile_mcp(ctx,read_config=lambda:json.loads((STATE/'openclaw.json').read_bytes()),required=True)
  except supervisor.Refused as error:raise ValueError('native-mcp-binding:'+str(error)) from None
+
+
+def archive_operator_material(version,env):
+ archiver=module('archive-openclaw-operator-artifacts');prep=module('prepare-openclaw-upgrade-assets');owned=container()
+ registry=HOME/'.nemoclaw/gateways/9123/sandboxes.json';entry=json.loads(registry.read_bytes())['sandboxes']['agent-openclaw'];generation=entry['lifecycleGeneration']
+ def guard():
+  current=json.loads(registry.read_bytes())['sandboxes']['agent-openclaw']
+  if container()!=owned or current['lifecycleGeneration']!=generation or current['workload']['reference']!=prep.IMAGES[version] or current['workload']['sourceRevision']!=prep.VERSIONS[version]:raise ValueError('operator-archive-native-identity-drift')
+ return archiver.archive_owned(owned,guard,apply=True,archive_root=WORK/'operator-archives')
 
 
 def durable_table_digest(db,table,metrics=None):
@@ -463,6 +472,8 @@ def main():
   run([str(HOME/'.local/bin/openshell'),'provider','update','-g','nemoclaw-9123','compatible-endpoint','--credential','COMPATIBLE_API_KEY'],'replace-clone-only-credential',env=env,user=True)
   progress('start-paused-native-rebuild-source');start_native('0.0.129',env,'start-paused-native-rebuild-source')
   synchronize_mcp('0.0.129',env)
+  wait_idle('0.0.129',env)
+  archive_operator_material('0.0.129',env)
   current_policy=policy_projection(json.loads((STATE/'openclaw.json').read_bytes()));after=snapshot()
   result['preparation_preserved']=current_policy==policy and after==before
   if after!=before:result['private_preparation_diff']=preparation_diff(before,after,before_metrics,SNAPSHOT_METRICS)
@@ -487,6 +498,7 @@ def main():
   result['bridge_warmup_events']=len(events.splitlines())
   for version,core,label in [('0.0.140','2026.9.2','upgrade'),('0.0.129','2026.9.1','rollback')]:
    env=environment(version,assets);progress(label+'-native-rebuild')
+   archive_operator_material('0.0.129' if label=='upgrade' else '0.0.140',environment('0.0.129' if label=='upgrade' else '0.0.140',assets))
    run(cli(version,'agent-openclaw','rebuild','--yes','--verbose'),label+'-native-rebuild',env=env,user=True,timeout=600)
    c=container()
    run(['docker','update','--cpus','2','--memory',str(8*1024**3),'--memory-swap',str(8*1024**3),c],label+'-retain-resource-budget')
@@ -521,7 +533,7 @@ def main():
     result['native_yield_verified']=True;result['agent_handoff_verified']=True
     wait_idle(version,env);before=snapshot();before_metrics=copy.deepcopy(SNAPSHOT_METRICS)
   result['native_sqlite_integrity']=True;result['native_sqlite_databases']=SQLITE_COUNT
-  result['oci_transport_name_verified']=True;result['state_preserved']=all(result.get(k) is True for k in ('preparation_preserved','upgrade_state_preserved','rollback_state_preserved'));result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True;result['mcp_binding_verified']=True
+  result['oci_transport_name_verified']=True;result['operator_archives_verified']=True;result['state_preserved']=all(result.get(k) is True for k in ('preparation_preserved','upgrade_state_preserved','rollback_state_preserved'));result['roles']=len(paused['agents']['entries']);result['authenticated_gateway_verified']=True;result['mcp_binding_verified']=True
   if result['state_preserved'] is not True:result['error_category']='state-comparison-refused'
  except Exception as error:
   result['error_category']=str(error) if isinstance(error,ValueError) else type(error).__name__

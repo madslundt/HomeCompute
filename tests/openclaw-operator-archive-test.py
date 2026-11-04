@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+import importlib.util
+import json
+import os
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+ROOT=Path(__file__).resolve().parents[1]
+spec=importlib.util.spec_from_file_location('archive',ROOT/'scripts/archive-openclaw-operator-artifacts.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+CONTAINER='openshell-default--agent-openclaw-aabbccdd-0000-4000-8000-000000000001'
+
+class OperatorArchive(unittest.TestCase):
+ def test_plan_never_copies_or_removes(self):
+  with tempfile.TemporaryDirectory() as tmp,patch.object(m.os,'geteuid',return_value=0),patch.object(m,'container_inventory',return_value={'/sandbox/retired':{'.':{'kind':'file'}}}) as inventory,patch.object(m,'run') as run:
+   result=m.archive_owned(CONTAINER,lambda:None,archive_root=Path(tmp))
+   self.assertEqual(result['files'],1);self.assertFalse(result['apply']);run.assert_not_called();self.assertEqual(inventory.call_count,1)
+
+ def exercise(self,mismatch=False,drift=False):
+  with tempfile.TemporaryDirectory() as tmp:
+   archive=Path(tmp)/'archives';source=Path(tmp)/'source';source.write_bytes(b'private before-image');source.chmod(0o600)
+   rows=m.host_inventory(source);entries={'/sandbox/.openclaw/tool-install-backups':rows};calls=[];guards=[]
+   def inventory(container,action='inventory',entries=None):
+    calls.append(action)
+    if drift and calls.count('inventory')>1:return {}
+    if action=='remove':
+     manifests=list(archive.glob('native-home-*/manifest.json'));self.assertEqual(len(manifests),1)
+     receipt=json.loads(manifests[0].read_bytes());self.assertEqual(receipt['status'],'copied-verified')
+     self.assertEqual(m.host_inventory(manifests[0].parent/'entry-0'),rows)
+     return {'removed':1}
+    return {'/sandbox/.openclaw/tool-install-backups':rows}
+   def copy(argv,**kwargs):
+    self.assertEqual(argv[:3],['docker','cp','--archive']);target=Path(argv[-1]);target.write_bytes(b'bad' if mismatch else source.read_bytes());target.chmod(0o600);return b''
+   with patch.object(m.os,'geteuid',return_value=0),patch.object(m,'protected'),patch.object(m,'container_inventory',side_effect=inventory),patch.object(m,'run',side_effect=copy):
+    if mismatch or drift:
+     with self.assertRaisesRegex(ValueError,'verification-failed' if mismatch else 'changed-after-copy'):m.archive_owned(CONTAINER,lambda:guards.append(True),apply=True,archive_root=archive)
+     self.assertNotIn('remove',calls);self.assertTrue((archive/'pending.json').exists())
+     with self.assertRaisesRegex(ValueError,'reviewed-continuation'):m.archive_owned(CONTAINER,lambda:None,apply=True,archive_root=archive)
+    else:
+     result=m.archive_owned(CONTAINER,lambda:guards.append(True),apply=True,archive_root=archive)
+     self.assertTrue(result['verified']);self.assertEqual(calls,['inventory','inventory','remove']);self.assertEqual(len(guards),2)
+     self.assertFalse((archive/'pending.json').exists());self.assertEqual(json.loads((Path(result['private_archive'])/'manifest.json').read_bytes())['status'],'complete')
+
+ def test_verified_private_copy_precedes_removal(self):self.exercise()
+ def test_failed_copy_cannot_remove_or_replay(self):self.exercise(mismatch=True)
+ def test_changed_live_material_cannot_remove_or_replay(self):self.exercise(drift=True)
+
+ def test_pending_operation_cannot_be_bypassed_by_empty_inventory(self):
+  with tempfile.TemporaryDirectory() as tmp,patch.object(m.os,'geteuid',return_value=0),patch.object(m,'container_inventory',return_value={}):
+   root=Path(tmp);(root/'pending.json').write_text('{}')
+   with self.assertRaisesRegex(ValueError,'reviewed-continuation'):m.archive_owned(CONTAINER,lambda:None,apply=True,archive_root=root)
+
+ def test_archive_inventory_refuses_links(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);(root/'data').write_text('private');(root/'link').symlink_to('data')
+   with self.assertRaisesRegex(ValueError,'link-or-special'):m.host_inventory(root)
+
+ def test_container_inventory_bounds_before_hashing(self):
+  namespace={};exec(m.CONTAINER_CODE.split('request=json.load(sys.stdin)')[0],namespace)
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);large=root/'large'
+   with large.open('wb') as stream:stream.truncate(64*1024**2+1)
+   with patch.object(namespace['hashlib'],'file_digest',side_effect=AssertionError('oversized file was hashed')):
+    with self.assertRaisesRegex(ValueError,'artifact-budget'):namespace['inventory'](root)
+   large.unlink()
+   for i in range(2048):(root/str(i)).touch()
+   with self.assertRaisesRegex(ValueError,'artifact-budget'):namespace['inventory'](root)
+
+ def test_container_reference_fences_active_inputs(self):
+  definitions=m.CONTAINER_CODE.split('request=json.load(sys.stdin)')[0];namespace={};exec(definitions,namespace)
+  root=Path('/sandbox/.openclaw/tool-install-backups')
+  for value in (str(root)+'/private.json','~/.openclaw/tool-install-backups/private.json','tool-install-backups/private.json','file://'+str(root)+'/private.json'):
+   with self.subTest(value=value):self.assertTrue(namespace['referenced'](root,{'nested':[value]}))
+  self.assertFalse(namespace['referenced'](root,{'path':'/sandbox/.openclaw/openclaw.json'}))
+
+if __name__=='__main__':unittest.main()
