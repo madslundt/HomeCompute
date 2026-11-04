@@ -15,6 +15,10 @@ install -d -m 0755 /srv/homecompute/releases
 install -d -m 0700 /var/lib/homecompute
 exec 9>/var/lib/homecompute/home-spark-deploy.lock
 flock -n 9 || { printf 'Another home-spark deployment is running.\n' >&2; exit 1; }
+if [[ -e /var/lib/homecompute-qwen27b-qualification/pending.json || -L /var/lib/homecompute-qwen27b-qualification/pending.json ]]; then
+  printf 'A retained Qwen qualification recovery is pending; recover it before deploying a release.\n' >&2
+  exit 1
+fi
 if [[ -d /var/lib/homecompute-docker-maintenance ]] && find /var/lib/homecompute-docker-maintenance -maxdepth 1 -name '*.active' -print -quit | read -r _active_docker_update; then
   printf 'Reconcile automatic Docker updates and source pins before full deployment.\n' >&2; exit 1;
 fi

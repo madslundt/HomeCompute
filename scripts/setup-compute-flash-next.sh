@@ -12,6 +12,9 @@ COMMAND="${1:-help}"
 PROFILE=quality
 ENV_FILE="${GB10_ENV_FILE:-/etc/gb10-ai/gb10.env}"
 WAIT_SECONDS=1800
+QUALIFICATION_MANIFEST=""
+QUALIFICATION_EXPORT_DIR=""
+MAINTENANCE_WINDOW=false
 log() { printf '[flash-next] %s\n' "$*"; }
 die() { printf '[flash-next] ERROR: %s\n' "$*" >&2; exit 1; }
 require_root() { [[ ${EUID} -eq 0 ]] || die 'Rerun this system-changing command with sudo'; }
@@ -30,16 +33,23 @@ Commands:
   activate-canary    Exclusively start one selected profile and run health/tool smoke checks
   switch-profile     Restore the previous text service, then activate the selected profile
   smoke             Check the isolated OpenAI protocol and tool-call endpoint
+  qualify-qwen27b   Compare one private frozen request against the retained 27B fallback
+  recover-qwen27b   Restore a pending interrupted 27B comparison
   status            Show candidate state and recorded local image identity
   deactivate-canary Stop candidate and restore the previously running text containers
 Options:
   --profile NAME    quality (default) or ultrafast
   --env FILE        Root-owned compute-node environment (default /etc/gb10-ai/gb10.env)
   --wait SECONDS    Readiness timeout (default 1800)
+  --manifest FILE   Private request JSON (used only by qualify-qwen27b)
+  --export-dir DIR  Optional private directory for the final receipt and model responses
+  --maintenance-window  Confirm a short exclusive text-service qualification window
 
 Activation is an explicit operator-only cold swap. It never changes production
 routes. Speech services are not stopped. The previous running text containers
 are recorded before they are stopped, so deactivate-canary can restore them.
+The retained-model qualification is separate. It requires the active UltraFast
+profile and restores that exact container and its existing rollback record.
 USAGE
 }
 parse_options() {
@@ -47,6 +57,9 @@ parse_options() {
     case "$1" in
       --env) (( $# >= 2 )) || die '--env requires a file'; ENV_FILE="$2"; shift 2 ;;
       --profile) (( $# >= 2 )) || die '--profile requires quality or ultrafast'; PROFILE="$2"; [[ "$PROFILE" == quality || "$PROFILE" == ultrafast ]] || die 'Unknown Flash-Next profile'; shift 2 ;;
+      --manifest) (( $# >= 2 )) || die '--manifest requires a private request file'; QUALIFICATION_MANIFEST="$2"; shift 2 ;;
+      --export-dir) (( $# >= 2 )) || die '--export-dir requires a private directory'; QUALIFICATION_EXPORT_DIR="$2"; shift 2 ;;
+      --maintenance-window) MAINTENANCE_WINDOW=true; shift ;;
       --wait) (( $# >= 2 )) || die '--wait requires seconds'; [[ "$2" =~ ^[1-9][0-9]*$ ]] || die '--wait must be a positive integer'; WAIT_SECONDS="$((10#$2))"; shift 2 ;;
       -h|--help) usage; exit 0 ;;
       *) die "Unknown option: $1" ;;
@@ -435,17 +448,30 @@ status() {
 parse_options "$@"
 case "$COMMAND" in
   validate) validate ;;
-  prepare|install) install_candidate ;;
-  activate-canary) activate_canary ;;
-  switch-profile)
+  prepare|install) require_root; acquire_text_model_runtime_lock; install_candidate ;;
+  activate-canary) require_root; acquire_text_model_runtime_lock; activate_canary ;;
+  qualify-qwen27b)
     require_root
+    [[ "$PROFILE" == ultrafast ]] || die 'Qwen3.8-27B qualification requires the active ultrafast owner profile'
+    [[ "$MAINTENANCE_WINDOW" == true ]] || die 'Qwen3.8-27B qualification requires --maintenance-window'
+    [[ -n "$QUALIFICATION_MANIFEST" ]] || die 'Qwen3.8-27B qualification requires --manifest'
+    qualifier_args=(run --env "$ENV_FILE" --manifest "$QUALIFICATION_MANIFEST" --maintenance-window)
+    [[ -z "$QUALIFICATION_EXPORT_DIR" ]] || qualifier_args+=(--export-dir "$QUALIFICATION_EXPORT_DIR")
+    python3 -I -B "$SCRIPT_DIR/qualify-qwen27b-fallback.py" "${qualifier_args[@]}"
+    ;;
+  recover-qwen27b)
+    require_root
+    python3 -I -B "$SCRIPT_DIR/qualify-qwen27b-fallback.py" recover --env "$ENV_FILE"
+    ;;
+  switch-profile)
+    require_root; acquire_text_model_runtime_lock
     [[ -f "$(active_record)" ]] || die 'No active qualification profile to switch; use activate-canary'
     restore_previous
     activate_canary
     ;;
   smoke) smoke ;;
   status) status ;;
-  deactivate-canary) require_root; load_env; restore_previous; log 'Candidate stopped and prior text containers restored' ;;
+  deactivate-canary) require_root; acquire_text_model_runtime_lock; load_env; restore_previous; log 'Candidate stopped and prior text containers restored' ;;
   help|-h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

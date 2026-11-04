@@ -301,11 +301,11 @@ case "$COMMAND" in
   validate) validate_candidate ;;
   prepare) prepare_candidate ;;
   install) install_candidate ;;
-  activate) activate_candidate ;;
+  activate) require_root; acquire_text_model_runtime_lock; activate_candidate ;;
   smoke) smoke_candidate ;;
   status) show_status ;;
   logs) load_env; compose --profile automation-nvidia logs --tail 200 automation-nvidia-primary automation-nvidia-edge ;;
-  deactivate) deactivate_candidate ;;
+  deactivate) require_root; acquire_text_model_runtime_lock; deactivate_candidate ;;
   help|-h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

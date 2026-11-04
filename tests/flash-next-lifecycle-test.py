@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "scripts/setup-compute-flash-next.sh").read_text(encoding="utf-8")
+SPARK_DEPLOY = (ROOT / "scripts/deploy-home-spark.sh").read_text(encoding="utf-8")
 ENV = (ROOT / "config/compute-node.env.example").read_text(encoding="utf-8")
 CATALOG = json.loads((ROOT / "config/model-catalog.json").read_text(encoding="utf-8"))
 ROUTES = json.loads((ROOT / "config/capability-routes.json").read_text(encoding="utf-8"))
@@ -64,6 +65,10 @@ class FlashNextLifecycleTests(unittest.TestCase):
         self.assertIn("install_ultrafast()", SCRIPT)
         self.assertIn('cd "$dir" && MODEL="$FLASH_NEXT_MODEL_ID"', SCRIPT)
         self.assertIn("switch-profile)", SCRIPT)
+        self.assertIn("prepare|install) require_root; acquire_text_model_runtime_lock; install_candidate ;;", SCRIPT)
+        self.assertIn("recover-qwen27b)", SCRIPT)
+        self.assertIn("--export-dir) (( $# >= 2 )) || die '--export-dir requires a private directory'", SCRIPT)
+        self.assertIn('qualifier_args+=(--export-dir "$QUALIFICATION_EXPORT_DIR")', SCRIPT)
         self.assertIn("quality (default) or ultrafast", SCRIPT)
         self.assertIn("Stop the active qualification candidate before installing or rebuilding a profile", SCRIPT)
         self.assertIn("configured private GB10 address", SCRIPT)
@@ -80,6 +85,18 @@ class FlashNextLifecycleTests(unittest.TestCase):
         expected = CATALOG["runtime_profiles"]["dime-qwen38-flash-ultrafast"]["homecompute_launch_overlay_sha256"]
         actual = hashlib.sha256((ROOT / "deploy/compute-node/patches/dime-ultrafast-private-launch.patch").read_bytes()).hexdigest()
         self.assertEqual(expected, actual)
+
+    def test_deployment_lock_fences_release_switch_while_qwen_recovery_is_pending(self) -> None:
+        lock = SPARK_DEPLOY.index("flock -n 9")
+        pending = SPARK_DEPLOY.index("/var/lib/homecompute-qwen27b-qualification/pending.json")
+        source_update = SPARK_DEPLOY.index("git_source fetch")
+        self.assertLess(lock, pending)
+        self.assertLess(pending, source_update)
+        helper = (ROOT / "scripts/qualify-qwen27b-fallback.py").read_text(encoding="utf-8")
+        self.assertIn("def acquire_deployment_lock(", helper)
+        perform = helper[helper.index("def perform("):]
+        self.assertLess(perform.index("deployment_lock_fd = acquire_deployment_lock()"),
+                        perform.index("lock_fd = acquire_lock("))
 
     def test_generated_ultrafast_environment_uses_qualified_low_peak_startup(self) -> None:
         # Execute the real environment-generation heredoc, not the installer or

@@ -131,3 +131,61 @@ load_trusted_env_file() {
     export "${parsed_keys[$line_number]}=${parsed_values[$line_number]}"
   done
 }
+
+# Serialize mutations of the Spark's single resident text-model slot. Every
+# owner script supplies the same lock path; this is intentionally separate
+# from STT/TTS lifecycles, which have their own capacity gates.
+acquire_text_model_runtime_lock() {
+  local path="${1:-/run/homecompute-gb10-text-model/lock}"
+  local expected_uid="${2:-0}"
+  local allow_pending="${3:-false}"
+  local pending_marker="${4:-/var/lib/homecompute-qwen27b-qualification/pending.json}"
+  local parent
+  local fd
+
+  [[ "$expected_uid" =~ ^[0-9]+$ ]] || return 1
+  command -v flock >/dev/null 2>&1 || {
+    printf 'The flock utility is required for text-model lifecycle locking\n' >&2
+    return 1
+  }
+  parent="$(dirname -- "$path")"
+  if [[ ! -e "$parent" && ! -L "$parent" && "$parent" == /run/homecompute-gb10-text-model ]]; then
+    [[ "$expected_uid" == 0 && -d /run && ! -L /run && "$(config_stat_uid /run)" == 0 ]] || return 1
+    (umask 077; mkdir -m 0700 -- "$parent") 2>/dev/null || true
+  fi
+  [[ "$path" == /* && -d "$parent" && ! -L "$parent" ]] || {
+    printf 'Text-model lock directory is missing or unsafe\n' >&2
+    return 1
+  }
+  [[ "$(config_stat_uid "$parent")" == "$expected_uid" ]] || {
+    printf 'Text-model lock directory has unexpected ownership\n' >&2
+    return 1
+  }
+  [[ "$(config_stat_mode "$parent")" == 700 ]] || {
+    printf 'Text-model lock directory must have mode 0700\n' >&2
+    return 1
+  }
+  if [[ "$allow_pending" != true && ( -e "$pending_marker" || -L "$pending_marker" ) ]]; then
+    printf 'A retained Qwen qualification recovery is pending; recover it before changing text runtimes\n' >&2
+    return 1
+  fi
+
+  if [[ ! -e "$path" && ! -L "$path" ]]; then
+    (umask 077; set -o noclobber; : >"$path") 2>/dev/null || true
+  fi
+  config_path_is_trusted "$path" "$expected_uid" 'Text-model lifecycle lock' || return 1
+  exec {fd}>>"$path"
+  if ! flock -n "$fd"; then
+    printf 'Another text-model lifecycle operation holds the lock\n' >&2
+    exec {fd}>&-
+    return 1
+  fi
+  if [[ "$allow_pending" != true && ( -e "$pending_marker" || -L "$pending_marker" ) ]]; then
+    printf 'A retained Qwen qualification recovery is pending; recover it before changing text runtimes\n' >&2
+    exec {fd}>&-
+    return 1
+  fi
+  # The caller retains this descriptor until its owner action exits.
+  # shellcheck disable=SC2034
+  TEXT_MODEL_RUNTIME_LOCK_FD="$fd"
+}

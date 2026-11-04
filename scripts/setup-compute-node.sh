@@ -544,11 +544,11 @@ case "$COMMAND" in
   firewall) configure_firewall ;;
   migrate-config) migrate_configuration ;;
   validate) validate_config ;;
-  install|rollback) deploy_release ;;
-  up) start_release ;;
+  install|rollback) require_root; acquire_text_model_runtime_lock; deploy_release ;;
+  up) require_root; acquire_text_model_runtime_lock; start_release ;;
   status) show_status ;;
   smoke) smoke_test ;;
   logs) load_env; compose logs --tail 200 text-primary text-edge ;;
-  down) require_root; load_env; compose stop text-primary text-edge; log "Stopped text runtime and edge; modality services and persistent artifacts retained" ;;
+  down) require_root; acquire_text_model_runtime_lock; load_env; compose stop text-primary text-edge; log "Stopped text runtime and edge; modality services and persistent artifacts retained" ;;
   *) usage >&2; die "Unknown command: $COMMAND" ;;
 esac

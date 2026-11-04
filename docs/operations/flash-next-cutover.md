@@ -70,6 +70,72 @@ model. Qwen3.8-27B may remain a separately qualified cold fallback/workhorse;
 this runbook does not assign it a route. Do not add Whisper or Qwen3-TTS to the
 Spark target.
 
+## Private retained-27B comparison
+
+`setup-compute-flash-next.sh qualify-qwen27b` is an opt-in, temporary
+same-request comparison. It does not change the model catalog, aliases, or
+gateway routes. It briefly stops the active UltraFast container, starts the
+already-cached pinned `general-spark-qwen38` profile, captures its response,
+and restores the exact preflighted UltraFast container and restart policy.
+Text service requests will be unavailable during the cold swap; this is not a
+zero-interruption operation.
+
+Before running it, pause the scheduled text workflows, wait for their current
+requests to finish, and use a private prompt-free evaluation manifest with the
+exact request to compare. The root-owned helper refuses to proceed unless the
+current runtime's vLLM running/waiting metrics are present and idle, the exact
+fallback image and accepted model-cache tuple are already local, the current
+Flash owner records and container match, Whisper is healthy, and the memory
+gate passes. It never pulls or downloads a model. Both raw responses and the
+receipt are stored under `/var/lib/homecompute-qwen27b-qualification/`; the
+command prints only the receipt identifier, status, and protected receipt
+path. Do not put recording, household, credential, or other sensitive content
+in a committed manifest or fixture.
+
+If the invoking user needs to inspect results outside the protected root state,
+pass `--export-dir` pointing to a pre-existing mode-0700 directory owned by
+that same user. Only `receipt.json` and the raw `flash.response` and
+`qwen27b.response` files are copied there, as mode-0600 files owned by the
+invoker. The request, environment, API key, and recovery journal remain in
+root-only state. Export is optional; an invalid or unwritable destination is
+reported separately from model qualification and rollback status.
+
+Run the command only through `/srv/homecompute/current`; the helper verifies
+that its source belongs to that active immutable release, so the dashboard and
+other text-model owners share the same lifecycle guard. A retained
+`pending.json` fences every model-mutating owner after interruption. Only the
+Flash-Next `recover-qwen27b` action may cross that fence, and it must verify
+the saved environment, source, configuration, owner records, and runtime
+inventory before changing containers. Unknown or changed state remains held
+for operator diagnosis.
+
+The operator-provided manifest must be a regular mode-0600 JSON file inside a
+mode-0700 directory owned by the invoking user or root. Its schema is
+`{"schema_version":1,"request":{...}}`; `request` is the frozen OpenAI chat
+completion request body, with `stream:true`, and without a `model` field. The
+request is sent to each profile without changing its content; only the served
+model alias differs. For example:
+
+```sh
+sudo /srv/homecompute/current/scripts/setup-compute-flash-next.sh \
+  qualify-qwen27b --profile ultrafast --env /etc/gb10-ai/gb10.env \
+  --manifest /tmp/homecompute-qwen27b.XXXXXX/request.json --maintenance-window \
+  --export-dir /tmp/homecompute-qwen27b-results.XXXXXX
+```
+
+The `--maintenance-window` flag is an explicit operator acknowledgement; it
+does not pause workflows by itself. If the command exits with a pending
+rollback, preserve its receipt and run the owner-native recovery action:
+
+```sh
+sudo /srv/homecompute/current/scripts/setup-compute-flash-next.sh \
+  recover-qwen27b --env /etc/gb10-ai/gb10.env
+```
+
+All Compose, Flash-Next, automation-model and catalog-backed model start/stop
+owners share the Spark text-model lifecycle lock. Do not bypass these owners
+with direct Docker commands during qualification or recovery.
+
 ## Rollback sequence
 
 On any gate, health, authorization, tool, output, or read-only n8n failure:

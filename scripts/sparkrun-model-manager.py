@@ -15,6 +15,7 @@ import pwd
 import re
 import shlex
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -31,6 +32,8 @@ API_KEY_FILE = Path("/etc/gb10-ai/secrets/vllm_api_key")
 MANAGER_ROOT = Path("/etc/gb10-ai/sparkrun")
 RECIPES_DIR = MANAGER_ROOT / "recipes"
 LOCK_FILE = Path("/var/lock/homecompute-sparkrun-model-manager.lock")
+TEXT_RUNTIME_LOCK_FILE = Path("/run/homecompute-gb10-text-model/lock")
+QWEN_QUALIFICATION_PENDING = Path("/var/lib/homecompute-qwen27b-qualification/pending.json")
 WAIT_SECONDS = 1200
 SPARKRUN_CANDIDATES = (Path("/usr/local/bin/sparkrun"), Path("/root/.local/bin/sparkrun"))
 CACHE_HELPER = ROOT / "scripts/model-cache-integrity.py"
@@ -112,6 +115,44 @@ def run_checked(argv: list[str], *, timeout: int = 60) -> subprocess.CompletedPr
         raise RequestError("dependency_missing", f"required executable is missing: {argv[0]}") from error
     except subprocess.TimeoutExpired as error:
         raise RequestError("operation_timeout", f"command timed out: {argv[0]}") from error
+
+
+def acquire_text_runtime_lock(path: Path = TEXT_RUNTIME_LOCK_FILE, *, expected_uid: int = 0) -> int:
+    try:
+        if not path.parent.exists() and not path.parent.is_symlink() and path.parent == TEXT_RUNTIME_LOCK_FILE.parent:
+            root = path.parent.parent.lstat()
+            if (not stat.S_ISDIR(root.st_mode) or stat.S_ISLNK(root.st_mode)
+                    or root.st_uid != expected_uid or root.st_mode & 0o022):
+                raise RequestError("lifecycle_lock_untrusted", "text model lifecycle lock directory is unsafe")
+            path.parent.mkdir(mode=0o700)
+        parent = path.parent.lstat()
+        if (not stat.S_ISDIR(parent.st_mode) or stat.S_ISLNK(parent.st_mode)
+                or parent.st_uid != expected_uid or stat.S_IMODE(parent.st_mode) != 0o700):
+            raise RequestError("lifecycle_lock_untrusted", "text model lifecycle lock directory is unsafe")
+        if QWEN_QUALIFICATION_PENDING.exists() or QWEN_QUALIFICATION_PENDING.is_symlink():
+            raise RequestError("qualification_recovery_pending", "recover the retained text-model qualification before changing runtimes")
+        metadata = path.lstat() if path.exists() or path.is_symlink() else None
+        if metadata is not None and (not stat.S_ISREG(metadata.st_mode)
+                                     or stat.S_ISLNK(metadata.st_mode) or metadata.st_uid != expected_uid
+                                     or metadata.st_mode & 0o022):
+            raise RequestError("lifecycle_lock_untrusted", "text model lifecycle lock is unsafe")
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        opened = os.fstat(fd)
+        if (not stat.S_ISREG(opened.st_mode) or opened.st_uid != expected_uid
+                or opened.st_mode & 0o022 or stat.S_IMODE(opened.st_mode) != 0o600):
+            os.close(fd)
+            raise RequestError("lifecycle_lock_untrusted", "text model lifecycle lock is unsafe")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            os.close(fd)
+            raise RequestError("lifecycle_busy", "another text model lifecycle operation is active") from error
+        if QWEN_QUALIFICATION_PENDING.exists() or QWEN_QUALIFICATION_PENDING.is_symlink():
+            os.close(fd)
+            raise RequestError("qualification_recovery_pending", "recover the retained text-model qualification before changing runtimes")
+        return fd
+    except OSError as error:
+        raise RequestError("lifecycle_lock_unavailable", "text model lifecycle lock is unavailable") from error
 
 
 def sparkrun_binary() -> str:
@@ -538,7 +579,19 @@ def main() -> int:
         LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
         with LOCK_FILE.open("a", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            response = {"ok": True, "data": dispatch(read_request())}
+            request = read_request()
+            action = request.get("action")
+            if action in {"load", "unload", "replace"}:
+                # Share the model-slot lock with the Compose and Flash-Next
+                # owners. A dashboard cold swap must not race a private
+                # single-resident qualification or another owner lifecycle.
+                lock_fd = acquire_text_runtime_lock()
+                try:
+                    response = {"ok": True, "data": dispatch(request)}
+                finally:
+                    os.close(lock_fd)
+            else:
+                response = {"ok": True, "data": dispatch(request)}
         print(json.dumps(response, separators=(",", ":")))
         return 0
     except RequestError as error:

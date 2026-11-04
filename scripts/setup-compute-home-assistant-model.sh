@@ -151,11 +151,11 @@ case "$COMMAND" in
   validate) validate_config ;;
   prepare) prepare_model ;;
   install) require_root; validate_config; compose --profile prepare pull home-fetch home-edge home-primary; prepare_model; write_record ;;
-  up) require_root; validate_config; verify_cache; compose up -d home-edge home-primary; wait_health || { compose stop home-primary home-edge; die "home-fast failed readiness"; }; smoke ;;
+  up) require_root; acquire_text_model_runtime_lock; validate_config; verify_cache; compose up -d home-edge home-primary; wait_health || { compose stop home-primary home-edge; die "home-fast failed readiness"; }; smoke ;;
   smoke) smoke ;;
   status) load_env; compose ps ;;
   logs) load_env; compose logs --tail 200 home-primary home-edge ;;
-  down) require_root; load_env; compose down ;;
+  down) require_root; acquire_text_model_runtime_lock; load_env; compose down ;;
   help|-h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac
