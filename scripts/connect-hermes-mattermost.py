@@ -62,7 +62,7 @@ path = home / '.env'
 lines = path.read_text().splitlines() if path.exists() else []
 lines = [line for line in lines if not line.startswith('MATTERMOST_')]
 lines.extend(key + '=' + value for key, value in settings.items())
-path.write_text('\\n'.join(lines) + '\\n'); path.chmod(0o600)
+path.write_text('\\n'.join(lines) + '\\n'); path.chmod(0o640)
 path = home / 'config.yaml'
 config = yaml.safe_load(path.read_text()) or {}
 config.setdefault('platforms', {}).setdefault('mattermost', {})['enabled'] = True
