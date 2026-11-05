@@ -71,9 +71,12 @@ stop/start recovery. Inspect memory and disk use under load. Synthetic probes
 alone do not prove household readiness. `health` retains private evidence under
 the configured evidence directory.
 
-Use `snapshot NAME` only after readiness, and `restore-verify SNAPSHOT` only as
-an intentional state replacement. Retain the previous release and backup;
-code rollback does not undo data changes.
+NemoClaw 0.0.141 has no per-sandbox `snapshot` command. Recovery uses the
+owner-approved encrypted Synology application archive, including the whole
+agents VM, with the repository's isolated restore verification. Retain the
+prior release and archive; code rollback does not undo data changes. The old
+`HERMES_RESTORE_TARGET` config field remains accepted for compatibility but
+exposes no restore action.
 
 Failed custom-image attempts named `agent-owner`, `hermes`, and `hermes-main`
 left immutable recovery records. Native destroy currently refuses conflicting
@@ -114,4 +117,25 @@ request dumps rejected by NemoClaw's state-archive credential scan. The owner
 explicitly authorized discarding Hermes state. The supported one-time
 `NEMOCLAW_RECREATE_WITHOUT_BACKUP=1` recreation option was used; this is not a
 standing backup exception. Household state replacement still requires a verified
-snapshot and explicit data-loss intent.
+off-host archive and explicit data-loss intent.
+
+## Boot lifecycle
+
+After authenticated messaging and browser checks pass, run
+`setup-hermes-guest.sh install-startup --config "$config"` from the selected
+published guest release. It renders the tracked user unit, verifies it with
+systemd, enables it, and exercises its stop/start path. The vendor-managed
+`nemoclaw-openshell-gateway.service` must already be enabled; user lingering
+must be enabled so the user manager starts at VM boot.
+
+This is a boot/shutdown unit calling NemoClaw's native lifecycle. It does not
+respawn the in-sandbox gateway or compete with Hermes's process supervision.
+The sandbox's Docker restart policy remains owned by OpenShell. Keep the
+source release referenced by the unit. Update it through the same installer
+when selecting a newer qualified release.
+
+The image disables upstream error-path request dumps at the narrow dump hook.
+Normal metadata diagnostics remain enabled; full prompts, responses and tool
+payloads belong only to Hermes's intentional conversation state, not duplicate
+request-debug files. The build rejects an unexpected upstream implementation
+instead of silently skipping this privacy policy.

@@ -1,0 +1,22 @@
+# HomeCompute-managed Hermes startup
+[Unit]
+Description=Start the native Hermes owner sandbox after its OpenShell gateway
+Requires=nemoclaw-openshell-gateway.service
+After=nemoclaw-openshell-gateway.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=PATH=@OPERATOR_HOME@/.nvm/versions/node/v22.23.3/bin:@OPERATOR_HOME@/.local/bin:@OPERATOR_HOME@/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=@RELEASE@/scripts/setup-hermes-guest.sh start --config @CONFIG@
+ExecStop=@RELEASE@/scripts/setup-hermes-guest.sh stop --config @CONFIG@
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=240
+TimeoutStopSec=120
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

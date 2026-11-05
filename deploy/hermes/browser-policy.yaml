@@ -17,5 +17,5 @@ network_policies:
     binaries:
       - {path: /usr/local/bin/node}
       - {path: /usr/local/bin/agent-browser}
-      - {path: /usr/local/lib/node_modules/agent-browser/bin/agent-browser-linux-x64}
+      - {path: /usr/local/lib/homecompute-agent-browser-runtime/node_modules/agent-browser/bin/agent-browser-linux-x64}
       - {path: /usr/bin/python3.13}

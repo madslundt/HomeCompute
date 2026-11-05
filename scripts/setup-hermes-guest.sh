@@ -46,14 +46,15 @@ Usage: setup-hermes-guest.sh COMMAND --config ABSOLUTE_PATH [ARG]
 Commands:
   validate                 Validate the secret-free config and release tuple
   preflight                Validate the Ubuntu guest, tools, CA, key, and endpoint
+  install-startup          Install the source-owned user boot unit
+  start                    Start the owner sandbox through NemoClaw
+  stop                     Stop the owner sandbox through NemoClaw
   install                  Install the pinned NemoClaw CLI without onboarding
   onboard-canary           Create the household Hermes sandbox
   recreate                 Recreate the owner sandbox through NemoClaw
   connect-browser          Attach the dedicated isolated browser
   connect-mattermost       Add the owner-restricted Hermes Mattermost bot
   health                   Capture redacted doctor, status, route, and version evidence
-  snapshot NAME            Create a named snapshot of the household owner sandbox
-  restore-verify SNAPSHOT  Restore the household owner sandbox in place and run health probes
 
 The API key is read from HERMES_LITELLM_API_KEY_FILE. It is never accepted as
 an argument or configuration value. Web search and host mounts remain disabled;
@@ -430,31 +431,46 @@ health_for() {
   log "Health evidence written to $directory"
 }
 
-validate_snapshot_name() {
-  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$ ]] ||
-    die 'Snapshot name must be 1-80 safe ASCII characters'
-}
-
-create_snapshot() {
-  local name="$1"
-  validate_snapshot_name "$name"
+install_startup() {
+  local config_path="$1" unit_path="$HOME/.config/systemd/user/homecompute-hermes-owner.service"
   require_mutation_gates
   validate_installed_cli_version
-  nemohermes "$HERMES_SANDBOX_NAME" snapshot create --name "$name"
-}
-
-restore_verify() {
-  local snapshot="$1"
-  validate_snapshot_name "$snapshot"
-  require_mutation_gates
-  validate_installed_cli_version
-  # NemoClaw 0.0.129 does not support --to for NemoClaw-managed images. The
-  # backup exception limits this command to the disposable household owner sandbox,
-  # so verify the supported in-place restore and immediately rerun health.
-  log "Restoring snapshot in place to household owner sandbox $HERMES_RESTORE_TARGET"
-  nemohermes "$HERMES_SANDBOX_NAME" snapshot restore "$snapshot"
-  nemohermes "$HERMES_SANDBOX_NAME" gateway restart
-  health_for "$HERMES_RESTORE_TARGET" restore-verify
+  [[ "$REPO_ROOT" =~ ^[A-Za-z0-9_./-]+$ && "$config_path" =~ ^[A-Za-z0-9_./-]+$ && "$HOME" =~ ^[A-Za-z0-9_./-]+$ ]] ||
+    die 'Startup unit paths must not contain systemd metacharacters'
+  systemctl --user is-enabled --quiet nemoclaw-openshell-gateway.service ||
+    die 'The vendor-managed OpenShell gateway boot unit must be enabled first'
+  python3 - "$REPO_ROOT" "$config_path" "$HOME" <<'PYTHON'
+from pathlib import Path
+import os, tempfile, time
+import sys
+release, config, operator_home = sys.argv[1:]
+source = (Path(release) / 'deploy/hermes/hermes-owner.service.in').read_text()
+rendered = source.replace('@RELEASE@', release).replace('@CONFIG@', config).replace('@OPERATOR_HOME@', operator_home)
+directory = Path(operator_home) / '.config/systemd/user'
+directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+assert not directory.is_symlink() and directory.stat().st_uid == os.getuid()
+path = directory / 'homecompute-hermes-owner.service'
+if path.exists() or path.is_symlink():
+    assert not path.is_symlink() and path.stat().st_uid == os.getuid()
+    previous = path.read_text()
+    assert previous.startswith('# HomeCompute-managed Hermes startup\n')
+    if previous != rendered:
+        backup = Path('/var/lib/homecompute-hermes/evidence') / ('startup-' + str(time.time_ns()))
+        backup.mkdir(mode=0o700)
+        (backup / 'previous.service').write_text(previous)
+        (backup / 'previous.service').chmod(0o600)
+fd, temporary = tempfile.mkstemp(prefix='.hermes-unit-', dir=directory)
+with os.fdopen(fd, 'w') as stream:
+    stream.write(rendered)
+os.chmod(temporary, 0o644)
+os.replace(temporary, path)
+PYTHON
+  systemd-analyze --user verify "$unit_path"
+  systemctl --user daemon-reload
+  systemctl --user enable homecompute-hermes-owner.service
+  systemctl --user restart homecompute-hermes-owner.service
+  systemctl --user is-active --quiet homecompute-hermes-owner.service
+  log 'Hermes native boot lifecycle is installed and started'
 }
 
 main() {
@@ -485,14 +501,15 @@ main() {
   case "$command" in
     validate) [[ -z "$argument" ]] || die 'validate takes no argument'; log 'Configuration and release tuple are valid' ;;
     preflight) [[ -z "$argument" ]] || die 'preflight takes no argument'; preflight_runtime ;;
+    install-startup) [[ -z "$argument" ]] || die 'install-startup takes no argument'; install_startup "$config_path" ;;
+    start) [[ -z "$argument" ]] || die 'start takes no argument'; require_mutation_gates; validate_installed_cli_version; nemohermes "$HERMES_SANDBOX_NAME" start ;;
+    stop) [[ -z "$argument" ]] || die 'stop takes no argument'; validate_installed_cli_version; nemohermes "$HERMES_SANDBOX_NAME" stop ;;
     install) [[ -z "$argument" ]] || die 'install takes no argument'; install_nemoclaw ;;
     recreate) [[ -z "$argument" ]] || die 'recreate takes no argument'; onboard_canary --recreate-sandbox ;;
     onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
     connect-browser) [[ -z "$argument" ]] || die 'connect-browser takes no argument'; preflight_runtime; require_mutation_gates; python3 "$REPO_ROOT/scripts/connect-hermes-browser.py" ;;
     connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;
-    snapshot) [[ -n "$argument" ]] || die 'snapshot requires NAME'; create_snapshot "$argument" ;;
-    restore-verify) [[ -n "$argument" ]] || die 'restore-verify requires SNAPSHOT'; restore_verify "$argument" ;;
     help) usage ;;
     *) usage; die "Unknown command: $command" ;;
   esac

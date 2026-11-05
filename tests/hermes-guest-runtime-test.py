@@ -327,20 +327,35 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("credential appeared", result.stderr)
 
-    def test_snapshot_and_restore_verify_managed_image_in_place(self) -> None:
+    def test_image_request_dump_hook_never_serializes_private_payloads(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('privacy', ROOT / 'deploy/hermes/patch-private-request-logging.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        source = ('def dump_api_request_debug(agent, api_kwargs, *, reason, error=None):\n'
+                  '    """Dump the request body."""\n'
+                  '    dump_file = "request_dump_private.json"\n'
+                  '    atomic_json_write(dump_file, api_kwargs)\n')
+        writes = []
+        namespace = {'atomic_json_write': lambda *args: writes.append(args)}
+        exec(source, namespace)
+        namespace['dump_api_request_debug'](None, {'messages': ['private fixture']}, reason='provider_error')
+        self.assertEqual(len(writes), 1)
+        writes.clear()
+        patched = module.patch(source)
+        self.assertEqual(module.patch(patched), patched)
+        exec(patched, namespace)
+        self.assertIsNone(namespace['dump_api_request_debug'](None, {'messages': ['private fixture']}, reason='provider_error'))
+        self.assertEqual(writes, [])
+        with self.assertRaises(ValueError):
+            module.patch(source.replace('atomic_json_write', 'upstream_changed'))
+
+    def test_unsupported_snapshot_actions_never_invoke_native_cli(self):
         bin_dir, log = self.make_mock_nemohermes()
-        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
-        snapshot = self.run_cli("snapshot", "pre-restore-test", env=env)
-        self.assertEqual(snapshot.returncode, 0, snapshot.stderr)
-        restored = self.run_cli("restore-verify", "pre-restore-test", env=env)
-        self.assertEqual(restored.returncode, 0, restored.stderr)
-        invocations = log.read_text(encoding="utf-8")
-        self.assertIn("snapshot create --name pre-restore-test", invocations)
-        self.assertIn("snapshot restore pre-restore-test", invocations)
-        self.assertIn("hermes-owner gateway restart", invocations)
-        self.assertNotIn("--to", invocations)
-        self.assertNotIn("--force", invocations)
-        self.assertNotIn("destroy", invocations)
+        for command in ('snapshot', 'restore-verify'):
+            result = self.run_cli(command, 'old-snapshot', env={'PATH': f"{bin_dir}:{os.environ['PATH']}"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Unknown command', result.stderr)
+        self.assertFalse(log.exists())
 
 
 if __name__ == "__main__":

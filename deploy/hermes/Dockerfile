@@ -22,6 +22,15 @@ ENV NEMOCLAW_INFERENCE_PROVIDER_ID=compatible-endpoint \
     NEMOCLAW_UPSTREAM_PROVIDER=compatible-endpoint \
     NEMOCLAW_INFERENCE_API=openai-completions
 USER root
+COPY patch-private-request-logging.py /usr/local/lib/nemoclaw/homecompute-private-request-logging.py
+RUN python3 /usr/local/lib/nemoclaw/homecompute-private-request-logging.py /opt/hermes/agent/agent_runtime_helpers.py
+ENV HERMES_DUMP_REQUESTS=0 HERMES_DUMP_REQUEST_STDOUT=0
+# The vendor browser client is installed outside the agent's Landlock read
+# roots. Publish the same reviewed payload inside the existing read-only /usr
+# root; keep npm offline and avoid an unpinned npx fallback.
+RUN cp -a /opt/nemoclaw-agent-browser-runtime /usr/local/lib/homecompute-agent-browser-runtime \
+    && ln -sfn /usr/local/lib/homecompute-agent-browser-runtime/node_modules/.bin/agent-browser /usr/local/bin/agent-browser \
+    && /usr/local/bin/agent-browser --version
 # The managed policy is the native agent's routing authority. Regenerate it
 # with NVIDIA's installed generator; changing mutable config alone is ignored.
 RUN HOME=/sandbox node /opt/nemoclaw-hermes-config/generate-config.ts \
