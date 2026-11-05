@@ -5,7 +5,7 @@ network_policies:
   browser_cdp:
     name: browser_cdp
     endpoints:
-      - host: host.openshell.internal
+      - host: 172.18.0.1
         port: 18810
         protocol: websocket
         enforcement: enforce

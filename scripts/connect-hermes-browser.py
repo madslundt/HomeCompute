@@ -54,12 +54,12 @@ def main():
     call(OS + ['sandbox', 'provider', 'attach', NAME, PROVIDER])
     call(['nemohermes', NAME, 'policy', 'add', '--from-file',
           str(ROOT / 'deploy/hermes/browser-policy.yaml'),
-          '--trusted-private-host', 'host.openshell.internal', '--yes'])
+          '--trusted-private-host', '172.18.0.1', '--yes'])
     program = '''import os, pathlib, yaml
 from urllib.parse import quote
 token = os.environ['BROWSER_TOKEN']
 assert token.startswith('openshell:resolve:env:')
-url = 'ws://host.openshell.internal:18810/devtools/browser/homecompute?token=' + quote(token, safe=':')
+url = 'ws://172.18.0.1:18810/devtools/browser/homecompute?token=' + quote(token, safe=':')
 home = pathlib.Path('/sandbox/.hermes')
 path = home / '.env'
 lines = [line for line in path.read_text().splitlines() if not line.startswith('BROWSER_CDP_URL=')]
