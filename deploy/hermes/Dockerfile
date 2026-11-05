@@ -21,3 +21,13 @@ ENV NEMOCLAW_INFERENCE_PROVIDER_ID=compatible-endpoint \
     NEMOCLAW_PROVIDER_KEY=compatible-endpoint \
     NEMOCLAW_UPSTREAM_PROVIDER=compatible-endpoint \
     NEMOCLAW_INFERENCE_API=openai-completions
+USER root
+# The managed policy is the native agent's routing authority. Regenerate it
+# with NVIDIA's installed generator; changing mutable config alone is ignored.
+RUN HOME=/sandbox node /opt/nemoclaw-hermes-config/generate-config.ts \
+    && install -o root -g root -m 0444 /sandbox/.hermes/managed-policy.json /usr/local/share/nemoclaw/hermes-managed-policy.json \
+    && rm /sandbox/.hermes/managed-policy.json \
+    && chown sandbox:sandbox /sandbox/.hermes/config.yaml /sandbox/.hermes/.env \
+    && chmod 0640 /sandbox/.hermes/config.yaml /sandbox/.hermes/.env \
+    && python3 -c 'import json; p=json.load(open("/usr/local/share/nemoclaw/hermes-managed-policy.json")); c=p["config"]; assert c["model"]["base_url"] == "http://ai.home.arpa:18080/v1"; assert c["custom_providers"][0]["base_url"] == "http://ai.home.arpa:18080/v1"'
+USER sandbox
