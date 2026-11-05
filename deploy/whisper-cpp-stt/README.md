@@ -399,6 +399,61 @@ promotion journal. A stale bundle, install error, or verification mismatch
 aborts before any model container is stopped. Existing SSH authorization and
 private maintenance controller state are preserved.
 
+## Repair an overlapping CUDA candidate subnet
+
+The CUDA candidate bridge is pinned to `10.253.73.0/28`, gateway
+`10.253.73.1`, in `compose-cuda.yaml`. Keep this range reserved for this
+project. Automatic Docker allocation previously selected `192.168.0.0/20`,
+which includes the administrator LAN `192.168.10.0/24`. The connected bridge
+route sent management replies into Docker rather than through the LAN gateway.
+Changing Compose alone does not replace an existing network.
+
+Publish and validate the selected source first. Use the existing private
+bootstrap staging procedure from the [Whisper lifecycle](../whisper-stt/README.md),
+then run the dedicated action, through home-core if direct SSH is affected:
+
+```bash
+ssh -J home-core -t home-spark 'sudo python3 -I -B /tmp/homecompute-whisper-stt.TOKEN/bootstrap-whisper-stt.py --revision FULL_SHA --action reconcile-cuda-network'
+```
+
+This action materializes the exact published release through the bootstrap;
+it does not change the general host release pointer. It holds the existing
+deployment, rollout, speech-capacity and Whisper locks and refuses active
+maintenance/capacity overrides. It requires the exact healthy promoted CUDA
+model and relay, their existing production aliases, and sole model ownership
+of the internal candidate bridge. It checks the declared subnet against every
+other Docker network and all IPv4 routing tables before mutation.
+
+The action journals the original bridge and aliases, disconnects only that
+internal bridge, recreates it with the declared subnet and reconnects the same
+model container. The production inference endpoint stays attached throughout;
+the model image, container ID, restart policy, credentials and model files are
+preserved. It verifies the unchanged production endpoint and authenticates a
+model-list request from the existing relay. It neither loads another GPU model
+nor stops the current decoder. Repeated runs verify the same desired state.
+
+The protected CUDA journal retains `network_reconciliation` with the applied
+revision, original network, exact model/inference identities and completion
+state. A failed migration restores the original bridge and aliases, including
+its colliding route; preserve access through home-core until verification
+succeeds. If interrupted or rollback fails, the pending journal supports retry
+from the same release. Unknown ownership or inference-endpoint drift aborts
+without overwriting it. Keep the prior release and staging directory until the
+repair is verified; do not rerun model promotion or delete the journal to repair
+a network.
+
+Verify the installed subnet with `docker network inspect
+whisper-cpp-gb10-cuda_candidate`, and `ip route get ADMIN_WORKSTATION_IP` on
+Spark. The workstation route must use the LAN gateway rather than the Docker
+bridge. Confirm direct `ssh home-spark`, the authenticated speech consumer
+path, and `homecompute status`, `services`, `doctor` and `drift`. Independent
+host release differences and previously failing services need separate
+reconciliation; this network action does not establish platform-wide readiness.
+
+The migration/refusal/recovery suite is
+`python3 tests/whisper-cuda-network-test.py`; the repository validator runs it
+alongside the existing Whisper suites.
+
 The portable synthetic contract and refusal tests run with:
 
 ```bash

@@ -11,6 +11,7 @@ from contextlib import ExitStack
 import fcntl
 import hashlib
 import importlib.util
+import ipaddress
 import json
 import os
 import platform
@@ -1728,6 +1729,162 @@ def cuda_candidate_stop(revision, *, idle_timeout=None):
     print('Whisper.cpp CUDA candidate stopped; exact original Whisper primary restored', flush=True)
 
 
+def reconcile_cuda_network(revision):
+    """Readdress only the unused internal bridge; keep the production endpoint alive."""
+    guards()
+    journal = STATE / 'cuda-candidate.json'
+    protected(journal)
+    tx = json.loads(journal.read_text())
+    candidate = inspect(CUDA_CANDIDATE)
+    labels = (candidate or {}).get('Config', {}).get('Labels') or {}
+    relay = inspect('gb10-whisper-cpp-http')
+    if (tx.get('state') != 'promoted' or tx.get('promotion') is not True or not candidate or
+            candidate.get('Image') != tx.get('candidate_image_id') or
+            candidate.get('Image') != CPP_QUALIFIED_IMAGE_ID or
+            labels.get('com.docker.compose.project') != CUDA_CANDIDATE_PROJECT or
+            labels.get('com.docker.compose.service') != 'whisper-cpp-cuda' or
+            not relay or relay.get('Id') != tx.get('relay_candidate_id') or
+            relay.get('Image') != tx.get('relay_candidate_image_id') or
+            any(not item.get('State', {}).get('Running') or
+                item.get('State', {}).get('Health', {}).get('Status') != 'healthy'
+                for item in (candidate, relay))):
+        raise ValueError('Healthy exact promoted Whisper model and relay required')
+    name = CUDA_CANDIDATE_PROJECT + '_candidate'
+    inference_name = 'whisper-large-v3-stt_inference'
+    endpoints = candidate['NetworkSettings']['Networks']
+    inference = endpoints.get(inference_name)
+    if (set(endpoints) - {name, inference_name} or not inference or
+            not {'whisper-primary', 'whisper-cpp-recording'} <= set(inference.get('Aliases') or [])):
+        raise ValueError('Production inference endpoint ownership changed')
+    declared = json.loads(compose_cuda('--profile', 'cuda-candidate', 'config', '--format', 'json', revision=revision,
+                                      image_id=CPP_QUALIFIED_IMAGE_ID).stdout)['networks']['candidate']
+    desired = declared.get('ipam', {}).get('config')
+    if (declared.get('internal') is not True or
+            desired != [{'subnet': '10.253.73.0/28', 'gateway': '10.253.73.1'}]):
+        raise ValueError('Reviewed non-overlapping internal subnet declaration required')
+    target = [{'Subnet': desired[0]['subnet'], 'Gateway': desired[0]['gateway']}]
+    networks = [json.loads(run(['docker', 'network', 'inspect', network_id]).stdout)[0]
+                for network_id in run(['docker', 'network', 'ls', '-q']).stdout.split()]
+    current = next((item for item in networks if item['Name'] == name), None)
+
+    def owned(network):
+        network_labels = network.get('Labels') or {}
+        if (network['Name'] != name or network.get('Driver') != 'bridge' or
+                network.get('Internal') is not True or network.get('EnableIPv6') or
+                network.get('Attachable') or network.get('Options') or
+                network.get('IPAM', {}).get('Driver') != 'default' or
+                network.get('IPAM', {}).get('Options') or
+                network_labels.get('com.docker.compose.project') != CUDA_CANDIDATE_PROJECT or
+                network_labels.get('com.docker.compose.network') != 'candidate' or
+                set(network.get('Containers') or {}) - {candidate['Id']} or
+                network.get('IPAM', {}).get('Config') not in (
+                    target, [{'Subnet': '192.168.0.0/20', 'Gateway': '192.168.0.1'}])):
+            raise ValueError('Internal CUDA network ownership or configuration changed')
+
+    if current:
+        owned(current)
+        endpoint = endpoints.get(name)
+        if bool(endpoint) != bool(current.get('Containers')) or (
+                endpoint and (endpoint.get('NetworkID') != current['Id'] or
+                              set(endpoint.get('Aliases') or []) != {CUDA_CANDIDATE, 'whisper-cpp-cuda'})):
+            raise ValueError('Internal CUDA endpoint ownership changed')
+    previous = tx.get('network_reconciliation')
+    if previous and previous.get('state') in {'pending', 'completed'}:
+        if ((previous.get('state') == 'pending' and previous.get('revision') != revision) or
+                previous.get('container_id') != candidate['Id'] or
+                previous.get('inference') != inference):
+            raise ValueError('Pending network reconciliation ownership changed')
+        original = previous['original']
+        aliases = previous['aliases']
+        owned(original)
+    else:
+        if not current or name not in endpoints:
+            raise ValueError('Missing internal network requires its pending recovery journal')
+        original = current
+        aliases = endpoints[name].get('Aliases') or []
+    if set(aliases) != {CUDA_CANDIDATE, 'whisper-cpp-cuda'}:
+        raise ValueError('Internal CUDA aliases changed')
+    subnet = ipaddress.ip_network(desired[0]['subnet'])
+    for network in networks:
+        if network['Name'] != name and any(
+                subnet.overlaps(ipaddress.ip_network(item['Subnet']))
+                for item in network.get('IPAM', {}).get('Config') or [] if ':' not in item['Subnet']):
+            raise ValueError('Declared subnet overlaps another Docker network')
+    routes = json.loads(run(['ip', '-j', '-4', 'route', 'show', 'table', 'all']).stdout)
+    own_bridge = 'br-' + current['Id'][:12] if current and current['IPAM']['Config'] == target else ''
+    if any(route.get('dst', 'default') != 'default' and route.get('dev') != own_bridge and
+           subnet.overlaps(ipaddress.ip_network(route['dst'], strict=False)) for route in routes):
+        raise ValueError('Declared subnet overlaps a host route')
+
+    def unchanged():
+        live = inspect(CUDA_CANDIDATE)
+        if (not live or live.get('Id') != candidate['Id'] or live.get('Image') != candidate['Image'] or
+                not live.get('State', {}).get('Running') or
+                live.get('State', {}).get('Health', {}).get('Status') != 'healthy' or
+                live['NetworkSettings']['Networks'].get(inference_name) != inference):
+            raise ValueError('Model identity, health or production inference endpoint changed')
+        return live
+
+    def replace(configuration, network_labels):
+        unchanged()
+        ids = run(['docker', 'network', 'ls', '-q', '--filter', 'name=^' + name + '$']).stdout.split()
+        if ids:
+            if len(ids) != 1:
+                raise ValueError('Ambiguous internal network')
+            network = json.loads(run(['docker', 'network', 'inspect', ids[0]]).stdout)[0]
+            owned(network)
+            if candidate['Id'] in (network.get('Containers') or {}):
+                run(['docker', 'network', 'disconnect', network['Id'], candidate['Id']])
+            run(['docker', 'network', 'rm', network['Id']])
+        command = ['docker', 'network', 'create', '--driver', 'bridge', '--internal',
+                   '--subnet', configuration[0]['Subnet'], '--gateway', configuration[0]['Gateway']]
+        for key, value in sorted(network_labels.items()):
+            command.extend(('--label', key + '=' + value))
+        run([*command, name])
+        command = ['docker', 'network', 'connect']
+        for alias in aliases:
+            command.extend(('--alias', alias))
+        run([*command, name, candidate['Id']])
+        live = unchanged()
+        network = json.loads(run(['docker', 'network', 'inspect', name]).stdout)[0]
+        owned(network)
+        if (network['IPAM']['Config'] != configuration or
+                set(network.get('Containers') or {}) != {candidate['Id']} or
+                live['NetworkSettings']['Networks'].get(name, {}).get('NetworkID') != network['Id'] or
+                set(live['NetworkSettings']['Networks'][name].get('Aliases') or []) != set(aliases)):
+            raise ValueError('Internal CUDA network verification failed')
+
+    receipt = {'revision': revision, 'state': 'pending', 'container_id': candidate['Id'],
+               'original': original, 'aliases': aliases, 'inference': inference,
+               'subnet': desired[0]['subnet']}
+    tx['network_reconciliation'] = receipt
+    save_cuda_candidate(tx)
+    mutation_started = False
+    try:
+        if not current or current['IPAM']['Config'] != target or name not in endpoints:
+            # A missing config-hash is accepted by Compose; retaining the old hash
+            # would incorrectly identify the newly declared network as stale.
+            network_labels = {key: value for key, value in original['Labels'].items()
+                              if key != 'com.docker.compose.config-hash'}
+            mutation_started = True
+            replace(target, network_labels)
+        unchanged()
+        run(['docker', 'exec', 'gb10-whisper-cpp-http', 'python3', '-c',
+             "import json,urllib.request; key=open('/run/secrets/whisper_cpp_api_key').read().strip(); "
+             "r=urllib.request.Request('http://whisper-primary:8000/v1/models',headers={'Authorization':'Bearer '+key}); "
+             "d=json.load(urllib.request.urlopen(r,timeout=10)); assert any(m.get('id')=='whisper-large-v3' for m in d['data'])"])
+    except (Exception, KeyboardInterrupt):
+        if mutation_started:
+            replace(original['IPAM']['Config'], original['Labels'])
+            receipt['state'] = 'rolled-back'
+        save_cuda_candidate(tx)
+        raise
+    receipt['state'] = 'completed'
+    save_cuda_candidate(tx)
+    print(json.dumps({'revision': revision, 'state': 'completed', 'subnet': desired[0]['subnet'],
+                      'model_preserved': True, 'inference_endpoint_preserved': True}, sort_keys=True))
+
+
 def cuda_candidate_status(revision):
     journal = STATE / 'cuda-candidate.json'
     if not journal.exists() and not journal.is_symlink():
@@ -2473,7 +2630,8 @@ def main():
                                            'runtime-candidate', 'runtime-candidate-rollback',
                                            'runtime-candidate-status', 'cuda-candidate',
                                            'cuda-candidate-rollback', 'cuda-candidate-status',
-                                           'cuda-candidate-qualify', 'cuda-candidate-promote'))
+                                           'cuda-candidate-qualify', 'cuda-candidate-promote',
+                                           'reconcile-cuda-network'))
     parser.add_argument('--revision', required=True)
     parser.add_argument('--max-audio-seconds', type=int)
     parser.add_argument('--max-upload-bytes', type=int)
@@ -2560,6 +2718,7 @@ def main():
             if outcome['state'] != 'completed' or outcome['rollback'] != 'completed':
                 raise CudaQualificationFailure(outcome)
         elif args.action == 'cuda-candidate-promote': promote_qualified_cuda_candidate(args.revision)
+        elif args.action == 'reconcile-cuda-network': reconcile_cuda_network(args.revision)
         else:
             journal = STATE / 'transaction.json'; protected(journal)
             tx = json.loads(journal.read_text())

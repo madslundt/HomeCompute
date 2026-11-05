@@ -61,3 +61,7 @@ services:
 networks:
   candidate:
     internal: true
+    ipam:
+      config:
+        - subnet: 10.253.73.0/28
+          gateway: 10.253.73.1
