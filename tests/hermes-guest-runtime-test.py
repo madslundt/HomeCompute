@@ -285,6 +285,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertNotIn('OPENAI_API_KEY=', (home / '.env').read_text())
         self.assertNotIn('openshell:resolve:env:', (home / 'config.yaml').read_text())
         self.assertEqual(configured['model']['context_length'], 65536)
+        self.assertEqual(configured['agent']['reasoning_effort'], 'medium')
         self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o640)
 
     def test_browser_command_dispatches_the_owned_connector(self):

@@ -73,6 +73,7 @@ path.write_text('\\n'.join(lines) + '\\n'); path.chmod(0o640)
 path = home / 'config.yaml'
 config = yaml.safe_load(path.read_text()) or {}
 config.setdefault('platforms', {}).setdefault('mattermost', {})['enabled'] = True
+config.setdefault('agent', {})['reasoning_effort'] = 'medium'
 # Publisher image defaults are independent of the registered gateway route.
 # Configure the native agent too; its request is the end-to-end readiness probe.
 config['model'] = {'default': 'automation-moe', 'provider': 'custom', 'context_length': 65536,

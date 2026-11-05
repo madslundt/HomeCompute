@@ -15,6 +15,8 @@ the managed image with the standalone upstream image: it omits these contracts.
 Use local `automation-moe` through the private compatibility bridge. Hermes
 is capped at 65,536 context tokens, below the observed backend capacity, to
 keep its memory and compaction behavior predictable. Hermes
+uses the backend-supported `medium` reasoning setting for interactive work;
+`high` is rejected by this model's current server. Hermes
 has its own LiteLLM virtual key, restricted to that alias. No cloud fallback is
 configured. Mattermost access is limited to the owner user ID in the non-secret
 config. Tokens remain in private guest secret files and OpenShell's credential
