@@ -35,6 +35,7 @@ RUN python3 /usr/local/lib/nemoclaw/patch-browser-transport.py /opt/hermes/tools
 # root; keep npm offline and avoid an unpinned npx fallback.
 RUN cp -a /opt/nemoclaw-agent-browser-runtime /usr/local/lib/homecompute-agent-browser-runtime \
     && chmod 0555 /usr/local/lib/nemoclaw/homecompute-browser-client.mjs \
+    && chmod 0444 /usr/local/lib/nemoclaw/browser-relay.mjs \
     && ln -sfn /usr/local/lib/nemoclaw/homecompute-browser-client.mjs /usr/local/bin/agent-browser \
     && test "$(/usr/local/bin/agent-browser --version)" = "agent-browser 0.26.0"
 # The managed policy is the native agent's routing authority. Regenerate it
