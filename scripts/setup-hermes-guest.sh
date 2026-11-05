@@ -5,6 +5,7 @@ IFS=$'\n\t'
 umask 077
 # Hermes uses its own gateway; OpenClaw remains on 9123.
 export NEMOCLAW_GATEWAY_PORT=8080
+export OPENSHELL_GATEWAY=nemoclaw
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"

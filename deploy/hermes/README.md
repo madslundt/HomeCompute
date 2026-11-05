@@ -53,7 +53,10 @@ mounts, and no search-provider credentials. Browser capability requires its own
 live public-page and private-destination-denial checks before readiness is
 claimed. The Mattermost policy allows only its restricted private TLS proxy.
 
-The Homepage card opens the dedicated Mattermost DM. Dashboard forwarding is
+The Homepage card opens the dedicated Mattermost DM. Use `scripts/setup-hermes-homepage.py --revision FULL_SHA` on home-core to
+inspect the card patch, then apply with the reported `--expected-sha256` and
+`--apply`. This guarded lifecycle changes only the card and restarts Homepage.
+Dashboard forwarding is
 not required for that path; keep the dashboard private until its authentication
 and ingress have been separately verified.
 

@@ -39,7 +39,8 @@ def main():
         raise RuntimeError('Existing Mattermost provider has a different profile')
     token = ''
     call(['nemohermes', NAME, 'policy', 'add', '--from-file',
-          str(ROOT / 'deploy/hermes/mattermost-policy.yaml'), '--yes'])
+          str(ROOT / 'deploy/hermes/mattermost-policy.yaml'),
+          '--trusted-private-host', 'home-core.tail479ad.ts.net', '--yes'])
     call(os_args + ['sandbox', 'provider', 'attach', NAME, PROVIDER])
     settings = {key: os.environ[key] for key in (
         'MATTERMOST_URL', 'MATTERMOST_ALLOWED_USERS', 'MATTERMOST_REPLY_MODE',
