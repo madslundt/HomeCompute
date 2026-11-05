@@ -44,6 +44,10 @@ class PublicBrowserSetup(unittest.TestCase):
             self.assertIn('BROWSER_UPSTREAM=homecompute-hermes-browser:18800', joined)
             self.assertIn('homecompute-hermes-browser-profile', joined)
             self.assertIn('172.30.190.0/24', (directory / 'private/browser-squid.conf').read_text())
+            for name in ('browser_worker.py', 'tcp_relay.py'):
+                asset = directory / 'private' / name
+                self.assertEqual(asset.stat().st_mode & 0o777, 0o444)
+                self.assertEqual(asset.read_bytes(), (directory / 'tools' / name).read_bytes())
 
     @unittest.skipUnless(os.geteuid() == 0, 'Root-only module staging requires Linux/root qualification')
     def test_root_module_staging_is_fenced_backed_up_and_idempotent(self):

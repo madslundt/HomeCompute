@@ -283,6 +283,14 @@ class HermesGuestRuntimeTest(unittest.TestCase):
             self.assertEqual(lane['base_url'], 'http://ai.home.arpa:18080/v1')
         self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o640)
 
+    def test_browser_command_dispatches_the_owned_connector(self):
+        source = self.root / 'release'; (source / 'scripts').mkdir(parents=True)
+        (source / 'scripts/connect-hermes-browser.py').write_text("print('owned-browser-connector')\n")
+        result = self.sourced_call('preflight_runtime() { :; }\nREPO_ROOT=' + str(source) +
+            '\nmain connect-browser --config ' + str(self.config))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('owned-browser-connector', result.stdout)
+
     def test_backup_gate_requires_household_off_host_scope(self) -> None:
         document = json.loads(self.backup_gate.read_text(encoding="utf-8"))
         document["scope"] = "hermes-synthetic-canary"
