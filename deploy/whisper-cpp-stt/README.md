@@ -159,7 +159,7 @@ action.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-build applies `strict-gpu-buffer-idle-proof-v2` to the exact pinned upstream source
+build applies `strict-gpu-request-determinism-v3` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
@@ -175,6 +175,17 @@ new work while that native lock is held or its state cannot be confirmed. The
 CPU image is unpatched and
 reports only adapter admission activity, so it is not used by this CUDA
 rollback idle gate.
+The patch also fixes two native sampling defects. Beam search now takes the
+distinct highest-ranked token candidates, with token ID breaking equal-logit
+ties, instead of randomly drawing candidates after sorting them. Each request
+also resets decoder zero's random generator to its original seed, as the
+upstream request initialization already does for the other decoders. This
+prevents earlier requests from changing later stochastic greedy/fallback
+sampling. Model weights, language detection, decoding defaults, and timestamp
+probability fields are unchanged. The new `hc4` image is a qualification
+candidate; the previously qualified `hc3` image below retains its exact identity
+until a separately validated promotion.
+
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
 the default mode and the separate CPU image is built with `GGML_CUDA=OFF`.
@@ -458,6 +469,7 @@ The portable synthetic contract and refusal tests run with:
 
 ```bash
 python3 tests/whisper-cpp-stt-test.py
+python3 tests/whisper-cpp-request-rng-test.py
 ```
 
 They test the real adapter over HTTP with a synthetic native response, prompt
@@ -465,4 +477,8 @@ and option forwarding, format rejection, authentication, exact segment/text
 anchors, bounds, and model header/checksum refusal. They do not measure model
 quality, CPU latency or host resource use. Quality qualification must use the
 frozen private request/source artifacts; never commit recordings, prompts,
-transcripts or model weights.
+transcripts or model weights. The request-RNG suite requires a C++17 compiler
+and compiles exact, checksummed excerpts of the pinned native sampler. It proves
+the original defects and checks sorted unique candidates, ties, timestamp
+metadata, and request independence without a model or network. GPU execution
+and real-audio quality still require private candidate qualification.

@@ -27,7 +27,9 @@ class NetworkMigrationTest(unittest.TestCase):
     def setUpClass(cls):
         environment = {**os.environ, 'WHISPER_CPP_HOME_COMPUTE_REVISION': REVISION,
                        'WHISPER_CPP_IMAGE_ID': LIFECYCLE.CPP_QUALIFIED_IMAGE_ID,
-                       'WHISPER_CPP_CUDA_PATCHER_SHA256': LIFECYCLE.CPP_CUDA_PATCHER_SHA256,
+                       'WHISPER_CPP_CUDA_IMAGE': LIFECYCLE.CPP_QUALIFIED_IMAGE_NAME,
+                       'WHISPER_CPP_CUDA_PATCH_VERSION': LIFECYCLE.CPP_QUALIFIED_PATCH_VERSION,
+                       'WHISPER_CPP_CUDA_PATCHER_SHA256': LIFECYCLE.CPP_QUALIFIED_PATCHER_SHA256,
                        'WHISPER_CPP_MODEL_FILE': '/synthetic/model',
                        'WHISPER_CPP_API_KEY_FILE': '/synthetic/key'}
         result = subprocess.run(['docker', 'compose', '-f', str(ROOT / 'deploy/whisper-cpp-stt/compose-cuda.yaml'),

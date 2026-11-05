@@ -39,10 +39,13 @@ NEW = ('gb10-whisper-primary', 'gb10-whisper-http')
 CANDIDATE = 'gb10-whisper-candidate'
 CANDIDATE_IMAGE = 'homecompute/whisper-vllm-candidate:0.19.0-hc1'
 CUDA_CANDIDATE = 'gb10-whisper-cpp-primary'
-CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc3'
+CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc4'
 CUDA_CANDIDATE_PROJECT = 'whisper-cpp-gb10-cuda'
 CPP_QUALIFIED_IMAGE_ID = 'sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3'
 CPP_QUALIFIED_SOURCE_REVISION = '50ee4f9666c26df89bccab30c83e9cd6dcc0faba'
+CPP_QUALIFIED_IMAGE_NAME = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc3'
+CPP_QUALIFIED_PATCH_VERSION = 'strict-gpu-buffer-idle-proof-v2'
+CPP_QUALIFIED_PATCHER_SHA256 = 'd68e0e16aca14d3169501a751b054a7e85def93aa7679bb7f26f209236b9d7ef'
 CPP_GATE_FAILURE_RECOVERY_REVISION = '3f5c3228e4e245b389306926930a8376640b80c9'
 CPP_GATE_FAILURE_RECOVERY_ID = 'cec07a2399ea'
 CPP_GATE_FAILURE_RELAY_IMAGE = 'sha256:6049300173bcc9505cd9779d214e498a83ffaeffcdc5620c9aad75d2e95f5c3a'
@@ -60,8 +63,8 @@ CPP_MODEL_FREE_SPACE_RESERVE = 512 * 1024 * 1024
 CPP_DOWNLOAD_TIMEOUT = 60
 CPP_DOWNLOAD_MAX_SECONDS = 3600
 CPP_RUNTIME_COMMIT = 'f049fff95a089aa9969deb009cdd4892b3e74916'
-CPP_CUDA_PATCH_VERSION = 'strict-gpu-buffer-idle-proof-v2'
-CPP_CUDA_PATCHER_SHA256 = 'd68e0e16aca14d3169501a751b054a7e85def93aa7679bb7f26f209236b9d7ef'
+CPP_CUDA_PATCH_VERSION = 'strict-gpu-request-determinism-v3'
+CPP_CUDA_PATCHER_SHA256 = '0d91dddf479f120f2b421a8a1a61531d1c2675d4013f3d1e6d6fd15434bc62a1'
 REVISION = '06f233fe06e710322aca913c1bc4249a0d71fce1'
 MODEL = 'openai/whisper-large-v3'
 LEGACY_REPOSITORIES = ('syvai/hviske-v5.3', 'openai/whisper-large-v3-turbo')
@@ -421,12 +424,15 @@ def compose_cuda(*arguments, timeout=3600, revision='', image_id='', image_sourc
                  max_audio_seconds=180, max_upload_bytes=6_000_000,
                  native_timeout_seconds=900):
     identity = pwd.getpwnam('gb10-ai')
+    qualified = image_id == CPP_QUALIFIED_IMAGE_ID
     environment = {**os.environ,
                    'WHISPER_CPP_HOME_COMPUTE_REVISION': image_source_revision or revision,
                    'WHISPER_CPP_IMAGE_ID': image_id,
                    'WHISPER_CPP_MODEL_FILE': str(CPP_MODEL_PATH),
                    'WHISPER_CPP_API_KEY_FILE': str(api_key_path or CPP_API_KEY_PATH),
-                   'WHISPER_CPP_CUDA_PATCHER_SHA256': CPP_CUDA_PATCHER_SHA256,
+                   'WHISPER_CPP_CUDA_IMAGE': CPP_QUALIFIED_IMAGE_NAME if qualified else CUDA_CANDIDATE_IMAGE,
+                   'WHISPER_CPP_CUDA_PATCH_VERSION': CPP_QUALIFIED_PATCH_VERSION if qualified else CPP_CUDA_PATCH_VERSION,
+                   'WHISPER_CPP_CUDA_PATCHER_SHA256': CPP_QUALIFIED_PATCHER_SHA256 if qualified else CPP_CUDA_PATCHER_SHA256,
                    'WHISPER_CPP_MAX_AUDIO_SECONDS': str(max_audio_seconds),
                    'WHISPER_CPP_MAX_UPLOAD_BYTES': str(max_upload_bytes),
                    'WHISPER_CPP_NATIVE_TIMEOUT_SECONDS': str(native_timeout_seconds),
@@ -527,7 +533,7 @@ def cuda_candidate_image_id(revision):
 
 
 def qualified_cuda_candidate_image_id():
-    image = json.loads(run(['docker', 'image', 'inspect', CUDA_CANDIDATE_IMAGE]).stdout)[0]
+    image = json.loads(run(['docker', 'image', 'inspect', CPP_QUALIFIED_IMAGE_NAME]).stdout)[0]
     labels = image.get('Config', {}).get('Labels') or {}
     expected = {
         'org.opencontainers.image.revision': CPP_RUNTIME_COMMIT,
@@ -535,8 +541,8 @@ def qualified_cuda_candidate_image_id():
         'io.homecompute.whisper-cpp.runtime-commit': CPP_RUNTIME_COMMIT,
         'io.homecompute.whisper-cpp.model-sha256': CPP_MODEL_SHA256,
         'io.homecompute.whisper-cpp.backend': 'cuda-121a',
-        'io.homecompute.whisper-cpp.cuda-patch': CPP_CUDA_PATCH_VERSION,
-        'io.homecompute.whisper-cpp.cuda-patcher-sha256': CPP_CUDA_PATCHER_SHA256,
+        'io.homecompute.whisper-cpp.cuda-patch': CPP_QUALIFIED_PATCH_VERSION,
+        'io.homecompute.whisper-cpp.cuda-patcher-sha256': CPP_QUALIFIED_PATCHER_SHA256,
         'io.homecompute.whisper-cpp.cuda-base': CUDA_BASE_IMAGE,
     }
     if (image.get('Os') != 'linux' or image.get('Architecture') != 'arm64' or
@@ -1491,8 +1497,8 @@ def cuda_candidate_start(revision, *, max_audio_seconds=180, max_upload_bytes=6_
         metadata = json.loads(health.stdout)
         if (metadata.get('status') != 'ok' or metadata.get('device') != 'cuda' or
                 metadata.get('compute_backend') != 'cuda' or
-                metadata.get('strict_gpu_patch') != CPP_CUDA_PATCH_VERSION or
-                metadata.get('strict_gpu_patcher_sha256') != CPP_CUDA_PATCHER_SHA256 or
+                metadata.get('strict_gpu_patch') != (CPP_QUALIFIED_PATCH_VERSION if promotion else CPP_CUDA_PATCH_VERSION) or
+                metadata.get('strict_gpu_patcher_sha256') != (CPP_QUALIFIED_PATCHER_SHA256 if promotion else CPP_CUDA_PATCHER_SHA256) or
                 type(metadata.get('native_inference_busy')) is not bool or
                 not isinstance(metadata.get('gpu_model_buffer_bytes'), int) or
                 isinstance(metadata.get('gpu_model_buffer_bytes'), bool) or

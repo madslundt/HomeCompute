@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply fail-closed CUDA initialization and model-placement reporting to pinned whisper.cpp."""
+"""Apply guarded CUDA initialization and request-local decoding to pinned whisper.cpp."""
 from __future__ import annotations
 
 import argparse
@@ -9,7 +9,7 @@ import subprocess
 
 
 UPSTREAM_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-PATCH_VERSION = "strict-gpu-buffer-idle-proof-v2"
+PATCH_VERSION = "strict-gpu-request-determinism-v3"
 PATCHES = {
     "src/whisper.cpp": (
         "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
@@ -93,6 +93,48 @@ IMPLEMENTATION = """size_t whisper_model_gpu_buffer_size(struct whisper_context 
 
 """
 
+SAMPLING_PATCHES = (
+    (
+        """    // TAGS: WHISPER_DECODER_INIT
+    for (int j = 1; j < n_decoders; j++) {
+""",
+        """    // Each request starts from the same sampling state as a fresh decoder.
+    state->decoders[0].rng = std::mt19937(0);
+
+    // TAGS: WHISPER_DECODER_INIT
+    for (int j = 1; j < n_decoders; j++) {
+""",
+    ),
+    (
+        """                logits_id.begin() + k, logits_id.end(),
+                [](const pair_type & a, const pair_type & b) {
+            return a.first > b.first;
+""",
+        """                logits_id.begin() + k, logits_id.end(),
+                [](const pair_type & a, const pair_type & b) {
+            return a.first != b.first ? a.first > b.first : a.second < b.second;
+""",
+    ),
+    (
+        """    std::discrete_distribution<> dist(probs.begin(), probs.end());
+
+    for (int i = 0; i < k; ++i) {
+        const auto id = dist(decoder.rng);
+""",
+        """    for (int i = 0; i < k; ++i) {
+        const auto id = logits_id[i].second;
+""",
+    ),
+)
+
+
+def patch_sampling(source: str) -> str:
+    for old, new in SAMPLING_PATCHES:
+        if source.count(old) != 1:
+            raise ValueError("Pinned whisper.cpp sampling anchor is missing or ambiguous")
+        source = source.replace(old, new, 1)
+    return source
+
 
 def patch_bytes(original: bytes, expected_sha256: str, old: str, new: str) -> bytes:
     if sha256(original).hexdigest() != expected_sha256:
@@ -120,6 +162,7 @@ def apply(root: Path) -> None:
     if source.count(IMPLEMENTATION_ANCHOR) != 1:
         raise ValueError("Pinned whisper.cpp GPU placement API anchor is missing or ambiguous")
     source = source.replace(IMPLEMENTATION_ANCHOR, IMPLEMENTATION + IMPLEMENTATION_ANCHOR, 1)
+    source = patch_sampling(source)
     updates[0] = (source_path, source.encode("utf-8"))
     for path, content in updates:
         temporary = path.with_suffix(path.suffix + ".homecompute-tmp")
@@ -133,7 +176,9 @@ def verify(root: Path) -> bool:
     whisper = (root / "src/whisper.cpp").read_text()
     server = (root / "examples/server/server.cpp").read_text()
     header = (root / "include/whisper.h").read_text()
-    return ("required GPU backend initialization failed" in whisper and
+    return (all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES) and
+            SAMPLING_PATCHES[-1][0] not in whisper and
+            "required GPU backend initialization failed" in whisper and
             "size_t whisper_model_gpu_buffer_size(struct whisper_context * ctx)" in whisper and
             "requested GPU has no model weight buffers" in whisper and
             "std::unique_lock<std::mutex> inference_probe(whisper_mutex, std::try_to_lock)" in server and

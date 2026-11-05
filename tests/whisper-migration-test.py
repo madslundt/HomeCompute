@@ -163,16 +163,18 @@ class MigrationTests(unittest.TestCase):
             'io.homecompute.whisper-cpp.runtime-commit': LIFECYCLE.CPP_RUNTIME_COMMIT,
             'io.homecompute.whisper-cpp.model-sha256': LIFECYCLE.CPP_MODEL_SHA256,
             'io.homecompute.whisper-cpp.backend': 'cuda-121a',
-            'io.homecompute.whisper-cpp.cuda-patch': LIFECYCLE.CPP_CUDA_PATCH_VERSION,
-            'io.homecompute.whisper-cpp.cuda-patcher-sha256': LIFECYCLE.CPP_CUDA_PATCHER_SHA256,
+            'io.homecompute.whisper-cpp.cuda-patch': LIFECYCLE.CPP_QUALIFIED_PATCH_VERSION,
+            'io.homecompute.whisper-cpp.cuda-patcher-sha256': LIFECYCLE.CPP_QUALIFIED_PATCHER_SHA256,
             'io.homecompute.whisper-cpp.cuda-base': LIFECYCLE.CUDA_BASE_IMAGE,
         }
         image = {'Id': LIFECYCLE.CPP_QUALIFIED_IMAGE_ID, 'Os': 'linux', 'Architecture': 'arm64',
                  'Config': {'Labels': labels}}
-        with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([image]))):
+        with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([image]))) as run:
             self.assertEqual(LIFECYCLE.qualified_cuda_candidate_image_id(), LIFECYCLE.CPP_QUALIFIED_IMAGE_ID)
+            run.assert_called_once_with(['docker', 'image', 'inspect', LIFECYCLE.CPP_QUALIFIED_IMAGE_NAME])
         for mutation in ({'Id': 'sha256:' + 'c' * 64},
-                         {'label': 'io.homecompute.source-revision', 'value': 'a' * 40}):
+                         {'label': 'io.homecompute.source-revision', 'value': 'a' * 40},
+                         {'label': 'io.homecompute.whisper-cpp.cuda-patch', 'value': LIFECYCLE.CPP_CUDA_PATCH_VERSION}):
             candidate = copy.deepcopy(image)
             if 'Id' in mutation:
                 candidate['Id'] = mutation['Id']
@@ -181,6 +183,24 @@ class MigrationTests(unittest.TestCase):
             with patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout=json.dumps([candidate]))), \
                     self.assertRaisesRegex(ValueError, 'Qualified.*identity'):
                 LIFECYCLE.qualified_cuda_candidate_image_id()
+
+    def test_compose_keeps_candidate_and_previously_qualified_image_pins_separate(self):
+        identity = SimpleNamespace(pw_uid=1000, pw_gid=1000)
+        profiles = (
+            ('', LIFECYCLE.CUDA_CANDIDATE_IMAGE, LIFECYCLE.CPP_CUDA_PATCH_VERSION,
+             LIFECYCLE.CPP_CUDA_PATCHER_SHA256),
+            (LIFECYCLE.CPP_QUALIFIED_IMAGE_ID, LIFECYCLE.CPP_QUALIFIED_IMAGE_NAME,
+             LIFECYCLE.CPP_QUALIFIED_PATCH_VERSION, LIFECYCLE.CPP_QUALIFIED_PATCHER_SHA256),
+        )
+        for image_id, image, version, digest in profiles:
+            with self.subTest(image=image), \
+                    patch.object(LIFECYCLE.pwd, 'getpwnam', return_value=identity), \
+                    patch.object(LIFECYCLE, 'run', return_value=SimpleNamespace(stdout='')) as run:
+                LIFECYCLE.compose_cuda('config', image_id=image_id)
+                environment = run.call_args.kwargs['environment']
+                self.assertEqual(environment['WHISPER_CPP_CUDA_IMAGE'], image)
+                self.assertEqual(environment['WHISPER_CPP_CUDA_PATCH_VERSION'], version)
+                self.assertEqual(environment['WHISPER_CPP_CUDA_PATCHER_SHA256'], digest)
 
     def test_production_network_override_is_opt_in_to_promotion_compose_only(self):
         identity = SimpleNamespace(pw_uid=1000, pw_gid=1000)
@@ -247,8 +267,8 @@ class MigrationTests(unittest.TestCase):
         }
         health = {
             'status': 'ok', 'device': 'cuda', 'compute_backend': 'cuda',
-            'strict_gpu_patch': LIFECYCLE.CPP_CUDA_PATCH_VERSION,
-            'strict_gpu_patcher_sha256': LIFECYCLE.CPP_CUDA_PATCHER_SHA256,
+            'strict_gpu_patch': LIFECYCLE.CPP_QUALIFIED_PATCH_VERSION,
+            'strict_gpu_patcher_sha256': LIFECYCLE.CPP_QUALIFIED_PATCHER_SHA256,
             'native_inference_busy': False, 'gpu_model_buffer_bytes': 1,
             'model_sha256': LIFECYCLE.CPP_MODEL_SHA256,
             'runtime_commit': LIFECYCLE.CPP_RUNTIME_COMMIT,
