@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "release_id": "EXAMPLE-ONLY-replace-with-observed-release",
+  "benchmark_commit": "REPLACE_WITH_PUBLISHED_FULL_SHA",
+  "environment": {
+    "kind": "EXAMPLE-ONLY",
+    "hardware": "record target hardware",
+    "operating_system": "record target operating system"
+  },
+  "artifacts": [
+    {
+      "id": "observed-flash-next",
+      "source": "record actual model source and mounted artifact",
+      "revision": "record verified weights revision and local image ID; label unknowns",
+      "runtime": "record actual serving runtime and launch configuration",
+      "quantization": "record actual quantization"
+    }
+  ]
+}

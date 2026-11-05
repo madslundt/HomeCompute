@@ -107,6 +107,18 @@ The image-owned loopback adapter handles CDP clients that bypass HTTP proxy
 settings. It forwards only the fixed browser WebSocket path through OpenShell,
 using the opaque credential in the upgrade request. Both agent-browser and the
 Python dialog supervisor use that adapter; it exposes no general proxy route.
+`browser.backend` is explicitly the string `off`, which selects Hermes's built-in
+`browser_*` tools rather than auto-discovering and downloading Browser Use via
+uvx. The image-bundled agent-browser version remains pinned and npm stays offline.
+
+`benchmarks/plans/hermes-local-runtime-smoke.json` exercises three 16-call
+synthetic sequences with retry recovery and strict final JSON. Supply a private
+release manifest with the observed runtime provenance and the endpoint/key
+environment variables named in the plan. This operational screen is separate
+from ADR 025's artifact promotion, long-context and overnight soak gates.
+The older A/B fixture does not prescribe its asserted call order and can return
+positional records for a different legal order; retain its results as diagnostic,
+not as passing model qualification.
 
 Stage the published `deploy/openclaw/tools` and browser installer in an
 operator-owned guest release directory. Use the qualified image ID from

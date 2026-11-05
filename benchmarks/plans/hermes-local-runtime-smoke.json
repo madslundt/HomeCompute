@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "hermes-local-runtime-smoke",
+  "version": "0.1.0",
+  "trials": 3,
+  "random_seed": 20261106,
+  "cases": [
+    "../fixtures/flash-next/hermes-16-call-ordered-recovery.json"
+  ],
+  "candidates": [
+    {
+      "id": "hermes-local-runtime",
+      "adapter": "openai_tool_loop",
+      "model": "automation-moe",
+      "base_url_env": "HERMES_QUAL_ENDPOINT",
+      "api_key_env": "HERMES_QUAL_KEY",
+      "artifact_ref": "observed-flash-next",
+      "max_tool_calls": 30,
+      "timeout_seconds": 180,
+      "request": {
+        "temperature": 0,
+        "reasoning_effort": "medium",
+        "parallel_tool_calls": false,
+        "max_tokens": 4096,
+        "chat_template_kwargs": {
+          "enable_thinking": true
+        }
+      }
+    }
+  ]
+}

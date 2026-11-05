@@ -67,6 +67,8 @@ path.write_text('\\n'.join(lines) + '\\n'); path.chmod(0o640)
 path = home / 'config.yaml'
 config = yaml.safe_load(path.read_text()) or {}
 config.setdefault('browser', {})['cdp_url'] = url
+# Keep the pinned bundled browser tools; avoid auto-installing Browser Use.
+config['browser']['backend'] = 'off'
 path.write_text(yaml.safe_dump(config, sort_keys=False))
 print('Browser configured with an opaque gateway credential reference')
 '''
