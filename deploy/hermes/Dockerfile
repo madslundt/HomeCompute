@@ -15,7 +15,8 @@ RUN if [ -n "$NEMOCLAW_CORPORATE_CA_B64" ]; then \
 USER sandbox
 ARG NEMOCLAW_TOOL_DISCLOSURE=progressive
 ENV NEMOCLAW_TOOL_DISCLOSURE=${NEMOCLAW_TOOL_DISCLOSURE}
-ENV NEMOCLAW_INFERENCE_PROVIDER_ID=compatible-endpoint \
+ENV NEMOCLAW_CONTEXT_WINDOW=65536 \
+    NEMOCLAW_INFERENCE_PROVIDER_ID=compatible-endpoint \
     NEMOCLAW_MODEL=automation-moe \
     NEMOCLAW_INFERENCE_BASE_URL=http://ai.home.arpa:18080/v1 \
     NEMOCLAW_PROVIDER_KEY=compatible-endpoint \
@@ -40,5 +41,5 @@ RUN HOME=/sandbox node /opt/nemoclaw-hermes-config/generate-config.ts \
     && rm /sandbox/.hermes/managed-policy.json \
     && chown sandbox:sandbox /sandbox/.hermes/config.yaml /sandbox/.hermes/.env \
     && chmod 0640 /sandbox/.hermes/config.yaml /sandbox/.hermes/.env \
-    && python3 -c 'import json; p=json.load(open("/usr/local/share/nemoclaw/hermes-managed-policy.json")); c=p["config"]; assert c["model"]["base_url"] == "http://ai.home.arpa:18080/v1"; assert c["custom_providers"][0]["base_url"] == "http://ai.home.arpa:18080/v1"'
+    && python3 -c 'import json; p=json.load(open("/usr/local/share/nemoclaw/hermes-managed-policy.json")); c=p["config"]; assert c["model"]["context_length"] == 65536; assert c["model"]["base_url"] == "http://ai.home.arpa:18080/v1"; assert c["custom_providers"][0]["base_url"] == "http://ai.home.arpa:18080/v1"'
 USER sandbox

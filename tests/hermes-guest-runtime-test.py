@@ -281,6 +281,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         configured = json.loads((home / 'config.yaml').read_text())
         for lane in (configured['model'], configured['providers']['custom'], configured['custom_providers'][0]):
             self.assertEqual(lane['base_url'], 'http://ai.home.arpa:18080/v1')
+        self.assertEqual(configured['model']['context_length'], 65536)
         self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o640)
 
     def test_browser_command_dispatches_the_owned_connector(self):

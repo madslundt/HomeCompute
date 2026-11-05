@@ -73,7 +73,7 @@ config = yaml.safe_load(path.read_text()) or {}
 config.setdefault('platforms', {}).setdefault('mattermost', {})['enabled'] = True
 # Publisher image defaults are independent of the registered gateway route.
 # Configure the native agent too; its request is the end-to-end readiness probe.
-config['model'] = {'default': 'automation-moe', 'provider': 'custom',
+config['model'] = {'default': 'automation-moe', 'provider': 'custom', 'context_length': 65536,
     'base_url': 'http://ai.home.arpa:18080/v1',
     'api_key': settings['OPENAI_API_KEY']}
 # Hermes resolves the named custom provider before model.base_url.
