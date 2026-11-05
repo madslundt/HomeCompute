@@ -62,7 +62,14 @@ def main():
                     path.write_bytes(after)
                     core.call(['docker', 'restart', core.HOMEPAGE], timeout=90)
                     from homepage_maintenance import Maintenance
-                    if not Maintenance.http_health():
+                    for attempt in range(30):
+                        try:
+                            if Maintenance.http_health():
+                                break
+                        except OSError:
+                            pass
+                        time.sleep(2)
+                    else:
                         raise ValueError('homepage-health-failed')
                 except Exception:
                     path.write_bytes(before)

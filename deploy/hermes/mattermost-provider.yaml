@@ -1,15 +1,22 @@
-id: homecompute-hermes-mattermost-v1
-display_name: HomeCompute Hermes Mattermost
-description: Owner bot credential bound only to the private Mattermost policy
-category: agent
-credentials:
-  - name: bot_token
-    description: Dedicated hermes-agent bot token
-    env_vars: [MATTERMOST_TOKEN]
-    required: true
-    auth_style: header
-    header_name: Authorization
-    query_param: ''
-endpoints: []
-binaries: []
-inference_capable: false
+{
+  "id": "homecompute-hermes-mattermost-v1",
+  "display_name": "HomeCompute Hermes Mattermost",
+  "description": "Owner bot credential bound only to the private Mattermost policy",
+  "category": "agent",
+  "credentials": [
+    {
+      "name": "bot_token",
+      "description": "Dedicated hermes-agent bot token",
+      "env_vars": [
+        "MATTERMOST_TOKEN"
+      ],
+      "required": true,
+      "auth_style": "header",
+      "header_name": "Authorization",
+      "query_param": ""
+    }
+  ],
+  "endpoints": [],
+  "binaries": [],
+  "inference_capable": false
+}

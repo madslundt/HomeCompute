@@ -25,8 +25,18 @@ def main():
     token = os.environ.pop('MATTERMOST_TOKEN')
     gateway = os.environ['HERMES_OPENSHELL_GATEWAY']
     os_args = ['openshell', '-g', gateway]
-    call(os_args + ['provider', 'profile', 'import', '--file',
-                    str(ROOT / 'deploy/hermes/mattermost-provider.yaml')])
+    profile_file = ROOT / 'deploy/hermes/mattermost-provider.yaml'
+    expected = json.loads(profile_file.read_text())
+    exported = subprocess.run(os_args + ['provider', 'profile', 'export', PROFILE, '-o', 'json'],
+                              capture_output=True, text=True, timeout=30)
+    if exported.returncode:
+        if 'not found' not in (exported.stdout + exported.stderr).lower():
+            raise RuntimeError('Cannot establish Mattermost profile absence')
+        call(os_args + ['provider', 'profile', 'import', '--file', str(profile_file)])
+    else:
+        observed = json.loads(exported.stdout)
+        if {key: observed.get(key) for key in expected} != expected:
+            raise RuntimeError('Existing Mattermost profile differs from source')
     existing = subprocess.run(os_args + ['provider', 'get', PROVIDER],
                               capture_output=True, text=True, timeout=30)
     if existing.returncode:
