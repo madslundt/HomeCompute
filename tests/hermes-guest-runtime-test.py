@@ -134,7 +134,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                   hermes-owner\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
                   hermes-owner\\ gateway\\ restart) printf 'restarted\\n' ;;
                   hermes-owner\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
-                  onboard\\ --agent\\ hermes\\ --name\\ hermes-owner\\ --from-image\\ *)
+                  onboard\\ --agent\\ hermes\\ --name\\ hermes-owner\\ --from\\ *)
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
                     test "${{NEMOCLAW_POLICY_TIER:-}}" = restricted
                     test "${{NEMOCLAW_WEB_SEARCH_PROVIDER:-}}" = none
@@ -188,7 +188,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertEqual(release["managed_components"]["openshell_version"], "0.0.116")
         self.assertEqual(release["policy"]["tier"], "restricted")
         self.assertTrue(release["policy"]["messaging"])
-        self.assertFalse(release["policy"]["custom_image"])
+        self.assertTrue(release["policy"]["custom_image"])
 
     def test_validate_accepts_only_the_approved_household_contract(self) -> None:
         result = self.run_cli("validate")

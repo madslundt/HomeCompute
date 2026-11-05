@@ -19,7 +19,7 @@
     "web_search": "none",
     "browser": "isolated browser; qualification pending",
     "messaging": true,
-    "custom_image": false
+    "custom_image": true
   },
   "latest_standalone_hermes": {
     "version": "0.22.7",

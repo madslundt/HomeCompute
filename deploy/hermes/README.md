@@ -48,7 +48,10 @@ config=/home/hermes-operator/.config/homecompute-hermes/hermes-owner.env
 ./scripts/setup-hermes-guest.sh connect-mattermost --config "$config"
 ```
 
-Onboarding uses the exact published managed image, Restricted policy, no host
+Onboarding builds a thin overlay on the exact published managed image. The
+overlay pins the local model and endpoint in the entrypoint environment, since
+the publisher defaults otherwise override native gateway routing after restart.
+It uses Restricted policy, no host
 mounts, and no search-provider credentials. Browser capability requires its own
 live public-page and private-destination-denial checks before readiness is
 claimed. The Mattermost policy allows only its restricted private TLS proxy.

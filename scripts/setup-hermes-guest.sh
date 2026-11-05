@@ -48,6 +48,7 @@ Commands:
   preflight                Validate the Ubuntu guest, tools, CA, key, and endpoint
   install                  Install the pinned NemoClaw CLI without onboarding
   onboard-canary           Create the household Hermes sandbox
+  recreate                 Recreate the owner sandbox through NemoClaw
   connect-mattermost       Add the owner-restricted Hermes Mattermost bot
   health                   Capture redacted doctor, status, route, and version evidence
   snapshot NAME            Create a named snapshot of the household owner sandbox
@@ -85,7 +86,7 @@ validate_release_manifest() {
      .policy.tier == "restricted" and
      .policy.web_search == "none" and
      .policy.messaging == true and
-     .policy.custom_image == false' \
+     .policy.custom_image == true' \
     "$RELEASE_MANIFEST" >/dev/null || die 'Release manifest does not match the reviewed canary tuple'
 }
 
@@ -333,7 +334,7 @@ onboard_canary() {
     REQUESTS_CA_BUNDLE="$host_validation_ca" \
     SSL_CERT_FILE="$host_validation_ca" \
     nemohermes onboard --agent hermes --name "$HERMES_SANDBOX_NAME" \
-      --from-image "$(jq -r .managed_hermes_base_image "$RELEASE_MANIFEST")" --fresh --no-gpu --non-interactive \
+      --from "$REPO_ROOT/deploy/hermes/Dockerfile" "$@" --fresh --no-gpu --non-interactive \
       --yes --yes-i-accept-third-party-software
   api_key=''
   unset api_key
@@ -484,6 +485,7 @@ main() {
     validate) [[ -z "$argument" ]] || die 'validate takes no argument'; log 'Configuration and release tuple are valid' ;;
     preflight) [[ -z "$argument" ]] || die 'preflight takes no argument'; preflight_runtime ;;
     install) [[ -z "$argument" ]] || die 'install takes no argument'; install_nemoclaw ;;
+    recreate) [[ -z "$argument" ]] || die 'recreate takes no argument'; onboard_canary --recreate-sandbox ;;
     onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
   connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;
