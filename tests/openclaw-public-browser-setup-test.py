@@ -20,6 +20,31 @@ spec.loader.exec_module(module)
 
 
 class PublicBrowserSetup(unittest.TestCase):
+    def test_hermes_browser_has_separate_network_profile_and_ingress(self):
+        spec = importlib.util.spec_from_file_location('installer', ROOT / 'scripts/setup-openclaw-browser.py')
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        commands = []
+        def docker(*args):
+            commands.append(args)
+            if args[:1] == ('inspect',):
+                return json.dumps([{'Config': {'Hostname': 'homecompute-hermes-browser'}}])
+            return ''
+        def run(args, **kwargs):
+            return subprocess.CompletedProcess(args, 1, '', '')
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            shutil.copytree(ROOT / 'deploy/openclaw/tools', directory / 'tools')
+            with patch.object(installer, 'docker', side_effect=docker), patch.object(installer.subprocess, 'run', side_effect=run):
+                installer.install(directory, 'sha256:' + 'a' * 64, principal='hermes')
+            joined = repr(commands)
+            self.assertNotIn('homecompute-openclaw-', joined)
+            self.assertNotIn('172.30.188.', joined)
+            self.assertIn('172.18.0.1:18810:18800', joined)
+            self.assertIn('BROWSER_UPSTREAM=homecompute-hermes-browser:18800', joined)
+            self.assertIn('homecompute-hermes-browser-profile', joined)
+            self.assertIn('172.30.190.0/24', (directory / 'private/browser-squid.conf').read_text())
+
     @unittest.skipUnless(os.geteuid() == 0, 'Root-only module staging requires Linux/root qualification')
     def test_root_module_staging_is_fenced_backed_up_and_idempotent(self):
         with tempfile.TemporaryDirectory() as folder:

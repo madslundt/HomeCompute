@@ -81,3 +81,37 @@ authority. Preserve those records and exact container IDs. Never remove their
 tracking or destroy resources by a mutable name to bypass the refusal. Use a
 new uniquely named sandbox only after independently qualifying corrected image
 inputs. Oh My Hermes is deferred until the core service is stable.
+
+## Dedicated browser worker
+
+The browser uses a separate profile volume, token, Docker networks
+`172.30.190.0/24` and `172.30.191.0/24`, and bridge listener
+`172.18.0.1:18810`. OpenClaw retains its existing `.188/.189` worker. The
+Chromium container is read-only, unprivileged, and has no household state or
+inference credentials. Its proxy denies private, loopback, link-local and
+reserved destinations. The gateway holds the browser token; Hermes stores
+only its opaque reference in `BROWSER_CDP_URL`.
+
+Stage the published `deploy/openclaw/tools` and browser installer in an
+operator-owned guest release directory. Use the qualified image ID from
+`config/hermes-release.json`, with its existing local artifact or reviewed
+recovery archive, rather than pulling an unpinned image:
+
+```bash
+python3 scripts/setup-openclaw-browser.py --principal hermes \
+  --directory "$release/deploy/openclaw" --image-id "$browser_image_id"
+./scripts/setup-hermes-guest.sh connect-browser --config "$config"
+```
+
+The installer refuses existing browser containers. Inspect their identity and
+retained profile before any replacement. Keep the generated `private` directory
+and browser profile volume outside Git and include them in the guest backup.
+The worker's stable `/devtools/browser/homecompute` endpoint resolves the local
+Chromium ID on each connection, so a browser restart does not stale the URL.
+
+During this clean installation, failed synthetic requests produced diagnostic
+request dumps rejected by NemoClaw's state-archive credential scan. The owner
+explicitly authorized discarding Hermes state. The supported one-time
+`NEMOCLAW_RECREATE_WITHOUT_BACKUP=1` recreation option was used; this is not a
+standing backup exception. Household state replacement still requires a verified
+snapshot and explicit data-loss intent.

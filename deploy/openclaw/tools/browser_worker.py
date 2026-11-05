@@ -88,7 +88,7 @@ def remote_public_dns(hostname: str, token: str) -> dict:
 
 def serve(token: str, origin: str, address: tuple[str, int] = ("0.0.0.0", 18800),
           *, dns_only: bool = False, dns_lookup=None) -> ThreadingHTTPServer:
-    if len(token) < 32 or not re.fullmatch(r"http://[0-9.]+:18800", origin):
+    if len(token) < 32 or not re.fullmatch(r"http://[0-9.]+:(18800|18810)", origin):
         raise ValueError("dedicated browser token and fixed bridge origin required")
 
     class Handler(BaseHTTPRequestHandler):
@@ -146,6 +146,18 @@ def serve(token: str, origin: str, address: tuple[str, int] = ("0.0.0.0", 18800)
                 CLIENTS.release()
 
         def websocket(self, path: str) -> None:
+            # Stable CDP endpoint for clients that cannot preserve query auth
+            # during HTTP discovery. Resolve only the local Chromium browser ID.
+            if path == '/devtools/browser/homecompute':
+                discovery = http.client.HTTPConnection(*CDP, timeout=5)
+                try:
+                    discovery.request('GET', '/json/version')
+                    payload = json.loads(discovery.getresponse().read(65536))
+                    path = urlsplit(payload['webSocketDebuggerUrl']).path
+                    if not re.fullmatch(r'/devtools/browser/[A-Za-z0-9-]+', path):
+                        raise ValueError('invalid local browser identity')
+                finally:
+                    discovery.close()
             if self.headers.get("Upgrade", "").lower() != "websocket":
                 return self.reply(400, b'{"error":"websocket required"}')
             with socket.create_connection(CDP, timeout=5) as upstream:
@@ -192,7 +204,10 @@ def serve(token: str, origin: str, address: tuple[str, int] = ("0.0.0.0", 18800)
 def main() -> None:
     token = Path(os.environ["BROWSER_TOKEN_FILE"]).read_text().strip()
     if sys.argv[1:] == ['--dns-only']:
-        serve(token, 'http://127.0.0.1:18800', ('172.30.188.5', 18802), dns_only=True).serve_forever()
+        address = os.environ.get('BROWSER_DNS_BIND', '172.30.188.5')
+        if address not in {'172.30.188.5', '172.30.190.5'}:
+            raise ValueError('reviewed DNS bind required')
+        serve(token, 'http://127.0.0.1:18800', (address, 18802), dns_only=True).serve_forever()
         return
     if len(sys.argv) != 1:
         raise ValueError('Supported worker mode required')

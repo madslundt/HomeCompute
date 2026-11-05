@@ -122,6 +122,10 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                   hermes-owner\\ connect\\ --probe-only|hermes-owner-verify\\ connect\\ --probe-only)
                     printf 'Probe timing: result=ready\\n'
                     ;;
+                  hermes-owner\\ exec\\ --stdin\\ --\\ python3\\ -)
+                    cat >/dev/null
+                    printf '{{"rest_authenticated":true,"websocket_authenticated":true}}\\n'
+                    ;;
                   hermes-owner\\ channels\\ status\\ *) printf '{{"connected":true}}\\n' ;;
                   hermes-owner\\ policy\\ add\\ *) printf 'policy applied\\n' ;;
                   hermes-owner\\ channels\\ add\\ mattermost)

@@ -49,6 +49,7 @@ Commands:
   install                  Install the pinned NemoClaw CLI without onboarding
   onboard-canary           Create the household Hermes sandbox
   recreate                 Recreate the owner sandbox through NemoClaw
+  connect-browser          Attach the dedicated isolated browser
   connect-mattermost       Add the owner-restricted Hermes Mattermost bot
   health                   Capture redacted doctor, status, route, and version evidence
   snapshot NAME            Create a named snapshot of the household owner sandbox
@@ -420,8 +421,8 @@ health_for() {
   capture "$directory" inference-route nemohermes "$sandbox" inference get --json
   capture "$directory" hermes-version nemohermes "$sandbox" exec -- hermes --version
   capture "$directory" connect-probe nemohermes "$sandbox" connect --probe-only
-  capture "$directory" mattermost-status nemohermes "$sandbox" channels status \
-    --channel mattermost --json --wait --timeout 120
+  capture "$directory" mattermost-status nemohermes "$sandbox" exec --stdin -- python3 - \
+    <"$REPO_ROOT/deploy/hermes/probe_mattermost.py"
   assert_runtime_versions "$directory"
   cp -- "$RELEASE_MANIFEST" "$directory/release-manifest.json"
   assert_evidence_excludes_api_key "$directory"
