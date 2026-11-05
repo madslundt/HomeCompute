@@ -260,6 +260,24 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertEqual(len(creates), 1)
         self.assertEqual(creates[0].kwargs["env"]["MATTERMOST_TOKEN"], "test-mattermost-token")
         self.assertNotIn("--provider", repr(calls.call_args_list))
+        # Execute the real generated configuration patch against a publisher
+        # fixture whose named custom provider still selects inference.local.
+        import types, sys
+        home = self.root / 'native-home'; home.mkdir()
+        (home / '.env').write_text('OPENAI_BASE_URL=https://inference.local/v1\n')
+        (home / 'config.yaml').write_text(json.dumps({'model': {}, 'providers': {'custom': {}},
+            'custom_providers': [{'name': 'custom', 'base_url': 'https://inference.local/v1'}]}))
+        yaml = types.ModuleType('yaml'); yaml.safe_load = json.loads
+        yaml.safe_dump = lambda value, **kwargs: json.dumps(value)
+        program = next(c.kwargs['input'] for c in calls.call_args_list if 'input' in c.kwargs)
+        with patch.dict(sys.modules, {'yaml': yaml}), patch.dict(os.environ, {
+                'COMPATIBLE_API_KEY': 'openshell:resolve:env:COMPATIBLE_API_KEY',
+                'HTTP_PROXY': 'http://10.200.0.1:3128', 'HTTPS_PROXY': 'http://10.200.0.1:3128'}):
+            exec(program.replace('/sandbox/.hermes', str(home)), {})
+        configured = json.loads((home / 'config.yaml').read_text())
+        for lane in (configured['model'], configured['providers']['custom'], configured['custom_providers'][0]):
+            self.assertEqual(lane['base_url'], 'http://ai.home.arpa:18080/v1')
+        self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o640)
 
     def test_backup_gate_requires_household_off_host_scope(self) -> None:
         document = json.loads(self.backup_gate.read_text(encoding="utf-8"))

@@ -76,6 +76,11 @@ config.setdefault('platforms', {}).setdefault('mattermost', {})['enabled'] = Tru
 config['model'] = {'default': 'automation-moe', 'provider': 'custom',
     'base_url': 'http://ai.home.arpa:18080/v1',
     'api_key': settings['OPENAI_API_KEY']}
+# Hermes resolves the named custom provider before model.base_url.
+config['custom_providers'] = [{'name': 'custom', 'base_url': settings['OPENAI_BASE_URL'],
+    'api_key': settings['OPENAI_API_KEY'], 'discover_models': True}]
+config.setdefault('providers', {}).setdefault('custom', {}).update(
+    base_url=settings['OPENAI_BASE_URL'], api_key=settings['OPENAI_API_KEY'])
 path.write_text(yaml.safe_dump(config, sort_keys=False))
 print('Mattermost non-secret settings installed')
 '''.replace('SETTINGS', repr(settings))
