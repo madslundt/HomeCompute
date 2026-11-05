@@ -55,8 +55,15 @@ def install(directory: Path, image: str, *, egress_only: bool = False, principal
             network = json.loads(r.stdout)[0]
             if network['Internal'] != internal or network['IPAM']['Config'][0]['Subnet'] != subnet:
                 raise ValueError('existing network differs from browser contract')
+    worker_source = directory / 'tools/browser_worker.py'
+    relay_source = directory / 'tools/tcp_relay.py'
     proxy_config = directory / 'tools/browser-squid.conf'
     if principal == 'hermes':
+        for filename in ('browser_worker.py', 'tcp_relay.py'):
+            installed = private / filename
+            installed.write_bytes((directory / 'tools' / filename).read_bytes())
+            installed.chmod(0o444)
+        worker_source, relay_source = private / 'browser_worker.py', private / 'tcp_relay.py'
         proxy_config = private / 'browser-squid.conf'
         proxy_config.write_text((directory / 'tools/browser-squid.conf').read_text().replace('172.30.188.0/24', '172.30.190.0/24'))
         proxy_config.chmod(0o644)
@@ -64,7 +71,7 @@ def install(directory: Path, image: str, *, egress_only: bool = False, principal
               '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
               '--log-driver', 'local', '--log-opt', 'max-size=5m', '--log-opt', 'max-file=2']
     if principal == 'hermes':
-        common += ['--mount', 'type=bind,src=' + str(directory / 'tools/browser_worker.py') + ',dst=/opt/homecompute/browser_worker.py,readonly']
+        common += ['--mount', 'type=bind,src=' + str(worker_source) + ',dst=/opt/homecompute/browser_worker.py,readonly']
     docker('create', '--name', EGRESS, *common, '--network', EGRESS,
         '--cpus', '0.25', '--memory', '128m', '--memory-swap', '128m', '--pids-limit', '64',
         '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=1777',
@@ -101,7 +108,7 @@ def install(directory: Path, image: str, *, egress_only: bool = False, principal
     docker('start', BROWSER)
     docker('create', '--name', INGRESS, *common, '--network', EGRESS,
         '--cpus', '0.25', '--memory', '64m', '--memory-swap', '64m', '--pids-limit', '64',
-        '--mount', 'type=bind,src=' + str(directory / 'tools/tcp_relay.py') + ',dst=/opt/homecompute/tcp_relay.py,readonly',
+        '--mount', 'type=bind,src=' + str(relay_source) + ',dst=/opt/homecompute/tcp_relay.py,readonly',
         '--publish', f'172.18.0.1:{listener}:18800',
         '--env', f'BROWSER_UPSTREAM={BROWSER}:18800',
         image, '/usr/bin/python3', '/opt/homecompute/tcp_relay.py')

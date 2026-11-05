@@ -488,7 +488,8 @@ main() {
     install) [[ -z "$argument" ]] || die 'install takes no argument'; install_nemoclaw ;;
     recreate) [[ -z "$argument" ]] || die 'recreate takes no argument'; onboard_canary --recreate-sandbox ;;
     onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
-  connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
+    connect-browser) [[ -z "$argument" ]] || die 'connect-browser takes no argument'; preflight_runtime; require_mutation_gates; python3 "$REPO_ROOT/scripts/connect-hermes-browser.py" ;;
+    connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;
     snapshot) [[ -n "$argument" ]] || die 'snapshot requires NAME'; create_snapshot "$argument" ;;
     restore-verify) [[ -n "$argument" ]] || die 'restore-verify requires SNAPSHOT'; restore_verify "$argument" ;;
