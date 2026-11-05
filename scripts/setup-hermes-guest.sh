@@ -101,7 +101,7 @@ load_runtime_config() {
 }
 
 validate_runtime_config() {
-  [[ "$HERMES_SANDBOX_NAME" == hermes-owner ]] || die 'The household sandbox must be named hermes-owner'
+  [[ "$HERMES_SANDBOX_NAME" == hermes-personal ]] || die 'The household sandbox must be named hermes-personal'
   [[ "$HERMES_RESTORE_TARGET" == "$HERMES_SANDBOX_NAME" ]] ||
     die 'The managed-image restore target must be the household owner sandbox itself'
   [[ "$HERMES_MODEL" == automation-moe ]] || die 'The approved Hermes model must be automation-moe'
@@ -432,7 +432,7 @@ health_for() {
 }
 
 install_startup() {
-  local config_path="$1" unit_path="$HOME/.config/systemd/user/homecompute-hermes-owner.service"
+  local config_path="$1" unit_path="$HOME/.config/systemd/user/homecompute-hermes-personal.service"
   require_mutation_gates
   validate_installed_cli_version
   [[ "$REPO_ROOT" =~ ^[A-Za-z0-9_./-]+$ && "$config_path" =~ ^[A-Za-z0-9_./-]+$ && "$HOME" =~ ^[A-Za-z0-9_./-]+$ ]] ||
@@ -444,12 +444,12 @@ from pathlib import Path
 import os, tempfile, time
 import sys
 release, config, operator_home = sys.argv[1:]
-source = (Path(release) / 'deploy/hermes/hermes-owner.service.in').read_text()
+source = (Path(release) / 'deploy/hermes/hermes-personal.service.in').read_text()
 rendered = source.replace('@RELEASE@', release).replace('@CONFIG@', config).replace('@OPERATOR_HOME@', operator_home)
 directory = Path(operator_home) / '.config/systemd/user'
 directory.mkdir(mode=0o700, parents=True, exist_ok=True)
 assert not directory.is_symlink() and directory.stat().st_uid == os.getuid()
-path = directory / 'homecompute-hermes-owner.service'
+path = directory / 'homecompute-hermes-personal.service'
 if path.exists() or path.is_symlink():
     assert not path.is_symlink() and path.stat().st_uid == os.getuid()
     previous = path.read_text()
@@ -467,9 +467,9 @@ os.replace(temporary, path)
 PYTHON
   systemd-analyze --user verify "$unit_path"
   systemctl --user daemon-reload
-  systemctl --user enable homecompute-hermes-owner.service
-  systemctl --user restart homecompute-hermes-owner.service
-  systemctl --user is-active --quiet homecompute-hermes-owner.service
+  systemctl --user enable homecompute-hermes-personal.service
+  systemctl --user restart homecompute-hermes-personal.service
+  systemctl --user is-active --quiet homecompute-hermes-personal.service
   log 'Hermes native boot lifecycle is installed and started'
 }
 

@@ -10,7 +10,7 @@ network_policies:
         protocol: rest
         enforcement: enforce
         credential_binding:
-          provider: hermes-owner-mattermost
+          provider: hermes-personal-mattermost
         rules:
           - allow: {method: GET, path: "/llm/status"}
           - allow: {method: GET, path: "/api/v4/**"}
@@ -27,7 +27,7 @@ network_policies:
         websocket_credential_rewrite: true
         enforcement: enforce
         credential_binding:
-          provider: hermes-owner-mattermost
+          provider: hermes-personal-mattermost
         rules:
           - allow: {method: GET, path: /api/v4/websocket}
           - allow: {method: WEBSOCKET_TEXT, path: /api/v4/websocket}

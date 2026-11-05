@@ -10,7 +10,7 @@ network_policies:
         protocol: websocket
         enforcement: enforce
         credential_binding:
-          provider: hermes-owner-browser
+          provider: hermes-personal-browser
         rules:
           - allow: {method: GET, path: /devtools/browser/homecompute}
           - allow: {method: WEBSOCKET_TEXT, path: /devtools/browser/homecompute}

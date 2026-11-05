@@ -12,7 +12,7 @@ spec = importlib.util.spec_from_file_location('messaging', ROOT / 'scripts/conne
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 call = module.call
-NAME = 'hermes-owner'
+NAME = 'hermes-personal'
 PROVIDER = NAME + '-browser'
 PROFILE = 'homecompute-hermes-browser-v1'
 OS = ['openshell', '-g', 'nemoclaw']

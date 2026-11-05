@@ -40,7 +40,7 @@ A same-host bootstrap backup does not admit household messages.
 From the reviewed, published source checkout inside the guest:
 
 ```bash
-config=/home/hermes-operator/.config/homecompute-hermes/hermes-owner.env
+config=/home/hermes-operator/.config/homecompute-hermes/hermes-personal.env
 ./scripts/setup-hermes-guest.sh validate --config "$config"
 ./scripts/setup-hermes-guest.sh preflight --config "$config"
 ./scripts/setup-hermes-guest.sh onboard-canary --config "$config"
@@ -140,3 +140,10 @@ Normal metadata diagnostics remain enabled; full prompts, responses and tool
 payloads belong only to Hermes's intentional conversation state, not duplicate
 request-debug files. The build rejects an unexpected upstream implementation
 instead of silently skipping this privacy policy.
+
+The final runtime name is `hermes-personal`. An earlier `hermes-owner`
+replacement remains retained and stopped after NemoClaw 0.0.141 failed to merge
+its default nonempty kanban directory during native workspace restoration.
+Its recovery copy and immutable tracking were preserved. The owner authorized
+a clean start, so the final instance uses no native state import. The supported
+household recovery boundary remains the complete encrypted agents VM archive.
