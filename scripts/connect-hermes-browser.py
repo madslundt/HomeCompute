@@ -56,10 +56,9 @@ def main():
           str(ROOT / 'deploy/hermes/browser-policy.yaml'),
           '--trusted-private-host', '172.18.0.1', '--yes'])
     program = '''import os, pathlib, yaml
-from urllib.parse import quote
 token = os.environ['BROWSER_TOKEN']
 assert token.startswith('openshell:resolve:env:')
-url = 'ws://172.18.0.1:18810/devtools/browser/homecompute?token=' + quote(token, safe=':')
+url = 'ws://172.18.0.1:18810/devtools/browser/homecompute'
 home = pathlib.Path('/sandbox/.hermes')
 path = home / '.env'
 lines = [line for line in path.read_text().splitlines() if not line.startswith('BROWSER_CDP_URL=')]

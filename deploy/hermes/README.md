@@ -93,7 +93,8 @@ The browser uses a separate profile volume, token, Docker networks
 Chromium container is read-only, unprivileged, and has no household state or
 inference credentials. Its proxy denies private, loopback, link-local and
 reserved destinations. The gateway holds the browser token; Hermes stores
-only its opaque reference in `BROWSER_CDP_URL`.
+a credential-free `BROWSER_CDP_URL`. The image-owned client wrapper appends the
+opaque reference only when connecting to the exact owned endpoint.
 
 Stage the published `deploy/openclaw/tools` and browser installer in an
 operator-owned guest release directory. Use the qualified image ID from
