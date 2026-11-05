@@ -61,6 +61,8 @@ settings = SETTINGS
 # aiohttp WebSocket URLs use the wss/ws proxy keys, independently of HTTPS_PROXY.
 settings['WSS_PROXY'] = os.environ['HTTPS_PROXY']
 settings['WS_PROXY'] = os.environ['HTTP_PROXY']
+settings['OPENAI_BASE_URL'] = 'http://ai.home.arpa:18080/v1'
+settings['OPENAI_API_KEY'] = os.environ['COMPATIBLE_API_KEY']
 path = home / '.env'
 lines = path.read_text().splitlines() if path.exists() else []
 lines = [line for line in lines if not line.startswith('MATTERMOST_') and line.partition('=')[0] not in settings]
@@ -73,7 +75,7 @@ config.setdefault('platforms', {}).setdefault('mattermost', {})['enabled'] = Tru
 # Configure the native agent too; its request is the end-to-end readiness probe.
 config['model'] = {'default': 'automation-moe', 'provider': 'custom',
     'base_url': 'http://ai.home.arpa:18080/v1',
-    'api_key': 'openshell:resolve:env:COMPATIBLE_API_KEY'}
+    'api_key': settings['OPENAI_API_KEY']}
 path.write_text(yaml.safe_dump(config, sort_keys=False))
 print('Mattermost non-secret settings installed')
 '''.replace('SETTINGS', repr(settings))
