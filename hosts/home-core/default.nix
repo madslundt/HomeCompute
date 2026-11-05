@@ -44,6 +44,7 @@
     enable = true;
     share = "homecompute-backups";
     credentialsFile = "/etc/homecompute/nas-recovery-backup.credentials";
+    includeApplicationState = true;
   };
 
   # Preserve the installed DHCP connection while bootstrapping over LAN SSH.
@@ -189,25 +190,19 @@
 
   homecompute.agentsVm = {
     enable = true;
-    dataClassification = "synthetic-only";
+    dataClassification = "household";
+    restoreVerified = true;
     # Budget 8 GiB for OpenClaw, 4 GiB for Chromium, and 4 GiB for
-    # guest services and browser proxies. Hermes has been retired.
+    # guest services and browser proxies.
     resources.memoryMiB = 16384;
     sshAuthorizedKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILT+ES2e5sbGFzBMLOWKZMawBm/kyadBthAldjAmK8Uc mads@home-core-admin"
     ];
 
-    # Package/bootstrap access only. Return this to false once the pinned
-    # NemoClaw tuple has been installed and the canary is healthy.
-    # Temporary for the synthetic canary: NemoClaw 0.0.129 needs GHCR access
-    # to recreate its managed sandbox after a VM lifecycle event.
-    network.maintenanceEgress = true;
-
-    localBootstrapBackup = {
-      enable = true;
-      riskAccepted = true;
-      passwordFile = config.sops.secrets."restic/password".path;
-    };
+    # Public browsing and versioned image pulls are explicitly allowed; private
+    # LAN, compute, link-local, and tailnet destinations remain rejected.
+    network.allowedInternetTcpPorts = [ 80 443 ];
+    network.maintenanceEgress = false;
   };
 
   # Enable only after adding ttlock-webhook/environment to the encrypted SOPS

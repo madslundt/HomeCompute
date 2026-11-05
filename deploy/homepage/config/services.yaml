@@ -49,6 +49,12 @@
         href: https://192.168.30.122/
         description: Native dashboard · agents, sessions and settings
 
+    - Hermes:
+        id: homecore-hermes
+        icon: mdi-robot-happy-outline
+        href: https://mattermost.home.arpa/homecompute/messages/@hermes-agent
+        description: Personal Hermes assistant in Mattermost
+
     - Mattermost:
         id: homecore-mattermost
         icon: mattermost.png

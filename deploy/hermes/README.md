@@ -1,226 +1,77 @@
-# Hermes guest runtime
+# Hermes household owner agent
 
-**Retired on 2026-10-27.** Hermes is no longer deployed. OpenClaw retains the
-shared agents VM, operator account and NemoClaw/OpenShell tooling. The following
-instructions are retained as historical deployment and recovery references.
+Hermes is being reintroduced alongside OpenClaw in the isolated Ubuntu agents
+VM. The owner uses the dedicated Mattermost bot `hermes-agent`; the existing
+n8n `hermes` identity is independent. Additional profiles are deferred.
 
-This directory documents the guest-side deployment boundary for the first,
-synthetic Hermes canary. The NixOS configuration creates and isolates the
-Ubuntu `agents` guest; the helper in this repository runs **inside that guest**
-as its unprivileged operator.
+## Release and policy
 
-The pilot is intentionally narrow:
+`config/hermes-release.json` pins NemoClaw 0.0.141, OpenShell 0.0.116, and
+NVIDIA's complete managed Hermes sandbox by digest. This integrates Hermes
+0.21.3. Standalone Hermes 0.22.7 is newer, but is not yet qualified with the
+managed startup, credential, recovery and browser contracts. Do not replace
+the managed image with the standalone upstream image: it omits these contracts.
 
-- NemoClaw `v0.0.129` at commit
-  `26922313bba96184e65c3663b351683ebae9504d`;
-- the release-managed Hermes `0.21.3` and OpenShell `0.0.116` tuple;
-- one sandbox named `agent-owner` using `assistant-canary` at
-  `http://ai.home.arpa:18080/v1` over the isolated agents bridge. The host
-  verifies and forwards the upstream TLS connection to `ai.home.arpa`; this
-  compatibility hop exists because the pinned OpenShell 0.0.116 inference
-  client does not consume NemoClaw's imported private CA;
-- Restricted policy, no web search, no messaging, no MCP servers, no host
-  mounts, and synthetic data only.
+Use local `automation-moe` through the private compatibility bridge. Hermes
+has its own LiteLLM virtual key, restricted to that alias. No cloud fallback is
+configured. Mattermost access is limited to the owner user ID in the non-secret
+config. Tokens remain in private guest secret files and OpenShell's credential
+store. Keep personal data out of operational evidence and Git.
 
-The machine-readable tuple is in
-[`config/hermes-release.json`](../../config/hermes-release.json). Do not update
-Hermes or OpenShell independently of NemoClaw.
+## Prerequisites and setup
 
-## Prepare the guest operator
+Read `docs/homecompute-operations.md` and the agents VM runbook before live work.
+Use Ubuntu 24.04, Docker, Node 22.19+, npm 10+, Python 3, curl, jq, and OpenSSL.
+The operator needs Docker access. Use the Node path selected by the managed
+HomeCompute wrapper when running unattended SSH commands.
 
-Install the documented NemoClaw prerequisites in the Ubuntu 24.04 guest:
-Docker Engine, Git, curl, jq, OpenSSL, Python 3, Node.js 22.19 or newer, and npm
-10 or newer. The final guest operator must be able to use Docker without sudo.
-Docker group membership is root-equivalent inside the guest and must not be
-given to household accounts.
+Copy `config/hermes-agent.env.example` into an operator-owned private directory,
+mode 0600. Provision the LiteLLM key with
+`scripts/provision-hermes-litellm-key.py` once, and store the dedicated bot token
+at the configured secret path, mode 0600. Never put tokens into argv or Git.
 
-Create operator-owned directories with private modes. The paths below match the
-example config; a secret manager may materialize the key at the same path.
+Every mutation requires external mode-0600 readiness records for
+`off-host-backup` and `agents-network`, each with schema_version 1, status
+`ready`, scope `hermes-household`, observed_at in UTC, and an evidence reference.
+The backup record must reference a fresh encrypted Synology restore including
+archive integrity checks, PostgreSQL imports and isolated agents VM boot proof.
+A same-host bootstrap backup does not admit household messages.
 
-```bash
-sudo install -d -m 0750 -o "$USER" -g "$USER" /etc/homecompute-hermes
-sudo install -d -m 0700 -o "$USER" -g "$USER" /etc/homecompute-hermes/secrets
-sudo install -d -m 0700 -o "$USER" -g "$USER" /var/lib/homecompute-hermes/evidence
-sudo install -d -m 0700 -o "$USER" -g "$USER" /var/lib/homecompute-hermes/gates
-install -m 0600 config/hermes-agent.env.example /etc/homecompute-hermes/agent-owner.env
-sudo install -m 0600 -o "$USER" -g "$USER" \
-  artifacts/home-core-root.crt /etc/homecompute-hermes/home-core-root.crt
-```
-
-Write the dedicated, alias-scoped LiteLLM virtual key without placing it in a
-command argument or shell history. The file must contain only the key and must
-be mode `0600`:
+From the reviewed, published source checkout inside the guest:
 
 ```bash
-umask 077
-read -r -s -p 'agent-owner LiteLLM key: ' HERMES_KEY
-printf '\n'
-printf '%s\n' "$HERMES_KEY" > /etc/homecompute-hermes/secrets/litellm-agent-owner
-HERMES_KEY=
-unset HERMES_KEY
-```
-
-The key must be authorized only for `assistant-canary`, with its own budget and
-rate limit. Never use the LiteLLM master key or the automation client key.
-
-The mutating commands also require two external readiness records at the paths
-in the config: `backup-readiness.json` and `agents-network.json`. They are not
-created by this helper. The durable backup gate retains this mode-`0600`
-schema, while the network record uses the corresponding `agents-network` gate:
-
-```json
-{
-  "schema_version": 1,
-  "gate": "off-host-backup",
-  "status": "ready",
-  "scope": "hermes-synthetic-canary",
-  "observed_at": "2026-09-26T12:00:00Z",
-  "evidence": "operator reference to the reviewed restore evidence"
-}
-```
-
-For the synthetic bootstrap only, the backup path may instead hold this exact,
-temporary exception schema:
-
-```json
-{
-  "schema_version": 1,
-  "gate": "local-bootstrap-backup",
-  "status": "ready",
-  "scope": "hermes-synthetic-canary",
-  "observed_at": "2026-09-26T12:00:00Z",
-  "durability": "same-host-same-disk",
-  "risk_acknowledged": true,
-  "snapshot_id": "agents-vm-bootstrap-20260926",
-  "restore_evidence": "reference to the completed synthetic restore drill",
-  "limitations": "Loss of the home-core disk loses source and backup.",
-  "data_classification": "synthetic-only",
-  "allowed_sandbox": "agent-owner",
-  "allowed_model": "assistant-canary",
-  "integrations": "none",
-  "expires_at": "2026-09-27T12:00:00Z"
-}
-```
-
-Every field is mandatory and additional fields are rejected. `expires_at` must
-still be in the future whenever a mutating command runs. This exception admits
-only the already hard-coded `agent-owner`/`assistant-canary` sandbox with
-synthetic data and no messaging, web search, MCP, host mounts, or real personal
-data. It does not satisfy the production household rollout gate. Replace it
-with the durable `off-host-backup` record before creating any other user,
-adding an integration, or importing real data.
-
-`install`, `onboard-canary`, `snapshot`, and `restore-verify` fail before
-invoking NemoClaw when either record is absent, invalid, or—when using the
-local exception—expired. `validate` and `preflight` remain available while the
-deployment is still blocked.
-
-## Validate, install, and onboard
-
-Run each gate separately from the reviewed HomeCompute checkout inside the
-guest:
-
-```bash
-config=/etc/homecompute-hermes/agent-owner.env
+config=/home/hermes-operator/.config/homecompute-hermes/hermes-owner.env
 ./scripts/setup-hermes-guest.sh validate --config "$config"
 ./scripts/setup-hermes-guest.sh preflight --config "$config"
-./scripts/setup-hermes-guest.sh install --config "$config"
 ./scripts/setup-hermes-guest.sh onboard-canary --config "$config"
 ./scripts/setup-hermes-guest.sh health --config "$config"
+./scripts/setup-hermes-guest.sh connect-mattermost --config "$config"
 ```
 
-`install` downloads the root installer from the pinned 40-character commit,
-verifies its reviewed SHA-256 digest, and performs deferred onboarding. It does
-not pipe an unverified mutable URL to a shell. `onboard-canary` reads the key
-from its private file and passes it only in the child process environment that
-registers it with OpenShell. It explicitly clears common messaging and search
-credential variables inherited from the operator shell.
+Onboarding uses the exact published managed image, Restricted policy, no host
+mounts, and no search-provider credentials. Browser capability requires its own
+live public-page and private-destination-denial checks before readiness is
+claimed. The Mattermost policy allows only its restricted private TLS proxy.
 
-The health command writes mode-`0600` evidence beneath the configured evidence
-directory. It checks the host CLI version, global doctor result, sandbox Ready
-state, in-sandbox inference health, selected model, OpenShell version, Hermes
-version, and `connect --probe-only`. The output is designed to be redacted by
-NemoClaw, but still treat it as operationally sensitive.
+The Homepage card opens the dedicated Mattermost DM. Dashboard forwarding is
+not required for that path; keep the dashboard private until its authentication
+and ingress have been separately verified.
 
-## Snapshot and restore drill
+## Verification and recovery
 
-Create a named snapshot only after the synthetic canary is healthy:
+Require Ready status, an authenticated local inference request, a Mattermost
+owner DM and reply, public browsing, denied private browsing, and supported
+stop/start recovery. Inspect memory and disk use under load. Synthetic probes
+alone do not prove household readiness. `health` retains private evidence under
+the configured evidence directory.
 
-```bash
-./scripts/setup-hermes-guest.sh snapshot synthetic-baseline \
-  --config /etc/homecompute-hermes/agent-owner.env
-```
+Use `snapshot NAME` only after readiness, and `restore-verify SNAPSHOT` only as
+an intentional state replacement. Retain the previous release and backup;
+code rollback does not undo data changes.
 
-Verify it by restoring the disposable synthetic canary in place:
-
-```bash
-./scripts/setup-hermes-guest.sh restore-verify synthetic-baseline \
-  --config /etc/homecompute-hermes/agent-owner.env
-```
-
-NemoClaw 0.0.129 does not support `--to` restores for its managed sandbox
-images. The helper therefore permits this in-place operation only while the
-synthetic-only backup exception is valid, never uses `--force`, and immediately
-restarts the gateway before running the full health evidence suite against the
-restored canary.
-
-NemoClaw snapshots remain under the guest's NemoClaw state and are not an
-off-host backup by themselves. Provider credentials are not snapshot payload;
-restore procedures must re-register them from the external secret source when
-the OpenShell provider store is also lost.
-
-## Dashboard access from the home LAN and Tailscale
-
-The guest keeps the Hermes dashboard bound to its loopback OpenShell forward.
-Set both `dashboard.public_url` to `http://home-core:18789` and
-`dashboard.basic_auth` in the config used by the running dashboard. NemoClaw
-starts the dashboard with the `dashboard-home` Hermes profile, so configuring
-only `/sandbox/.hermes/config.yaml` is insufficient when that profile has its
-own `/sandbox/.hermes/profiles/dashboard-home/config.yaml`. The active profile
-must contain the username, password hash, and secret as well as `public_url`;
-settings in the root config are not a substitute for settings in the active
-profile. Preserve the profile's model/provider settings when adding these
-dashboard fields, and never store the plaintext password in the profile.
-
-A guest-side TCP proxy binds only the host-only agents bridge
-(`10.77.20.2:18789`) and forwards to the local OpenShell dashboard port
-(`127.0.0.1:18790`). The NixOS host then publishes it only on its LAN and
-Tailscale addresses. After changing the active profile, run
-`nemohermes agent-owner recover` to restore and check the forward. Verify from a
-client that `/` redirects to `/login` and `/login` returns HTTP 200 before
-trying to sign in.
-
-Install the guest proxy after onboarding and configuring `dashboard.basic_auth`
-with a username and scrypt password hash:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y socat
-sudo install -m 0644 deploy/hermes/hermes-dashboard-proxy.service \
-  /etc/systemd/system/homecompute-hermes-dashboard-proxy.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now homecompute-hermes-dashboard-proxy.service
-```
-
-If NemoClaw allocates a different dashboard port later, update the proxy's
-`TCP:127.0.0.1:18790` target to the port printed by `nemohermes
-agent-owner dashboard-url --quiet` before starting the service.
-
-Use `http://home-core:18789/` on the home LAN or a Tailscale device with
-MagicDNS enabled. Keep this behind the trusted LAN/Tailscale boundary; Hermes
-basic auth is a single shared login, not per-person accounts.
-
-## Production stop conditions
-
-Do not put personal data or messaging credentials into this canary. Stop before
-household expansion if any of these are true:
-
-- the host-only guest network or `assistant-canary` route is not qualified;
-- encrypted off-host backup and a clean restore drill have not passed;
-- the observed versions differ from the recorded tuple;
-- the raw LiteLLM credential is visible inside the sandbox or evidence;
-- OpenShell cannot keep credentials and policies sandbox-specific;
-- reboot recovery, outage behavior, or cross-sandbox denial tests fail.
-
-Adding the partner, children, family messaging, or real memories is a later
-serial rollout after the synthetic acceptance gates pass.
+Failed custom-image attempts named `agent-owner`, `hermes`, and `hermes-main`
+left immutable recovery records. Native destroy currently refuses conflicting
+authority. Preserve those records and exact container IDs. Never remove their
+tracking or destroy resources by a mutable name to bypass the refusal. Use a
+new uniquely named sandbox only after independently qualifying corrected image
+inputs. Oh My Hermes is deferred until the core service is stable.

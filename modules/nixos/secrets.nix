@@ -91,6 +91,7 @@ in
             };
           } // lib.optionalAttrs (
             config.homecompute.backups.enable
+            || config.homecompute.nasRecoveryBackup.enable
             || config.homecompute.agentsVm.localBootstrapBackup.enable
           ) {
             "restic/password" = {

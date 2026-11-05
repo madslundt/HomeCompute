@@ -14,13 +14,15 @@ SECRETS = (ROOT / "modules/nixos/secrets.nix").read_text(encoding="utf-8")
 
 
 class AgentsVmModuleTest(unittest.TestCase):
-    def test_module_is_imported_with_synthetic_pilot_enabled(self) -> None:
+    def test_module_is_imported_for_household_use_with_public_web_egress(self) -> None:
         self.assertIn("../../modules/nixos/agents-vm.nix", HOST)
         self.assertIn("homecompute.agentsVm = {", HOST)
         self.assertIn("enable = true;", HOST)
-        self.assertIn('dataClassification = "synthetic-only";', HOST)
-        self.assertIn("network.maintenanceEgress = true;", HOST)
-        self.assertIn("Temporary for the synthetic canary", HOST)
+        self.assertIn('dataClassification = "household";', HOST)
+        self.assertIn("restoreVerified = true;", HOST)
+        self.assertIn("network.allowedInternetTcpPorts = [ 80 443 ];", HOST)
+        self.assertIn("network.maintenanceEgress = false;", HOST)
+        self.assertIn("includeApplicationState = true;", HOST)
 
     def test_image_is_immutable_and_checksum_pinned(self) -> None:
         self.assertRegex(MODULE, r"release-[0-9]{8}/ubuntu-24\.04-server-cloudimg-amd64\.img")
@@ -31,7 +33,8 @@ class AgentsVmModuleTest(unittest.TestCase):
 
     def test_activation_requires_backup_and_operator_key(self) -> None:
         self.assertIn("config.homecompute.backups.enable", MODULE)
-        self.assertIn('cfg.dataClassification == "synthetic-only"', MODULE)
+        self.assertIn("config.homecompute.nasRecoveryBackup.includeApplicationState", MODULE)
+        self.assertIn('cfg.dataClassification == "synthetic-only" || cfg.restoreVerified', MODULE)
         self.assertIn("config.homecompute.agentsVm.localBootstrapBackup.riskAccepted", MODULE)
         self.assertIn('path == "/srv/state" || path == statePath', MODULE)
         self.assertIn('statePath = "/srv/state/agents-vm"', MODULE)
@@ -110,13 +113,12 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn("homecompute-control-plane-automation-backup-1", MODULE)
         self.assertIn("docker inspect --format '{{.State.Running}}'", MODULE)
 
-    def test_local_bootstrap_mode_is_truthful_and_outside_state(self) -> None:
+    def test_local_bootstrap_is_not_used_for_household_state(self) -> None:
         self.assertIn('repository = "/srv/backup/restic-homecompute";', BACKUP_MODULE)
         self.assertIn('source = "/srv/state/agents-vm";', BACKUP_MODULE)
         self.assertIn("initialize = true;", BACKUP_MODULE)
-        self.assertIn("riskAccepted = true;", HOST)
-        self.assertIn('passwordFile = config.sops.secrets."restic/password".path;', HOST)
-        self.assertIn("homecompute.backups.enable = false;", HOST)
+        self.assertNotIn("localBootstrapBackup = {", HOST)
+        self.assertIn("includeApplicationState = true;", HOST)
 
     def test_backup_quiesces_and_conditionally_restarts_vm(self) -> None:
         marker = "/run/homecompute/agents-vm-backup-was-active"
@@ -144,6 +146,7 @@ class AgentsVmModuleTest(unittest.TestCase):
 
     def test_restic_secret_is_available_for_either_backup_contract(self) -> None:
         self.assertIn("config.homecompute.backups.enable", SECRETS)
+        self.assertIn("config.homecompute.nasRecoveryBackup.enable", SECRETS)
         self.assertIn("config.homecompute.agentsVm.localBootstrapBackup.enable", SECRETS)
 
 

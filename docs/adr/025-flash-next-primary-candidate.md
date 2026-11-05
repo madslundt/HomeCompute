@@ -4,6 +4,17 @@
 **Date:** 2026-09-30  
 **Supersedes:** no production decision. ADR-023's current Qwen3.6 automation decision and ADR-024's artifact/deployment/route separation remain in force.
 
+## Owner amendment — 2026-11-05
+
+The owner selected the Qwen3.8 Flash-Next candidate behind the existing
+`automation-moe` alias for the initial Hermes instance and approved the local
+qualification needed to serve it. This records a Hermes candidate selection,
+not a production alias cutover. Hermes must have no cloud fallback, and the
+alias remains unavailable to Hermes until its source-grounded tool, 64K
+context, mixed-load, and restore gates pass on `home-spark`. The candidate
+route and artifact are already represented in the canonical model catalog;
+do not enable or promote them to bypass qualification.
+
 ## Context
 
 The current production n8n automation model remains
@@ -50,8 +61,10 @@ v16b settings. Its MTP target verification only establishes behavior relative
 to the UltraFast target. It does not establish quality parity with the distinct
 NVIDIA NVFP4 Blazux target. Keep consumer aliases semantic and use only the
 private `automation-qualification` route for A/B qualification. Production
-`automation` and `automation-moe` remain on Qwen3.6 unless the owner later
-approves a separate cutover.
+`automation` remains on Qwen3.6. The owner has now selected the Flash-Next
+candidate for Hermes through the existing `automation-moe` alias, subject to
+the qualification gates below. This does not change the ordinary automation
+consumer before its own promotion review.
 
 ## Promotion evidence required
 

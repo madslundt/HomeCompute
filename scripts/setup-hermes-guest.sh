@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Manage only the synthetic Hermes owner canary inside the Ubuntu agents guest.
+# Manage the household Hermes agent inside the Ubuntu agents guest.
 set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
+# Hermes uses its own gateway; OpenClaw remains on 9123.
+export NEMOCLAW_GATEWAY_PORT=8080
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
@@ -10,9 +12,9 @@ RELEASE_MANIFEST="$REPO_ROOT/config/hermes-release.json"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/config.sh"
 
-readonly EXPECTED_NEMOCLAW_COMMIT=26922313bba96184e65c3663b351683ebae9504d
-readonly EXPECTED_NEMOCLAW_VERSION=0.0.129
-readonly EXPECTED_INSTALLER_SHA256=738cb07356dc5638ca91351ef78c1e0af7cb689a4bdf579726408306e282e72c
+readonly EXPECTED_NEMOCLAW_COMMIT=b7dcc9bb76197fb28ec673867c35974ac799eb15
+readonly EXPECTED_NEMOCLAW_VERSION=0.0.141
+readonly EXPECTED_INSTALLER_SHA256=bafd48cd005e11e064e0c4caa0968a4c781453ccebcf4593855f85d28afbdeb8
 readonly EXPECTED_HERMES_VERSION=0.21.3
 readonly EXPECTED_OPENSHELL_VERSION=0.0.116
 OS_RELEASE_FILE=/etc/os-release
@@ -28,6 +30,9 @@ CONFIG_KEYS=(
   HERMES_RESTORE_TARGET
   HERMES_BACKUP_READINESS_FILE
   HERMES_NETWORK_READINESS_FILE
+  HERMES_MATTERMOST_URL
+  HERMES_MATTERMOST_TOKEN_FILE
+  HERMES_MATTERMOST_ALLOWED_USERS
 )
 
 log() { printf '[hermes-guest] %s\n' "$*"; }
@@ -41,14 +46,15 @@ Commands:
   validate                 Validate the secret-free config and release tuple
   preflight                Validate the Ubuntu guest, tools, CA, key, and endpoint
   install                  Install the pinned NemoClaw CLI without onboarding
-  onboard-canary           Create only the synthetic agent-owner sandbox
+  onboard-canary           Create the household Hermes sandbox
+  connect-mattermost       Add the owner-restricted Hermes Mattermost bot
   health                   Capture redacted doctor, status, route, and version evidence
-  snapshot NAME            Create a named snapshot of the synthetic canary
-  restore-verify SNAPSHOT  Restore the synthetic canary in place and run health probes
+  snapshot NAME            Create a named snapshot of the household owner sandbox
+  restore-verify SNAPSHOT  Restore the household owner sandbox in place and run health probes
 
 The API key is read from HERMES_LITELLM_API_KEY_FILE. It is never accepted as
-an argument or configuration value. This helper does not configure messaging,
-web search, MCP, host mounts, or personal data.
+an argument or configuration value. Web search and host mounts remain disabled;
+the only enabled external integration is the owner-restricted Mattermost bot.
 EOF
 }
 
@@ -77,7 +83,7 @@ validate_release_manifest() {
      .managed_components.openshell_version == $openshell and
      .policy.tier == "restricted" and
      .policy.web_search == "none" and
-     .policy.messaging == false and
+     .policy.messaging == true and
      .policy.custom_image == false' \
     "$RELEASE_MANIFEST" >/dev/null || die 'Release manifest does not match the reviewed canary tuple'
 }
@@ -91,14 +97,14 @@ load_runtime_config() {
 }
 
 validate_runtime_config() {
-  [[ "$HERMES_SANDBOX_NAME" == agent-owner ]] || die 'The pilot sandbox must be agent-owner'
+  [[ "$HERMES_SANDBOX_NAME" == hermes-owner ]] || die 'The household sandbox must be named hermes-owner'
   [[ "$HERMES_RESTORE_TARGET" == "$HERMES_SANDBOX_NAME" ]] ||
-    die 'The managed-image restore target must be the synthetic canary itself'
-  [[ "$HERMES_MODEL" == assistant-canary ]] || die 'The pilot model must be assistant-canary'
+    die 'The managed-image restore target must be the household owner sandbox itself'
+  [[ "$HERMES_MODEL" == automation-moe ]] || die 'The approved Hermes model must be automation-moe'
   [[ "$HERMES_ENDPOINT_URL" == http://ai.home.arpa:18080/v1 ]] ||
     die 'The pilot endpoint must be the isolated http://ai.home.arpa:18080/v1 compatibility bridge'
-  [[ "$HERMES_TRUSTED_PRIVATE_HOSTS" == ai.home.arpa ]] ||
-    die 'Only ai.home.arpa may be trusted as the pilot private host'
+  [[ "$HERMES_TRUSTED_PRIVATE_HOSTS" == ai.home.arpa,home-core.tail479ad.ts.net ]] ||
+    die 'Only the inference bridge and private Mattermost proxy may be trusted'
   local path_variable
   for path_variable in HERMES_CA_BUNDLE HERMES_LITELLM_API_KEY_FILE HERMES_EVIDENCE_DIR \
     HERMES_BACKUP_READINESS_FILE HERMES_NETWORK_READINESS_FILE; do
@@ -117,7 +123,7 @@ validate_readiness_gate() {
     '.schema_version == 1 and
      .gate == $gate and
      .status == "ready" and
-     .scope == "hermes-synthetic-canary" and
+     .scope == "hermes-household" and
      (.observed_at | type == "string" and
        test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
      (.evidence | type == "string" and length > 0 and length <= 2048)' \
@@ -125,67 +131,20 @@ validate_readiness_gate() {
 }
 
 validate_backup_readiness_gate() {
-  local path="$1" now
+  local path="$1"
   validate_private_file "$path" 'backup readiness record' 8#022
   (( $(wc -c <"$path") <= 16384 )) || die 'backup readiness record is too large'
 
-  # The durable production gate keeps its existing schema and behavior.
-  if jq -e \
+  jq -e \
     '.schema_version == 1 and
      .gate == "off-host-backup" and
      .status == "ready" and
-     .scope == "hermes-synthetic-canary" and
+     .scope == "hermes-household" and
      (.observed_at | type == "string" and
        test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
      (.evidence | type == "string" and length > 0 and length <= 2048)' \
-    "$path" >/dev/null; then
-    log 'Durable off-host backup readiness record is present'
-    return 0
-  fi
-
-  # The local exception is deliberately non-general: its exact schema binds it
-  # to this synthetic owner canary, the canary route, and zero integrations.
-  # UTC timestamps in this fixed-width format compare chronologically as text.
-  now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  jq -e --arg now "$now" '
-    (keys | sort) == ([
-      "allowed_model",
-      "allowed_sandbox",
-      "data_classification",
-      "durability",
-      "expires_at",
-      "gate",
-      "integrations",
-      "limitations",
-      "observed_at",
-      "restore_evidence",
-      "risk_acknowledged",
-      "schema_version",
-      "scope",
-      "snapshot_id",
-      "status"
-    ] | sort) and
-    .schema_version == 1 and
-    .gate == "local-bootstrap-backup" and
-    .status == "ready" and
-    .scope == "hermes-synthetic-canary" and
-    .durability == "same-host-same-disk" and
-    .risk_acknowledged == true and
-    .data_classification == "synthetic-only" and
-    .allowed_sandbox == "agent-owner" and
-    .allowed_model == "assistant-canary" and
-    .integrations == "none" and
-    (.observed_at | type == "string" and
-      test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
-    (.expires_at | type == "string" and
-      test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$") and . > $now) and
-    (.snapshot_id | type == "string" and
-      test("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")) and
-    (.restore_evidence | type == "string" and length > 0 and length <= 2048) and
-    (.limitations | type == "string" and length > 0 and length <= 2048)
-  ' "$path" >/dev/null ||
-    die 'backup readiness record is neither a ready off-host backup nor an unexpired synthetic-only local bootstrap backup'
-  log 'Temporary same-host/same-disk backup exception is active for synthetic agent-owner only'
+    "$path" >/dev/null || die 'A fresh off-host Synology restore gate is required for the household Hermes agent'
+  log 'Fresh off-host Synology restore readiness record is present'
 }
 
 require_mutation_gates() {
@@ -244,6 +203,7 @@ preflight_runtime() {
   local command
   for command in curl docker getent git grep jq node npm openssl python3 sha256sum sort stat; do require_command "$command"; done
   docker info >/dev/null 2>&1 || die 'Docker is not available to the unprivileged guest operator'
+  docker buildx version >/dev/null 2>&1 || die 'Docker Buildx is required for managed custom Hermes images'
   version_at_least "$(node --version | sed 's/^v//')" 22.19.0 || die 'Node.js 22.19 or newer is required'
   version_at_least "$(npm --version)" 10.0.0 || die 'npm 10 or newer is required'
   validate_ca_bundle
@@ -265,7 +225,12 @@ preflight_runtime() {
     <<<"$models_response" >/dev/null || die "The models endpoint does not advertise $HERMES_MODEL"
   models_response=''
   unset models_response
-  log 'Preflight passed for the synthetic owner canary'
+  validate_private_file "$HERMES_MATTERMOST_TOKEN_FILE" 'Mattermost bot token file' 8#077
+  [[ "$HERMES_MATTERMOST_URL" == https://home-core.tail479ad.ts.net:9443 ]] ||
+    die 'Mattermost must use the private Tailscale TLS proxy'
+  [[ "$HERMES_MATTERMOST_ALLOWED_USERS" == 1oipaix7gin73jczp97tcfmyac ]] ||
+    die 'Hermes Mattermost access must be limited to the owner'
+  log 'Preflight passed for the household Hermes agent'
 }
 
 validate_installed_cli_version() {
@@ -337,13 +302,14 @@ onboard_canary() {
   cat -- "$system_ca_bundle" "$HERMES_CA_BUNDLE" >"$host_validation_ca"
   chmod 0600 "$host_validation_ca"
   api_key="$(read_api_key)"
-  log 'Onboarding the synthetic owner canary with Restricted policy and no integrations'
+  log 'Onboarding the household Hermes agent with Restricted policy and the approved local model'
   env \
     -u BRAVE_API_KEY \
     -u DISCORD_BOT_TOKEN \
     -u SLACK_APP_TOKEN \
     -u SLACK_BOT_TOKEN \
     -u TELEGRAM_BOT_TOKEN \
+    -u MATTERMOST_TOKEN \
     -u TAVILY_API_KEY \
     -u WHATSAPP_ACCESS_TOKEN \
     COMPATIBLE_API_KEY="$api_key" \
@@ -365,11 +331,31 @@ onboard_canary() {
     NODE_EXTRA_CA_CERTS="$HERMES_CA_BUNDLE" \
     REQUESTS_CA_BUNDLE="$host_validation_ca" \
     SSL_CERT_FILE="$host_validation_ca" \
-    nemohermes onboard --non-interactive --yes-i-accept-third-party-software
+    nemohermes onboard --agent hermes --name "$HERMES_SANDBOX_NAME" \
+      --from-image "$(jq -r .managed_hermes_base_image "$RELEASE_MANIFEST")" --fresh --no-gpu --non-interactive \
+      --yes --yes-i-accept-third-party-software
   api_key=''
   unset api_key
   rm -rf -- "$temporary_dir"
   trap - EXIT
+}
+
+connect_mattermost() {
+  preflight_runtime
+  require_mutation_gates
+  validate_installed_cli_version
+  local token
+  IFS= read -r token <"$HERMES_MATTERMOST_TOKEN_FILE" || [[ -n "$token" ]] ||
+    die 'Cannot read the Mattermost bot token file'
+  [[ -n "$token" ]] || die 'Mattermost bot token file is empty'
+  log 'Connecting the dedicated Hermes Mattermost bot through OpenShell credential projection'
+  env HERMES_OPENSHELL_GATEWAY=nemoclaw MATTERMOST_URL="$HERMES_MATTERMOST_URL" \
+    MATTERMOST_TOKEN="$token" \
+    MATTERMOST_ALLOWED_USERS="$HERMES_MATTERMOST_ALLOWED_USERS" \
+    MATTERMOST_REPLY_MODE=thread MATTERMOST_REQUIRE_MENTION=true \
+    python3 "$REPO_ROOT/scripts/connect-hermes-mattermost.py"
+  token=''
+  unset token
 }
 
 new_evidence_directory() {
@@ -432,6 +418,8 @@ health_for() {
   capture "$directory" inference-route nemohermes "$sandbox" inference get --json
   capture "$directory" hermes-version nemohermes "$sandbox" exec -- hermes --version
   capture "$directory" connect-probe nemohermes "$sandbox" connect --probe-only
+  capture "$directory" mattermost-status nemohermes "$sandbox" channels status \
+    --channel mattermost --json --wait --timeout 120
   assert_runtime_versions "$directory"
   cp -- "$RELEASE_MANIFEST" "$directory/release-manifest.json"
   assert_evidence_excludes_api_key "$directory"
@@ -458,9 +446,9 @@ restore_verify() {
   require_mutation_gates
   validate_installed_cli_version
   # NemoClaw 0.0.129 does not support --to for NemoClaw-managed images. The
-  # backup exception limits this command to the disposable synthetic canary,
+  # backup exception limits this command to the disposable household owner sandbox,
   # so verify the supported in-place restore and immediately rerun health.
-  log "Restoring snapshot in place to synthetic canary $HERMES_RESTORE_TARGET"
+  log "Restoring snapshot in place to household owner sandbox $HERMES_RESTORE_TARGET"
   nemohermes "$HERMES_SANDBOX_NAME" snapshot restore "$snapshot"
   nemohermes "$HERMES_SANDBOX_NAME" gateway restart
   health_for "$HERMES_RESTORE_TARGET" restore-verify
@@ -496,6 +484,7 @@ main() {
     preflight) [[ -z "$argument" ]] || die 'preflight takes no argument'; preflight_runtime ;;
     install) [[ -z "$argument" ]] || die 'install takes no argument'; install_nemoclaw ;;
     onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
+  connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;
     snapshot) [[ -n "$argument" ]] || die 'snapshot requires NAME'; create_snapshot "$argument" ;;
     restore-verify) [[ -n "$argument" ]] || die 'restore-verify requires SNAPSHOT'; restore_verify "$argument" ;;

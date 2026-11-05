@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "release_date": "2026-09-23",
+  "release_date": "2026-11-05",
   "nemoclaw": {
-    "tag": "v0.0.129",
-    "commit": "26922313bba96184e65c3663b351683ebae9504d",
-    "install_script_sha256": "738cb07356dc5638ca91351ef78c1e0af7cb689a4bdf579726408306e282e72c"
+    "tag": "v0.0.141",
+    "commit": "b7dcc9bb76197fb28ec673867c35974ac799eb15",
+    "install_script_sha256": "bafd48cd005e11e064e0c4caa0968a4c781453ccebcf4593855f85d28afbdeb8"
   },
   "managed_components": {
     "hermes_version": "0.21.3",
@@ -13,11 +13,16 @@
     "openshell_tag": "v0.0.116",
     "openshell_commit": "d1155aa70042d3e2ee49dbfa15346b108b7c1d92"
   },
-  "managed_hermes_base_image": "ghcr.io/nvidia/nemoclaw/hermes-sandbox-base@sha256:ad2a0a3d2b3e8aa8edc162f304f1ca8fc9417ce412e0b385bf6d78066313f242",
+  "managed_hermes_base_image": "ghcr.io/nvidia/nemoclaw/hermes-sandbox@sha256:f52d55af05b63302ca8ae54ca9141b80df433a72ce273ae4aeac08c5af2cb990",
   "policy": {
     "tier": "restricted",
     "web_search": "none",
-    "messaging": false,
+    "browser": "isolated browser; qualification pending",
+    "messaging": true,
     "custom_image": false
+  },
+  "latest_standalone_hermes": {
+    "version": "0.22.7",
+    "status": "not qualified with the NemoClaw managed integration"
   }
 }

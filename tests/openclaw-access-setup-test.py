@@ -79,6 +79,12 @@ class SetupTests(unittest.TestCase):
         self.assertIn('StandardError=journal', unit)
         self.assertIn('SyslogIdentifier=homecompute-openclaw-access', unit)
 
+    def test_proxy_start_uses_compose_reconciliation_without_forced_recreate(self):
+        unit = SETUP.proxy_unit()
+        self.assertIn('docker compose -f /opt/homecompute/openclaw-credentials/access-compose.yaml up -d --no-build\n', unit)
+        self.assertNotIn('--force-recreate', unit)
+        self.assertIn('ExecStop=/run/current-system/sw/bin/docker compose -f /opt/homecompute/openclaw-credentials/access-compose.yaml down', unit)
+
     def test_same_home_dns_name_is_reachable_through_approved_tailnet_subnet_route(self):
         calls = []
         def command(arguments, **_kwargs):
