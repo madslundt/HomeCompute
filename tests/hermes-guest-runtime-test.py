@@ -268,7 +268,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         # fixture whose named custom provider still selects inference.local.
         import types, sys
         home = self.root / 'native-home'; home.mkdir()
-        (home / '.env').write_text('OPENAI_BASE_URL=https://inference.local/v1\n')
+        (home / '.env').write_text('OPENAI_BASE_URL=https://inference.local/v1\nOPENAI_API_KEY=openshell:resolve:env:stale_scope\n')
         (home / 'config.yaml').write_text(json.dumps({'model': {}, 'providers': {'custom': {}},
             'custom_providers': [{'name': 'custom', 'base_url': 'https://inference.local/v1'}]}))
         yaml = types.ModuleType('yaml'); yaml.safe_load = json.loads
@@ -281,6 +281,9 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         configured = json.loads((home / 'config.yaml').read_text())
         for lane in (configured['model'], configured['providers']['custom'], configured['custom_providers'][0]):
             self.assertEqual(lane['base_url'], 'http://ai.home.arpa:18080/v1')
+            self.assertEqual(lane['api_key'], '${COMPATIBLE_API_KEY}')
+        self.assertNotIn('OPENAI_API_KEY=', (home / '.env').read_text())
+        self.assertNotIn('openshell:resolve:env:', (home / 'config.yaml').read_text())
         self.assertEqual(configured['model']['context_length'], 65536)
         self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o640)
 
@@ -357,6 +360,29 @@ class HermesGuestRuntimeTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Unknown command', result.stderr)
         self.assertFalse(log.exists())
+
+    def test_browser_resolver_adapts_only_the_owned_endpoint(self):
+        import importlib.util
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location('transport', ROOT / 'deploy/hermes/patch-browser-transport.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        source = ('def _resolve_cdp_override(cdp_url: str) -> str:\n'
+                  '    raw = cdp_url.strip()\n'
+                  '    lowered = raw.lower()\n'
+                  '    return raw\n')
+        patched = module.patch(source)
+        self.assertEqual(module.patch(patched), patched)
+        namespace = {'os': os}
+        exec(patched, namespace)
+        with patch('subprocess.check_output', return_value='ws://127.0.0.1:18811/devtools/browser/homecompute\n') as call:
+            resolve = namespace['_resolve_cdp_override']
+            self.assertEqual(resolve('ws://example.com/devtools/browser/test'), 'ws://example.com/devtools/browser/test')
+            call.assert_not_called()
+            self.assertIn('127.0.0.1:18811', resolve('ws://172.18.0.1:18810/devtools/browser/homecompute'))
+            self.assertEqual(call.call_count, 1)
+            self.assertLessEqual(set(call.call_args.kwargs['env']), {'PATH', 'HTTP_PROXY', 'HTTPS_PROXY', 'BROWSER_TOKEN'})
+        with self.assertRaises(ValueError):
+            module.patch(source.replace('lowered = raw.lower()', 'lowered = raw.casefold()'))
 
 
 if __name__ == "__main__":

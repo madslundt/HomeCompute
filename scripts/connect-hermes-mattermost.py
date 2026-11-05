@@ -62,10 +62,12 @@ settings = SETTINGS
 settings['WSS_PROXY'] = os.environ['HTTPS_PROXY']
 settings['WS_PROXY'] = os.environ['HTTP_PROXY']
 settings['OPENAI_BASE_URL'] = 'http://ai.home.arpa:18080/v1'
-settings['OPENAI_API_KEY'] = os.environ['COMPATIBLE_API_KEY']
+# Projected references change across native starts. Keep the same deferred
+# environment expression used by NVIDIA's immutable managed policy.
+inference_key = '${COMPATIBLE_API_KEY}'
 path = home / '.env'
 lines = path.read_text().splitlines() if path.exists() else []
-lines = [line for line in lines if not line.startswith('MATTERMOST_') and line.partition('=')[0] not in settings]
+lines = [line for line in lines if not line.startswith('MATTERMOST_') and line.partition('=')[0] not in settings and not line.startswith('OPENAI_API_KEY=')]
 lines.extend(key + '=' + value for key, value in settings.items())
 path.write_text('\\n'.join(lines) + '\\n'); path.chmod(0o640)
 path = home / 'config.yaml'
@@ -75,12 +77,12 @@ config.setdefault('platforms', {}).setdefault('mattermost', {})['enabled'] = Tru
 # Configure the native agent too; its request is the end-to-end readiness probe.
 config['model'] = {'default': 'automation-moe', 'provider': 'custom', 'context_length': 65536,
     'base_url': 'http://ai.home.arpa:18080/v1',
-    'api_key': settings['OPENAI_API_KEY']}
+    'api_key': inference_key}
 # Hermes resolves the named custom provider before model.base_url.
 config['custom_providers'] = [{'name': 'custom', 'base_url': settings['OPENAI_BASE_URL'],
-    'api_key': settings['OPENAI_API_KEY'], 'discover_models': True}]
+    'api_key': inference_key, 'discover_models': True}]
 config.setdefault('providers', {}).setdefault('custom', {}).update(
-    base_url=settings['OPENAI_BASE_URL'], api_key=settings['OPENAI_API_KEY'])
+    base_url=settings['OPENAI_BASE_URL'], api_key=inference_key)
 path.write_text(yaml.safe_dump(config, sort_keys=False))
 print('Mattermost non-secret settings installed')
 '''.replace('SETTINGS', repr(settings))

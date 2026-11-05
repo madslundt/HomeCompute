@@ -19,6 +19,9 @@ has its own LiteLLM virtual key, restricted to that alias. No cloud fallback is
 configured. Mattermost access is limited to the owner user ID in the non-secret
 config. Tokens remain in private guest secret files and OpenShell's credential
 store. Keep personal data out of operational evidence and Git.
+Inference settings retain the managed `${COMPATIBLE_API_KEY}` environment
+expression. Never persist a resolved `openshell:resolve:env:...` credential
+reference: its runtime scope can change across a native restart or VM boot.
 
 ## Prerequisites and setup
 
@@ -97,6 +100,11 @@ inference credentials. Its proxy denies private, loopback, link-local and
 reserved destinations. The gateway holds the browser token; Hermes stores
 a credential-free `BROWSER_CDP_URL`. The image-owned client wrapper appends the
 opaque reference only when connecting to the exact owned endpoint.
+
+The image-owned loopback adapter handles CDP clients that bypass HTTP proxy
+settings. It forwards only the fixed browser WebSocket path through OpenShell,
+using the opaque credential in the upgrade request. Both agent-browser and the
+Python dialog supervisor use that adapter; it exposes no general proxy route.
 
 Stage the published `deploy/openclaw/tools` and browser installer in an
 operator-owned guest release directory. Use the qualified image ID from

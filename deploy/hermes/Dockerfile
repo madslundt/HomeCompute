@@ -27,6 +27,9 @@ COPY patch-private-request-logging.py /usr/local/lib/nemoclaw/homecompute-privat
 RUN python3 /usr/local/lib/nemoclaw/homecompute-private-request-logging.py /opt/hermes/agent/agent_runtime_helpers.py
 ENV HERMES_DUMP_REQUESTS=0 HERMES_DUMP_REQUEST_STDOUT=0
 COPY browser-client.mjs /usr/local/lib/nemoclaw/homecompute-browser-client.mjs
+COPY browser-relay.mjs /usr/local/lib/nemoclaw/browser-relay.mjs
+COPY patch-browser-transport.py /usr/local/lib/nemoclaw/patch-browser-transport.py
+RUN python3 /usr/local/lib/nemoclaw/patch-browser-transport.py /opt/hermes/tools/browser_tool_cdp.py
 # The vendor browser client is installed outside the agent's Landlock read
 # roots. Publish the same reviewed payload inside the existing read-only /usr
 # root; keep npm offline and avoid an unpinned npx fallback.
