@@ -8,7 +8,38 @@ from hashlib import sha256
 from pathlib import Path
 
 UPSTREAM_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-PATCH_VERSION = "strict-gpu-decoder-audit-v6"
+PATCH_VERSION = "strict-gpu-timestamp-continuation-v9"
+SEEK_RECOVERY_PATCH = (
+    '''            if (single_timestamp_ending) {
+                WHISPER_LOG_DEBUG("single timestamp ending - skip entire chunk\\n");
+                seek_delta = std::min(seek_end - seek, WHISPER_CHUNK_SIZE * 100);
+            }
+''',
+    '''            if (single_timestamp_ending) {
+                const int window_delta = std::min(seek_end - seek, WHISPER_CHUNK_SIZE * 100);
+                // A final timestamp can precede more speech in this window.
+                // Keep the selected decoder's positive progress and re-encode
+                // the unprocessed remainder with its available right context.
+                // Preserve upstream behavior for silence, explicit special
+                // modes and a timestamp too short to make safe progress.
+                if (!is_no_speech && !params.single_segment && !params.no_timestamps &&
+                        seek_delta >= delta_min) {
+                    seek_delta = std::min(seek_delta, window_delta);
+                } else {
+                    seek_delta = window_delta;
+                }
+            }
+''',
+)
+
+
+def patch_seek_recovery(source: str) -> str:
+    old, new = SEEK_RECOVERY_PATCH
+    if source.count(old) != 1:
+        raise ValueError("Pinned whisper.cpp timestamp continuation anchor is missing or ambiguous")
+    return source.replace(old, new, 1)
+
+
 PATCHES = {
     "src/whisper.cpp": (
         "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
@@ -324,6 +355,7 @@ def apply(root: Path) -> None:
     source = source.replace(IMPLEMENTATION_ANCHOR, IMPLEMENTATION + IMPLEMENTATION_ANCHOR, 1)
     source = patch_sampling(source)
     source = patch_decoder_trace(patch_window_trace(source))
+    source = patch_seek_recovery(source)
     updates[0] = (source_path, source.encode("utf-8"))
     updates = [(path, patch_language_candidates(content.decode("utf-8"), str(path.relative_to(root))).encode("utf-8"))
                for path, content in updates]
@@ -341,7 +373,9 @@ def verify(root: Path) -> bool:
     header = (root / "include/whisper.h").read_text()
     language_ok = all((root / relative).read_text().count(new) == 1
                       for relative, patches in LANGUAGE_PATCHES.items() for _old, new in patches)
-    return (language_ok and all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES + DECODER_TRACE_PATCHES) and
+    return (language_ok and whisper.count(SEEK_RECOVERY_PATCH[1]) == 1 and
+            SEEK_RECOVERY_PATCH[0] not in whisper and
+            all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES + DECODER_TRACE_PATCHES) and
             SAMPLING_PATCHES[-1][0] not in whisper and
             "required GPU backend initialization failed" in whisper and
             "size_t whisper_model_gpu_buffer_size(struct whisper_context * ctx)" in whisper and

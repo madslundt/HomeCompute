@@ -4,7 +4,7 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds candidate `hc10`, retaining the `hc7` bounded window
+The current source builds candidate `hc13`, retaining the `hc7` bounded window
 diagnostics and `hc8` optional language candidate list. Bounded native windowing
 now requires an explicit candidate list; omitted candidates preserve the `hc4`
 full native request boundary, including for long uploads.
@@ -30,6 +30,29 @@ This capability remains unqualified until the fixed benchmark panel passes.
 The CPU candidate adds no production alias, host port, backend route or automatic
 fallback. Candidate startup is a manually invoked Compose profile; the runtime
 has no external network, uses a read-only model/key mount, and serializes inference.
+
+## Timestamp continuation candidate
+
+Candidate `hc13` changes only final-window advancement relative to `hc10`.
+An early final timestamp followed by end-of-text previously advanced to the end
+of the entire 30-second window, even when the timestamp ended much earlier.
+The candidate preserves the decoder's timestamp advancement and encodes the
+remaining audio with all available right context. No words are combined from
+separate selected outputs, and generated timestamps are not rewritten.
+
+The original full-window advancement remains for classified no-speech, explicit
+single-segment/no-timestamp modes, and timestamp progress below the existing
+100 ms minimum. Advancement is capped at the current input/window end. Token
+ranking, logits, language selection, model weights and request defaults retain
+`hc10` behavior. The failed EOT-ranking and timestamp-normalization candidates
+are not included. Per-window and per-decoder diagnostics remain observational.
+
+This is an unqualified candidate. First require the original omitted passage
+and lead-in to survive in the complete unchanged 30-second request. Only then
+run speech/noise/quiet controls, Danish and mixed-language accuracy, repeated
+inputs and long-recording qualification. Successful responses, longer text or
+timestamps alone do not pass content coverage. Production stays on qualified
+`hc4` until all gates pass and the new image is explicitly selected.
 
 ## Immutable runtime and artifact
 
@@ -189,7 +212,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-candidate build applies `strict-gpu-decoder-audit-v6` to the exact pinned upstream source
+candidate build applies `strict-gpu-timestamp-continuation-v9` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
