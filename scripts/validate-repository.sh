@@ -1359,7 +1359,7 @@ if command -v nix >/dev/null 2>&1; then
     "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
   nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
-    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = \"active\"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath" \
+    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in assert import (f.outPath + \"/tests/assistant-context-network.nix\") { flake = f; }; (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = \"active\"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
 else
   printf '[validate] Nix flake evaluation (containerized)\n'
@@ -1371,7 +1371,7 @@ else
       'nix --extra-experimental-features "nix-command flakes" flake check path:/src --no-build --all-systems
        nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
        nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
-       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = "active"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in assert import (f.outPath + "/tests/assistant-context-network.nix") { flake = f; }; (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = "active"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
 fi
 
 printf '[validate] PASS\n'

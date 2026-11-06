@@ -93,3 +93,28 @@ The briefing preserved partial coverage and truncation. The current-day view
 included Home Assistant, Aula and Daythread; the calendar record was outside
 that requested window. Snapshot copies and derived canary caches were removed
 on exit; SQLite connections opened only the private copies.
+
+## Inference sandbox gateway translation
+
+The normal `87b3ded6eaf200b83043ce5eb7e6d06f183d1efa` rollout completed and
+collection continued successfully, but the live unit still timed out on model
+calls. Its active code matched source; the pinned hosts file resolved correctly
+inside its mount namespace. The same credentialed requests passed outside the
+unit. This separated the request-budget correction from an additional sandbox
+network defect.
+
+A no-credential TLS request to the fixed gateway succeeded from the host, then
+timed out under the unit's loopback-plus-LAN cgroup allowlist. Allowing the exact
+tracked Caddy edge address (`172.28.200.2/32`) in a transient canary made the
+same request succeed in 0.015 seconds. Docker translates the published LAN port
+to that endpoint, which the cgroup filter also observes. A transient canary as
+the service UID with deny-all, the exact three-address allowlist, projected
+credentials and verified TLS returned a 1024-dimensional embedding in 0.15
+seconds and valid local reasoning JSON in 0.82 seconds. The production unit was
+not overridden by these diagnostic canaries.
+
+The Nix correction grants only this exact translated endpoint when inference
+is enabled. Its evaluated regression checks the canonical tracked gateway
+address, exact enabled/disabled allowlists and retained deny-all; it failed
+against the preceding published configuration. Final readiness still requires
+the original populated API check and native MCP path after the normal rollout.
