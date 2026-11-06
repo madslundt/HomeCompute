@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "default_mode": "dry-run",
+  "source_file": "config/assistant-briefings.json",
+  "automatic_classes": ["briefing-format", "attention-threshold"],
+  "heldout_replay_rounds": 3,
+  "canary_rounds": 3,
+  "max_candidates_per_grant": 10,
+  "required_checks": ["static-validation"],
+  "fixed_validation": [
+    ["python3", "tests/assistant-context-briefings-test.py"],
+    ["bash", "./scripts/validate-repository.sh"]
+  ],
+  "publisher": {"remote": "git@github.com:madslundt/HomeCompute.git", "base": "master", "branch_prefix": "codex/assistant-improvement-"},
+  "policy_target": "/var/lib/homecompute-assistant-policy/assistant-briefings.json",
+  "controller_state": "/var/lib/homecompute-assistant-policy-controller",
+  "standing_grant": "/var/lib/homecompute-assistant-policy-controller/standing-grant.json",
+  "standing_grant_key": "/var/lib/homecompute-assistant-policy-controller/standing-grant.key",
+  "backup_receipt": "/var/lib/homecompute/nas-recovery-backup/last-backup.json",
+  "restore_receipt": "/var/lib/homecompute/nas-recovery-backup/last-application-verification.json",
+  "github_ssh_key": "/var/lib/homecompute-assistant-policy-controller/github-deploy-key",
+  "github_known_hosts": "/var/lib/homecompute-assistant-policy-controller/github-known-hosts",
+  "github_token_credential": "/run/credentials/homecompute-assistant-context-improvements.service/github-token",
+  "policy_health_credential": "/run/credentials/homecompute-assistant-context-improvements.service/policy-health-token"
+}

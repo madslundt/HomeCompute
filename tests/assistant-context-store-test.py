@@ -64,7 +64,7 @@ class ContextStoreTests(unittest.TestCase):
         self.assertEqual(restarted.search(OWNER, 'school pickup')[0]['source_ref'], 'daythread://entry/entry-1')
         self.assertEqual(restarted.list_current(OWNER)[0]['object_id'], 'entry-1')
         with sqlite3.connect(self.database) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
 
     def test_idempotent_revision_conflict_and_stale_arrival(self) -> None:
         first = event(3)
@@ -97,6 +97,37 @@ class ContextStoreTests(unittest.TestCase):
         # A newer source revision explicitly recreates the object.
         self.assertEqual(self.store.ingest(OWNER, event(6, payload={'text': 'recreated'}))['status'], 'accepted')
         self.assertEqual(self.store.get(OWNER, 'daythread', 'entry-1')['payload']['text'], 'recreated')
+
+    def test_replayed_older_tombstone_preserves_newer_recreation_and_fences_old_events(self) -> None:
+        self.store.ingest(OWNER, event(3, payload={'text': 'new genuine recreation'}))
+        ledger = {'schema_version': 1,
+                  'source_tombstones': [{'source': 'daythread', 'object_id': 'entry-1', 'min_revision': 2}],
+                  'memory_source_ref_hashes': []}
+        first = self.store.replay_tombstones(OWNER, ledger)
+        self.assertEqual(first['source_tombstones'], 1)
+        self.assertEqual(self.store.get(OWNER, 'daythread', 'entry-1')['payload']['text'], 'new genuine recreation')
+        self.assertEqual(self.store.export_tombstones(OWNER)['source_tombstones'], ledger['source_tombstones'])
+        self.assertEqual(self.store.replay_tombstones(OWNER, ledger)['source_tombstones'], 0)
+
+        stale = self.store.ingest(OWNER, event(1, payload={'text': 'old replay content'}))
+        self.assertEqual(stale['status'], 'stale')
+        self.assertEqual(self.store.get(OWNER, 'daythread', 'entry-1')['revision'], 3)
+        with sqlite3.connect(self.database) as db:
+            row = db.execute('SELECT payload_json,status FROM context_events WHERE revision=1').fetchone()
+        self.assertEqual(row, (None, 'stale'))
+        self.assertEqual(self.store.ingest(OWNER, event(4, payload={'text': 'newer update'}))['status'], 'accepted')
+        self.assertEqual(self.store.export_tombstones(OWNER)['source_tombstones'], ledger['source_tombstones'])
+
+    def test_schema_three_delete_migrates_into_durable_tombstone_floor(self) -> None:
+        self.store.ingest(OWNER, event(5, operation='delete'))
+        with sqlite3.connect(self.database) as db:
+            db.execute('DROP TABLE context_source_tombstones')
+            db.execute('PRAGMA user_version=3')
+        migrated = ContextStore(self.database)
+        self.assertEqual(migrated.export_tombstones(OWNER)['source_tombstones'], [
+            {'source': 'daythread', 'object_id': 'entry-1', 'min_revision': 5}])
+        with sqlite3.connect(self.database) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
 
     def test_scope_filtering_and_allowed_scope_pairs(self) -> None:
         self.store.ingest(OWNER, event(1, payload={'text': 'owner only'}))

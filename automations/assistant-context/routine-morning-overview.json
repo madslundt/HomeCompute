@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "routine_id": "morning-overview",
+  "workflow_id": "WxRovre260928abc",
+  "timezone": "Europe/Copenhagen",
+  "existing_trigger_window": {
+    "kind": "minute-range",
+    "start": "05:00",
+    "end": "11:59"
+  },
+  "delivery_node_mode": "replace-one-reviewed-owner-sender",
+  "relay_path": "/assistant-context/routines/run",
+  "request_fields": ["routine_id", "scheduled_for"],
+  "retry_on_failure": false
+}

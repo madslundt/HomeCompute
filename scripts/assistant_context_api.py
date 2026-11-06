@@ -16,7 +16,10 @@ import threading
 from typing import Any
 
 from assistant_attention import AttentionLedger, evaluate
-from assistant_context_delivery import DeliveryOutbox
+from assistant_context_delivery import DeliveryOutbox, DeliveryError
+from assistant_context_briefings import (BriefingBuilder, OccurrenceLedger, call_briefing_tool,
+                                        load_config as load_briefings, run_routine)
+from assistant_context_retrieval import AssistantContextRetrieval
 from assistant_context_store import ContextStore, Scope
 from assistant_context_tools import PREFIX, SOURCES, private_bytes, validate
 
@@ -66,6 +69,8 @@ class Client:
     role: str
     scope: Scope
     sources: frozenset[str]
+    origin_id: str | None = None
+    routines: frozenset[str] = frozenset()
 
 
 def clients(path: Path) -> list[Client]:
@@ -76,16 +81,30 @@ def clients(path: Path) -> list[Client]:
         raise ValueError('bounded context client declarations required')
     result = []
     for row in value['clients']:
-        if (not isinstance(row, dict) or set(row) != {'name', 'token', 'role', 'principal_scope',
-                'data_domain', 'visibility', 'sources'} or row['role'] not in {'assistant', 'collector', 'operator'}
+        if (not isinstance(row, dict) or not {'name', 'token', 'role', 'principal_scope',
+                'data_domain', 'visibility', 'sources'} <= set(row)
+                or set(row) - {'name', 'token', 'role', 'principal_scope', 'data_domain', 'visibility', 'sources', 'origin_id', 'routines'}
+                or not isinstance(row['role'], str) or row['role'] not in {'assistant', 'collector', 'operator', 'routine'}
                 or not isinstance(row['name'], str) or re.fullmatch(r'[a-z0-9-]{1,64}', row['name']) is None
                 or not isinstance(row['token'], str) or re.fullmatch(r'[A-Za-z0-9_-]{40,256}', row['token']) is None
                 or row['token'].startswith('replace') or not isinstance(row['sources'], list)
                 or not row['sources'] or any(not isinstance(source, str) or source not in SOURCES for source in row['sources'])
                 or len(row['sources']) != len(set(row['sources']))):
             raise ValueError('finite context client grant required')
+        if 'origin_id' in row and (row['role'] != 'assistant' or not isinstance(row['origin_id'], str)
+                or re.fullmatch(r'[A-Za-z0-9._:-]{1,160}', row['origin_id']) is None):
+            raise ValueError('trusted assistant origin binding required')
+        routine_ids = row.get('routines', [])
+        if (not isinstance(routine_ids, list) or any(not isinstance(item, str) or item not in {'morning-overview', 'tomorrow-preparation'} for item in routine_ids)
+                or len(set(routine_ids)) != len(routine_ids)
+                or ('routines' in row) != (row['role'] == 'routine') or row['role'] == 'routine' and not routine_ids):
+            raise ValueError('finite workflow-owned routine grant required')
+        scope = Scope(row['principal_scope'], row['data_domain'], row['visibility'])
+        if (row['role'] == 'routine' or 'origin_id' in row) and (
+                scope != Scope('owner', 'personal', 'private') or frozenset(row['sources']) != frozenset(SOURCES)):
+            raise ValueError('full owner-private context grant required')
         result.append(Client(row['name'], row['token'], row['role'],
-            Scope(row['principal_scope'], row['data_domain'], row['visibility']), frozenset(row['sources'])))
+            scope, frozenset(row['sources']), row.get('origin_id'), frozenset(routine_ids)))
     if len({row.token for row in result}) != len(result) or len({row.name for row in result}) != len(result):
         raise ValueError('independent named context credentials required')
     return result
@@ -93,7 +112,12 @@ def clients(path: Path) -> list[Client]:
 
 class ContextService:
     """Only the service account opens state; callers use role-bound HTTP operations."""
-    def __init__(self, state: Path, policy: dict, *, clock=None):
+    def __init__(self, state: Path, policy: dict, *, clock=None, embedding_client=None,
+                 briefings: dict | None = None, reasoner=None, delegation=None,
+                 delivery_auth=None, delivery_enabled: bool = False, improvement_status: bool = False,
+                 delivery_transport=None):
+        from assistant_context_recovery import assert_restore_ready
+        assert_restore_ready(Path(state))
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.policy = dict(policy)
         if (self.policy.get('schema_version') != 1 or self.policy.get('mode') not in {'shadow', 'active'}):
@@ -105,6 +129,28 @@ class ContextService:
         self.store = ContextStore(state / 'context.sqlite3')
         self.attention = AttentionLedger(state / 'attention.sqlite3', dry_run=self.policy['mode'] != 'active')
         self.delivery = DeliveryOutbox(state / 'delivery.sqlite3', clock=self.clock)
+        for known_scope in (Scope('owner', 'personal', 'private'), Scope('family', 'household', 'shared')):
+            self.delivery.recover_inflight(scope=known_scope, now=self.clock())
+        self.retrieval = AssistantContextRetrieval(self.store, state / 'retrieval.sqlite3', embedding_client=embedding_client)
+        self.routines = OccurrenceLedger(state / 'routines.sqlite3', clock=self.clock)
+        for known_scope in (Scope('owner', 'personal', 'private'), Scope('family', 'household', 'shared')):
+            self.routines.recover_inflight(known_scope)
+        self.briefings = briefings if briefings is not None else load_briefings(Path(__file__).resolve().parents[1] / 'config/assistant-briefings.json')
+        self.reasoner, self.delegation = reasoner, delegation
+        self.delegation_cleanup = delegation
+        if delegation is None and (state / 'delegation.sqlite3').exists():
+            from assistant_context_delegation import DelegationController, DelegationError, load_config
+            class OfflineWorker:
+                def call(self, *_args, **_kwargs):
+                    raise DelegationError('native worker disabled; local erasure only')
+            self.delegation_cleanup = DelegationController(state / 'delegation.sqlite3',
+                load_config(Path(__file__).resolve().parents[1] / 'config/assistant-delegation.json'),
+                transport=OfflineWorker(), maintenance_mode=True)
+        self.delivery_auth, self.delivery_enabled = delivery_auth, delivery_enabled
+        self.delivery_transport = delivery_transport
+        self.improvement_status = improvement_status
+        if delivery_enabled and delivery_auth is None:
+            raise ValueError('qualified standing delivery grant required')
         self.coverage_path = state / 'coverage.sqlite3'
         fd = os.open(self.coverage_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
         try:
@@ -118,6 +164,8 @@ class ContextService:
         with closing(self.db()) as db:
             db.execute('CREATE TABLE IF NOT EXISTS coverage (principal TEXT, domain TEXT, visibility TEXT, '
                        'source TEXT, observed_at TEXT, complete INTEGER, PRIMARY KEY(principal,domain,visibility,source))')
+            db.execute('CREATE TABLE IF NOT EXISTS coverage_failures (principal TEXT, domain TEXT, visibility TEXT, '
+                       'source TEXT, observed_at TEXT, PRIMARY KEY(principal,domain,visibility,source))')
             db.commit()
 
     def db(self):
@@ -134,13 +182,35 @@ class ContextService:
         with closing(self.db()) as db:
             rows = db.execute('SELECT source,observed_at,complete FROM coverage WHERE principal=? AND domain=? AND visibility=?',
                               self.identity(scope)).fetchall()
+            failures = db.execute('SELECT source,observed_at FROM coverage_failures WHERE principal=? AND domain=? AND visibility=?',
+                                  self.identity(scope)).fetchall()
         result = {source: {'state': 'unavailable', 'last_success_at': None} for source in SOURCES}
         maximum = timedelta(minutes=int(self.policy.get('freshness_max_age_minutes', 1440)))
         for row in rows:
             age = now - instant(row['observed_at'])
             state = 'stale' if age < timedelta(0) or age > maximum else 'fresh' if row['complete'] else 'partial'
             result[row['source']] = {'state': state, 'last_success_at': row['observed_at']}
+        for row in failures:
+            success = result[row['source']]['last_success_at']
+            if success is None or instant(row['observed_at']) >= instant(success):
+                result[row['source']]['state'] = 'unavailable'
+                result[row['source']]['last_failure_at'] = row['observed_at']
         return result
+
+    def fail_coverage(self, client: Client, body: dict) -> dict:
+        if not isinstance(body, dict) or set(body) != {'source', 'observed_at'} or body['source'] not in client.sources:
+            raise ValueError('source-bound failure receipt required')
+        stamp = instant(body['observed_at'])
+        if stamp > self.clock() + timedelta(minutes=5):
+            raise ValueError('future source failure refused')
+        key = (*self.identity(client.scope), body['source'])
+        with self.lock, closing(self.db()) as db:
+            previous = db.execute('SELECT observed_at FROM coverage_failures WHERE principal=? AND domain=? AND visibility=? AND source=?', key).fetchone()
+            if previous is None or instant(previous[0]) <= stamp:
+                db.execute('INSERT INTO coverage_failures VALUES(?,?,?,?,?) ON CONFLICT(principal,domain,visibility,source) '
+                    'DO UPDATE SET observed_at=excluded.observed_at', (*key, stamp.isoformat()))
+            db.commit()
+        return {'accepted': True}
 
     def update_coverage(self, client: Client, body: dict) -> dict:
         if (not isinstance(body, dict) or set(body) != {'source', 'observed_at', 'complete'}
@@ -157,6 +227,9 @@ class ContextService:
                 db.execute('INSERT INTO coverage VALUES(?,?,?,?,?,?) ON CONFLICT(principal,domain,visibility,source) '
                            'DO UPDATE SET observed_at=excluded.observed_at,complete=excluded.complete',
                            (*key, stamp.isoformat(), int(body['complete'])))
+                failed = db.execute('SELECT observed_at FROM coverage_failures WHERE principal=? AND domain=? AND visibility=? AND source=?', key).fetchone()
+                if failed is not None and instant(failed[0]) <= stamp:
+                    db.execute('DELETE FROM coverage_failures WHERE principal=? AND domain=? AND visibility=? AND source=?', key)
             db.commit()
             reviewed = self.review(client.scope)
         return {'accepted': True, 'reviewed': reviewed}
@@ -166,18 +239,36 @@ class ContextService:
             raise ValueError('source outside collector grant')
         with self.lock:
             receipt = self.store.ingest(client.scope, event)
-            if (event.get('operation') == 'delete' and receipt['status'] in {'accepted', 'duplicate'}
-                    and self.store.get(client.scope, event['source'], event['object_id']) is None):
-                self.delivery.purge_source(scope=client.scope, source=event['source'],
-                                           object_id=event['object_id'], now=self.clock())
-                self.attention.purge_source(scope=client.scope, source=event['source'], object_id=event['object_id'])
+            self.cleanup(client.scope)
         return {'accepted': True, **receipt}
+
+    def cleanup(self, scope: Scope) -> int:
+        """Recover admitted invalidations before exposing any derived data."""
+        count = 0
+        # Process a bounded batch, refusing reads if recovery needs another pass.
+        for row in self.store.invalidations(scope):
+            source, object_id = row['source'], row['object_id']
+            self.delivery.purge_source(scope=scope, source=source, object_id=object_id, now=self.clock())
+            self.attention.purge_source(scope=scope, source=source, object_id=object_id,
+                                        preserve_controls=row['operation'] == 'upsert')
+            self.retrieval.invalidate(scope, source, object_id)
+            self.routines.purge_source(scope, source, object_id)
+            worker = self.delegation or self.delegation_cleanup
+            if worker is not None and scope == Scope('owner', 'personal', 'private'):
+                kwargs = {'revision': row['previous_revision']} if row['operation'] == 'upsert' else {}
+                worker.purge_source(scope=scope, source=source, object_id=object_id, **kwargs)
+            self.store.ack_invalidation(scope, row['event_id'])
+            count += 1
+        if self.store.invalidations(scope, limit=1):
+            raise OSError('derived cleanup is still pending; retry recovery')
+        return count
 
     def review(self, scope: Scope) -> int:
         """Recover accepted work after a crash; ack only after durable decision admission."""
         count = 0
         coverage = self.coverage(scope)
         with self.lock:
+            self.cleanup(scope)
             for projection in self.store.pending(scope, limit=100):
                 if coverage[projection['source']]['state'] == 'unavailable':
                     continue
@@ -186,17 +277,91 @@ class ContextService:
                 self.attention.record_decision(event, scope=scope, decision=result, now=self.clock())
                 self.store.ack(scope, projection['event_id'])
                 count += 1
+            self.dispatch_attention(scope)
         return count
 
+    def dispatch_attention(self, scope: Scope) -> dict:
+        """One-shot source-linked notifications under the qualified standing policy."""
+        counts = {'attempted': 0, 'delivered': 0, 'held': 0}
+        if not self.delivery_enabled or self.policy['mode'] != 'active' or scope != Scope('owner', 'personal', 'private'):
+            return counts
+        for decision in self.attention.list_decisions(scope=scope, limit=100):
+            if decision['outcome'] != 'notify' or decision['state'] != 'pending':
+                continue
+            existing = self.delivery.get_by_decision(scope=scope, decision_id=decision['decision_id'])
+            if existing is not None and existing['status'] != 'pending':
+                continue
+            source = self.store.get(scope, decision['source'], decision['object_id'])
+            if source is None or source['revision'] != decision['source_revision']:
+                continue
+            # Copy only bounded source facts; source text never selects urgency,
+            # destination, tools or a model instruction for the delivery route.
+            payload = source['payload']
+            parts = [f"{source['source']} update to review.", 'Source content (untrusted evidence):']
+            parts.extend(str(payload[key])[:700] for key in ('title', 'summary', 'text')
+                         if isinstance(payload.get(key), str) and payload[key])
+            parts.append('Source: ' + source['source_ref'][:500])
+            message = '\n'.join(parts)
+            message = message.encode('utf-8')[:3500].decode('utf-8', errors='ignore')
+            try:
+                admitted = self.delivery.admit(scope=scope, decision_id=decision['decision_id'], message=message,
+                    ledger=self.attention, context=self.store, source_status=self.briefing_coverage(scope),
+                    policy=self.policy, now=self.clock(), dry_run=False)
+                if admitted['status'] != 'pending':
+                    counts['held'] += 1
+                    continue
+                counts['attempted'] += 1
+                result = self.delivery.send_once(scope=scope, decision_id=decision['decision_id'],
+                    ledger=self.attention, context=self.store, source_status=lambda: self.briefing_coverage(scope),
+                    policy=self.policy, auth=self.delivery_auth, now=self.clock(), transport=self.delivery_transport)
+                counts['delivered'] += result['status'] == 'delivered'
+            except DeliveryError:
+                counts['held'] += 1
+        return counts
+
     def call(self, client: Client, name: str, arguments: Any) -> dict:
+        with self.lock:
+            self.cleanup(client.scope)
+            return self._call(client, name, arguments)
+
+    def _call(self, client: Client, name: str, arguments: Any) -> dict:
         values = validate(name, arguments)
         operation = name.removeprefix(PREFIX)
         scope, now = client.scope, self.clock()
         if operation == 'search':
-            rows = self.store.search(scope, values['query'], limit=values.get('limit', 10), sources=client.sources)
-            rows, truncated = bounded_rows(rows)
-            return {'results': rows, 'truncated': truncated,
+            retrieved = self.retrieval.search(scope, values['query'], limit=values.get('limit', 10), source_grants=client.sources)
+            rows, truncated = bounded_rows(retrieved.pop('results'))
+            return {**retrieved, 'results': rows, 'truncated': truncated,
                     'coverage': self.visible_coverage(client), 'evidence_only': True}
+        if operation in {'briefing', 'routine', 'delegate', 'improvements'}:
+            self.require_owner(client)
+            if operation in {'briefing', 'routine'}:
+                return call_briefing_tool(self.builder(scope), self.routines, scope, name, values)
+            if operation == 'improvements':
+                rows, truncated = bounded_rows(self.attention.list_candidates(scope=scope, limit=values.get('limit', 10)), 16000)
+                pipeline = {'available': False, 'reason': 'trusted controller status is not configured'}
+                if self.improvement_status:
+                    from assistant_context_improvements import ImprovementController
+                    try:
+                        status = ImprovementController.read_status_projection()
+                        projected, clipped = bounded_rows(status['candidates'][-values.get('limit', 10):], 16000)
+                        pipeline = {'available': True, 'updated_at': status['updated_at'],
+                                    'candidates': projected, 'truncated': clipped}
+                    except (OSError, ValueError):
+                        pipeline = {'available': False, 'reason': 'trusted controller status is unavailable'}
+                return {'candidates': rows, 'truncated': truncated, 'authority': 'status-only', 'pipeline': pipeline}
+            if self.delegation is None or client.origin_id is None:
+                return {'enabled': False, 'reason': 'native worker and trusted origin are not configured'}
+            if values['operation'] == 'submit':
+                for ref in values.get('source_refs', []):
+                    projection = self.store.get(scope, ref['source'], ref['object_id'])
+                    if projection is None or projection['revision'] != ref['revision']:
+                        raise ValueError('current authorized delegation citation required')
+                return self.delegation.submit(scope=scope, origin_thread=client.origin_id,
+                    request_id=values['request_id'], task_type=values['task_type'], task=values['task'],
+                    source_refs=values.get('source_refs', []))
+            method = self.delegation.status if values['operation'] == 'status' else self.delegation.cancel
+            return method(scope=scope, request_id=values['request_id'], origin_thread=client.origin_id)
         if operation == 'today':
             rows = self.store.list_current(scope, limit=values.get('limit', 10), sources=client.sources)
             decisions = self.attention.list_decisions(scope=scope, limit=values.get('limit', 10), sources=client.sources)
@@ -253,6 +418,45 @@ class ContextService:
                 values['expected_revision'], values['request_id'])}
         raise ValueError('unsupported finite context operation')
 
+    @staticmethod
+    def require_owner(client: Client) -> None:
+        if client.scope != Scope('owner', 'personal', 'private') or client.sources != frozenset(SOURCES):
+            raise ValueError('full owner-private context grant required')
+
+    def builder(self, scope: Scope) -> BriefingBuilder:
+        return BriefingBuilder(self.store, scope=scope, coverage=self.briefing_coverage(scope), clock=self.clock,
+            reasoner=self.reasoner, formatting=self.briefings['formatting'], adaptation=self.briefings['trusted_adaptation'])
+
+    def briefing_coverage(self, scope: Scope) -> dict:
+        result = self.coverage(scope)
+        for source, row in result.items():
+            if row['last_success_at'] is not None and self.clock() - instant(row['last_success_at']) > timedelta(
+                    minutes=self.briefings['max_age_minutes'][source]):
+                row['state'] = 'stale'
+        return result
+
+    def run(self, client: Client, body: dict) -> dict:
+        with self.lock:
+            self.cleanup(client.scope)
+            return self._run(client, body)
+
+    def _run(self, client: Client, body: dict) -> dict:
+        self.require_owner(client)
+        if (not isinstance(body, dict) or set(body) != {'routine_id', 'scheduled_for'}
+                or body['routine_id'] not in client.routines):
+            raise ValueError('workflow-bound routine occurrence required')
+        stamp = instant(body['scheduled_for'])
+        if not self.clock() - timedelta(minutes=20) <= stamp <= self.clock() + timedelta(minutes=2):
+            raise ValueError('current workflow occurrence required')
+        if self.delivery_auth is None:
+            return {'enabled': False, 'completed': False, 'reason': 'standing delivery grant is not configured',
+                    'briefing': self.builder(client.scope).build('today' if body['routine_id'] == 'morning-overview' else 'tomorrow')}
+        with self.lock:
+            return run_routine(self.builder(client.scope), self.routines, client.scope,
+                body['routine_id'], body['scheduled_for'], self.delivery_auth, self.policy['policy_version'],
+                store=self.store, coverage=lambda: self.briefing_coverage(client.scope), enabled=self.delivery_enabled,
+                now=self.clock())
+
     def visible_coverage(self, client: Client) -> dict:
         return {source: status for source, status in self.coverage(client.scope).items() if source in client.sources}
 
@@ -291,7 +495,8 @@ def serve(service: ContextService, configured: list[Client], address=('127.0.0.1
             if self.authenticate() is None:
                 self.respond(401, {'error': 'unauthorized'}); return
             if self.path == '/v1/health':
-                self.respond(200, {'ready': True, 'mode': service.policy['mode'], 'delivery_enabled': False})
+                self.respond(200, {'ready': True, 'mode': service.policy['mode'], 'delivery_enabled': service.delivery_enabled,
+                                   'delegation_enabled': service.delegation is not None})
             else:
                 self.respond(404, {'error': 'not found'})
 
@@ -299,8 +504,8 @@ def serve(service: ContextService, configured: list[Client], address=('127.0.0.1
             client = self.authenticate()
             if client is None:
                 self.respond(401, {'error': 'unauthorized'}); return
-            roles = {'/v1/events': {'collector'}, '/v1/coverage': {'collector'},
-                     '/v1/tools': {'assistant'}, '/v1/review': {'operator'}}
+            roles = {'/v1/events': {'collector'}, '/v1/coverage': {'collector'}, '/v1/coverage/failure': {'collector'},
+                     '/v1/tools': {'assistant'}, '/v1/review': {'operator'}, '/v1/routines/run': {'routine'}}
             if self.path not in roles:
                 self.respond(404, {'error': 'not found'}); return
             if client.role not in roles[self.path]:
@@ -323,10 +528,14 @@ def serve(service: ContextService, configured: list[Client], address=('127.0.0.1
                     result = service.ingest(client, body)
                 elif self.path == '/v1/coverage':
                     result = service.update_coverage(client, body)
+                elif self.path == '/v1/coverage/failure':
+                    result = service.fail_coverage(client, body)
                 elif self.path == '/v1/review':
                     if body != {}:
                         raise ValueError('empty review request required')
                     result = {'reviewed': service.review(client.scope)}
+                elif self.path == '/v1/routines/run':
+                    result = service.run(client, body)
                 else:
                     if not isinstance(body, dict) or set(body) != {'name', 'arguments'}:
                         raise ValueError('exact tool envelope required')

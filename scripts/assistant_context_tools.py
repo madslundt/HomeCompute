@@ -54,6 +54,26 @@ TOOLS = [
           'cursor': {**text(36), 'pattern': UUID}, 'limit': LIMIT,
           'expected_revision': {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}},
          ['operation'], write=True),
+    tool('briefing', 'Build a source-linked overview with calendar overlaps, possible follow-ups and source coverage. Interpretations grant no action authority.',
+         {'window': text(16, ('today', 'tomorrow', 'week'))}, []),
+    tool('routine', 'Inspect, pause, resume, cancel or snooze a scheduled briefing. Running and scheduling belong to the authenticated workflow, not this tool.',
+         {'routine_id': text(64, ('morning-overview', 'tomorrow-preparation')),
+          'operation': text(16, ('status', 'pause', 'resume', 'cancel', 'snooze')),
+          'expected_revision': {'type': 'integer', 'minimum': 0, 'maximum': 2147483647},
+          'request_id': {**text(36), 'pattern': UUID}, 'until': text(40), 'occurrence_key': text(96)},
+         ['routine_id', 'operation'], write=True),
+    tool('delegate', 'Submit bounded analysis to the isolated local OpenClaw worker, inspect its native receipt/result, or request cancellation. Accepted and uncertain work is not completed work.',
+         {'operation': text(16, ('submit', 'status', 'cancel')),
+          'request_id': {**text(36), 'pattern': UUID},
+          'task_type': text(16, ('analysis', 'summary', 'comparison')), 'task': text(10000),
+          'source_refs': {'type': 'array', 'maxItems': 16, 'items': {
+              'type': 'object', 'additionalProperties': False,
+              'properties': {'source': text(32, SOURCES), 'object_id': text(256),
+                  'revision': {'type': 'integer', 'minimum': 1, 'maximum': 9223372036854775807}},
+              'required': ['source', 'object_id', 'revision']}}},
+         ['operation', 'request_id'], write=True),
+    tool('improvements', 'Inspect bounded improvement candidates and their review state. This cannot approve, publish or deploy changes.',
+         {'limit': LIMIT}, []),
 ]
 
 
@@ -64,8 +84,20 @@ def validate(name: str, arguments: Any) -> dict:
     schema = definition['inputSchema']
     if set(arguments) - set(schema['properties']) or not set(schema['required']) <= set(arguments):
         raise ValueError('exact context arguments required')
-    for key, value in arguments.items():
-        rule = schema['properties'][key]
+    def check(value, rule):
+        if rule['type'] == 'object':
+            if (not isinstance(value, dict) or set(value) - set(rule['properties'])
+                    or not set(rule['required']) <= set(value)):
+                raise ValueError('exact context object required')
+            for key, child in value.items():
+                check(child, rule['properties'][key])
+            return
+        if rule['type'] == 'array':
+            if not isinstance(value, list) or len(value) > rule['maxItems']:
+                raise ValueError('bounded context array required')
+            for child in value:
+                check(child, rule['items'])
+            return
         if rule['type'] == 'integer':
             if type(value) is not int or not rule['minimum'] <= value <= rule['maximum']:
                 raise ValueError('bounded context value required')
@@ -74,6 +106,15 @@ def validate(name: str, arguments: Any) -> dict:
               or 'enum' in rule and value not in rule['enum']
               or 'pattern' in rule and re.fullmatch(rule['pattern'], value) is None):
             raise ValueError('bounded context value required')
+    for key, value in arguments.items():
+        check(value, schema['properties'][key])
+    if name == PREFIX + 'delegate':
+        required = {'operation', 'request_id'}
+        if arguments['operation'] == 'submit':
+            required |= {'task_type', 'task'}
+        optional = {'source_refs'} if arguments['operation'] == 'submit' else set()
+        if not required <= set(arguments) or set(arguments) - required - optional:
+            raise ValueError('exact delegation operation required')
     if name == PREFIX + 'decision':
         operation = arguments['operation']
         required = {'decision_id', 'operation'}
@@ -137,7 +178,7 @@ class ContextClient:
         request = urllib.request.Request(ORIGIN + '/v1/tools',
             data=json.dumps({'name': name, 'arguments': values}, allow_nan=False).encode(),
             headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json'}, method='POST')
-        with self.opener.open(request, timeout=10) as response:
+        with self.opener.open(request, timeout=35) as response:
             raw = response.read(131073)
             if response.status != 200 or len(raw) > 131072:
                 raise ValueError('bounded context response unavailable')

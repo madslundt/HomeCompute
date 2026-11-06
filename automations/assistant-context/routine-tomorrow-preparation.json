@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "routine_id": "tomorrow-preparation",
+  "workflow_id": "WKu7Zv4dE4ztnaRY",
+  "timezone": "Europe/Copenhagen",
+  "existing_trigger_window": {
+    "kind": "minute-list",
+    "values": ["20:30", "20:45", "21:00", "21:15"]
+  },
+  "delivery_node_mode": "replace-one-reviewed-owner-sender",
+  "relay_path": "/assistant-context/routines/run",
+  "request_fields": ["routine_id", "scheduled_for"],
+  "retry_on_failure": false
+}

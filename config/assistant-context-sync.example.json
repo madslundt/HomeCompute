@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "aula": {"enabled": false},
+  "calendar": {
+    "enabled": true,
+    "aliases": ["family"],
+    "rolling": {"past_days": 1, "future_days": 7}
+  },
+  "daythread": {"enabled": false, "host": ""}
+}

@@ -184,7 +184,7 @@ class ContextStore:
             os.close(fd)
         with closing(self._connect()) as db:
             version = db.execute('PRAGMA user_version').fetchone()[0]
-            if version > 2:
+            if version > 4:
                 raise ValueError('Context database schema is newer than this code')
             if version == 0:
                 db.executescript('''
@@ -283,6 +283,35 @@ class ContextStore:
                     PRAGMA user_version=2;
                     COMMIT;
                 ''')
+                version = 2
+            if version == 2:
+                db.executescript('''
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE context_invalidations (
+                        event_id INTEGER PRIMARY KEY,
+                        principal_scope TEXT NOT NULL, data_domain TEXT NOT NULL, visibility TEXT NOT NULL,
+                        source TEXT NOT NULL, object_id TEXT NOT NULL, revision INTEGER NOT NULL,
+                        previous_revision INTEGER NOT NULL, operation TEXT NOT NULL,
+                        FOREIGN KEY(event_id) REFERENCES context_events(event_id) ON DELETE CASCADE
+                    );
+                    PRAGMA user_version=3;
+                    COMMIT;
+                ''')
+                version = 3
+            if version == 3:
+                db.executescript('''
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE context_source_tombstones (
+                        principal_scope TEXT NOT NULL, data_domain TEXT NOT NULL, visibility TEXT NOT NULL,
+                        source TEXT NOT NULL, object_id TEXT NOT NULL, min_revision INTEGER NOT NULL,
+                        PRIMARY KEY(principal_scope,data_domain,visibility,source,object_id)
+                    );
+                    INSERT INTO context_source_tombstones(principal_scope,data_domain,visibility,source,object_id,min_revision)
+                    SELECT principal_scope,data_domain,visibility,source,object_id,revision
+                    FROM context_current WHERE operation='delete';
+                    PRAGMA user_version=4;
+                    COMMIT;
+                ''')
 
     def _connect(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.path, timeout=10, isolation_level=None)
@@ -304,6 +333,10 @@ class ContextStore:
         with closing(self._connect()) as db:
             db.execute('BEGIN IMMEDIATE')
             try:
+                tombstone = db.execute('SELECT min_revision FROM context_source_tombstones WHERE principal_scope=? '
+                    'AND data_domain=? AND visibility=? AND source=? AND object_id=?',
+                    (principal, domain, visibility, source, object_id)).fetchone()
+                tombstone_revision = tombstone[0] if tombstone else 0
                 existing = db.execute(
                     'SELECT event_id,fingerprint,status FROM context_events WHERE principal_scope=? AND data_domain=? '
                     'AND visibility=? AND source=? AND object_id=? AND revision=?',
@@ -311,6 +344,10 @@ class ContextStore:
                 ).fetchone()
                 if existing:
                     if existing[1] != fingerprint:
+                        if revision <= tombstone_revision:
+                            db.execute('COMMIT')
+                            return {'event_id': existing[0], 'source': source, 'object_id': object_id,
+                                    'revision': revision, 'status': 'stale'}
                         raise ValueError('Conflicting content for an existing source revision')
                     db.execute('COMMIT')
                     return {'event_id': existing[0], 'source': source, 'object_id': object_id,
@@ -319,11 +356,13 @@ class ContextStore:
                     'SELECT revision,operation FROM context_current WHERE principal_scope=? AND data_domain=? AND visibility=? '
                     'AND source=? AND object_id=?', (principal, domain, visibility, source, object_id),
                 ).fetchone()
-                stale = current is not None and revision < current[0]
+                stale = revision <= tombstone_revision or current is not None and (revision < current[0]
+                    or (current[1] == 'delete' and revision <= current[0]))
                 status = 'stale' if stale else 'accepted'
                 ingested_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
                 # Never let a late event repopulate content after a tombstone.
-                content_allowed = not (stale and current is not None and current[1] == 'delete')
+                content_allowed = not (revision <= tombstone_revision
+                    or stale and current is not None and current[1] == 'delete')
                 payload_json = (json.dumps(canonical['payload'], ensure_ascii=False, sort_keys=True,
                                            separators=(',', ':'), allow_nan=False)
                                 if canonical['operation'] == 'upsert' and content_allowed else None)
@@ -336,6 +375,15 @@ class ContextStore:
                 )
                 event_id = cursor.lastrowid
                 if not stale:
+                    if canonical['operation'] == 'delete':
+                        db.execute('INSERT INTO context_source_tombstones VALUES(?,?,?,?,?,?) '
+                            'ON CONFLICT(principal_scope,data_domain,visibility,source,object_id) DO UPDATE SET '
+                            'min_revision=MAX(min_revision,excluded.min_revision)',
+                            (principal, domain, visibility, source, object_id, revision))
+                    if current is not None or canonical['operation'] == 'delete':
+                        db.execute('INSERT INTO context_invalidations VALUES(?,?,?,?,?,?,?,?,?)',
+                                   (event_id, principal, domain, visibility, source, object_id, revision,
+                                    current[0] if current is not None else 0, canonical['operation']))
                     if canonical['operation'] == 'delete':
                         # Preserve replay metadata and fingerprints, but scrub every online copy of content.
                         prior_refs = db.execute('SELECT DISTINCT source_ref FROM context_events WHERE principal_scope=? '
@@ -375,6 +423,21 @@ class ContextStore:
                     db.execute('ROLLBACK')
                 raise
 
+    def invalidations(self, scope: Scope, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Durable metadata cleanup admitted atomically with a correction/tombstone."""
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError('bounded invalidation batch required')
+        with closing(self._connect()) as db:
+            rows = db.execute('SELECT event_id,source,object_id,revision,previous_revision,operation FROM context_invalidations '
+                'WHERE principal_scope=? AND data_domain=? AND visibility=? ORDER BY event_id LIMIT ?',
+                (*self._where(scope), limit)).fetchall()
+        return [dict(zip(('event_id', 'source', 'object_id', 'revision', 'previous_revision', 'operation'), row)) for row in rows]
+
+    def ack_invalidation(self, scope: Scope, event_id: int) -> None:
+        with closing(self._connect()) as db:
+            db.execute('DELETE FROM context_invalidations WHERE principal_scope=? AND data_domain=? '
+                       'AND visibility=? AND event_id=?', (*self._where(scope), event_id))
+
     @staticmethod
     def _projection(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
         return {'source': row[0], 'object_id': row[1], 'revision': row[2], 'event_type': row[3],
@@ -386,6 +449,13 @@ class ContextStore:
                              source_ref: str, deleted_at: str) -> None:
         """Apply a source deletion to all memory versions derived from its stable reference."""
         source_hash = hashlib.sha256(source_ref.encode('utf-8')).hexdigest()
+        ContextStore._scrub_memory_source_hash(db, key, source_hash, deleted_at)
+
+    @staticmethod
+    def _scrub_memory_source_hash(db: sqlite3.Connection, key: tuple[str, str, str],
+                                  source_hash: str, deleted_at: str) -> None:
+        if not re.fullmatch(r'[0-9a-f]{64}', source_hash):
+            raise ValueError('Memory source reference hash refused')
         db.execute('INSERT OR IGNORE INTO assistant_memory_tombstones'
                    '(principal_scope,data_domain,visibility,source_ref_hash,deleted_at) VALUES (?,?,?,?,?)',
                    (*key, source_hash, deleted_at))
@@ -431,6 +501,89 @@ class ContextStore:
                              'AND source=? AND object_id=? AND operation=?', (*key, source, object_id, 'upsert')).fetchone()
         return None if row is None else self._projection(row)
 
+    def export_tombstones(self, scope: Scope) -> dict[str, Any]:
+        """Export a content-free restore fence for this trusted scope only."""
+        key = self._where(scope)
+        with closing(self._connect()) as db:
+            sources = db.execute('SELECT source,object_id,min_revision FROM context_source_tombstones '
+                'WHERE principal_scope=? AND data_domain=? AND visibility=? ORDER BY source,object_id', key).fetchall()
+            memories = db.execute('SELECT source_ref_hash FROM assistant_memory_tombstones WHERE principal_scope=? '
+                'AND data_domain=? AND visibility=? ORDER BY source_ref_hash', key).fetchall()
+        return {'schema_version': 1, 'source_tombstones': [
+            {'source': row[0], 'object_id': row[1], 'min_revision': row[2]} for row in sources],
+            'memory_source_ref_hashes': [row[0] for row in memories]}
+
+    def replay_tombstones(self, scope: Scope, ledger: Any) -> dict[str, int]:
+        """Merge a trusted content-free tombstone ledger before serving retrieval."""
+        key = self._where(scope)
+        if (not isinstance(ledger, dict) or set(ledger) != {'schema_version', 'source_tombstones',
+                'memory_source_ref_hashes'} or type(ledger.get('schema_version')) is not int
+                or ledger['schema_version'] != 1):
+            raise ValueError('Trusted tombstone ledger required')
+        rows, hashes = ledger['source_tombstones'], ledger['memory_source_ref_hashes']
+        if (not isinstance(rows, list) or len(rows) > 10000 or not isinstance(hashes, list) or len(hashes) > 10000
+                or any(not isinstance(value, str) or not re.fullmatch(r'[0-9a-f]{64}', value) for value in hashes)):
+            raise ValueError('Tombstone ledger bound refused')
+        seen = set()
+        for row in rows:
+            if (not isinstance(row, dict) or set(row) != {'source', 'object_id', 'min_revision'}
+                    or row['source'] not in SOURCES or not isinstance(row['object_id'], str)
+                    or not 1 <= len(row['object_id']) <= 256 or type(row['min_revision']) is not int
+                    or not 1 <= row['min_revision'] <= 2**63 - 1
+                    or (row['source'], row['object_id']) in seen):
+                raise ValueError('Source tombstone refused')
+            seen.add((row['source'], row['object_id']))
+        now = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+        merged = 0
+        with closing(self._connect()) as db:
+            db.execute('BEGIN IMMEDIATE')
+            try:
+                for row in rows:
+                    source, object_id, revision = row['source'], row['object_id'], row['min_revision']
+                    current = db.execute('SELECT revision,operation FROM context_current WHERE principal_scope=? '
+                        'AND data_domain=? AND visibility=? AND source=? AND object_id=?', (*key, source, object_id)).fetchone()
+                    prior_floor = db.execute('SELECT min_revision FROM context_source_tombstones WHERE '
+                        'principal_scope=? AND data_domain=? AND visibility=? AND source=? AND object_id=?',
+                        (*key, source, object_id)).fetchone()
+                    floor = max(revision, prior_floor[0] if prior_floor else 0,
+                                current[0] if current and current[1] == 'delete' else 0)
+                    floor_advanced = prior_floor is None or floor > prior_floor[0]
+                    db.execute('INSERT INTO context_source_tombstones VALUES(?,?,?,?,?,?) '
+                        'ON CONFLICT(principal_scope,data_domain,visibility,source,object_id) DO UPDATE SET '
+                        'min_revision=MAX(min_revision,excluded.min_revision)', (*key, source, object_id, floor))
+                    # An older deletion ledger fences old replays without erasing a
+                    # genuinely newer recreation already present in this archive.
+                    preserve_newer = bool(current and current[1] == 'upsert' and current[0] > floor)
+                    source_ref = 'tombstone:sha256/' + hashlib.sha256(
+                        json.dumps([*key, source, object_id], separators=(',', ':')).encode()).hexdigest()
+                    prior_refs = db.execute('SELECT DISTINCT source_ref FROM context_events WHERE principal_scope=? '
+                        'AND data_domain=? AND visibility=? AND source=? AND object_id=? AND revision<=?',
+                        (*key, source, object_id, floor)).fetchall()
+                    db.execute('UPDATE context_events SET payload_json=NULL WHERE principal_scope=? AND data_domain=? '
+                        'AND visibility=? AND source=? AND object_id=? AND revision<=?', (*key, source, object_id, floor))
+                    db.execute('DELETE FROM context_pending WHERE principal_scope=? AND data_domain=? AND visibility=? '
+                        'AND source=? AND object_id=? AND revision<=?', (*key, source, object_id, floor))
+                    for (prior_ref,) in prior_refs:
+                        self._scrub_memory_source(db, key, prior_ref, now)
+                    if not preserve_newer:
+                        db.execute('INSERT INTO context_current(principal_scope,data_domain,visibility,source,object_id,revision,'
+                            'event_type,operation,occurred_at,ingested_at,source_ref,payload_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,NULL) '
+                            'ON CONFLICT(principal_scope,data_domain,visibility,source,object_id) DO UPDATE SET revision=excluded.revision,'
+                            'event_type=excluded.event_type,operation=excluded.operation,occurred_at=excluded.occurred_at,'
+                            'ingested_at=excluded.ingested_at,source_ref=excluded.source_ref,payload_json=NULL',
+                            (*key, source, object_id, floor, 'context.tombstone', 'delete', now, now, source_ref))
+                    if floor_advanced or not preserve_newer and not (current and current[1] == 'delete'
+                                                                       and current[0] >= floor):
+                        merged += 1
+                for source_hash in set(hashes):
+                    self._scrub_memory_source_hash(db, key, source_hash, now)
+                db.execute('COMMIT')
+            except BaseException:
+                if db.in_transaction:
+                    db.execute('ROLLBACK')
+                raise
+        return {'source_tombstones': merged, 'memory_source_ref_hashes': len(set(hashes))}
+
     @staticmethod
     def _sources(sources: Any) -> tuple[str, ...]:
         if sources is None:
@@ -446,6 +599,19 @@ class ContextStore:
         selected = self._sources(sources)
         if type(limit) is not int or not 1 <= limit <= 100:
             raise ValueError('Context list limit must be between 1 and 100')
+        with closing(self._connect()) as db:
+            rows = db.execute('SELECT source,object_id,revision,event_type,operation,occurred_at,ingested_at,source_ref,payload_json '
+                              'FROM context_current WHERE principal_scope=? AND data_domain=? AND visibility=? '
+                              'AND operation=? AND source IN (' + ','.join('?' for _ in selected) + ') '
+                              'ORDER BY occurred_at DESC,source,object_id LIMIT ?', (*key, 'upsert', *selected, limit)).fetchall()
+        return [self._projection(row) for row in rows]
+
+    def retrieval_snapshot(self, scope: Scope, *, sources: Any, limit: int = 2000) -> list[dict[str, Any]]:
+        """Return one bounded current-state retrieval snapshot after scope/grant filtering."""
+        key = self._where(scope)
+        selected = self._sources(sources)
+        if type(limit) is not int or not 1 <= limit <= 2000:
+            raise ValueError('Context retrieval snapshot bound refused')
         with closing(self._connect()) as db:
             rows = db.execute('SELECT source,object_id,revision,event_type,operation,occurred_at,ingested_at,source_ref,payload_json '
                               'FROM context_current WHERE principal_scope=? AND data_domain=? AND visibility=? '

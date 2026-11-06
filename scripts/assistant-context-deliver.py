@@ -12,9 +12,9 @@ import stat
 import sys
 import fcntl
 
-from assistant_attention import AttentionLedger, Scope
+from assistant_attention import AttentionLedger
 from assistant_context_delivery import DeliveryOutbox, load_delivery_auth, read_source_coverage
-from assistant_context_store import ContextStore
+from assistant_context_store import ContextStore, Scope
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_STATE = Path("/srv/state/assistant-context")

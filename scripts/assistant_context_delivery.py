@@ -467,13 +467,12 @@ class DeliveryOutbox:
 
 def load_delivery_auth(path: str | Path, *, now: datetime | str) -> DeliveryAuth:
     """Load the private, expiring owner-DM standing grant and route secret."""
+    from assistant_context_tools import private_bytes
     file_path = Path(path)
-    if file_path.is_symlink():
-        raise DeliveryError("Delivery auth file may not be a symlink")
-    info = file_path.stat()
-    if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 4096:
-        raise DeliveryError("Delivery auth file must be owned by this service user and mode 0600")
-    value = json.loads(file_path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(private_bytes(file_path, 4096))
+    except (OSError, ValueError, UnicodeError) as error:
+        raise DeliveryError('private delivery configuration required') from error
     required = {"schema_version", "route_name", "route_registered", "target", "route_config_sha256",
                 "standing_grant_id", "standing_grant_status", "owner_user_id", "bot_user_id", "channel_type",
                 "owner_destination_id", "allowed_sources", "allowed_policy_versions", "grant_issued_at",

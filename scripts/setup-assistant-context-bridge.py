@@ -60,6 +60,8 @@ MANAGED_FILES = {
 CONTEXT_TOOL_NAMES = frozenset({
     'homecompute_context_search', 'homecompute_context_today', 'homecompute_context_source',
     'homecompute_context_decision', 'homecompute_context_feedback', 'homecompute_context_memory',
+    'homecompute_context_briefing', 'homecompute_context_routine', 'homecompute_context_delegate',
+    'homecompute_context_improvements',
 })
 TOKEN_PATTERN = re.compile(r'[A-Za-z0-9_-]{40,256}\Z')
 

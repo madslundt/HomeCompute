@@ -336,7 +336,7 @@ class AttentionLedger:
 
     @staticmethod
     def _purge_source_db(db: sqlite3.Connection, identity: tuple[str, str, str], source: str,
-                         object_id: str, deletion_ref: str | None = None) -> None:
+                         object_id: str, deletion_ref: str | None = None, *, preserve_controls: bool = False) -> None:
         old = db.execute("SELECT decision_id,source_ref,state FROM decisions WHERE principal=? AND domain=? AND visibility=? AND source=? AND object_id=?", (*identity, source, object_id)).fetchall()
         decision_ids = [row["decision_id"] for row in old]
         refs = {row["source_ref"] for row in old if row["source_ref"] and row["source_ref"] != "[deleted]"}
@@ -345,7 +345,9 @@ class AttentionLedger:
         for row in old:
             # Held notifications remain explicitly held and budgeted, but lose the deleted reference.
             db.execute("DELETE FROM feedback WHERE principal=? AND domain=? AND visibility=? AND decision_id=?", (*identity, row["decision_id"]))
-            if row["state"] == "held":
+            if preserve_controls and row['state'] in {'stopped', 'snoozed'}:
+                db.execute("UPDATE decisions SET source_ref='[deleted]',reason='source_revised_control',revision=revision+1 WHERE decision_id=?", (row['decision_id'],))
+            elif row["state"] == "held":
                 db.execute("UPDATE decisions SET source_ref='[deleted]',reason='source_deleted_held',revision=revision+1 WHERE decision_id=?", (row["decision_id"],))
             else:
                 db.execute("DELETE FROM decisions WHERE decision_id=?", (row["decision_id"],))
@@ -362,14 +364,15 @@ class AttentionLedger:
             db.execute("DELETE FROM candidates WHERE principal=? AND domain=? AND visibility=? AND candidate_id IN (%s)" % ",".join("?" for _ in removed_candidates), (*identity, *removed_candidates))
             db.execute("DELETE FROM candidate_requests WHERE principal=? AND domain=? AND visibility=?", identity)
 
-    def purge_source(self, *, scope: Scope | Mapping[str, str], source: str, object_id: str) -> dict[str, Any]:
+    def purge_source(self, *, scope: Scope | Mapping[str, str], source: str, object_id: str,
+                     preserve_controls: bool = False) -> dict[str, Any]:
         """Remove derived attention/learning data for a source tombstone, preserving held rows."""
         identity = self._identity(scope)
         if source not in SOURCES or not isinstance(object_id, str) or not object_id or len(object_id) > 256:
             raise AttentionError("Invalid source tombstone")
         with closing(self._connect()) as db:
             db.execute("BEGIN IMMEDIATE")
-            self._purge_source_db(db, identity, source, object_id)
+            self._purge_source_db(db, identity, source, object_id, preserve_controls=preserve_controls)
             db.commit()
         return {"purged": True, "source": source, "object_id": object_id}
 

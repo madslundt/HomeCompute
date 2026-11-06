@@ -2,9 +2,19 @@
   "schema_version": 1,
   "clients": [
     {
+      "name": "policy-health",
+      "token": "replace-with-independent-random-policy-health-token",
+      "role": "operator",
+      "principal_scope": "owner",
+      "data_domain": "personal",
+      "visibility": "private",
+      "sources": ["home-assistant", "daythread", "aula", "calendar"]
+    },
+    {
       "name": "hermes-owner",
       "token": "replace-with-independent-random-assistant-token",
       "role": "assistant",
+      "origin_id": "owner-mattermost-context",
       "principal_scope": "owner",
       "data_domain": "personal",
       "visibility": "private",
@@ -18,6 +28,16 @@
       "data_domain": "personal",
       "visibility": "private",
       "sources": ["home-assistant", "daythread", "aula", "calendar"]
+    },
+    {
+      "name": "owner-briefing-workflows",
+      "token": "replace-with-independent-random-routine-token",
+      "role": "routine",
+      "principal_scope": "owner",
+      "data_domain": "personal",
+      "visibility": "private",
+      "sources": ["home-assistant", "daythread", "aula", "calendar"],
+      "routines": ["morning-overview", "tomorrow-preparation"]
     }
   ]
 }

@@ -133,6 +133,14 @@ python3 "$REPO_ROOT/tests/assistant-context-api-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-bridge-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-delivery-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-integration-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-retrieval-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-briefings-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-delegation-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-worker-ssh-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-recovery-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-improvements-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-workflow-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-phases-test.py"
 python3 "$REPO_ROOT/tests/hermes-addons-test.py"
 python3 "$REPO_ROOT/tests/hermes-systemd-boot-test.py"
 python3 "$REPO_ROOT/tests/hermes-system-boot-install-test.py"
@@ -1251,7 +1259,7 @@ jq -e --arg relay_config "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" '
 # host-network exception; changing it requires reviewing this gate too.
 python3 - "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" <<'PY'
 import hashlib, pathlib, sys
-assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "5e91b6a74b97032a252bf024cf59d9cd580a3694eef3001707ba9fd901d84b74"
+assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "f440c89381f7f77984a87368a5f73e8fa616eb94d57b761572bc892a14db9f49"
 PY
 
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
@@ -1346,7 +1354,7 @@ if command -v nix >/dev/null 2>&1; then
     "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
   nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
-    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
+    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = \"active\"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
 else
   printf '[validate] Nix flake evaluation (containerized)\n'
@@ -1358,7 +1366,7 @@ else
       'nix --extra-experimental-features "nix-command flakes" flake check path:/src --no-build --all-systems
        nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
        nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
-       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = "active"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
 fi
 
 printf '[validate] PASS\n'

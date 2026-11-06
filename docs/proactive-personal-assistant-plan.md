@@ -1,8 +1,8 @@
 # A proactive personal assistant across HomeCompute
 
-Date: 2026-11-06. Status: first source implementation staged for review,
-uncommitted and undeployed. No live service, permission, model, workflow or
-schedule was changed. The complete plan remains phased as described below.
+Date: 2026-11-06. Status: source implementation in local checkpoint commits and
+a continuing review patch; unpublished and undeployed. No live service,
+permission, model, workflow or schedule was changed.
 
 Owner priorities: Home Assistant, Daythread, Aula and Calendar first; add other
 services later. Target substantial autonomy, including tested improvements to
@@ -14,20 +14,17 @@ context API, four adapters, shadow attention, owner Hermes tools, feedback
 candidates, guarded bridge activation and explicit bounded delivery. The
 authenticated Daythread provider is a separate source change on
 `codex/assistant-context-export`. See the [service runbook](../deploy/assistant-context/README.md).
-Neither branch is deployed. These implementations do not establish automatic
-cross-source reasoning, native Hermes-to-OpenClaw handoff, hybrid journal search,
-scheduled briefing consolidation or autonomous Git/deployment promotion. Those
-remain later slices and qualification work. Daythread's partial snapshot also
-does not provide a deletion feed; resolve its retention/deletion lifecycle before
-claiming complete source synchronization or enabling household data.
+Neither branch is deployed. The continuing implementation adds source-linked
+cross-source briefings, optional local reasoning and Harrier retrieval, durable
+routine controls, an isolated native OpenClaw worker, fenced recovery, and a
+restricted improvement controller. These are source mechanisms, with production
+qualification still required. The source candidate now reconciles previously observed
+Daythread IDs through a fixed-profile validity endpoint; partial pages still do
+not imply deletion, and the authenticated provider/client path remains unqualified.
 
-Source validation passed: 78 tests across the seven new HomeCompute suites,
-23 Daythread export/profile tests, provider Ruff checks, both worktrees'
-whitespace checks, and the complete HomeCompute repository validator including
-containerized Nix flake evaluation and the enabled context-service configuration.
-Existing environment-dependent skips remain skips, including the uncached
-pinned LiteLLM integration image. This is synthetic source evidence, not actual
-Mattermost delivery, private-source readiness, mixed-load or restore acceptance.
+Validation results are recorded in the final implementation handoff and service
+runbook. Synthetic source checks are separate from actual Mattermost delivery,
+private-source readiness, mixed-load and isolated restore acceptance.
 
 ## Recommendation
 
@@ -289,9 +286,10 @@ Ordinary tasks, feedback, one-off reminders and user memory remain durable
 application data outside Git. Framework-generated skills should be staged for
 reconciliation rather than silently becoming the only managed copy.
 
-The initial release can propose improvements automatically. Later, narrowly
-approved classes such as a briefing-format template can be promoted unattended
-after checks. A separate restricted controller, outside the agent's writable
+The source implementation can propose improvements automatically. Its narrow
+automatic classes are briefing presentation and stricter correlation thresholds.
+A standing grant covers eligible changes after independent checks and protected
+Git review; an opt-in loop can apply reconciled reviewed changes. A separate restricted controller, outside the agent's writable
 state, enforces the allowed diff, tests, publication and deployment. The agent
 cannot modify its evaluator, permissions or promotion policy. Production uses
 reviewed published source and the owning lifecycle; a self-generated successful

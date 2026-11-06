@@ -71,11 +71,14 @@ class ApplicationRecoveryTest(unittest.TestCase):
         with closing(sqlite3.connect(broker)) as db:db.execute('CREATE TABLE tasks(state TEXT)');db.commit()
         self.broker_patch=patch.object(recovery,'BROKER_DATABASE',broker);self.broker_patch.start()
         self.http_patch=patch.object(recovery,'main_http_idle');self.http_patch.start()
+        self.assistant_units_patch=patch.object(recovery,'assistant_recovery_units',return_value=())
+        self.assistant_units_patch.start()
 
     def tearDown(self):
         self.journal_patch.stop()
         self.broker_patch.stop()
         self.http_patch.stop()
+        self.assistant_units_patch.stop()
         self.journal_root.cleanup()
 
     def test_sqlite_backup_includes_committed_wal_and_validates_integrity(self):
@@ -90,6 +93,21 @@ class ApplicationRecoveryTest(unittest.TestCase):
                     self.assertEqual(copy.execute('SELECT value FROM fixture').fetchone(), ('synthetic',))
                     self.assertEqual(copy.execute('PRAGMA quick_check').fetchone(), ('ok',))
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+
+    def test_assistant_sqlite_backup_captures_wal_consistently_at_canonical_archive_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);state=root/'state';state.mkdir(mode=0o700)
+            source=state/'context.sqlite3'
+            with closing(sqlite3.connect(source)) as db:
+                db.execute('PRAGMA journal_mode=WAL')
+                db.execute('CREATE TABLE fixture(value TEXT)')
+                db.execute('INSERT INTO fixture VALUES(?)',('synthetic assistant row',));db.commit()
+            source.chmod(0o600)
+            backups=recovery.assistant_sqlite_backups({'assistant-context/state':state},root/'staging')
+            self.assertEqual([row[0] for row in backups],['assistant-context/state/context.sqlite3'])
+            with closing(sqlite3.connect(backups[0][2])) as copy:
+                self.assertEqual(copy.execute('SELECT value FROM fixture').fetchone(),('synthetic assistant row',))
+                self.assertEqual(copy.execute('PRAGMA quick_check').fetchone(),('ok',))
 
     def test_sqlite_source_symlinks_and_destination_overwrite_are_refused(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -208,6 +226,23 @@ class ApplicationRecoveryTest(unittest.TestCase):
             with recovery.quiesced():pass
         ready.assert_not_called()
         self.assertNotIn(['systemctl','start',proxy],calls);self.assertNotIn(['systemctl','start',watcher],calls)
+
+    def test_assistant_timer_and_context_service_are_quiesced_and_restored_in_reverse_order(self):
+        timer='homecompute-assistant-context-sync.timer';service=recovery.ASSISTANT_CONTEXT_UNIT
+        states={timer:'active',service:'active'};events=[]
+        def run(arguments,**kwargs):
+            if arguments[:2] in (['systemctl','stop'],['systemctl','start']):
+                operation,name=arguments[1],arguments[2];events.append((operation,name))
+                states[name]='inactive' if operation=='stop' else 'active'
+            return subprocess.CompletedProcess(arguments,0,'','')
+        with patch.object(recovery,'ASSISTANT_DIRECTORIES',{}),patch.object(recovery,'assistant_recovery_sources',return_value=({'state':Path(self.journal_root.name)},{})), \
+                patch.object(recovery,'assistant_recovery_units',return_value=(timer,service)), \
+                patch.object(recovery,'unit_state',side_effect=lambda name:states[name]), \
+                patch.object(recovery,'UNITS',()),patch.object(recovery,'CONTAINERS',()),patch.object(recovery,'run',side_effect=run):
+            with recovery.quiesced():
+                self.assertEqual(json.loads(recovery.RESUME_FILE.read_bytes()),[['unit',timer],['unit',service]])
+        self.assertEqual(events,[('stop',timer),('stop',service),('start',service),('start',timer)])
+        self.assertFalse(recovery.RESUME_FILE.exists())
 
     def test_unready_restored_proxy_keeps_watcher_paused_and_journal_retained(self):
         resources=[('unit',recovery.ACCESS_CERTIFICATE_PATH),('unit',recovery.ACCESS_PROXY),('unit','homecompute-openclaw-access.service')]

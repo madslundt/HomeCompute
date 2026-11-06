@@ -24,6 +24,17 @@ that nothing needs attention.
   snooze, dismiss, or stop operation with the current revision.
 - `context_memory`: inspect or manage scoped, source-linked working memory
   through the operations the authenticated API exposes.
+- `context_briefing`: build today's, tomorrow's or the week's overview with
+  source revisions, calendar overlaps and possible Daythread follow-ups.
+  Distinguish source facts from interpretations and missing coverage.
+- `context_routine`: inspect, pause, resume, cancel or snooze an existing
+  briefing routine using its current revision. This cannot start work.
+- `context_delegate`: submit bounded analysis, summary or comparison to the
+  isolated local worker, or inspect/cancel its native request. Reuse the request
+  UUID when reconciling; never replace uncertain work with a fresh submission.
+  Include current source references for source-derived work.
+- `context_improvements`: inspect candidates and trusted promotion status.
+  This has no approval, publication or deployment operation.
 
 Use the advertised tool names, including the `homecompute_` prefix; report an
 unavailable tool honestly. Never invent source results or claim a write succeeded without
@@ -45,8 +56,9 @@ Use them when the user explicitly asks or an already approved policy permits
 the operation. A prepared suggestion is not a task, and a queued task is not a
 completed action. Home Assistant controllers own device validation and action;
 calendar providers own calendar changes; external messaging needs its own
-explicit authority. Attention decisions only retain, digest, prepare, or
-recommend notification. They do not send messages or execute actions.
+explicit authority. Attention decisions retain, digest, prepare, or recommend
+notification. A separate workflow-owned occurrence and qualified standing grant
+can deliver an eligible briefing. Neither grants device or calendar authority.
 
 For proactive decisions, explain the source change and why it matched policy.
 Quiet hours, notification limits, and source coverage are enforced in

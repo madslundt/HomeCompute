@@ -19,7 +19,7 @@ scoped private SQLite and finite tools. Models cannot select credentials,
 origins, scope, source ingestion, promotion approval or device actions.
 
 Select the existing owner-only Hermes Mattermost conversation as the initial
-context user. Its six explicit context tools are opt-in and are not inherited by
+context user. Its explicit context tools are opt-in and are not inherited by
 OpenClaw specialist accounts. Keep OpenClaw's task tree and coding broker,
 existing private/shared task stores, n8n schedules and Home Assistant controllers
 authoritative. Framework memory is not the cross-source canonical ledger.
@@ -33,8 +33,26 @@ lifecycle. OMH external memory and dreaming remain disabled.
 This refines ADR-013's separate canonical event-service boundary and ADR-015's
 memory lifecycle for the current Mattermost deployment. It does not change
 inference placement, work-domain admission, household privacy, current action
-approvals or the authority of the existing controllers. Native OpenClaw
-delegation and a cross-framework task bridge remain separate qualifications.
+approvals or the authority of the existing controllers.
+
+Extend this boundary with optional scope-filtered Harrier retrieval and
+source-linked cross-source briefing interpretations. Existing n8n workflows
+retain schedule ownership; a separate finite routine credential admits a
+date-derived occurrence. Chat tools can inspect and pause routines, but cannot
+admit a run. Delivery requires a qualified expiring standing owner-DM grant.
+
+Native delegation uses a dedicated no-tool OpenClaw role and worker-only SSH
+credential. Actual native receipts distinguish admission, completion, timeout
+and cancellation. Local source erasure cannot prove native transcript erasure:
+the pinned native session lifecycle archives ordinary deleted transcripts.
+
+Improvement promotion runs as a separate trusted operator. Its automatic patch
+classes affect only bounded briefing presentation and stricter correlation
+thresholds. Independent replay, canary, a standing class grant, protected Git
+review, reconciliation and a guarded policy installer precede activation. Models
+cannot approve, publish or deploy. Keep root-controller custody separate from
+model-writable feedback state. A restored service stays fenced until separately
+trusted current deletion evidence is replayed and derived state is scrubbed.
 
 ## Consequences
 

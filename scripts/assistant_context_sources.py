@@ -130,6 +130,7 @@ class Snapshot:
     observed_at: str
     cursor: str | None = None
     limitation: str = ""
+    resolved: tuple[tuple[str, str, Mapping[str, Any] | None], ...] = ()
 
     def __post_init__(self):
         if self.source not in SOURCES or not self.coverage_key or len(self.coverage_key) > 200:
@@ -148,6 +149,7 @@ class SnapshotClient(Protocol):
 class FixedDaythreadTransport(Protocol):
     """Authenticated same-host transport; callers cannot supply a network URL."""
     def get(self, path: str, params: Mapping[str, str | int]) -> Mapping[str, Any]: ...
+    def post(self, path: str, body: Mapping[str, Any]) -> Mapping[str, Any]: ...
 
 
 class DaythreadClient:
@@ -158,7 +160,7 @@ class DaythreadClient:
             raise ValueError("Daythread page bound refused")
         self.transport, self.pages = transport, pages
 
-    def read(self) -> Snapshot:
+    def read(self, known_ids: Iterable[str] = ()) -> Snapshot:
         cursor = None
         records: list[Mapping[str, Any]] = []
         snapshot_at = None
@@ -273,9 +275,102 @@ class DaythreadClient:
                 limitation = "Daythread page bound reached; retry from the first page."
                 break
             cursor = next_cursor
-        return daythread_snapshot(records, observed_at=snapshot_at or datetime.now(timezone.utc).isoformat(),
-            coverage_key=coverage_key or "unknown-window", complete=False,
-            limitation=limitation + (" Window is incomplete." if not complete_window else ""))
+        known_ids = tuple(known_ids)
+        resolved = self._resolve(known_ids) if known_ids else ()
+        valid = [row[2] for row in resolved if row[1] == "valid" and row[2] is not None]
+        by_id = {row["object_id"]: row for row in records}
+        by_id.update({row["object_id"]: row for row in valid})
+        return daythread_snapshot(by_id.values(), observed_at=snapshot_at or datetime.now(timezone.utc).isoformat(),
+            coverage_key="profile:owner", complete=False,
+            limitation=limitation + (" Window is incomplete." if not complete_window else ""),
+            resolved=tuple((object_id, status, item) for object_id, status, item in resolved
+                           if status != "valid"))
+
+    def _resolve(self, known_ids: Iterable[str]) -> tuple[tuple[str, str, Mapping[str, Any] | None], ...]:
+        ids = tuple(known_ids)
+        if len(ids) > 2000 or any(not isinstance(value, str) or not value for value in ids):
+            raise ValueError("Bounded known Daythread IDs required")
+        output = []
+        for offset in range(0, len(ids), 20):
+            batch = ids[offset:offset + 20]
+            result = self.transport.post("/v1/integrations/assistant-context/resolve", {"object_ids": list(batch)})
+            if (not isinstance(result, Mapping) or set(result) != {"schema_version", "source", "results"}
+                    or result.get("schema_version") != 1 or result.get("source") != "daythread"
+                    or not isinstance(result.get("results"), list) or len(result["results"]) != len(batch)):
+                raise ValueError("Daythread resolution response refused")
+            seen = set()
+            for row in result["results"]:
+                if not isinstance(row, Mapping) or row.get("object_id") not in batch or row["object_id"] in seen:
+                    raise ValueError("Daythread resolution row refused")
+                seen.add(row["object_id"])
+                status = row.get("status")
+                if status == "valid":
+                    item = row.get("item")
+                    if not isinstance(item, Mapping):
+                        raise ValueError("Daythread valid resolution missing source item")
+                    # Reuse the export validator by parsing the exact object shape.
+                    resolved = self._validate_item(item)
+                    if resolved["object_id"] != row["object_id"]:
+                        raise ValueError("Daythread resolution identity mismatch")
+                    output.append((row["object_id"], status, resolved))
+                elif status in {"deleted", "invalidated", "expired-window"} and set(row) == {"object_id", "status"}:
+                    output.append((row["object_id"], status, None))
+                else:
+                    raise ValueError("Daythread resolution status refused")
+        return tuple(output)
+
+    @staticmethod
+    def _validate_item(row: Mapping[str, Any]) -> dict[str, Any]:
+        required = {"object_id", "revision", "event_type", "source_timestamp", "modified_at",
+                    "version_ref", "source_ref", "payload"}
+        if set(row) != required or type(row.get("revision")) is not int or row["revision"] < 1:
+            raise ValueError("Daythread resolution item refused")
+        event_type = row["event_type"]
+        if event_type not in {"daythread.summary", "daythread.commitment"}:
+            raise ValueError("Daythread resolution event refused")
+        if (not isinstance(row["object_id"], str) or not re.fullmatch(
+                r"(?:diary:\d{4}-\d{2}-\d{2}|decision:[A-Za-z0-9_-]{1,180})", row["object_id"])
+                or not isinstance(row["version_ref"], str) or not 1 <= len(row["version_ref"]) <= 300
+                or not isinstance(row["source_ref"], str) or len(row["source_ref"]) > MAX_SOURCE_REF):
+            raise ValueError("Daythread resolution identity refused")
+        rfc3339(row["source_timestamp"])
+        rfc3339(row["modified_at"])
+        prefix = "daythread:diary/" if event_type == "daythread.summary" else "daythread:decision/"
+        if not row["source_ref"].startswith(prefix) or not isinstance(row["payload"], Mapping):
+            raise ValueError("Daythread resolution provenance refused")
+        payload = dict(row["payload"])
+        expected = ({"day", "summary", "source_refs", "pending_chunks"} if event_type == "daythread.summary"
+                    else {"text", "review_status", "state", "relationships", "source_refs"})
+        if set(payload) != expected:
+            raise ValueError("Daythread resolution payload refused")
+        refs = payload.get("source_refs")
+        if (not isinstance(refs, list) or len(refs) > 20
+                or any(not isinstance(ref, Mapping) or set(ref) != {"id", "version"}
+                       or not isinstance(ref["id"], str) or len(ref["id"]) > 200
+                       or not isinstance(ref["version"], str) or len(ref["version"]) > 120 for ref in refs)):
+            raise ValueError("Daythread resolution source references refused")
+        if event_type == "daythread.summary":
+            if (not isinstance(payload["day"], str) or len(payload["day"]) != 10
+                    or not isinstance(payload["summary"], str) or len(payload["summary"].encode()) > 2400
+                    or type(payload["pending_chunks"]) is not int):
+                raise ValueError("Daythread resolution summary refused")
+        else:
+            relationships = payload.get("relationships")
+            if (not isinstance(payload["text"], str) or len(payload["text"].encode()) > 1000
+                    or payload["review_status"] not in {"proposed", "confirmed"}
+                    or not isinstance(payload["state"], str) or not isinstance(relationships, list)
+                    or len(relationships) > 8):
+                raise ValueError("Daythread resolution commitment refused")
+            for rel in relationships:
+                if (not isinstance(rel, Mapping) or set(rel) != {"kind", "label"}
+                        or rel["kind"] != "commitment" or not isinstance(rel["label"], str)
+                        or len(rel["label"]) > 200):
+                    raise ValueError("Daythread resolution relationship refused")
+        payload["modified_at"] = rfc3339(row["modified_at"])
+        payload["version_ref"] = row["version_ref"]
+        return {"object_id": row["object_id"], "event_type": row["event_type"],
+                "occurred_at": row["source_timestamp"], "source_ref": row["source_ref"],
+                "payload": payload}
 
 
 def _stamp_from(*values: Any, fallback: str) -> str:
@@ -408,7 +503,8 @@ def ha_snapshot(projection: Mapping[str, Any], *, observed_at: str | None = None
 
 def daythread_snapshot(records: Iterable[Mapping[str, Any]], *, observed_at: str,
                        coverage_key: str, complete: bool, cursor: str | None = None,
-                       limitation: str = "") -> Snapshot:
+                       limitation: str = "",
+                       resolved: tuple[tuple[str, str, Mapping[str, Any] | None], ...] = ()) -> Snapshot:
     """Normalize Daythread export records after an authenticated source adapter reads them.
 
     The separately authenticated export includes only saved summaries and
@@ -433,8 +529,11 @@ def daythread_snapshot(records: Iterable[Mapping[str, Any]], *, observed_at: str
             raise ValueError("Daythread source reference refused")
         objects.append(SourceObject(_safe_id(source_id, "unknown"), event_type, occurred,
                                     source_ref[:MAX_SOURCE_REF], dict(row.get("payload", {}))))
+    if any(status not in {"deleted", "invalidated", "expired-window"} or item is not None
+           for _, status, item in resolved):
+        raise ValueError("Daythread resolved statuses must be tombstones")
     return Snapshot("daythread", coverage_key, tuple(objects), complete, observed, cursor,
-                    limitation or "Daythread API has no callback or delete feed; reconciliation is bounded to this scan.")
+                    limitation or "Daythread validity is reconciled only for IDs previously observed by this client.", resolved)
 
 
 class RevisionLedger:
@@ -501,10 +600,27 @@ class RevisionLedger:
                     raise ValueError("Duplicate source object in snapshot")
                 seen.add(obj.object_id)
                 fingerprint = self._fingerprint(obj)
-                prior = self.db.execute("SELECT revision,fingerprint,current FROM source_objects "
-                    "WHERE source=? AND coverage=? AND object_id=?",
-                    (snapshot.source, snapshot.coverage_key, obj.object_id)).fetchone()
+                if snapshot.source == "daythread":
+                    prior = self.db.execute("SELECT revision,fingerprint,current FROM source_objects "
+                        "WHERE source=? AND object_id=? ORDER BY current DESC,revision DESC LIMIT 1",
+                        (snapshot.source, obj.object_id)).fetchone()
+                    if prior:
+                        self.db.execute("UPDATE source_objects SET current=0 WHERE source=? AND object_id=? AND coverage!=?",
+                                        (snapshot.source, obj.object_id, snapshot.coverage_key))
+                else:
+                    prior = self.db.execute("SELECT revision,fingerprint,current FROM source_objects "
+                        "WHERE source=? AND coverage=? AND object_id=?",
+                        (snapshot.source, snapshot.coverage_key, obj.object_id)).fetchone()
+                if snapshot.source == "daythread" and prior and prior[1] == fingerprint and prior[2] == 0:
+                    counts["unchanged"] += 1  # A resolver tombstone blocks replay of the same version.
+                    continue
                 if prior and prior[1] == fingerprint and prior[2] == 1:
+                    if snapshot.source == "daythread" and self.db.execute(
+                            "SELECT 1 FROM source_objects WHERE source=? AND coverage=? AND object_id=?",
+                            (snapshot.source, snapshot.coverage_key, obj.object_id)).fetchone() is None:
+                        self.db.execute("INSERT INTO source_objects VALUES(?,?,?,?,?,?,?,?,1)",
+                            (snapshot.source, snapshot.coverage_key, obj.object_id, prior[0], fingerprint,
+                             obj.event_type, obj.occurred_at, obj.source_ref))
                     counts["unchanged"] += 1
                     continue
                 revision = (prior[0] + 1) if prior else 1
@@ -519,6 +635,26 @@ class RevisionLedger:
                     (snapshot.source, snapshot.coverage_key, obj.object_id, revision, fingerprint,
                      obj.event_type, event["occurred_at"], obj.source_ref))
                 counts["upserted"] += 1
+            if snapshot.source == "daythread":
+                for object_id, status, _item in snapshot.resolved:
+                    prior_rows = self.db.execute("SELECT coverage,revision,event_type,source_ref,current FROM source_objects "
+                        "WHERE source=? AND object_id=?", (snapshot.source, object_id)).fetchall()
+                    if not prior_rows:
+                        continue
+                    # The resolver is authoritative for this exact known ID. A
+                    # single source object can have legacy coverage rows; tombstone
+                    # every active copy monotonically while preserving replay state.
+                    for coverage, revision, event_type, source_ref, current in prior_rows:
+                        if not current:
+                            continue
+                        event = normalize_event(snapshot.source, object_id, revision + 1, event_type, "delete",
+                                                snapshot.observed_at, source_ref, {})
+                        self.db.execute("INSERT INTO source_outbox(event_json) VALUES(?)",
+                            (json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")),))
+                        self.db.execute("UPDATE source_objects SET revision=?,occurred_at=?,current=0 "
+                            "WHERE source=? AND coverage=? AND object_id=?",
+                            (revision + 1, event["occurred_at"], snapshot.source, coverage, object_id))
+                        counts["deleted"] += 1
             if snapshot.complete:
                 rows = self.db.execute("SELECT object_id,revision,event_type,source_ref,current FROM source_objects "
                     "WHERE source=? AND coverage=?", (snapshot.source, snapshot.coverage_key)).fetchall()
@@ -541,3 +677,25 @@ class RevisionLedger:
 
     def close(self) -> None:
         self.db.close()
+
+    def known_ids(self, source: str, limit: int = 100) -> tuple[str, ...]:
+        """Return a restart-safe rotating batch of IDs for an authenticated resolver."""
+        if source not in SOURCES or type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("Unsupported source")
+        rows = self.db.execute("SELECT DISTINCT object_id FROM source_objects WHERE source=? AND current=1 "
+                               "ORDER BY object_id LIMIT 2001", (source,)).fetchall()
+        if len(rows) > 2000:
+            raise ValueError("Known source object bound exceeded")
+        ids = [row[0] for row in rows]
+        if not ids:
+            return ()
+        previous = self.db.execute("SELECT cursor FROM source_cursors WHERE source=? AND coverage=?",
+                                   (source, "resolver-batch")).fetchone()
+        after = previous[0] if previous else ""
+        start = next((index for index, value in enumerate(ids) if value > after), 0)
+        selected = tuple((ids + ids)[start:start + min(limit, len(ids))])
+        self.db.execute("INSERT INTO source_cursors VALUES(?,?,?,?) ON CONFLICT(source,coverage) "
+                        "DO UPDATE SET cursor=excluded.cursor,observed_at=excluded.observed_at",
+                        (source, "resolver-batch", selected[-1], datetime.now(timezone.utc).isoformat()))
+        self.db.commit()
+        return selected

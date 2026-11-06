@@ -6,6 +6,7 @@ import argparse
 from contextlib import closing, contextmanager
 import datetime as dt
 import fcntl
+import grp
 import gzip
 import hashlib
 import json
@@ -31,7 +32,7 @@ RESUME_FILE = Path('/var/lib/homecompute/nas-recovery-backup/resume.json')
 LOCAL_VM_BACKUP = 'restic-backups-agents-vm-bootstrap.service'
 BROKER_DATABASE = Path('/srv/state/codex-broker/tasks.sqlite3')
 MAIN_HTTP_TABLE = Path('/proc/net/tcp')
-MAIN_HTTP_PORTS = {18003, 18005, 18006, 18007}
+MAIN_HTTP_PORTS = {18003, 18005, 18006, 18007, 18816}
 MIN_FREE_BYTES = 100 * 1024**3
 MAX_ARCHIVE_BYTES = 512 * 1024**3
 MAX_ARCHIVE_ENTRIES = 100000
@@ -65,6 +66,34 @@ UNITS = ('homecompute-codex-worker-api.service', 'homecompute-codex-broker.servi
          ACCESS_PROXY, 'homecompute-openclaw-access.service',
          'homecompute-ha-actions.service',
          'homecompute-codex-vm.service', 'homecompute-agents-vm.service')
+ASSISTANT_UNITS = (
+    'homecompute-assistant-context-sync.timer', 'homecompute-assistant-context-maintenance.timer',
+    'homecompute-assistant-context-improvements.timer',
+    'homecompute-assistant-context-sync.service', 'homecompute-assistant-context-maintenance.service',
+    'homecompute-assistant-context-improvements.service', 'homecompute-assistant-context.service',
+)
+ASSISTANT_TIMER_UNITS = tuple(unit for unit in ASSISTANT_UNITS if unit.endswith('.timer'))
+ASSISTANT_JOB_UNITS = tuple(unit for unit in ASSISTANT_UNITS
+                            if unit.endswith('.service') and unit != 'homecompute-assistant-context.service')
+ASSISTANT_CONTEXT_UNIT = 'homecompute-assistant-context.service'
+ASSISTANT_DIRECTORIES = {
+    'assistant-context/state': Path('/srv/state/assistant-context'),
+    'assistant-context/collector': Path('/var/lib/homecompute-assistant'),
+    'assistant-context/improvements': Path('/var/lib/homecompute-assistant-improvements'),
+    'assistant-context/policy': Path('/var/lib/homecompute-assistant-policy'),
+    'assistant-context/policy-controller': Path('/var/lib/homecompute-assistant-policy-controller'),
+    'assistant-context/delivery-auth': Path('/etc/homecompute-assistant-context'),
+}
+ASSISTANT_FILES = {
+    'assistant-context/clients.json': Path('/etc/homecompute/assistant-context-clients.json'),
+    'assistant-context/improvement-grant.json': Path('/etc/homecompute/assistant-improvement-grant.json'),
+    'assistant-context/embedding-credential.json': Path('/etc/homecompute/assistant-context-embedding.json'),
+    'assistant-context/briefing-credential.json': Path('/etc/homecompute/assistant-context-briefing.json'),
+    'assistant-context/delegation-identity': Path('/etc/homecompute/assistant-context-worker/id_ed25519'),
+    'assistant-context/delegation-known-hosts': Path('/etc/homecompute/assistant-context-worker/known_hosts'),
+    'assistant-context/improvement-github-token': Path('/etc/homecompute/assistant-improvement-github-token'),
+    'assistant-context/policy-health-token': Path('/etc/homecompute/assistant-context-policy-health-token'),
+}
 POSTGRES = {'control-plane': 'homecompute-control-plane-postgres-1',
             'mattermost': 'homecompute-mattermost-postgres-1', 'immich': 'homecompute-immich-database-1',
             'chessmate': 'chessmate-db-1'}
@@ -127,6 +156,21 @@ def sqlite_backup(source: Path, destination: Path) -> None:
     destination.chmod(0o600)
 
 
+def assistant_sqlite_backups(directories: dict[str, Path], staging: Path) -> list[tuple[str, Path, Path]]:
+    """Create integrity-checked SQLite Online Backup copies for declared assistant state."""
+    backups = []
+    backup_root = staging / 'assistant-sqlite'
+    for index, (archive_relative, source) in enumerate(assistant_sqlite_sources(directories)):
+        destination = backup_root / f'{index:04d}.sqlite3'
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        original = source.stat(follow_symlinks=False)
+        sqlite_backup(source, destination)
+        os.chown(destination, original.st_uid, original.st_gid)
+        destination.chmod(stat.S_IMODE(original.st_mode))
+        backups.append((archive_relative, source, destination))
+    return backups
+
+
 def save_resume(stopped: list[tuple[str, str]]) -> None:
     private_directory(RESUME_FILE.parent, create=True)
     with tempfile.NamedTemporaryFile(mode='w', dir=RESUME_FILE.parent, delete=False) as stream:
@@ -145,7 +189,7 @@ def resume(stopped: list[tuple[str, str]] | None = None) -> None:
                 or info.st_mode & 0o077 or info.st_size > 16384):
             raise ValueError('private bounded resume journal required')
         stopped = json.loads(RESUME_FILE.read_bytes())
-    allowed = {('unit', name) for name in UNITS} | {('container', name) for name in CONTAINERS}
+    allowed = {('unit', name) for name in (*UNITS, *ASSISTANT_UNITS)} | {('container', name) for name in CONTAINERS}
     if (not isinstance(stopped, list) or len(stopped) > len(allowed)
             or any(not isinstance(row, (list, tuple)) or len(row) != 2 or tuple(row) not in allowed for row in stopped)):
         raise ValueError('resume journal contains an unreviewed resource')
@@ -199,6 +243,102 @@ def unit_state(unit: str) -> str:
         if not pid.isdecimal() or fields['ActiveState'] != 'active' and pid != '0':
             raise ValueError('recovery source service has an uncertain process state')
     return fields['ActiveState']
+
+
+def assistant_path_ancestors(path: Path) -> None:
+    """Refuse redirected optional source roots and credential paths."""
+    for ancestor in reversed(path.parents):
+        if ancestor.exists() and ancestor.is_symlink():
+            raise ValueError('assistant recovery source has a symlinked ancestor')
+
+
+def assistant_recovery_sources() -> tuple[dict[str, Path], dict[str, Path]]:
+    """Include retained opt-in state without requiring disabled services to exist."""
+    directories, files = {}, {}
+    for name, path in ASSISTANT_DIRECTORIES.items():
+        if not path.exists() and not path.is_symlink():
+            continue
+        assistant_path_ancestors(path)
+        info = path.lstat()
+        managed_policy = name == 'assistant-context/policy'
+        policy_group = grp.getgrnam('homecompute-context').gr_gid if managed_policy else None
+        if (not stat.S_ISDIR(info.st_mode)
+                or (managed_policy and (info.st_uid != 0 or info.st_gid != policy_group
+                                        or stat.S_IMODE(info.st_mode) != 0o750))
+                or (not managed_policy and info.st_mode & 0o077)):
+            raise ValueError('assistant recovery directory is unsafe')
+        for parent, child_dirs, child_files in os.walk(path, followlinks=False):
+            directory = Path(parent)
+            if directory.is_symlink():
+                raise ValueError('assistant recovery tree contains a symlink')
+            for child_name in child_dirs:
+                child = directory / child_name
+                metadata = child.lstat()
+                if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != info.st_uid
+                        or (managed_policy and (metadata.st_mode & 0o077 or metadata.st_gid != info.st_gid))
+                        or (not managed_policy and metadata.st_mode & 0o077)):
+                    raise ValueError('assistant recovery tree contains an unsafe directory')
+            for child_name in child_files:
+                child = directory / child_name
+                metadata = child.lstat()
+                policy_projection = managed_policy and child_name in {'assistant-briefings.json', 'improvements-status.json'}
+                allowed_policy_mode = (stat.S_IMODE(metadata.st_mode) == 0o640 and metadata.st_gid == policy_group
+                                       if policy_projection else not metadata.st_mode & 0o077)
+                if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                        or not allowed_policy_mode or metadata.st_uid != info.st_uid):
+                    raise ValueError('assistant recovery tree contains an unsafe file')
+        directories[name] = path
+    for name, path in ASSISTANT_FILES.items():
+        if not path.exists() and not path.is_symlink():
+            continue
+        assistant_path_ancestors(path)
+        info = path.lstat()
+        mode_ok = (not info.st_mode & 0o022 and
+                   (name == 'assistant-context/delegation-known-hosts' or not info.st_mode & 0o077))
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1 or not mode_ok:
+            raise ValueError('assistant recovery credential file is unsafe')
+        files[name] = path
+    if 'assistant-context/state' in directories and 'assistant-context/clients.json' not in files:
+        raise ValueError('assistant state requires its declared external credentials in recovery coverage')
+    return directories, files
+
+
+def assistant_sqlite_sources(directories: dict[str, Path]) -> list[tuple[str, Path]]:
+    """Find declared private SQLite databases for online-backup API snapshots."""
+    databases = []
+    for archive_name, root in directories.items():
+        for parent, _subdirs, names in os.walk(root, followlinks=False):
+            for name in names:
+                source = Path(parent) / name
+                if source.is_symlink():
+                    raise ValueError('assistant SQLite source symlink refused')
+                info = source.lstat()
+                if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                    raise ValueError('assistant SQLite source file refused')
+                with source.open('rb') as stream:
+                    header = stream.read(16)
+                if header == b'SQLite format 3\0':
+                    databases.append((str(Path(archive_name) / source.relative_to(root)), source))
+                elif name.endswith(('.sqlite3', '.sqlite', '.db')):
+                    raise ValueError('declared assistant database is not SQLite')
+    return sorted(databases)
+
+
+def assistant_recovery_units() -> tuple[str, ...]:
+    # Disabled optional units may legitimately not be installed. Transitional or
+    # unverifiable loaded units remain hard failures through unit_state().
+    loaded = []
+    for unit in ASSISTANT_UNITS:
+        result = subprocess.run(['systemctl', 'show', unit, '-p', 'LoadState'],
+            capture_output=True, text=True, timeout=15)
+        if result.returncode:
+            raise ValueError('assistant recovery unit inspection failed')
+        if result.stdout.strip() == 'LoadState=not-found':
+            continue
+        if result.stdout.strip() != 'LoadState=loaded':
+            raise ValueError('assistant recovery unit inspection unavailable')
+        loaded.append(unit)
+    return tuple(loaded)
 
 
 def worker_idle() -> None:
@@ -282,6 +422,29 @@ def quiesced():
         # An active private browser can keep writing profile state independently
         # of its owner service. Defer rather than silently claim consistency.
         private_browsers_idle()
+        optional_directories, _ = assistant_recovery_sources()
+        optional_units = assistant_recovery_units()
+        if optional_units and not optional_directories:
+            raise ValueError('loaded assistant units have no declared retained state')
+        for unit in (unit for unit in optional_units if unit in ASSISTANT_TIMER_UNITS):
+            if unit_state(unit) == 'active':
+                stopped.append(('unit', unit))
+                save_resume(stopped)
+                run(['systemctl', 'stop', unit], timeout=180)
+                if unit_state(unit) != 'inactive':
+                    raise ValueError('a recovery source service did not stop cleanly')
+        for unit in (unit for unit in optional_units if unit in ASSISTANT_JOB_UNITS):
+            if unit_state(unit) == 'active':
+                raise RecoveryDeferred('assistant source maintenance is active; recovery preparation deferred')
+        if optional_units:
+            main_http_idle()
+        if ASSISTANT_CONTEXT_UNIT in optional_units and unit_state(ASSISTANT_CONTEXT_UNIT) == 'active':
+            stopped.append(('unit', ASSISTANT_CONTEXT_UNIT))
+            save_resume(stopped)
+            run(['systemctl', 'stop', ASSISTANT_CONTEXT_UNIT], timeout=180)
+            if unit_state(ASSISTANT_CONTEXT_UNIT) != 'inactive':
+                raise ValueError('assistant context service did not stop cleanly')
+            main_http_idle()
         for unit in UNITS:
             if unit_state(unit) == 'active':
                 stopped.append(('unit', unit))
@@ -325,6 +488,14 @@ def archive_filter(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
     return info
 
 
+def assistant_archive_filter(info: tarfile.TarInfo, database_members: set[str]) -> tarfile.TarInfo | None:
+    """Skip live SQLite files/sidecars; their Online Backup copies are archived separately."""
+    if info.name in database_members or any(info.name in {name + suffix for suffix in ('-wal', '-shm', '-journal')}
+                                             for name in database_members):
+        return None
+    return archive_filter(info)
+
+
 def seed_path(script: str) -> Path:
     matches = re.findall(r'file=(' + SEED_PATTERN + r'),if=virtio,format=raw,readonly=on', script)
     if len(matches) != 1:
@@ -350,7 +521,8 @@ def agents_seed() -> Path:
 def space_required() -> int:
     total = 1024**3  # Dump/staging allowance in addition to the measured files.
     entries = 0
-    for source in [*DIRECTORIES.values(), N8N]:
+    assistant_dirs, assistant_files = assistant_recovery_sources()
+    for source in [*DIRECTORIES.values(), *assistant_dirs.values(), N8N]:
         if source.is_symlink() or not source.is_dir():
             raise ValueError('declared recovery source is absent or symlinked')
         for parent, directories, files in os.walk(source, followlinks=False):
@@ -370,6 +542,10 @@ def space_required() -> int:
         if source.is_symlink() or not source.is_file(): raise ValueError('declared recovery file is absent or symlinked')
         total += source.stat().st_size
         if total > MAX_ARCHIVE_BYTES: raise ValueError('recovery source size budget requires review')
+    total += sum(path.stat().st_size for path in assistant_files.values())
+    # A consistent SQLite copy exists once in private staging and once in the
+    # final uncompressed tar while the archive is being written.
+    total += sum(source.stat().st_size for _, source in assistant_sqlite_sources(assistant_dirs))
     return total + MIN_FREE_BYTES
 
 
@@ -420,13 +596,20 @@ def prepare() -> Path:
                     for path in directory.iterdir():
                         if path != staged_seed:
                             archive.add(path, arcname='databases/' + path.name, filter=archive_filter)
-                    for relative, source in {**DIRECTORIES, **{('n8n/' + name): N8N / name
+                    assistant_dirs, assistant_files = assistant_recovery_sources()
+                    assistant_db_backups = assistant_sqlite_backups(assistant_dirs, directory)
+                    assistant_db_members = {'state/' + relative for relative, _source, _backup in assistant_db_backups}
+                    for relative, source in {**DIRECTORIES, **assistant_dirs, **{('n8n/' + name): N8N / name
                             for name in ('binaryData', 'nodes', 'ssh') if (N8N / name).is_dir()}}.items():
                         if source.is_symlink() or not source.is_dir():
                             raise ValueError('declared recovery source is absent or symlinked: ' + relative)
-                        archive.add(source, arcname='state/' + relative, filter=archive_filter)
+                        member_filter = (lambda info, db_members=assistant_db_members:
+                            assistant_archive_filter(info, db_members)) if relative in assistant_dirs else archive_filter
+                        archive.add(source, arcname='state/' + relative, filter=member_filter)
+                    for relative, _source, backup in assistant_db_backups:
+                        archive.add(backup, arcname='state/' + relative, filter=archive_filter)
                     archive.add(staged_seed, arcname='state/agents-vm/seed.iso')
-                    for relative, source in EXTRA_FILES.items():
+                    for relative, source in {**EXTRA_FILES, **assistant_files}.items():
                         archive.add(source, arcname='state/' + relative, filter=archive_filter)
                     # Original media is owned by the NAS and must have its own
                     # independent backup; copying it back to that NAS is not DR.
@@ -434,6 +617,9 @@ def prepare() -> Path:
                                 'postgres': sorted(POSTGRES), 'sqlite': ['n8n'], 'vms': ['agents-vm', 'codex-vm'],
                                 'media_included': False, 'host_age_identity_included': False,
                                 'nix_store_symlinks_included': False,
+                                'assistant_context': {'directories': sorted(assistant_dirs),
+                                                      'files': sorted(assistant_files),
+                                                      'sqlite_databases': sorted(relative for relative, _, _ in assistant_db_backups)},
                                 'agents_seed': {'archive_path': 'state/agents-vm/seed.iso', 'source': str(seed),
                                                 'sha256': hashlib.sha256(staged_seed.read_bytes()).hexdigest()}}
                     entry = directory / 'manifest.json'
@@ -472,6 +658,8 @@ def safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
             # Nix store symlinks are useful configuration references, but never
             # followed during isolated verification or extraction.
             raise ValueError('external symlinks require manual recovery review')
+        if item.name.startswith('state/assistant-context/') and item.issym():
+            raise ValueError('assistant recovery state cannot contain symlinks')
     return result
 
 
@@ -512,10 +700,78 @@ def verify_extracted(archive_path: Path, target: Path) -> dict:
 def verify_restored(target: Path) -> dict:
     if not target.is_absolute() or target.parent.resolve() != SCRATCH.resolve() or target.is_symlink() or not target.is_dir():
         raise ValueError('completed private restore directory required')
-    manifest = json.loads((target / 'manifest.json').read_text())
+    manifest_path = target / 'manifest.json'
+    if manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 2 * 1024**2:
+        raise ValueError('bounded regular recovery manifest required')
+    manifest = json.loads(manifest_path.read_text())
     if (manifest.get('schema_version') != 1 or manifest.get('postgres') != sorted(POSTGRES)
             or manifest.get('vms') != ['agents-vm', 'codex-vm'] or manifest.get('sqlite') != ['n8n']):
         raise ValueError('recovery manifest scope mismatch')
+    assistant = manifest.get('assistant_context')
+    if assistant is not None:
+        if (not isinstance(assistant, dict) or set(assistant) not in
+                ({'directories', 'files'}, {'directories', 'files', 'sqlite_databases'})
+                or not isinstance(assistant['directories'], list) or not isinstance(assistant['files'], list)
+                or any(name not in ASSISTANT_DIRECTORIES for name in assistant['directories'])
+                or any(name not in ASSISTANT_FILES for name in assistant['files'])
+                or len(assistant['directories']) != len(set(assistant['directories']))
+                or len(assistant['files']) != len(set(assistant['files']))):
+            raise ValueError('assistant recovery manifest scope mismatch')
+        for name in assistant['directories']:
+            path = target / 'state' / name
+            if path.is_symlink() or not path.is_dir():
+                raise ValueError('declared assistant recovery state is missing')
+            managed_policy = name == 'assistant-context/policy'
+            for parent, child_dirs, child_files in os.walk(path, followlinks=False):
+                directory = Path(parent)
+                mode = stat.S_IMODE(directory.stat().st_mode)
+                if (directory.is_symlink()
+                        or (managed_policy and directory == path and mode != 0o750)
+                        or (not (managed_policy and directory == path) and mode & 0o077)):
+                    raise ValueError('restored assistant directory is not private')
+                for child_name in child_dirs:
+                    child = directory / child_name
+                    if child.is_symlink() or not child.is_dir() or child.stat().st_mode & 0o077:
+                        raise ValueError('restored assistant directory tree is unsafe')
+                for child_name in child_files:
+                    child = directory / child_name
+                    info = child.lstat()
+                    policy_projection = managed_policy and child_name in {'assistant-briefings.json', 'improvements-status.json'}
+                    mode_ok = (stat.S_IMODE(info.st_mode) == 0o640 if policy_projection
+                               else not info.st_mode & 0o077)
+                    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or not mode_ok:
+                        raise ValueError('restored assistant state file is unsafe')
+        for name in assistant['files']:
+            path = target / 'state' / name
+            if path.is_symlink() or not path.is_file():
+                raise ValueError('declared assistant recovery credential is missing or unsafe')
+            info = path.lstat()
+            known_hosts = name == 'assistant-context/delegation-known-hosts'
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_mode & 0o022 or (not known_hosts and info.st_mode & 0o077)):
+                raise ValueError('declared assistant recovery credential mode is unsafe')
+        databases = assistant.get('sqlite_databases', [])
+        if (not isinstance(databases, list) or len(databases) != len(set(databases))
+                or any(not isinstance(name, str) or not name.startswith(tuple(
+                    'assistant-context/' + directory.split('/', 1)[1] for directory in assistant['directories']))
+                    or '..' in Path(name).parts or name.startswith('/') for name in databases)):
+            raise ValueError('assistant SQLite manifest scope mismatch')
+        for name in databases:
+            path = target / 'state' / name
+            if path.is_symlink() or not path.is_file():
+                raise ValueError('declared assistant SQLite backup is missing')
+        if 'assistant-context/state' in assistant['directories']:
+            if 'assistant-context/clients.json' not in assistant['files']:
+                raise ValueError('assistant recovery credential coverage is incomplete')
+            for name in ('context.sqlite3', 'attention.sqlite3', 'coverage.sqlite3', 'delivery.sqlite3'):
+                path = target / 'state/assistant-context/state' / name
+                if path.is_symlink() or not path.is_file():
+                    raise ValueError('assistant recovery database is incomplete')
+            if 'sqlite_databases' in assistant:
+                expected = {f'assistant-context/state/{name}' for name in
+                            ('context.sqlite3', 'attention.sqlite3', 'coverage.sqlite3', 'delivery.sqlite3')}
+                if not expected <= set(databases):
+                    raise ValueError('assistant consistent SQLite backup coverage is incomplete')
     seed = target / 'state/agents-vm/seed.iso'
     metadata = manifest.get('agents_seed', {})
     if (seed.is_symlink() or not seed.is_file() or seed.stat().st_size > 32 * 1024**2

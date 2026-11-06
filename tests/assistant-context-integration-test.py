@@ -277,7 +277,8 @@ class ContextIntegration(unittest.TestCase):
             with patch('assistant_context_tools.ORIGIN', f'http://127.0.0.1:{self.server.server_address[1]}'):
                 owner_tools = {row['name'] for row in rpc('hermes-owner', 'tools/list')['result']['tools']}
                 openclaw_tools = {row['name'] for row in rpc('openclaw', 'tools/list')['result']['tools']}
-                context_tools = {PREFIX + row for row in ('search', 'today', 'source', 'decision', 'feedback', 'memory')}
+                context_tools = {PREFIX + row for row in ('search', 'today', 'source', 'decision', 'feedback', 'memory',
+                                                         'briefing', 'routine', 'delegate', 'improvements')}
                 baseline_tools = {'homecompute_task_submit', 'homecompute_task_status', 'homecompute_task_cancel'}
                 self.assertTrue(context_tools <= owner_tools)
                 self.assertFalse(context_tools & openclaw_tools)

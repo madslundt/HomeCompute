@@ -13,7 +13,7 @@ configuration and are not copied into this workflow.
 | Source | Wired read | Coverage and deletion behavior |
 | --- | --- | --- |
 | Home Assistant | Existing authenticated `homecompute-openclaw-ha-metadata` projection through `homeassistant_observations.local_read` | Point-in-time metadata, selected checks and energy values only. It is not a change feed; missing entities never produce tombstones. |
-| Daythread | Optional authenticated `GET /v1/integrations/assistant-context` export over operator-pinned HTTPS and a separate mode `0600` token file | Exports saved diary summaries and explicit proposed/confirmed commitments only. Pages are cursor-pinned and capped at 50 pages; Daythread has no deletion feed, so no tombstones are issued. |
+| Daythread | Optional authenticated `GET /v1/integrations/assistant-context` export and finite `POST /v1/integrations/assistant-context/resolve` over pinned HTTPS, with a separate mode `0600` token | Saved diary summaries and proposed/confirmed commitments only. Cursor-pinned export is capped at 50 pages. Known IDs are checked in rotating bounded batches; explicit deletion, invalidation or window expiry produces a monotonic tombstone. Missing pages and failed resolution do not imply deletion. |
 | Aula | Existing HomeCompute MCP bridge through `openclaw_services.Services`; bounded calendar pages, first-page posts and thread messages, plus configured weekly-letter pages | Calendar/letter pages are complete only when the source's `next_offset` is null, but reads are not a stable provider snapshot. Posts and thread messages are first-page only and never infer deletion. |
 | Calendar | Existing `openclaw_calendar.Calendar` read route, for explicitly configured household aliases and a bounded interval of at most 31 days | Uses the route's event projection and truncation flag. A truncated page is partial. Reconciliation is limited to the exact alias and interval coverage key. |
 
@@ -27,8 +27,10 @@ can produce a delete event.
 ## Private configuration
 
 Provision `/var/lib/homecompute-assistant/context-sync.json` and
-`context-ingest-token` as owner-only regular files with mode `0600`. The schema
-is shown in [sanitized-config.json](snippets/sanitized-config.json). The token
+`context-ingest-token` as owner-only regular files with mode `0600`. The recommended rolling-window template is
+[assistant-context-sync.example.json](../../config/assistant-context-sync.example.json);
+[sanitized-config.json](snippets/sanitized-config.json) retains a fixed-window
+compatibility example. The token
 is issued for source ingest by the context service, which selects trusted scope
 and source grants. The sync tool uses a fixed loopback URL and fixed existing
 bridge configuration paths; it does not accept provider URLs or arbitrary
@@ -38,6 +40,18 @@ credential paths.
 ISO weeks are explicit operator-selected source scope. They are not discovered
 or widened by the model. Keep the configuration private because these selections
 can identify household records.
+
+Calendar rolling bounds resolve from Copenhagen local midnight on every scan.
+`past_days + future_days` is at most 30 local days, so autumn DST remains within
+the existing provider's 31 elapsed-day limit. Explicit fixed `start`/`end` is
+still supported, up to 31 elapsed days, and is exclusive with rolling mode.
+Coverage reconciliation uses the exact resolved alias and interval.
+
+Provider failures are isolated. Healthy sources still publish; failed sources
+produce no absence deletions and post a source failure receipt. The API preserves
+the last successful observation separately and reports the source unavailable
+until a later healthy scan. CLI output contains counts and finite source failure
+flags, with exit status 1 for partial failure.
 
 ## Run and limitations
 
