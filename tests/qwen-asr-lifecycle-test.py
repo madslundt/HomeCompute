@@ -316,7 +316,7 @@ class DockerDeclarationTests(unittest.TestCase):
                       'USER 10001:10001', 'groupadd --gid 10001 hc-qwen-asr'):
             self.assertIn(value, self.docker)
 
-    def test_only_six_hashed_wheels_and_no_torch_resolver(self):
+    def test_only_seven_hashed_wheels_and_no_torch_resolver(self):
         lines = [line for line in (self.source / 'requirements.lock').read_text().splitlines()
                  if line and not line.startswith('#')]
         names = []
@@ -327,7 +327,7 @@ class DockerDeclarationTests(unittest.TestCase):
             self.assertRegex(parts[3], r'^--hash=sha256:[0-9a-f]{64}$')
             names.append(parts[0])
         self.assertEqual(names, ['transformers', 'huggingface-hub', 'tokenizers',
-                                 'safetensors', 'hf-xet', 'click'])
+                                 'safetensors', 'hf-xet', 'click', 'accelerate'])
         for flag in ('--isolated', '--break-system-packages', '--no-index', '--no-deps', '--require-hashes'):
             self.assertIn(flag, self.docker)
         self.assertIn('all(m.version(k)==v for k,v in p["packages"].items())', self.docker)

@@ -7,9 +7,11 @@ No Compose service or production alias is provided.
 
 `model-pin.json` pins the official
 [Qwen/Qwen3-ASR-1.7B-hf](https://huggingface.co/Qwen/Qwen3-ASR-1.7B-hf)
-snapshot, all eight public files, the native Transformers implementation and six
+snapshot, all eight public files, the native Transformers implementation and seven
 overlay wheels. The exact NGC ARM64 base retains its vendor Torch/CUDA packages.
-No checkpoint Python code, remote kernels, resolver-selected dependencies,
+Checkpoint tensors load directly to CUDA through the native explicit device map,
+avoiding a complete CPU model copy. Accelerate is pinned for device placement;
+no CPU/disk offload is selected. No checkpoint Python code, remote kernels, resolver-selected dependencies,
 quantization, CPU inference, or runtime downloads are permitted. The processor
 supports Danish and English. That inventory is not evidence of accuracy.
 

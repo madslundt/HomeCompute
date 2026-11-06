@@ -12,7 +12,7 @@ from model_files import verify_model
 
 ROOT = Path(__file__).resolve().parent
 PIN = json.loads((ROOT / "model-pin.json").read_text())
-ENGINE_VERSION = "qwen-native-hf-v1"
+ENGINE_VERSION = "qwen-native-hf-v2"
 MAX_TOKENS = 512
 OPTIONS = {"do_sample": False, "num_beams": 1, "max_new_tokens": MAX_TOKENS,
            "use_cache": True, "cache_implementation": "dynamic", "disable_compile": True,
@@ -62,6 +62,14 @@ def generation_evidence(ids: list[int], prompt_tokens: int, audio_tokens: int) -
             "budget_reached": len(ids) >= MAX_TOKENS,
             "prompt_tokens": prompt_tokens, "audio_tokens": audio_tokens,
             "coverage_claim": False}
+
+
+def load_checkpoint(model_class, path, dtype):
+    """Materialize checkpoint tensors on CUDA, without a complete CPU model copy."""
+    return model_class.from_pretrained(
+        str(path), dtype=dtype, device_map={"": "cuda:0"}, use_safetensors=True,
+        use_kernels=False, attn_implementation="sdpa", output_loading_info=True,
+        local_files_only=True, trust_remote_code=False)
 
 
 class QwenEngine:
@@ -119,14 +127,12 @@ class QwenEngine:
                 raise RuntimeError("Unexpected processor implementation")
             if self.processor.feature_extractor.dither != 0.0:
                 raise RuntimeError("Stochastic audio processing is forbidden")
-            # The pinned loader initializes on meta and lazily maps safetensors.
-            # No separate complete state_dict, offload or quantization is used.
-            self.model, info = transformers.Qwen3ASRForConditionalGeneration.from_pretrained(
-                str(self.path), dtype=torch.bfloat16, use_safetensors=True,
-                use_kernels=False, attn_implementation="sdpa", output_loading_info=True, **common)
+            # The pinned loader initializes on meta and loads each tensor to its
+            # explicit CUDA destination. No complete CPU model or offload is used.
+            self.model, info = load_checkpoint(
+                transformers.Qwen3ASRForConditionalGeneration, self.path, torch.bfloat16)
             if any(info.get(key) for key in ("missing_keys", "unexpected_keys", "mismatched_keys", "error_msgs")):
                 raise RuntimeError("Checkpoint did not load completely")
-            self.model.to(self.device)
             self.model.eval()
             self.describe()
             if self.file_identities() != before:

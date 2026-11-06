@@ -1,7 +1,7 @@
 ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9
 FROM ${PYTORCH_BASE}
 ARG HOME_COMPUTE_REVISION
-ARG ENGINE_SHA256=64a56a998c1d0e1a39eece7082b3531a02f565fd3f78bb495a7c820564af88d3
+ARG ENGINE_SHA256=8719798fde44f9d5838b84413c86ba891c74209ca1e460bcdbc60c3dd88c589f
 LABEL org.opencontainers.image.source="https://github.com/madslundt/HomeCompute" \
       org.opencontainers.image.revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
@@ -17,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION}
 WORKDIR /opt/homecompute
 COPY requirements.lock /opt/homecompute/requirements.lock
-# Only six exact public wheels are installed. No dependency resolver, source
+# Only seven exact public wheels are installed. No dependency resolver, source
 # builds or isolated build environment can replace vendor Torch or CUDA.
 RUN python3 -I -B -c 'import importlib.metadata as m,platform,sys; assert platform.machine()=="aarch64"; assert sys.version_info[:2]==(3,12); assert m.version("torch")=="2.11.0a0+eb65b36914.nv26.2"; assert m.version("torchvision")=="0.25.0a0+1e53952f.nv26.2.44259020"' \
  && python3 -m pip --isolated --disable-pip-version-check install --break-system-packages --no-index --no-cache-dir --no-deps --only-binary=:all: --require-hashes -r requirements.lock

@@ -45,10 +45,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="qwen-synthetic-") as directory:
         model.save_pretrained(directory, safe_serialization=True)
         loaded, info = Qwen3ASRForConditionalGeneration.from_pretrained(
-            directory, dtype=torch.bfloat16, use_safetensors=True, use_kernels=False,
+            directory, dtype=torch.bfloat16, device_map={"": "cpu"},
+            use_safetensors=True, use_kernels=False,
             attn_implementation="sdpa", output_loading_info=True,
             local_files_only=True, trust_remote_code=False)
-        loaded.to("cpu")
         assert not any(info.get(key) for key in (
             "missing_keys", "unexpected_keys", "mismatched_keys", "error_msgs"))
         assert all(not p.is_meta for p in loaded.parameters())

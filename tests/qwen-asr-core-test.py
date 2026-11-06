@@ -69,6 +69,22 @@ class OutputTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             engine.QwenEngine("unused", device="cpu")
 
+    def test_checkpoint_load_targets_cuda_without_full_cpu_model(self):
+        observed = {}
+        class Model:
+            @staticmethod
+            def from_pretrained(path, **kwargs):
+                observed.update(kwargs)
+                return "model", {"missing_keys": []}
+        result = engine.load_checkpoint(Model, Path("synthetic"), "bf16-sentinel")
+        self.assertEqual(result[0], "model")
+        self.assertEqual(observed["device_map"], {"": "cuda:0"})
+        self.assertEqual(observed["dtype"], "bf16-sentinel")
+        for field in ("use_safetensors", "output_loading_info", "local_files_only"):
+            self.assertIs(observed[field], True)
+        self.assertIs(observed["trust_remote_code"], False)
+        self.assertIs(observed["use_kernels"], False)
+
 
 class FileTests(unittest.TestCase):
     def setUp(self):

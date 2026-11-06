@@ -14,8 +14,8 @@
   "dtype": "bfloat16",
   "max_audio_seconds": 30,
   "max_upload_bytes": 1000000,
-  "engine_version": "qwen-native-hf-v1",
-  "engine_sha256": "64a56a998c1d0e1a39eece7082b3531a02f565fd3f78bb495a7c820564af88d3",
+  "engine_version": "qwen-native-hf-v2",
+  "engine_sha256": "8719798fde44f9d5838b84413c86ba891c74209ca1e460bcdbc60c3dd88c589f",
   "packages": {
     "torch": "2.11.0a0+eb65b36914.nv26.2",
     "torchvision": "0.25.0a0+1e53952f.nv26.2.44259020",
@@ -24,7 +24,8 @@
     "tokenizers": "0.23.1",
     "safetensors": "0.8.0",
     "hf-xet": "1.5.2",
-    "click": "8.4.2"
+    "click": "8.4.2",
+    "accelerate": "1.15.0"
   },
   "files": [
     {
@@ -96,5 +97,6 @@
     "audio_dither": 0.0,
     "audio_truncation": false
   },
-  "qualification": "Unqualified capacity, accuracy, repeatability and long-input behavior; no production selection."
+  "qualification": "Unqualified capacity, accuracy, repeatability and long-input behavior; no production selection.",
+  "load_policy": "Native explicit device_map CUDA0; no full CPU model copy, offload or quantization"
 }
