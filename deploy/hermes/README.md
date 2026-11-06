@@ -2,6 +2,9 @@
 
 ## Hands-free browser voice
 
+See [the dated browser voice verification](../../docs/hermes-voice-validation-2026-11-06.md)
+for applied source, recovery, Danish/English tests and remaining verification scope.
+
 The owner URL `https://agents.home.arpa/hermes/` serves Hermes's native Webapp
 with its browser microphone and continuous voice conversation controls. The
 older administrative dashboard embeds a terminal and does not have those
