@@ -55,7 +55,8 @@ RUN hermes_node_dir="$(/opt/hermes/python-runtime/bin/python3 -c 'from pm import
     && rm /opt/hermes/.venv/bin/hermes /opt/hermes/.venv/bin/hermes-agent /opt/hermes/.venv/bin/hermes-acp \
     && cp /tmp/hermes-console-entries/* /opt/hermes/.venv/bin/ \
     && rm -r /tmp/hermes-console-entries \
-    && chmod -R a+rX /opt/hermes \
+    && find /opt/hermes -type d ! -perm -0005 -exec chmod a+rX {} + \
+    && find /opt/hermes -type f \( ! -perm -0004 -o \( -perm /111 ! -perm -0001 \) \) -exec chmod a+rX {} + \
     && rm -rf /opt/products /tmp/hermes-icons /root/.npm /root/.cache/uv
 # Validate the retained managed CLI adapter against the real new parser. A
 # version string alone does not establish compatibility.
