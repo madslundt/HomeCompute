@@ -61,7 +61,10 @@ class Fleet:
         self.recovery = SimpleNamespace(qualified_cuda_candidate_image_id=lambda: REPLACE.PREVIOUS_IMAGE,
                                         cuda_candidate_stop=self.stop_recovery,
                                         ensure_spark_maintenance_ownership=self.maintenance,
-                                        cuda_candidate_start=self.restore_old)
+                                        cuda_candidate_start=self.restore_old,
+                                        compose=lambda *_args: SimpleNamespace(stdout=json.dumps({'services': {
+                                            'whisper-primary': {'command': ['model', '--gpu-memory-utilization', '0.08'],
+                                                                'entrypoint': None, 'mem_limit': str(12 * 1024**3)}}})))
 
     def persist(self):
         (self.STATE / 'cuda-candidate.json').write_text(json.dumps(self.current))

@@ -269,14 +269,15 @@ def preflight(api, revision):
             not original_relay or original_relay.get('Image') != tx['relay_original'].get('image')):
         raise ValueError('Exact retained vLLM and relay are required for guarded rollback')
     # The old lifecycle briefly restores this bounded engine before promotion.
-    command = primary.get('Config', {}).get('Cmd') or []
-    try:
-        utilization = command[command.index('--gpu-memory-utilization') + 1]
-    except (ValueError, IndexError):
-        raise ValueError('Retained vLLM memory reservation is unknown') from None
-    if (utilization != '0.08' or command.count('--gpu-memory-utilization') != 1 or
+    declared = json.loads(recovery.compose('--profile', 'primary', 'config', '--format', 'json').stdout)['services']['whisper-primary']
+    # Compose config retains $$ escaping; Docker receives the unescaped literal.
+    # Compare the whole trusted wrapper, never parse arbitrary shell fragments.
+    command = [argument.replace('$$', '$') for argument in declared['command']]
+    if (primary.get('Config', {}).get('Cmd') != command or
+            primary.get('Config', {}).get('Entrypoint') != declared['entrypoint'] or
+            int(declared['mem_limit']) != 12 * 1024**3 or
             primary.get('HostConfig', {}).get('Memory') != 12 * 1024**3):
-        raise ValueError('Retained vLLM capacity differs from the reviewed transition')
+        raise ValueError('Retained vLLM launch or capacity differs from the reviewed recovery source')
     if available_memory() < 12 * 1024**3:
         raise ValueError('Less than 12 GiB available before predecessor shutdown')
     return old, tx, bundle, maintenance_bundle(api)
