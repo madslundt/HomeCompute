@@ -1255,7 +1255,9 @@ class MigrationTests(unittest.TestCase):
                 if path == 'sample.wav' and kwargs.get('dir_fd') is not None and not changed:
                     changed = True
                     audio_path = manifest.parent / 'sample.wav'
-                    audio_path.unlink()
+                    # Retain the original inode: unlink/write can reuse it on Linux,
+                    # testing the content-hash guard instead of the open-time race.
+                    audio_path.rename(manifest.parent / 'retained-original.wav')
                     audio_path.write_bytes(replacement)
                     audio_path.chmod(0o600)
                 return real_open(path, flags, *args, **kwargs)
