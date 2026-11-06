@@ -30,7 +30,8 @@ def pcm(audio):
 
 
 def source(frames=160000):
-    return wav(struct.pack(f"<{frames}h", *(index % 2000 - 1000 for index in range(frames))))
+    pattern = struct.pack("<2000h", *(index - 1000 for index in range(2000)))
+    return wav(pattern * (frames // 2000) + pattern[:(frames % 2000) * 2])
 
 
 def probabilities(frames, *runs):
@@ -72,7 +73,7 @@ class PartitionTests(unittest.TestCase):
     def test_short_edge_and_entire_low_probability_runs_preserve_exact_wav(self):
         frames = 160000
         original = source(frames)
-        cases = [(), ((100, 124),), ((0, 125),), ((100, 313),), ((0, 313),),
+        cases = [(), ((100, 103),), ((0, 125),), ((100, 313),), ((0, 313),),
                  ((1, 26),), ((285, 310),)]
         for runs in cases:
             with self.subTest(runs=runs):
@@ -82,7 +83,7 @@ class PartitionTests(unittest.TestCase):
     def test_half_probability_is_voiced_on_both_pause_edges(self):
         original = source()
         values = [0.5] * 313
-        values[100:125] = [0.499] * 25
+        values[100:104] = [0.499] * 4
         self.assertEqual(len(B.partitions(original, observe=lambda _: values)), 2)
         self.assertEqual(B.partitions(original, observe=lambda _: [0.5] * 313),
                          [(0.0, 10.0, original)])
@@ -112,12 +113,95 @@ class PartitionTests(unittest.TestCase):
     def test_strict_wav_geometry_and_truncation_are_validated_before_observation(self):
         invalid = [b"bad", bytearray(source()), wav(b""), wav(b"\0" * 32000, channels=2),
                    wav(b"\0" * 32000, width=1), wav(b"\0" * 32000, rate=8000),
-                   wav(b"\0" * (480001 * 2)), wav(b"\0\0\1"), source()[:-2]]
+                   wav(b"\0" * (19200001 * 2)), wav(b"\0\0\1"), source()[:-2]]
         for audio in invalid:
             observe = Mock()
             with self.subTest(kind=type(audio).__name__, size=len(audio)), self.assertRaises(ValueError):
                 B.partitions(audio, observe=observe)
             observe.assert_not_called()
+
+
+class WholeRecordingTests(unittest.TestCase):
+    def test_global_observation_before_thirty_second_cuts_merges_language_context(self):
+        frames = 53 * 16000
+        original = source(frames)
+        observe = Mock(return_value=probabilities(frames, (623, 627), (1342, 1346)))
+        proposals = B.partitions(original, observe=observe)
+        self.assertEqual([start for start, _, _ in proposals], [0, 20, 43.008])
+        self.assertTrue(all(3 <= duration <= 30 for _, duration, _ in proposals))
+        observe.assert_called_once()
+        self.assertEqual(len(observe.call_args.args[0]), len(pcm(original)))
+        regions = B.language_regions(original, proposals, [probe(), probe("en"), probe("en")], ["da", "en"])
+        self.assertEqual([(start, duration) for start, duration, _ in regions], [(0, 20), (20, 33)])
+        self.assertEqual(b"".join(pcm(data) for _, _, data in regions), pcm(original))
+
+    def test_long_intervals_use_existing_even_final_pair_then_same_language_recombines(self):
+        frames = 2424640  # Synthetic151.54s geometry, no fixture content.
+        original = source(frames)
+        proposals = B.partitions(original, observe=lambda _: probabilities(frames))
+        self.assertEqual([len(pcm(data)) // 2 for _, _, data in proposals],
+                         [480000] * 4 + [252320, 252320])
+        self.assertEqual(b"".join(pcm(data) for _, _, data in proposals), pcm(original))
+        regions = B.language_regions(original, proposals,
+            [probe(), probe(), probe("en"), probe("en"), probe(), probe()], ["da", "en"])
+        self.assertEqual([(round(start * 16000), len(pcm(data)) // 2) for start, _, data in regions],
+                         [(0, 960000), (960000, 960000), (1920000, 504640)])
+        self.assertEqual(b"".join(pcm(data) for _, _, data in regions), pcm(original))
+
+    def test_maximum_recording_uses_compact_pcm_and_returns_bounded_atoms(self):
+        frames = 1200 * 16000
+        original = wav(bytes(frames * 2))
+        observe = Mock(return_value=probabilities(frames))
+        proposals = B.partitions(original, observe=observe)
+        self.assertEqual(len(proposals), 40)
+        self.assertTrue(all(duration == 30 for _, duration, _ in proposals))
+        self.assertEqual(sum(len(pcm(data)) // 2 for _, _, data in proposals), frames)
+        self.assertEqual(observe.call_args.args[0], bytes(frames * 2))
+        self.assertIsNone(B.language_regions(original, proposals, [probe()] * 40, ["da", "en"]))
+
+
+class RegionValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.original = source(16000 * 12)
+        raw = pcm(self.original)
+        self.proposals = [(start, 4, wav(raw[start * 32000:(start + 4) * 32000])) for start in (0, 4, 8)]
+
+    def test_only_adjacent_confident_differences_create_boundaries(self):
+        for probes in [[probe()] * 3, [probe(), probe("en", 0.49), probe("en")],
+                       [probe(), probe("da", 0.49), probe("en")]]:
+            self.assertIsNone(B.language_regions(self.original, self.proposals, probes, ["da", "en"]))
+        regions = B.language_regions(self.original, self.proposals,
+            [probe("da", 0.5), probe("en", 0.5), probe("da", 0.49)], ["da", "en"])
+        self.assertEqual([(start, duration) for start, duration, _ in regions], [(0, 4), (4, 8)])
+        self.assertEqual(b"".join(pcm(data) for _, _, data in regions), pcm(self.original))
+
+    def test_short_unchanged_input_and_no_confident_boundary_returns_none(self):
+        original = source(100)
+        proposals = B.partitions(original, observe=lambda _: [0.9])
+        self.assertEqual(proposals, [(0, 100 / 16000, original)])
+        self.assertIsNone(B.language_regions(original, proposals, [probe()], ["da", "en"]))
+
+    def test_geometry_and_exact_original_pcm_are_checked_before_acceptance_or_fallback(self):
+        bad = [None, [], self.proposals[:-1], self.proposals[::-1]]
+        for index, replacement in [(0, (0, 4, wav(bytes(128000)))),
+                                    (1, (4.00001, 4, self.proposals[1][2])),
+                                    (1, (5, 4, self.proposals[1][2])),
+                                    (1, (4, 3, self.proposals[1][2])),
+                                    (1, (4, math.nan, self.proposals[1][2])),
+                                    (1, (True, 4, self.proposals[1][2])),
+                                    (1, (4, 4)),
+                                    (2, (8, 4, self.proposals[2][2][:-2]))]:
+            changed = self.proposals.copy(); changed[index] = replacement; bad.append(changed)
+        for proposals in bad:
+            for probes in [[probe()] * 3, [probe(), probe("en"), probe()]]:
+                with self.subTest(kind=type(proposals).__name__), self.assertRaises(ValueError):
+                    B.language_regions(self.original, proposals, probes, ["da", "en"])
+
+    def test_every_probe_is_validated_even_after_a_confident_boundary(self):
+        for probes in [[probe(), probe("en")], [probe(), probe("en"), {}],
+                       [probe(), probe("en"), probe("en", math.inf)]]:
+            with self.subTest(count=len(probes)), self.assertRaises(ValueError):
+                B.language_regions(self.original, self.proposals, probes, ["da", "en"])
 
 
 class NormalizationTests(unittest.TestCase):

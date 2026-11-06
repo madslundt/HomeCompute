@@ -5,35 +5,43 @@ source samples, and detector probabilities do not establish silence or coverage.
 """
 from __future__ import annotations
 
+from array import array
 from collections.abc import Callable, Sequence
 import io
 import math
 import re
-import struct
+import sys
 import wave
 
-VERSION = "normalized-vad-1s-rms24dbfs-cap30db-pause800ms-language-confidence0.5-v1"
+VERSION = "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-v2"
 RATE = 16000
 FRAME_SAMPLES = 512
-MIN_PAUSE_FRAMES = 25
+MIN_PAUSE_FRAMES = 4
 MIN_CHILD_SAMPLES = 48000
-MAX_SAMPLES = 30 * RATE
+MAX_SAMPLES = 1200 * RATE
+MAX_PROPOSAL_SAMPLES = 30 * RATE
 MAX_GAIN = 10 ** (30 / 20)
 TARGET_RMS = 32768 * 10 ** (-24 / 20)
 
 
 def _normalized_pcm(pcm: bytes) -> bytes:
-    # WAV PCM is little-endian on every host. Normalize each complete or partial
-    # one-second block independently, retaining exact zero and never attenuating.
-    samples = list(struct.unpack(f"<{len(pcm) // 2}h", pcm))
+    # Use compact int16 storage even for the entire bounded recording. WAV PCM
+    # is little-endian; array's native representation needs an explicit swap.
+    samples = array("h", pcm)
+    if samples.itemsize != 2:
+        raise RuntimeError("Unsupported PCM sample representation")
+    if sys.byteorder != "little":
+        samples.byteswap()
     for begin in range(0, len(samples), RATE):
         block = samples[begin:begin + RATE]
         rms = math.sqrt(sum(value * value for value in block) / len(block))
         gain = min(MAX_GAIN, max(1.0, TARGET_RMS / rms)) if rms else 1.0
-        samples[begin:begin + len(block)] = [
-            max(-32768, min(32767, round(value * gain))) for value in block
-        ]
-    return struct.pack(f"<{len(samples)}h", *samples)
+        if gain > 1:
+            samples[begin:begin + len(block)] = array("h", (
+                max(-32768, min(32767, round(value * gain))) for value in block))
+    if sys.byteorder != "little":
+        samples.byteswap()
+    return samples.tobytes()
 
 
 def _read_pcm(audio: bytes) -> tuple[int, bytes]:
@@ -55,12 +63,33 @@ def _read_pcm(audio: bytes) -> tuple[int, bytes]:
     return frames, pcm
 
 
-def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> list[tuple[float, float, bytes]]:
-    """Propose <=30s partitions without dropping, gaining or duplicating samples.
+def _wav(pcm: bytes) -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as target:
+        target.setnchannels(1)
+        target.setsampwidth(2)
+        target.setframerate(RATE)
+        target.writeframes(pcm)
+    return output.getvalue()
 
-    Only complete probability frames can bound an internal low-probability run.
-    All observations, including the partial final frame, must be valid. Failure
-    raises instead of silently selecting a different request boundary.
+
+def _bounded_ranges(begin: int, end: int):
+    """Existing native-window geometry, including evenly shared tiny tails."""
+    while begin < end:
+        remaining = end - begin
+        count = min(MAX_PROPOSAL_SAMPLES, remaining)
+        if 0 < remaining - count < MIN_CHILD_SAMPLES:
+            count = remaining // 2
+        yield begin, begin + count
+        begin += count
+
+
+def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> list[tuple[float, float, bytes]]:
+    """Observe <=1200s globally, then propose sample-conserving <=30s atoms.
+
+    Acoustic proposals precede fixed ASR windows, so language regions can cross
+    old thirty-second boundaries. Only complete frames bound pause candidates;
+    every observation, including the partial final frame, must be valid.
     """
     frames, pcm = _read_pcm(audio)
     probabilities = observe(_normalized_pcm(pcm))
@@ -76,25 +105,16 @@ def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> 
             if pause_start is None:
                 pause_start = index
         elif pause_start is not None:
-            # A complete voiced frame precedes and follows this entire run.
             if pause_start > 0 and index - pause_start >= MIN_PAUSE_FRAMES:
                 cut = (pause_start + index) * (FRAME_SAMPLES // 2)
                 if cut - cuts[-1] >= MIN_CHILD_SAMPLES and frames - cut >= MIN_CHILD_SAMPLES:
                     cuts.append(cut)
             pause_start = None
-    if len(cuts) == 1:
+    if len(cuts) == 1 and frames <= MAX_PROPOSAL_SAMPLES:
         return [(0.0, frames / RATE, audio)]
     cuts.append(frames)
-    result = []
-    for begin, end in zip(cuts, cuts[1:]):
-        output = io.BytesIO()
-        with wave.open(output, "wb") as target:
-            target.setnchannels(1)
-            target.setsampwidth(2)
-            target.setframerate(RATE)
-            target.writeframes(pcm[begin * 2:end * 2])
-        result.append((begin / RATE, (end - begin) / RATE, output.getvalue()))
-    return result
+    return [(begin / RATE, (end - begin) / RATE, _wav(pcm[begin * 2:end * 2]))
+            for left, right in zip(cuts, cuts[1:]) for begin, end in _bounded_ranges(left, right)]
 
 
 def _canonical_candidates(candidates: object) -> bool:
@@ -103,16 +123,15 @@ def _canonical_candidates(candidates: object) -> bool:
             and candidates == sorted(set(candidates)) and len(",".join(candidates)) <= 63)
 
 
-def has_confident_language_change(probe_results: list[dict], candidates: list[str]) -> bool:
-    """Require two different confident selected IDs; never inspect hypothesis text.
+def _selections(probe_results: list[dict], candidates: list[str]) -> list[dict]:
+    """Validate every native selection without inspecting hypothesis text.
 
-    Native detected language may be outside the restricted candidate list. Weak
-    but valid observations retain the original context; malformed data raises.
-    Validate the complete list even when earlier probes already show a change.
+    The unrestricted detected language may lie outside the candidate list.
+    Confidence affects region decisions only after all observations are valid.
     """
     if not _canonical_candidates(candidates) or not isinstance(probe_results, list):
         raise ValueError("Invalid native language observations")
-    confident = set()
+    selections = []
     for result in probe_results:
         if not isinstance(result, dict):
             raise ValueError("Invalid native language observation")
@@ -127,6 +146,60 @@ def has_confident_language_change(probe_results: list[dict], candidates: list[st
             value = selection.get(key)
             if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
                 raise ValueError("Invalid native language probability")
-        if selection["selected_probability"] >= 0.5:
-            confident.add(selection["selected"])
-    return len(confident) >= 2
+        selections.append(selection)
+    return selections
+
+
+def has_confident_language_change(probe_results: list[dict], candidates: list[str]) -> bool:
+    """Compatibility predicate; region selection uses adjacent evidence instead."""
+    return len({item["selected"] for item in _selections(probe_results, candidates)
+                if item["selected_probability"] >= 0.5}) >= 2
+
+
+def _sample_position(seconds: object) -> int:
+    if type(seconds) not in (int, float) or not math.isfinite(seconds):
+        raise ValueError("Invalid proposal geometry")
+    scaled = seconds * RATE
+    if not math.isfinite(scaled) or abs(scaled - round(scaled)) > 0.000001:
+        raise ValueError("Proposal geometry is not sample exact")
+    return round(scaled)
+
+
+def language_regions(audio: bytes, proposals: list[tuple[float, float, bytes]],
+                     probes: list[dict], candidates: list[str]) -> list[tuple[float, float, bytes]] | None:
+    """Merge all adjacent proposals lacking a confident language transition.
+
+    All source samples and observations are validated before any decision. Weak
+    intervening evidence cannot establish a boundary between nonadjacent probes.
+    Returned global regions may exceed thirty seconds; callers bound ASR later.
+    """
+    frames, pcm = _read_pcm(audio)
+    selections = _selections(probes, candidates)
+    if not isinstance(proposals, list) or not proposals or len(proposals) != len(selections):
+        raise ValueError("Proposal and language observation counts differ")
+    ends, cursor = [], 0
+    for proposal in proposals:
+        if not isinstance(proposal, (tuple, list)) or len(proposal) != 3:
+            raise ValueError("Invalid proposal geometry")
+        offset, duration, data = proposal
+        begin, count = _sample_position(offset), _sample_position(duration)
+        minimum = min(frames, MIN_CHILD_SAMPLES)
+        if begin != cursor or not minimum <= count <= MAX_PROPOSAL_SAMPLES or begin + count > frames:
+            raise ValueError("Invalid proposal geometry")
+        actual_count, actual_pcm = _read_pcm(data)
+        if actual_count != count or actual_pcm != pcm[begin * 2:(begin + count) * 2]:
+            raise ValueError("Proposal PCM differs from source")
+        cursor += count
+        ends.append(cursor)
+    if cursor != frames:
+        raise ValueError("Proposals do not conserve every source sample")
+    cuts = [0]
+    for index, (left, right) in enumerate(zip(selections, selections[1:])):
+        if (left["selected"] != right["selected"] and left["selected_probability"] >= 0.5
+                and right["selected_probability"] >= 0.5):
+            cuts.append(ends[index])
+    if len(cuts) == 1:
+        return None
+    cuts.append(frames)
+    return [(begin / RATE, (end - begin) / RATE, _wav(pcm[begin * 2:end * 2]))
+            for begin, end in zip(cuts, cuts[1:])]

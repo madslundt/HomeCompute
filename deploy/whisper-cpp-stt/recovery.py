@@ -115,6 +115,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
     response_bytes, native_calls = 0, 0
     audits = []
     boundary_audits = []
+    proposal_audits = []
     language_probes = 0
 
     def call(data, fields=None):
@@ -152,24 +153,24 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                        "overlapping_acoustic_context": True})
         return combined
 
-    def planned_window(offset, window_duration, window):
+    def language_regions():
         nonlocal language_probes
         fields = dict(native_fields)
         candidates = fields.get("language_candidates")
         if (not language_boundaries or candidates is None
                 or fields.get("language", "auto") != "auto"
                 or fields.get("translate", "false") != "false"):
-            return one(offset, window_duration, window)
+            return None
         try:
-            children = _BOUNDARIES.partitions(window, observe=activity)
+            proposals = _BOUNDARIES.partitions(audio, observe=activity)
         except Exception:
             raise codec.RequestError(502, "Language boundary observation unavailable") from None
-        if len(children) == 1:
-            return one(offset, window_duration, window)
+        if len(proposals) == 1:
+            return None
         probes = []
         probe_fields = [(key, value) for key, value in native_fields if key != "detect_language"]
         probe_fields.append(("detect_language", "true"))
-        for _child_offset, child_duration, data in children:
+        for _offset, seconds, data in proposals:
             raw = call(data, probe_fields)
             language_probes += 1
             try:
@@ -178,53 +179,57 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                         or value.get("segments") != [] or value.get("task") != "transcribe"
                         or type(value.get("duration")) not in (int, float)
                         or not math.isfinite(value["duration"])
-                        or abs(value["duration"] - child_duration) > 0.001):
+                        or abs(value["duration"] - seconds) > 0.001):
                     raise ValueError("Invalid language-only response")
                 probes.append(value)
             except Exception:
                 raise codec.RequestError(502, "Language boundary observation unavailable") from None
         try:
-            changed = _BOUNDARIES.has_confident_language_change(probes, candidates.split(","))
+            regions = _BOUNDARIES.language_regions(audio, proposals, probes, candidates.split(","))
         except Exception:
             raise codec.RequestError(502, "Language boundary observation unavailable") from None
-        if not changed:
-            # Identical/uncertain language keeps the entire original acoustic
-            # context; no child transcript is produced or selected.
-            return one(offset, window_duration, window)
-        decoded = []
-        partitions = []
-        for (child_offset, child_duration, data), probe in zip(children, probes):
-            child_raw = one(offset + child_offset, child_duration, data)
-            normalized, _ = codec.normalize_native_response(child_raw, "verbose_json", child_duration)
-            result = json.loads(normalized)
-            actual_windows = result.get("language_windows")
-            if actual_windows is None:
-                actual_windows = [{"start": 0, "end": child_duration,
+        if regions is not None:
+            proposal_audits.extend({"source_start_frame": round(offset * RATE),
+                                    "frames": round(seconds * RATE),
+                                    "language_selection": probe["language_selection"]}
+                                   for (offset, seconds, _data), probe in zip(proposals, probes))
+            boundary_audits.extend({"source_region_start_frame": round(offset * RATE),
+                                    "source_region_frames": round(seconds * RATE),
+                                    "decoded_windows": []}
+                                   for offset, seconds, _data in regions)
+        return regions
+
+    regions = language_regions()
+    if regions is None:
+        # With no confident adjacent language change, preserve the complete
+        # original window contexts. No child transcript has been decoded.
+        if duration <= codec.NATIVE_WINDOW_SECONDS:
+            raw = one(0, duration, audio)
+            payload, content_type = codec.normalize_native_response(raw, "verbose_json", duration)
+        else:
+            windows = ((offset, seconds, one(offset, seconds, data))
+                       for offset, seconds, data in codec.native_audio_windows(audio))
+            payload, content_type = codec.combine_native_windows(windows, "verbose_json", duration)
+    else:
+        def responses():
+            for (region_offset, _region_seconds, region), audit in zip(regions, boundary_audits):
+                for local_offset, seconds, data in codec.native_audio_windows(region):
+                    offset = region_offset + local_offset
+                    raw = one(offset, seconds, data)
+                    normalized, _ = codec.normalize_native_response(raw, "verbose_json", seconds)
+                    result = json.loads(normalized)
+                    actual = result.get("language_windows")
+                    if actual is None:
+                        actual = [{"start": 0, "end": seconds,
                                    "language": result.get("language"),
                                    "language_selection": result.get("language_selection")}]
-            # Preserve actual ASR selections separately from the language probes.
-            actual_windows = [{**item, "start": offset + child_offset + item["start"],
-                               "end": offset + child_offset + item["end"]} for item in actual_windows]
-            partitions.append({"start_frame": round(child_offset * RATE),
-                               "frames": round(child_duration * RATE),
-                               "language_selection": probe["language_selection"],
-                               "asr_language_windows": actual_windows})
-            decoded.append((child_offset, child_duration, child_raw))
-        raw, _ = codec.combine_native_windows(decoded, "verbose_json", window_duration)
-        boundary_audits.append({
-            "source_window_start_frame": round(offset * RATE),
-            "source_window_frames": round(window_duration * RATE),
-            "partitions": partitions,
-        })
-        return raw
-
-    if duration <= codec.NATIVE_WINDOW_SECONDS:
-        raw = planned_window(0, duration, audio)
-        payload, content_type = codec.normalize_native_response(raw, "verbose_json", duration)
-    else:
-        windows = ((offset, seconds, planned_window(offset, seconds, data))
-                   for offset, seconds, data in codec.native_audio_windows(audio))
-        payload, content_type = codec.combine_native_windows(windows, "verbose_json", duration)
+                    actual = [{**item, "start": offset + item["start"],
+                               "end": offset + item["end"]} for item in actual]
+                    audit["decoded_windows"].append({"source_start_frame": round(offset * RATE),
+                                                    "frames": round(seconds * RATE),
+                                                    "asr_language_windows": actual})
+                    yield offset, seconds, raw
+        payload, content_type = codec.combine_native_windows(responses(), "verbose_json", duration)
     if audits or boundary_audits:
         value = json.loads(payload)
         if audits:
@@ -233,7 +238,8 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                                         "max_extra_requests_per_window": 1, "coverage_claim": False}
         if boundary_audits:
             value["language_boundary_recovery"] = {
-                "version": _BOUNDARIES.VERSION, "windows": boundary_audits,
+                "version": _BOUNDARIES.VERSION, "regions": boundary_audits,
+                "proposals": proposal_audits,
                 "native_calls": native_calls, "language_probes": language_probes,
                 "asr_pcm_unchanged": True, "source_frames_conserved": True,
                 "coverage_claim": False,

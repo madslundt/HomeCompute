@@ -65,27 +65,34 @@ recordings, transcripts, summaries and receipts outside Git. Speaker detection i
 not part of this experiment.
 
 An additional diagnostic flag, `WHISPER_CPP_LANGUAGE_BOUNDARIES=true`, requires
-trailing recovery and applies only to timestamped verbose requests with language
-candidates. It proposes internal pauses using a detector-only copy normalized in
-one-second blocks toward -24 dBFS RMS, with gain capped at 30 dB. The ASR samples
-remain unchanged. At least 800 ms of low detector probability, bounded by voiced
-frames, proposes a midpoint; every child retains at least three seconds and all
-source frames are conserved. Detector probabilities do not prove silence.
+trailing recovery and applies only to timestamped verbose requests with automatic
+language candidates. It observes the entire bounded recording before choosing
+ASR windows. A detector-only copy is normalized in one-second blocks toward
+-24 dBFS RMS, with gain capped at 30 dB and compact int16 storage. The ASR samples
+remain unchanged. Four complete 32 ms low-probability frames, bounded by voiced
+frames, propose a midpoint; this rounds the pinned native VAD's default 100 ms
+silence duration up to observation frames. Every proposal retains at least three
+seconds and at most thirty seconds, with all source frames conserved. Detector
+probabilities do not prove silence.
 
-The existing native `detect_language=true` operation probes each proposed child
-without decoding transcript tokens. Only two different selected languages with
-original probabilities at least 0.5 authorize partitioned transcription. Otherwise
-the complete original window retains its right context and suffix policy. When
-authorized, every child is decoded and retained in source order; no hypothesis
-text selects boundaries or a winning response. Probe/observation failures return
-an error. All probes and ASR calls share the original deadline and cumulative
-response bound. `language_boundary_recovery` records changed geometry and call
-counts, including actual child ASR language selections separately from probes,
+The existing native `detect_language=true` operation probes each proposal without
+transcript-token decoding. Only adjacent different selected languages whose
+original probabilities are both at least 0.5 establish a region boundary. All
+other proposals merge back into their original acoustic context. If no boundary
+is established, the existing original window contexts remain intact. Regions may
+cross prior thirty-second boundaries; only after region selection does the
+adapter bound ASR requests to thirty seconds. Every region is retained in source
+order; no hypothesis text selects boundaries or a winning response.
+
+Probe/observation failures return an error. All probes and ASR calls share the
+original deadline and cumulative response bound. `language_boundary_recovery`
+records proposal observations, merged regions and actual decoded ASR selections,
 without claiming speech completeness. The one-suffix limit applies per decoded
-child; a thirty-second base window has at most ten children and thirty total
-native calls including probes, ASR and suffixes. Explicit language or translation
-requests keep their existing behavior. The diagnostic overlay enables both
-flags; canonical builds keep both off. This remains unqualified for production.
+window. The minimum proposal length bounds a 1,200-second upload to at most
+400 probes; each decoded window permits one original and at most one suffix ASR
+call. Explicit language or translation requests keep their existing behavior.
+The diagnostic overlay enables both flags; canonical builds keep both off.
+This remains unqualified for production.
 
 For a recording known to contain Danish and English, an experimental request can
 set `language_candidates=da,en` while leaving `language=auto`. Each native window

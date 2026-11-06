@@ -103,6 +103,9 @@ def load_config() -> CandidateConfig:
     boundaries = os.environ.get("WHISPER_CPP_LANGUAGE_BOUNDARIES", "false")
     if boundaries not in {"true", "false"} or boundaries == "true" and recovery != "true":
         raise ValueError("invalid WHISPER_CPP_LANGUAGE_BOUNDARIES")
+    if (boundaries == "true"
+            and max_audio_seconds > _RECOVERY_MODULE._BOUNDARIES.MAX_SAMPLES // 16000):
+        raise ValueError("WHISPER_CPP_LANGUAGE_BOUNDARIES supports at most 1200 seconds")
     if recovery == "true":
         _RECOVERY_MODULE.verify_detector()
     return CandidateConfig(
