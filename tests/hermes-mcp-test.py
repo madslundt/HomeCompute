@@ -108,6 +108,14 @@ class ConnectionTests(unittest.TestCase):
                        'trustedPrivateTarget': {'state': 'match'}}
         self.digest = hashlib.sha256((connect.SKILL / 'SKILL.md').read_bytes()).hexdigest()
 
+    def test_failed_native_diagnostic_redacts_the_supplied_bearer(self):
+        failed = subprocess.CompletedProcess([], 2, 'synthetic failure ' + self.token, 'private endpoint refused')
+        with patch.object(connect.subprocess, 'run', return_value=failed):
+            with self.assertRaises(ValueError) as error:
+                connect.call(['nemohermes', 'hermes-personal-v23', 'mcp', 'add'], env={connect.KEY: self.token})
+        self.assertNotIn(self.token, str(error.exception))
+        self.assertIn('[redacted]', str(error.exception))
+
     def test_native_add_passes_secret_only_in_environment_and_preserves_runtime_selection(self):
         commands = []
         def call(args, **kwargs):

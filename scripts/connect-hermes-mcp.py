@@ -23,7 +23,11 @@ GATES = Path('/var/lib/homecompute-hermes/gates')
 def call(args: list[str], **kwargs) -> str:
     result = subprocess.run(args, capture_output=True, text=True, timeout=240, **kwargs)
     if result.returncode:
-        raise ValueError('native Hermes MCP operation failed or is uncertain; inspect private native state before retry')
+        detail = (result.stdout + '\n' + result.stderr).strip()
+        secret = kwargs.get('env', {}).get(KEY)
+        if secret:
+            detail = detail.replace(secret, '[redacted]')
+        raise ValueError('native ' + ' '.join(args[:4]) + ' failed or is uncertain: ' + detail[-4000:])
     return result.stdout
 
 
@@ -103,7 +107,9 @@ def main() -> int:
         setup.published(args.revision)
         print(json.dumps(connect(args.sandbox, sys.stdin.read(4097).strip())))
         return 0
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        if isinstance(error, ValueError):
+            print(str(error), file=sys.stderr)
         print('Hermes MCP connection refused or unverified; inspect native status without removing its state.', file=sys.stderr)
         return 2
 
