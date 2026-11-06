@@ -28,7 +28,9 @@ class AuthenticatedHarrierClient:
         if not path.is_absolute():
             raise ValueError("Private Harrier credential required")
         token = private_bytes(path, 512).decode("ascii").strip()
-        if not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token):
+        # LiteLLM's generated sk- keys can be 25 characters; authorization is
+        # checked by the fixed gateway, rather than an assumed token length.
+        if not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", token):
             raise ValueError("Harrier credential refused")
         certificate = Path(__file__).resolve().parents[1] / "config/embedding-ca.crt"
         cafile = None

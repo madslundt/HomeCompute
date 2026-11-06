@@ -8,10 +8,11 @@ import sys
 import tempfile
 import unittest
 import uuid
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from assistant_context_briefings import (BriefingBuilder, OccurrenceLedger, load_config,
+from assistant_context_briefings import (BriefingBuilder, LocalReasoner, OccurrenceLedger, load_config,
     call_briefing_tool, n8n_patch, occurrence_key_for, scheduled_occurrence, valid_scheduled_for, validate_candidate)
 from assistant_context_store import ContextStore, Scope
 from assistant_context_delivery import load_delivery_auth
@@ -99,6 +100,32 @@ class BriefingsTest(unittest.TestCase):
             result = BriefingBuilder(self.store, scope=OWNER, coverage=self.coverage, clock=lambda: NOW, reasoner=failure).build()
             self.assertEqual(result["reasoning"], "deterministic-fallback")
             self.assertEqual(result["cross_source_summary"]["items"][0]["source_refs"], [valid_ref])
+
+    def test_bounded_local_reasoner_uses_non_thinking_json_completion(self):
+        seen = []
+        expected = {"summary": "Synthetic qualification", "items": []}
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def read(self, _):
+                return json.dumps({"choices": [{"message": {"content": json.dumps(expected)}}]}).encode()
+
+        class Opener:
+            def open(self, request, timeout):
+                payload = json.loads(request.data)
+                if payload.get("chat_template_kwargs", {}).get("enable_thinking") is not False:
+                    raise TimeoutError("reasoning tokens exhaust the bounded JSON completion")
+                seen.append((request.full_url, payload, timeout))
+                return Response()
+
+        with patch("assistant_context_briefings.build_opener", return_value=Opener()):
+            result = LocalReasoner("sk-" + "a" * 22)({"source_items": []})
+        self.assertEqual(result, expected)
+        self.assertEqual(seen[0][0], "https://ai.home.arpa/v1/chat/completions")
+        self.assertEqual(seen[0][1]["response_format"], {"type": "json_object"})
+        self.assertLessEqual(seen[0][1]["max_tokens"], 500)
+        self.assertLessEqual(seen[0][2], 8)
 
     def test_occurrence_admission_is_unique_concurrent_and_restart_safe(self):
         ledger = OccurrenceLedger(self.root / "routines.sqlite3", clock=lambda: NOW)

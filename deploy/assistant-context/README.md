@@ -190,6 +190,11 @@ only that gateway IP and, when enabled, the fixed agents VM IP. Worker key custo
 is `/etc/homecompute/assistant-context-worker/{id_ed25519,known_hosts}`; delivery
 credential custody is `/etc/homecompute-assistant-context/delivery-auth.json`.
 
+The embedding consumer accepts the gateway's generated short bearer keys as
+well as existing longer keys. Local briefing requests explicitly disable thinking
+tokens to fit their bounded JSON completion budget; inference failures still use
+the deterministic fallback. This does not change model routes or qualification.
+
 The embedding and briefing routes use separate, non-expiring LiteLLM keys. The
 embedding key is limited to model `embedding` and owner
 `assistant-context-embedding`; the briefing key is limited to `automation-moe`
@@ -299,6 +304,9 @@ reference. This conservative loss does not restore deleted memory content.
 
 See the [empty synthetic-only recovery admission procedure](recovery-admission.md)
 for the root-owned, hash-bound proof path and its scope limits.
+The [focused NAS restore](nas-restore.md) verifies this service's state and
+credentials from the encrypted snapshot without extracting unrelated VM disks;
+it produces a separate, explicitly scoped receipt and leaves admission pending.
 
 The context database uses schema 4 for durable cleanup and monotonic deletion
 floors. Earlier code refuses that schema; a code downgrade alone cannot reverse
