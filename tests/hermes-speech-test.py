@@ -106,6 +106,24 @@ class PolicyTest(unittest.TestCase):
 
 
 class ConfigTest(unittest.TestCase):
+    def test_privacy_migration_accepts_only_verified_source_or_no_thanks_choice(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest('PyYAML is exercised on the qualified Linux guest')
+        original = payload.encode({'model': {'default': 'automation-moe'},
+                                   'dashboard': {'basic_auth': {'username': 'synthetic'}}})
+        before = payload.candidate(yaml.safe_load(original))
+        before.pop('telemetry')
+        record = {'config_before': payload.sha(original), 'config_after': payload.sha(payload.encode(before))}
+        selected = payload.candidate(before)
+        for current in (before, selected):
+            self.assertEqual(yaml.safe_load(payload.privacy_upgrade(payload.encode(current), record, original)), selected)
+        selected['model']['default'] = 'unknown'
+        with self.assertRaises(ValueError): payload.privacy_upgrade(payload.encode(selected), record, original)
+        record['config_after'] = 'unknown'
+        with self.assertRaises(ValueError): payload.privacy_upgrade(payload.encode(before), record, original)
+
     def test_incident_candidate_changes_only_reserved_port_and_stale_mcp_handle(self):
         try:
             import yaml
@@ -115,9 +133,12 @@ class ConfigTest(unittest.TestCase):
             'dashboard': {'basic_auth': {'username': 'synthetic'}},
             'mcp_servers': {'homecompute': {'headers': {'Authorization': 'Bearer ${HOMECOMPUTE_HERMES_MCP_TOKEN}'}}}})
         before['webapp']['port'] = 8646
+        # The historical incident predates the source-owned metrics opt-out.
+        before.pop('telemetry')
         before['mcp_servers']['homecompute']['headers']['Authorization'] = 'Bearer openshell:resolve:env:HOMECOMPUTE_HERMES_MCP_TOKEN:old'
         after = yaml.safe_load(incident.candidate(yaml.safe_dump(before).encode()))
-        self.assertEqual(after, payload.candidate(before))
+        expected = payload.candidate(before); expected.pop('telemetry')
+        self.assertEqual(after, expected)
         before['tts']['provider'] = 'unknown'
         with self.assertRaises(ValueError): incident.candidate(yaml.safe_dump(before).encode())
 

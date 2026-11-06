@@ -53,7 +53,37 @@ def candidate(before):
         if 'HOMECOMPUTE_HERMES_MCP_TOKEN' not in current:
             raise ValueError('unexpected managed MCP credential reference')
         headers['Authorization'] = 'Bearer ${HOMECOMPUTE_HERMES_MCP_TOKEN}'
+    telemetry = after.setdefault('telemetry', {})
+    telemetry['shared_metrics'] = {**telemetry.get('shared_metrics', {}),
+                                   'enabled': False, 'send': False, 'offer_version': 2}
     return after
+
+
+def encode(config):
+    import yaml
+    class Dumper(yaml.SafeDumper):
+        def increase_indent(self, flow=False, indentless=False):
+            return super().increase_indent(flow, False)
+    return yaml.dump(config, Dumper=Dumper, sort_keys=False).encode()
+
+
+def privacy_upgrade(raw, record, original):
+    """Accept only the exact prior source or its explicit No-thanks UI choice."""
+    import yaml
+    if sha(original) != record['config_before']:
+        raise ValueError('verified original speech preimage required')
+    preimage = yaml.safe_load(original)
+    previous = candidate(preimage)
+    if 'telemetry' in preimage:
+        previous['telemetry'] = copy.deepcopy(preimage['telemetry'])
+    else:
+        previous.pop('telemetry', None)
+    if sha(encode(previous)) != record['config_after']:
+        raise ValueError('receipt is not the exact prior source configuration')
+    selected = candidate(previous)
+    if yaml.safe_load(raw) not in (previous, selected):
+        raise ValueError('configuration changes extend beyond the source privacy choice')
+    return encode(selected)
 
 
 def configure(request):
@@ -70,6 +100,17 @@ def configure(request):
     receipt = ROOT / 'receipt.json'
     if receipt.exists():
         record = json.loads(receipt.read_bytes())
+        if not request.get('rollback') and (record['config_after'] != sha(raw) or candidate(before) != before):
+            encoded = privacy_upgrade(raw, record, (ROOT / 'config-before.yaml').read_bytes())
+            for asset in pin['assets']:
+                if sha((ROOT / asset['name']).read_bytes()) != asset['sha256']:
+                    raise ValueError('installed speech dependency differs')
+            write(ROOT / 'config-before-privacy.yaml', raw)
+            write(ROOT / 'receipt-before-privacy.json', receipt.read_bytes())
+            write(CONFIG, encoded, 0o640)
+            record.update(config_after=sha(encoded), privacy_revision=request['revision'])
+            write(receipt, json.dumps(record).encode())
+            return {'privacy_source_reconciled': True, 'speech_settings_preserved': True}
         if record['config_after'] != sha(raw):
             raise ValueError('speech settings changed; preserve for review')
         if request.get('rollback'):
@@ -87,7 +128,7 @@ def configure(request):
         if candidate(before) != before:
             raise ValueError('source speech settings differ from installed settings')
         return {'already_current': True}
-    if request.get('rollback') or any(before.get(k) for k in ('stt', 'tts')):
+    if request.get('rollback') or request.get('reconcile_privacy_only') or any(before.get(k) for k in ('stt', 'tts')):
         raise ValueError('unknown existing speech settings require review')
     for asset in pin['assets']:
         data = (ROOT / asset['name']).read_bytes()
@@ -118,10 +159,7 @@ def configure(request):
                         write(ROOT / 'lib' / relative, archive.extractfile(member).read())
     after = candidate(before)
     # Use the same list indentation as the OMH-owned configuration writer.
-    class Dumper(yaml.SafeDumper):
-        def increase_indent(self, flow=False, indentless=False):
-            return super().increase_indent(flow, False)
-    encoded = yaml.dump(after, Dumper=Dumper, sort_keys=False).encode()
+    encoded = encode(after)
     if yaml.safe_load(encoded) != after or CONFIG.read_bytes() != raw:
         raise ValueError('configuration changed during speech preparation')
     write(ROOT / 'config-before.yaml', raw)

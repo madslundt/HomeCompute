@@ -64,6 +64,15 @@ loopback listener on 18796, and restarts only the selected Hermes sandbox throug
 NemoClaw. The relay changes from the admin dashboard to that Webapp only after
 an unauthenticated config request returns 401 and the basic login exists.
 
+Speech configuration explicitly disables optional Nous shared metrics and records
+the current offer version. For an existing install, the published speech
+installer's `--apply --reconcile-privacy-only` mode verifies the qualified
+runtime, existing speech grants/assets and exact prior config preimage. It can
+adopt only the matching dashboard "No thanks" choice or set that same source
+choice, retaining private before-files and updating the speech receipt without
+restarting the agent. Any unrelated config change is refused. This keeps the
+privacy choice reproducible and preserves rollback guards after browser testing.
+
 Native forwards can disappear while the sandbox remains Ready. Startup now
 runs native recovery after starting the sandbox. The source-owned user service
 `homecompute-hermes-dashboard-watch.service` probes the authenticated Webapp
