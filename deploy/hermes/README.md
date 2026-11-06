@@ -98,6 +98,9 @@ inputs. Oh My Hermes is deferred until the core service is stable.
 
 ## Household MCP access
 
+See the [dated live verification](../../docs/hermes-mcp-validation-2026-11-06.md)
+for applied revisions, actual client checks and remaining platform differences.
+
 Hermes uses the existing private HTTPS HomeCompute bridge, rather than direct
 credentials for Aula, Tilbudstrolden or Home Assistant. The `hermes-owner` bearer
 is distinct from OpenClaw's credential and the retired `hermes` bearer, which
