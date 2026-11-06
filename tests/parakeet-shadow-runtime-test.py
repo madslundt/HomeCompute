@@ -259,6 +259,24 @@ class RuntimeTests(unittest.TestCase):
 
 
 class ArtifactTests(unittest.TestCase):
+    def test_docker_account_avoids_reserved_group_and_preserves_numeric_isolation(self):
+        dockerfile = (ROOT / 'deploy/parakeet-shadow/Dockerfile').read_text()
+        commands = [line.strip().removeprefix('&& ').removesuffix('\\').strip().split()
+                    for line in dockerfile.splitlines()]
+        group = next(command for command in commands if command[:1] == ['groupadd'])
+        user = next(command for command in commands if command[:1] == ['useradd'])
+        # The pinned NVIDIA base already has the standard system shadow group.
+        self.assertNotIn(group[-1], {'root', 'shadow', 'nogroup'})
+        self.assertEqual(group[-1], 'hc-parakeet')
+        self.assertEqual(group[group.index('--gid') + 1], '10001')
+        self.assertEqual(user[-1], group[-1])
+        self.assertEqual(user[user.index('--uid') + 1], '10001')
+        self.assertEqual(user[user.index('--gid') + 1], '10001')
+        self.assertEqual(user[user.index('--home-dir') + 1], '/nonexistent')
+        self.assertEqual(user[user.index('--shell') + 1], '/usr/sbin/nologin')
+        self.assertIn('--no-create-home', user)
+        self.assertIn(['USER', '10001:10001'], commands)
+
     def test_exact_bytes_required_and_symlinks_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

@@ -20,8 +20,8 @@ RUN python3 -c 'import importlib.metadata as m,platform,re,sys; assert platform.
  && python3 -c 'import model_runtime; model_runtime.validate_environment()' \
  && CUDA_VISIBLE_DEVICES="" python3 -c 'import torch; assert not torch.cuda.is_initialized(); from transformers import ParakeetForTDT, AutoProcessor, ParakeetFeatureExtractor; assert ParakeetForTDT.__module__=="transformers.models.parakeet.modeling_parakeet"; assert ParakeetFeatureExtractor.__module__=="transformers.models.parakeet.feature_extraction_parakeet"; assert AutoProcessor.__module__=="transformers.models.auto.processing_auto"; assert not torch.cuda.is_initialized()' \
  && python3 -c 'import os,re; assert re.fullmatch("[0-9a-f]{40}", os.environ["HOME_COMPUTE_REVISION"])' \
- && groupadd --gid 10001 shadow \
- && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin shadow \
+ && groupadd --gid 10001 hc-parakeet \
+ && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin hc-parakeet \
  && mkdir -p /models \
  && chmod 0555 /opt/homecompute /models \
  && chmod 0444 /opt/homecompute/requirements.lock /opt/homecompute/model-manifest.json \
