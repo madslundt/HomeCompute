@@ -45,16 +45,6 @@ def main():
     core.UNITS = ('homecompute-hermes-dashboard-firewall.service',
                   'homecompute-hermes-dashboard-proxy.service')
     core.office_patch = patch
-    original_call = core.call
-
-    def call(args, **kwargs):
-        # Native config reload retains Mattermost WebSockets and container ID.
-        if args == ['docker', 'restart', core.CADDY]:
-            args = ['docker', 'exec', core.CADDY, 'caddy', 'reload', '--config',
-                    '/etc/caddy/Caddyfile', '--adapter', 'caddyfile']
-        return original_call(args, **kwargs)
-
-    core.call = call
     core.main()
 
 
