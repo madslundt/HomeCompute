@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-NAME = 'hermes-v023-trial'
+NAME = 'hermes-personal-v023'
 OS = ['openshell', '-g', 'nemoclaw']
 PYTHON = '/opt/hermes/.venv/bin/python'
 

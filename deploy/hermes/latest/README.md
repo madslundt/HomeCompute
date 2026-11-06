@@ -44,7 +44,7 @@ rejection of an unsafe control-directory mode. Copy the managed plugin into the
 allowed `/opt/hermes` tree rather than linking to a path outside Landlock roots.
 The first synthetic sandbox `hermes-v023-check` is retained in Error after these
 startup incompatibilities. `hermes-v023-verify` is retained after the next
-session-authority startup check; the corrected attempt uses `hermes-v023-trial`.
+session-authority startup check; the corrected attempt uses `hermes-personal-v023`. This name can become the owner instance after qualification, leaving the previous instance intact for rollback.
 
 Session authority, policy and credential readers must map the exact declared
 `state.db -> runtime/state.db` alias back to the logical profile home. They keep
@@ -81,7 +81,7 @@ Retain the build receipt and observed immutable image ID privately. A failed
 managed adapter check is an upgrade blocker; do not weaken or skip it. Building
 an image does not migrate application data or establish managed readiness.
 After a successful image build, the guarded guest helper can create the
-separate `hermes-v023-trial` sandbox using the same published recipe:
+separate `hermes-personal-v023` sandbox using the same published recipe:
 
 ```bash
 ./scripts/setup-hermes-guest.sh qualify-latest --config "$config"
@@ -103,3 +103,5 @@ Before any cutover, complete all runtime gates in `qualification.json` on an
 isolated sandbox, retain the prior image and verified recovery boundary, then
 publish the selected production recipe and apply the guarded native lifecycle.
 Code rollback alone cannot undo state migrations.
+
+The frontend uses the release-pinned Node 26.12.1 and npm 12.0.2. Its only additional system library is checksum-pinned Debian libatomic1 14.2.0-19; package-manager repair is unnecessary. Linux upstream tests run without a preselected profile home so their own isolation fixtures control it.

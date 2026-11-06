@@ -12,6 +12,9 @@ RUN if [ -n "$NEMOCLAW_CORPORATE_CA_B64" ]; then \
     fi
 ADD --checksum=sha256:0250ce85c071ebceefc5b9d1b58a7a52f71d2849a6ef1d0a70af07d108ef08dc https://codeload.github.com/NousResearch/hermes-agent/tar.gz/2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 /tmp/hermes-latest.tar.gz
 ADD --checksum=sha256:dfa4c5a40c47f338f41658017be550c72247c391e6bfb1fa4da03ebc8451abdf https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.14.9+20261021-x86_64-unknown-linux-gnu-install_only.tar.gz /tmp/hermes-python.tar.gz
+# Node 26 requires this exact runtime library; do not invoke an unpinned apt repair.
+ADD --checksum=sha256:212b399aae2f7299203d261a57e49372e09565a9a5ea971905f94a3960366c05 https://deb.debian.org/debian/pool/main/g/gcc-14/libatomic1_14.2.0-19_amd64.deb /tmp/hermes-libatomic.deb
+RUN dpkg -i /tmp/hermes-libatomic.deb && rm /tmp/hermes-libatomic.deb
 COPY latest/managed-integration.patch /tmp/homecompute-managed-integration.patch
 RUN mkdir -p /tmp/hermes-latest/python-runtime \
     && tar -xzf /tmp/hermes-latest.tar.gz --strip-components=1 -C /tmp/hermes-latest \
@@ -39,9 +42,12 @@ RUN /opt/hermes/python-runtime/bin/python3 scripts/write_install_stamp.py \
       --output /opt/hermes/install-stamp.json --commit 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 \
       --base-version 0.23.0 --distance 0 --dirty --source homecompute --distribution docker --update-mechanism external \
     && /opt/hermes/python-runtime/bin/python3 -c 'import json; from pathlib import Path; p=Path("/opt/hermes/install-stamp.json"); d=json.loads(p.read_text()); d["pmRuntime"]="/opt/hermes/pm-runtime"; p.write_text(json.dumps(d)+"\n")'
-RUN /opt/hermes/python-runtime/bin/python3 -c 'from pm import ensure; ensure("node", explicit=True)'
+RUN /opt/hermes/python-runtime/bin/python3 -c 'from pm import ensure; ensure("npm", explicit=True)'
 RUN hermes_node_dir="$(/opt/hermes/python-runtime/bin/python3 -c 'from pm import installed_package; print(installed_package("node").binary.parent)')" \
-    && export PATH="$hermes_node_dir:$PATH" \
+    && hermes_npm_cli="$(/opt/hermes/python-runtime/bin/python3 -c 'from pm import installed_package; print(installed_package("npm").binary.parent.parent/"lib/node_modules/npm/bin/npm-cli.js")')" \
+    && export PATH="$hermes_node_dir:$PATH" npm_execpath="$hermes_npm_cli" \
+    && test "$(node --version)" = v26.12.1 \
+    && test "$(node "$npm_execpath" --version)" = 12.0.2 \
     && node scripts/build/node-deps.mjs --source /opt/hermes --workspace ui-tui --workspace web \
     && /opt/hermes/.venv/bin/python scripts/generate_icons.py --source /opt/hermes --out /tmp/hermes-icons \
     && node scripts/build/tui.mjs --source /opt/hermes --out /opt/products/tui \
@@ -66,14 +72,14 @@ RUN python3 -c 'import json; p="/usr/local/share/nemoclaw/hermes-cli-adapter-v1.
     && /usr/local/bin/hermes --version
 COPY latest/probe_runtime.py /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
 RUN chmod 0444 /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py \
-    && /usr/bin/setpriv --reuid=sandbox --regid=sandbox --init-groups -- /opt/hermes/.venv/bin/python -I /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
+    && HOME=/sandbox /usr/bin/setpriv --reuid=sandbox --regid=sandbox --init-groups -- /opt/hermes/.venv/bin/python -I /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
 # Run upstream transport and ownership regressions on Linux. Test dependencies
 # live only in this temporary build environment, never the shipped runtime.
 RUN HERMES_HOME=/tmp/homecompute-hermes-test-build /opt/hermes/python-runtime/bin/python3 -m pm.build_env \
       --source /opt/hermes --python /opt/hermes/python-runtime/bin/python3 \
       --out /tmp/homecompute-hermes-test-env --sealed --no-install-project --group dev \
       --extra nemoclaw --extra messaging --extra web --extra mcp --extra acp --extra anthropic \
-    && HERMES_HOME=/tmp/homecompute-hermes-test-home PYTHONDONTWRITEBYTECODE=1 \
+    && env -u HERMES_HOME PYTHONDONTWRITEBYTECODE=1 \
       /tmp/homecompute-hermes-test-env/bin/python -m pytest -q \
       tests/gateway/test_mattermost.py \
       tests/tools/test_browser_use_cli.py tests/tools/test_browser_use_cli_owned_daemon.py \

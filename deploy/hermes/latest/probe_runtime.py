@@ -128,6 +128,8 @@ def main():
                 try:
                     peer = await asyncio.to_thread(connect_private, home, 2)
                     peer.close()
+                    # Let the server observe EOF before asyncio tears down transports.
+                    await asyncio.sleep(0.1)
                     control = homecompute_paths.control_home(home)
                     control.chmod(0o777)
                     try:
