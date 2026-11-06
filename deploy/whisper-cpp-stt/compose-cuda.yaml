@@ -4,7 +4,7 @@ services:
   whisper-cpp-cuda:
     profiles: [cuda-candidate]
     platform: linux/arm64
-    image: ${WHISPER_CPP_CUDA_IMAGE:-homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc10}
+    image: ${WHISPER_CPP_CUDA_IMAGE:-homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc11}
     build:
       context: .
       dockerfile: Dockerfile.cuda
@@ -44,7 +44,7 @@ services:
     logging:
       driver: none
     healthcheck:
-      test: [CMD, python3, -I, -B, -c, "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); raise SystemExit(0 if d.get('status')=='ok' and d.get('device')=='cuda' and d.get('compute_backend')=='cuda' and d.get('strict_gpu_patch')=='${WHISPER_CPP_CUDA_PATCH_VERSION:-strict-gpu-decoder-audit-v6}' and d.get('strict_gpu_patcher_sha256')=='${WHISPER_CPP_CUDA_PATCHER_SHA256:?Set to the reviewed strict-GPU patcher checksum}' and type(d.get('gpu_model_buffer_bytes')) is int and d['gpu_model_buffer_bytes']>0 and type(d.get('native_inference_busy')) is bool else 1)"]
+      test: [CMD, python3, -I, -B, -c, "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)); raise SystemExit(0 if d.get('status')=='ok' and d.get('device')=='cuda' and d.get('compute_backend')=='cuda' and d.get('strict_gpu_patch')=='${WHISPER_CPP_CUDA_PATCH_VERSION:-strict-gpu-complete-eot-ranking-v7}' and d.get('strict_gpu_patcher_sha256')=='${WHISPER_CPP_CUDA_PATCHER_SHA256:?Set to the reviewed strict-GPU patcher checksum}' and type(d.get('gpu_model_buffer_bytes')) is int and d['gpu_model_buffer_bytes']>0 and type(d.get('native_inference_busy')) is bool else 1)"]
       interval: 15s
       timeout: 5s
       retries: 8

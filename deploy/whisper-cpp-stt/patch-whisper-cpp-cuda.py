@@ -8,7 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 
 UPSTREAM_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-PATCH_VERSION = "strict-gpu-decoder-audit-v6"
+PATCH_VERSION = "strict-gpu-complete-eot-ranking-v7"
 PATCHES = {
     "src/whisper.cpp": (
         "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
@@ -296,6 +296,46 @@ def patch_sampling(source: str) -> str:
     return source
 
 
+EOT_RANKING_PATCHES = (
+    ("""                    decoder.sequence.tokens.resize(decoder.sequence.result_len);
+                    whisper_sequence_score(params, decoder.sequence);
+""", """                    // Count genuine completion only when EOT is the sole omitted token.
+                    // Keep retained-prefix confidence, fallback and entropy unchanged.
+                    const bool rank_with_eot = decoder.completed && decoder.sequence.result_len > 0 &&
+                            decoder.sequence.tokens.size() == static_cast<size_t>(decoder.sequence.result_len) + 1 &&
+                            decoder.sequence.tokens.back().id == whisper_token_eot(ctx);
+                    const double terminal_eot_logprob = rank_with_eot ? decoder.sequence.tokens.back().plog : 0.0;
+                    decoder.sequence.tokens.resize(decoder.sequence.result_len);
+                    whisper_sequence_score(params, decoder.sequence);
+"""),
+    ("""                    if (best_score < decoder.sequence.score) {
+                        best_score = decoder.sequence.score;
+                        best_decoder_id = j;
+                    }
+""", """                    double selection_score = decoder.sequence.score;
+                    if (rank_with_eot) {
+                        double penalty = decoder.sequence.result_len;
+                        if (params.length_penalty > 0.0f) {
+                            penalty = pow((5.0 + penalty)/6.0, params.length_penalty);
+                        }
+                        selection_score = (decoder.sequence.sum_logprobs + terminal_eot_logprob)/penalty;
+                    }
+                    if (best_score < selection_score) {
+                        best_score = selection_score;
+                        best_decoder_id = j;
+                    }
+"""),
+)
+
+
+def patch_complete_eot_ranking(source: str) -> str:
+    for old, new in EOT_RANKING_PATCHES:
+        if source.count(old) != 1:
+            raise ValueError("Pinned whisper.cpp EOT ranking anchor is missing or ambiguous")
+        source = source.replace(old, new, 1)
+    return source
+
+
 def patch_bytes(original: bytes, expected_sha256: str, old: str, new: str) -> bytes:
     if sha256(original).hexdigest() != expected_sha256:
         raise ValueError("Pinned whisper.cpp source checksum changed")
@@ -324,6 +364,7 @@ def apply(root: Path) -> None:
     source = source.replace(IMPLEMENTATION_ANCHOR, IMPLEMENTATION + IMPLEMENTATION_ANCHOR, 1)
     source = patch_sampling(source)
     source = patch_decoder_trace(patch_window_trace(source))
+    source = patch_complete_eot_ranking(source)
     updates[0] = (source_path, source.encode("utf-8"))
     updates = [(path, patch_language_candidates(content.decode("utf-8"), str(path.relative_to(root))).encode("utf-8"))
                for path, content in updates]
@@ -341,8 +382,10 @@ def verify(root: Path) -> bool:
     header = (root / "include/whisper.h").read_text()
     language_ok = all((root / relative).read_text().count(new) == 1
                       for relative, patches in LANGUAGE_PATCHES.items() for _old, new in patches)
-    return (language_ok and all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES + DECODER_TRACE_PATCHES) and
+    return (language_ok and all(whisper.count(new) == 1 for _old, new in
+                               SAMPLING_PATCHES + WINDOW_TRACE_PATCHES + DECODER_TRACE_PATCHES + EOT_RANKING_PATCHES) and
             SAMPLING_PATCHES[-1][0] not in whisper and
+            EOT_RANKING_PATCHES[-1][0] not in whisper and
             "required GPU backend initialization failed" in whisper and
             "size_t whisper_model_gpu_buffer_size(struct whisper_context * ctx)" in whisper and
             "requested GPU has no model weight buffers" in whisper and

@@ -4,7 +4,7 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds candidate `hc10`, retaining the `hc7` bounded window
+The current source builds candidate `hc11`, retaining the `hc7` bounded window
 diagnostics and `hc8` optional language candidate list. Bounded native windowing
 now requires an explicit candidate list; omitted candidates preserve the `hc4`
 full native request boundary, including for long uploads.
@@ -189,7 +189,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-candidate build applies `strict-gpu-decoder-audit-v6` to the exact pinned upstream source
+candidate build applies `strict-gpu-complete-eot-ranking-v7` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
@@ -247,6 +247,22 @@ algorithm change. Identical-audio response parity is required before interpretin
 its traces. The trace helper's exact SHA-256 is embedded in the verified patcher;
 the patcher compiles the same verified helper bytes. Both are source-controlled,
 and a missing or changed helper fails the build.
+
+Candidate `hc11` tests a narrow final-ranking correction. When a completed
+decoder path ends in EOT and that EOT is the only token excluded from its
+retained output, final winner selection includes the EOT log probability in
+the numerator. It uses the same native retained-length penalty and strict
+comparison as before. Paths with EOT already retained, additional trimmed
+tokens, or another termination cause keep their existing ranking. The native
+retained-prefix score, average log probability and entropy remain unchanged
+for confidence and fallback checks. A different winner can still change which
+confidence values reach downstream fallback or silence checks. Beam expansion,
+timestamp normalization, seek guards and language policy are unchanged. The correction applies with
+tracing disabled too. This is an experimental ranking change, not proof of
+recovered speech or equivalence with another decoder implementation. It requires
+lexical omission, source-language, silence, repeatability and long-input checks
+before promotion. The optional trace still records the original retained-prefix
+and complete-path scores; a timestamp reaching the end is not speech coverage.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
