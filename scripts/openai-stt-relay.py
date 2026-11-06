@@ -37,6 +37,9 @@ RECORDING_PROVENANCE_HEADERS = (
     "X-HomeCompute-STT-HomeCompute-Revision",
     "X-HomeCompute-STT-Image-ID",
 )
+# Older qualified producers supply the six required identities. Forward device
+# identity when the actual producer supplies it so newer consumers can pin it.
+RECORDING_RESPONSE_HEADERS = RECORDING_PROVENANCE_HEADERS + ("X-HomeCompute-STT-Device",)
 WHISPER_ALIASES = {b"whisper", b"whisper-large-v3", b"stt-danish", b"whisper-turbo"}
 MAX_RESPONSE_BYTES = 2_000_000
 FIELD_NAME = re.compile(r"^[A-Za-z0-9_.\[\]-]{1,80}$")
@@ -289,9 +292,9 @@ def upstream_recording_request(config: Config, auth: str, body: bytes,
             payload = response.read(MAX_RESPONSE_BYTES + 1)
             if len(payload) > MAX_RESPONSE_BYTES:
                 raise RelayError(502, "Speech backend response is too large")
-            headers = {name: response.headers[name] for name in RECORDING_PROVENANCE_HEADERS
+            headers = {name: response.headers[name] for name in RECORDING_RESPONSE_HEADERS
                        if response.headers.get(name)}
-            if len(headers) != len(RECORDING_PROVENANCE_HEADERS):
+            if any(name not in headers for name in RECORDING_PROVENANCE_HEADERS):
                 raise RelayError(502, "Speech backend provenance is incomplete")
             return response.status, payload, response.headers.get("Content-Type", "application/json"), headers
     except urllib.error.HTTPError as error:
@@ -339,7 +342,7 @@ class RelayHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Connection", "close")
         for name, value in (extra_headers or {}).items():
-            if name in RECORDING_PROVENANCE_HEADERS and "\r" not in value and "\n" not in value:
+            if name in RECORDING_RESPONSE_HEADERS and "\r" not in value and "\n" not in value:
                 self.send_header(name, value)
         self.end_headers()
         self.wfile.write(payload)
