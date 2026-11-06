@@ -51,6 +51,7 @@ Commands:
   stop                     Stop the owner sandbox through NemoClaw
   install                  Install the pinned NemoClaw CLI without onboarding
   onboard-canary           Create the household Hermes sandbox
+  qualify-latest           Create the separate synthetic Hermes upgrade candidate
   recreate                 Recreate the owner sandbox through NemoClaw
   connect-browser          Attach the dedicated isolated browser
   connect-mattermost       Add the owner-restricted Hermes Mattermost bot
@@ -287,6 +288,14 @@ read_api_key() {
 }
 
 onboard_canary() {
+  local image_recipe="$REPO_ROOT/deploy/hermes/Dockerfile"
+  if [[ "${1:-}" == --latest-qualification ]]; then
+    # Dynamic scope changes only this invocation. Never wire the owner's bot
+    # or install startup for the separate synthetic qualification sandbox.
+    local HERMES_SANDBOX_NAME=hermes-v023-check
+    image_recipe="$REPO_ROOT/deploy/hermes/Dockerfile.latest"
+    shift
+  fi
   preflight_runtime
   require_mutation_gates
   validate_installed_cli_version
@@ -336,7 +345,7 @@ onboard_canary() {
     REQUESTS_CA_BUNDLE="$host_validation_ca" \
     SSL_CERT_FILE="$host_validation_ca" \
     nemohermes onboard --agent hermes --name "$HERMES_SANDBOX_NAME" \
-      --from "$REPO_ROOT/deploy/hermes/Dockerfile" "$@" --fresh --no-gpu --non-interactive \
+      --from "$image_recipe" "$@" --fresh --no-gpu --non-interactive \
       --yes --yes-i-accept-third-party-software
   api_key=''
   unset api_key
@@ -528,6 +537,7 @@ main() {
     install) [[ -z "$argument" ]] || die 'install takes no argument'; install_nemoclaw ;;
     recreate) [[ -z "$argument" ]] || die 'recreate takes no argument'; onboard_canary --recreate-sandbox ;;
     onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
+    qualify-latest) [[ -z "$argument" ]] || die 'qualify-latest takes no argument'; onboard_canary --latest-qualification ;;
     connect-browser) [[ -z "$argument" ]] || die 'connect-browser takes no argument'; preflight_runtime; require_mutation_gates; python3 "$REPO_ROOT/scripts/connect-hermes-browser.py" ;;
     connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;

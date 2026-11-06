@@ -142,7 +142,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                   hermes-personal\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
                   hermes-personal\\ gateway\\ restart) printf 'restarted\\n' ;;
                   hermes-personal\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
-                  onboard\\ --agent\\ hermes\\ --name\\ hermes-personal\\ --from\\ *)
+                  onboard\\ --agent\\ hermes\\ --name\\ hermes-personal\\ --from\\ *|onboard\\ --agent\\ hermes\\ --name\\ hermes-v023-check\\ --from\\ *)
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
                     test "${{NEMOCLAW_POLICY_TIER:-}}" = restricted
                     test "${{NEMOCLAW_WEB_SEARCH_PROVIDER:-}}" = none
@@ -156,6 +156,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                     test "${{CURL_CA_BUNDLE:-}}" = "${{GIT_SSL_CAINFO:-}}"
                     test -z "${{DISCORD_BOT_TOKEN:-}}"
                     test -z "${{TAVILY_API_KEY:-}}"
+                    test -z "${{MATTERMOST_TOKEN:-}}"
                     printf 'onboarded\\n'
                     ;;
                   *) printf 'unexpected invocation: %s\\n' "$*" >&2; exit 90 ;;
@@ -245,6 +246,22 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("backup readiness record", result.stderr)
         self.assertFalse(log.exists(), "NemoClaw was invoked before prerequisites passed")
+
+    def test_latest_candidate_is_separate_and_cannot_inherit_the_owner_bot(self) -> None:
+        bin_dir, log = self.make_mock_nemohermes()
+        result = self.sourced_call(
+            'preflight_runtime() { :; }\nonboard_canary --latest-qualification\n'
+            'printf "owner=%s\\n" "$HERMES_SANDBOX_NAME"',
+            {"PATH": f"{bin_dir}:{os.environ['PATH']}",
+             "MATTERMOST_TOKEN": "must-be-cleared"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        invocation = log.read_text(encoding="utf-8")
+        self.assertIn("onboard --agent hermes --name hermes-v023-check", invocation)
+        self.assertIn("deploy/hermes/Dockerfile.latest", invocation)
+        self.assertNotIn("--name hermes-personal", invocation)
+        self.assertIn("owner=hermes-personal", result.stdout)
+        self.assertNotIn("must-be-cleared", result.stdout + result.stderr + invocation)
 
     def test_mattermost_connection_keeps_token_out_of_command_and_output(self) -> None:
         import importlib.util

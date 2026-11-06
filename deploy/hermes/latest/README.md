@@ -61,6 +61,18 @@ docker build --progress=plain \
 Retain the build receipt and observed immutable image ID privately. A failed
 managed adapter check is an upgrade blocker; do not weaken or skip it. Building
 an image does not migrate application data or establish managed readiness.
+After a successful image build, the guarded guest helper can create the
+separate `hermes-v023-check` sandbox using the same published recipe:
+
+```bash
+./scripts/setup-hermes-guest.sh qualify-latest --config "$config"
+```
+
+This command still requires the existing household backup/network gates and
+approved local route. It clears inherited messaging credentials, changes no
+owner configuration and installs no boot unit. Do not connect it as a second
+listener for the owner's bot. Qualification must use synthetic turns only.
+
 Before any cutover, complete all runtime gates in `qualification.json` on an
 isolated sandbox, retain the prior image and verified recovery boundary, then
 publish the selected production recipe and apply the guarded native lifecycle.
