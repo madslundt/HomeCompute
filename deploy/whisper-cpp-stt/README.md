@@ -4,11 +4,27 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds diagnostic `hc7`, retaining the experimental `hc6`
-windowing and unknown-timing behavior. It adds opt-in, bounded native-window
-metadata to diagnose early seek advancement; decoding behavior is unchanged.
+The current source builds candidate `hc8`, retaining the experimental `hc6`
+windowing and unknown-timing behavior and the `hc7` bounded window diagnostics.
+It adds an optional language candidate list for native automatic detection.
 These changes are not part of the production image and are not qualified for rollout.
 Selecting an image in source does not establish that it has been deployed.
+
+For a recording known to contain Danish and English, an experimental request can
+set `language_candidates=da,en` while leaving `language=auto`. Each native window
+selects the highest original detection probability among those languages, using
+the existing encoder pass. This restricts detection; it does not translate text
+or add a language prompt containing transcript content. Omission of the field
+preserves unrestricted detection. An explicit `language` takes precedence.
+The adapter accepts one to sixteen unique two/three-letter codes, canonicalizes
+ASCII spaces/case/order, and rejects controls or aliases. Native validation
+checks the canonical codes against the pinned Whisper vocabulary before inference.
+The unpatched CPU runtime rejects this option with HTTP 422.
+Verbose output includes `language_selection` for short requests and attaches it
+to each `language_windows` entry for long requests. Candidate-auto diagnostics
+include the unrestricted detected code, selected code, and their original
+probabilities; probabilities are not renormalized confidence estimates.
+This capability remains unqualified until the fixed benchmark panel passes.
 
 The CPU candidate adds no production alias, host port, backend route or automatic
 fallback. Candidate startup is a manually invoked Compose profile; the runtime
@@ -172,7 +188,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-candidate build applies `strict-gpu-window-audit-v4` to the exact pinned upstream source
+candidate build applies `strict-gpu-language-candidates-v5` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
@@ -194,8 +210,8 @@ ties, instead of randomly drawing candidates after sorting them. Each request
 also resets decoder zero's random generator to its original seed, as the
 upstream request initialization already does for the other decoders. This
 prevents earlier requests from changing later stochastic greedy/fallback
-sampling. Model weights, language detection, decoding defaults, and timestamp
-probability fields are unchanged. The selected `hc4` image retains the original
+sampling. That repair preserves model weights, language detection, decoding defaults,
+and timestamp probability fields. The selected `hc4` image retains the original
 adapter and native request boundaries. Its long-input review found omitted
 speech and Danish rendered in English; exact controls reproduced both with the
 preceding `hc3` runtime. Those failed accuracy findings remain valid. The scoped
@@ -214,6 +230,9 @@ bounded scalar seek, timestamp and language metadata in
 `/tmp/whisper-window-trace.jsonl`. It records no transcript, prompt, audio or
 ordinary token IDs. Tracing does not change seek decisions or decoding, and is
 not enabled on the selected production runtime.
+
+Candidate `hc8` additionally implements the opt-in `language_candidates` request
+field described above. No candidate language restriction is configured by default.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains

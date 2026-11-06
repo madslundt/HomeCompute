@@ -46,8 +46,8 @@ for _name in ("MODEL_ID", "ALIASES", "MAX_AUDIO_SECONDS", "MAX_BODY_BYTES",
 
 
 RUNTIME_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-CUDA_PATCH_VERSION = "strict-gpu-window-audit-v4"
-CUDA_PATCHER_SHA256 = "0f6c34c743972ee997158989101d511c0712567e3b675d57c4c5fd0c90fc89c4"
+CUDA_PATCH_VERSION = "strict-gpu-language-candidates-v5"
+CUDA_PATCHER_SHA256 = "76ee7adee37b3b94994d1240f660390f56f664b75cf7153f0014605a27d90a8c"
 NATIVE_PORT = 8081
 
 
@@ -147,7 +147,17 @@ def _native_request(body: bytes, content_type: str, timeout: float) -> bytes:
             if len(payload) > MAX_RESPONSE_BYTES:
                 raise RequestError(502, "Speech backend response is too large")
             return payload
-    except urllib.error.HTTPError:
+    except urllib.error.HTTPError as error:
+        # Expose only this fixed native validation error, never backend content.
+        rejected_candidates = False
+        try:
+            with error:
+                rejected_candidates = (error.code == 400 and
+                                       error.read(128) == b'{"error":"invalid language candidates"}')
+        except OSError:
+            rejected_candidates = False
+        if rejected_candidates:
+            raise RequestError(400, "Invalid language candidates") from None
         raise RequestError(502, "Speech backend rejected the request") from None
     except (TimeoutError, urllib.error.URLError, OSError):
         raise RequestError(502, "Speech backend is unavailable") from None
@@ -338,6 +348,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
                                             max_body_bytes=max_body_bytes)
             duration = validate_audio(audio, self.server.config.max_audio_seconds)
             response_format, native_fields = normalize_fields(fields)
+            if "language_candidates" in fields and self.server.config.device != "cuda":
+                raise RequestError(422, "Language candidates require the patched CUDA runtime")
             self.request.settimeout(self.server.config.native_timeout_seconds + 60)
             payload, content_type = transcribe_audio(
                 audio, duration, response_format, native_fields, self.server.config.native_timeout_seconds)

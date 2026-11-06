@@ -9,7 +9,7 @@ import subprocess
 
 
 UPSTREAM_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-PATCH_VERSION = "strict-gpu-window-audit-v4"
+PATCH_VERSION = "strict-gpu-language-candidates-v5"
 PATCHES = {
     "src/whisper.cpp": (
         "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
@@ -237,6 +237,148 @@ def patch_window_trace(source: str) -> str:
     return source
 
 
+LANGUAGE_HELPERS = r"""static bool whisper_valid_language_candidates(const int * ids, int count) {
+    if (count < 0 || count > 16 || (count > 0 && ids == nullptr)) return false;
+    for (int i = 0; i < count; ++i) {
+        if (ids[i] < 0 || ids[i] > whisper_lang_max_id() || whisper_lang_str(ids[i]) == nullptr) return false;
+        for (int j = 0; j < i; ++j) if (ids[i] == ids[j]) return false;
+    }
+    return true;
+}
+
+static int whisper_select_language_candidate(const float * probs, const int * ids, int count) {
+    int selected = -1;
+    for (int i = 0; i < count; ++i) {
+        const int id = ids[i];
+        if (!std::isfinite(probs[id]) || probs[id] < 0.0f || probs[id] > 1.0f) return -1;
+        if (selected < 0 || probs[id] > probs[selected] ||
+                (probs[id] == probs[selected] && id < selected)) selected = id;
+    }
+    return selected;
+}
+
+"""
+LANGUAGE_PARSER = r"""static bool parse_language_candidates(const std::string & csv, std::vector<int> & ids) {
+    ids.clear();
+    if (csv.empty() || csv.size() > 63) return false;
+    std::vector<int> parsed;
+    std::string previous;
+    size_t begin = 0;
+    while (begin < csv.size()) {
+        const size_t end = csv.find(',', begin);
+        const auto code = csv.substr(begin, end == std::string::npos ? end : end - begin);
+        if (code.size() < 2 || code.size() > 3 || parsed.size() >= 16 ||
+                (!previous.empty() && code <= previous)) return false;
+        for (const char c : code) if (c < 'a' || c > 'z') return false;
+        const int id = whisper_lang_id(code.c_str());
+        if (id < 0 || code != whisper_lang_str(id)) return false;
+        parsed.push_back(id);
+        previous = code;
+        if (end == std::string::npos) { ids = parsed; return true; }
+        begin = end + 1;
+    }
+    return false;
+}
+
+"""
+LANGUAGE_PATCHES = {
+    "include/whisper.h": (
+        ("    WHISPER_API const char * whisper_version(void);\n", """    struct whisper_language_selection {
+        int detected_id, selected_id;
+        float detected_probability, selected_probability;
+    };
+    WHISPER_API struct whisper_language_selection whisper_full_get_language_selection(struct whisper_context * ctx);
+    WHISPER_API const char * whisper_version(void);
+"""),
+        ("        bool detect_language;\n", """        bool detect_language;
+        // Optional valid unique language IDs; explicit language takes precedence.
+        const int * language_candidates;
+        int n_language_candidates; // 0 means unrestricted; otherwise 1..16.
+"""),
+    ),
+    "src/whisper.cpp": (
+        ("    int lang_id = 0; // english by default\n", """    int lang_id = 0; // english by default
+    whisper_language_selection language_selection = {-1, -1, 0.0f, 0.0f};
+"""),
+        ("        /*.detect_language   =*/ false,\n", """        /*.detect_language   =*/ false,
+        /*.language_candidates =*/ nullptr,
+        /*.n_language_candidates =*/ 0,
+"""),
+        ("static bool whisper_vad(\n", LANGUAGE_HELPERS + "static bool whisper_vad(\n"),
+        ("    if (n_samples > 0) {\n        // compute log mel spectrogram\n", """    state->language_selection = {-1, -1, 0.0f, 0.0f};
+    const bool automatic_language = params.language == nullptr || strlen(params.language) == 0 || strcmp(params.language, "auto") == 0;
+    if (!whisper_valid_language_candidates(params.language_candidates, params.n_language_candidates)) {
+        WHISPER_LOG_ERROR("%s: invalid language candidates\\n", __func__);
+        return -3;
+    }
+    if (params.n_language_candidates > 0 && !automatic_language) {
+        const int explicit_id = whisper_lang_id(params.language);
+        if (explicit_id < 0) return -3;
+        state->lang_id = explicit_id;
+        state->language_selection.selected_id = explicit_id;
+    }
+    if (n_samples > 0) {
+        // compute log mel spectrogram
+"""),
+        ('    if (params.language == nullptr || strlen(params.language) == 0 || strcmp(params.language, "auto") == 0 || params.detect_language) {\n',
+         '    if (automatic_language || (params.detect_language && params.n_language_candidates == 0)) {\n'),
+        ("        const auto lang_id = whisper_lang_auto_detect_with_state(ctx, state, 0, params.n_threads, probs.data());\n", """        const auto detected_id = whisper_lang_auto_detect_with_state(ctx, state, 0, params.n_threads, probs.data());
+        int lang_id = detected_id;
+        if (detected_id >= 0 && params.n_language_candidates > 0) {
+            lang_id = whisper_select_language_candidate(probs.data(), params.language_candidates, params.n_language_candidates);
+            if (lang_id >= 0) state->language_selection = {detected_id, lang_id, probs[detected_id], probs[lang_id]};
+        }
+"""),
+        ("int whisper_full_lang_id(struct whisper_context * ctx) {\n", """struct whisper_language_selection whisper_full_get_language_selection(struct whisper_context * ctx) {
+    return ctx->state->language_selection;
+}
+
+int whisper_full_lang_id(struct whisper_context * ctx) {
+"""),
+    ),
+    "examples/server/server.cpp": (
+        ('    std::string language               = "en";\n', '    std::string language               = "en";\n    std::vector<int> language_candidates;\n'),
+        ("void get_req_parameters(const Request & req, whisper_params & params)\n", LANGUAGE_PARSER + "void get_req_parameters(const Request & req, whisper_params & params)\n"),
+        ("        get_req_parameters(req, params);\n", """        get_req_parameters(req, params);
+        if (req.has_file("language_candidates") &&
+                (req.files.count("language_candidates") != 1 ||
+                 !parse_language_candidates(req.get_file_value("language_candidates").content, params.language_candidates) ||
+                 params.n_processors != 1)) {
+            res.status = 400;
+            res.set_content("{\\\"error\\\":\\\"invalid language candidates\\\"}", "application/json");
+            return;
+        }
+"""),
+        ("            wparams.detect_language  = params.detect_language;\n", """            wparams.detect_language  = params.detect_language;
+            wparams.language_candidates = params.language_candidates.empty() ? nullptr : params.language_candidates.data();
+            wparams.n_language_candidates = static_cast<int>(params.language_candidates.size());
+"""),
+        ("            // Only compute language probabilities if requested (expensive operation)\n", """            if (!params.language_candidates.empty()) {
+                const auto selection = whisper_full_get_language_selection(ctx);
+                json diagnostic = {{"mode", selection.detected_id >= 0 ? "candidate_auto" : "explicit"},
+                    {"candidates", json::array()}, {"selected", whisper_lang_str(whisper_full_lang_id(ctx))}};
+                for (const int id : params.language_candidates) diagnostic["candidates"].push_back(whisper_lang_str(id));
+                if (selection.detected_id >= 0) {
+                    diagnostic["detected"] = whisper_lang_str(selection.detected_id);
+                    diagnostic["detected_probability"] = selection.detected_probability;
+                    diagnostic["selected_probability"] = selection.selected_probability;
+                }
+                jres["language_selection"] = diagnostic;
+            }
+            // Only compute language probabilities if requested (expensive operation)
+"""),
+    ),
+}
+
+
+def patch_language_candidates(source: str, relative: str) -> str:
+    for old, new in LANGUAGE_PATCHES[relative]:
+        if source.count(old) != 1:
+            raise ValueError("Pinned whisper.cpp language candidate anchor is missing or ambiguous")
+        source = source.replace(old, new, 1)
+    return source
+
+
 def patch_sampling(source: str) -> str:
     for old, new in SAMPLING_PATCHES:
         if source.count(old) != 1:
@@ -274,6 +416,8 @@ def apply(root: Path) -> None:
     source = patch_sampling(source)
     source = patch_window_trace(source)
     updates[0] = (source_path, source.encode("utf-8"))
+    updates = [(path, patch_language_candidates(content.decode("utf-8"), str(path.relative_to(root))).encode("utf-8"))
+               for path, content in updates]
     for path, content in updates:
         temporary = path.with_suffix(path.suffix + ".homecompute-tmp")
         temporary.write_bytes(content)
@@ -286,7 +430,9 @@ def verify(root: Path) -> bool:
     whisper = (root / "src/whisper.cpp").read_text()
     server = (root / "examples/server/server.cpp").read_text()
     header = (root / "include/whisper.h").read_text()
-    return (all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES) and
+    language_ok = all((root / relative).read_text().count(new) == 1
+                      for relative, patches in LANGUAGE_PATCHES.items() for _old, new in patches)
+    return (language_ok and all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES) and
             SAMPLING_PATCHES[-1][0] not in whisper and
             "required GPU backend initialization failed" in whisper and
             "size_t whisper_model_gpu_buffer_size(struct whisper_context * ctx)" in whisper and

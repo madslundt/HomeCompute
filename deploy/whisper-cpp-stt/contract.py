@@ -19,7 +19,7 @@ MAX_CONFIGURED_UPLOAD_BYTES = 256 * 1024 * 1024
 MAX_RESPONSE_BYTES = 8_000_000
 CONTROL_TOKEN = re.compile(r"<\|[^|\r\n]{1,80}\|>")
 FIELD_NAME = re.compile(r"^[A-Za-z0-9_.\[\]-]{1,80}$")
-ALLOWED_FIELDS = {"model", "response_format", "language", "prompt", "temperature",
+ALLOWED_FIELDS = {"model", "response_format", "language", "language_candidates", "prompt", "temperature",
                   "temperature_inc", "no_timestamps", "max_context",
                   "translate", "carry_initial_prompt", "beam_size", "best_of", "max_len"}
 
@@ -125,6 +125,8 @@ def normalize_fields(fields: dict[str, str]) -> tuple[str, list[tuple[str, str]]
     if language != "auto" and not re.fullmatch(r"[A-Za-z]{2,3}", language):
         raise RequestError(400, "Unsupported language value")
     native.append(("language", language.lower()))
+    if "language_candidates" in fields:
+        native.append(("language_candidates", normalize_language_candidates(fields["language_candidates"])))
     if "prompt" in fields:
         if "\x00" in fields["prompt"]:
             raise RequestError(400, "Invalid transcription parameter")
@@ -160,6 +162,44 @@ def normalize_fields(fields: dict[str, str]) -> tuple[str, list[tuple[str, str]]
     native.extend((("beam_size", str(beam_size)), ("best_of", str(best_of)),
                    ("max_len", str(max_len))))
     return response_format, native
+
+
+def normalize_language_candidates(raw: str) -> str:
+    # Native validates membership in the pinned model's language vocabulary.
+    # Reject controls, aliases and duplicates before forwarding any audio.
+    if len(raw) > 127 or re.search(r"[^A-Za-z, ]", raw):
+        raise RequestError(400, "Invalid language candidates")
+    codes = [code.strip(" ").lower() for code in raw.split(",")]
+    canonical = ",".join(sorted(codes))
+    if not 1 <= len(codes) <= 16 or len(canonical) > 63 or \
+            len(set(codes)) != len(codes) or any(not re.fullmatch(r"[a-z]{2,3}", code) for code in codes):
+        raise RequestError(400, "Invalid language candidates")
+    return canonical
+
+
+def _language_selection(value: object) -> dict:
+    if not isinstance(value, dict) or not isinstance(value.get("mode"), str) or \
+            value["mode"] not in {"candidate_auto", "explicit"}:
+        raise RequestError(502, "Speech backend returned invalid language selection")
+    codes = value.get("candidates")
+    if not isinstance(codes, list) or not all(isinstance(code, str) for code in codes):
+        raise RequestError(502, "Speech backend returned invalid language selection")
+    try:
+        if normalize_language_candidates(",".join(codes)).split(",") != codes:
+            raise ValueError()
+    except ValueError:
+        raise RequestError(502, "Speech backend returned invalid language selection") from None
+    if not isinstance(value.get("selected"), str) or not re.fullmatch(r"[a-z]{2,3}", value["selected"]):
+        raise RequestError(502, "Speech backend returned invalid language selection")
+    if value["mode"] == "candidate_auto":
+        if value["selected"] not in codes or not isinstance(value.get("detected"), str) or \
+                not re.fullmatch(r"[a-z]{2,3}", value["detected"]):
+            raise RequestError(502, "Speech backend returned invalid language selection")
+        for key in ("detected_probability", "selected_probability"):
+            number = value.get(key)
+            if type(number) not in (int, float) or not math.isfinite(number) or not 0 <= number <= 1:
+                raise RequestError(502, "Speech backend returned invalid language selection")
+    return value
 
 
 def _bounded_integer(raw: str, name: str, minimum: int, maximum: int, *, allow_minus_one=False) -> int:
@@ -216,6 +256,8 @@ def normalize_native_response(payload: bytes, response_format: str, duration: fl
     if not isinstance(result, dict) or not isinstance(result.get("segments"), list):
         raise RequestError(502, "Speech backend returned invalid verbose JSON")
     result["text"] = _clean_text(result.get("text"))
+    if "language_selection" in result:
+        result["language_selection"] = _language_selection(result["language_selection"])
     cursor = 0
     exact_serialization = True
     parts: list[str] = []
@@ -325,8 +367,10 @@ def combine_native_windows(responses, response_format: str, duration: float) -> 
             language = result.get("language")
             if not isinstance(language, str) or not language or len(language) > 64:
                 language = None
-            language_windows.append({"start": offset, "end": offset + window_duration,
-                                     "language": language})
+            window = {"start": offset, "end": offset + window_duration, "language": language}
+            if "language_selection" in result:
+                window["language_selection"] = result["language_selection"]
+            language_windows.append(window)
             if language is not None and text.strip() and language not in languages:
                 languages.append(language)
             if task is None:
