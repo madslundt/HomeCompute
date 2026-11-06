@@ -144,7 +144,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
 
         def do_POST(self) -> None:
             if self.path in {'/v1/audio/transcriptions', '/v1/audio/speech'} and mcp_tokens is not None:
-                if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + mcp_tokens['openclaw']):
+                if not any(hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + mcp_tokens[name])
+                           for name in ('openclaw', 'hermes-owner') if name in mcp_tokens):
                     self.send_json(401, {'error': 'unauthorized'}); return
                 try:
                     from openclaw_speech import MAX_UPLOAD

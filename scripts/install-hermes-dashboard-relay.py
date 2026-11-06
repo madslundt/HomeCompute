@@ -19,6 +19,7 @@ UNIT = 'homecompute-hermes-dashboard-relay.service'
 LIB = Path('/usr/local/lib/homecompute-hermes-dashboard')
 STATE = Path('/var/lib/homecompute-hermes-dashboard-relay')
 UNIT_PATH = Path('/etc/systemd/system') / UNIT
+SURFACES = {'admin': 18794, 'webapp': 8646}
 LEGACY_START = ('ExecStart=/usr/bin/socat TCP4-LISTEN:18804,bind=10.77.20.2,reuseaddr,fork '
                 'TCP4:127.0.0.1:18794')
 
@@ -56,46 +57,52 @@ def replace(path, content, mode=0o644):
             os.unlink(temporary)
 
 
-def render(revision):
+def render(revision, port):
     return (ROOT / 'deploy/hermes/hermes-dashboard-relay.service').read_bytes().replace(
-        b'@RELAY@', str(LIB / revision / 'dashboard-relay.py').encode())
+        b'@RELAY@', str(LIB / revision / 'dashboard-relay.py').encode()).replace(b'@PORT@', str(port).encode())
 
 
-def known_unit(raw):
+def unit_port(raw):
     template = (ROOT / 'deploy/hermes/hermes-dashboard-relay.service').read_bytes()
-    legacy = template.replace(b'ExecStart=/usr/bin/python3 @RELAY@', LEGACY_START.encode())
-    legacy = legacy.replace(b'MemoryMax=128M\nTasksMax=32\n', b'')
-    if raw == legacy:
-        return True
+    for port in SURFACES.values():
+        legacy = template.replace(b'ExecStart=/usr/bin/python3 @RELAY@ --target-port @PORT@',
+                                  LEGACY_START.replace('18794', str(port)).encode())
+        legacy = legacy.replace(b'MemoryMax=128M\nTasksMax=32\n', b'')
+        if raw == legacy:
+            return port
     match = re.search(rb'ExecStart=/usr/bin/python3 ' + re.escape(str(LIB).encode())
-                      + rb'/([0-9a-f]{40})/dashboard-relay.py\n', raw)
-    return match is not None and raw == render(match[1].decode())
+                      + rb'/([0-9a-f]{40})/dashboard-relay.py --target-port (18794|8646)\n', raw)
+    if match is not None and raw == render(match[1].decode(), int(match[2])):
+        return int(match[2])
+    raise ValueError('unknown relay unit must be reconciled explicitly')
 
 
-def plan(revision):
+def plan(revision, surface=None):
     before = protected(UNIT_PATH) if UNIT_PATH.exists() or UNIT_PATH.is_symlink() else None
-    if before is not None and not known_unit(before):
-        raise ValueError('unknown relay unit must be reconciled explicitly')
+    # Preserve the selected native surface during a relay-only repair. The
+    # independent speech lifecycle explicitly requests the Webapp cutover.
+    current_port = unit_port(before) if before is not None else SURFACES['webapp']
+    port = SURFACES[surface] if surface is not None else current_port
     source = (ROOT / 'deploy/hermes/dashboard-relay.py').read_bytes()
-    after = render(revision)
+    after = render(revision, port)
     report = {'revision': revision, 'unit_before_sha256': digest(before) if before else None,
-              'unit_after_sha256': digest(after), 'relay_sha256': digest(source)}
+              'unit_after_sha256': digest(after), 'relay_sha256': digest(source), 'target_port': port}
     return report, before, after, source
 
 
-def check_auth():
+def check_auth(port):
     # Use the same readiness gate as the installed relay, including bounded
     # retries of the anonymous probe before any browser request is forwarded.
     import asyncio
     spec = importlib.util.spec_from_file_location('relay', ROOT / 'deploy/hermes/dashboard-relay.py')
     relay = importlib.util.module_from_spec(spec); spec.loader.exec_module(relay)
     async def probe():
-        _, writer = await relay.ready(relay.PORT, 8, 0.1)
+        _, writer = await relay.ready(port, 8, 0.1)
         await relay.close(writer)
     asyncio.run(probe())
     # The account provider must also be available; an uncertain check holds the
     # installation without changing the currently installed service.
-    conn = http.client.HTTPConnection('127.0.0.1', 18794, timeout=10)
+    conn = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
     try:
         conn.request('GET', '/api/auth/providers', headers={'Host': 'agents.home.arpa'})
         response = conn.getresponse(); body = response.read(65537)
@@ -112,11 +119,11 @@ def activate():
     subprocess.run(['systemctl', 'is-active', '--quiet', UNIT], check=True)
 
 
-def apply(revision, expected):
-    report, before, after, source = plan(revision)
+def apply(revision, expected, surface=None):
+    report, before, after, source = plan(revision, surface)
     if digest(json.dumps(report, sort_keys=True).encode()) != expected:
         raise ValueError('reviewed relay plan changed')
-    check_auth()
+    check_auth(report['target_port'])
     directory(STATE)
     directory(LIB / revision, 0o755)
     script = LIB / revision / 'dashboard-relay.py'
@@ -138,7 +145,7 @@ def apply(revision, expected):
     subprocess.run(['systemd-analyze', 'verify', str(candidate)], check=True, capture_output=True)
     if before is not None:
         replace(backup / 'unit.before', before, 0o600)
-    if plan(revision)[1] != before:
+    if plan(revision, surface)[1] != before:
         raise ValueError('relay unit changed during installation')
     try:
         replace(UNIT_PATH, after)
@@ -181,6 +188,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--surface', choices=SURFACES, help='explicit native surface cutover; otherwise preserve current')
     parser.add_argument('--expected-sha256')
     parser.add_argument('--rollback', action='store_true')
     args = parser.parse_args()
@@ -205,9 +213,9 @@ def main():
         if args.rollback:
             result = rollback()
         elif args.apply:
-            result = dict(apply(args.revision, args.expected_sha256), applied=True)
+            result = dict(apply(args.revision, args.expected_sha256, args.surface), applied=True)
         else:
-            report = plan(args.revision)[0]
+            report = plan(args.revision, args.surface)[0]
             result = dict(report, plan_sha256=digest(json.dumps(report, sort_keys=True).encode()), applied=False)
         print(json.dumps(result))
 

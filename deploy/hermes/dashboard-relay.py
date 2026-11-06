@@ -101,7 +101,7 @@ async def handle(reader, writer, *, port=PORT, timeout=8, delay=0.1):
                 await close(writer)
 
 
-async def main():
+async def main(port):
     active = set()
     async def accept(reader, writer):
         if len(active) >= 128:
@@ -110,7 +110,7 @@ async def main():
         task = asyncio.current_task()
         active.add(task)
         try:
-            await handle(reader, writer)
+            await handle(reader, writer, port=port)
         finally:
             active.discard(task)
     server = await asyncio.start_server(accept, '10.77.20.2', 18804, backlog=128)
@@ -119,4 +119,7 @@ async def main():
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--target-port', type=int, choices=(18794, 8646), required=True)
+    asyncio.run(main(parser.parse_args().target_port))

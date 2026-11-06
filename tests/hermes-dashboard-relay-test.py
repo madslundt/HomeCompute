@@ -164,12 +164,12 @@ class InstallerTest(unittest.TestCase):
             self.stack.enter_context(patch.object(self.install, name, value))
         self.stack.enter_context(patch.object(self.install, 'protected', lambda p: p.read_bytes()))
         self.stack.enter_context(patch.object(self.install, 'directory', lambda p, mode=0o700: p.mkdir(mode=mode, parents=True, exist_ok=True)))
-        self.stack.enter_context(patch.object(self.install, 'check_auth'))
+        self.auth = self.stack.enter_context(patch.object(self.install, 'check_auth'))
         self.activate = self.stack.enter_context(patch.object(self.install, 'activate'))
         self.stack.enter_context(patch.object(self.install.subprocess, 'run'))
         self.revision = 'a' * 40
         template = (ROOT / 'deploy/hermes/hermes-dashboard-relay.service').read_bytes()
-        self.legacy = template.replace(b'ExecStart=/usr/bin/python3 @RELAY@', self.install.LEGACY_START.encode())
+        self.legacy = template.replace(b'ExecStart=/usr/bin/python3 @RELAY@ --target-port @PORT@', self.install.LEGACY_START.encode())
         self.legacy = self.legacy.replace(b'MemoryMax=128M\nTasksMax=32\n', b'')
         self.install.UNIT_PATH.write_bytes(self.legacy)
 
@@ -180,7 +180,7 @@ class InstallerTest(unittest.TestCase):
     def test_upgrade_is_idempotent_and_rollback_retains_original_preimage(self):
         self.apply()
         receipt = (self.install.STATE / 'receipt.json').read_bytes()
-        self.assertEqual(self.install.UNIT_PATH.read_bytes(), self.install.render(self.revision))
+        self.assertEqual(self.install.UNIT_PATH.read_bytes(), self.install.render(self.revision, 18794))
         self.apply()
         self.assertEqual((self.install.STATE / 'receipt.json').read_bytes(), receipt)
         self.install.rollback()
@@ -195,6 +195,16 @@ class InstallerTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.install.plan(self.revision)
         self.assertEqual(self.install.UNIT_PATH.read_bytes(), unknown)
+
+    def test_relay_repair_preserves_surface_and_only_explicit_cutover_selects_webapp(self):
+        self.assertEqual(self.install.plan(self.revision)[0]['target_port'], 18794)
+        report = self.install.plan(self.revision, 'webapp')[0]
+        self.install.apply(self.revision, self.install.digest(json.dumps(report, sort_keys=True).encode()), 'webapp')
+        self.auth.assert_called_once_with(8646)
+        self.assertEqual(self.install.unit_port(self.install.UNIT_PATH.read_bytes()), 8646)
+        self.assertEqual(self.install.plan(self.revision)[0]['target_port'], 8646)
+        self.install.rollback()
+        self.assertEqual(self.install.UNIT_PATH.read_bytes(), self.legacy)
 
     def test_activation_failure_restores_unit(self):
         self.activate.side_effect = [RuntimeError('synthetic activation failure'), None]

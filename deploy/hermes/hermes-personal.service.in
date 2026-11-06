@@ -13,6 +13,7 @@ Type=oneshot
 RemainAfterExit=yes
 Environment=PATH=@OPERATOR_HOME@/.nvm/versions/node/v22.23.3/bin:@OPERATOR_HOME@/.local/bin:@OPERATOR_HOME@/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=@RELEASE@/scripts/setup-hermes-guest.sh start --config @CONFIG@
+ExecStartPost=/usr/bin/python3 @RELEASE@/scripts/recover-hermes-dashboard.py
 ExecStop=@RELEASE@/scripts/setup-hermes-guest.sh stop --config @CONFIG@
 Restart=on-failure
 RestartSec=5
