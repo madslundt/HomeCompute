@@ -328,10 +328,11 @@ On home-core, stage the same published source under
 review its two config hashes, then add `--apply --expected-caddy-sha256 HASH
 --expected-homepage-sha256 HASH`. This guarded lifecycle builds only the two
 canonical Nix relay/firewall units, preserves unrelated routes and maintenance
-markers, reloads Caddy without dropping Mattermost sockets, and changes the
+markers, briefly restarts Caddy (its admin API stays disabled), and changes the
 existing Hermes frontpager card to `https://agents.home.arpa/hermes/`. The only admitted
 bridge client is Caddy; native auth is required on approved LAN/Tailscale access.
-No new public listener, model route or OpenClaw state is introduced.
+Verify Mattermost reconnects after this restart. No new public listener, model
+route or OpenClaw state is introduced.
 
 Verify native plugin discovery (OMH enabled, no error, tools and hooks registered),
 local routing/concurrency readback, authenticated dashboard login and chat,
@@ -339,6 +340,18 @@ Mattermost DM response, browser public navigation and private-address denial,
 MCP status, sealed package-manager verification, and a native stop/start. Keep
 private logs, config backups and the source-linked receipt in the sandbox assets
 directory; these are evidence, not Git desired state.
+
+The published read-only probes can be run with the operator's native CLI:
+
+```bash
+export OPENSHELL_GATEWAY=nemoclaw NEMOCLAW_GATEWAY_PORT=8080 NEMOCLAW_NO_AUTO_AUDIT_LOGS=1
+nemohermes hermes-personal-v23 exec --stdin -- /opt/hermes/.venv/bin/python - < deploy/hermes/omh/verify.py
+nemohermes hermes-personal-v23 exec --stdin -- /opt/hermes/.venv/bin/python - < deploy/hermes/omh/probe_runtime.py
+```
+
+The runtime probe calls `omh_status`, verifies the sealed packages, opens only
+the public example page in a named browser session, and requires a private-address
+navigation to be rejected. It emits booleans and a public page title only.
 
 Rollback closes the guest ingress before restoring only the verified private
 config preimage and restarting natively:
