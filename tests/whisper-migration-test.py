@@ -935,7 +935,17 @@ class MigrationTests(unittest.TestCase):
                     verbose = b'name="response_format"\r\n\r\nverbose_json' in body
                     native_receipts.append({'verbose': verbose, 'body_bytes': len(body)})
                     if verbose and mode == 'timestamp-overrun':
-                        payload = b'{"text":"synthetic","segments":[{"start":0.0,"end":30.01,"text":"synthetic"}]}'
+                        payload = b'{"text":"synthetic","segments":[{"start":30.0,"end":30.01,"text":"synthetic"}]}'
+                    elif verbose and mode == 'unknown-timing':
+                        payload = b'{"text":"synthetic\\n","segments":[{"start":0.0,"end":30.01,"text":"synthetic"}]}'
+                    elif verbose and mode == 'unanchored-unknown-timing':
+                        payload = b'{"text":"different","segments":[{"start":0.0,"end":30.01,"text":"synthetic"}]}'
+                    elif verbose and mode == 'missing-unknown-times':
+                        payload = b'{"text":"synthetic\\n","segments":[{"timing_status":"unknown_out_of_bounds","text":"synthetic"}]}'
+                    elif verbose and mode == 'missing-timing':
+                        payload = b'{"text":"synthetic","segments":[{"start":null,"end":null,"text":"synthetic"}]}'
+                    elif verbose and mode == 'unrecognized-timing':
+                        payload = b'{"text":"synthetic","segments":[{"start":null,"end":null,"timing_status":"unknown","text":"synthetic"}]}'
                     elif verbose:
                         payload = b'{"text":"synthetic","segments":[{"start":0.0,"end":0.5,"text":"synthetic"}]}'
                     else:
@@ -1019,6 +1029,16 @@ class MigrationTests(unittest.TestCase):
             ('timestamp-overrun', {}, {'recording-adapter': (502, 'timestamp_out_of_bounds'),
                                        'recording-relay': (502, 'upstream_rejected'),
                                        'standard-relay': (200, 'none')}, 1),
+            ('unknown-timing', {}, {'recording-adapter': (200, 'none'), 'recording-relay': (200, 'none'),
+                                   'standard-relay': (200, 'none')}, 0),
+            ('missing-timing', {}, {'recording-adapter': (200, 'invalid_segment'),
+                                   'recording-relay': (200, 'invalid_segment'), 'standard-relay': (200, 'none')}, 1),
+            ('unrecognized-timing', {}, {'recording-adapter': (200, 'invalid_segment'),
+                                        'recording-relay': (200, 'invalid_segment'), 'standard-relay': (200, 'none')}, 1),
+            ('unanchored-unknown-timing', {}, {'recording-adapter': (200, 'invalid_segment'),
+                                             'recording-relay': (200, 'invalid_segment'), 'standard-relay': (200, 'none')}, 1),
+            ('missing-unknown-times', {}, {'recording-adapter': (200, 'invalid_segment'),
+                                          'recording-relay': (200, 'invalid_segment'), 'standard-relay': (200, 'none')}, 1),
             ('missing-provenance', {'omit_provenance': True},
              {'recording-adapter': (200, 'missing_provenance'), 'recording-relay': (502, 'missing_provenance'),
               'standard-relay': (200, 'none')}, 1),
@@ -1032,6 +1052,8 @@ class MigrationTests(unittest.TestCase):
                 receipts = [json.loads(line) for line in output.splitlines()]
                 self.assertEqual(exit_code, expected_exit)
                 self.assertEqual({item['probe']: (item['status'], item['error']) for item in receipts}, expected)
+                self.assertEqual([item['unknown_timing_segment_count'] for item in receipts],
+                                 [1, 1, 0] if mode == 'unknown-timing' else [0, 0, 0])
                 self.assertNotIn(secret.decode(), output)
                 self.assertNotIn('synthetic', output)
                 self.assertEqual([item['verbose'] for item in native_receipts], [True, True, False]

@@ -39,7 +39,7 @@ NEW = ('gb10-whisper-primary', 'gb10-whisper-http')
 CANDIDATE = 'gb10-whisper-candidate'
 CANDIDATE_IMAGE = 'homecompute/whisper-vllm-candidate:0.19.0-hc1'
 CUDA_CANDIDATE = 'gb10-whisper-cpp-primary'
-CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc5'
+CUDA_CANDIDATE_IMAGE = 'homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc6'
 CUDA_CANDIDATE_PROJECT = 'whisper-cpp-gb10-cuda'
 CPP_QUALIFIED_IMAGE_ID = 'sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3'
 CPP_QUALIFIED_SOURCE_REVISION = '50ee4f9666c26df89bccab30c83e9cd6dcc0faba'
@@ -954,7 +954,7 @@ def post(probe,base,path,fields,verbose=False,provenance=False,duration=1.0):
  body=b''.join((b'--'+boundary.encode()+b'\\r\\nContent-Disposition: form-data; name="'+k.encode()+b'"\\r\\n\\r\\n'+v.encode()+b'\\r\\n') for k,v in fields)
  body+=b'--'+boundary.encode()+b'\\r\\nContent-Disposition: form-data; name="file"; filename="audio.wav"\\r\\nContent-Type: audio/wav\\r\\n\\r\\n'+pcm(int(duration))+b'\\r\\n--'+boundary.encode()+b'--\\r\\n'
  req=urllib.request.Request(base+path,data=body,headers={'Authorization':'Bearer '+key,'Content-Type':'multipart/form-data; boundary='+boundary})
- record={'probe':probe,'status':None,'error':'none','timestamp_bounds_valid':None,'timestamp_bound_violation_count':None,'audio_duration_seconds':duration,'inference_idle_confirmed':None}
+ record={'probe':probe,'status':None,'error':'none','timestamp_bounds_valid':None,'timestamp_bound_violation_count':None,'unknown_timing_segment_count':0,'audio_duration_seconds':duration,'inference_idle_confirmed':None}
  if provenance: record['provenance_headers_present']={name:False for name in ''' + expected + '''}
  if not can_post:
   record['error']='inference_idle_unconfirmed'
@@ -973,6 +973,12 @@ def post(probe,base,path,fields,verbose=False,provenance=False,duration=1.0):
     for segment in result['segments']:
      if not isinstance(segment,dict): record['error']='response_shape_invalid';break
      start=segment.get('start');end=segment.get('end')
+     begin=segment.get('start_offset');finish=segment.get('end_offset')
+     anchored=(type(begin) is int and type(finish) is int and 0<=begin<=finish<=len(result['text']) and
+               isinstance(segment.get('text'),str) and result['text'][begin:finish]==segment['text'])
+     if ('start' in segment and 'end' in segment and start is None and end is None and
+         segment.get('timing_status')=='unknown_out_of_bounds' and anchored):
+      record['unknown_timing_segment_count']+=1;continue
      if (not isinstance(start,(int,float)) or isinstance(start,bool) or not isinstance(end,(int,float)) or
          isinstance(end,bool) or not math.isfinite(start) or not math.isfinite(end)):
       record['error']='invalid_segment';break

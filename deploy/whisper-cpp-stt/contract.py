@@ -230,10 +230,17 @@ def normalize_native_response(payload: bytes, response_format: str, duration: fl
         start = segment.get("start")
         end = segment.get("end")
         if start is not None or end is not None:
-            if not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or \
+            if type(start) not in (int, float) or type(end) not in (int, float) or \
                     not math.isfinite(start) or not math.isfinite(end) or \
-                    start < 0 or end < start or end > duration:
+                    start < 0 or end < start or start > duration or \
+                    (start == duration and end > duration):
                 raise RequestError(502, "Speech backend returned out-of-bounds segment timestamps")
+            if end > duration:
+                # Canonical text remains usable, but the native decoder has not
+                # provided supportable timing. Never clamp into invented bounds.
+                segment["start"] = None
+                segment["end"] = None
+                segment["timing_status"] = "unknown_out_of_bounds"
         parts.append(segment_text + "\n")
         begin, finish = cursor, cursor + len(segment_text)
         if result["text"][begin:finish] != segment_text or \

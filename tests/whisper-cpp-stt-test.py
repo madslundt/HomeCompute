@@ -719,17 +719,44 @@ class AdapterContractTests(unittest.TestCase):
         self.assertEqual(json.loads(payload), {"text": "Words  remain", "id": "native"})
         self.assertEqual(content_type, "application/json")
 
-    def test_rejects_out_of_bounds_native_time_without_clamping(self):
-        source = {"text": "x\n", "segments": [{"start": 0, "end": 2.0, "text": "x"}]}
-        with self.assertRaisesRegex(ADAPTER.RequestError, "out-of-bounds"):
-            ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 1.0)
+    def test_boundary_overrun_keeps_text_and_exact_anchor_with_explicit_unknown_timing(self):
+        source = {"text": "Earlier.\nAcknowledgement.\n", "segments": [
+            {"start": 22.5, "end": 29.58, "text": "Earlier."},
+            {"start": 29.58, "end": 30.42, "text": "Acknowledgement.", "words": [{"end": 30.42}]},
+        ]}
+        payload, _ = ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 30.0)
+        result = json.loads(payload)
+        self.assertEqual(result["text"], source["text"])
+        self.assertEqual(result["segments"][0]["start"], 22.5)
+        self.assertEqual(result["segments"][0]["end"], 29.58)
+        unknown = result["segments"][1]
+        self.assertIsNone(unknown["start"])
+        self.assertIsNone(unknown["end"])
+        self.assertEqual(unknown["timing_status"], "unknown_out_of_bounds")
+        self.assertEqual(result["text"][unknown["start_offset"]:unknown["end_offset"]], unknown["text"])
+        self.assertNotIn("words", unknown)
 
-    def test_one_second_audio_rejects_29_98_second_native_segment_without_clamping(self):
-        source = {"text": "synthetic", "segments": [{"start": 0.0, "end": 29.98, "text": "synthetic"}]}
-        with self.assertRaisesRegex(ADAPTER.RequestError, "out-of-bounds") as caught:
-            ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 1.0)
-        self.assertEqual(caught.exception.status, 502)
-        self.assertEqual(caught.exception.message, "Speech backend returned out-of-bounds segment timestamps")
+    def test_large_overrun_is_unknown_without_clamping_or_invented_anchor(self):
+        source = {"text": "canonical text", "segments": [{"start": 0.0, "end": 29.98, "text": "different"}]}
+        payload, _ = ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 1.0)
+        result = json.loads(payload)
+        self.assertEqual(result["text"], "canonical text")
+        unknown = result["segments"][0]
+        self.assertIsNone(unknown["start"])
+        self.assertIsNone(unknown["end"])
+        self.assertEqual(unknown["timing_status"], "unknown_out_of_bounds")
+        self.assertNotIn("start_offset", unknown)
+        self.assertNotIn("end_offset", unknown)
+
+    def test_malformed_negative_inverted_or_entirely_outside_timing_still_fails(self):
+        for start, end in ((-0.01, 0.5), (0.5, 0.4), (1.0, 1.2), (1.01, 1.2), (float("nan"), 0.5),
+                           (0, float("inf")), (float("-inf"), 0), (None, 1), (0, None),
+                           ("0", 1), (False, 1), (0, True)):
+            with self.subTest(start=start, end=end):
+                source = {"text": "x\n", "segments": [{"start": start, "end": end, "text": "x"}]}
+                with self.assertRaisesRegex(ADAPTER.RequestError, "out-of-bounds") as caught:
+                    ADAPTER.normalize_native_response(json.dumps(source).encode(), "verbose_json", 1.0)
+                self.assertEqual(caught.exception.status, 502)
 
     def test_real_http_handler_auth_and_forwarding_with_synthetic_native_response(self):
         config = ADAPTER.CandidateConfig(

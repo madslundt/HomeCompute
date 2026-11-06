@@ -79,9 +79,14 @@ in seconds relative to this request. It adds `kind: "segment"` and exclusive
 `start_offset` / `end_offset` character anchors only when the sanitized native
 segment serialization exactly matches the returned top-level text. It strips
 whisper special-token spellings from returned text, preserves native segment
-times without clamping, and rejects out-of-range timestamps. If text and
-segments do not serialize identically, it withholds character anchors rather
-than inventing a mapping. It removes the upstream `words` field because its
+times without clamping. A finite, nonnegative, ordered segment whose start is
+before the input's end but whose end exceeds it receives `start: null`, `end: null`,
+and `timing_status: "unknown_out_of_bounds"`; its text and any verified character
+anchors remain available. This is unknown timing, not a timestamp corrected to
+fit the audio. Malformed, nonfinite, negative, inverted, or entirely out-of-range
+segments still fail. If text and segments do not serialize identically, it
+withholds character anchors rather than inventing a mapping. It removes the
+upstream `words` field because its
 pieces are model tokens, not a validated word alignment. Source-recording
 offsets and ownership across uploads belong to the client; this service reports
 request-local coordinates only. Successful transcriptions also include
@@ -185,9 +190,12 @@ sampling. Model weights, language detection, decoding defaults, and timestamp
 probability fields are unchanged. The `hc4` image remains a short-input
 reliability candidate; its long-input qualification found omitted speech and
 Danish translated into English. Both defects were also reproduced with the
-preceding `hc3` runtime. The `hc5` adapter candidate below requires a new full
-qualification; the previously qualified `hc3` image below retains its
-exact identity until a separately validated promotion.
+preceding `hc3` runtime. The `hc5` bounded-window candidate then failed a long
+English upload because a native segment ended 420 ms beyond its 30-second input.
+The `hc6` adapter preserves that canonical text while explicitly marking its
+unsupported timing unknown; it requires fresh qualification. The previously
+qualified `hc3` image retains its exact identity until a separately validated
+promotion.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
@@ -332,7 +340,10 @@ The promotion smoke first sends a 30-second synthetic verbose request directly
 to the private CPP adapter, then sends the same request through the recording
 relay, and finishes with the ordinary one-second JSON route. This gives the
 verbose path a full Whisper window while checking timestamps against that exact
-input duration. After each request it polls
+input duration. Explicit unknown timing is counted separately and accepted only
+when both times are null, the exact unknown marker is present, and character
+anchors match the canonical text. Missing or malformed timing still fails.
+After each request it polls
 the existing health endpoint until adapter and native inference are confirmed
 idle before issuing another. It reports only fixed probe names, HTTP status,
 allowlisted error enums, provenance-header presence booleans, and bounded
@@ -390,7 +401,7 @@ sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-
 
 ## Bounded native windows for long uploads
 
-The `hc5` adapter candidate preserves the existing native request for inputs
+The `hc6` adapter candidate preserves the existing native request for inputs
 up to 30 seconds. Longer validated WAV uploads are partitioned into contiguous
 30-second PCM windows plus the remaining tail. If the tail is shorter than
 3 seconds, the final two windows share their remaining frames equally (at most
@@ -422,7 +433,10 @@ when nonempty outputs contain multiple detected languages. This is detected
 language metadata, not a human accuracy claim. Optional word alignment that
 accepts only one language cannot align `mixed`; consumers must retain canonical
 text/native segments and report unsupported alignment rather than force a
-single language. The up-to-30-second response contract is unchanged.
+single language. The up-to-30-second native dispatch is unchanged. The explicit
+unknown-timing rule applies to verbose responses at every input length. Long
+aggregation retains null times and the unknown marker, and rebases only the
+verified character anchors for those segments.
 
 ## Replace an already-promoted CPP runtime
 

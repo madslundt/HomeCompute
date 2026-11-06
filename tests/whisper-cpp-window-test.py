@@ -103,6 +103,21 @@ class WindowContractTests(unittest.TestCase):
             self.assertEqual(segment['tokens'], [10, 20])
             self.assertNotIn('words', segment)
 
+    def test_unknown_boundary_timing_stays_unknown_after_global_aggregation(self):
+        overrun = json.dumps({'text': 'Acknowledgement.\n', 'language': 'english', 'task': 'transcribe',
+                              'segments': [{'start': 29.58, 'end': 30.42, 'text': 'Acknowledgement.'}]}).encode()
+        payload, _ = CODEC.combine_native_windows(
+            [(0, 30, verbose('First.', 'english')), (30, 30, overrun),
+             (60, 5, verbose('Last.', 'english', end=5))], 'verbose_json', 65)
+        result = json.loads(payload)
+        self.assertEqual(result['text'], 'First.\nAcknowledgement.\nLast.\n')
+        self.assertEqual((result['segments'][2]['start'], result['segments'][2]['end']), (60, 65))
+        unknown = result['segments'][1]
+        self.assertIsNone(unknown['start']); self.assertIsNone(unknown['end'])
+        self.assertEqual(unknown['timing_status'], 'unknown_out_of_bounds')
+        for segment in result['segments']:
+            self.assertEqual(result['text'][segment['start_offset']:segment['end_offset']], segment['text'])
+
     def test_mismatched_native_serialization_never_gets_invented_anchors(self):
         bad = json.dumps({'text': 'Canonical', 'segments': [{'start': 0, 'end': 1, 'text': 'Different'}]}).encode()
         payload, _ = CODEC.combine_native_windows([(0, 30, bad), (30, 1, verbose())], 'verbose_json', 31)
@@ -113,8 +128,9 @@ class WindowContractTests(unittest.TestCase):
         self.assertEqual(result['text'][segment['start_offset']:segment['end_offset']], segment['text'])
 
     def test_local_bounds_and_cumulative_response_budget_refuse(self):
+        invalid = json.dumps({'text': 'x\n', 'segments': [{'start': 1.01, 'end': 2, 'text': 'x'}]}).encode()
         with self.assertRaisesRegex(ADAPTER.RequestError, 'out-of-bounds'):
-            CODEC.combine_native_windows([(30, 1, verbose(end=29.98))], 'verbose_json', 31)
+            CODEC.combine_native_windows([(30, 1, invalid)], 'verbose_json', 31)
         with patch.object(CODEC, 'MAX_RESPONSE_BYTES', 15), self.assertRaisesRegex(ADAPTER.RequestError, 'too large'):
             CODEC.combine_native_windows([(0, 30, b'1234567890'), (30, 1, b'abcdefghij')], 'text', 31)
 

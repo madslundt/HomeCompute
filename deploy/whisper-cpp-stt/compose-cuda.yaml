@@ -4,7 +4,7 @@ services:
   whisper-cpp-cuda:
     profiles: [cuda-candidate]
     platform: linux/arm64
-    image: ${WHISPER_CPP_CUDA_IMAGE:-homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc5}
+    image: ${WHISPER_CPP_CUDA_IMAGE:-homecompute/whisper-cpp-stt:1.9.1-large-v3-f16-cuda121a-hc6}
     build:
       context: .
       dockerfile: Dockerfile.cuda
