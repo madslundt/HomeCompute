@@ -79,7 +79,7 @@ class ServiceWiringTests(unittest.TestCase):
                     'projects': [], 'actions': {}, 'timezone': 'Europe/Copenhagen',
                     'quiet_start_hour': 22, 'quiet_end_hour': 7, 'cooldown_seconds': 1800}
         tokens = {name: name + 'x' * 40 for name in ('collector', 'conversation', 'delivery')}
-        native = {name: name + '-' * 40 for name in ('openclaw', 'hermes')}
+        native = {name: name + '-' * 40 for name in ('openclaw', 'hermes', 'hermes-owner')}
         name = 'homecompute_web_search'
         def validate(tool, arguments):
             if tool != name or arguments != {'query': 'synthetic'}:
@@ -103,6 +103,7 @@ class ServiceWiringTests(unittest.TestCase):
                     return json.loads(response.read())
             try:
                 self.assertIn(name, [tool['name'] for tool in rpc('tools/list')['result']['tools']])
+                self.assertIn(name, [tool['name'] for tool in rpc('tools/list', actor='hermes-owner')['result']['tools']])
                 with self.assertRaises(urllib.error.HTTPError) as denied:
                     rpc('tools/list', actor='hermes')
                 self.assertEqual(denied.exception.code, 401)
@@ -111,6 +112,7 @@ class ServiceWiringTests(unittest.TestCase):
                 result = rpc('tools/call', {'name': name, 'arguments': arguments})
                 self.assertFalse(result['result']['isError'])
                 services.request.assert_called_once_with(name, arguments)
+                self.assertFalse(rpc('tools/call', {'name': name, 'arguments': arguments}, 'hermes-owner')['result']['isError'])
                 with self.assertRaises(urllib.error.HTTPError) as denied:
                     rpc('tools/call', {'name': name, 'arguments': arguments}, 'hermes')
                 self.assertEqual(denied.exception.code, 401)
@@ -120,7 +122,7 @@ class ServiceWiringTests(unittest.TestCase):
                     result = rpc('tools/call', {'name': tool, 'arguments': args}, actor)
                     self.assertEqual(result['error']['code'], -32602)
                     self.assertNotIn('PRIVATE', json.dumps(result))
-                self.assertEqual(services.request.call_count, 1)
+                self.assertEqual(services.request.call_count, 2)
                 services.request.side_effect = ValueError('PRIVATE upstream secret')
                 result = rpc('tools/call', {'name': name, 'arguments': arguments})
                 self.assertTrue(result['result']['isError'])
@@ -128,6 +130,21 @@ class ServiceWiringTests(unittest.TestCase):
                 turn.assert_not_called()
             finally:
                 server.shutdown(); server.server_close(); worker.join(); store.db.close()
+
+    def test_hermes_service_grant_excludes_unreviewed_integrations_and_account_access(self):
+        from openclaw_capabilities import HermesServices
+        allowed = ('school_discover', 'shopping_search', 'storage_list', 'calendar_list', 'family_task_list')
+        denied = ('access_request', 'site_execute', 'mail_search', 'future_household_admin')
+        base = SimpleNamespace(tools=[{'name': 'homecompute_' + name} for name in allowed + denied],
+                               validate=Mock(return_value={}), request=Mock(return_value={}))
+        facade = HermesServices(base)
+        self.assertEqual({tool['name'] for tool in facade.tools}, {'homecompute_' + name for name in allowed})
+        for name in allowed:
+            facade.request('homecompute_' + name, {})
+        for name in denied:
+            with self.assertRaises(ValueError): facade.validate('homecompute_' + name, {})
+            with self.assertRaises(ValueError): facade.request('homecompute_' + name, {})
+        self.assertEqual(base.request.call_count, len(allowed))
 
 
 if __name__ == '__main__':

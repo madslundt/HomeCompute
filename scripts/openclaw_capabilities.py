@@ -11,6 +11,41 @@ import socket
 from openclaw_tasks import BROKER, Tasks, request
 
 
+HERMES_SERVICE_TOOLS = frozenset('homecompute_' + name for name in (
+    'web_search', 'research_search', 'shopping_search', 'shopping_stores', 'shopping_offers',
+    'school_discover', 'school_calendar', 'school_weekly_letter', 'school_posts',
+    'school_threads', 'school_thread', 'school_search',
+    'shopping_list', 'shopping_add', 'shopping_update', 'shopping_complete', 'shopping_remove',
+    'discounts_read', 'discount_watch', 'discount_unwatch',
+    'storage_list', 'storage_add', 'storage_update', 'storage_remove', 'storage_adjust',
+    'household_request_status',
+    'household_task_list', 'household_task_create', 'household_task_update',
+    'household_task_complete', 'household_task_cancel',
+    'family_task_list', 'family_task_create', 'family_task_update',
+    'family_task_complete', 'family_task_cancel',
+    'calendar_list', 'calendar_events', 'calendar_availability', 'calendar_create',
+    'calendar_update', 'calendar_request_status',
+))
+
+
+class HermesServices:
+    """Owner household grant; future services and account administration stay excluded."""
+
+    def __init__(self, services: Any):
+        self.services = services
+        self.tools = [tool for tool in services.tools if tool['name'] in HERMES_SERVICE_TOOLS]
+        self.names = frozenset(tool['name'] for tool in self.tools)
+
+    def validate(self, name: str, arguments: Any) -> dict[str, Any]:
+        if name not in self.names:
+            raise ValueError('tool outside Hermes household grant')
+        return self.services.validate(name, arguments)
+
+    def request(self, name: str, arguments: Any) -> dict[str, Any]:
+        self.validate(name, arguments)
+        return self.services.request(name, arguments)
+
+
 class HomeAssistant:
     """Fixed local IPC, authenticated Unix peer and trusted adapter-assigned actor."""
     def __init__(self, actor: str):

@@ -68,7 +68,7 @@ class TransportTests(unittest.TestCase):
     def test_native_ha_tools_assign_authenticated_actor_and_cannot_execute(self):
         from types import SimpleNamespace
         from unittest.mock import Mock, patch
-        native_tokens = {role: 'native-' + role + '-' * 40 for role in ('openclaw', 'hermes')}
+        native_tokens = {role: 'native-' + role + '-' * 40 for role in ('openclaw', 'hermes', 'hermes-owner')}
         tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'assistant', 'snapshot': 'snapshot'})
         turn = Mock(side_effect=AssertionError('native model must not run'))
         identities = []
@@ -89,7 +89,7 @@ class TransportTests(unittest.TestCase):
         action = {'domain': 'light', 'service': 'turn_on', 'entity_ids': ['light.synthetic'], 'data': {'brightness': 128}}
         try:
             with patch('openclaw_capabilities.HomeAssistant.request', new=ipc):
-                for actor in ('openclaw',):
+                for actor in ('openclaw', 'hermes-owner'):
                     self.assertFalse(call('homecompute_ha_propose', {'action': action}, actor)['result']['isError'])
                     self.assertFalse(call('homecompute_ha_status', {'proposal_id': 'a' * 32}, actor)['result']['isError'])
                     self.assertFalse(call('homecompute_ha_cancel', {'proposal_id': 'a' * 32}, actor)['result']['isError'])
@@ -97,13 +97,13 @@ class TransportTests(unittest.TestCase):
                     call('homecompute_ha_propose', {'action': action}, 'hermes')
                 self.assertEqual(denied.exception.code, 401)
                 denied.exception.close()
-                self.assertEqual([entry[0] for entry in identities], ['openclaw'] * 3)
+                self.assertEqual([entry[0] for entry in identities], ['openclaw'] * 3 + ['hermes'] * 3)
                 for name in ('homecompute_ha_execute', 'homecompute_ha_approve', 'homecompute_ha_review'):
                     self.assertEqual(call(name, {})['error']['code'], -32602)
                 self.assertEqual(call('homecompute_ha_propose', {'action': action, 'actor': 'hermes'})['error']['code'], -32602)
                 self.assertEqual(call('homecompute_ha_propose', {'action': {**action, 'domain': 'lock'}})['error']['code'], -32602)
                 self.assertEqual(call('homecompute_ha_status', {'proposal_id': '../../secrets'})['error']['code'], -32602)
-                self.assertEqual(len(identities), 3)
+                self.assertEqual(len(identities), 6)
             turn.assert_not_called()
         finally:
             server.shutdown(); server.server_close(); thread.join()

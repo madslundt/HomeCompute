@@ -99,6 +99,18 @@ class RelaySetupTest(unittest.TestCase):
         unsafe.mkdir(); unsafe.chmod(0o777)
         with self.assertRaises(ValueError): setup.directory(unsafe)
 
+    def test_owner_admission_issues_fresh_credential_and_normal_install_preserves_it(self):
+        legacy = {'openclaw': 'existing-openclaw-' + 'x' * 40, 'hermes': 'retired-hermes-' + 'y' * 40}
+        setup.TOKENS.write_text(json.dumps(legacy)); setup.TOKENS.chmod(0o600)
+        self.assertTrue(setup.native_tokens(admit_hermes=True))
+        admitted = json.loads(setup.TOKENS.read_bytes())
+        self.assertEqual(set(admitted), {'openclaw', 'hermes-owner'})
+        self.assertEqual(admitted['openclaw'], legacy['openclaw'])
+        self.assertNotIn(admitted['hermes-owner'], legacy.values())
+        self.assertFalse(setup.native_tokens(admit_hermes=True))
+        self.assertFalse(setup.native_tokens())
+        self.assertEqual(json.loads(setup.TOKENS.read_bytes()), admitted)
+
     def test_existing_partial_certificate_requires_reconciliation_without_issuer_changes(self):
         setup.TLS.mkdir(parents=True)
         (setup.TLS / 'server.key').write_text('existing-key')

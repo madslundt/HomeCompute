@@ -94,23 +94,25 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
     if site is not None and access is None:
         raise ValueError('site-operation tools require the finite account-access bridge')
     if mcp_tokens is not None:
-        if (set(mcp_tokens) not in ({"openclaw"}, {"openclaw", "hermes"}) or tasks is None
+        if (not {"openclaw"} <= set(mcp_tokens) <= {"openclaw", "hermes", "hermes-owner"} or tasks is None
                 or len(set(mcp_tokens.values())) != len(mcp_tokens)
                 or any(not isinstance(value, str) or len(value) < 32 or "\r" in value or "\n" in value
                        or value.startswith(("replace", "openshell:resolve:"))
                        or value in tokens.values() or value in tasks.tokens.values()
                        for value in mcp_tokens.values())):
             raise ValueError("independent OpenClaw MCP credential and task transport required")
-        # Legacy files can survive a staged rollout; retired credentials never authorize requests.
-        mcp_tokens = {"openclaw": mcp_tokens["openclaw"]}
+        # The retired `hermes` bearer stays denied. Reintroduction requires an
+        # independently issued owner credential through the source-owned installer.
+        mcp_tokens = {actor: value for actor, value in mcp_tokens.items() if actor != 'hermes'}
+        from openclaw_capabilities import Capabilities, HomeAssistant, HermesServices, Maintenance
+        hermes_services = HermesServices(services) if services is not None else None
         if access is not None:
             from openclaw_access_bridge import CompositeServices
             services = CompositeServices(services, access, site)
-        from openclaw_capabilities import Capabilities, HomeAssistant, Maintenance
         capabilities = {actor: Capabilities(tasks, infrastructure, store.settings["actions"],
-                       HomeAssistant(actor) if ha_actions else None,
+                       HomeAssistant('hermes' if actor == 'hermes-owner' else actor) if ha_actions else None,
                        Maintenance() if actor == 'openclaw' and Path('/run/homecompute-infrastructure-maintenance/agent.sock').exists() else None,
-                       services if actor == 'openclaw' else None,
+                       services if actor == 'openclaw' else hermes_services,
                        operations_search if actor == 'openclaw' else None)
                        for actor in mcp_tokens}
         # Reuse the broker's bounded protocol adapter; no calls to native_turn.

@@ -241,27 +241,31 @@ def certificate() -> bool:
     return True
 
 
-def native_tokens() -> bool:
+def native_tokens(*, admit_hermes: bool = False) -> bool:
     user = pwd.getpwnam('homecompute-openclaw')
     if TOKENS.exists() or TOKENS.is_symlink():
         regular(TOKENS, user.pw_uid, 0o600)
         if TOKENS.stat().st_size > 16384:
             raise ValueError('native credential file exceeds budget')
         value = json.loads(TOKENS.read_bytes())
-        if (not isinstance(value, dict) or set(value) not in ({'openclaw'}, {'openclaw', 'hermes'})
+        if (not isinstance(value, dict) or not {'openclaw'} <= set(value) <= {'openclaw', 'hermes', 'hermes-owner'}
                 or any(not isinstance(token, str) or len(token) < 32 or '\n' in token or '\r' in token
                        or token.startswith(('replace', 'openshell:resolve:')) for token in value.values())
                 or len(set(value.values())) != len(value)):
             raise ValueError('independent OpenClaw credential required')
-        if 'hermes' in value:
-            write(TOKENS, json.dumps({'openclaw': value['openclaw']}).encode(), user.pw_uid, user.pw_gid, 0o600)
-            return True
+        before = dict(value)
+        value.pop('hermes', None)
+    else:
+        # Existing adapter-owned config directory is never recreated or rechowned.
+        info = TOKENS.parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != user.pw_uid or info.st_mode & 0o077:
+            raise ValueError('existing private adapter configuration directory required')
+        before = None
+        value = {'openclaw': secrets.token_urlsafe(48)}
+    if admit_hermes and 'hermes-owner' not in value:
+        value['hermes-owner'] = secrets.token_urlsafe(48)
+    if value == before:
         return False
-    # Existing adapter-owned config directory is never recreated or rechowned.
-    info = TOKENS.parent.lstat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != user.pw_uid or info.st_mode & 0o077:
-        raise ValueError('existing private adapter configuration directory required')
-    value = {'openclaw': secrets.token_urlsafe(48)}
     write(TOKENS, json.dumps(value).encode(), user.pw_uid, user.pw_gid, 0o600)
     return True
 

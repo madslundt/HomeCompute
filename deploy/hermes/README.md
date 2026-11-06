@@ -96,6 +96,68 @@ tracking or destroy resources by a mutable name to bypass the refusal. Use a
 new uniquely named sandbox only after independently qualifying corrected image
 inputs. Oh My Hermes is deferred until the core service is stable.
 
+## Household MCP access
+
+Hermes uses the existing private HTTPS HomeCompute bridge, rather than direct
+credentials for Aula, Tilbudstrolden or Home Assistant. The `hermes-owner` bearer
+is distinct from OpenClaw's credential and the retired `hermes` bearer, which
+remains denied. OpenShell holds the credential and projects an opaque handle
+only to the exact MCP endpoint. The source-owned
+[household skill](skills/homecompute-household/SKILL.md) explains the tools.
+
+The finite grant includes read-only Aula discovery, calendar, weekly letters,
+posts and threads; Tilbudstrolden searches/stores/offers; public research;
+existing shopping-list, discount-watch, stock, calendar and task tools; bounded
+system metadata; and Home Assistant light/climate/cover proposals. Household
+writes retain their revision, request-ID and explicit-owner-intent checks.
+Home Assistant execution still requires separate human approval. Account/site
+administration, mailbox access and infrastructure maintenance execution are
+outside this grant. Future service tools require an explicit source grant.
+
+From an exact published Git checkout on home-core, inspect and apply the narrow
+bridge installer. It accepts only the reviewed installed preimages or this
+release's output, retains private backups, stops only the adapter during the
+file/credential transaction, and restores it on installation failure:
+
+```bash
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA \
+  --expected-plan-sha256 REVIEWED_PLAN_SHA256 --apply
+```
+
+Stage that same published Git checkout in the agents guest. Pipe the export
+directly over SSH to `python3 scripts/connect-hermes-mcp.py --revision FULL_SHA
+--sandbox OWNER_SANDBOX`; never display or save the exported bearer. The export
+command is `sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
+--export-credential` on home-core. The selected-owner wrapper also exposes
+`connect-mcp --config "$config"`, consuming the same private stdin pipe.
+The standalone connector accepts the retained `hermes-personal` owner so this
+integration can precede the independent 0.23 cutover. Use only the active owner;
+this command does not select, recreate or upgrade a sandbox. The connector
+requires fresh private household backup/network gates, uses native `mcp add`,
+requires verified credential resolution and matching private target pins, and
+installs the exact skill through the native skill lifecycle. Conflicting
+registrations and edited skills are preserved for review. An uncertain native
+add must be inspected through native status before retrying.
+
+Verify `nemohermes OWNER_SANDBOX mcp status homecompute --json --tools`, then
+exercise read-only Aula discovery, Tilbudstrolden store lookup and Home Assistant
+metadata from Hermes's actual tool client. Keep household payloads private;
+record only tool availability and success/failure. The tracked `probe_mcp.py`
+can be piped to `nemohermes OWNER_SANDBOX exec --stdin -- python3 -`; it uses
+Hermes's actual discovery and tool handlers for seven read-only source checks.
+Repeat after native restart
+and verify the skill and opaque MCP configuration persist. Authentication or
+tool inventory alone does not prove each upstream service works.
+
+Rollback first removes the `homecompute` registration through the native MCP
+lifecycle and removes only the installed `homecompute-household` skill. On
+home-core run `setup-hermes-mcp.py --revision FULL_SHA --rollback` to restore the
+exact previous adapter code and credential file; later source or credential
+changes block rollback. This preserves household databases, conversations and
+upstream services. Remove a retained OpenShell provider only after confirming
+no other sandbox still attaches it.
+
 ## Dedicated browser worker
 
 The browser uses a separate profile volume, token, Docker networks

@@ -54,12 +54,13 @@ Commands:
   onboard-canary           Create the household Hermes sandbox
   recreate                 Recreate the owner sandbox through NemoClaw
   connect-browser          Attach the dedicated isolated browser
+  connect-mcp              Attach the household bridge (credential on stdin)
   connect-mattermost       Add the owner-restricted Hermes Mattermost bot
   health                   Capture redacted doctor, status, route, and version evidence
 
 The API key is read from HERMES_LITELLM_API_KEY_FILE. It is never accepted as
-an argument or configuration value. Web search and host mounts remain disabled;
-the only enabled external integration is the owner-restricted Mattermost bot.
+an argument or configuration value. Host mounts remain disabled. Household MCP
+access uses a separate credential held by OpenShell and the approved bridge.
 EOF
 }
 
@@ -536,6 +537,7 @@ main() {
     onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
     qualify-latest|probe-latest) die 'Latest Hermes is selected; qualification commands cannot reconfigure the owner instance' ;;
     connect-browser) [[ -z "$argument" ]] || die 'connect-browser takes no argument'; preflight_runtime; require_mutation_gates; python3 "$REPO_ROOT/scripts/connect-hermes-browser.py" ;;
+    connect-mcp) [[ -z "$argument" ]] || die 'connect-mcp takes no argument'; preflight_runtime; require_mutation_gates; validate_installed_cli_version; python3 "$REPO_ROOT/scripts/connect-hermes-mcp.py" --revision "$(git -C "$REPO_ROOT" rev-parse HEAD)" --sandbox "$HERMES_SANDBOX_NAME" ;;
     connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;
     help) usage ;;
