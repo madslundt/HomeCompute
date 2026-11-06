@@ -19,7 +19,9 @@ from openclaw_notifications import Outbox
 SPEC = importlib.util.spec_from_file_location('speech_fixture', Path(__file__).with_name('openclaw-communication-test.py'))
 FIXTURE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(FIXTURE)
-NATIVE = {'openclaw': 'synthetic-native-openclaw-' + 'x' * 40}
+NATIVE = {'openclaw': 'synthetic-native-openclaw-' + 'x' * 40,
+          'hermes-owner': 'synthetic-hermes-owner-' + 'y' * 40,
+          'hermes': 'synthetic-retired-hermes-' + 'z' * 40}
 TTS = {'model': 'omnivoice', 'voice': 'danish-default', 'input': 'Hej, stemmen virker.', 'response_format': 'wav'}
 
 
@@ -163,9 +165,10 @@ class SpeechBridgeTests(unittest.TestCase):
 
     def test_native_bearer_gets_wav_while_transport_and_unknown_credentials_are_refused(self):
         self.assertEqual(self.post(), (200, wav(), 'audio/wav'))
-        for token in [*FIXTURE.TOKENS.values(), 'retired-hermes', 'unknown']:
+        self.assertEqual(self.post(NATIVE['hermes-owner']), (200, wav(), 'audio/wav'))
+        for token in [*FIXTURE.TOKENS.values(), NATIVE['hermes'], 'retired-hermes', 'unknown']:
             self.assertEqual(self.post(token)[0], 401)
-        self.assertEqual(self.client.request.call_count, 1)
+        self.assertEqual(self.client.request.call_count, 2)
         self.turn.assert_not_called()
 
     def test_queries_oversized_bodies_and_failures_do_not_trigger_a_model_turn(self):
