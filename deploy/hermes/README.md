@@ -72,6 +72,13 @@ the in-sandbox gateway process. Verify the effective user boot transaction,
 authenticated Webapp chat, both speech languages, audio playback/rearming,
 stop phrases and restart recovery; API-only tests do not prove microphone use.
 
+Keep the Hermes Caddy upstream bounded to eight simultaneous connections.
+OpenShell 0.0.116 permits twenty SSH/service-forward connections per sandbox;
+the Webapp's initial parallel asset burst otherwise exhausts that shared limit
+and returns 502s. Caddy queues excess requests; long-lived chat/speech sockets
+share the eight slots. Keep upstream keepalive disabled so completed requests
+release their native slots. This does not increase OpenShell's isolation limits.
+
 For rollback, run the same speech installer with `--apply --rollback`. It closes
 the guest relay first, restores the verified private config/environment and
 policy preimages, disables its watcher and restarts natively. Restore the former

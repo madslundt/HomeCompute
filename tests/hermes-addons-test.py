@@ -52,15 +52,20 @@ class DashboardIngressTest(unittest.TestCase):
         self.assertNotIn('header_up Host', block)
         self.assertNotIn('Authorization', block)
         self.assertIn('keepalive off', block)
+        self.assertIn('max_conns_per_host 8', block)
 
     def test_exact_previous_dashboard_route_upgrades_without_replacing_other_sites(self):
         caddy, home = self.patch()
-        previous = caddy.replace(module.PRELOAD_REDIRECT, '', 1)
-        for baseline in (previous, previous.replace(module.KEEPALIVE_OFF, '', 1)):
+        previous = caddy.replace(module.CONNECTION_LIMIT, '', 1)
+        older = previous.replace(module.PRELOAD_REDIRECT, '', 1)
+        for baseline in (previous, older, older.replace(module.KEEPALIVE_OFF, '', 1)):
             self.assertEqual(module.patch(baseline, home, self.source_caddy, self.source_home), (caddy, home))
         changed = previous.replace('header_up X-Forwarded-Prefix /hermes', 'header_up X-Forwarded-Prefix /edited')
         with self.assertRaises(ValueError):
             module.patch(changed, home, self.source_caddy, self.source_home)
+        with self.assertRaises(ValueError):
+            module.patch(caddy.replace('max_conns_per_host 8', 'max_conns_per_host 9'),
+                         home, self.source_caddy, self.source_home)
 
     def test_lazy_asset_preloads_return_to_hermes_without_claiming_office_assets(self):
         caddy, _ = self.patch()
