@@ -125,6 +125,7 @@ python3 "$REPO_ROOT/tests/openclaw-recovery-verification-test.py"
 python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
+python3 "$REPO_ROOT/tests/hermes-addons-test.py"
 python3 "$REPO_ROOT/tests/hermes-systemd-boot-test.py"
 python3 "$REPO_ROOT/tests/hermes-system-boot-install-test.py"
 python3 "$REPO_ROOT/tests/hermes-mcp-test.py"

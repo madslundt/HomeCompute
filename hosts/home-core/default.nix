@@ -9,6 +9,7 @@
     ./hardware-configuration.nix
     ../../modules/nixos/application-config.nix
     ../../modules/nixos/agent-office.nix
+    ../../modules/nixos/hermes-dashboard.nix
     ../../modules/nixos/system.nix
     ../../modules/nixos/networking.nix
     ../../modules/nixos/firewall.nix
@@ -38,6 +39,7 @@
 
   networking.hostName = "home-core";
   homecompute.agentOffice.enable = true;
+  homecompute.hermesDashboard.enable = true;
   homecompute.mattermost.enable = true;
   homecompute.serviceRecovery.enable = true;
   homecompute.nasRecoveryBackup = {

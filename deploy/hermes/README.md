@@ -286,3 +286,64 @@ Health-check that release and the owner DM/browser path. Leave the new instance
 stopped with its state preserved; switching code does not merge conversation
 histories. The retained old application state is the rollback state, while the
 encrypted whole-VM Synology archive is the disaster-recovery boundary.
+## Pinned OMH and dashboard lifecycle
+
+`config/hermes-omh.json` selects OMH 4.0.6 at commit
+`8e9263c14c34834b203135409b49c89831878501`. Build its pure Python wheel with
+`python3 scripts/build-hermes-omh.py --cache /absolute/private/cache` (mode 0700).
+The source archive, offline build backend and reproducible wheel are SHA-256
+pinned. Extract `install.sh` from that verified archive; its checksum is pinned
+separately. Transfer just the wheel and installer to an operator-owned mode-0700
+guest assets directory, with mode-0600 regular files.
+
+From a clean published release on the guest, run:
+
+```bash
+python3 scripts/setup-hermes-addons.py --revision FULL_SHA --assets /absolute/private/assets
+python3 scripts/setup-hermes-addons.py --revision FULL_SHA --assets /absolute/private/assets --apply
+sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA
+```
+
+The guarded add-on installer requires fresh household backup/network gates and
+the selected Ready image. It uses native exec stdin and the official offline
+installer in an independent `/sandbox/.local/share/omh/venv`; it does not modify
+the sealed `/opt/hermes` runtime. Setup uses the minimal core skills, adds the
+OMH plugin, maps all 18 categories to local `automation-moe` at medium reasoning,
+caps both OMH concurrency and Hermes delegation at one, and disables automatic
+updates. OMH external memory and dreaming stay off: Mattermost personal scope is
+not recognized by its current memory classifier. Existing Hermes memory,
+Mattermost, browser, MCP and deferred model credentials must survive unchanged.
+Profiles remain a later change. See the [source audit](../../docs/research/oh-my-hermes-managed-integration-2026-11-06.md).
+
+Dashboard credentials are generated once into the existing protected guest
+`~/.config/homecompute-hermes/secrets/dashboard-login.json`; never print this
+file. Only the scrypt password hash and independent session signing secret enter
+the private Hermes config. Native dashboard authentication, Origin/CSRF checks,
+cookies and WebSocket tickets remain authoritative. The guest relay refuses to
+install until the protected API returns 401 and the native basic provider exists.
+
+On home-core, stage the same published source under
+`/srv/homecompute/releases/FULL_SHA`, run
+`sudo python3 scripts/setup-hermes-dashboard-ingress.py --revision FULL_SHA`,
+review its two config hashes, then add `--apply --expected-caddy-sha256 HASH
+--expected-homepage-sha256 HASH`. This guarded lifecycle builds only the two
+canonical Nix relay/firewall units, preserves unrelated routes and maintenance
+markers, reloads Caddy without dropping Mattermost sockets, and changes the
+existing Hermes frontpager card to `https://agents.home.arpa/hermes/`. The only admitted
+bridge client is Caddy; native auth is required on approved LAN/Tailscale access.
+No new public listener, model route or OpenClaw state is introduced.
+
+Verify native plugin discovery (OMH enabled, no error, tools and hooks registered),
+local routing/concurrency readback, authenticated dashboard login and chat,
+Mattermost DM response, browser public navigation and private-address denial,
+MCP status, sealed package-manager verification, and a native stop/start. Keep
+private logs, config backups and the source-linked receipt in the sandbox assets
+directory; these are evidence, not Git desired state.
+
+Rollback closes the guest ingress before restoring only the verified private
+config preimage and restarting natively:
+`python3 scripts/setup-hermes-addons.py --revision FULL_SHA --assets
+/absolute/private/assets --apply --rollback`. It retains all OMH and Hermes data.
+The HTTPS/card source can then be reverted through the core ingress lifecycle;
+retain its private before-files and receipt. Never expose the restored loopback
+dashboard through an active relay without its native public authentication.
