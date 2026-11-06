@@ -48,6 +48,11 @@ def candidate(raw):
             or not before['dashboard']['basic_auth']):
         raise ValueError('known authenticated owner speech configuration required')
     after = payload.candidate(before)
+    # Later source privacy defaults are outside this historical port incident.
+    if 'telemetry' in before:
+        after['telemetry'] = json.loads(json.dumps(before['telemetry']))
+    else:
+        after.pop('telemetry', None)
     # Its only semantic corrections are the reserved port and the persisted
     # restart-scoped MCP handle. All other fields must already be source-owned.
     expected = json.loads(json.dumps(before))

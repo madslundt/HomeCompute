@@ -47,7 +47,10 @@ def main():
     parser.add_argument('--assets', required=True, type=Path)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--rollback', action='store_true')
+    parser.add_argument('--reconcile-privacy-only', action='store_true')
     args = parser.parse_args()
+    if args.rollback and args.reconcile_privacy_only:
+        raise ValueError('privacy reconciliation cannot roll back speech')
     core = load('speech_core', 'scripts/setup-hermes-mcp.py')
     core.published(args.revision)
     if core.call(['git', '-C', str(ROOT), 'status', '--porcelain', '--untracked-files=no']):
@@ -68,6 +71,8 @@ def main():
     query = ['get', pin['sandbox'], '--base', '-o', 'json']
     before = json.loads(addons.call(policy_cli + query))['policy']
     after = policy_candidate(before, pin['sandbox'])
+    if args.reconcile_privacy_only and before != after:
+        raise ValueError('privacy reconciliation requires already installed speech grants')
     unit = Path.home() / '.config/systemd/user/homecompute-hermes-dashboard-watch.service'
     if unit.is_symlink() or (unit.exists() and not unit.read_text().startswith(
             '# HomeCompute-managed authenticated Hermes frontend forwarding\n')):
@@ -91,6 +96,11 @@ def main():
     with (directory / 'install.lock').open('a') as lock:
         os.chmod(directory / 'install.lock', 0o600)
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if args.reconcile_privacy_only:
+            payload = (ROOT / 'deploy/hermes/speech/configure.py').read_text()
+            result = addons.call(cli + ['exec', '--stdin', '--', '/opt/hermes/.venv/bin/python', '-c', payload],
+                json.dumps({'pin': pin, 'revision': args.revision, 'reconcile_privacy_only': True}).encode())
+            print(result.decode()); return
         baseline = directory / 'policy-before.json'
         selected = directory / 'policy-after.json'
         if args.rollback:
