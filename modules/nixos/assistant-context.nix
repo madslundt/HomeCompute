@@ -132,6 +132,7 @@ in
       home = "/srv/state/assistant-context";
     };
     systemd.tmpfiles.rules = [
+      "a+ /srv/state - - - - u:homecompute-context:--x"
       "d /srv/state/assistant-context 0700 homecompute-context homecompute-context - -"
     ] ++ lib.optional cfg.sync.enable "d /var/lib/homecompute-assistant 0700 homecompute-openclaw homecompute-openclaw - -"
       ++ lib.optional cfg.improvements.enable "d /var/lib/homecompute-assistant-policy-controller 0700 root root - -";
