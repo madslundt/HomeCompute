@@ -26,6 +26,7 @@ payload = load('speech_config', 'deploy/hermes/speech/configure.py')
 client = load('speech_client', 'deploy/hermes/speech/client.py')
 recovery = load('speech_recovery', 'scripts/recover-hermes-dashboard.py')
 bridge = load('speech_bridge', 'scripts/setup-hermes-speech-bridge.py')
+incident = load('speech_incident', 'scripts/recover-hermes-webapp-port.py')
 
 
 class PolicyTest(unittest.TestCase):
@@ -68,6 +69,21 @@ class PolicyTest(unittest.TestCase):
 
 
 class ConfigTest(unittest.TestCase):
+    def test_incident_candidate_changes_only_reserved_port_and_stale_mcp_handle(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest('PyYAML is exercised on the qualified Linux guest')
+        before = payload.candidate({'model': {'default': 'automation-moe'},
+            'dashboard': {'basic_auth': {'username': 'synthetic'}},
+            'mcp_servers': {'homecompute': {'headers': {'Authorization': 'Bearer ${HOMECOMPUTE_HERMES_MCP_TOKEN}'}}}})
+        before['webapp']['port'] = 8646
+        before['mcp_servers']['homecompute']['headers']['Authorization'] = 'Bearer openshell:resolve:env:HOMECOMPUTE_HERMES_MCP_TOKEN:old'
+        after = yaml.safe_load(incident.candidate(yaml.safe_dump(before).encode()))
+        self.assertEqual(after, payload.candidate(before))
+        before['tts']['provider'] = 'unknown'
+        with self.assertRaises(ValueError): incident.candidate(yaml.safe_dump(before).encode())
+
     def test_client_endpoint_and_voices_match_the_canonical_pin(self):
         pin = json.loads((ROOT / 'config/hermes-speech.json').read_bytes())
         self.assertEqual(client.BASE, pin['base_url'])
@@ -87,6 +103,15 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(after['voice']['voice_chat_mode'], 'chained')
         self.assertEqual(after['tts']['providers']['homecompute-omnivoice']['output_format'], 'wav')
         self.assertEqual(payload.candidate(after), after)
+        self.assertEqual(after['webapp']['port'], 18796)
+        self.assertNotEqual(after['webapp']['port'], 8646)
+
+    def test_mcp_credential_is_resolved_afresh_after_restart(self):
+        before = {'mcp_servers': {'homecompute': {'headers': {
+            'Authorization': 'Bearer openshell:resolve:env:HOMECOMPUTE_HERMES_MCP_TOKEN:old-scope'}}}}
+        after = payload.candidate(before)
+        self.assertEqual(after['mcp_servers']['homecompute']['headers']['Authorization'],
+                         'Bearer ${HOMECOMPUTE_HERMES_MCP_TOKEN}')
 
 
 class ClientTest(unittest.TestCase):
@@ -122,11 +147,13 @@ class RecoveryTest(unittest.TestCase):
     def test_closed_forward_recovers_natively_but_auth_failure_is_not_success(self):
         run = Mock(return_value=SimpleNamespace(returncode=0))
         probe = Mock(side_effect=[False, True])
-        self.assertTrue(recovery.ensure_forward(probe, run))
+        launch = Mock(return_value=Mock(poll=Mock(return_value=None)))
+        self.assertTrue(recovery.ensure_forward(probe, run, launch=launch))
         self.assertEqual(run.call_args.args[0], ['nemohermes', 'hermes-personal-v23', 'recover'])
         run.reset_mock()
         self.assertFalse(recovery.ensure_forward(lambda: True, run)); run.assert_not_called()
-        with self.assertRaises(RuntimeError): recovery.ensure_forward(lambda: False, run)
+        with self.assertRaises(RuntimeError):
+            recovery.ensure_forward(lambda: False, run, launch=launch, wait=lambda _: None)
 
     def test_real_socket_requires_401_rather_than_login_or_200(self):
         class Handler(http.server.BaseHTTPRequestHandler):

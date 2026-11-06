@@ -45,8 +45,14 @@ def candidate(before):
     after['voice'] = {**before.get('voice', {}), 'auto_tts': True, 'client_direct': False,
         'voice_chat_mode': 'chained', 'silence_duration': 1.5, 'barge_in': True,
         'stop_phrases': ['stop', 'stop samtalen', 'goodbye hermes']}
-    after['webapp'] = {'enabled': True, 'host': '127.0.0.1', 'port': 8646,
+    after['webapp'] = {'enabled': True, 'host': '127.0.0.1', 'port': 18796,
                        'public_url': 'https://agents.home.arpa/hermes'}
+    headers = after.get('mcp_servers', {}).get('homecompute', {}).get('headers', {})
+    current = headers.get('Authorization', '')
+    if current.startswith('Bearer openshell:resolve:'):
+        if 'HOMECOMPUTE_HERMES_MCP_TOKEN' not in current:
+            raise ValueError('unexpected managed MCP credential reference')
+        headers['Authorization'] = 'Bearer ${HOMECOMPUTE_HERMES_MCP_TOKEN}'
     return after
 
 

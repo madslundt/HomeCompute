@@ -121,5 +121,5 @@ async def main(port):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--target-port', type=int, choices=(18794, 8646), required=True)
+    parser.add_argument('--target-port', type=int, choices=(18794, 18796), required=True)
     asyncio.run(main(parser.parse_args().target_port))
