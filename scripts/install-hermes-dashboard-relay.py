@@ -19,7 +19,7 @@ UNIT = 'homecompute-hermes-dashboard-relay.service'
 LIB = Path('/usr/local/lib/homecompute-hermes-dashboard')
 STATE = Path('/var/lib/homecompute-hermes-dashboard-relay')
 UNIT_PATH = Path('/etc/systemd/system') / UNIT
-SURFACES = {'admin': 18794, 'webapp': 8646}
+SURFACES = {'admin': 18794, 'webapp': 18796}
 LEGACY_START = ('ExecStart=/usr/bin/socat TCP4-LISTEN:18804,bind=10.77.20.2,reuseaddr,fork '
                 'TCP4:127.0.0.1:18794')
 
@@ -71,7 +71,7 @@ def unit_port(raw):
         if raw == legacy:
             return port
     match = re.search(rb'ExecStart=/usr/bin/python3 ' + re.escape(str(LIB).encode())
-                      + rb'/([0-9a-f]{40})/dashboard-relay.py --target-port (18794|8646)\n', raw)
+                      + rb'/([0-9a-f]{40})/dashboard-relay.py --target-port (18794|18796)\n', raw)
     if match is not None and raw == render(match[1].decode(), int(match[2])):
         return int(match[2])
     raise ValueError('unknown relay unit must be reconciled explicitly')

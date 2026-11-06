@@ -60,7 +60,7 @@ The speech installer requires the existing fresh household backup/network gates,
 the qualified owner image and the verified MCP target. It backs up config and
 policy, preserves all inference, OMH, browser, household and memory settings,
 installs the packaged Webapp separately, configures its native authenticated
-loopback listener on 8646, and restarts only the selected Hermes sandbox through
+loopback listener on 18796, and restarts only the selected Hermes sandbox through
 NemoClaw. The relay changes from the admin dashboard to that Webapp only after
 an unauthenticated config request returns 401 and the basic login exists.
 
@@ -79,6 +79,22 @@ relay with the published relay installer's `--revision FULL_SHA --rollback`
 after verifying its native login. Keep conversations, OMH data, model caches and speech artifacts.
 Undo speech before an older OMH config rollback: its full-config guard correctly
 refuses a later configuration it does not own.
+
+NemoClaw reserves container port 8646 for its API socat forwarder. Keep the
+Webapp on 18796; the watcher runs `openshell forward service` for that separate
+listener. Native `recover` alone forwards only NemoClaw's dashboard/API ports.
+MCP headers must keep `${HOMECOMPUTE_HERMES_MCP_TOKEN}` as an environment
+expression so a restart cannot retain an expired opaque handle.
+
+For the diagnosed 6 November reserved-port incident only,
+`recover-hermes-webapp-port.py` validates the complete container ID, exact
+qualified image, stopped state, full mode-0600 `/sandbox` archive, config
+preimage and speech receipt. It corrects only the port and deferred MCP header,
+retains private before-files, and restarts the same Docker identity without
+deleting native records or importing data. This exceptional repair must be
+followed by native Ready/recovery, MCP, authenticated browser and normal
+stop/start verification. Its normal entry point requires published source;
+the incident receipt records any urgent source reconciliation.
 
 Hermes is being reintroduced alongside OpenClaw in the isolated Ubuntu agents
 VM. The owner uses the dedicated Mattermost bot `hermes-agent`; the existing
