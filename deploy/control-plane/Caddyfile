@@ -382,6 +382,10 @@ agents.home.arpa {
 		# The observer still validates Origin and requires its own password.
 		# Its native listener and both relay hops remain on private interfaces.
 		redir /hermes /hermes/ 308
+		# Vite's lazy preloads use root-relative hashed script/style URLs.
+		# Return only those chunks to Hermes; Office keeps its own assets/API.
+		@hermesPreload path_regexp hermes_preload ^/assets/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\.(js|css)$
+		redir @hermesPreload /hermes{uri} 308
 		handle_path /hermes/* {
 			# Hermes retains its native password, CSRF and WebSocket gates.
 			reverse_proxy 172.28.200.1:18805 {
