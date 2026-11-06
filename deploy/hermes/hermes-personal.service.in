@@ -2,7 +2,9 @@
 [Unit]
 Description=Start the native Hermes owner sandbox after its OpenShell gateway
 Requires=nemoclaw-openshell-gateway.service
-After=nemoclaw-openshell-gateway.service
+# The vendor gateway is explicitly ordered after default.target. Match that
+# edge so default.target does not implicitly order itself after this service.
+After=default.target nemoclaw-openshell-gateway.service
 StartLimitIntervalSec=300
 StartLimitBurst=3
 

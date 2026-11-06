@@ -385,6 +385,11 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.patch(source.replace('lowered = raw.lower()', 'lowered = raw.casefold()'))
 
+    def test_startup_rejects_zero_exit_cycle_warning(self):
+        result = self.sourced_call("systemd-analyze() { echo 'default.target: Found ordering cycle on hermes/start' >&2; return 0; }\nverify_startup_transaction")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('ordering cycle', result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

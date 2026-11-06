@@ -431,6 +431,14 @@ health_for() {
   log "Health evidence written to $directory"
 }
 
+verify_startup_transaction() {
+  local output
+  output="$(LC_ALL=C systemd-analyze --user verify default.target 2>&1)" ||
+    die 'The user boot transaction failed verification'
+  # systemd-analyze can return success after deleting a job to break a cycle.
+  [[ "$output" != *'ordering cycle'* ]] || die 'The user boot transaction contains an ordering cycle'
+}
+
 install_startup() {
   local config_path="$1" unit_path="$HOME/.config/systemd/user/homecompute-hermes-personal.service"
   require_mutation_gates
@@ -468,6 +476,9 @@ PYTHON
   systemd-analyze --user verify "$unit_path"
   systemctl --user daemon-reload
   systemctl --user enable homecompute-hermes-personal.service
+  # Verify the boot transaction too; verifying this unit alone misses cycles
+  # introduced by default.target's automatically ordered Wants= dependencies.
+  verify_startup_transaction
   systemctl --user restart homecompute-hermes-personal.service
   systemctl --user is-active --quiet homecompute-hermes-personal.service
   log 'Hermes native boot lifecycle is installed and started'
