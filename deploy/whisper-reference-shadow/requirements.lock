@@ -1,0 +1,6 @@
+# Exact overlay only; install --isolated --no-index --no-deps --no-build-isolation.
+# Base Torch/CUDA, NumPy, numba/llvmlite, regex, requests and tqdm remain untouched.
+# Whisper's 18 package files/assets match official commit 31243bad24cc746f07d4c8bfdd2d974872cb1803.
+openai-whisper @ https://files.pythonhosted.org/packages/35/8e/d36f8880bcf18ec026a55807d02fe4c7357da9f25aebd92f85178000c0dc/openai_whisper-20250625.tar.gz --hash=sha256:37a91a3921809d9f44748ffc73c0a55c9f366c85a3ef5c2ae0cc09540432eb96
+tiktoken @ https://files.pythonhosted.org/packages/66/c5/ed88504d2f4a5fd6856990b230b56d85a777feab84e6129af0822f5d0f70/tiktoken-0.12.0-cp312-cp312-manylinux_2_28_aarch64.whl --hash=sha256:65b26c7a780e2139e73acc193e5c63ac754021f160df919add909c1492c0fb37
+more-itertools @ https://files.pythonhosted.org/packages/a4/8e/469e5a4a2f5855992e425f3cb33804cc07bf18d48f2db061aec61ce50270/more_itertools-10.8.0-py3-none-any.whl --hash=sha256:52d4362373dcf7c52546bc4af9a86ee7c4579df9a8dc268be0a2f949d376cc9b
