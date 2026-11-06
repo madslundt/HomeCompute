@@ -38,6 +38,45 @@ def private(path):
         raise ValueError('private operator-owned regular file required')
 
 
+def upload_asset(cli, path, expected):
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != expected:
+        raise ValueError('pinned asset changed before transfer')
+    # Stay below both the 4 MiB stdin budget and the qualified gateway's
+    # 1 MiB gRPC message limit on every
+    # native exec; bounded, hashed parts are assembled only after verification.
+    parts = []
+    for index, offset in enumerate(range(0, len(data), 512 * 1024)):
+        chunk = data[offset:offset + 512 * 1024]
+        name = path.name + '.part-' + str(index)
+        digest = hashlib.sha256(chunk).hexdigest()
+        program = '''import hashlib,os,pathlib,sys
+p=pathlib.Path(sys.argv[1]);data=sys.stdin.buffer.read(524289)
+assert len(data)<=524288 and hashlib.sha256(data).hexdigest()==sys.argv[2]
+assert not any(x.is_symlink() for x in (p,*p.parents))
+p.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+assert p.parent.stat().st_uid==os.getuid() and not p.parent.stat().st_mode&0o077
+assert not p.exists() or p.read_bytes()==data
+if not p.exists():
+ with p.open('xb') as f:os.chmod(p,0o600);f.write(data)
+'''
+        call(cli + ['exec', '--stdin', '--', 'python3', '-c', program, REMOTE + '/' + name, digest], chunk)
+        parts.append({'name': name, 'sha256': digest})
+    program = '''import hashlib,json,os,pathlib,sys
+p=pathlib.Path(sys.argv[1]);parts=json.loads(sys.argv[3]);blocks=[]
+assert not any(x.is_symlink() for x in (p,*p.parents))
+for part in parts:
+ q=p.parent/part['name'];assert q.parent==p.parent and not q.is_symlink()
+ block=q.read_bytes();assert hashlib.sha256(block).hexdigest()==part['sha256'];blocks.append(block)
+data=b''.join(blocks);assert hashlib.sha256(data).hexdigest()==sys.argv[2]
+assert not p.exists() or p.read_bytes()==data
+if not p.exists():
+ with p.open('xb') as f:os.chmod(p,0o600);f.write(data)
+'''
+    call(cli + ['exec', '--', 'python3', '-c', program, REMOTE + '/' + path.name,
+                expected, json.dumps(parts)])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', required=True)
@@ -99,18 +138,7 @@ def main():
         if secret['url'] != pin['dashboard_url'] or secret['username'] != pin['dashboard_username']:
             raise ValueError('dashboard credential identity differs')
         for name, digest in assets.items():
-            program = '''import hashlib,os,pathlib,sys
-p=pathlib.Path(sys.argv[1]);data=sys.stdin.buffer.read(16777217)
-assert len(data)<=16777216 and hashlib.sha256(data).hexdigest()==sys.argv[2]
-assert not any(x.is_symlink() for x in (p,*p.parents))
-p.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-assert p.parent.stat().st_uid==os.getuid() and not p.parent.stat().st_mode&0o077
-assert not p.exists() or p.read_bytes()==data
-if not p.exists():
- with p.open('xb') as f:os.chmod(p,0o600);f.write(data)
-'''
-            call(cli + ['exec', '--stdin', '--', 'python3', '-c', program, REMOTE + '/' + name, digest],
-                 (args.assets / name).read_bytes())
+            upload_asset(cli, args.assets / name, digest)
         payload = (ROOT / 'deploy/hermes/omh/configure.py').read_text()
         report = json.loads(call(cli + ['exec', '--stdin', '--', '/opt/hermes/.venv/bin/python', '-c', payload],
                                  json.dumps({'pin': pin, 'dashboard': secret}).encode()))
