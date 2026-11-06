@@ -4,8 +4,10 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds experimental `hc6`; its windowing and unknown-timing
-changes are not part of that production image and are not qualified for rollout.
+The current source builds diagnostic `hc7`, retaining the experimental `hc6`
+windowing and unknown-timing behavior. It adds opt-in, bounded native-window
+metadata to diagnose early seek advancement; decoding behavior is unchanged.
+These changes are not part of the production image and are not qualified for rollout.
 Selecting an image in source does not establish that it has been deployed.
 
 The CPU candidate adds no production alias, host port, backend route or automatic
@@ -170,7 +172,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-build applies `strict-gpu-request-determinism-v3` to the exact pinned upstream source
+candidate build applies `strict-gpu-window-audit-v4` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
@@ -205,6 +207,13 @@ a native segment ended 420 ms beyond its 30-second input. Experimental `hc6`
 preserved that text with explicit unknown timing, but produced new Welsh output
 in English passages and did not recover the original omitted passage with its
 actual window boundaries. Neither experiment is selected for production.
+
+Diagnostic `hc7` retains the same sampling repair and adds a disabled-by-default
+window trace. In an isolated candidate only, `WHISPER_CPP_TRACE_WINDOWS=1` records
+bounded scalar seek, timestamp and language metadata in
+`/tmp/whisper-window-trace.jsonl`. It records no transcript, prompt, audio or
+ordinary token IDs. Tracing does not change seek decisions or decoding, and is
+not enabled on the selected production runtime.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
