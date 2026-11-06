@@ -200,9 +200,9 @@ class InstallerTest(unittest.TestCase):
         self.assertEqual(self.install.plan(self.revision)[0]['target_port'], 18794)
         report = self.install.plan(self.revision, 'webapp')[0]
         self.install.apply(self.revision, self.install.digest(json.dumps(report, sort_keys=True).encode()), 'webapp')
-        self.auth.assert_called_once_with(8646)
-        self.assertEqual(self.install.unit_port(self.install.UNIT_PATH.read_bytes()), 8646)
-        self.assertEqual(self.install.plan(self.revision)[0]['target_port'], 8646)
+        self.auth.assert_called_once_with(18796)
+        self.assertEqual(self.install.unit_port(self.install.UNIT_PATH.read_bytes()), 18796)
+        self.assertEqual(self.install.plan(self.revision)[0]['target_port'], 18796)
         self.install.rollback()
         self.assertEqual(self.install.UNIT_PATH.read_bytes(), self.legacy)
 
