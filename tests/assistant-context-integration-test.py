@@ -237,7 +237,9 @@ class ContextIntegration(unittest.TestCase):
             self.ingest(self.event('aula', object_id, revision=2,
                                    source_ref=f'fixture://aula/{object_id}/revision-2'))
         self.cover('aula', at=NOW + timedelta(seconds=1))
-        latest = {row['object_id']: row for row in self.service.attention.list_decisions(scope=OWNER, limit=20)}
+        rows = self.service.attention.list_decisions(scope=OWNER, limit=20)
+        self.assertEqual([row['source_revision'] for row in rows[:2]], [2, 2])
+        latest = {row['object_id']: row for row in sorted(rows, key=lambda item: item['source_revision'])}
         self.assertEqual((latest['snoozed-object']['source_revision'], latest['snoozed-object']['state'],
                           latest['snoozed-object']['reason']), (2, 'snoozed', 'occurrence_snoozed'))
         self.assertEqual((latest['stopped-object']['source_revision'], latest['stopped-object']['state'],

@@ -394,11 +394,11 @@ class AttentionLedger:
                 return []
             placeholders = ",".join("?" for _ in sources)
             with closing(self._connect()) as db:
-                rows = db.execute(f"SELECT * FROM decisions WHERE principal=? AND domain=? AND visibility=? AND source IN ({placeholders}) ORDER BY created_at DESC LIMIT ?",
+                rows = db.execute(f"SELECT * FROM decisions WHERE principal=? AND domain=? AND visibility=? AND source IN ({placeholders}) ORDER BY created_at DESC,source_revision DESC,decision_id ASC LIMIT ?",
                                   (*identity, *sorted(sources), limit)).fetchall()
                 return [self._json(row) for row in rows]
         with closing(self._connect()) as db:
-            rows = db.execute("SELECT * FROM decisions WHERE principal=? AND domain=? AND visibility=? ORDER BY created_at DESC LIMIT ?", (*identity, limit)).fetchall()
+            rows = db.execute("SELECT * FROM decisions WHERE principal=? AND domain=? AND visibility=? ORDER BY created_at DESC,source_revision DESC,decision_id ASC LIMIT ?", (*identity, limit)).fetchall()
             return [self._json(row) for row in rows]
 
     def today_summary(self, *, scope: Scope | Mapping[str, str], now: datetime | str | None = None) -> dict[str, Any]:
@@ -640,5 +640,5 @@ class AttentionLedger:
         if type(limit) is not int or not 1 <= limit <= 100:
             raise AttentionError("limit must be between 1 and 100")
         with closing(self._connect()) as db:
-            rows = db.execute("SELECT * FROM candidates WHERE principal=? AND domain=? AND visibility=? ORDER BY created_at DESC LIMIT ?", (*identity, limit)).fetchall()
+            rows = db.execute("SELECT * FROM candidates WHERE principal=? AND domain=? AND visibility=? ORDER BY created_at DESC,candidate_id ASC LIMIT ?", (*identity, limit)).fetchall()
             return [self._json(row) for row in rows]
