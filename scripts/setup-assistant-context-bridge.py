@@ -505,6 +505,8 @@ class BridgeLifecycle:
             _safe_directory(path, self.root_uid, 0o755)
         if self.layout.state.exists():
             _safe_directory(self.layout.state, self.root_uid)
+        if (self.layout.state / 'reconciliation.json').exists():
+            raise ValueError('failed bridge reconciliation is unfinished')
         if (self.layout.state / 'transaction.json').exists():
             raise ValueError('unfinished private bridge transaction requires operator recovery')
         receipt = self._receipt() if self.layout.state.exists() else None
@@ -737,7 +739,8 @@ class BridgeLifecycle:
                 self.command(['systemctl', 'daemon-reload'])
                 self.command(['systemctl', 'start', ADAPTER_SERVICE])
                 stopped = False
-                self._verify_after(reviewed, token_hash=reviewed['context_token_sha256'])
+                self._wait_for_adapter_verification(
+                    lambda: self._verify_after(reviewed, token_hash=reviewed['context_token_sha256']))
                 receipt = {'schema_version': 1, 'state': 'applied', 'revision': reviewed['revision'],
                            'plan_sha256': expected_plan, 'backup': str(backup), 'files':
                            {name: row['after'] for name, row in reviewed['files'].items()},
@@ -759,7 +762,7 @@ class BridgeLifecycle:
                     self._restore(backup, metadata, after_hashes, guard_after=True)
                     self.command(['systemctl', 'daemon-reload'])
                     self.command(['systemctl', 'start', ADAPTER_SERVICE])
-                    self._verify_before(reviewed)
+                    self._wait_for_adapter_verification(lambda: self._verify_before(reviewed))
                 except BaseException as failure:
                     rollback_error = failure
                 failed = {**transaction, 'state': 'failed' if rollback_error is None else 'rollback-incomplete',
@@ -794,6 +797,211 @@ class BridgeLifecycle:
         if (hermes != set(reviewed['hermes_tools_before'])
                 or openclaw != set(reviewed['openclaw_tools_before'])):
             raise ValueError('bridge inventory did not recover to its exact before state')
+
+    def _archive_private_marker(self, path: Path, label: str) -> Path:
+        archived = self.layout.state / (label + '-' + str(time.time_ns()) + '.json')
+        os.link(path, archived, follow_symlinks=False)
+        path.unlink()
+        directory_fd = os.open(self.layout.state, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        return archived
+
+    def reconcile_failed(self, revision: str, expected_plan: str) -> dict[str, Any]:
+        """Restore one exact failed activation to its recorded before-image."""
+        self.published(revision)
+        if not isinstance(expected_plan, str) or not re.fullmatch(r'[a-f0-9]{64}', expected_plan):
+            raise ValueError('reviewed failed bridge plan SHA-256 required')
+        if not self.layout.state.exists():
+            raise ValueError('private failed bridge transaction required')
+        _safe_directory(self.layout.state, self.root_uid)
+        lock_path = self.layout.state / 'lock'
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        try:
+            os.fchown(fd, self.root_uid, self.root_gid)
+            os.fchmod(fd, 0o600)
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            transaction_path = self.layout.state / 'transaction.json'
+            reconciliation_path = self.layout.state / 'reconciliation.json'
+            receipt_path = self.layout.state / 'receipt.json'
+            if reconciliation_path.exists():
+                marker = json.loads(_safe_file(reconciliation_path, self.root_uid, 0o600))
+                if (not isinstance(marker, dict) or set(marker) != {'schema_version', 'state',
+                        'controller_revision', 'failed_revision', 'plan_sha256', 'transaction'}
+                        or marker.get('schema_version') != 1
+                        or marker.get('state') != 'reconciling'
+                        or marker.get('controller_revision') != revision
+                        or marker.get('plan_sha256') != expected_plan or not isinstance(marker.get('transaction'), dict)):
+                    raise ValueError('failed bridge reconciliation marker differs')
+                transaction = marker['transaction']
+                failed_revision = marker['failed_revision']
+                if transaction_path.exists():
+                    active_transaction = json.loads(_safe_file(transaction_path, self.root_uid, 0o600))
+                    if active_transaction != transaction:
+                        raise ValueError('failed bridge transaction differs from its reconciliation marker')
+            else:
+                if not transaction_path.exists():
+                    raise ValueError('failed bridge transaction marker required')
+                transaction = json.loads(_safe_file(transaction_path, self.root_uid, 0o600))
+                failed_revision = transaction.get('revision') if isinstance(transaction, dict) else None
+                receipt = self._receipt()
+                if (receipt is None or receipt.get('state') != 'rollback-incomplete'
+                        or receipt.get('revision') != failed_revision or receipt.get('plan_sha256') != expected_plan):
+                    raise ValueError('matching rollback-incomplete receipt required')
+                receipt_fields = ('revision', 'plan_sha256', 'backup', 'before', 'after', 'metadata',
+                                  'context_token_sha256', 'hermes_tools_before', 'openclaw_tools_before')
+                if any(receipt.get(key) != transaction.get(key) for key in receipt_fields):
+                    raise ValueError('failed receipt differs from its transaction record')
+                marker = None
+
+            required = {'schema_version', 'state', 'revision', 'plan_sha256', 'backup', 'before', 'after',
+                        'metadata', 'context_token_sha256', 'hermes_tools_before', 'openclaw_tools_before'}
+            names = set(MANAGED_FILES) | {'unit', 'config'}
+            if (set(transaction) != required or transaction.get('schema_version') != 1
+                    or transaction.get('state') != 'applying' or transaction.get('revision') != failed_revision
+                    or transaction.get('plan_sha256') != expected_plan
+                    or set(transaction.get('before', {})) != names or set(transaction.get('after', {})) != names
+                    or any(transaction['before'][name] is not None and not re.fullmatch(r'[a-f0-9]{64}', transaction['before'][name])
+                           for name in names)
+                    or any(not isinstance(transaction['after'][name], str)
+                           or not re.fullmatch(r'[a-f0-9]{64}', transaction['after'][name]) for name in names)
+                    or not re.fullmatch(r'[a-f0-9]{64}', transaction.get('context_token_sha256', ''))
+                    or not isinstance(transaction.get('hermes_tools_before'), list)
+                    or not isinstance(transaction.get('openclaw_tools_before'), list)):
+                raise ValueError('failed bridge transaction is malformed or outside the reviewed scope')
+            if not isinstance(failed_revision, str) or not re.fullmatch(r'[a-f0-9]{40}', failed_revision):
+                raise ValueError('failed bridge revision is not a full published commit')
+            self.command(['git', '-C', str(self.layout.root), 'merge-base', '--is-ancestor',
+                          failed_revision, revision])
+            for name, row in MANAGED_FILES.items():
+                source_blob = self.command(['git', '-C', str(self.layout.root), 'show',
+                                            f'{failed_revision}:{name}'], binary=True)
+                current_blob = self.command(['git', '-C', str(self.layout.root), 'show',
+                                             f'{revision}:{name}'], binary=True)
+                if (not isinstance(source_blob, bytes) or not isinstance(current_blob, bytes)
+                        or digest(source_blob) != transaction['after'][name]
+                        or digest(current_blob) != transaction['after'][name]):
+                    raise ValueError('failed bridge managed source differs from its recorded after-image')
+            if (digest(self._enabled_unit(self._baseline_unit()).encode()) != transaction['after']['unit']
+                    or digest(self._config_bytes()) != transaction['after']['config']):
+                raise ValueError('current bridge unit or configuration differs from the failed transaction scope')
+            backup = Path(transaction['backup'])
+            if backup.parent != self.layout.state or backup.is_symlink() or not backup.is_dir():
+                raise ValueError('exact private bridge before-image required')
+            metadata = self._load_metadata(backup)
+            if metadata != transaction['metadata']:
+                raise ValueError('private bridge before-image metadata changed')
+            for name in names:
+                row = metadata[name]
+                recorded_before = row['sha256'] if row['exists'] else None
+                if transaction['before'][name] != recorded_before:
+                    raise ValueError('transaction preimage differs from its private before-image')
+
+            token, token_hash = self._context_token()
+            if not hmac.compare_digest(token_hash, transaction['context_token_sha256']):
+                raise ValueError('context credential changed since the failed transaction')
+            health = self._health(token)
+            if health.get('ready') is not True:
+                raise ValueError('assistant context is not ready for transaction reconciliation')
+
+            paths = {name: self.layout.destination / name for name in MANAGED_FILES}
+            paths.update({'unit': self.layout.unit, 'config': self.layout.context_config})
+            status_rows = {}
+            for name, path in paths.items():
+                row = metadata[name]
+                uid = row['uid'] if row['exists'] else (self.service_uid if name == 'config' else self.root_uid)
+                mode = row['mode'] if row['exists'] else (0o600 if name == 'config' else 0o644)
+                status_rows[name] = self._status_path(path, uid, transaction['before'][name],
+                                                      transaction['after'][name], mode)
+
+            before_hermes = set(transaction['hermes_tools_before'])
+            before_openclaw = set(transaction['openclaw_tools_before'])
+            after_hermes = before_hermes | CONTEXT_TOOL_NAMES
+            if (len(before_hermes) != len(transaction['hermes_tools_before'])
+                    or len(before_openclaw) != len(transaction['openclaw_tools_before'])
+                    or before_hermes & CONTEXT_TOOL_NAMES):
+                raise ValueError('failed bridge inventory preimage is malformed')
+            adapter_state = self._adapter_state()
+            if adapter_state == 'active':
+                native = self._native_tokens()
+                current_hermes = self._inventory(native['hermes-owner'])
+                current_openclaw = self._inventory(native['openclaw'])
+                if current_hermes not in (before_hermes, after_hermes) or current_openclaw != before_openclaw:
+                    raise ValueError('current bridge inventories differ from both exact transaction states')
+            elif adapter_state not in {'inactive', 'failed'}:
+                raise ValueError('adapter is transitional during failed bridge reconciliation')
+
+            if marker is None:
+                marker = {'schema_version': 1, 'state': 'reconciling',
+                          'controller_revision': revision, 'failed_revision': failed_revision,
+                          'plan_sha256': expected_plan, 'transaction': transaction}
+                self._save_private(reconciliation_path, canonical(marker))
+
+            # Recheck exact hashes after committing the recovery fence and before
+            # restoring any managed path.
+            for name, path in paths.items():
+                row = metadata[name]
+                uid = row['uid'] if row['exists'] else (self.service_uid if name == 'config' else self.root_uid)
+                mode = row['mode'] if row['exists'] else (0o600 if name == 'config' else 0o644)
+                self._status_path(path, uid, transaction['before'][name], transaction['after'][name], mode)
+
+            needs_restore = any(status_rows[name]['before'] != transaction['before'][name] for name in names)
+            try:
+                if needs_restore:
+                    if adapter_state == 'active':
+                        self.command(['systemctl', 'stop', ADAPTER_SERVICE])
+                    self._restore(backup, metadata, transaction['after'], guard_after=True)
+                    self.command(['systemctl', 'daemon-reload'])
+                    self.command(['systemctl', 'start', ADAPTER_SERVICE])
+                elif adapter_state != 'active':
+                    self.command(['systemctl', 'start', ADAPTER_SERVICE])
+                self._wait_for_adapter_verification(lambda: self._verify_before(transaction))
+            except BaseException as error:
+                failed = {**(self._receipt() or transaction), 'state': 'rollback-incomplete',
+                          'reconciliation_failure_type': type(error).__name__,
+                          'reconciliation_failed_at': time.time_ns()}
+                self._save_private(receipt_path, canonical(failed))
+                raise ValueError('failed bridge reconciliation remains fenced') from None
+
+            old_receipt = self._receipt()
+            if old_receipt is not None and old_receipt.get('state') == 'rollback-incomplete':
+                self._archive_private_marker(receipt_path, 'receipt-failed')
+            if transaction_path.exists():
+                self._archive_private_marker(transaction_path, 'transaction-reconciled')
+            result = {'schema_version': 1, 'state': 'rolled-back', 'revision': failed_revision,
+                      'reconciled_by_revision': revision,
+                      'plan_sha256': expected_plan, 'backup': str(backup),
+                      'files': {name: transaction['after'][name] for name in MANAGED_FILES},
+                      'config_after_sha256': transaction['after']['config'],
+                      'unit_after_sha256': transaction['after']['unit'],
+                      'context_token_sha256': transaction['context_token_sha256'],
+                      'hermes_tools_before': transaction['hermes_tools_before'],
+                      'hermes_tools_after': sorted(after_hermes),
+                      'openclaw_tools_before': transaction['openclaw_tools_before'],
+                      'reconciled_at': time.time_ns()}
+            self._save_private(receipt_path, canonical(result))
+            if reconciliation_path.exists():
+                self._archive_private_marker(reconciliation_path, 'reconciliation-complete')
+            return {'state': 'rolled-back', 'revision': failed_revision,
+                    'reconciled_by_revision': revision, 'plan_sha256': expected_plan,
+                    'receipt': str(receipt_path), 'before_images_retained': True}
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def _wait_for_adapter_verification(verify: Callable[[], None], timeout: float = 20.0) -> None:
+        """Bound the systemd Type=simple listener race; only transport errors retry."""
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                verify()
+                return
+            except (ConnectionError, TimeoutError):
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(min(0.2, max(0.0, deadline - time.monotonic())))
 
     def apply(self, revision: str, expected_plan: str) -> dict[str, Any]:
         reviewed = self.plan(revision)
@@ -871,19 +1079,23 @@ def main(argv: list[str] | None = None) -> int:
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument('--apply', action='store_true', help='apply the reviewed plan after hash confirmation')
     actions.add_argument('--rollback', action='store_true', help='restore the exact recorded before-image')
+    actions.add_argument('--reconcile-failed', action='store_true', help='restore one exact failed activation to its before-image')
     parser.add_argument('--expected-plan-sha256', help='hash printed by the plan command')
     args = parser.parse_args(argv)
     try:
         if os.geteuid() != 0 or sys.platform != 'linux' or socket.gethostname().split('.')[0] != 'home-core':
             raise ValueError('requires root on Linux home-core')
-        if args.apply and (not args.expected_plan_sha256 or not re.fullmatch(r'[a-f0-9]{64}', args.expected_plan_sha256)):
-            raise ValueError('--apply requires the reviewed plan SHA-256')
-        if not args.apply and args.expected_plan_sha256:
-            raise ValueError('--expected-plan-sha256 is valid only with --apply')
+        if (args.apply or args.reconcile_failed) and (not args.expected_plan_sha256
+                or not re.fullmatch(r'[a-f0-9]{64}', args.expected_plan_sha256)):
+            raise ValueError('apply or failed reconciliation requires the reviewed plan SHA-256')
+        if not (args.apply or args.reconcile_failed) and args.expected_plan_sha256:
+            raise ValueError('--expected-plan-sha256 is valid only with --apply or --reconcile-failed')
         os.umask(0o077)
         lifecycle = BridgeLifecycle()
         if args.rollback:
             result = lifecycle.rollback(args.revision)
+        elif args.reconcile_failed:
+            result = lifecycle.reconcile_failed(args.revision, args.expected_plan_sha256)
         elif args.apply:
             result = lifecycle.apply(args.revision, args.expected_plan_sha256)
         else:

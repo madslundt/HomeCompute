@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 import unittest
 from dataclasses import replace
@@ -27,6 +28,7 @@ TOKEN = 'context-assistant-token-value-for-synthetic-tests-only-2026'
 MCP_HERMES = 'hermes-owner-token-value-for-synthetic-tests-only-2026'
 MCP_OPENCLAW = 'openclaw-token-value-for-synthetic-tests-only-2026'
 REVISION = 'a' * 40
+NEW_REVISION = 'b' * 40
 UNIT_TEXT = '''[Unit]
 Description=Existing OpenClaw adapter
 [Service]
@@ -58,17 +60,26 @@ class FakeCommand:
         self.dropins = ''
         self.fragment = MODULE.CONTEXT_SERVICE_FRAGMENT
         self.context_unit = CONTEXT_UNIT_TEXT
+        self.startup_refusals = 0
+        self.just_started = False
+        self.ancestor_ok = True
+        self.changed_failed_blob = False
 
     def __call__(self, args, *, check=True, timeout=30, binary=False):
         args = list(args)
         if args[:3] == ['git', '-C', str(self.layout.root)]:
             if args[3:5] == ['rev-parse', 'HEAD']:
-                return REVISION
+                return self.layout.root.name
             if args[3:5] == ['merge-base', '--is-ancestor']:
+                if not self.ancestor_ok:
+                    raise subprocess.CalledProcessError(1, args)
                 return ''
-            if len(args) == 5 and args[3] == 'show' and args[4].startswith(REVISION + ':'):
-                rel = args[4].split(':', 1)[1]
-                return self.source_blobs[rel] if binary else self.source_blobs[rel].decode()
+            if len(args) == 5 and args[3] == 'show' and args[4].split(':', 1)[0] in {REVISION, NEW_REVISION}:
+                commit, rel = args[4].split(':', 1)
+                blob = self.source_blobs[rel]
+                if commit == REVISION and self.changed_failed_blob and rel in MODULE.MANAGED_FILES:
+                    blob += b' changed in the failed release'
+                return blob if binary else blob.decode()
         if args[:2] == ['systemctl', 'is-active']:
             return self.adapter if args[2] == MODULE.ADAPTER_SERVICE else self.context
         if args[:2] == ['systemctl', 'show']:
@@ -83,9 +94,11 @@ class FakeCommand:
                                              str(self.layout.credential_source))
         if args[:2] == ['systemctl', 'stop']:
             self.adapter = 'inactive'
+            self.just_started = False
             return ''
         if args[:2] == ['systemctl', 'start']:
             self.adapter = 'active'
+            self.just_started = True
             return ''
         if args[:2] == ['systemctl', 'daemon-reload']:
             return ''
@@ -162,6 +175,11 @@ class ContextBridgeLifecycleTests(unittest.TestCase):
             return {'ready': True, 'mode': 'shadow'}
 
         def inventory(token: str) -> set[str]:
+            if self.command.just_started and self.command.startup_refusals:
+                self.command.startup_refusals -= 1
+                raise ConnectionRefusedError('synthetic listener startup race')
+            if self.command.just_started:
+                self.command.just_started = False
             enabled = (self.layout.context_config.exists()
                        and MODULE.CONTEXT_ARG in self.layout.unit.read_text())
             if token == MCP_HERMES:
@@ -235,6 +253,131 @@ class ContextBridgeLifecycleTests(unittest.TestCase):
         self.assertEqual((self.layout.destination / 'scripts/openclaw-communication.py').read_bytes(),
                          b'known published baseline')
         self.assertEqual(self.bridge.rollback(REVISION)['state'], 'rolled-back')
+
+    def test_apply_waits_for_transient_authenticated_listener_startup_refusal(self) -> None:
+        reviewed = self.bridge.plan(REVISION)
+        self.command.startup_refusals = 1
+        receipt = self.bridge.apply(REVISION, self.bridge.plan_sha256(reviewed))
+        self.assertEqual(receipt['state'], 'applied')
+        self.assertEqual(set(receipt['hermes_tools_after']), BASE_TOOLS | CONTEXT_TOOLS)
+
+    def _make_rollback_incomplete(self, reviewed, *, after_state=True):
+        self.layout.state.mkdir(mode=0o700)
+        backup = self.layout.state / 'before-synthetic'
+        metadata = self.bridge._snapshot(backup, reviewed)
+        before = {name: row['before'] for name, row in reviewed['files'].items()}
+        before.update({'unit': reviewed['unit']['before'], 'config': reviewed['config']['before']})
+        after = {name: row['after'] for name, row in reviewed['files'].items()}
+        after.update({'unit': reviewed['unit']['after'], 'config': reviewed['config']['after']})
+        transaction = {'schema_version': 1, 'state': 'applying', 'revision': REVISION,
+                       'plan_sha256': self.bridge.plan_sha256(reviewed), 'backup': str(backup),
+                       'before': before, 'after': after, 'metadata': metadata,
+                       'context_token_sha256': reviewed['context_token_sha256'],
+                       'hermes_tools_before': reviewed['hermes_tools_before'],
+                       'openclaw_tools_before': reviewed['openclaw_tools_before']}
+        if after_state:
+            for name, row in MODULE.MANAGED_FILES.items():
+                source = row['source']
+                previous = metadata[name]
+                self.bridge._write_managed(row['target'], source.read_bytes(),
+                                           previous['uid'] if previous['exists'] else self.bridge.root_uid,
+                                           previous['gid'] if previous['exists'] else self.bridge.root_gid,
+                                           previous['mode'] if previous['exists'] else 0o644)
+            self.bridge._write_managed(self.layout.context_config, self.bridge._config_bytes(),
+                                       self.bridge.service_uid, self.bridge.service_gid, 0o600)
+            self.bridge._write_managed(self.layout.unit, self.bridge._enabled_unit(
+                self.bridge._baseline_unit()).encode(), self.bridge.root_uid, self.bridge.root_gid, 0o644)
+        self.bridge._save_private(self.layout.state / 'transaction.json', MODULE.canonical(transaction))
+        self.bridge._save_private(self.layout.state / 'receipt.json', MODULE.canonical(
+            {**transaction, 'state': 'rollback-incomplete', 'failure_type': 'ConnectionRefusedError',
+             'rollback_failure_type': 'ConnectionRefusedError', 'failed_at': 1}))
+        return transaction
+
+    def test_reconcile_failed_transaction_restores_exact_before_state_and_archives_markers(self) -> None:
+        reviewed = self.bridge.plan(REVISION)
+        transaction = self._make_rollback_incomplete(reviewed)
+        result = self.bridge.reconcile_failed(REVISION, transaction['plan_sha256'])
+        self.assertEqual(result['state'], 'rolled-back')
+        self.assertFalse((self.layout.state / 'transaction.json').exists())
+        self.assertFalse((self.layout.state / 'reconciliation.json').exists())
+        self.assertEqual(json.loads((self.layout.state / 'receipt.json').read_text())['state'], 'rolled-back')
+        self.assertTrue(list(self.layout.state.glob('transaction-reconciled-*.json')))
+        self.assertTrue(list(self.layout.state.glob('receipt-failed-*.json')))
+        self.assertTrue(list(self.layout.state.glob('reconciliation-complete-*.json')))
+        self.assertEqual(self.layout.unit.read_text(), UNIT_TEXT)
+        self.assertFalse(self.layout.context_config.exists())
+        self.assertEqual((self.layout.destination / 'scripts/openclaw-communication.py').read_bytes(),
+                         b'known published baseline')
+        self.assertFalse((self.layout.destination / 'scripts/assistant_context_tools.py').exists())
+        self.assertEqual(self.bridge.plan(REVISION)['action'], 'enable-owner-context')
+
+    def _advance_controller_release(self):
+        new_root = self.layout.root.parent / NEW_REVISION
+        (new_root / 'scripts').mkdir(mode=0o700, parents=True)
+        for rel in ('scripts/openclaw-communication.py', 'scripts/assistant_context_tools.py',
+                    'scripts/setup-assistant-context-bridge.py'):
+            (new_root / rel).write_bytes((self.layout.root / rel).read_bytes())
+            os.chmod(new_root / rel, 0o644)
+        os.chmod(new_root / 'scripts', 0o755)
+        os.chmod(new_root, 0o755)
+        self.layout = replace(self.layout, root=new_root)
+        self.bridge.layout = self.layout
+        self.command.layout = self.layout
+
+    def test_reconcile_old_failed_release_from_new_published_controller(self) -> None:
+        reviewed = self.bridge.plan(REVISION)
+        transaction = self._make_rollback_incomplete(reviewed)
+        self._advance_controller_release()
+        result = self.bridge.reconcile_failed(NEW_REVISION, transaction['plan_sha256'])
+        self.assertEqual(result['state'], 'rolled-back')
+        self.assertEqual(result['revision'], REVISION)
+        self.assertEqual(result['reconciled_by_revision'], NEW_REVISION)
+        self.assertEqual(json.loads((self.layout.state / 'receipt.json').read_text())['revision'], REVISION)
+
+    def test_reconcile_old_failed_release_refuses_unrelated_history(self) -> None:
+        reviewed = self.bridge.plan(REVISION)
+        transaction = self._make_rollback_incomplete(reviewed)
+        self._advance_controller_release()
+        self.command.ancestor_ok = False
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.bridge.reconcile_failed(NEW_REVISION, transaction['plan_sha256'])
+        self.assertTrue((self.layout.state / 'transaction.json').exists())
+        self.assertFalse((self.layout.state / 'reconciliation.json').exists())
+
+    def test_reconcile_old_failed_release_refuses_changed_historical_payload(self) -> None:
+        reviewed = self.bridge.plan(REVISION)
+        transaction = self._make_rollback_incomplete(reviewed)
+        self._advance_controller_release()
+        self.command.changed_failed_blob = True
+        with self.assertRaisesRegex(ValueError, 'managed source differs'):
+            self.bridge.reconcile_failed(NEW_REVISION, transaction['plan_sha256'])
+        self.assertTrue((self.layout.state / 'transaction.json').exists())
+        self.assertFalse((self.layout.state / 'reconciliation.json').exists())
+
+    def test_reconcile_failed_refuses_unknown_edits_and_keeps_fence(self) -> None:
+        reviewed = self.bridge.plan(REVISION)
+        transaction = self._make_rollback_incomplete(reviewed)
+        target = self.layout.destination / 'scripts/openclaw-communication.py'
+        target.write_bytes(b'later operator edit')
+        with self.assertRaisesRegex(ValueError, 'preimage'):
+            self.bridge.reconcile_failed(REVISION, transaction['plan_sha256'])
+        self.assertTrue((self.layout.state / 'transaction.json').exists())
+        self.assertEqual(json.loads((self.layout.state / 'receipt.json').read_text())['state'],
+                         'rollback-incomplete')
+        self.assertFalse((self.layout.state / 'reconciliation.json').exists())
+
+    def test_reconcile_failed_clears_only_markers_when_exact_before_state_is_already_restored(self) -> None:
+        reviewed = self.bridge.plan(REVISION)
+        transaction = self._make_rollback_incomplete(reviewed, after_state=False)
+        result = self.bridge.reconcile_failed(REVISION, transaction['plan_sha256'])
+        self.assertEqual(result['state'], 'rolled-back')
+        self.assertEqual(self.layout.unit.read_text(), UNIT_TEXT)
+        self.assertFalse(self.layout.context_config.exists())
+        self.assertEqual((self.layout.destination / 'scripts/openclaw-communication.py').read_bytes(),
+                         b'known published baseline')
+        self.assertFalse((self.layout.destination / 'scripts/assistant_context_tools.py').exists())
+        self.assertFalse((self.layout.state / 'transaction.json').exists())
+        self.assertTrue(list(self.layout.state.glob('transaction-reconciled-*.json')))
 
     def test_rejects_unknown_installed_source_and_unit_drift(self) -> None:
         target = self.layout.destination / 'scripts/openclaw-communication.py'

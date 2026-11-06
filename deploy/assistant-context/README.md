@@ -253,6 +253,23 @@ rollback from the selected published source. It preserves native bot/MCP tokens
 and does not grant context to OpenClaw specialists. Install the source-owned
 `homecompute-assistant-context` skill via the native skill lifecycle.
 
+Adapter startup verification waits for bounded transport readiness; an
+authenticated inventory mismatch still fails immediately. If an earlier
+activation left a `rollback-incomplete` receipt and transaction, preserve them.
+Use the newer published controller with the failed attempt's original plan hash:
+
+```sh
+sudo python3 /srv/homecompute/releases/NEW_FULL_SHA/scripts/setup-assistant-context-bridge.py \
+  --revision NEW_FULL_SHA --reconcile-failed \
+  --expected-plan-sha256 ORIGINAL_FAILED_PLAN_HASH
+```
+
+Reconciliation checks the failed revision's ancestry and exact managed payloads,
+private before-images, current credential, file hashes and both actor inventories.
+It restores only recorded paths when necessary and archives the failure evidence
+after baseline verification. Unknown edits remain fenced. Re-plan normally after
+reconciliation; never remove the markers to force another apply.
+
 Qualify a synthetic Mattermost query/source reply after restart; wrong-role,
 scope, deletion and stale-source denials; and uncertain delivery behavior.
 Consolidate existing n8n notification ownership only after acceptance. Critical
