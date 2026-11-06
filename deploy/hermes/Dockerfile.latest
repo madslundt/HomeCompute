@@ -1,4 +1,4 @@
-# Qualification only. Production stays on Dockerfile until all gates pass.
+# Managed Hermes 0.23 overlay; selection is owned by config/hermes-release.json.
 # Retain the complete OpenShell/NemoClaw runtime, identities and supervisor.
 FROM ghcr.io/nvidia/nemoclaw/hermes-sandbox@sha256:f52d55af05b63302ca8ae54ca9141b80df433a72ce273ae4aeac08c5af2cb990
 USER root
@@ -90,6 +90,11 @@ RUN HERMES_HOME=/tmp/homecompute-hermes-test-build /opt/hermes/python-runtime/bi
       tests/gateway/test_session_mutation_model.py \
     && rm -rf /tmp/homecompute-hermes-test-build /tmp/homecompute-hermes-test-env \
       /tmp/homecompute-hermes-test-home /opt/hermes/.pytest_cache /root/.cache/uv
+# Required PM tools must ship in this externally managed artifact. Runtime
+# install drift cannot repair a sealed image, even when browsing itself works.
+RUN /opt/hermes/python-runtime/bin/python3 -c 'from pm import ensure; ensure("ffmpeg", explicit=True); ensure("ripgrep", explicit=True)' \
+    && chmod -R a+rX /opt/hermes/tools \
+    && HOME=/sandbox /usr/bin/setpriv --reuid=sandbox --regid=sandbox --init-groups -- /opt/hermes/.venv/bin/python -I -c 'import pm; problems=pm.check(); assert not problems, problems'
 COPY browser-relay.mjs /usr/local/lib/nemoclaw/browser-relay.mjs
 RUN chmod 0444 /usr/local/lib/nemoclaw/browser-relay.mjs
 ENV HERMES_DUMP_REQUESTS=0 HERMES_DUMP_REQUEST_STDOUT=0 \

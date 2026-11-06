@@ -23,6 +23,8 @@ def execute(program):
 
 
 def main():
+    if json.loads((ROOT / 'config/hermes-release.json').read_text()).get('household_sandbox') == NAME:
+        raise RuntimeError('Qualification cannot reconfigure the selected owner instance')
     # The guarded shell entrypoint validates the owner config and readiness gates.
     if os.environ.get('OPENSHELL_GATEWAY') != 'nemoclaw' or os.environ.get('NEMOCLAW_GATEWAY_PORT') != '8080':
         raise RuntimeError('Use setup-hermes-guest.sh probe-latest with the protected owner config')

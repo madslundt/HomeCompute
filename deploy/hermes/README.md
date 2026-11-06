@@ -10,9 +10,8 @@ for applied revisions, measured checks and remaining qualification gaps.
 
 `config/hermes-release.json` pins NemoClaw 0.0.141, OpenShell 0.0.116, and
 NVIDIA's complete managed Hermes sandbox by digest. This integrates Hermes
-0.21.3. Standalone Hermes 0.23.0 is newer; its [isolated upgrade candidate](latest/README.md)
-is not yet qualified with the
-managed startup, credential, recovery and browser contracts. Do not replace
+0.21.3 as its base. The selected [managed overlay](latest/README.md) upgrades
+Hermes itself to 0.23.0 while retaining the startup, credential and recovery contracts. Do not replace
 the managed image with the standalone upstream image: it omits these contracts.
 
 Use local `automation-moe` through the private compatibility bridge. Hermes
@@ -50,7 +49,7 @@ A same-host bootstrap backup does not admit household messages.
 From the reviewed, published source checkout inside the guest:
 
 ```bash
-config=/home/hermes-operator/.config/homecompute-hermes/hermes-personal.env
+config=/home/hermes-operator/.config/homecompute-hermes/hermes-personal-v23.env
 ./scripts/setup-hermes-guest.sh validate --config "$config"
 ./scripts/setup-hermes-guest.sh preflight --config "$config"
 ./scripts/setup-hermes-guest.sh onboard-canary --config "$config"
@@ -110,11 +109,10 @@ opaque reference only when connecting to the exact owned endpoint.
 
 The image-owned loopback adapter handles CDP clients that bypass HTTP proxy
 settings. It forwards only the fixed browser WebSocket path through OpenShell,
-using the opaque credential in the upgrade request. Both agent-browser and the
-Python dialog supervisor use that adapter; it exposes no general proxy route.
-`browser.backend` is explicitly the string `off`, which selects Hermes's built-in
-`browser_*` tools rather than auto-discovering and downloading Browser Use via
-uvx. The image-bundled agent-browser version remains pinned and npm stays offline.
+using the opaque credential in the upgrade request. Hermes 0.23's `browser_exec` and the Python dialog supervisor use that adapter;
+it exposes no general proxy route. The old `browser.backend` selector is removed.
+The release-pinned browser-harness package supplies the browser tool without an
+external browser service or a runtime package download.
 
 `benchmarks/plans/hermes-local-runtime-smoke.json` exercises three 16-call
 synthetic sequences with retry recovery and strict final JSON. Supply a private
@@ -177,7 +175,8 @@ payloads belong only to Hermes's intentional conversation state, not duplicate
 request-debug files. The build rejects an unexpected upstream implementation
 instead of silently skipping this privacy policy.
 
-The final runtime name is `hermes-personal`. An earlier `hermes-owner`
+The selected runtime name is `hermes-personal-v23`. The previous
+`hermes-personal` instance and its configuration are retained for rollback. An earlier `hermes-owner`
 replacement remains retained and stopped after NemoClaw 0.0.141 failed to merge
 its default nonempty kanban directory during native workspace restoration.
 Its recovery copy and immutable tracking were preserved. The owner authorized
@@ -188,3 +187,27 @@ full shutdown left a terminal Error record. That VM archive was retained, the
 shutdown ordering was repaired in source, and a later full VM reboot passed.
 The temporary no-backup recreation option is not a routine household upgrade
 or recovery policy.
+
+## Upgrade cutover and rollback
+
+The source-owned `setup-hermes-owner-config.py` installs the canonical non-secret
+`config/hermes-agent.env.example` into the private new owner config, exclusively
+and idempotently. It refuses an unknown existing file and preserves the previous
+config and all durable state. The new instance starts with clean Hermes state;
+no native workspace import is attempted.
+
+Qualify the new instance with its Mattermost listener disabled. Stop
+`homecompute-hermes-personal.service` **before** installing its replacement unit:
+the installed old `ExecStop` must still address the previous instance. Require
+native `hermes-personal` status `Stopped`; the Mattermost connector enforces this
+before enabling the new listener. Existing gateway-held provider IDs remain
+`hermes-personal-mattermost` and `hermes-personal-browser`, so no new bot or token
+is needed. Install startup for the new config only after its client checks pass.
+Qualification commands refuse to reconfigure the selected owner instance.
+
+For rollback, stop the new unit first, natively stop `hermes-personal-v23`, and
+install/start the retained previous source's unit with `hermes-personal.env`.
+Health-check that release and the owner DM/browser path. Leave the new instance
+stopped with its state preserved; switching code does not merge conversation
+histories. The retained old application state is the rollback state, while the
+encrypted whole-VM Synology archive is the disaster-recovery boundary.

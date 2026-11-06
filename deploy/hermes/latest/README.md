@@ -1,9 +1,10 @@
 # Hermes 0.23 qualification candidate
 
-This directory is an isolated upgrade candidate, not the production image.
-`../Dockerfile` and `config/hermes-release.json` remain the production authority
-until the checks in `qualification.json` pass. Never point the working household
-sandbox at an image merely because this build succeeds.
+This directory holds the managed overlay selected by `config/hermes-release.json`.
+The legacy `../Dockerfile` is retained for the previous 0.21.3 instance. The new
+overlay keeps NVIDIA's complete managed base; a standalone upstream image omits
+its startup, credential and recovery contracts. Qualification evidence is in
+`qualification.json`; final owner and boot evidence belongs in the runtime report.
 
 The immutable upstream release is `v0.23.0`, commit
 `2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19`. Its source uses inert package-version
@@ -80,15 +81,17 @@ docker build --progress=plain \
 Retain the build receipt and observed immutable image ID privately. A failed
 managed adapter check is an upgrade blocker; do not weaken or skip it. Building
 an image does not migrate application data or establish managed readiness.
-After a successful image build, the guarded guest helper can create the
-separate `hermes-personal-v23` sandbox using the same published recipe:
+The historical qualification source
+`5ec312db70ccfa607463a13a4ae9097224f19ae0` created the separate
+`hermes-personal-v23` sandbox using the same image recipe:
 
 ```bash
 ./scripts/setup-hermes-guest.sh qualify-latest --config "$config"
 ./scripts/setup-hermes-guest.sh probe-latest --config "$config"
 ```
 
-This command still requires the existing household backup/network gates and
+These qualification commands are disabled after selection to protect the owner
+listener. At the historical source they require the household backup/network gates and
 approved local route. It clears inherited messaging credentials, changes no
 owner configuration and installs no boot unit. Do not connect it as a second
 listener for the owner's bot. Qualification must use synthetic turns only.
@@ -105,3 +108,5 @@ publish the selected production recipe and apply the guarded native lifecycle.
 Code rollback alone cannot undo state migrations.
 
 The frontend uses the release-pinned Node 26.12.1 and npm 12.0.2. Its only additional system library is checksum-pinned Debian libatomic1 14.2.0-19; package-manager repair is unnecessary. Linux upstream tests run without a preselected profile home so their own isolation fixtures control it.
+
+Required ffmpeg and ripgrep artifacts are also installed through the release's frozen PM lock. A final unprivileged `pm.check()` must report no install drift; startup warnings are not accepted as a complete artifact.

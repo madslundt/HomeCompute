@@ -16,7 +16,8 @@ source "$SCRIPT_DIR/lib/config.sh"
 readonly EXPECTED_NEMOCLAW_COMMIT=b7dcc9bb76197fb28ec673867c35974ac799eb15
 readonly EXPECTED_NEMOCLAW_VERSION=0.0.141
 readonly EXPECTED_INSTALLER_SHA256=bafd48cd005e11e064e0c4caa0968a4c781453ccebcf4593855f85d28afbdeb8
-readonly EXPECTED_HERMES_VERSION=0.21.3
+readonly EXPECTED_HERMES_VERSION=0.23.0
+readonly EXPECTED_SANDBOX_NAME=hermes-personal-v23
 readonly EXPECTED_OPENSHELL_VERSION=0.0.116
 OS_RELEASE_FILE=/etc/os-release
 
@@ -51,8 +52,6 @@ Commands:
   stop                     Stop the owner sandbox through NemoClaw
   install                  Install the pinned NemoClaw CLI without onboarding
   onboard-canary           Create the household Hermes sandbox
-  qualify-latest           Create the separate synthetic Hermes upgrade candidate
-  probe-latest             Probe candidate inference, authentication and browsing
   recreate                 Recreate the owner sandbox through NemoClaw
   connect-browser          Attach the dedicated isolated browser
   connect-mattermost       Add the owner-restricted Hermes Mattermost bot
@@ -82,11 +81,14 @@ validate_release_manifest() {
     --arg installer "$EXPECTED_INSTALLER_SHA256" \
     --arg hermes "$EXPECTED_HERMES_VERSION" \
     --arg openshell "$EXPECTED_OPENSHELL_VERSION" \
+    --arg sandbox "$EXPECTED_SANDBOX_NAME" \
     '.schema_version == 1 and
      .nemoclaw.commit == $commit and
      .nemoclaw.install_script_sha256 == $installer and
      .managed_components.hermes_version == $hermes and
      .managed_components.openshell_version == $openshell and
+     .household_sandbox == $sandbox and
+     .image_recipe == "deploy/hermes/Dockerfile.latest" and
      .policy.tier == "restricted" and
      .policy.web_search == "none" and
      .policy.messaging == true and
@@ -103,7 +105,7 @@ load_runtime_config() {
 }
 
 validate_runtime_config() {
-  [[ "$HERMES_SANDBOX_NAME" == hermes-personal ]] || die 'The household sandbox must be named hermes-personal'
+  [[ "$HERMES_SANDBOX_NAME" == "$EXPECTED_SANDBOX_NAME" ]] || die "The selected household sandbox must be named $EXPECTED_SANDBOX_NAME"
   [[ "$HERMES_RESTORE_TARGET" == "$HERMES_SANDBOX_NAME" ]] ||
     die 'The managed-image restore target must be the household owner sandbox itself'
   [[ "$HERMES_MODEL" == automation-moe ]] || die 'The approved Hermes model must be automation-moe'
@@ -289,14 +291,8 @@ read_api_key() {
 }
 
 onboard_canary() {
-  local image_recipe="$REPO_ROOT/deploy/hermes/Dockerfile"
-  if [[ "${1:-}" == --latest-qualification ]]; then
-    # Dynamic scope changes only this invocation. Never wire the owner's bot
-    # or install startup for the separate synthetic qualification sandbox.
-    local HERMES_SANDBOX_NAME=hermes-personal-v23
-    image_recipe="$REPO_ROOT/deploy/hermes/Dockerfile.latest"
-    shift
-  fi
+  local image_recipe="$REPO_ROOT/deploy/hermes/Dockerfile.latest"
+  [[ "${1:-}" != --latest-qualification ]] || die 'Latest Hermes is already selected; qualification must not reconfigure the owner instance'
   preflight_runtime
   require_mutation_gates
   validate_installed_cli_version
@@ -538,8 +534,7 @@ main() {
     install) [[ -z "$argument" ]] || die 'install takes no argument'; install_nemoclaw ;;
     recreate) [[ -z "$argument" ]] || die 'recreate takes no argument'; onboard_canary --recreate-sandbox ;;
     onboard-canary) [[ -z "$argument" ]] || die 'onboard-canary takes no argument'; onboard_canary ;;
-    qualify-latest) [[ -z "$argument" ]] || die 'qualify-latest takes no argument'; onboard_canary --latest-qualification ;;
-    probe-latest) [[ -z "$argument" ]] || die 'probe-latest takes no argument'; preflight_runtime; require_mutation_gates; validate_installed_cli_version; python3 "$REPO_ROOT/scripts/probe-hermes-latest-integrations.py" ;;
+    qualify-latest|probe-latest) die 'Latest Hermes is selected; qualification commands cannot reconfigure the owner instance' ;;
     connect-browser) [[ -z "$argument" ]] || die 'connect-browser takes no argument'; preflight_runtime; require_mutation_gates; python3 "$REPO_ROOT/scripts/connect-hermes-browser.py" ;;
     connect-mattermost) [[ -z "$argument" ]] || die 'connect-mattermost takes no argument'; connect_mattermost ;;
     health) [[ -z "$argument" ]] || die 'health takes no argument'; health_for "$HERMES_SANDBOX_NAME" health ;;
