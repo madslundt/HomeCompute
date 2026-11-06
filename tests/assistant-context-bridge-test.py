@@ -9,6 +9,7 @@ from pathlib import Path
 import stat
 import tempfile
 import unittest
+from dataclasses import replace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +34,10 @@ ExecStart=/run/current-system/sw/bin/python3 /opt/homecompute/openclaw-communica
 User=homecompute-openclaw
 UMask=0077
 '''
+CONTEXT_UNIT_TEXT = '''# /etc/systemd/system/homecompute-assistant-context.service -> /nix/store/xisbr0b8qbqb9lz5fjnps76pdif00m85-unit-homecompute-assistant-context.service/homecompute-assistant-context.service
+[Service]
+LoadCredential=clients:/etc/homecompute/assistant-context-clients.json
+'''
 
 
 def private_json(path: Path, value: dict) -> None:
@@ -43,28 +48,39 @@ def private_json(path: Path, value: dict) -> None:
 class FakeCommand:
     def __init__(self, layout):
         self.layout = layout
+        self.source_blobs = {
+            rel: (layout.root / rel).read_bytes()
+            for rel in ('scripts/openclaw-communication.py', 'scripts/assistant_context_tools.py',
+                        'scripts/setup-assistant-context-bridge.py')
+        }
         self.adapter = 'active'
         self.context = 'active'
+        self.dropins = ''
+        self.fragment = MODULE.CONTEXT_SERVICE_FRAGMENT
+        self.context_unit = CONTEXT_UNIT_TEXT
 
-    def __call__(self, args, *, check=True, timeout=30):
+    def __call__(self, args, *, check=True, timeout=30, binary=False):
         args = list(args)
         if args[:3] == ['git', '-C', str(self.layout.root)]:
             if args[3:5] == ['rev-parse', 'HEAD']:
                 return REVISION
             if args[3:5] == ['merge-base', '--is-ancestor']:
                 return ''
-            if args[3:6] == ['cat-file', '-e', f'{REVISION}:scripts/openclaw-communication.py']:
-                return ''
-            if args[3:6] == ['cat-file', '-e', f'{REVISION}:scripts/assistant_context_tools.py']:
-                return ''
-            if args[3:6] == ['cat-file', '-e', f'{REVISION}:scripts/setup-assistant-context-bridge.py']:
-                return ''
-            if args[3:6] == ['diff', '--exit-code', 'HEAD']:
-                return ''
+            if len(args) == 5 and args[3] == 'show' and args[4].startswith(REVISION + ':'):
+                rel = args[4].split(':', 1)[1]
+                return self.source_blobs[rel] if binary else self.source_blobs[rel].decode()
         if args[:2] == ['systemctl', 'is-active']:
             return self.adapter if args[2] == MODULE.ADAPTER_SERVICE else self.context
         if args[:2] == ['systemctl', 'show']:
-            return 'clients:' + str(self.layout.credential_source)
+            if args[2] == '--property=LoadCredential':
+                return '[unprintable]'
+            if args[2] == '--property=FragmentPath':
+                return self.fragment
+            if args[2] == '--property=DropInPaths':
+                return self.dropins
+        if args[:2] == ['systemctl', 'cat']:
+            return self.context_unit.replace(MODULE.CONTEXT_CLIENTS_SOURCE,
+                                             str(self.layout.credential_source))
         if args[:2] == ['systemctl', 'stop']:
             self.adapter = 'inactive'
             return ''
@@ -82,7 +98,9 @@ class ContextBridgeLifecycleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         temp_root = Path(self.temp.name).resolve()
-        root = temp_root / 'checkout'
+        releases = temp_root / 'releases'
+        releases.mkdir()
+        root = releases / REVISION
         home = temp_root / 'service-home'
         config = home / 'config'
         dest = temp_root / 'opt' / 'openclaw-communication'
@@ -154,7 +172,8 @@ class ContextBridgeLifecycleTests(unittest.TestCase):
 
         self.bridge = MODULE.BridgeLifecycle(
             layout=self.layout, command=self.command, service_uid=os.geteuid(), service_gid=os.getegid(),
-            root_uid=os.geteuid(), root_gid=os.getegid(), context_health=health,
+            root_uid=os.geteuid(), root_gid=os.getegid(), releases_dir=releases,
+            context_health=health,
             tool_inventory=inventory, renderer=lambda: UNIT_TEXT,
         )
         self.baseline_hash = MODULE.digest(b'known published baseline')
@@ -247,6 +266,77 @@ class ContextBridgeLifecycleTests(unittest.TestCase):
         private_json(self.layout.systemd_credential, value)
         with self.assertRaises(ValueError):
             self.bridge._context_token()
+
+    def test_opaque_systemctl_show_uses_exact_unit_cat_credential(self) -> None:
+        opaque = self.command(['systemctl', 'show', '--property=LoadCredential', '--value',
+                               MODULE.CONTEXT_SERVICE])
+        self.assertEqual(opaque, '[unprintable]')
+        self.assertEqual(self.bridge._loaded_client_bytes(), self.layout.credential_source.read_bytes())
+
+    def test_published_source_requires_exact_root_owned_release_and_blob_bytes(self) -> None:
+        self.bridge.published(REVISION)
+        root = self.layout.root
+        root.chmod(0o777)
+        with self.assertRaisesRegex(ValueError, 'root-owned immutable'):
+            self.bridge.published(REVISION)
+        root.chmod(0o700)
+        owner_uid = self.bridge.root_uid
+        self.bridge.root_uid = owner_uid + 1
+        with self.assertRaisesRegex(ValueError, 'root-owned immutable'):
+            self.bridge.published(REVISION)
+        self.bridge.root_uid = owner_uid
+
+        source = root / 'scripts/assistant_context_tools.py'
+        original = source.read_bytes()
+        source.write_bytes(original + b'\n# changed after publish\n')
+        with self.assertRaisesRegex(ValueError, 'source differs from published bytes'):
+            self.bridge.published(REVISION)
+        source.write_bytes(original)
+
+        other_root = root.parent / 'other'
+        other_root.mkdir(mode=0o700)
+        alternate = replace(self.layout, root=other_root)
+        self.bridge.layout = alternate
+        with self.assertRaisesRegex(ValueError, 'root-owned immutable'):
+            self.bridge.published(REVISION)
+        self.bridge.layout = self.layout
+
+    def test_git_blob_reader_preserves_all_source_bytes(self) -> None:
+        raw = MODULE.run([sys.executable, '-c',
+                          "import sys; sys.stdout.buffer.write(b'\\nsource bytes\\n')"], binary=True)
+        self.assertEqual(raw, b'\nsource bytes\n')
+
+    def test_rejects_duplicate_reset_and_unexpected_credential_sources(self) -> None:
+        for addition in (
+                'LoadCredential=clients:/etc/homecompute/assistant-context-clients.json\n',
+                'LoadCredential=clients:/etc/homecompute/assistant-context-clients.json\n'
+                'LoadCredential=\n',
+                'LoadCredential=clients:/etc/other-clients.json\n',
+                'LoadCredentialEncrypted=clients:/etc/homecompute/assistant-context-clients.json\n',
+                'LoadCredential=unknown:/etc/unknown-secret\n'):
+            self.command.context_unit = CONTEXT_UNIT_TEXT + addition
+            with self.subTest(addition=addition), self.assertRaisesRegex(
+                    ValueError, 'credential directives are malformed|clients and only declared'):
+                self.bridge._loaded_client_bytes()
+
+    def test_accepts_only_fixed_optional_local_inference_credentials(self) -> None:
+        self.command.context_unit = CONTEXT_UNIT_TEXT + (
+            'LoadCredential=inference-ca:/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt\n'
+            'LoadCredential=embedding:/etc/homecompute/assistant-context-embedding.json\n'
+            'LoadCredential=briefing:/etc/homecompute/assistant-context-briefing.json\n')
+        self.assertEqual(self.bridge._loaded_client_bytes(), self.layout.credential_source.read_bytes())
+        self.command.context_unit += 'LoadCredential=embedding:/etc/other-key.json\n'
+        with self.assertRaisesRegex(ValueError, 'clients and only declared'):
+            self.bridge._loaded_client_bytes()
+
+    def test_rejects_systemd_dropins_or_wrong_fragment_even_with_valid_cat(self) -> None:
+        self.command.dropins = '/etc/systemd/system/homecompute-assistant-context.service.d/override.conf'
+        with self.assertRaisesRegex(ValueError, 'fragment or drop-ins'):
+            self.bridge._loaded_client_bytes()
+        self.command.dropins = ''
+        self.command.fragment = '/run/systemd/generator/homecompute-assistant-context.service'
+        with self.assertRaisesRegex(ValueError, 'fragment or drop-ins'):
+            self.bridge._loaded_client_bytes()
 
     def test_refuses_mismatched_external_context_token(self) -> None:
         changed = {'schema_version': 1, 'clients': [{

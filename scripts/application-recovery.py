@@ -146,10 +146,11 @@ def private_directory(path: Path, *, create: bool = False) -> None:
         raise ValueError('recovery directory must be a real root-only directory')
 
 
-def sqlite_backup(source: Path, destination: Path) -> None:
+def sqlite_backup(source: Path, destination: Path, *, readonly_source: bool = True) -> None:
     if source.is_symlink() or not source.is_file() or destination.exists() or destination.is_symlink():
         raise ValueError('expected existing SQLite source and new destination')
-    with closing(sqlite3.connect(source.resolve().as_uri() + '?mode=ro', uri=True)) as original, closing(sqlite3.connect(destination)) as copy:
+    source_uri = source.resolve().as_uri() + '?mode=ro' if readonly_source else str(source)
+    with closing(sqlite3.connect(source_uri, uri=readonly_source)) as original, closing(sqlite3.connect(destination)) as copy:
         original.backup(copy)
         if copy.execute('PRAGMA quick_check').fetchone() != ('ok',):
             raise ValueError('SQLite recovery copy failed integrity validation')
@@ -157,18 +158,72 @@ def sqlite_backup(source: Path, destination: Path) -> None:
 
 
 def assistant_sqlite_backups(directories: dict[str, Path], staging: Path) -> list[tuple[str, Path, Path]]:
-    """Create integrity-checked SQLite Online Backup copies for declared assistant state."""
+    """Snapshot quiesced SQLite DB/WAL pairs into private writable staging, then online-back them up."""
     backups = []
     backup_root = staging / 'assistant-sqlite'
+    source_root = staging / 'assistant-sqlite-inputs'
     for index, (archive_relative, source) in enumerate(assistant_sqlite_sources(directories)):
         destination = backup_root / f'{index:04d}.sqlite3'
+        staged_source = source_root / f'{index:04d}.sqlite3'
         destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        original = source.stat(follow_symlinks=False)
-        sqlite_backup(source, destination)
-        os.chown(destination, original.st_uid, original.st_gid)
-        destination.chmod(stat.S_IMODE(original.st_mode))
+        staged_source.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        def signature(path: Path) -> tuple[int, int, int, int, int] | None:
+            try:
+                metadata = path.lstat()
+            except FileNotFoundError:
+                return None
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise ValueError('assistant SQLite source or sidecar is not a stable regular file')
+            return (metadata.st_dev, metadata.st_ino, metadata.st_size,
+                    metadata.st_mtime_ns, metadata.st_ctime_ns)
+
+        source_signature = signature(source)
+        if source_signature is None:
+            raise ValueError('assistant SQLite source disappeared during snapshot')
+        sidecar_paths = {suffix: Path(str(source) + suffix) for suffix in ('-wal', '-journal')}
+        sidecar_signatures = {suffix: signature(path) for suffix, path in sidecar_paths.items()}
+        present_sidecars = [suffix for suffix, value in sidecar_signatures.items() if value is not None]
+        if len(present_sidecars) > 1:
+            raise ValueError('assistant SQLite has conflicting transaction sidecars')
+        staged_paths = [staged_source, *(Path(str(staged_source) + suffix) for suffix in present_sidecars)]
+        if any(path.exists() or path.is_symlink() for path in staged_paths):
+            raise ValueError('assistant SQLite staging path already exists')
+        try:
+            shutil.copyfile(source, staged_source)
+            staged_source.chmod(0o600)
+            for suffix in present_sidecars:
+                staged_sidecar = Path(str(staged_source) + suffix)
+                shutil.copyfile(sidecar_paths[suffix], staged_sidecar)
+                staged_sidecar.chmod(0o600)
+            if (signature(source) != source_signature
+                    or {suffix: signature(path) for suffix, path in sidecar_paths.items()} != sidecar_signatures):
+                raise ValueError('assistant SQLite source changed during snapshot')
+            sqlite_backup(staged_source, destination, readonly_source=False)
+            if (signature(source) != source_signature
+                    or {suffix: signature(path) for suffix, path in sidecar_paths.items()} != sidecar_signatures):
+                raise ValueError('assistant SQLite source changed during online backup')
+        finally:
+            for path in staged_paths:
+                path.unlink(missing_ok=True)
+        try:
+            staged_source.parent.rmdir()
+        except OSError:
+            pass
         backups.append((archive_relative, source, destination))
     return backups
+
+
+def assistant_sqlite_archive_filter(info: tarfile.TarInfo, source: Path) -> tarfile.TarInfo | None:
+    """Use original DB ownership metadata without chowning root-private staging files."""
+    original = source.lstat()
+    if not stat.S_ISREG(original.st_mode) or original.st_nlink != 1:
+        raise ValueError('assistant SQLite archive source changed during snapshot')
+    info.uid = original.st_uid
+    info.gid = original.st_gid
+    info.mode = stat.S_IMODE(original.st_mode)
+    info.uname = ''
+    info.gname = ''
+    return archive_filter(info)
 
 
 def save_resume(stopped: list[tuple[str, str]]) -> None:
@@ -606,8 +661,9 @@ def prepare() -> Path:
                         member_filter = (lambda info, db_members=assistant_db_members:
                             assistant_archive_filter(info, db_members)) if relative in assistant_dirs else archive_filter
                         archive.add(source, arcname='state/' + relative, filter=member_filter)
-                    for relative, _source, backup in assistant_db_backups:
-                        archive.add(backup, arcname='state/' + relative, filter=archive_filter)
+                    for relative, source, backup in assistant_db_backups:
+                        archive.add(backup, arcname='state/' + relative,
+                                    filter=lambda info, original=source: assistant_sqlite_archive_filter(info, original))
                     archive.add(staged_seed, arcname='state/agents-vm/seed.iso')
                     for relative, source in {**EXTRA_FILES, **assistant_files}.items():
                         archive.add(source, arcname='state/' + relative, filter=archive_filter)

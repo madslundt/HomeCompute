@@ -5,10 +5,12 @@ from contextlib import closing
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import socket
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -108,6 +110,89 @@ class ApplicationRecoveryTest(unittest.TestCase):
             with closing(sqlite3.connect(backups[0][2])) as copy:
                 self.assertEqual(copy.execute('SELECT value FROM fixture').fetchone(),('synthetic assistant row',))
                 self.assertEqual(copy.execute('PRAGMA quick_check').fetchone(),('ok',))
+
+    @unittest.skipUnless(sys.platform == 'linux' and os.geteuid() == 0,
+                         'requires Linux root to create source ownership and drop privileges')
+    def test_readonly_wal_snapshot_needs_no_source_shm_or_cap_chown_and_keeps_archive_owner(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            root.chmod(0o755)
+            builder = root / 'builder.sqlite3'
+            source_dir = root / 'readonly-state'
+            source_dir.mkdir()
+            source = source_dir / 'context.sqlite3'
+            staging = root / 'staging'
+            staging.mkdir()
+            nobody_uid, nobody_gid = 65534, 65534
+
+            with closing(sqlite3.connect(builder)) as db:
+                db.execute('PRAGMA journal_mode=WAL')
+                db.execute('PRAGMA wal_autocheckpoint=0')
+                db.execute('CREATE TABLE fixture(value TEXT)')
+                db.execute('INSERT INTO fixture VALUES(?)', ('committed in WAL',))
+                db.commit()
+                wal = Path(str(builder) + '-wal')
+                self.assertTrue(wal.is_file())
+                source.write_bytes(builder.read_bytes())
+                Path(str(source) + '-wal').write_bytes(wal.read_bytes())
+
+            # NAS source is readable to the backup process but cannot be
+            # modified. Its committed WAL exists without the transient SHM.
+            os.chown(source_dir, 991, nobody_gid)
+            os.chmod(source_dir, 0o550)
+            os.chown(source, 991, nobody_gid)
+            os.chmod(source, 0o440)
+            source_wal = Path(str(source) + '-wal')
+            os.chown(source_wal, 991, nobody_gid)
+            os.chmod(source_wal, 0o440)
+            self.assertFalse(Path(str(source) + '-shm').exists())
+            os.chown(staging, nobody_uid, nobody_gid)
+            os.chmod(staging, 0o700)
+
+            child = r'''import importlib.util, json, os, sqlite3, sys, tarfile
+from contextlib import closing
+from pathlib import Path
+root, repo = Path(sys.argv[1]), Path(sys.argv[2])
+spec = importlib.util.spec_from_file_location('application_recovery', repo / 'scripts/application-recovery.py')
+module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+cap_eff = next(int(line.split()[1], 16) for line in open('/proc/self/status') if line.startswith('CapEff:'))
+old_error = None
+try:
+    module.sqlite_backup(root / 'readonly-state/context.sqlite3', root / 'staging/old-copy.sqlite3')
+except sqlite3.OperationalError as exc:
+    old_error = type(exc).__name__
+rows = module.assistant_sqlite_backups({'assistant-context/state': root / 'readonly-state'}, root / 'staging')
+with closing(sqlite3.connect(rows[0][2])) as db:
+    value = db.execute('SELECT value FROM fixture').fetchone()[0]
+with tarfile.open(root / 'staging/snapshot.tar', 'w') as archive:
+    archive.add(rows[0][2], arcname='state/assistant-context/state/context.sqlite3',
+                filter=lambda info: module.assistant_sqlite_archive_filter(info, rows[0][1]))
+with tarfile.open(root / 'staging/snapshot.tar') as archive:
+    tar_info = archive.getmember('state/assistant-context/state/context.sqlite3')
+    extracted = root / 'staging/extracted.sqlite3'
+    extracted.write_bytes(archive.extractfile(tar_info).read())
+with closing(sqlite3.connect(extracted)) as db:
+    archived_value = db.execute('SELECT value FROM fixture').fetchone()[0]
+print(json.dumps({'old_readonly_error': old_error, 'value': value, 'cap_chown': bool(cap_eff & 1),
+                  'archived_value': archived_value, 'archive_uid': tar_info.uid,
+                  'archive_gid': tar_info.gid, 'archive_mode': tar_info.mode}))
+assert not (root / 'staging/assistant-sqlite-inputs').exists()
+'''
+
+            def drop_to_nobody():
+                os.setgroups([])
+                os.setgid(nobody_gid)
+                os.setuid(nobody_uid)
+
+            result = subprocess.run([sys.executable, '-c', child, str(root), str(ROOT)],
+                                    capture_output=True, text=True, preexec_fn=drop_to_nobody, check=True)
+            receipt = json.loads(result.stdout)
+            self.assertEqual(receipt['old_readonly_error'], 'OperationalError')
+            self.assertEqual(receipt['value'], 'committed in WAL')
+            self.assertEqual(receipt['archived_value'], 'committed in WAL')
+            self.assertFalse(receipt['cap_chown'])
+            self.assertEqual((receipt['archive_uid'], receipt['archive_gid'], receipt['archive_mode']),
+                             (991, nobody_gid, 0o440))
 
     def test_sqlite_source_symlinks_and_destination_overwrite_are_refused(self):
         with tempfile.TemporaryDirectory() as temporary:

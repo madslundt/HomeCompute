@@ -187,14 +187,49 @@ tokens (despite the historical `.json` suffix these contain only a bearer token)
 and a service-private hosts mapping to the declared private IPv4. Provision the
 private CA in system TLS trust before qualifying calls. The context service gains
 only that gateway IP and, when enabled, the fixed agents VM IP. Worker key custody
-is `/etc/homecompute/assistant-context-worker/{id_ed25519,known_hosts}`. Delivery
-custody is `/etc/homecompute-assistant-context/delivery-auth.json`.
+is `/etc/homecompute/assistant-context-worker/{id_ed25519,known_hosts}`; delivery
+credential custody is `/etc/homecompute-assistant-context/delivery-auth.json`.
+
+The embedding and briefing routes use separate, non-expiring LiteLLM keys. The
+embedding key is limited to model `embedding` and owner
+`assistant-context-embedding`; the briefing key is limited to `automation-moe`
+and owner `assistant-context-briefing`. Provision them from the exact published
+HomeCompute release on home-core as root with
+`scripts/setup-assistant-context-inference-credentials.py plan --revision FULL_SHA`,
+review the emitted state and hash, then apply with the same revision and
+`--expected-plan-sha256 PLAN_HASH`. The helper preserves valid partial installs,
+refuses mismatched existing scopes or unsafe files, and creates only missing
+files at the two declared `/etc/homecompute/assistant-context-{embedding,briefing}.json`
+paths. It does not change routes, service configuration or running processes.
+Synthetic contract coverage is `python3 tests/assistant-context-inference-credentials-test.py`.
+
+Before each LiteLLM create request the helper durably writes a root-only
+`<credential-path>.pending` intent. If create, readback or file installation
+fails, the intent remains and future plan/apply commands stop. Do not remove it
+to retry. Inspect the exact pending owner/model in LiteLLM administration. If a
+matching key is still present and the credential file exists, resolve only after
+the helper verifies that key with `--resolution key-verified`. If the file is
+absent, revoke only the orphan key for that exact owner/model in LiteLLM, then
+record that operator action with `--resolution orphan-revoked`. Both commands
+require the pending marker's reviewed SHA-256 and preserve a resolved receipt:
+
+```sh
+sha256sum /etc/homecompute/assistant-context-embedding.json.pending
+python3 scripts/setup-assistant-context-inference-credentials.py resolve-pending \
+  --name embedding --revision FULL_SHA \
+  --expected-pending-sha256 PENDING_HASH --resolution orphan-revoked
+```
+
+Use `--name briefing` for the briefing key. After `orphan-revoked`, create a new
+plan before applying. The helper cannot verify the external revocation decision;
+that step must be completed and reviewed by the operator.
 
 The optional collector timer runs existing source readers as
 `homecompute-openclaw`; provision that identity and its existing scoped bridges
 through their owning lifecycle first. Build its private configuration from
 [`assistant-context-sync.example.json`](../../config/assistant-context-sync.example.json)
-and select only the intended calendar aliases. Calendar windows can use an exact
+using the [guarded source-selection installer](source-sync.md) and select only
+the intended calendar aliases. Calendar windows can use an exact
 `start`/`end` pair or a bounded rolling window; the example rolls from one day
 before through seven days ahead in Copenhagen local time. Its configuration and
 revision ledger stay under `/var/lib/homecompute-assistant`. The improvement timer executes only the
@@ -244,6 +279,9 @@ UID/group ownership and private directory/database/fence modes before launch.
 A stable source-reference memory tombstone remains blocked even after source
 recreation; rebuilding that memory requires an independently reviewed versioned
 reference. This conservative loss does not restore deleted memory content.
+
+See the [empty synthetic-only recovery admission procedure](recovery-admission.md)
+for the root-owned, hash-bound proof path and its scope limits.
 
 The context database uses schema 4 for durable cleanup and monotonic deletion
 floors. Earlier code refuses that schema; a code downgrade alone cannot reverse

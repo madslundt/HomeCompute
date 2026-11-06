@@ -407,18 +407,26 @@ def operation(command: str, record: dict, args) -> dict:
             raise ValueError('fresh completed NAS backup evidence required')
         return json.loads((STATE / 'last-backup.json').read_bytes())
     if command == 'restore-verify':
-        if not args.snapshot or not args.archive or not args.target: raise ValueError('restore needs exact snapshot, archive and new scratch target')
+        if not args.snapshot or not args.archive or not args.target:
+            raise ValueError('restore needs exact snapshot, archive and new scratch target')
+        source_recovery = recovery
+        source_revision = None
+        if getattr(args, 'revision', None):
+            contents, _ = bundle(args.source); published(args.source, args.revision, contents)
+            source_recovery = [PYTHON, '-I', str(args.source / 'scripts/application-recovery.py')]
+            source_revision = args.revision
         # Bulk scratch writes share the disk with live VM roots. Idle priority
         # alone is insufficient on schedulers that do not honor that hint.
         result = json.loads(restore_run([*nas, 'restore-application', '--snapshot', args.snapshot, '--archive', args.archive,
                                 '--target', str(args.target)], env=env, timeout=14400).stdout)
         application = args.target.with_name(args.target.name + '-application')
-        proof = json.loads(restore_run([*recovery, 'verify', result['restored_archive'], str(application)],
+        proof = json.loads(restore_run([*source_recovery, 'verify', result['restored_archive'], str(application)],
                               env=env, timeout=14400).stdout)
         manifest = application / 'manifest.json'; safe(manifest)
         output = {'snapshot': args.snapshot, 'archive': args.archive, 'verification': proof,
-                  'restore_directory': str(application.resolve()),
+                  'restore_directory': str(application.resolve()), 'restored_archive_reused': False,
                   'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest()}
+        if source_revision: output['source_revision'] = source_revision
         write(STATE / 'last-application-verification.json', json.dumps(output).encode(), 0o600); return output
     if command == 'verify-extracted':
         if not args.snapshot or not args.archive or not args.target or not args.restored_archive or not args.revision:
