@@ -1,0 +1,15 @@
+{
+  "repository": "ggml-org/whisper-vad",
+  "snapshot": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+  "filename": "ggml-silero-v5.1.2.bin",
+  "size": 885098,
+  "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+  "runtime_commit": "f049fff95a089aa9969deb009cdd4892b3e74916",
+  "device": "cpu",
+  "threads": 1,
+  "sample_rate": 16000,
+  "probability_stride_samples": 512,
+  "threshold": 0.5,
+  "minimum_positive_frames": 16,
+  "timestamp_grace_samples": 8000
+}

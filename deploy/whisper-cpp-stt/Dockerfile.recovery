@@ -1,0 +1,17 @@
+# The native engine is the exact previously built hc10 image. No decoder rebuild
+# or numerical change is part of this adapter-only diagnostic.
+ARG NATIVE_BASE_IMAGE=sha256:9a76da1fcca77de1f4dff6ff284e5397ac05e22a9a9a373134b2c09e676c9f91
+FROM ${NATIVE_BASE_IMAGE}
+ARG HOME_COMPUTE_REVISION
+LABEL io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
+      io.homecompute.whisper-cpp.native-source-revision="6ac1847d9abe6446d91c28bf06067b52d38e17e0" \
+      io.homecompute.whisper-cpp.native-parent-image="sha256:9a76da1fcca77de1f4dff6ff284e5397ac05e22a9a9a373134b2c09e676c9f91" \
+      io.homecompute.whisper-cpp.recovery="silero-v5.1.2-cpu-prob0.5-grace500ms-contiguous512ms-suffix-v1"
+USER root
+COPY adapter.py contract.py verify_model.py recovery.py silero_vad.py vad-pin.json /opt/homecompute/
+RUN python3 -I -B /opt/homecompute/silero_vad.py --provision \
+ && chmod 0555 /opt/homecompute/*.py \
+ && chmod 0444 /opt/homecompute/vad-pin.json /opt/homecompute/ggml-silero-v5.1.2.bin
+ENV WHISPER_CPP_HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION} \
+    WHISPER_CPP_RECOVER_TRAILING_SPEECH=true
+USER 10001:10001

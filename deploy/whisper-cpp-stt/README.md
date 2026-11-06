@@ -11,6 +11,59 @@ full native request boundary, including for long uploads.
 These changes are not part of the production image and are not qualified for rollout.
 Selecting an image in source does not establish that it has been deployed.
 
+## Experimental trailing-speech recovery
+
+[Issue 78](https://github.com/madslundt/HomeCompute/issues/78) tracks an opt-in
+adapter policy for native early-stop omissions. It leaves the hc10 native engine,
+ASR checkpoint, decoder, prompts and numerical settings unchanged. The policy is
+off by default in the canonical builds. Set
+`WHISPER_CPP_RECOVER_TRAILING_SPEECH=true` only for a qualified CUDA candidate;
+the CPU ASR runtime rejects this setting. Recovery requires `verbose_json` with
+timestamps. Other formats retain their existing behavior.
+
+For enabled requests, the adapter partitions long uploads using the existing
+frame-conserving, at-most-thirty-second policy. It first transcribes each complete
+window. It considers a suffix only when every native segment has valid ordered
+timing and exact canonical character anchors. A checksum-pinned Silero v5.1.2
+detector then observes the unchanged PCM through the existing whisper.cpp C API,
+on CPU with one thread and fresh state. It adds no gain and does not filter the
+ASR input. `vad-pin.json` fixes its public 885,098-byte model, native version,
+32 ms probability stride and policy parameters. No Torch or separate model runtime
+is imported. The public model is fetched and verified during the image build;
+the running service has no network downloads. Startup verifies and warms up the
+detector on silence before accepting requests.
+
+The gate tolerates 500 ms of native timestamp uncertainty and requires sixteen
+consecutive complete probability frames at or above 0.5 after that margin.
+This is a conservative request gate, not proof of speech, accuracy or coverage.
+If it passes, one additional native request starts at the original last segment
+end and retains **all** remaining right acoustic context. Native text is appended
+intact in source order, with existing canonical serialization and explicit unknown
+timing preserved. No repetition removal or favorable-text selection is performed.
+The two acoustic requests overlap; `suffix_recovery` records their geometry and
+does not claim independent corroboration or completeness. There is no recursive
+recovery. All native calls share one deadline and cumulative response-byte bound.
+Detector or required-suffix failures return an error rather than silently marking
+a partial result successful. Unknown native timing never supplies an invented seek.
+
+`Dockerfile.cuda` can rebuild this policy from the pinned native source.
+`Dockerfile.recovery` is a diagnostic overlay on the exact cached hc10 image
+`sha256:9a76da1fcca77de1f4dff6ff284e5397ac05e22a9a9a373134b2c09e676c9f91`,
+whose native source is `6ac1847d9abe6446d91c28bf06067b52d38e17e0`. It changes only
+the adapter and public detector assets and enables the experimental flag. Before
+building, verify the base image's actual ID and ARM64 architecture. Build from the
+clean, reviewed, published source revision with `--pull=false --force-rm`, the
+6 GiB/no-swap/four-CPU envelope, `--build-arg HOME_COMPUTE_REVISION=FULL_SHA`, and
+`-f deploy/whisper-cpp-stt/Dockerfile.recovery deploy/whisper-cpp-stt`.
+
+Use the guarded isolated lifecycle and memory floor described below. Verify actual
+source/image/model/native pins and `suffix_recovery_policy.enabled` in health.
+Production aliases and routes remain unchanged. Promotion requires the original
+omission, synthetic quiet/noise tails, Danish and English references, mixed-language
+retention, identical-input repeats and long-recording gates. Keep all private
+recordings, transcripts, summaries and receipts outside Git. Speaker detection is
+not part of this experiment.
+
 For a recording known to contain Danish and English, an experimental request can
 set `language_candidates=da,en` while leaving `language=auto`. Each native window
 selects the highest original detection probability among those languages, using
