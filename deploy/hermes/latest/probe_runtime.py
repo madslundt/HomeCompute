@@ -100,6 +100,17 @@ def main():
         homecompute_paths.MANAGED_HOME = home
         first, second = ProfileOwnership(), ProfileOwnership()
         try:
+            state = home / 'state.db'
+            (home / 'runtime/state.db').write_bytes(b'synthetic ledger')
+            state.symlink_to('runtime/state.db')
+            assert homecompute_paths.database_home(state) == home
+            assert homecompute_paths.database_home(home / 'runtime/state.db') == home
+            foreign = Path(directory).resolve() / 'foreign'; foreign.mkdir()
+            (foreign / 'state.db').write_bytes(b'foreign ledger')
+            state.unlink(); state.symlink_to(foreign / 'state.db')
+            assert homecompute_paths.database_home(state) != home
+            assert homecompute_paths.database_home(home / 'runtime/state.db') != home
+            state.unlink(); state.symlink_to('runtime/state.db')
             first.reserve([home])
             try:
                 second.reserve([home])

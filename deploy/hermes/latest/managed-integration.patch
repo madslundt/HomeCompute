@@ -360,10 +360,10 @@ index e005b948..b941bef8 100644
 
 diff --git a/gateway/homecompute_paths.py b/gateway/homecompute_paths.py
 new file mode 100644
-index 00000000..c36ff862
+index 00000000..d288bd6f
 --- /dev/null
 +++ b/gateway/homecompute_paths.py
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,44 @@
 +"""Managed runtime artifacts without changing the logical Hermes profile home."""
 +from pathlib import Path
 +import os
@@ -392,6 +392,110 @@ index 00000000..c36ff862
 +        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
 +            raise PermissionError('unsafe managed control directory')
 +    return directory
++
++
++def database_home(db_path: Path, *, mode: str = 'resolved') -> Path:
++    """Recognize only the declared managed state.db alias; retain other homes' semantics."""
++    path = Path(db_path)
++    alias, target = MANAGED_HOME / 'state.db', MANAGED_HOME / 'runtime/state.db'
++    if (path in (alias, target) and alias.is_symlink()
++            and alias.readlink() == Path('runtime/state.db') and path.resolve() == target):
++        return MANAGED_HOME
++    if mode == 'literal':
++        return path.parent
++    if mode == 'parent':
++        return path.parent.resolve()
++    if mode != 'resolved':
++        raise ValueError('unknown database-home resolution mode')
++    return path.resolve().parent
+diff --git a/gateway/platforms/api_server.py b/gateway/platforms/api_server.py
+index a66cb6d2..2a3fcffd 100644
+--- a/gateway/platforms/api_server.py
++++ b/gateway/platforms/api_server.py
+@@ -6,6 +6,8 @@ OpenAI-compatible frontend connects at http://localhost:8642/v1 with API_SERVER_
+ ``gateway.multiplex_profiles`` secondary profiles live at ``/p/<profile>/...``.
+ """
+
++from gateway.homecompute_paths import database_home
++
+ import asyncio
+ import errno
+ import hashlib
+@@ -2934,7 +2936,7 @@ class APIServerAdapter(OpenAICompatRoutesMixin, BasePlatformAdapter):
+         db = await self._ensure_session_db_async()
+         if db is None:
+             return None
+-        home = Path(db.db_path).parent
++        home = database_home(db.db_path, mode="literal")
+         from tools.bot_live_delivery import deliver_to_live_owner, find_canonical_live_owner
+
+         def _admit() -> Optional[dict[str, Any]]:
+diff --git a/gateway/platforms/api_server_bot_chat.py b/gateway/platforms/api_server_bot_chat.py
+index ce3765ec..17451f40 100644
+--- a/gateway/platforms/api_server_bot_chat.py
++++ b/gateway/platforms/api_server_bot_chat.py
+@@ -8,6 +8,8 @@ so the API edge admits the turn through the same door as ``bot_relay.deliver``
+ session as an API conversation (``run_api_turn``) would be a second writer and is refused
+ (``permission_denied``) by design. Without an authority the legacy live-owner mailbox applies.
+ """
++
++from gateway.homecompute_paths import database_home
+ import asyncio
+ import logging
+ from pathlib import Path
+@@ -136,7 +138,7 @@ async def admit_peer_turn(runner, session_id, message, author):
+     tip = bot_chat_tip(authority, session_id)
+     if tip is None:
+         return None
+-    home = Path(authority.db.db_path).parent.resolve()
++    home = database_home(authority.db.db_path, mode="parent")
+     from gateway.session_bot import displaceable_bot_chat
+     if displaceable_bot_chat(authority, authority.db.get_session_by_title('Bot Chat') or tip) is not None:
+         # The title is held by an API conversation no FIFO can own (#140769, MSG-21): the owner
+diff --git a/gateway/run_housekeeping_disk.py b/gateway/run_housekeeping_disk.py
+index 4b6a3162..dba8e0d0 100644
+--- a/gateway/run_housekeeping_disk.py
++++ b/gateway/run_housekeeping_disk.py
+@@ -10,6 +10,8 @@ Runs from the housekeeping thread; the send is scheduled onto the gateway loop.
+
+ from __future__ import annotations
+
++from gateway.homecompute_paths import database_home
++
+ import contextlib
+ import logging
+ from pathlib import Path
+@@ -92,7 +94,7 @@ async def publish_local_auto_prune_notice(authority, ref) -> None:
+         return
+     if policy is None or policy.source not in {"tui", "gui"}:
+         return
+-    home = Path(authority.db.db_path).parent
++    home = database_home(authority.db.db_path, mode="literal")
+     if not prune_advisor.notice_due(home, _LOCAL_NOTIFIED):
+         return
+     _LOCAL_NOTIFIED[str(home)] = time.time()  # in-flight claim: one estimate per home at a time
+diff --git a/gateway/run_runtime.py b/gateway/run_runtime.py
+index 6a368ead..38413028 100644
+--- a/gateway/run_runtime.py
++++ b/gateway/run_runtime.py
+@@ -11,6 +11,8 @@ is parked (logged, left out of ``served_profiles``) instead of aborting every ot
+ """
+ from __future__ import annotations
+
++from gateway.homecompute_paths import database_home
++
+ import asyncio
+ from contextlib import suppress
+ import logging
+@@ -47,7 +49,7 @@ async def _build_profile_authority(runner, name, home, *, register):
+     with _profile_runtime_scope(home, hydrate_secrets=False):
+         if db is None:
+             raise RuntimeError(_store_open_failure(runner, home))
+-        if (await asyncio.to_thread(Path(db.db_path).resolve)).parent != home:
++        if await asyncio.to_thread(database_home, db.db_path) != home:
+             raise RuntimeError(f'session authority database does not belong to the reserved profile {home}')
+         registry.add(home, None, name=name)
+         try:
 diff --git a/gateway/run_runtime_init.py b/gateway/run_runtime_init.py
 index 38e3f835..8895fb43 100644
 --- a/gateway/run_runtime_init.py
@@ -503,6 +607,331 @@ index 41a80f60..f7bbf547 100644
 
 
  @contextmanager
+diff --git a/gateway/session_authorities.py b/gateway/session_authorities.py
+index 0ff20726..bf1a161d 100644
+--- a/gateway/session_authorities.py
++++ b/gateway/session_authorities.py
+@@ -11,6 +11,8 @@ scoped or not, exactly as before.
+ """
+ from __future__ import annotations
+
++from gateway.homecompute_paths import database_home
++
+ import asyncio
+ from contextlib import asynccontextmanager
+ from dataclasses import dataclass
+@@ -194,7 +196,7 @@ def authority_for_home(runner, home):
+     registry = getattr(runner, 'session_authorities', None)
+     if registry is None:
+         authority = getattr(runner, 'session_authority', None)
+-        if authority is not None and Path(authority.db.db_path).resolve().parent == Path(home).resolve():
++        if authority is not None and database_home(authority.db.db_path) == Path(home).resolve():
+             return authority
+         return None
+     return registry.for_home(home)
+diff --git a/gateway/session_bot.py b/gateway/session_bot.py
+index 8c534cdf..053ec3f6 100644
+--- a/gateway/session_bot.py
++++ b/gateway/session_bot.py
+@@ -3,6 +3,8 @@
+ The mailbox is a delivery receipt, not an execution queue. A committed canonical
+ admission is the only consumer; unknown execution is never retried as inference.
+ """
++
++from gateway.homecompute_paths import database_home
+ import asyncio
+ from functools import partial
+ import logging
+@@ -171,7 +173,7 @@ def _legacy_order(path, record):
+ def _home(authority, actor, profile):
+     from gateway.session_authorities import served_profile_name
+     from tools.bot_mode_probe import _handle, _hermes_root, _roster
+-    home = Path(authority.db.db_path).parent.resolve()
++    home = database_home(authority.db.db_path, mode="parent")
+     name = served_profile_name(home)
+     handle = _handle(name, [n for n, _d in _roster(_hermes_root(home))]) if name == 'default' else name
+     if actor.profile_id != authority.profile_id or profile not in (name, handle):
+@@ -673,7 +675,7 @@ def relay_operation(connection, operation, params):
+     authority, actor = connection.authority, connection.actor
+     from gateway.session_authorities import require_serving, served_profile_name
+     require_serving(authority)  # the outbox/roster/replies belong to the home's next owner
+-    home = Path(authority.db.db_path).parent.resolve()
++    home = database_home(authority.db.db_path, mode="parent")
+     name = served_profile_name(home)
+     _home(authority, actor, name)
+     if 'session:control' not in actor.capabilities:
+@@ -726,7 +728,7 @@ async def _migrate(authority, actor, home, root):
+
+ async def recover_bot_deliveries(authority):
+     """Rebuild derivative replies and queued legacy admissions at owner startup."""
+-    home = Path(authority.db.db_path).parent.resolve()
++    home = database_home(authority.db.db_path, mode="parent")
+     async with mailbox_lock(authority):
+         root, records, _ = await _scan_owner_receipts(authority, home)
+         for path, record in records:
+diff --git a/gateway/session_cron.py b/gateway/session_cron.py
+index 78a1ca40..2634b908 100644
+--- a/gateway/session_cron.py
++++ b/gateway/session_cron.py
+@@ -3,6 +3,8 @@
+ Public callers name a persisted job, never supply agent policy or arbitrary jobs.
+ The ordinary admission ledger owns execution; the scheduler owns final delivery.
+ """
++
++from gateway.homecompute_paths import database_home
+ import asyncio
+ from contextvars import ContextVar
+ from dataclasses import asdict, replace
+@@ -20,12 +22,12 @@ _owners = {}
+
+
+ def bind_owner(authority):
+-    home = Path(authority.db.db_path).resolve().parent
++    home = database_home(authority.db.db_path)
+     _owners[home] = (os.getpid(), authority, asyncio.get_running_loop())
+
+
+ def unbind_owner(authority):
+-    home = Path(authority.db.db_path).resolve().parent
++    home = database_home(authority.db.db_path)
+     bound = _owners.get(home)
+     if bound is not None and bound[1] is authority:
+         del _owners[home]
+@@ -299,7 +301,7 @@ async def execute(authority, ref, row, policy):
+         from cron.cancellation import CancelRequest, _CombinedCancelEvent
+
+         db_path = await asyncio.to_thread(Path(authority.db.db_path).resolve)
+-        with _profile_runtime_scope(db_path.parent):
++        with _profile_runtime_scope(database_home(db_path)):
+             # The forwarded ``cron.cancel`` carries no reason, so the operator's marker is read here
+             # first: a stopped agent run reports "cancelled on request", not a lost fire claim.
+             stop = _CombinedCancelEvent(CancelRequest(execution_id), cancel)
+diff --git a/gateway/session_group_controls.py b/gateway/session_group_controls.py
+index 73ec6e94..d833e218 100644
+--- a/gateway/session_group_controls.py
++++ b/gateway/session_group_controls.py
+@@ -1,4 +1,6 @@
+ """Profile-owned room controls over the canonical hosted service."""
++
++from gateway.homecompute_paths import database_home
+ import asyncio
+ import logging
+ import os
+@@ -62,7 +64,7 @@ async def dispatch_group_control(connection, method, params):
+         raise RuntimeStoreError('invalid_params')
+     home = Path(authority.profile_id)
+     db_path = await asyncio.to_thread(Path(authority.db.db_path).resolve)
+-    if db_path.parent != await asyncio.to_thread(home.resolve):
++    if database_home(db_path) != await asyncio.to_thread(home.resolve):
+         raise RuntimeStoreError('profile_mismatch')
+     from hermes_cli.profiles import profile_matches_home
+     profile = params.get('profile')
+@@ -334,7 +336,7 @@ def _bot_sessions(authority, actor):
+     Discovery is read-only: no legacy restore/unarchive or new SessionDB handle."""
+     from tui_gateway.profile_roster_cache import cached_reader_session_fields
+     operator = 'session:operator' in actor.capabilities
+-    return cached_reader_session_fields(Path(authority.db.db_path).parent, (actor.subject, operator),
++    return cached_reader_session_fields(database_home(authority.db.db_path, mode="literal"), (actor.subject, operator),
+                                         lambda: _read_bot_sessions(authority.db, actor.subject, operator))
+
+
+diff --git a/gateway/session_ingress_media.py b/gateway/session_ingress_media.py
+index 8f41ecbf..3128c192 100644
+--- a/gateway/session_ingress_media.py
++++ b/gateway/session_ingress_media.py
+@@ -5,6 +5,8 @@ and upload limits. Its flat age-based cleanup skips this retained subdirectory:
+ native bytes are released by ``release_admission_media`` once their row is
+ terminal and no live native input or retained API image context still holds them.
+ """
++
++from gateway.homecompute_paths import database_home
+ from collections import Counter
+ from contextlib import contextmanager
+ from contextvars import ContextVar
+@@ -497,7 +499,7 @@ def collect_unheld_api_images(db):
+     ``db``: a sweep whose database belongs to another profile would see every image here as
+     unowned, so it collects nothing."""
+     from hermes_constants import get_hermes_home
+-    if Path(db.db_path).resolve().parent != get_hermes_home().resolve():
++    if database_home(db.db_path) != get_hermes_home().resolve():
+         logger.warning(
+             'Skipped retained API image collection: %s is not the active profile store', db.db_path)
+         return 0
+diff --git a/gateway/session_local_migration.py b/gateway/session_local_migration.py
+index 82a64746..97465807 100644
+--- a/gateway/session_local_migration.py
++++ b/gateway/session_local_migration.py
+@@ -5,6 +5,8 @@ native control ticket, or the owner signed in to the Webapp: gateway.owner_ident
+ The historical ID becomes the stable logical owner without copying its messages.
+ Compression and reset may later advance the physical target, never FIFO identity.
+ """
++
++from gateway.homecompute_paths import database_home
+ from dataclasses import asdict, replace
+ from datetime import datetime
+ import json
+@@ -332,7 +334,7 @@ def adopt_legacy_session(authority, actor, row):
+                'legacy_session_id': row['id'], 'lineage': [row['id']]}
+     try:
+         # Same lock order as old Bot Chat: mailbox (if any), liveness, SQLite.
+-        with active_session_liveness_guard(row['id'], registry_home=Path(authority.db.db_path).parent) as active:
++        with active_session_liveness_guard(row['id'], registry_home=database_home(authority.db.db_path, mode="literal")) as active:
+             if active:
+                 raise RuntimeStoreError('runtime_coordination_required')
+             commit_local_session(authority.db, epoch=authority.epoch, receipt=receipt)
+diff --git a/gateway/session_mutation_model.py b/gateway/session_mutation_model.py
+index 0d11ba59..a9edd889 100644
+--- a/gateway/session_mutation_model.py
++++ b/gateway/session_mutation_model.py
+@@ -1,4 +1,6 @@
+ """Resolve explicit model changes using the existing source model switch pipeline."""
++
++from gateway.homecompute_paths import database_home
+ import asyncio
+ import json
+ from dataclasses import asdict, replace
+@@ -109,7 +111,7 @@ async def prepare_model(authority, live, payload, prepared):
+         from gateway.run import _load_gateway_config
+         from gateway.session_policy import present_sections, profile_target
+         live = await asyncio.to_thread(
+-            lambda: _load_gateway_config(Path(authority.db.db_path).resolve().parent / 'config.yaml'))
++            lambda: _load_gateway_config(database_home(authority.db.db_path) / 'config.yaml'))
+         frozen['model']['selection_profile'] = list(profile_target(present_sections(live)))
+     # A direct alias's own credential is part of the selection (never ``result.api_key``, which the
+     # switch resolved for its probe): its env pointer is committed and re-read every turn; a literal
+@@ -202,7 +204,7 @@ def _provider_resolution_config(authority, config, bypass=False):
+     from gateway.session_local import load_profile_config
+     if bypass:
+         return config
+-    current = load_profile_config(Path(authority.db.db_path).resolve().parent)
++    current = load_profile_config(database_home(authority.db.db_path))
+     if not isinstance(current, dict):
+         return config
+     resolved = dict(config)
+@@ -305,7 +307,7 @@ def _alias_credential(authority, result):
+     from gateway.run import _load_gateway_config
+     from hermes_cli.config import _env_ref_var_name, read_user_config_raw
+     name = result.resolved_via_alias if result.success else ''
+-    path = Path(authority.db.db_path).resolve().parent / 'config.yaml'
++    path = database_home(authority.db.db_path) / 'config.yaml'
+     raw = read_user_config_raw(path) if name else {}
+     for section in (('model_aliases',), ('model', 'aliases')):
+         model = raw.get('model')  # `model: name` (a scalar) is valid config and declares no aliases
+diff --git a/gateway/session_onboarding.py b/gateway/session_onboarding.py
+index b80c5fac..ace23c22 100644
+--- a/gateway/session_onboarding.py
++++ b/gateway/session_onboarding.py
+@@ -10,6 +10,8 @@ toolset fold-in (``run_turn``), the scripted greeting and name card and the per-
+ """
+ from __future__ import annotations
+
++from gateway.homecompute_paths import database_home
++
+ import asyncio
+ import logging
+ import threading
+@@ -227,7 +229,7 @@ def _discard_unfinished_runs(db, stored_ids, discards):
+     ``replaced`` so it is never resumed."""
+     from pathlib import Path
+     from agent.onboarding_record import delete_chat
+-    sessions_dir = Path(db.db_path).parent / 'sessions'
++    sessions_dir = database_home(db.db_path, mode="literal") / 'sessions'
+     deleted = []
+     for old in stored_ids:
+         with discards.lock:
+diff --git a/gateway/session_policy.py b/gateway/session_policy.py
+index ca1cac3b..0ae5d335 100644
+--- a/gateway/session_policy.py
++++ b/gateway/session_policy.py
+@@ -1,4 +1,6 @@
+ """Frozen, explicit local-client launch policy for the existing TurnRunner."""
++
++from gateway.homecompute_paths import database_home
+ from contextlib import contextmanager
+ from contextvars import ContextVar
+ from dataclasses import dataclass
+@@ -58,7 +60,7 @@ def pin_reasoning_effort(config, effort, *, session=False):
+ def profile_config(authority):
+     """The owning profile's current ``config.yaml`` (its present sections), read fresh."""
+     from gateway.run import _load_gateway_config
+-    return present_sections(_load_gateway_config(Path(authority.db.db_path).resolve().parent / 'config.yaml'))
++    return present_sections(_load_gateway_config(database_home(authority.db.db_path) / 'config.yaml'))
+
+
+ def unpin_reasoning(config, profile):
+diff --git a/gateway/session_policy_credentials.py b/gateway/session_policy_credentials.py
+index f7082f87..418ba1d9 100644
+--- a/gateway/session_policy_credentials.py
++++ b/gateway/session_policy_credentials.py
+@@ -1,4 +1,6 @@
+ """Borrow frozen config credentials from the existing profile source, not a vault."""
++
++from gateway.homecompute_paths import database_home
+ import hashlib
+ import hmac
+ import json
+@@ -193,7 +195,7 @@ def _binding(config, path):
+
+
+ def config_reference(authority, session_id, policy, secrets):
+-    home = Path(authority.db.db_path).resolve().parent
++    home = database_home(authority.db.db_path)
+     config = json.loads(policy.config_json)
+     return PREFIX + json.dumps({'home': str(home), 'profile': authority.profile_id,
+         # ``policy`` (the whole-policy hash) is still written for an older gateway reading this reference;
+@@ -256,7 +258,7 @@ def recover_config_secrets(authority, policy, skip=None):
+         return {path: value for path, value in values.items() if path[0] not in skip}
+     try:
+         source = json.loads(ref[len(PREFIX):])
+-        home = Path(authority.db.db_path).resolve().parent
++        home = database_home(authority.db.db_path)
+         _check_scope(authority, source, policy, home, skip)
+         cached = getattr(authority, '_local_config_secrets', {}).get(ref)
+         if cached is not None:
+diff --git a/gateway/session_policy_refresh.py b/gateway/session_policy_refresh.py
+index 973315bb..330c185c 100644
+--- a/gateway/session_policy_refresh.py
++++ b/gateway/session_policy_refresh.py
+@@ -8,6 +8,8 @@ calling session. The creation flags (request_json), the model route and a commit
+ pick stay; a session with a turn running or queued keeps the policy that turn was admitted under. A Bot Chat an
+ earlier build committed frozen follows its profile from the open on (``follow_bot_chat``).
+ """
++
++from gateway.homecompute_paths import database_home
+ import asyncio
+ import json
+ import logging
+@@ -149,7 +151,7 @@ def _prepare(authority, session_id, mcp_only=False, adopt_only=False):
+     # A bypass launch never reads the profile; cron, Kanban and room routes are not resumed CLI sessions.
+     if old.ignore_user_config or old.source not in SURFACES:
+         return None
+-    home = Path(authority.db.db_path).resolve().parent
++    home = database_home(authority.db.db_path)
+     terminal = {} if mcp_only or adopt_only else build_profile_terminal_scope(home)
+     live, picked = load_profile_config(home), policy_picks(authority.db, session_id)
+     base = old
+diff --git a/gateway/session_viewer_close.py b/gateway/session_viewer_close.py
+index 245fd794..7e9b0657 100644
+--- a/gateway/session_viewer_close.py
++++ b/gateway/session_viewer_close.py
+@@ -13,6 +13,8 @@ Each stored close carries its own operation id, and every delete is compare-and-
+ record under the owner-epoch fence: a cancelled older close, a reattach or a stale owner can only
+ remove the record it saw, never a newer close stored since.
+ """
++
++from gateway.homecompute_paths import database_home
+ import asyncio
+ import contextlib
+ import json
+@@ -186,7 +188,7 @@ def orphan_close_grace(authority, *, startup=False):
+     from gateway.session_local import profile_env_scope
+     from utils import is_truthy_value
+     default = DEFAULT_CONFIG['sessions']['orphan_end_grace_s']
+-    home = Path(authority.db.db_path).resolve().parent
++    home = database_home(authority.db.db_path)
+     # A dropped socket detaches outside the RPC's owner scope: expand ``${VAR}`` against this profile.
+     with profile_env_scope(home):
+         config = load_user_config_effective(home / 'config.yaml')
 diff --git a/gateway/status.py b/gateway/status.py
 index 614607a9..a5126977 100644
 --- a/gateway/status.py
@@ -839,6 +1268,28 @@ index 2f2535ea..41f35ecc 100644
          return
      if os.environ.get("HERMES_CUA_DRIVER_CMD", "").strip():
          return
+diff --git a/hermes_cli/web_routers/sessions.py b/hermes_cli/web_routers/sessions.py
+index df2fe808..321ce128 100644
+--- a/hermes_cli/web_routers/sessions.py
++++ b/hermes_cli/web_routers/sessions.py
+@@ -6,6 +6,8 @@ right after it, ``manage_router`` (mutation/detail) much later.  web_server-owne
+ helpers are reached via the late-binding seam so monkeypatching keeps working.
+ """
+
++from gateway.homecompute_paths import database_home
++
+ import asyncio
+ import json
+ import re
+@@ -207,7 +209,7 @@ def get_sessions(
+             # the cron-jobs section (source=cron) into two independent lists.
+             source_list = _csv(sources)
+             include_subagents, exclude_list = subagent_listing_scope(
+-                Path(db.db_path).parent, source=source or None, sources=source_list or None,
++                database_home(db.db_path, mode="literal"), source=source or None, sources=source_list or None,
+                 exclude_sources=_csv(exclude_sources) or None)
+             scope = dict(
+                 source=source or None, sources=source_list or None,
 diff --git a/hermes_cli/web_server_boundary.py b/hermes_cli/web_server_boundary.py
 index d4aeb4e0..a722b6be 100644
 --- a/hermes_cli/web_server_boundary.py
@@ -867,6 +1318,55 @@ index 6a275b4e..a592a7df 100644
 
 
  _WHATSAPP_PAYLOAD_FIELDS = (
+diff --git a/hermes_cli/web_server_sessions.py b/hermes_cli/web_server_sessions.py
+index 650ba647..084d5f6d 100644
+--- a/hermes_cli/web_server_sessions.py
++++ b/hermes_cli/web_server_sessions.py
+@@ -1,6 +1,8 @@
+ """Read-only session browsing, latest-descendant lookup and owner maintenance.
+ """
+
++from gateway.homecompute_paths import database_home
++
+ import logging
+ import asyncio
+ import time
+@@ -104,7 +106,7 @@ def _session_mutation_context(request, profile):
+     else:
+         raise HTTPException(status_code=401, detail='Unauthorized')
+     authority = getattr(request.app.state, 'session_authority', None)
+-    home = Path(_cron_profile_home(profile)[1]) if profile else Path(_default_db_path()).parent
++    home = Path(_cron_profile_home(profile)[1]) if profile else database_home(_default_db_path(), mode="literal")
+     capabilities = frozenset({'session:read', 'session:control', 'session:create', 'session:operator'})
+     if authority is None:
+         if getattr(request.app.state, 'gateway_runner', None) is not None:
+@@ -117,7 +119,7 @@ def _session_mutation_context(request, profile):
+     from gateway.session_authorities import authority_for_home
+     runner = getattr(request.app.state, 'gateway_runner', None)
+     owner = authority_for_home(runner, home) if runner is not None else None
+-    if owner is None and home.resolve() == Path(authority.db.db_path).parent.resolve():
++    if owner is None and home.resolve() == database_home(authority.db.db_path, mode="parent"):
+         owner = authority
+     if owner is None:
+         raise HTTPException(status_code=403, detail='profile_mismatch')
+@@ -219,7 +221,7 @@ async def _mutate_via_gateway_owner(profile, actor, params):
+     from hermes_cli.web_server_cron import _cron_profile_home
+     from hermes_state import _default_db_path
+
+-    home = Path(_cron_profile_home(profile)[1]) if profile else Path(_default_db_path()).parent
++    home = Path(_cron_profile_home(profile)[1]) if profile else database_home(_default_db_path(), mode="literal")
+     # Discovery is read-only and never starts a gateway.
+     discovery = await asyncio.to_thread(discover_gateway_endpoint, home, timeout=1.5)
+     endpoint = discovery.endpoint
+@@ -325,7 +327,7 @@ def _with_session_maintenance(profile, operation, *args):
+     from hermes_cli.web_server_cron import _cron_profile_home
+     from hermes_state import _default_db_path
+
+-    home = Path(_cron_profile_home(profile)[1]) if profile else Path(_default_db_path()).parent
++    home = Path(_cron_profile_home(profile)[1]) if profile else database_home(_default_db_path(), mode="literal")
+     try:
+         with exclusive_maintenance([home]):
+             return operation(*args)
 diff --git a/hermes_state.py b/hermes_state.py
 index 6a7ae615..7a881628 100644
 --- a/hermes_state.py
@@ -1118,6 +1618,28 @@ index 11bd4a37..08039f81 100644
 
 
  def _load_memory_notifications() -> str:
+diff --git a/tui_gateway/hosted_room_service.py b/tui_gateway/hosted_room_service.py
+index 4f6cc780..9f113934 100644
+--- a/tui_gateway/hosted_room_service.py
++++ b/tui_gateway/hosted_room_service.py
+@@ -2,6 +2,8 @@
+
+ from __future__ import annotations
+
++from gateway.homecompute_paths import database_home
++
+ import contextlib
+ import logging
+ import os
+@@ -197,7 +199,7 @@ class HostedRoomService:
+
+     @property
+     def root(self) -> Path:
+-        return self.db_path.parent
++        return database_home(self.db_path, mode="literal")
+
+     def local_profiles(self) -> tuple[str, ...]:
+         from hermes_constants import named_profile_has_identity, named_profile_is_deleted
 diff --git a/tui_gateway/methods_config.py b/tui_gateway/methods_config.py
 index d9f71d57..eab8ae09 100644
 --- a/tui_gateway/methods_config.py
@@ -1131,6 +1653,50 @@ index d9f71d57..eab8ae09 100644
      return {"value": effort, "display": display}
 
 
+diff --git a/tui_gateway/methods_groups_forward.py b/tui_gateway/methods_groups_forward.py
+index 89c9f604..73585089 100644
+--- a/tui_gateway/methods_groups_forward.py
++++ b/tui_gateway/methods_groups_forward.py
+@@ -24,6 +24,8 @@ gateway-to-gateway methods (``groups.peer.*``, replication, promote/demote) stay
+
+ from __future__ import annotations
+
++from gateway.homecompute_paths import database_home
++
+ import logging
+
+ logger = logging.getLogger(__name__)
+@@ -67,7 +69,7 @@ def _home(server, params: dict):
+ def _root_home():
+     from pathlib import Path
+     from gateway.hosted_rooms import default_db_path
+-    return Path(default_db_path()).parent  # the home whose gateway imports the standalone rooms
++    return database_home(default_db_path(), mode="literal")  # the home whose gateway imports the standalone rooms
+
+
+ def _discover(home):
+diff --git a/tui_gateway/methods_session.py b/tui_gateway/methods_session.py
+index 2d889a49..855051ec 100644
+--- a/tui_gateway/methods_session.py
++++ b/tui_gateway/methods_session.py
+@@ -4,6 +4,8 @@ Bodies are rebound onto server.py's globals at install time (method_ctx.py), so
+ helpers (``_sessions``, ``_ok``, ``_err``, ...) bare; module-level helpers are published onto
+ server.py the same way (tests monkeypatching ``server.X`` still intercept)."""
+
++from gateway.homecompute_paths import database_home
++
+ import contextlib
+
+ from .method_ctx import HandlerRegistry, bind_module
+@@ -549,7 +551,7 @@ def _(rid, params: dict, db) -> dict:
+         # ``sessions.show_subagents`` (the store's own profile config) re-admits delegate runs (#97202).
+         # A store without a path has no profile config to read, so it keeps the default shape.
+         db_path = getattr(db, "db_path", None)
+-        include_subagents = bool(db_path) and show_subagent_sessions(Path(db_path).parent)
++        include_subagents = bool(db_path) and show_subagent_sessions(database_home(db_path, mode="literal"))
+         rows = _listing_rows(db, max(limit * 2, 200), include_hidden=_flag(params, "include_hidden"),
+                              include_subagents=include_subagents)[:limit]
+         # No live_message_count here on purpose: the bulk listing serves rows whose open
 diff --git a/uv.lock b/uv.lock
 index 2a9eb540..9a75327a 100644
 --- a/uv.lock

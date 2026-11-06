@@ -47,6 +47,12 @@
       "revision": "a2a2ab69e2a8a39e545ba10dcd0ea1e947540431",
       "result": "startup failed; no Mattermost attached",
       "reason": "native gateway.lock symlink rejected by new no-follow reservation; plugin symlink outside Landlock roots"
+    },
+    {
+      "name": "hermes-v023-verify",
+      "revision": "6cb74494eade7c281e51e7b838b426f57734fed4",
+      "result": "startup failed; no Mattermost attached",
+      "reason": "new session authority rejects managed state.db symlink layout"
     }
   ]
 }

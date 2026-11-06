@@ -43,7 +43,15 @@ The runtime probe exercises competing lock owners, a real Unix connection and
 rejection of an unsafe control-directory mode. Copy the managed plugin into the
 allowed `/opt/hermes` tree rather than linking to a path outside Landlock roots.
 The first synthetic sandbox `hermes-v023-check` is retained in Error after these
-startup incompatibilities; the corrected attempt uses `hermes-v023-verify`.
+startup incompatibilities. `hermes-v023-verify` is retained after the next
+session-authority startup check; the corrected attempt uses `hermes-v023-trial`.
+
+Session authority, policy and credential readers must map the exact declared
+`state.db -> runtime/state.db` alias back to the logical profile home. They keep
+their original resolution behavior for every other path, and reject a foreign
+database or an unexpected alias. Database registry/inode identity remains the
+physical path. This prevents the new gateway from reading configuration or
+credentials below `runtime` instead of the profile directory.
 
 The old browser tools and agent-browser resolver were removed upstream.
 `browser_exec` uses the release-pinned browser-harness package. The CDP override
@@ -73,7 +81,7 @@ Retain the build receipt and observed immutable image ID privately. A failed
 managed adapter check is an upgrade blocker; do not weaken or skip it. Building
 an image does not migrate application data or establish managed readiness.
 After a successful image build, the guarded guest helper can create the
-separate `hermes-v023-verify` sandbox using the same published recipe:
+separate `hermes-v023-trial` sandbox using the same published recipe:
 
 ```bash
 ./scripts/setup-hermes-guest.sh qualify-latest --config "$config"

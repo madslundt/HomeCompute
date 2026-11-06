@@ -142,7 +142,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                   hermes-personal\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
                   hermes-personal\\ gateway\\ restart) printf 'restarted\\n' ;;
                   hermes-personal\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
-                  onboard\\ --agent\\ hermes\\ --name\\ hermes-personal\\ --from\\ *|onboard\\ --agent\\ hermes\\ --name\\ hermes-v023-verify\\ --from\\ *)
+                  onboard\\ --agent\\ hermes\\ --name\\ hermes-personal\\ --from\\ *|onboard\\ --agent\\ hermes\\ --name\\ hermes-v023-trial\\ --from\\ *)
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
                     test "${{NEMOCLAW_POLICY_TIER:-}}" = restricted
                     test "${{NEMOCLAW_WEB_SEARCH_PROVIDER:-}}" = none
@@ -257,7 +257,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         invocation = log.read_text(encoding="utf-8")
-        self.assertIn("onboard --agent hermes --name hermes-v023-verify", invocation)
+        self.assertIn("onboard --agent hermes --name hermes-v023-trial", invocation)
         self.assertIn("deploy/hermes/Dockerfile.latest", invocation)
         self.assertNotIn("--name hermes-personal", invocation)
         self.assertIn("owner=hermes-personal", result.stdout)
@@ -276,7 +276,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'Pinned candidate runtime required'):
                 probe.main()
         self.assertEqual(calls.call_count, 1)
-        self.assertEqual(calls.call_args.args[0], ['nemohermes', 'hermes-v023-verify', 'status', '--json'])
+        self.assertEqual(calls.call_args.args[0], ['nemohermes', 'hermes-v023-trial', 'status', '--json'])
 
     def test_mattermost_connection_keeps_token_out_of_command_and_output(self) -> None:
         import importlib.util

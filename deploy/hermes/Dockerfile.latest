@@ -79,6 +79,9 @@ RUN HERMES_HOME=/tmp/homecompute-hermes-test-build /opt/hermes/python-runtime/bi
       tests/tools/test_browser_use_cli.py tests/tools/test_browser_use_cli_owned_daemon.py \
       tests/gateway/test_runtime_ownership.py tests/gateway/test_control_socket.py \
       tests/gateway/test_control_socket_peer_security.py tests/hermes_cli/test_gateway_runtime_discovery.py \
+      tests/gateway/test_session_authorities_multiplex.py tests/gateway/test_session_authority.py \
+      tests/gateway/test_session_policy.py tests/gateway/test_session_group_controls.py \
+      tests/gateway/test_session_mutation_model.py \
     && rm -rf /tmp/homecompute-hermes-test-build /tmp/homecompute-hermes-test-env \
       /tmp/homecompute-hermes-test-home /opt/hermes/.pytest_cache /root/.cache/uv
 COPY browser-relay.mjs /usr/local/lib/nemoclaw/browser-relay.mjs

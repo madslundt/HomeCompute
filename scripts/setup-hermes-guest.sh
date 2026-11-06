@@ -293,7 +293,7 @@ onboard_canary() {
   if [[ "${1:-}" == --latest-qualification ]]; then
     # Dynamic scope changes only this invocation. Never wire the owner's bot
     # or install startup for the separate synthetic qualification sandbox.
-    local HERMES_SANDBOX_NAME=hermes-v023-verify
+    local HERMES_SANDBOX_NAME=hermes-v023-trial
     image_recipe="$REPO_ROOT/deploy/hermes/Dockerfile.latest"
     shift
   fi
