@@ -38,6 +38,12 @@ records in the bounded snapshot remain eligible for lexical ranking. The
 context-specific embedding revision invalidates older excerpt representations.
 Semantic excerpts prioritize human text; full IDs, dates and metadata remain in
 the lexical representation and returned references.
+The inference sandbox allows both the pinned LAN gateway address and its exact
+Docker-translated Caddy edge address (`CADDY_EDGE_IP` in the tracked control-plane
+example). A host-shell request alone does not qualify this route: cgroup packet
+filtering sees the translated destination. Verify the authenticated populated
+API and native client after deployment. With inference disabled, its egress
+allowlist remains loopback-only.
 Source coverage is partial, not a complete
 archive of recordings, school history, calendars or home telemetry.
 

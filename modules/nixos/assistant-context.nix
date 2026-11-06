@@ -219,7 +219,9 @@ in
         RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" ];
         IPAddressDeny = "any";
         IPAddressAllow = [ "127.0.0.1/32" ]
-          ++ lib.optional inferenceEnabled "${cfg.inference.address}/32"
+          # Docker DNATs the gateway's published HTTPS port to its fixed Caddy
+          # edge address. The cgroup filter also sees that translated endpoint.
+          ++ lib.optionals inferenceEnabled [ "${cfg.inference.address}/32" "172.28.200.2/32" ]
           ++ lib.optional (cfg.delegation.enable || cfg.delivery.enable) "10.77.20.2/32";
         BindReadOnlyPaths = lib.optional inferenceEnabled "${gatewayHosts}:/etc/hosts";
         ReadWritePaths = [ "/srv/state/assistant-context" ];
