@@ -47,7 +47,7 @@
   # delivery and restore admission remain separate reviewed enablement gates.
   homecompute.assistantContext = {
     enable = true;
-    mode = "shadow";
+    mode = lib.mkDefault "shadow";
     dataClassification = "synthetic-only";
     restoreVerified = false;
   };
