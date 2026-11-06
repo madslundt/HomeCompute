@@ -1,0 +1,22 @@
+{
+  "id": "homecompute-hermes-browser-v1",
+  "display_name": "HomeCompute Hermes browser",
+  "description": "Credential bound to the isolated Hermes browser CDP endpoint",
+  "category": "agent",
+  "credentials": [
+    {
+      "name": "browser_token",
+      "description": "Dedicated browser worker token",
+      "env_vars": [
+        "BROWSER_TOKEN"
+      ],
+      "required": true,
+      "auth_style": "query",
+      "header_name": "",
+      "query_param": "token"
+    }
+  ],
+  "endpoints": [],
+  "binaries": [],
+  "inference_capable": false
+}

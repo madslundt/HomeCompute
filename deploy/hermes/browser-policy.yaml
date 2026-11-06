@@ -1,0 +1,21 @@
+preset:
+  name: homecompute-hermes-browser
+  description: Dedicated isolated Hermes browser access
+network_policies:
+  browser_cdp:
+    name: browser_cdp
+    endpoints:
+      - host: 172.18.0.1
+        port: 18810
+        protocol: websocket
+        enforcement: enforce
+        credential_binding:
+          provider: hermes-personal-browser
+        rules:
+          - allow: {method: GET, path: /devtools/browser/homecompute}
+          - allow: {method: WEBSOCKET_TEXT, path: /devtools/browser/homecompute}
+    binaries:
+      - {path: /usr/local/bin/node}
+      - {path: /usr/local/bin/agent-browser}
+      - {path: /usr/local/lib/homecompute-agent-browser-runtime/node_modules/agent-browser/bin/agent-browser-linux-x64}
+      - {path: /usr/bin/python3.13}

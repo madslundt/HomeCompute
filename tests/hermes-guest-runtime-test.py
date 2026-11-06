@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline contract tests for the synthetic Hermes guest lifecycle helper."""
+"""Offline contract tests for the household Hermes guest lifecycle helper."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import subprocess
 import tempfile
 import textwrap
 import unittest
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -31,6 +30,9 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.secret = "sk-test-only-0123456789abcdef"
         self.key.write_text(self.secret + "\n", encoding="utf-8")
         self.key.chmod(0o600)
+        self.mm_token = self.root / "mattermost-token"
+        self.mm_token.write_text("test-mattermost-token\n", encoding="utf-8")
+        self.mm_token.chmod(0o600)
         self.evidence = self.root / "evidence"
         self.backup_gate = self.root / "off-host-backup.json"
         self.network_gate = self.root / "agents-network.json"
@@ -44,16 +46,19 @@ class HermesGuestRuntimeTest(unittest.TestCase):
 
     def write_config(self, extra: str = "", **overrides: str) -> None:
         values = {
-            "HERMES_SANDBOX_NAME": "agent-owner",
+            "HERMES_SANDBOX_NAME": "hermes-personal",
             "HERMES_ENDPOINT_URL": "http://ai.home.arpa:18080/v1",
-            "HERMES_MODEL": "assistant-canary",
-            "HERMES_TRUSTED_PRIVATE_HOSTS": "ai.home.arpa",
+            "HERMES_MODEL": "automation-moe",
+            "HERMES_TRUSTED_PRIVATE_HOSTS": "ai.home.arpa,home-core.tail479ad.ts.net",
             "HERMES_CA_BUNDLE": str(self.ca),
             "HERMES_LITELLM_API_KEY_FILE": str(self.key),
             "HERMES_EVIDENCE_DIR": str(self.evidence),
-            "HERMES_RESTORE_TARGET": "agent-owner",
+            "HERMES_RESTORE_TARGET": "hermes-personal",
             "HERMES_BACKUP_READINESS_FILE": str(self.backup_gate),
             "HERMES_NETWORK_READINESS_FILE": str(self.network_gate),
+            "HERMES_MATTERMOST_URL": "https://home-core.tail479ad.ts.net:9443",
+            "HERMES_MATTERMOST_TOKEN_FILE": str(self.mm_token),
+            "HERMES_MATTERMOST_ALLOWED_USERS": "1oipaix7gin73jczp97tcfmyac",
         }
         values.update(overrides)
         content = "\n".join(f"{key}={value}" for key, value in values.items())
@@ -68,7 +73,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                     "schema_version": 1,
                     "gate": gate,
                     "status": "ready",
-                    "scope": "hermes-synthetic-canary",
+                    "scope": "hermes-household",
                     "observed_at": "2026-09-26T12:00:00Z",
                     "evidence": "test-only readiness evidence",
                 }
@@ -76,36 +81,6 @@ class HermesGuestRuntimeTest(unittest.TestCase):
             + "\n",
             encoding="utf-8",
         )
-        path.chmod(0o600)
-
-    @staticmethod
-    def write_local_backup_gate(
-        path: Path,
-        *,
-        expires_at: str,
-        risk_acknowledged: bool = True,
-        extra: dict[str, object] | None = None,
-    ) -> None:
-        document: dict[str, object] = {
-            "schema_version": 1,
-            "gate": "local-bootstrap-backup",
-            "status": "ready",
-            "scope": "hermes-synthetic-canary",
-            "observed_at": "2026-09-26T12:00:00Z",
-            "durability": "same-host-same-disk",
-            "risk_acknowledged": risk_acknowledged,
-            "snapshot_id": "agents-vm-bootstrap-20260926",
-            "restore_evidence": "synthetic restore drill passed",
-            "limitations": "Loss of the home-core disk loses both source and backup.",
-            "data_classification": "synthetic-only",
-            "allowed_sandbox": "agent-owner",
-            "allowed_model": "assistant-canary",
-            "integrations": "none",
-            "expires_at": expires_at,
-        }
-        if extra:
-            document.update(extra)
-        path.write_text(json.dumps(document) + "\n", encoding="utf-8")
         path.chmod(0o600)
 
     def run_cli(self, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -133,30 +108,46 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                 set -eu
                 printf '%s\\n' "$*" >>{log!s}
                 case "$*" in
-                  --version) printf 'nemohermes v0.0.129\\n' ;;
+                  --version) printf 'nemohermes v0.0.141\\n' ;;
                   doctor\\ --json) printf '{{"schemaVersion":1,"ok":true}}\\n' ;;
-                  agent-owner\\ status\\ --json|agent-owner-verify\\ status\\ --json)
-                    printf '{{"agent":"hermes","phase":"Ready","openshellVersion":"0.0.116","inferenceHealth":{{"ok":true}},"recordedRoute":{{"model":"assistant-canary"}}}}\\n'
+                  hermes-personal\\ status\\ --json|hermes-personal-verify\\ status\\ --json)
+                    printf '{{"agent":"hermes","phase":"Ready","openshellVersion":"0.0.116","inferenceHealth":{{"ok":true}},"recordedRoute":{{"model":"automation-moe"}}}}\\n'
                     ;;
-                  agent-owner\\ inference\\ get\\ --json|agent-owner-verify\\ inference\\ get\\ --json)
-                    printf '{{"model":"assistant-canary","provider":"custom"}}\\n'
+                  hermes-personal\\ inference\\ get\\ --json|hermes-personal-verify\\ inference\\ get\\ --json)
+                    printf '{{"model":"automation-moe","provider":"custom"}}\\n'
                     ;;
-                  agent-owner\\ exec\\ --\\ hermes\\ --version|agent-owner-verify\\ exec\\ --\\ hermes\\ --version)
+                  hermes-personal\\ exec\\ --\\ hermes\\ --version|hermes-personal-verify\\ exec\\ --\\ hermes\\ --version)
                     printf 'Hermes Agent v0.21.3\\n'
                     ;;
-                  agent-owner\\ connect\\ --probe-only|agent-owner-verify\\ connect\\ --probe-only)
+                  hermes-personal\\ connect\\ --probe-only|hermes-personal-verify\\ connect\\ --probe-only)
                     printf 'Probe timing: result=ready\\n'
                     ;;
-                  list\\ --json) printf '{{"sandboxes":[{{"name":"agent-owner"}}]}}\\n' ;;
-                  agent-owner\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
-                  agent-owner\\ gateway\\ restart) printf 'restarted\\n' ;;
-                  agent-owner\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
-                  onboard\\ --non-interactive\\ --yes-i-accept-third-party-software)
+                  hermes-personal\\ exec\\ --stdin\\ --\\ python3\\ -)
+                    body="$(cat)"
+                    if [[ "$body" == *HERMES_INFERENCE_OK* ]]; then
+                      printf '{{"authenticated_inference":true,"model":"automation-moe"}}\\n'
+                    else
+                      printf '{{"rest_authenticated":true,"websocket_authenticated":true}}\\n'
+                    fi
+                    ;;
+                  hermes-personal\\ channels\\ status\\ *) printf '{{"connected":true}}\\n' ;;
+                  hermes-personal\\ policy\\ add\\ *) printf 'policy applied\\n' ;;
+                  hermes-personal\\ channels\\ add\\ mattermost)
+                    test "${{MATTERMOST_URL:-}}" = https://home-core.tail479ad.ts.net:9443
+                    test "${{MATTERMOST_TOKEN:-}}" = test-mattermost-token
+                    test "${{MATTERMOST_ALLOWED_USERS:-}}" = 1oipaix7gin73jczp97tcfmyac
+                    printf 'channel added\\n'
+                    ;;
+                  list\\ --json) printf '{{"sandboxes":[{{"name":"hermes-personal"}}]}}\\n' ;;
+                  hermes-personal\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
+                  hermes-personal\\ gateway\\ restart) printf 'restarted\\n' ;;
+                  hermes-personal\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
+                  onboard\\ --agent\\ hermes\\ --name\\ hermes-personal\\ --from\\ *)
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
                     test "${{NEMOCLAW_POLICY_TIER:-}}" = restricted
                     test "${{NEMOCLAW_WEB_SEARCH_PROVIDER:-}}" = none
                     test "${{NEMOCLAW_ENDPOINT_URL:-}}" = http://ai.home.arpa:18080/v1
-                    test "${{NEMOCLAW_TRUSTED_PRIVATE_HOSTS:-}}" = ai.home.arpa
+                    test "${{NEMOCLAW_TRUSTED_PRIVATE_HOSTS:-}}" = ai.home.arpa,home-core.tail479ad.ts.net
                     test "${{NEMOCLAW_CORPORATE_CA_BUNDLE:-}}" = {self.ca!s}
                     test "${{NODE_EXTRA_CA_CERTS:-}}" = {self.ca!s}
                     test -s "${{CURL_CA_BUNDLE:-}}"
@@ -200,12 +191,14 @@ class HermesGuestRuntimeTest(unittest.TestCase):
 
     def test_release_tuple_is_exact(self) -> None:
         release = json.loads(MANIFEST.read_text(encoding="utf-8"))
-        self.assertEqual(release["nemoclaw"]["commit"], "26922313bba96184e65c3663b351683ebae9504d")
+        self.assertEqual(release["nemoclaw"]["commit"], "b7dcc9bb76197fb28ec673867c35974ac799eb15")
         self.assertEqual(release["managed_components"]["hermes_version"], "0.21.3")
         self.assertEqual(release["managed_components"]["openshell_version"], "0.0.116")
         self.assertEqual(release["policy"]["tier"], "restricted")
+        self.assertTrue(release["policy"]["messaging"])
+        self.assertTrue(release["policy"]["custom_image"])
 
-    def test_validate_accepts_only_the_canary_contract(self) -> None:
+    def test_validate_accepts_only_the_approved_household_contract(self) -> None:
         result = self.run_cli("validate")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.write_config(HERMES_ENDPOINT_URL="https://ai.home.arpa/v1")
@@ -240,7 +233,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         result = self.sourced_call("preflight_runtime() { :; }\nonboard_canary", env)
         self.assertEqual(result.returncode, 0, result.stderr)
         invocation = log.read_text(encoding="utf-8")
-        self.assertIn("onboard --non-interactive", invocation)
+        self.assertIn("onboard --agent hermes --name hermes-personal", invocation)
         self.assertNotIn(self.secret, invocation)
         self.assertNotIn("must-be-cleared", result.stdout + result.stderr + invocation)
 
@@ -253,50 +246,67 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertIn("backup readiness record", result.stderr)
         self.assertFalse(log.exists(), "NemoClaw was invoked before prerequisites passed")
 
-    def test_unexpired_local_bootstrap_gate_allows_only_fixed_canary(self) -> None:
-        expires = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self.write_local_backup_gate(self.backup_gate, expires_at=expires)
-        bin_dir, log = self.make_mock_nemohermes()
-        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
-        result = self.sourced_call("preflight_runtime() { :; }\nonboard_canary", env)
+    def test_mattermost_connection_keeps_token_out_of_command_and_output(self) -> None:
+        import importlib.util
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location("connector", ROOT / "scripts/connect-hermes-mattermost.py")
+        connector = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(connector)
+        environment = {"MATTERMOST_TOKEN": "test-mattermost-token",
+                       "HERMES_OPENSHELL_GATEWAY": "nemoclaw",
+                       "MATTERMOST_URL": "https://home-core.tail479ad.ts.net:9443",
+                       "MATTERMOST_ALLOWED_USERS": "owner", "MATTERMOST_REPLY_MODE": "thread",
+                       "MATTERMOST_REQUIRE_MENTION": "true"}
+        absent = subprocess.CompletedProcess([], 1, "", "provider not found")
+        with patch.dict(os.environ, environment), patch.object(connector, "call") as calls, \
+                patch.object(connector.subprocess, "run", return_value=absent):
+            connector.main()
+        for invocation in calls.call_args_list:
+            self.assertNotIn("test-mattermost-token", repr(invocation.args))
+            self.assertNotIn("test-mattermost-token", invocation.kwargs.get("input", ""))
+        creates = [c for c in calls.call_args_list if "create" in c.args[0]]
+        self.assertEqual(len(creates), 1)
+        self.assertEqual(creates[0].kwargs["env"]["MATTERMOST_TOKEN"], "test-mattermost-token")
+        self.assertNotIn("--provider", repr(calls.call_args_list))
+        # Execute the real generated configuration patch against a publisher
+        # fixture whose named custom provider still selects inference.local.
+        import types, sys
+        home = self.root / 'native-home'; home.mkdir()
+        (home / '.env').write_text('OPENAI_BASE_URL=https://inference.local/v1\nOPENAI_API_KEY=openshell:resolve:env:stale_scope\n')
+        (home / 'config.yaml').write_text(json.dumps({'model': {}, 'providers': {'custom': {}},
+            'custom_providers': [{'name': 'custom', 'base_url': 'https://inference.local/v1'}]}))
+        yaml = types.ModuleType('yaml'); yaml.safe_load = json.loads
+        yaml.safe_dump = lambda value, **kwargs: json.dumps(value)
+        program = next(c.kwargs['input'] for c in calls.call_args_list if 'input' in c.kwargs)
+        with patch.dict(sys.modules, {'yaml': yaml}), patch.dict(os.environ, {
+                'COMPATIBLE_API_KEY': 'openshell:resolve:env:COMPATIBLE_API_KEY',
+                'HTTP_PROXY': 'http://10.200.0.1:3128', 'HTTPS_PROXY': 'http://10.200.0.1:3128'}):
+            exec(program.replace('/sandbox/.hermes', str(home)), {})
+        configured = json.loads((home / 'config.yaml').read_text())
+        for lane in (configured['model'], configured['providers']['custom'], configured['custom_providers'][0]):
+            self.assertEqual(lane['base_url'], 'http://ai.home.arpa:18080/v1')
+            self.assertEqual(lane['api_key'], '${COMPATIBLE_API_KEY}')
+        self.assertNotIn('OPENAI_API_KEY=', (home / '.env').read_text())
+        self.assertNotIn('openshell:resolve:env:', (home / 'config.yaml').read_text())
+        self.assertEqual(configured['model']['context_length'], 65536)
+        self.assertEqual(configured['agent']['reasoning_effort'], 'medium')
+        self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o640)
+
+    def test_browser_command_dispatches_the_owned_connector(self):
+        source = self.root / 'release'; (source / 'scripts').mkdir(parents=True)
+        (source / 'scripts/connect-hermes-browser.py').write_text("print('owned-browser-connector')\n")
+        result = self.sourced_call('preflight_runtime() { :; }\nREPO_ROOT=' + str(source) +
+            '\nmain connect-browser --config ' + str(self.config))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("onboard --non-interactive", log.read_text(encoding="utf-8"))
+        self.assertIn('owned-browser-connector', result.stdout)
 
-        self.write_config(HERMES_SANDBOX_NAME="agent-partner")
-        rejected = self.run_cli("validate", env=env)
-        self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("pilot sandbox must be agent-owner", rejected.stderr)
-
-    def test_local_bootstrap_gate_rejects_expiry_risk_and_schema_drift(self) -> None:
-        expired = (datetime.now(timezone.utc) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self.write_local_backup_gate(self.backup_gate, expires_at=expired)
+    def test_backup_gate_requires_household_off_host_scope(self) -> None:
+        document = json.loads(self.backup_gate.read_text(encoding="utf-8"))
+        document["scope"] = "hermes-synthetic-canary"
+        self.backup_gate.write_text(json.dumps(document) + "\n", encoding="utf-8")
         result = self.sourced_call("require_mutation_gates")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unexpired synthetic-only", result.stderr)
-
-        future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self.write_local_backup_gate(self.backup_gate, expires_at=future, risk_acknowledged=False)
-        result = self.sourced_call("require_mutation_gates")
-        self.assertNotEqual(result.returncode, 0)
-
-        self.write_local_backup_gate(self.backup_gate, expires_at=future, extra={"unexpected": "field"})
-        result = self.sourced_call("require_mutation_gates")
-        self.assertNotEqual(result.returncode, 0)
-
-        for field, value in (
-            ("snapshot_id", ""),
-            ("restore_evidence", ""),
-            ("limitations", ""),
-            ("durability", "off-host"),
-            ("data_classification", "personal"),
-            ("allowed_sandbox", "agent-partner"),
-            ("allowed_model", "assistant"),
-            ("integrations", "messaging"),
-        ):
-            with self.subTest(field=field):
-                self.write_local_backup_gate(self.backup_gate, expires_at=future, extra={field: value})
-                result = self.sourced_call("require_mutation_gates")
-                self.assertNotEqual(result.returncode, 0)
+        self.assertIn("fresh off-host Synology restore gate", result.stderr)
 
     def test_health_captures_and_validates_pinned_versions(self) -> None:
         bin_dir, _ = self.make_mock_nemohermes()
@@ -326,20 +336,76 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("credential appeared", result.stderr)
 
-    def test_snapshot_and_restore_verify_managed_image_in_place(self) -> None:
+    def test_health_requires_explicit_inference_when_status_is_suppressed(self):
+        bin_dir, _ = self.make_mock_nemohermes()
+        mock = bin_dir / 'nemohermes'
+        text = mock.read_text().replace('"inferenceHealth":{"ok":true}',
+                            '"inferenceHealth":null,"inferenceProbeSuppressed":true')
+        mock.write_text(text)
+        result = self.run_cli('health', env={'PATH': f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        mock.write_text(text.replace('"authenticated_inference":true', '"authenticated_inference":false'))
+        result = self.run_cli('health', env={'PATH': f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Explicit authenticated inference proof failed', result.stderr)
+
+    def test_image_request_dump_hook_never_serializes_private_payloads(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('privacy', ROOT / 'deploy/hermes/patch-private-request-logging.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        source = ('def dump_api_request_debug(agent, api_kwargs, *, reason, error=None):\n'
+                  '    """Dump the request body."""\n'
+                  '    dump_file = "request_dump_private.json"\n'
+                  '    atomic_json_write(dump_file, api_kwargs)\n')
+        writes = []
+        namespace = {'atomic_json_write': lambda *args: writes.append(args)}
+        exec(source, namespace)
+        namespace['dump_api_request_debug'](None, {'messages': ['private fixture']}, reason='provider_error')
+        self.assertEqual(len(writes), 1)
+        writes.clear()
+        patched = module.patch(source)
+        self.assertEqual(module.patch(patched), patched)
+        exec(patched, namespace)
+        self.assertIsNone(namespace['dump_api_request_debug'](None, {'messages': ['private fixture']}, reason='provider_error'))
+        self.assertEqual(writes, [])
+        with self.assertRaises(ValueError):
+            module.patch(source.replace('atomic_json_write', 'upstream_changed'))
+
+    def test_unsupported_snapshot_actions_never_invoke_native_cli(self):
         bin_dir, log = self.make_mock_nemohermes()
-        env = {"PATH": f"{bin_dir}:{os.environ['PATH']}"}
-        snapshot = self.run_cli("snapshot", "pre-restore-test", env=env)
-        self.assertEqual(snapshot.returncode, 0, snapshot.stderr)
-        restored = self.run_cli("restore-verify", "pre-restore-test", env=env)
-        self.assertEqual(restored.returncode, 0, restored.stderr)
-        invocations = log.read_text(encoding="utf-8")
-        self.assertIn("snapshot create --name pre-restore-test", invocations)
-        self.assertIn("snapshot restore pre-restore-test", invocations)
-        self.assertIn("agent-owner gateway restart", invocations)
-        self.assertNotIn("--to", invocations)
-        self.assertNotIn("--force", invocations)
-        self.assertNotIn("destroy", invocations)
+        for command in ('snapshot', 'restore-verify'):
+            result = self.run_cli(command, 'old-snapshot', env={'PATH': f"{bin_dir}:{os.environ['PATH']}"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Unknown command', result.stderr)
+        self.assertFalse(log.exists())
+
+    def test_browser_resolver_adapts_only_the_owned_endpoint(self):
+        import importlib.util
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location('transport', ROOT / 'deploy/hermes/patch-browser-transport.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        source = ('def _resolve_cdp_override(cdp_url: str) -> str:\n'
+                  '    raw = cdp_url.strip()\n'
+                  '    lowered = raw.lower()\n'
+                  '    return raw\n')
+        patched = module.patch(source)
+        self.assertEqual(module.patch(patched), patched)
+        namespace = {'os': os}
+        exec(patched, namespace)
+        with patch('subprocess.check_output', return_value='ws://127.0.0.1:18811/devtools/browser/homecompute\n') as call:
+            resolve = namespace['_resolve_cdp_override']
+            self.assertEqual(resolve('ws://example.com/devtools/browser/test'), 'ws://example.com/devtools/browser/test')
+            call.assert_not_called()
+            self.assertIn('127.0.0.1:18811', resolve('ws://172.18.0.1:18810/devtools/browser/homecompute'))
+            self.assertEqual(call.call_count, 1)
+            self.assertLessEqual(set(call.call_args.kwargs['env']), {'PATH', 'HTTP_PROXY', 'HTTPS_PROXY', 'BROWSER_TOKEN'})
+        with self.assertRaises(ValueError):
+            module.patch(source.replace('lowered = raw.lower()', 'lowered = raw.casefold()'))
+
+    def test_startup_rejects_zero_exit_cycle_warning(self):
+        result = self.sourced_call("systemd-analyze() { echo 'default.target: Found ordering cycle on hermes/start' >&2; return 0; }\nverify_startup_transaction")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('ordering cycle', result.stderr)
 
 
 if __name__ == "__main__":

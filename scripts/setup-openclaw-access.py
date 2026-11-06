@@ -160,7 +160,7 @@ Type=oneshot
 RemainAfterExit=yes
 Environment=PATH=/run/current-system/sw/bin
 ExecStartPre={PYTHON} {INSTALL}/setup-openclaw-access.py firewall
-ExecStart=/run/current-system/sw/bin/docker compose -f {INSTALL}/access-compose.yaml up -d --no-build --force-recreate
+ExecStart=/run/current-system/sw/bin/docker compose -f {INSTALL}/access-compose.yaml up -d --no-build
 ExecStop=/run/current-system/sw/bin/docker compose -f {INSTALL}/access-compose.yaml down
 TimeoutStartSec=90
 TimeoutStopSec=30

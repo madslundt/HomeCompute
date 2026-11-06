@@ -125,6 +125,9 @@ python3 "$REPO_ROOT/tests/openclaw-recovery-verification-test.py"
 python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
+python3 "$REPO_ROOT/tests/hermes-systemd-boot-test.py"
+python3 "$REPO_ROOT/tests/hermes-system-boot-install-test.py"
+node "$REPO_ROOT/tests/hermes-browser-client.test.mjs"
 printf '[validate] OpenClaw task broker and plugin tests\n'
 python3 "$REPO_ROOT/tests/openclaw-worker-test.py"
 python3 "$REPO_ROOT/tests/openclaw-nemoclaw-test.py"
@@ -347,6 +350,9 @@ python3 "$REPO_ROOT/benchmarks/harness.py" validate \
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/flash-next-hermes-loop-ab.json" \
   --release "$REPO_ROOT/benchmarks/manifests/flash-next-hermes-loop-ab.example.json"
+python3 "$REPO_ROOT/benchmarks/harness.py" validate \
+  --plan "$REPO_ROOT/benchmarks/plans/hermes-local-runtime-smoke.json" \
+  --release "$REPO_ROOT/benchmarks/manifests/hermes-local-runtime-smoke.example.json"
 python3 "$REPO_ROOT/benchmarks/harness.py" validate \
   --plan "$REPO_ROOT/benchmarks/plans/n8n-smoke.example.json" \
   --release "$REPO_ROOT/benchmarks/manifests/n8n-openrouter.example.json"

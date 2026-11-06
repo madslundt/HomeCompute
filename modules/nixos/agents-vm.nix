@@ -141,6 +141,12 @@ in
       description = "Maximum data class permitted in the guest.";
     };
 
+    restoreVerified = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether the current agents VM state has passed a fresh isolated off-host restore drill.";
+    };
+
     resources = {
       vcpus = lib.mkOption {
         type = lib.types.ints.positive;
@@ -222,22 +228,32 @@ in
       }
       {
         assertion =
-          config.homecompute.backups.enable
+          (
+            config.homecompute.backups.enable
+            || (
+              config.homecompute.nasRecoveryBackup.enable
+              && config.homecompute.nasRecoveryBackup.includeApplicationState
+            )
+          )
+          && (cfg.dataClassification == "synthetic-only" || cfg.restoreVerified)
           || (
             cfg.dataClassification == "synthetic-only"
             && config.homecompute.agentsVm.localBootstrapBackup.enable
             && config.homecompute.agentsVm.localBootstrapBackup.riskAccepted
           );
-        message = "household data requires off-host backup; local bootstrap permits synthetic-only pilots";
+        message = "household data requires an off-host application-state backup and a fresh restore proof; local bootstrap permits synthetic-only pilots";
       }
       {
-        assertion = lib.any (
-          path: path == "/srv/state" || path == statePath
-        ) (if config.homecompute.backups.enable then
-          lib.concatMap (source: source.paths) (builtins.attrValues config.homecompute.backups.sources)
-        else
-          config.homecompute.backups.paths);
-        message = "an enabled backup source must include /srv/state or the agents VM state directory";
+        assertion =
+          (config.homecompute.nasRecoveryBackup.enable
+            && config.homecompute.nasRecoveryBackup.includeApplicationState)
+          || lib.any (
+            path: path == "/srv/state" || path == statePath
+          ) (if config.homecompute.backups.enable then
+            lib.concatMap (source: source.paths) (builtins.attrValues config.homecompute.backups.sources)
+          else
+            config.homecompute.backups.paths);
+        message = "an enabled off-host backup source must include /srv/state or the NAS application-state archive must be enabled";
       }
       {
         assertion = lib.hasPrefix "https://cloud-images.ubuntu.com/" cfg.image.url;

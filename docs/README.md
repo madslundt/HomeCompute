@@ -1,5 +1,11 @@
 # HomeCompute documentation guide
 
+> **Hermes operations (2026-11-06):** the clean `hermes-personal` runtime has
+> verified owner Mattermost messaging, local inference, restricted browsing and
+> native restart behavior. See [dated evidence and remaining qualification gaps](hermes-runtime-validation-2026-11-06.md)
+> and the [current runbook](../deploy/hermes/README.md). Older deferred-runtime
+> statements below describe earlier rollout gates.
+
 > **TensorFold assessment (2026-10-26):** keep the live UltraFast deployment.
 > The 512K TensorFold startup memory gate and deployed n8n structured-output
 > dependencies block replacement. See the [assessment](benchmarks/tensorfold-migration-assessment-2026-10-26.md).
