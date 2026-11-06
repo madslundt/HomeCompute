@@ -3,6 +3,8 @@
 Hermes is being reintroduced alongside OpenClaw in the isolated Ubuntu agents
 VM. The owner uses the dedicated Mattermost bot `hermes-agent`; the existing
 n8n `hermes` identity is independent. Additional profiles are deferred.
+See [the dated runtime evidence](../../docs/hermes-runtime-validation-2026-11-06.md)
+for applied revisions, measured checks and remaining qualification gaps.
 
 ## Release and policy
 
@@ -77,6 +79,8 @@ owner DM and reply, public browsing, denied private browsing, and supported
 stop/start recovery. Inspect memory and disk use under load. Synthetic probes
 alone do not prove household readiness. `health` retains private evidence under
 the configured evidence directory.
+It requires an explicit authenticated synthetic inference response even when
+the vendor CLI intentionally suppresses inference probes in ordinary status.
 
 NemoClaw 0.0.141 has no per-sandbox `snapshot` command. Recovery uses the
 owner-approved encrypted Synology application archive, including the whole
@@ -153,6 +157,13 @@ systemd, enables it, and exercises its stop/start path. The vendor-managed
 `nemoclaw-openshell-gateway.service` must already be enabled; user lingering
 must be enabled so the user manager starts at VM boot.
 
+The installer uses the guest operator's existing noninteractive sudo to install
+a tracked system drop-in ordering `user@1000.service` after Docker. This ensures
+Hermes can record a native stop before Docker terminates containers at shutdown.
+The user unit also follows `default.target`, matching the vendor gateway's
+ordering. Verification includes the complete user boot transaction and rejects
+cycle warnings even if systemd returns exit status zero.
+
 This is a boot/shutdown unit calling NemoClaw's native lifecycle. It does not
 respawn the in-sandbox gateway or compete with Hermes's process supervision.
 The sandbox's Docker restart policy remains owned by OpenShell. Keep the
@@ -171,3 +182,8 @@ its default nonempty kanban directory during native workspace restoration.
 Its recovery copy and immutable tracking were preserved. The owner authorized
 a clean start, so the final instance uses no native state import. The supported
 household recovery boundary remains the complete encrypted agents VM archive.
+The final bootstrap also used the approved clean-start path after the first
+full shutdown left a terminal Error record. That VM archive was retained, the
+shutdown ordering was repaired in source, and a later full VM reboot passed.
+The temporary no-backup recreation option is not a routine household upgrade
+or recovery policy.
