@@ -77,6 +77,16 @@ class BriefingsTest(unittest.TestCase):
         self.assertEqual([row['ref']['object_id'] for row in brief['source_items']], ['tomorrow'])
         self.assertEqual(brief['cross_source_summary']['items'][0]['source_refs'][0]['object_id'], 'tomorrow')
 
+    def test_calendar_window_filter_precedes_per_source_cap(self):
+        for index in range(25):
+            self.store.ingest(OWNER, self.event('calendar', f'later-{index}', {
+                'start': '2026-11-07T10:00:00+01:00', 'end': '2026-11-07T11:00:00+01:00'},
+                when='2026-11-07T10:00:00+01:00'))
+        self.store.ingest(OWNER, self.event('calendar', 'today', {
+            'start': '2026-11-06T10:00:00+01:00', 'end': '2026-11-06T11:00:00+01:00'}))
+        result = BriefingBuilder(self.store, scope=OWNER, coverage=self.coverage, clock=lambda: NOW).build('today')
+        self.assertEqual([row['ref']['object_id'] for row in result['source_items']], ['today'])
+
     def test_stale_context_is_labeled_but_not_actionable_and_nested_calendar_times_parse(self):
         self.store.ingest(OWNER, self.event("daythread", "stale-promise", {"summary": "Remember to call school about trip"}))
         self.store.ingest(OWNER, self.event("calendar", "nested", {"summary": "Nested event", "start": {"dateTime": "2026-11-06T10:00:00+01:00"}, "end": {"dateTime": "2026-11-06T11:00:00+01:00"}}))
@@ -126,6 +136,56 @@ class BriefingsTest(unittest.TestCase):
         self.assertEqual(seen[0][1]["response_format"], {"type": "json_object"})
         self.assertLessEqual(seen[0][1]["max_tokens"], 500)
         self.assertLessEqual(seen[0][2], 8)
+
+    def test_populated_briefing_balances_sources_and_bounds_actual_model_request(self):
+        for index in range(90):
+            self.store.ingest(OWNER, self.event("home-assistant", f"sensor-{index}",
+                {"summary": "Synthetic recent home observation æøå. " * 40}, when="2026-11-06T10:01:00+01:00"))
+        for source in ("daythread", "aula"):
+            self.store.ingest(OWNER, self.event(source, source + "-one", {"summary": "Observed personal context"}))
+        self.store.ingest(OWNER, self.event("calendar", "calendar-one", {
+            "summary": "Synthetic appointment", "start": "2026-11-06T10:00:00+01:00", "end": "2026-11-06T11:00:00+01:00"}))
+        coverage = {source: {**row, "state": "partial" if source != "calendar" else "fresh"}
+                    for source, row in self.coverage.items()}
+        seen = []
+
+        class Response:
+            def __init__(self, candidate): self.candidate = candidate
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def read(self, _):
+                return json.dumps({"choices": [{"message": {"content": json.dumps(self.candidate)}}]}).encode()
+
+        class Opener:
+            def open(self, request, timeout):
+                payload = json.loads(request.data)
+                model_input = json.loads(payload['messages'][1]['content'])
+                items = model_input['source_items']
+                seen.append(model_input)
+                if len(items) > 4 or payload['max_tokens'] > 320:
+                    raise TimeoutError("populated briefing exceeds the interactive generation budget")
+                if any(len(item['text'].encode()) > 240 for item in items):
+                    raise TimeoutError("long excerpts exhaust the prefill budget")
+                ref = next(item['ref'] for item in items if item['ref']['source'] == 'daythread')
+                return Response({'summary': 'Observed context; coverage is incomplete.',
+                    'items': [{'text': 'A personal source observation is available.', 'source_refs': [ref]}]})
+
+        with patch('assistant_context_briefings.build_opener', return_value=Opener()):
+            result = BriefingBuilder(self.store, scope=OWNER, coverage=coverage, clock=lambda: NOW,
+                                     reasoner=LocalReasoner('sk-' + 'a' * 22)).build()
+        self.assertEqual(result['reasoning'], 'local-model-validated')
+        self.assertEqual({item['ref']['source'] for item in result['source_items']}, set(self.coverage))
+        self.assertEqual({item['ref']['source'] for item in seen[0]['source_items']}, set(self.coverage))
+        self.assertEqual(result['coverage']['daythread'], 'partial')
+        self.assertEqual(result['action_authority'], 'none')
+        self.assertTrue(result['source_items_truncated'])
+
+    def test_partial_observations_can_be_cited_but_stale_ones_cannot(self):
+        ref = {'source': 'daythread', 'object_id': 'observed', 'revision': 1}
+        candidate = {'summary': 'Observed context.', 'items': [{'text': 'An observation.', 'source_refs': [ref]}]}
+        validate_candidate(candidate, {'source_items': [{'ref': ref, 'freshness': 'partial'}]})
+        with self.assertRaises(ValueError):
+            validate_candidate(candidate, {'source_items': [{'ref': ref, 'freshness': 'stale'}]})
 
     def test_occurrence_admission_is_unique_concurrent_and_restart_safe(self):
         ledger = OccurrenceLedger(self.root / "routines.sqlite3", clock=lambda: NOW)

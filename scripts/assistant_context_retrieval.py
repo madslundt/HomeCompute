@@ -20,6 +20,10 @@ from assistant_context_tools import private_bytes
 from embedding_client import REVISION, MODEL, ENDPOINT, vectors, query_text, bounded_text
 from semantic_retrieval import lexical, cached_vector
 
+CONTEXT_EMBEDDING_REVISION = REVISION + "-context384-v1"
+NEW_DOCUMENTS_PER_SEARCH = 2
+DOCUMENT_EMBEDDING_BYTES = 384
+
 
 class AuthenticatedHarrierClient:
     """Fixed HomeCompute gateway transport with an independent bearer secret."""
@@ -83,6 +87,18 @@ def _projection_text(row: dict[str, Any]) -> str:
                       ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def _document_embedding_text(row: dict[str, Any]) -> str:
+    payload = row['payload']
+    excerpts = [payload[key] for key in ('title', 'summary', 'text', 'subject', 'name',
+                'content', 'body', 'description', 'status', 'value')
+                if isinstance(payload.get(key), str) and payload[key].strip()]
+    content = '\n'.join(excerpts) if excerpts else json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    # Keep readable source identity without spending the entire short semantic
+    # budget on opaque IDs. Full IDs/dates remain in lexical text and references.
+    identity = bounded_text(f"{row['source']} {row['event_type']} {row['object_id']}", 96)
+    return bounded_text(identity + '\n' + content, DOCUMENT_EMBEDDING_BYTES)
+
+
 class AssistantContextRetrieval:
     """Hybrid RRF over authorized current records with a private scoped vector cache.
 
@@ -91,7 +107,7 @@ class AssistantContextRetrieval:
     behavior. Cache keys include scope, source revision and embedding revision.
     """
     def __init__(self, store: ContextStore, cache_path: str | os.PathLike[str], *,
-                 embedding_client: Any = None, embedding_revision: str = REVISION,
+                 embedding_client: Any = None, embedding_revision: str = CONTEXT_EMBEDDING_REVISION,
                  candidate_limit: int = 80):
         if (not isinstance(embedding_revision, str) or not re.fullmatch(r"[a-zA-Z0-9_.-]{1,160}", embedding_revision)
                 or type(candidate_limit) is not int or not 1 <= candidate_limit <= 80):
@@ -189,15 +205,18 @@ class AssistantContextRetrieval:
             missing = [i for i in candidates if vectors_by_index[i] is None]
             if self.embedding_client is not None and candidates:
                 try:
-                    # One query plus a fixed maximum candidate count bounds tokens and latency.
+                    # Warm a bounded part of a cold corpus per interactive call.
+                    # Embedding all 80 long records exceeds the CPU route's
+                    # deadline and loses all progress when the batch times out.
+                    warming = missing[:NEW_DOCUMENTS_PER_SEARCH]
                     encoded = self.embedding_client.embed([query_text(query, "memory")] +
-                                                           [bounded_text(rows[i]["text"]) for i in missing])
-                    if len(encoded) != 1 + len(missing):
+                        [_document_embedding_text(rows[i]) for i in warming])
+                    if len(encoded) != 1 + len(warming):
                         raise ValueError("Embedding result count mismatch")
                     query_vector = cached_vector(encoded[0])
                     if query_vector is None:
                         raise ValueError("Malformed query embedding")
-                    for i, vector in zip(missing, encoded[1:]):
+                    for i, vector in zip(warming, encoded[1:]):
                         normalized = cached_vector(vector)
                         if normalized is None:
                             raise ValueError("Malformed document embedding")
@@ -232,4 +251,7 @@ class AssistantContextRetrieval:
         ranked.sort(key=lambda row: -row["retrieval_score"])
         return {"results": ranked[:limit], "degraded": degraded,
                 "degradation": "lexical_only_embedding_unavailable" if degraded else None,
-                "embedding_revision": self.embedding_revision if not degraded else None}
+                "embedding_revision": self.embedding_revision if not degraded else None,
+                "semantic_coverage": {"candidate_count": len(candidates),
+                                      "scored_count": len(semantic_scores),
+                                      "pending_count": len(candidates) - len(semantic_scores)}}
