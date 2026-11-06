@@ -1,4 +1,4 @@
-# Qualification only. Production stays on ../Dockerfile until all gates pass.
+# Qualification only. Production stays on Dockerfile until all gates pass.
 # Retain the complete OpenShell/NemoClaw runtime, identities and supervisor.
 FROM ghcr.io/nvidia/nemoclaw/hermes-sandbox@sha256:f52d55af05b63302ca8ae54ca9141b80df433a72ce273ae4aeac08c5af2cb990
 USER root
@@ -39,7 +39,10 @@ RUN /opt/hermes/python-runtime/bin/python3 scripts/write_install_stamp.py \
       --output /opt/hermes/install-stamp.json --commit 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 \
       --base-version 0.23.0 --distance 0 --dirty --source homecompute --distribution docker --update-mechanism external \
     && /opt/hermes/python-runtime/bin/python3 -c 'import json; from pathlib import Path; p=Path("/opt/hermes/install-stamp.json"); d=json.loads(p.read_text()); d["pmRuntime"]="/opt/hermes/pm-runtime"; p.write_text(json.dumps(d)+"\n")'
-RUN node scripts/build/node-deps.mjs --source /opt/hermes --workspace ui-tui --workspace web \
+RUN /opt/hermes/python-runtime/bin/python3 -c 'from pm import ensure; ensure("node", explicit=True)'
+RUN hermes_node_dir="$(/opt/hermes/python-runtime/bin/python3 -c 'from pm import installed_package; print(installed_package("node").binary.parent)')" \
+    && export PATH="$hermes_node_dir:$PATH" \
+    && node scripts/build/node-deps.mjs --source /opt/hermes --workspace ui-tui --workspace web \
     && /opt/hermes/.venv/bin/python scripts/generate_icons.py --source /opt/hermes --out /tmp/hermes-icons \
     && node scripts/build/tui.mjs --source /opt/hermes --out /opt/products/tui \
     && node scripts/build/web.mjs --source /opt/hermes --icons /tmp/hermes-icons --out /opt/products/web \

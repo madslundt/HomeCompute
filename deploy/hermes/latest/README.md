@@ -18,7 +18,10 @@ the new source. Python 3.14.9 is the release's own `pm/lock.json` Linux x64 pin.
 The dependency environment is built through upstream PM with its frozen lock;
 the only dependency addition is the exact PyYAML extra used by NVIDIA's retained
 plugin. Regenerating that lock changed only the extra's metadata, not versions
-or artifact hashes. The managed CLI adapter must validate against the new parser.
+or artifact hashes. The managed CLI adapter must validate against the new parser. Frontend builds
+use the release-pinned Node 26.12.1; NVIDIA's Node 24 remains installed for its
+managed configuration and supervisor helpers. The source assembler binds Python
+imports, while the original console entrypoints retain NVIDIA's process identity.
 
 ## Integration review
 
@@ -51,7 +54,7 @@ touching the running sandbox:
 
 ```bash
 docker build --progress=plain \
-  --file deploy/hermes/latest/Dockerfile \
+  --file deploy/hermes/Dockerfile.latest \
   --tag homecompute/hermes-qualification:FULL_SHA deploy/hermes
 ```
 
