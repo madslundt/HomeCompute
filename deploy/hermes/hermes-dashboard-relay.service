@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=hermes-operator
 Group=hermes-operator
-ExecStart=/usr/bin/socat TCP4-LISTEN:18804,bind=10.77.20.2,reuseaddr,fork TCP4:127.0.0.1:18794
+ExecStart=/usr/bin/python3 @RELAY@
 Restart=on-failure
 RestartSec=3s
 NoNewPrivileges=true
@@ -16,6 +16,8 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 CapabilityBoundingSet=
+MemoryMax=128M
+TasksMax=32
 
 [Install]
 WantedBy=multi-user.target
