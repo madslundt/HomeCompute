@@ -198,6 +198,34 @@ required validation, and deploy the merged commit through the normal release
 procedure. Dependabot also opens weekly pull requests for GitHub Actions,
 Docker definitions, and the TTLock Python dependency.
 
+The updater runs `nix flake update` without committing. Its publish step checks
+for changes, configures the bot's Git identity, then commits and pushes only
+`flake.lock`. Using `--commit-lock-file` here commits before the identity is
+configured and hides the diff from the publish step. The regression check is
+`python3 tests/flake-update-workflow-test.py`; it exercises the workflow's shell
+steps against local Git repositories with synthetic Nix and GitHub commands.
+The push uses an explicit lease on the update branch's observed remote SHA;
+this works with a shallow default-branch checkout and refuses to overwrite a
+concurrent branch update. A missing remote branch uses an empty lease so only
+branch creation is allowed.
+
+GitHub must allow Actions to create pull requests. An administrator can apply
+the tracked repository setting from the repository root:
+
+```bash
+gh api --method PUT repos/madslundt/HomeCompute/actions/permissions/workflow \
+  --input config/github-actions-permissions.json
+gh api repos/madslundt/HomeCompute/actions/permissions/workflow
+```
+
+GitHub combines PR creation and review approval in the
+`can_approve_pull_request_reviews` setting. The updater only creates PRs;
+it does not approve or merge them. The default token permission stays `read`,
+with `contents: write` and `pull-requests: write` granted by the updater's
+workflow. PR validation triggered by `GITHUB_TOKEN` can require a maintainer
+to select **Approve workflows to run** before checks start; see
+[GitHub's workflow trigger documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+
 Update one dependency at a time when practical:
 
 ```bash

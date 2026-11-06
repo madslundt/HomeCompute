@@ -25,7 +25,9 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Update flake inputs
-        run: nix flake update --commit-lock-file
+        # The publish step owns the commit after checking for a lockfile diff
+        # and configuring the bot identity.
+        run: nix flake update
       - name: Create or refresh update pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,11 +40,13 @@ jobs:
           branch=automation/nix-flake-update
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch" || true
+          remote_ref="$(git ls-remote --heads origin "refs/heads/$branch")"
+          expected_revision="${remote_ref%%[[:space:]]*}"
           git switch -C "$branch"
           git add flake.lock
           git commit -m "chore: update Nix flake inputs"
-          git push --force-with-lease origin "$branch"
+          # checkout fetches only master; use an explicit lease for this branch.
+          git push --force-with-lease="refs/heads/$branch:$expected_revision" origin "$branch"
 
           if ! gh pr view "$branch" --json number >/dev/null 2>&1; then
             gh pr create \
