@@ -16,6 +16,7 @@ from typing import Any
 import urllib.request
 
 from assistant_context_store import ContextStore, Scope
+from assistant_context_tools import private_bytes
 from embedding_client import REVISION, MODEL, ENDPOINT, vectors, query_text, bounded_text
 from semantic_retrieval import lexical, cached_vector
 
@@ -26,15 +27,7 @@ class AuthenticatedHarrierClient:
         path = Path(credential_file)
         if not path.is_absolute():
             raise ValueError("Private Harrier credential required")
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        try:
-            info = os.fstat(fd)
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid not in {0, os.geteuid()}
-                    or stat.S_IMODE(info.st_mode) not in {0o400, 0o600} or info.st_size > 512):
-                raise ValueError("Private Harrier credential required")
-            token = os.read(fd, 513).decode("ascii").strip()
-        finally:
-            os.close(fd)
+        token = private_bytes(path, 512).decode("ascii").strip()
         if not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token):
             raise ValueError("Harrier credential refused")
         certificate = Path(__file__).resolve().parents[1] / "config/embedding-ca.crt"
