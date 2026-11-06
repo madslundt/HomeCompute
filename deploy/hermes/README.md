@@ -96,6 +96,21 @@ followed by native Ready/recovery, MCP, authenticated browser and normal
 stop/start verification. Its normal entry point requires published source;
 the incident receipt records any urgent source reconciliation.
 
+OpenShell 0.0.116 can retain terminal `Error` after the original container has
+recovered ([upstream report](https://github.com/NVIDIA/OpenShell/issues/3440)).
+For this incident's exact original identity and `MainProcessExited` condition,
+`scripts/recover-hermes-native-state.py --revision FULL_SHA --backup PRIVATE_TAR`
+plans an offline repair. Stop the selected gateway user service and original
+container, capture a fresh private whole-`/sandbox` archive, then use `--apply`.
+The tool requires the qualified CLI/image and exact native/container identities,
+backs up the native SQLite database, checks integrity and compares the original
+payload before updating only its phase byte from Error to Stopped. It preserves
+the failure condition, IDs, policies, credentials and recreate journal; it never
+asserts Ready. Restart the gateway, then use native `openshell sandbox start`
+and verify Ready, same container, authenticated access and state continuity.
+Keep both database and application backups until verification. A changed
+identity, condition or version requires fresh diagnosis, not broader matching.
+
 Hermes is being reintroduced alongside OpenClaw in the isolated Ubuntu agents
 VM. The owner uses the dedicated Mattermost bot `hermes-agent`; the existing
 n8n `hermes` identity is independent. Additional profiles are deferred.

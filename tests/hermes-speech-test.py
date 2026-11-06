@@ -27,6 +27,43 @@ client = load('speech_client', 'deploy/hermes/speech/client.py')
 recovery = load('speech_recovery', 'scripts/recover-hermes-dashboard.py')
 bridge = load('speech_bridge', 'scripts/setup-hermes-speech-bridge.py')
 incident = load('speech_incident', 'scripts/recover-hermes-webapp-port.py')
+native = load('speech_native', 'scripts/recover-hermes-native-state.py')
+
+
+class NativeRecoveryTest(unittest.TestCase):
+    @staticmethod
+    def encode_varint(value):
+        out = bytearray()
+        while value > 127:
+            out.append((value & 127) | 128); value >>= 7
+        return bytes(out) + bytes([value])
+
+    def item(self, field, value):
+        if isinstance(value, int):
+            return self.encode_varint(field << 3) + self.encode_varint(value)
+        return self.encode_varint((field << 3) | 2) + self.encode_varint(len(value)) + value
+
+    def payload(self, phase=3, reason=b'MainProcessExited', container=None):
+        metadata = self.item(1, native.ID.encode()) + self.item(2, native.NAME.encode())
+        condition = b''.join(self.item(n, value) for n, value in enumerate([
+            b'Ready', b'False', reason, b'Canonical main process exited'], 1))
+        runtime = b''.join([
+            self.item(1, ('openshell-default--' + native.NAME + '-' + native.ID).encode()),
+            self.item(2, container or native.CONTAINER.encode()), self.item(5, condition),
+            self.item(6, phase), self.item(7, 8), self.item(8, b'unchanged-generation')])
+        return self.item(1, metadata) + self.item(2, b'opaque-policy-and-credentials') + self.item(3, runtime)
+
+    def test_changes_exactly_one_phase_byte_and_preserves_identity_policy_and_condition(self):
+        before = self.payload(); after = native.candidate(before)
+        self.assertEqual(sum(a != b for a, b in zip(before, after)), 1)
+        self.assertEqual(after, self.payload(phase=7))
+        self.assertEqual(native.candidate(after), after)
+
+    def test_refuses_ready_foreign_container_different_failure_and_duplicate_runtime(self):
+        for raw in [self.payload(phase=1), self.payload(reason=b'PolicyRejected'),
+                    self.payload(container=b'foreign'), self.payload() + self.item(3, b'')]:
+            with self.subTest(raw=raw[-20:]):
+                with self.assertRaises(ValueError): native.candidate(raw)
 
 
 class PolicyTest(unittest.TestCase):
