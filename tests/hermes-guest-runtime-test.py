@@ -123,8 +123,12 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                     printf 'Probe timing: result=ready\\n'
                     ;;
                   hermes-personal\\ exec\\ --stdin\\ --\\ python3\\ -)
-                    cat >/dev/null
-                    printf '{{"rest_authenticated":true,"websocket_authenticated":true}}\\n'
+                    body="$(cat)"
+                    if [[ "$body" == *HERMES_INFERENCE_OK* ]]; then
+                      printf '{{"authenticated_inference":true,"model":"automation-moe"}}\\n'
+                    else
+                      printf '{{"rest_authenticated":true,"websocket_authenticated":true}}\\n'
+                    fi
                     ;;
                   hermes-personal\\ channels\\ status\\ *) printf '{{"connected":true}}\\n' ;;
                   hermes-personal\\ policy\\ add\\ *) printf 'policy applied\\n' ;;
@@ -331,6 +335,19 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         result = self.run_cli("health", env={"PATH": f"{bin_dir}:{os.environ['PATH']}"})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("credential appeared", result.stderr)
+
+    def test_health_requires_explicit_inference_when_status_is_suppressed(self):
+        bin_dir, _ = self.make_mock_nemohermes()
+        mock = bin_dir / 'nemohermes'
+        text = mock.read_text().replace('"inferenceHealth":{"ok":true}',
+                            '"inferenceHealth":null,"inferenceProbeSuppressed":true')
+        mock.write_text(text)
+        result = self.run_cli('health', env={'PATH': f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        mock.write_text(text.replace('"authenticated_inference":true', '"authenticated_inference":false'))
+        result = self.run_cli('health', env={'PATH': f"{bin_dir}:{os.environ['PATH']}"})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Explicit authenticated inference proof failed', result.stderr)
 
     def test_image_request_dump_hook_never_serializes_private_payloads(self):
         import importlib.util

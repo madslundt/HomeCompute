@@ -389,9 +389,13 @@ assert_runtime_versions() {
     '.agent == "hermes" and
      .phase == "Ready" and
      .openshellVersion == $openshell and
-     .inferenceHealth.ok == true and
+     (.inferenceHealth.ok == true or
+      (.inferenceProbeSuppressed == true and .inferenceHealth == null)) and
      ((.recordedRoute.model // .model) == $model)' "$status_json" >/dev/null ||
     die "Sandbox status does not match the reviewed runtime tuple; inspect $directory"
+  jq -e --arg model "$HERMES_MODEL" \
+    '.authenticated_inference == true and .model == $model' "$directory/inference-probe.stdout" >/dev/null ||
+    die "Explicit authenticated inference proof failed; inspect $directory"
   grep -Eq "(^|[^0-9])${EXPECTED_HERMES_VERSION}([^0-9]|$)" "$directory/hermes-version.stdout" ||
     die "Sandbox Hermes version is not ${EXPECTED_HERMES_VERSION}; inspect $directory"
   grep -Eq "(^|[^0-9])${EXPECTED_NEMOCLAW_VERSION}([^0-9]|$)" "$directory/nemoclaw-version.stdout" ||
@@ -422,6 +426,8 @@ health_for() {
   capture "$directory" inference-route nemohermes "$sandbox" inference get --json
   capture "$directory" hermes-version nemohermes "$sandbox" exec -- hermes --version
   capture "$directory" connect-probe nemohermes "$sandbox" connect --probe-only
+  capture "$directory" inference-probe nemohermes "$sandbox" exec --stdin -- python3 - \
+    <"$REPO_ROOT/deploy/hermes/probe_inference.py"
   capture "$directory" mattermost-status nemohermes "$sandbox" exec --stdin -- python3 - \
     <"$REPO_ROOT/deploy/hermes/probe_mattermost.py"
   assert_runtime_versions "$directory"
