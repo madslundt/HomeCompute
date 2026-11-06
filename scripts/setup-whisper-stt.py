@@ -382,6 +382,16 @@ def load_cuda_qualification_helper():
     return module
 
 
+def load_cuda_replacement_helper():
+    path = ROOT / 'scripts/whisper-cuda-replacement.py'
+    spec = importlib.util.spec_from_file_location('_homecompute_whisper_cuda_replacement', path)
+    if spec is None or spec.loader is None:
+        raise ValueError('Whisper CUDA replacement helper is unavailable')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def save(value):
     target = STATE / 'transaction.json'
     temporary = STATE / 'transaction.tmp'
@@ -2637,6 +2647,8 @@ def main():
                                            'runtime-candidate-status', 'cuda-candidate',
                                            'cuda-candidate-rollback', 'cuda-candidate-status',
                                            'cuda-candidate-qualify', 'cuda-candidate-promote',
+                                           'cuda-candidate-replace', 'cuda-candidate-replacement-recover',
+                                           'cuda-candidate-replacement-status',
                                            'reconcile-cuda-network'))
     parser.add_argument('--revision', required=True)
     parser.add_argument('--max-audio-seconds', type=int)
@@ -2655,7 +2667,7 @@ def main():
     if os.geteuid() != 0 or socket.gethostname().split('.')[0] != 'home-spark':
         raise ValueError('Run through sudo on home-spark')
     published(args.revision)
-    if args.action in {'runtime-candidate-status', 'cuda-candidate-status'}:
+    if args.action in {'runtime-candidate-status', 'cuda-candidate-status', 'cuda-candidate-replacement-status'}:
         if not STATE.exists() and not STATE.is_symlink():
             print(json.dumps({'revision': args.revision, 'state': 'absent', 'failure_id': None,
                               'candidate_exposed': False,
@@ -2680,6 +2692,8 @@ def main():
                 fcntl.flock(stream, fcntl.LOCK_SH | fcntl.LOCK_NB)
             if args.action == 'runtime-candidate-status':
                 candidate_status(args.revision)
+            elif args.action == 'cuda-candidate-replacement-status':
+                print(json.dumps(load_cuda_replacement_helper().status(SimpleNamespace(**globals()), args.revision)))
             else:
                 cuda_candidate_status(args.revision)
         return
@@ -2693,6 +2707,9 @@ def main():
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             signal.signal(sig, lambda *_: (_ for _ in ()).throw(InterruptedError('Interrupted')))
+        replacement = load_cuda_replacement_helper()
+        if args.action not in {'cuda-candidate-replace', 'cuda-candidate-replacement-recover'}:
+            replacement.require_no_pending(SimpleNamespace(**globals()))
         if args.action == 'prepare': prepare()
         elif args.action == 'prepare-runtime-candidate': prepare_runtime_candidate()
         elif args.action == 'prepare-cuda-candidate': prepare_cuda_candidate(args.revision)
@@ -2724,6 +2741,13 @@ def main():
             if outcome['state'] != 'completed' or outcome['rollback'] != 'completed':
                 raise CudaQualificationFailure(outcome)
         elif args.action == 'cuda-candidate-promote': promote_qualified_cuda_candidate(args.revision)
+        elif args.action == 'cuda-candidate-replace':
+            outcome = replacement.replace(SimpleNamespace(**globals()), args.revision)
+            print(json.dumps(outcome, sort_keys=True))
+            if outcome['state'] != 'completed':
+                raise ValueError('Previous runtime restored; replacement is not deployed')
+        elif args.action == 'cuda-candidate-replacement-recover':
+            print(json.dumps(replacement.recover(SimpleNamespace(**globals()), args.revision), sort_keys=True))
         elif args.action == 'reconcile-cuda-network': reconcile_cuda_network(args.revision)
         else:
             journal = STATE / 'transaction.json'; protected(journal)

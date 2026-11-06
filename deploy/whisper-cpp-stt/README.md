@@ -424,6 +424,79 @@ accepts only one language cannot align `mixed`; consumers must retain canonical
 text/native segments and report unsupported alignment rather than force a
 single language. The up-to-30-second response contract is unchanged.
 
+## Replace an already-promoted CPP runtime
+
+The replacement action is enabled only after this release pins a separately
+qualified replacement image. It never rebuilds that model image: its build
+source revision remains the immutable revision recorded by the qualification.
+Complete full-recording, repeated-request, timestamp, resource, and client-path
+checks before updating the qualified image, catalog, image tracking and
+maintenance declarations. Short Daythread windows alone do not qualify the
+shared 1,200-second recording route.
+
+Once the reviewed release is published, stage its exact bootstrap through the
+existing private staging procedure. The operator's one privileged command is:
+
+```bash
+sudo python3 -I -B /tmp/homecompute-whisper-stt.TOKEN/bootstrap-whisper-stt.py \
+  --revision FULL_SHA --action cuda-candidate-replace
+```
+
+Use an attended terminal if sudo requires authentication; neither Docker
+access nor a temporary host edit substitutes for this lifecycle. The action
+holds all four existing locks and verifies the active root-owned CUDA journal,
+healthy predecessor model/relay, exact retained images, source-owned networks,
+and clean published old release before touching services. The previous journal's
+revision selects only its rollback implementation; the image's build SHA or a
+Compose label is not used as a substitute. It also materializes and verifies
+published recovery release `6b5359fbb8af1461aa83e8146af0cc5d88fbd5f1`, whose
+explicit `10.253.73.0/28` internal subnet avoids the older release's automatic
+address allocation. Both replacement and recovery Compose declarations and
+host/Docker route overlap checks pass before gating. The recovery release's
+maintenance bundle must match both the active journal and the actually installed
+files, verified without installing anything; unknown or newer unrelated bundle
+changes stop preflight for a separately reviewed predecessor source. Both the
+old and target maintenance bundle hashes are recorded. Recovery checks each
+installed file and generated dispatcher against those two exact versions, with
+root ownership and exact modes: an interrupted install of our own bundle can
+recover, but unrelated later updates cannot be silently overwritten. The
+retained vLLM engine must still have its reviewed 0.08 GPU reservation and 12-GiB memory limit, with at least
+12 GiB currently available. These checks are not GPU startup proof; native GPU
+placement, readiness, post-load headroom and authenticated smokes remain gates.
+
+An outer, journaled intake gate spans the old release's guarded rollback and
+the new release's guarded promotion. The old CPP model stops before vLLM is
+restored, and vLLM stops before the new CPP model loads. Promotion smokes run
+inside the bridged relay container (its own loopback port 8007 and the private
+adapter on port 8000), so the host OUTPUT gate does not block them. No new
+host clients are admitted during the transition.
+
+On failure, recovery uses each active transaction owner's rollback path and the
+verified `6b5359f` release to restore the previous exact model and relay images,
+with the recorded, byte-identical predecessor maintenance bundle. Its new inner
+journal records `6b5359f` as the recovery owner. A rolled-back inner journal with
+an active gate still requires its owning lifecycle to complete gate cleanup
+before any new journal can be created. Recovery does not rebuild those artifacts; container identities may
+change when restoring them. Preserve the old immutable release, images,
+retained vLLM/original relay containers, and both journals. Unknown state,
+native busy state, missing artifacts or failed recovery keep intake held.
+Inspect or retry recovery through the same new release:
+
+```bash
+sudo python3 -I -B /tmp/homecompute-whisper-stt.TOKEN/bootstrap-whisper-stt.py \
+  --revision FULL_SHA --action cuda-candidate-replacement-status
+sudo python3 -I -B /tmp/homecompute-whisper-stt.TOKEN/bootstrap-whisper-stt.py \
+  --revision FULL_SHA --action cuda-candidate-replacement-recover
+```
+
+Re-running `cuda-candidate-replace` after an interruption finishes recovery
+first and reports `restored`, with a nonzero exit because deployment has not
+completed. A later explicit replacement attempt can then start afresh. A
+completed replacement is idempotent only while the exact new service remains
+healthy and both intake gates are clear. The explicit recovery action can also
+restore the recorded predecessor after a completed replacement. Never delete
+the replacement journal or flush firewall rules to bypass a held recovery.
+
 The intake gate treats only successful `iptables -w -S` and `-S OUTPUT`
 snapshots as evidence that a nonce chain or jump is absent. Command errors,
 incomplete listings, conditional jumps, or unexpected rules fail closed. It

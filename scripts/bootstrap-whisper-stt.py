@@ -22,7 +22,8 @@ RELEASES=Path('/srv/homecompute/releases')
 ACTIONS=('prepare','prepare-runtime-candidate','prepare-cuda-candidate','apply','install','retire','rollback','status','smoke',
          'runtime-candidate','runtime-candidate-rollback','runtime-candidate-status',
          'cuda-candidate','cuda-candidate-rollback','cuda-candidate-status','cuda-candidate-qualify',
-         'cuda-candidate-promote','reconcile-cuda-network')
+         'cuda-candidate-promote','cuda-candidate-replace','cuda-candidate-replacement-recover',
+         'cuda-candidate-replacement-status','reconcile-cuda-network')
 
 
 def run(arguments):
