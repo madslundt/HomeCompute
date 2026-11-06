@@ -1,0 +1,7 @@
+# Exact reviewed ARM64 overlay; preserve base NVIDIA Torch. Install --no-deps --require-hashes.
+transformers==5.22.1 --hash=sha256:c940b4bf98de4f568723895f330ba1460a398bd83061b93b70238c3fe32e4389
+huggingface-hub==1.31.0 --hash=sha256:9dbb6a503cbe2494ea666695207e7262d410659e09134059deb83e5480864667
+tokenizers==0.23.1 --hash=sha256:1bf13402aff9bc533c89cb849ec3b412dc3fbeacc9744840e423d7bf3f7dc0e3
+safetensors==0.8.0 --hash=sha256:7a46e5ff292c356d6991e60942ba7f79817682d3a2cef0702136448cb9c4d235
+hf-xet==1.5.2 --hash=sha256:7db73c810500c54c6760be8c39d4b2e476974de85424c50063efc22fdda13025
+click==8.4.2 --hash=sha256:e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76
