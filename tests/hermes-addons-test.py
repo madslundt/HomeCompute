@@ -1,7 +1,12 @@
 """Ingress migration guards and preservation of the established client paths."""
 import importlib.util
+import hashlib
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('hermes_ingress', ROOT / 'scripts/setup-hermes-dashboard-ingress.py')
@@ -44,6 +49,34 @@ class DashboardIngressTest(unittest.TestCase):
         self.assertIn('header_up X-Forwarded-Prefix /hermes', block)
         self.assertNotIn('header_up Host', block)
         self.assertNotIn('Authorization', block)
+
+
+class NativeTransferTest(unittest.TestCase):
+    def test_large_wheel_uses_bounded_verified_parts_and_refuses_corruption(self):
+        spec = importlib.util.spec_from_file_location('addons', ROOT / 'scripts/setup-hermes-addons.py')
+        addons = importlib.util.module_from_spec(spec); spec.loader.exec_module(addons)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source = root / 'synthetic.whl'
+            source.write_bytes(b'synthetic-wheel-data' * 450000)
+            expected = hashlib.sha256(source.read_bytes()).hexdigest()
+            received = []
+
+            def native(args, data=None):
+                if data is not None:
+                    self.assertLessEqual(len(data), 512 * 1024)
+                    received.append(len(data))
+                index = args.index('-c')
+                return subprocess.check_output([sys.executable, *args[index:]], input=data, stderr=subprocess.PIPE)
+
+            with patch.object(addons, 'REMOTE', str(root / 'sandbox')), patch.object(addons, 'call', native):
+                addons.upload_asset(['native'], source, expected)
+                self.assertGreater(len(received), 1)
+                self.assertEqual((root / 'sandbox/synthetic.whl').read_bytes(), source.read_bytes())
+                addons.upload_asset(['native'], source, expected)
+                (root / 'sandbox/synthetic.whl.part-0').write_bytes(b'unknown edit')
+                with self.assertRaises(subprocess.CalledProcessError):
+                    addons.upload_asset(['native'], source, expected)
 
 
 if __name__ == '__main__':

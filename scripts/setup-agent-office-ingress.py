@@ -20,6 +20,7 @@ HOMEPAGE = 'homecompute-homepage-homepage-1'
 STATE = Path('/var/lib/homecompute-agent-office')
 ATTACHED = Path('/etc/systemd/system.attached')
 UNITS = ('homecompute-agent-office-firewall.service', 'homecompute-agent-office-proxy.service')
+CADDY_PATHS = {Path('/opt/homecompute/mattermost/control-plane.Caddyfile')}
 
 
 def sha(data): return hashlib.sha256(data).hexdigest()
@@ -124,7 +125,7 @@ def maintenance_evidence():
 def plan():
     caddy,homepage=inspect(CADDY),inspect(HOMEPAGE)
     caddy_path=mount(caddy,'/etc/caddy/Caddyfile')
-    if caddy_path!=Path('/opt/homecompute/mattermost/control-plane.Caddyfile'):
+    if caddy_path not in CADDY_PATHS:
         raise ValueError('review-current-caddy-path')
     explicit=[x for x in homepage['Mounts'] if x['Destination']=='/app/config/services.yaml']
     if explicit:

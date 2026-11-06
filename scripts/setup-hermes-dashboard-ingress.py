@@ -37,6 +37,10 @@ def main():
     # Reuse the proven exact-file/mount/hash, release, lock, Nix-unit, private
     # backup and rollback lifecycle. Only these two source-owned units change.
     core.__doc__ = __doc__
+    deployed = Path('/srv/homecompute/current').resolve()
+    if deployed.parent != Path('/srv/homecompute/releases') or not re.fullmatch('[0-9a-f]{40}', deployed.name):
+        raise ValueError('canonical-deployed-release-required')
+    core.CADDY_PATHS = core.CADDY_PATHS | {deployed / 'deploy/control-plane/Caddyfile'}
     core.STATE = Path('/var/lib/homecompute-hermes-dashboard')
     core.UNITS = ('homecompute-hermes-dashboard-firewall.service',
                   'homecompute-hermes-dashboard-proxy.service')
