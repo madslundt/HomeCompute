@@ -121,6 +121,25 @@ class PartitionTests(unittest.TestCase):
             observe.assert_not_called()
 
 
+class SharedObservationTests(unittest.TestCase):
+    def test_public_helper_observes_only_normalized_pcm_and_returns_validated_probabilities(self):
+        original = source(48001)
+        values = tuple(probabilities(48001))
+        observe = Mock(return_value=values)
+        self.assertEqual(B.observed_probabilities(original, observe=observe), list(values))
+        observe.assert_called_once_with(B._normalized_pcm(pcm(original)))
+        self.assertEqual(B.VERSION,
+            "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-v2")
+
+    def test_public_helper_rejects_invalid_last_frame_and_propagates_model_failure(self):
+        for value in (math.nan, math.inf, True, -0.1, 1.1):
+            values = probabilities(48001); values[-1] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                B.observed_probabilities(source(48001), observe=lambda _: values)
+        with self.assertRaisesRegex(RuntimeError, "synthetic"):
+            B.observed_probabilities(source(), observe=Mock(side_effect=RuntimeError("synthetic")))
+
+
 class WholeRecordingTests(unittest.TestCase):
     def test_global_observation_before_thirty_second_cuts_merges_language_context(self):
         frames = 53 * 16000

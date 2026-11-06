@@ -26,6 +26,11 @@ _BOUNDARY_SPEC = importlib.util.spec_from_file_location(
 _BOUNDARIES = importlib.util.module_from_spec(_BOUNDARY_SPEC)
 _BOUNDARY_SPEC.loader.exec_module(_BOUNDARIES)
 
+_NON_SPEECH_SPEC = importlib.util.spec_from_file_location(
+    "whisper_non_speech", Path(__file__).with_name("non_speech.py"))
+_NON_SPEECH = importlib.util.module_from_spec(_NON_SPEECH_SPEC)
+_NON_SPEECH_SPEC.loader.exec_module(_NON_SPEECH)
+
 
 def verify_detector():
     _VAD.verify_model()
@@ -109,13 +114,14 @@ def candidate(audio: bytes, result: dict):
 
 
 def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock=time.monotonic,
-               language_boundaries=False):
+               language_boundaries=False, filter_non_speech=False):
     """At most one additional native call per <=30s window; no recursive retries."""
     deadline = clock() + timeout
     response_bytes, native_calls = 0, 0
     audits = []
     boundary_audits = []
     proposal_audits = []
+    non_speech_audits = []
     language_probes = 0
 
     def call(data, fields=None):
@@ -133,8 +139,28 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
             raise codec.RequestError(502, "Speech backend response is too large")
         return raw
 
+    def asr(offset, seconds, data):
+        raw = call(data)
+        if not filter_non_speech:
+            return raw
+        normalized, _ = codec.normalize_native_response(raw, "verbose_json", seconds)
+        result = json.loads(normalized)
+        try:
+            observation = _NON_SPEECH.decision(
+                data, result, normalized_observation=lambda value:
+                _BOUNDARIES.observed_probabilities(value, observe=activity))
+        except Exception:
+            raise codec.RequestError(502, "Non-speech observation unavailable") from None
+        if observation is None:
+            return raw
+        non_speech_audits.append({"source_start_frame": round(offset * RATE), **observation})
+        # No language or text anchor is inferred from a non-speech decision.
+        # Keep native producer identity in the authenticated response headers.
+        return json.dumps({"task": result.get("task"), "duration": seconds,
+                           "text": "", "segments": []}, separators=(",", ":")).encode()
+
     def one(offset, window_duration, window):
-        raw = call(window)
+        raw = asr(offset, window_duration, window)
         normalized, _ = codec.normalize_native_response(raw, "verbose_json", window_duration)
         try:
             tail = candidate(window, json.loads(normalized))
@@ -143,7 +169,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
         if tail is None:
             return raw
         seek, frames, suffix = tail
-        extra = call(suffix)
+        extra = asr(offset + seek / RATE, (frames - seek) / RATE, suffix)
         combined, _ = codec.combine_native_windows(
             [(0, window_duration, raw), (seek / RATE, (frames - seek) / RATE, extra)],
             "verbose_json", window_duration)
@@ -230,7 +256,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                                                     "asr_language_windows": actual})
                     yield offset, seconds, raw
         payload, content_type = codec.combine_native_windows(responses(), "verbose_json", duration)
-    if audits or boundary_audits:
+    if audits or boundary_audits or non_speech_audits:
         value = json.loads(payload)
         if audits:
             value["suffix_recovery"] = {"version": VERSION, "windows": audits,
@@ -244,6 +270,11 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                 "asr_pcm_unchanged": True, "source_frames_conserved": True,
                 "coverage_claim": False,
             }
+        if non_speech_audits:
+            value["non_speech_filter"] = {"version": _NON_SPEECH.VERSION,
+                                          "windows": non_speech_audits,
+                                          "native_calls": native_calls,
+                                          "coverage_claim": False}
         payload = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
         if len(payload) > codec.MAX_RESPONSE_BYTES:
             raise codec.RequestError(502, "Speech backend response is too large")

@@ -70,6 +70,7 @@ class CandidateConfig:
     device: str = "cpu"
     recover_trailing_speech: bool = False
     language_boundaries: bool = False
+    filter_non_speech: bool = False
 
 
 def _bounded_env(name: str, default: int, maximum: int) -> int:
@@ -106,6 +107,9 @@ def load_config() -> CandidateConfig:
     if (boundaries == "true"
             and max_audio_seconds > _RECOVERY_MODULE._BOUNDARIES.MAX_SAMPLES // 16000):
         raise ValueError("WHISPER_CPP_LANGUAGE_BOUNDARIES supports at most 1200 seconds")
+    non_speech = os.environ.get("WHISPER_CPP_FILTER_NON_SPEECH", "false")
+    if non_speech not in {"true", "false"} or non_speech == "true" and recovery != "true":
+        raise ValueError("invalid WHISPER_CPP_FILTER_NON_SPEECH")
     if recovery == "true":
         _RECOVERY_MODULE.verify_detector()
     return CandidateConfig(
@@ -121,6 +125,7 @@ def load_config() -> CandidateConfig:
         device=device,
         recover_trailing_speech=recovery == "true",
         language_boundaries=boundaries == "true",
+        filter_non_speech=non_speech == "true",
     )
 
 
@@ -186,12 +191,13 @@ def _native_request(body: bytes, content_type: str, timeout: float) -> bytes:
 def transcribe_audio(audio: bytes, duration: float, response_format: str,
                      native_fields: list[tuple[str, str]], timeout: int, *,
                      recover_trailing_speech: bool = False,
-                     language_boundaries: bool = False) -> tuple[bytes, str]:
+                     language_boundaries: bool = False,
+                     filter_non_speech: bool = False) -> tuple[bytes, str]:
     if (recover_trailing_speech and response_format == "verbose_json"
             and dict(native_fields).get("no_timestamps", "false") == "false"):
         return _RECOVERY_MODULE.transcribe(
             audio, duration, native_fields, timeout, request=_native_request, codec=_CODEC_MODULE,
-            language_boundaries=language_boundaries)
+            language_boundaries=language_boundaries, filter_non_speech=filter_non_speech)
     if duration <= NATIVE_WINDOW_SECONDS or "language_candidates" not in dict(native_fields):
         # Preserve the qualified production request boundary unless explicitly
         # opting into per-window detection with a language candidate profile.
@@ -345,6 +351,15 @@ class CandidateHandler(BaseHTTPRequestHandler):
                     "language_probe": "native_detect_language_only",
                     "asr_audio": "original_pcm",
                 },
+                "non_speech_policy": {
+                    "enabled": self.server.config.filter_non_speech,
+                    "version": _RECOVERY_MODULE._NON_SPEECH.VERSION,
+                    "requires": "verbose_json_with_timestamps",
+                    "exact_zero_pcm": True,
+                    "minimum_nonzero_seconds": 3,
+                    "native_no_speech_minimum": 0.6,
+                    "normalized_vad_maximum_exclusive": 0.5,
+                },
             }, sort_keys=True).encode())
             return
         if self.path != "/v1/models":
@@ -397,7 +412,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
             payload, content_type = transcribe_audio(
                 audio, duration, response_format, native_fields, self.server.config.native_timeout_seconds,
                 recover_trailing_speech=self.server.config.recover_trailing_speech,
-                language_boundaries=self.server.config.language_boundaries)
+                language_boundaries=self.server.config.language_boundaries,
+                filter_non_speech=self.server.config.filter_non_speech)
             self.respond(200, payload, content_type, provenance=True)
         except RequestError as error:
             self.respond(error.status, json.dumps({"error": error.message}).encode())

@@ -91,8 +91,25 @@ without claiming speech completeness. The one-suffix limit applies per decoded
 window. The minimum proposal length bounds a 1,200-second upload to at most
 400 probes; each decoded window permits one original and at most one suffix ASR
 call. Explicit language or translation requests keep their existing behavior.
-The diagnostic overlay enables both flags; canonical builds keep both off.
+The diagnostic overlay enables these flags; canonical builds keep them off.
 This remains unqualified for production.
+
+`WHISPER_CPP_FILTER_NON_SPEECH=true` adds a separate opt-in response decision to
+the verified CUDA recovery path. It requires timestamped verbose responses.
+After each original or suffix ASR call, exact all-zero PCM can authorize empty
+text independently of model predictions. Nonzero audio must contain at least
+three seconds, every nonempty native segment must report a finite no-speech
+probability of at least 0.6, and the normalized-copy detector's maximum probability
+must be below 0.5. Either positive signal preserves the complete native response;
+missing native confidence also preserves it. Failed detector observations return
+an error. No hypothesis phrase or RMS threshold authorizes removal.
+
+The empty response contains no invented language or timing anchors.
+`non_speech_filter` records source geometry and numeric decision evidence, without
+claiming speech completeness. The same deadline and response budget still apply.
+The diagnostic image enables this flag too; canonical builds default to off.
+Qualification must include known non-speech, quiet and attenuated speech positives,
+untouched human-reference tests, mixed-language retention and long recordings.
 
 For a recording known to contain Danish and English, an experimental request can
 set `language_candidates=da,en` while leaving `language=auto`. Each native window

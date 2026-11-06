@@ -84,13 +84,8 @@ def _bounded_ranges(begin: int, end: int):
         begin += count
 
 
-def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> list[tuple[float, float, bytes]]:
-    """Observe <=1200s globally, then propose sample-conserving <=30s atoms.
-
-    Acoustic proposals precede fixed ASR windows, so language regions can cross
-    old thirty-second boundaries. Only complete frames bound pause candidates;
-    every observation, including the partial final frame, must be valid.
-    """
+def observed_probabilities(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> list[float]:
+    """Validate probabilities from the unchanged normalized detector-copy policy."""
     frames, pcm = _read_pcm(audio)
     probabilities = observe(_normalized_pcm(pcm))
     if not isinstance(probabilities, (list, tuple)) or len(probabilities) != (frames + 511) // 512:
@@ -98,6 +93,18 @@ def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> 
     for value in probabilities:
         if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1:
             raise ValueError("Invalid speech observation")
+    return list(probabilities)
+
+
+def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> list[tuple[float, float, bytes]]:
+    """Observe <=1200s globally, then propose sample-conserving <=30s atoms.
+
+    Acoustic proposals precede fixed ASR windows, so language regions can cross
+    old thirty-second boundaries. Only complete frames bound pause candidates;
+    every observation, including the partial final frame, must be valid.
+    """
+    probabilities = observed_probabilities(audio, observe=observe)
+    frames, pcm = _read_pcm(audio)
     cuts = [0]
     pause_start = None
     for index in range(frames // FRAME_SAMPLES):
