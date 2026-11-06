@@ -1,0 +1,59 @@
+# Private source selection bootstrap
+
+The source collector's non-secret selection is kept at
+`/var/lib/homecompute-assistant/context-sync.json`, owned by
+`homecompute-openclaw` with mode `0600` inside its mode `0700` directory. Keep
+the file and all profile selections outside Git. The tracked
+[`assistant-context-sync.example.json`](../../config/assistant-context-sync.example.json)
+is the verified baseline for the source-owned builder.
+
+Run `scripts/setup-assistant-context-sync.py` from the exact published HomeCompute
+release on `home-core` as `homecompute-openclaw`. It accepts only a small JSON
+selection on stdin, currently `{"aula_profile_ids":[]}` when Aula has not been
+explicitly selected. For Aula, supply only numeric profile IDs chosen by the
+owner from a current authorized profile discovery. Names, IDs, or associations
+must not be inferred from the source data. Until selection is explicit, the
+builder leaves Aula disabled. Input must remain private and outside Git.
+
+Before planning or applying, the helper checks that its checkout is the exact
+root-owned, non-group/world-writable `/srv/homecompute/releases/FULL_SHA`
+directory, that `HEAD` and ancestry match the published revision, and that the
+helper and tracked example bytes equal `git show FULL_SHA:path`. Git's
+`safe.directory` exception is scoped to that validated path and one command; no
+global Git trust setting is changed.
+
+The builder fixes the other requested scope: Home Assistant's existing bounded
+projection, Calendar aliases `mads` and `family` over a rolling Copenhagen
+window of one prior day and seven future days, and the owner-confirmed personal
+Daythread export at `daythread.home.arpa`. It emits only counts, fixed scope
+metadata, file state, and hashes; it never prints the profile IDs or generated
+configuration.
+
+First call `plan --revision FULL_PUBLISHED_SHA`, review the state and plan hash,
+then call `apply` with the same selection, revision, and
+`--expected-plan-sha256 PLAN_HASH`. The plan binds the full source revision,
+tracked example hash, generated config hash, and current target preimage. Apply
+creates the private config atomically and refuses drift or an unsafe target.
+Applying this config does not enable or start a collector, timer, or sync job;
+the normal HomeCompute service qualification and activation remain separate.
+
+Pass the selection through a protected file on stdin so profile IDs do not enter
+command arguments or shell history:
+
+```sh
+python3 scripts/setup-assistant-context-sync.py plan --revision FULL_PUBLISHED_SHA \
+  < /run/private/assistant-context-selection.json
+python3 scripts/setup-assistant-context-sync.py apply --revision FULL_PUBLISHED_SHA \
+  --expected-plan-sha256 PLAN_HASH < /run/private/assistant-context-selection.json
+```
+
+The private input has exactly one field, `aula_profile_ids`, containing the
+explicitly selected numeric profile IDs; use an empty list while Aula is not
+selected. Keep that temporary input owner-only and remove it after apply.
+See the [source coverage and collection limitations](../../automations/assistant-context/README.md).
+
+Synthetic contract checks:
+
+```sh
+python3 tests/assistant-context-sync-config-test.py
+```

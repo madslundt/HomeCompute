@@ -139,7 +139,9 @@ class NASRecoverySetupTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary,patch.object(setup,'STATE',Path(temporary)):
             root=Path(temporary);application=root/'nas-application';application.mkdir(mode=0o700)
             manifest=application/'manifest.json';manifest.write_bytes(b'{"synthetic":true}')
+            calls=[]
             def run(arguments,**kwargs):
+                calls.append(arguments)
                 if 'restore-application' in arguments:return subprocess.CompletedProcess(arguments,0,json.dumps({'restored_archive':'/private/archive.tar'}),'')
                 if 'verify' in arguments:return subprocess.CompletedProcess(arguments,0,json.dumps({'sqlite_integrity':'ok'}),'')
                 return subprocess.CompletedProcess(arguments,0,'','')
@@ -148,6 +150,30 @@ class NASRecoverySetupTest(unittest.TestCase):
                 result=setup.operation('restore-verify',{'version':'/reviewed','qemu_bin':'/nix/store/synthetic/bin'},args)
             self.assertEqual(result['restore_directory'],str(application.resolve()))
             self.assertEqual(result['manifest_sha256'],hashlib.sha256(manifest.read_bytes()).hexdigest())
+            self.assertEqual(result['restored_archive_reused'],False)
+            self.assertNotIn('source_revision',result)
+            self.assertTrue(any('/reviewed/scripts/application-recovery.py' in row and 'verify' in row for row in calls))
+            self.assertEqual(json.loads((root/'last-application-verification.json').read_bytes()),result)
+
+    def test_restore_verify_uses_explicit_published_application_verifier_before_download(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(setup, 'STATE', Path(temporary)), \
+                patch.object(setup, 'SCRATCH', Path(temporary)), patch.object(setup, 'bundle', return_value=({}, 'bundle')) as bundle, \
+                patch.object(setup, 'published') as published, patch.object(setup, 'run'), \
+                patch.object(setup, 'restore_run', side_effect=[
+                    subprocess.CompletedProcess([], 0, '{"restored_archive":"/private/archive.tar"}', ''),
+                    subprocess.CompletedProcess([], 0, '{"sqlite_integrity":"ok","sqlite_databases_checked":39,"gzip_dumps_checked":4,"qcow2_disks_checked":3,"agents_seed_verified":true,"postgres_import_verified":false,"vm_boot_verified":false,"media_included":false}', '')
+                ]) as restore_run:
+            root=Path(temporary); application=root/'restore-application'; application.mkdir(mode=0o700)
+            manifest=application/'manifest.json'; manifest.write_bytes(b'{"synthetic":true}')
+            args=SimpleNamespace(snapshot='a'*64,archive='exact.tar',target=root/'restore',
+                revision='b'*40,source=root/'published')
+            result=setup.operation('restore-verify',{'version':'/installed','qemu_bin':'/nix/store/qemu/bin'},args)
+            published.assert_called_once_with(args.source,args.revision,{})
+            bundle.assert_called_once_with(args.source)
+            self.assertEqual(result['source_revision'],args.revision)
+            self.assertFalse(result['restored_archive_reused'])
+            self.assertIn(str(args.source/'scripts/application-recovery.py'),restore_run.call_args_list[1].args[0])
+            self.assertIn('verify',restore_run.call_args_list[1].args[0])
             self.assertEqual(json.loads((root/'last-application-verification.json').read_bytes()),result)
 
     def test_restore_and_extraction_use_idle_io_so_live_guests_can_recover(self):

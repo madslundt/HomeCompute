@@ -35,6 +35,17 @@ DEST = Path('/opt/homecompute/openclaw-communication')
 UNIT = Path('/etc/systemd/system.attached/homecompute-openclaw-adapter.service')
 STATE = Path('/var/lib/homecompute-assistant-context-bridge')
 CONTEXT_SERVICE = 'homecompute-assistant-context.service'
+CONTEXT_SERVICE_FRAGMENT = '/etc/systemd/system/homecompute-assistant-context.service'
+CONTEXT_CLIENTS_SOURCE = '/etc/homecompute/assistant-context-clients.json'
+CONTEXT_ALLOWED_CREDENTIALS = {
+    'clients': CONTEXT_CLIENTS_SOURCE,
+    'inference-ca': '/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt',
+    'embedding': '/etc/homecompute/assistant-context-embedding.json',
+    'briefing': '/etc/homecompute/assistant-context-briefing.json',
+    'openclaw_worker_ssh_key': '/etc/homecompute/assistant-context-worker/id_ed25519',
+    'openclaw_worker_known_hosts': '/etc/homecompute/assistant-context-worker/known_hosts',
+    'delivery': '/etc/homecompute-assistant-context/delivery-auth.json',
+}
 ADAPTER_SERVICE = 'homecompute-openclaw-adapter.service'
 CONTEXT_ENDPOINT = ('127.0.0.1', 18826)
 BRIDGE_ENDPOINT = ('127.0.0.1', 18793)
@@ -74,11 +85,12 @@ def canonical(value: Any) -> bytes:
     return (json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode()
 
 
-def run(args: list[str], *, check: bool = True, timeout: int = 30) -> str:
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+def run(args: list[str], *, check: bool = True, timeout: int = 30,
+        binary: bool = False) -> str | bytes:
+    result = subprocess.run(args, capture_output=True, text=not binary, timeout=timeout)
     if check and result.returncode:
         raise ValueError('fixed bridge lifecycle command failed; inspect private state')
-    return result.stdout.strip()
+    return result.stdout if binary else result.stdout.strip()
 
 
 def _safe_file(path: Path, uid: int | set[int], mode: int | set[int], limit: int = 65536) -> bytes:
@@ -173,9 +185,10 @@ class Layout:
 class BridgeLifecycle:
     """Hash-bound installer for two code files, one client file, and one unit argument."""
 
-    def __init__(self, *, layout: Layout = Layout(), command: Callable[..., str] = run,
+    def __init__(self, *, layout: Layout = Layout(), command: Callable[..., str | bytes] = run,
                  service_uid: int | None = None, service_gid: int | None = None,
                  root_uid: int = 0, root_gid: int = 0,
+                 releases_dir: Path = Path('/srv/homecompute/releases'),
                  context_health: Callable[[str], dict[str, Any]] | None = None,
                  tool_inventory: Callable[[str], set[str]] | None = None,
                  renderer: Callable[[], str] | None = None):
@@ -184,6 +197,7 @@ class BridgeLifecycle:
         self.service_uid = service_uid if service_uid is not None else pwd.getpwnam(USER).pw_uid
         self.service_gid = service_gid if service_gid is not None else pwd.getpwnam(USER).pw_gid
         self.root_uid, self.root_gid = root_uid, root_gid
+        self.releases_dir = releases_dir
         self._health = context_health or self._context_health
         self._inventory = tool_inventory or self._tool_inventory
         self._render = renderer or self._render_installed_adapter_unit
@@ -192,18 +206,33 @@ class BridgeLifecycle:
         if (not isinstance(revision, str) or len(revision) != 40
                 or any(char not in '0123456789abcdef' for char in revision)):
             raise ValueError('full lowercase published revision required')
+        root = self.layout.root
+        try:
+            root_info = root.lstat()
+        except OSError:
+            raise ValueError('exact published source release is unavailable') from None
+        if (root != self.releases_dir / revision
+                or not stat.S_ISDIR(root_info.st_mode) or stat.S_ISLNK(root_info.st_mode)
+                or root_info.st_uid != self.root_uid or stat.S_IMODE(root_info.st_mode) & 0o022):
+            raise ValueError('root-owned immutable published source release required')
         if self.command(['git', '-C', str(self.layout.root), 'rev-parse', 'HEAD']) != revision:
             raise ValueError('selected source checkout revision differs')
         self.command(['git', '-C', str(self.layout.root), 'merge-base', '--is-ancestor', revision, 'origin/master'])
         paths = ['scripts/openclaw-communication.py', 'scripts/assistant_context_tools.py',
                  'scripts/setup-assistant-context-bridge.py']
-        self.command(['git', '-C', str(self.layout.root), 'diff', '--exit-code', 'HEAD', '--', *paths])
-        # New files must be part of the immutable selected tree, not untracked worktree state.
         for rel in paths:
             source = self.layout.root / rel
-            if not source.is_file() or source.is_symlink():
-                raise ValueError('selected published context bridge source is missing')
-            self.command(['git', '-C', str(self.layout.root), 'cat-file', '-e', f'{revision}:{rel}'])
+            try:
+                info = source.lstat()
+                if (not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
+                        or info.st_uid != self.root_uid or stat.S_IMODE(info.st_mode) & 0o022):
+                    raise ValueError('published context bridge source ownership or mode differs')
+                tracked = self.command(['git', '-C', str(root), 'show', f'{revision}:{rel}'], binary=True)
+                local = source.read_bytes()
+            except (OSError, subprocess.SubprocessError):
+                raise ValueError('selected published context bridge source cannot be verified') from None
+            if not isinstance(tracked, bytes) or local != tracked:
+                raise ValueError('selected context bridge source differs from published bytes')
 
     def _adapter_state(self) -> str:
         return self.command(['systemctl', 'is-active', ADAPTER_SERVICE], check=False)
@@ -213,12 +242,40 @@ class BridgeLifecycle:
             raise ValueError('assistant context service must be active and authenticated')
 
     def _loaded_client_bytes(self) -> bytes:
-        configured = self.command(['systemctl', 'show', '--property=LoadCredential', '--value', CONTEXT_SERVICE])
-        entries = [item for item in re.split(r'[\s;]+', configured) if item]
-        matching = [item.split(':', 1)[1] for item in entries if item.startswith('clients:')]
-        if len(matching) != 1:
-            raise ValueError('context service must load one private clients credential')
-        source = Path(matching[0])
+        fragment = self.command(['systemctl', 'show', '--property=FragmentPath', '--value', CONTEXT_SERVICE])
+        dropins = self.command(['systemctl', 'show', '--property=DropInPaths', '--value', CONTEXT_SERVICE])
+        if fragment != CONTEXT_SERVICE_FRAGMENT or dropins:
+            raise ValueError('context service fragment or drop-ins differ from the exact Nix unit')
+        rendered = self.command(['systemctl', 'cat', CONTEXT_SERVICE])
+        headers = [line for line in rendered.splitlines() if line.startswith('# ')]
+        if (len(headers) != 1 or not re.fullmatch(
+                r'# /etc/systemd/system/homecompute-assistant-context\.service(?: -> /nix/store/[0-9a-z]{32}-unit-homecompute-assistant-context\.service/homecompute-assistant-context\.service)?',
+                headers[0])):
+            raise ValueError('context service cat output is not one exact source fragment')
+        credential_directives = []
+        section = ''
+        for line in rendered.splitlines():
+            if not line or line.startswith(('#', ';')) or '=' not in line:
+                if line.startswith('[') and line.endswith(']'):
+                    section = line[1:-1]
+                continue
+            if line.startswith('[') and line.endswith(']'):
+                section = line[1:-1]
+                continue
+            directive, value = line.split('=', 1)
+            if directive in {'LoadCredential', 'LoadCredentialEncrypted'}:
+                if section != 'Service' or directive != 'LoadCredential' or not value:
+                    raise ValueError('context service credential directives are malformed')
+                credential_directives.append((directive, value))
+        expected_clients = 'clients:' + str(self.layout.credential_source)
+        allowed_order = [f'{name}:{path}' for name, path in CONTEXT_ALLOWED_CREDENTIALS.items()]
+        allowed_order[0] = expected_clients
+        actual = [value for _directive, value in credential_directives]
+        if (not actual or actual[0] != expected_clients or len(actual) != len(set(actual))
+                or any(value not in allowed_order for value in actual)
+                or [value for value in allowed_order if value in actual] != actual):
+            raise ValueError('context service must load clients and only declared optional credentials')
+        source = self.layout.credential_source
         if not source.is_absolute() or str(source).startswith('/nix/store/'):
             raise ValueError('external context credential path required')
         source_bytes = _safe_file(source, self.root_uid, 0o600)
