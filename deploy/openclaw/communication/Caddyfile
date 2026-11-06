@@ -18,7 +18,7 @@ https://openclaw-communication.home.arpa:19443 {
 	handle @assistantRoutine {
 		# The backend requires a distinct routine-role bearer and finite routine grant.
 		rewrite * /v1/routines/run
-		reverse_proxy 127.0.0.1:18816 {
+		reverse_proxy 127.0.0.1:18826 {
 			transport http {
 				response_header_timeout 30s
 			}

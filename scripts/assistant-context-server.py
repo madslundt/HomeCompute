@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
-from assistant_context_api import ContextService, clients, serve
+from assistant_context_api import DEFAULT_CONTEXT_PORT, ContextService, clients, serve
 from assistant_context_tools import private_bytes
 from assistant_context_briefings import LocalReasoner, load_config as load_briefings
 from assistant_context_retrieval import AuthenticatedHarrierClient
@@ -27,6 +27,7 @@ def main():
     parser.add_argument('--delivery-auth', type=Path)
     parser.add_argument('--enable-delivery', action='store_true')
     parser.add_argument('--improvement-status', action='store_true')
+    parser.add_argument('--port', type=int, default=DEFAULT_CONTEXT_PORT)
     args = parser.parse_args()
     try:
         from assistant_context_recovery import assert_restore_ready
@@ -54,7 +55,7 @@ def main():
         # Recover prior accepted work without relying on a new source callback.
         for scope in {client.scope for client in configured}:
             service.review(scope)
-        server = serve(service, configured)
+        server = serve(service, configured, ('127.0.0.1', args.port))
         try:
             server.serve_forever()
         finally:

@@ -1,6 +1,7 @@
 { config, lib, pkgs, ... }:
 let
   cfg = config.homecompute.assistantContext;
+  contextPort = 18826;
   source = pkgs.runCommand "homecompute-assistant-context-source" { } ''
     mkdir -p $out/scripts $out/config
     ${lib.concatMapStringsSep "\n" (name: "cp ${../../scripts + "/${name}"} $out/scripts/${name}") [
@@ -197,7 +198,7 @@ in
           ++ lib.optional cfg.inference.briefings "briefing:${cfg.inference.briefingCredentialFile}"
           ++ lib.optionals cfg.delegation.enable [ "openclaw_worker_ssh_key:${cfg.delegation.identityFile}" "openclaw_worker_known_hosts:${cfg.delegation.knownHostsFile}" ]
           ++ lib.optional cfg.delivery.enable "delivery:${cfg.delivery.authFile}";
-        ExecStart = "${pkgs.python3}/bin/python3 ${source}/scripts/assistant-context-server.py --state /srv/state/assistant-context --clients %d/clients --policy ${policy} --briefings ${briefings}"
+        ExecStart = "${pkgs.python3}/bin/python3 ${source}/scripts/assistant-context-server.py --state /srv/state/assistant-context --clients %d/clients --policy ${policy} --briefings ${briefings} --port ${toString contextPort}"
           + lib.optionalString cfg.inference.embedding " --embedding-credential %d/embedding"
           + lib.optionalString cfg.inference.briefings " --briefing-credential %d/briefing"
           + lib.optionalString cfg.delegation.enable " --enable-delegation --delegation-config ${source}/config/assistant-delegation.json"

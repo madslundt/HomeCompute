@@ -8,7 +8,7 @@ default; no production installation or household readiness is claimed.
 ## Boundaries
 
 The Nix module runs the service on home-core as `homecompute-context`, with
-private state at `/srv/state/assistant-context` and loopback `127.0.0.1:18816`.
+private state at `/srv/state/assistant-context` and loopback `127.0.0.1:18826`.
 Importing the disabled module starts no service or job. The communication relay
 has one exact private routine path, restricted to the existing n8n source IP;
 the context backend separately requires a routine credential. Source artifacts, existing task/reminder
