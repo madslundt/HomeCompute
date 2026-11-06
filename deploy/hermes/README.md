@@ -414,6 +414,15 @@ bridge client is Caddy; native auth is required on approved LAN/Tailscale access
 Verify Mattermost reconnects after this restart. No new public listener, model
 route or OpenClaw state is introduced.
 
+The pinned web build preloads lazy sidebar chunks at root-relative `/assets/`
+URLs. Caddy redirects only hashed JavaScript/CSS chunk names to the existing
+`/hermes/` route. Office's image/JSON assets and root API retain their own
+authentication and routing. Without this compatibility redirect, each sidebar
+preload reaches Office's Basic-auth challenge and opens another browser login
+dialog even though the Hermes cookie is valid. Verify sidebar navigation after
+login, including Models, Config and Sessions, plus the Office asset/API boundary;
+the login page and initial dashboard alone do not exercise lazy preloading.
+
 Verify native plugin discovery (OMH enabled, no error, tools and hooks registered),
 local routing/concurrency readback, authenticated dashboard login and chat,
 Mattermost DM response, browser public navigation and private-address denial,

@@ -100,3 +100,27 @@ full VM reboot with OMH is claimed. Native service restart was tested.
 
 The guest filesystem retained approximately 17 GiB free after rollout.
 The prior native owner remains stopped and preserved for rollback.
+
+## Sidebar preload regression found later on 6 November
+
+Signing in succeeded and the prefixed config API returned 200, but sidebar
+navigation opened repeated browser HTTP-auth prompts. The pinned Vite build's
+lazy preload map requested hashed script chunks at root-relative `/assets/`
+URLs. Those requests reached Agent Office, whose separate Basic-auth challenge
+correctly rejected the Hermes login. Changing the Hermes password could not
+resolve the routing mismatch.
+
+A fresh Chromium login followed by Models navigation reproduced twelve
+Office-auth challenges. A browser-only candidate redirect of the hashed
+script/style requests to `/hermes/assets/` rendered Models with zero challenges,
+zero failed requests and zero console errors. This qualified the correction
+without changing the live proxy. The running Caddy binary also validated the
+candidate canonical configuration.
+
+The source correction redirects only hashed JavaScript/CSS chunk names within
+the existing private host handler. Office's image/JSON assets and root APIs keep
+their existing route and authentication. Regression cases check those ownership
+boundaries, exact prior-route migrations, idempotence and unknown-edit refusal.
+After the guarded published-source ingress rollout, repeat actual Models,
+Config, Sessions and Skills navigation and verify Office authentication remains
+intact; successful login alone does not cover lazy preloading.

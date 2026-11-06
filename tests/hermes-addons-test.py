@@ -1,6 +1,7 @@
 """Ingress migration guards and preservation of the established client paths."""
 import importlib.util
 import hashlib
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -54,9 +55,30 @@ class DashboardIngressTest(unittest.TestCase):
 
     def test_exact_previous_dashboard_route_upgrades_without_replacing_other_sites(self):
         caddy, home = self.patch()
-        previous = caddy.replace('\t\t\t\t\t# Avoid stale sockets across the native forwarding chain.\n'
-                                 '\t\t\t\t\tkeepalive off\n', '')
-        self.assertEqual(module.patch(previous, home, self.source_caddy, self.source_home), (caddy, home))
+        previous = caddy.replace(module.PRELOAD_REDIRECT, '', 1)
+        for baseline in (previous, previous.replace(module.KEEPALIVE_OFF, '', 1)):
+            self.assertEqual(module.patch(baseline, home, self.source_caddy, self.source_home), (caddy, home))
+        changed = previous.replace('header_up X-Forwarded-Prefix /hermes', 'header_up X-Forwarded-Prefix /edited')
+        with self.assertRaises(ValueError):
+            module.patch(changed, home, self.source_caddy, self.source_home)
+
+    def test_lazy_asset_preloads_return_to_hermes_without_claiming_office_assets(self):
+        caddy, _ = self.patch()
+        match = re.search(r'@hermesPreload path_regexp hermes_preload (\S+)', caddy)
+        self.assertIsNotNone(match, 'root-relative Vite preloads must not reach Office authentication')
+        pattern = re.compile(match.group(1))
+        for path in ('/assets/ModelsPage-DINtSZCa.js', '/assets/index--mXBFZzP.js',
+                     '/assets/ConfigPage-AbCd_123.css'):
+            self.assertIsNotNone(pattern.fullmatch(path))
+        office = ROOT / 'deploy/agent-office/public'
+        for path in office.rglob('*'):
+            if path.is_file():
+                self.assertIsNone(pattern.fullmatch('/' + path.relative_to(office).as_posix()))
+        for path in ('/api/config', '/api/auth/providers', '/auth/password-login',
+                     '/hermes/assets/ModelsPage-DINtSZCa.js', '/assets/unhashed.js',
+                     '/assets/ModelsPage-DINtSZCa.js/extra', '/assets/ModelsPage-DINtSZCa.json'):
+            self.assertIsNone(pattern.fullmatch(path))
+        self.assertIn('redir @hermesPreload /hermes{uri} 308', caddy)
 
 
 class NativeTransferTest(unittest.TestCase):
