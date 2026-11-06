@@ -50,7 +50,9 @@ the installed adapter. In a clean published guest checkout:
 ```bash
 python3 scripts/setup-hermes-speech.py --revision FULL_SHA --assets /absolute/private/assets
 python3 scripts/setup-hermes-speech.py --revision FULL_SHA --assets /absolute/private/assets --apply
-sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA
+sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA --surface webapp
+sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA --surface webapp \
+  --apply --expected-sha256 REVIEWED_PLAN_SHA256
 ./scripts/setup-hermes-guest.sh install-startup --config "$config"
 ```
 
@@ -73,8 +75,8 @@ stop phrases and restart recovery; API-only tests do not prove microphone use.
 For rollback, run the same speech installer with `--apply --rollback`. It closes
 the guest relay first, restores the verified private config/environment and
 policy preimages, disables its watcher and restarts natively. Restore the former
-relay with the retained previous release's guarded installer after verifying its
-native login. Keep conversations, OMH data, model caches and speech artifacts.
+relay with the published relay installer's `--revision FULL_SHA --rollback`
+after verifying its native login. Keep conversations, OMH data, model caches and speech artifacts.
 Undo speech before an older OMH config rollback: its full-config guard correctly
 refuses a later configuration it does not own.
 
@@ -380,6 +382,9 @@ From a clean published release on the guest, run:
 python3 scripts/setup-hermes-addons.py --revision FULL_SHA --assets /absolute/private/assets
 python3 scripts/setup-hermes-addons.py --revision FULL_SHA --assets /absolute/private/assets --apply
 sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA
+# Review the plan, then apply its exact hash:
+sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA \
+  --apply --expected-sha256 REVIEWED_PLAN_SHA256
 ```
 
 The guarded add-on installer requires fresh household backup/network gates and
@@ -401,6 +406,29 @@ file. Only the scrypt password hash and independent session signing secret enter
 the private Hermes config. Native dashboard authentication, Origin/CSRF checks,
 cookies and WebSocket tickets remain authoritative. The guest relay refuses to
 install until the protected API returns 401 and the native basic provider exists.
+
+The relay verifies each new OpenShell channel with an anonymous `GET /api/config`
+before sending any client bytes. Transient channel-setup resets are retried up
+to three times, each with an eight-second deadline. The 401 response must have
+bounded, unambiguous framing and leave the same connection reusable. The relay
+then forwards bytes unchanged, including WebSocket upgrades. Browser requests
+are never replayed after forwarding begins; a failed chat response cannot cause
+a duplicate submission. Caddy's Hermes-only `keepalive off` remains necessary
+for its separate stale-idle-socket failure mode. The bridge bind and all native
+authentication, Origin, CSRF and WebSocket gates remain unchanged.
+
+The installer accepts only the exact previous socat unit or its rendered managed
+unit, pins a root-owned relay copy to the published revision, verifies the systemd
+unit, retains its private preimage and restores it if activation fails. It
+preserves the existing admin dashboard (18794) or Webapp (8646) target during a
+relay repair. A new installation defaults to the Webapp. Only an explicit
+`--surface webapp` or `--surface admin` plan/apply changes that selection, after
+native authentication at the selected port passes. This keeps a relay repair
+independent of the speech lifecycle and its Webapp qualification. It
+restarts only the guest relay; existing dashboard streams may reconnect. It does
+not restart the sandbox, Caddy, Mattermost or the VM. To restore the retained
+relay unit without changing application data, run the same published installer
+with `--revision FULL_SHA --rollback`. Later unit edits block rollback for review.
 
 On home-core, stage the same published source under
 `/srv/homecompute/releases/FULL_SHA`, run
