@@ -13,9 +13,9 @@ RUN if [ -n "$NEMOCLAW_CORPORATE_CA_B64" ]; then \
 ADD --checksum=sha256:0250ce85c071ebceefc5b9d1b58a7a52f71d2849a6ef1d0a70af07d108ef08dc https://codeload.github.com/NousResearch/hermes-agent/tar.gz/2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 /tmp/hermes-latest.tar.gz
 ADD --checksum=sha256:dfa4c5a40c47f338f41658017be550c72247c391e6bfb1fa4da03ebc8451abdf https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.14.9+20261021-x86_64-unknown-linux-gnu-install_only.tar.gz /tmp/hermes-python.tar.gz
 COPY latest/managed-integration.patch /tmp/homecompute-managed-integration.patch
-RUN mkdir /tmp/hermes-latest /usr/local/lib/homecompute-python \
+RUN mkdir -p /tmp/hermes-latest/python-runtime \
     && tar -xzf /tmp/hermes-latest.tar.gz --strip-components=1 -C /tmp/hermes-latest \
-    && tar -xzf /tmp/hermes-python.tar.gz --strip-components=1 -C /usr/local/lib/homecompute-python \
+    && tar -xzf /tmp/hermes-python.tar.gz --strip-components=1 -C /tmp/hermes-latest/python-runtime \
     && git -C /tmp/hermes-latest apply --check /tmp/homecompute-managed-integration.patch \
     && git -C /tmp/hermes-latest apply /tmp/homecompute-managed-integration.patch \
     && rm -rf /opt/hermes \
@@ -23,20 +23,22 @@ RUN mkdir /tmp/hermes-latest /usr/local/lib/homecompute-python \
     && ln -s /opt/nemoclaw-hermes-plugin /opt/hermes/plugins/nemoclaw \
     && rm /tmp/hermes-latest.tar.gz /tmp/hermes-python.tar.gz /tmp/homecompute-managed-integration.patch
 WORKDIR /opt/hermes
+ENV HERMES_RUNTIME_DIR=/opt/hermes/tools
 # Use the release's package manager and frozen lock, including the one exact
 # PyYAML compatibility extra needed by the retained managed plugin.
-RUN HERMES_HOME=/tmp/hermes-build /usr/local/lib/homecompute-python/bin/python3 -m pm.build_env \
-      --source /opt/hermes --python /usr/local/lib/homecompute-python/bin/python3 \
+RUN HERMES_HOME=/tmp/hermes-build /opt/hermes/python-runtime/bin/python3 -m pm.build_env \
+      --source /opt/hermes --python /opt/hermes/python-runtime/bin/python3 \
       --out /opt/hermes/.venv --sealed --record-selection \
       --extra nemoclaw --extra messaging --extra web --extra mcp --extra acp --extra anthropic \
-    && chmod -R a+rX /opt/hermes/.venv /usr/local/lib/homecompute-python \
+    && chmod -R a+rX /opt/hermes/.venv /opt/hermes/python-runtime \
     && rm -rf /tmp/hermes-build /root/.cache/uv
 # The new release seals dependency environments and binds source through its
 # offline assembler. A raw editable install has no usable source import path.
-RUN /usr/local/lib/homecompute-python/bin/python3 -c 'from pathlib import Path; from pm import stage_manager_runtime; from scripts.bundles.payload import seal_pm_runtime; root=Path("/opt/hermes"); python=Path("/usr/local/lib/homecompute-python/bin/python3").resolve(); stage_manager_runtime(python=python, destination=root/"pm-runtime", project=root/"pm"); seal_pm_runtime(root, python)'
-RUN /usr/local/lib/homecompute-python/bin/python3 scripts/write_install_stamp.py \
+RUN /opt/hermes/python-runtime/bin/python3 -c 'from pathlib import Path; from pm import stage_manager_runtime; from scripts.bundles.payload import seal_pm_runtime; root=Path("/opt/hermes"); python=Path("/opt/hermes/python-runtime/bin/python3").resolve(); stage_manager_runtime(python=python, destination=root/"pm-runtime", project=root/"pm"); seal_pm_runtime(root, python)'
+RUN /opt/hermes/python-runtime/bin/python3 scripts/write_install_stamp.py \
       --output /opt/hermes/install-stamp.json --commit 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 \
-      --base-version 0.23.0 --distance 0 --dirty --source homecompute --distribution docker --update-mechanism external
+      --base-version 0.23.0 --distance 0 --dirty --source homecompute --distribution docker --update-mechanism external \
+    && /opt/hermes/python-runtime/bin/python3 -c 'import json; from pathlib import Path; p=Path("/opt/hermes/install-stamp.json"); d=json.loads(p.read_text()); d["pmRuntime"]="/opt/hermes/pm-runtime"; p.write_text(json.dumps(d)+"\n")'
 RUN node scripts/build/node-deps.mjs --source /opt/hermes --workspace ui-tui --workspace web \
     && /opt/hermes/.venv/bin/python scripts/generate_icons.py --source /opt/hermes --out /tmp/hermes-icons \
     && node scripts/build/tui.mjs --source /opt/hermes --out /opt/products/tui \
@@ -44,7 +46,12 @@ RUN node scripts/build/node-deps.mjs --source /opt/hermes --workspace ui-tui --w
     && cp -a /opt/products/tui/. /opt/hermes/ui-tui/ \
     && mkdir -p /opt/hermes/hermes_cli/web_dist \
     && cp -a /opt/products/web/. /opt/hermes/hermes_cli/web_dist/ \
+    && mkdir /tmp/hermes-console-entries \
+    && cp /opt/hermes/.venv/bin/hermes /opt/hermes/.venv/bin/hermes-agent /opt/hermes/.venv/bin/hermes-acp /tmp/hermes-console-entries/ \
     && /opt/hermes/.venv/bin/python -m docker.build_agent \
+    && rm /opt/hermes/.venv/bin/hermes /opt/hermes/.venv/bin/hermes-agent /opt/hermes/.venv/bin/hermes-acp \
+    && cp /tmp/hermes-console-entries/* /opt/hermes/.venv/bin/ \
+    && rm -r /tmp/hermes-console-entries \
     && chmod -R a+rX /opt/hermes \
     && rm -rf /opt/products /tmp/hermes-icons /root/.npm /root/.cache/uv
 # Validate the retained managed CLI adapter against the real new parser. A
@@ -54,7 +61,8 @@ RUN python3 -c 'import json; p="/usr/local/share/nemoclaw/hermes-cli-adapter-v1.
       --contract /usr/local/share/nemoclaw/hermes-cli-adapter-v1.json --hermes /opt/hermes/.venv/bin/hermes \
     && /usr/local/bin/hermes --version
 COPY latest/probe_runtime.py /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
-RUN /opt/hermes/.venv/bin/python -I /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
+RUN chmod 0444 /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py \
+    && /opt/hermes/.venv/bin/python -I /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
 COPY browser-relay.mjs /usr/local/lib/nemoclaw/browser-relay.mjs
 RUN chmod 0444 /usr/local/lib/nemoclaw/browser-relay.mjs
 ENV HERMES_DUMP_REQUESTS=0 HERMES_DUMP_REQUEST_STDOUT=0 \
