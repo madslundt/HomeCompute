@@ -125,7 +125,7 @@ class ConnectionTests(unittest.TestCase):
             if args[2:4] == ['mcp', 'status']: return json.dumps(self.status)
             if args[2] == 'exec': return self.digest
             return ''
-        with patch.object(connect, 'gates'), patch.object(connect, 'call', side_effect=call):
+        with patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), patch.object(connect, 'call', side_effect=call):
             result = connect.connect('hermes-personal', self.token)
         self.assertTrue(result['credential_verified'])
         self.assertNotIn(self.token, json.dumps(result))
@@ -138,7 +138,7 @@ class ConnectionTests(unittest.TestCase):
     def test_existing_conflicting_registration_or_unknown_probe_does_not_remove_or_replace(self):
         for url, verified in (('https://other.example/mcp', True), (connect.URL, None)):
             state = {**self.status, 'url': url, 'provider': {'credentialResolution': {'ok': verified}}}
-            with patch.object(connect, 'gates'), patch.object(connect, 'call', side_effect=[
+            with patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), patch.object(connect, 'call', side_effect=[
                     json.dumps({'agent': 'hermes', 'phase': 'Ready'}), json.dumps({'bridges': [state]}),
                     json.dumps(state)]) as call:
                 with self.assertRaises(ValueError): connect.connect('hermes-personal-v23', self.token)
@@ -182,6 +182,36 @@ class ProbeTests(unittest.TestCase):
         with patch.object(setup.http.client, 'HTTPConnection', return_value=connection), patch.object(setup.time, 'sleep'):
             with self.assertRaises(ValueError): setup.probe(module)
         connection.request.assert_called_once()
+
+
+class NetworkTests(unittest.TestCase):
+    def policy(self):
+        return {'unrelated': {'preserve': True}, 'network_policies': {'mcp_bridge_homecompute': {
+            'binaries': [{'path': '/usr/local/bin/hermes'}, {'path': '/usr/bin/python3*'},
+                         {'path': '/opt/hermes/.venv/bin/python*'}],
+            'endpoints': [{'host': 'homecompute-capabilities.home.arpa', 'port': 19445, 'path': '/mcp',
+                           'protocol': 'mcp', 'enforcement': 'enforce', 'allowed_ips': ['10.77.20.1'],
+                           'credential_binding': {'provider': 'hermes-personal-v23-mcp-homecompute'},
+                           'mcp': {'max_body_bytes': 131072, 'strict_tool_names': True,
+                                   'allow_all_known_mcp_methods': False},
+                           'rules': [{'allow': {'method': 'initialize'}}]}]}}}
+
+    def test_only_exact_real_interpreter_is_added_and_repeat_is_idempotent(self):
+        before = self.policy(); raw = json.dumps(before, sort_keys=True)
+        after = connect.network_candidate(before, 'hermes-personal-v23')
+        self.assertEqual(json.dumps(before, sort_keys=True), raw)
+        self.assertEqual(after, connect.network_candidate(after, 'hermes-personal-v23'))
+        after['network_policies']['mcp_bridge_homecompute']['binaries'].pop()
+        self.assertEqual(after, before)
+
+    def test_unknown_endpoint_binding_pins_or_binary_grants_are_preserved(self):
+        for key, value in (('host', 'other.example'), ('path', '/admin'), ('allowed_ips', ['10.77.20.2']),
+                           ('credential_binding', {'provider': 'openclaw'}), ('protocol', 'rest')):
+            before = self.policy()
+            before['network_policies']['mcp_bridge_homecompute']['endpoints'][0][key] = value
+            with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23')
+        before = self.policy(); before['network_policies']['mcp_bridge_homecompute']['binaries'].append({'path': '/**'})
+        with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23')
 
 
 if __name__ == '__main__':

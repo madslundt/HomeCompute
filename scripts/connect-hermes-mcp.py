@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 from datetime import datetime, timezone
 import hashlib
 import importlib.util
@@ -12,12 +13,67 @@ from pathlib import Path
 import stat
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 URL = 'https://homecompute-capabilities.home.arpa:19445/mcp'
 KEY = 'HOMECOMPUTE_HERMES_MCP_TOKEN'
 SKILL = ROOT / 'deploy/hermes/skills/homecompute-household'
 GATES = Path('/var/lib/homecompute-hermes/gates')
+PYTHON = '/opt/hermes/python-runtime/bin/python3.14'
+
+
+def network_candidate(before: dict, sandbox: str) -> dict:
+    """Add the release-pinned real interpreter to only the existing MCP route."""
+    after = copy.deepcopy(before)
+    entry = after['network_policies']['mcp_bridge_homecompute']
+    endpoints = entry['endpoints']
+    if len(endpoints) != 1:
+        raise ValueError('one exact generated MCP endpoint required')
+    endpoint = endpoints[0]
+    expected = {'host': 'homecompute-capabilities.home.arpa', 'port': 19445, 'path': '/mcp',
+                'protocol': 'mcp', 'enforcement': 'enforce', 'allowed_ips': ['10.77.20.1'],
+                'credential_binding': {'provider': sandbox + '-mcp-homecompute'},
+                'mcp': {'max_body_bytes': 131072, 'strict_tool_names': True, 'allow_all_known_mcp_methods': False}}
+    if any(endpoint.get(key) != value for key, value in expected.items()):
+        raise ValueError('generated MCP route differs from the trusted endpoint')
+    binaries = [{'path': '/usr/local/bin/hermes'}, {'path': '/usr/bin/python3*'},
+                {'path': '/opt/hermes/.venv/bin/python*'}]
+    if entry.get('binaries') not in (binaries, binaries + [{'path': PYTHON}]):
+        raise ValueError('unexpected MCP executable grant')
+    entry['binaries'] = binaries + [{'path': PYTHON}]
+    return after
+
+
+def network_setup(sandbox: str, env: dict) -> None:
+    if sandbox != 'hermes-personal-v23':
+        return
+    observed = call(['nemohermes', sandbox, 'exec', '--', 'python3', '-c',
+                     'import os; print(os.readlink("/proc/self/exe"))'], env=env).strip()
+    if observed != PYTHON:
+        raise ValueError('selected Hermes interpreter differs from the source pin')
+    cli = ['openshell', '-g', 'nemoclaw', 'policy']
+    arguments = ['get', sandbox, '--base', '-o', 'json']
+    before = json.loads(call(cli + arguments, env=env))['policy']
+    after = network_candidate(before, sandbox)
+    if before == after:
+        return
+    root = Path.home() / '.local/state/homecompute/hermes-mcp-policy'
+    if any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError('private nonsymlink policy backup directory required')
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if root.stat().st_uid != os.getuid() or root.stat().st_mode & 0o077:
+        raise ValueError('private operator-owned policy backup directory required')
+    backup = root / str(time.time_ns()); backup.mkdir(mode=0o700)
+    for name, value in (('before', before), ('after', after)):
+        path = backup / ('policy-' + name + '.json')
+        with path.open('x') as stream:
+            os.chmod(path, 0o600); stream.write(json.dumps(value, sort_keys=True))
+    if json.loads(call(cli + arguments, env=env))['policy'] != before:
+        raise ValueError('native policy changed during preparation')
+    call(cli + ['set', sandbox, '--policy', str(backup / 'policy-after.json'), '--wait', '--timeout', '45'], env=env)
+    if json.loads(call(cli + arguments, env=env))['policy'] != after:
+        raise ValueError('native policy readback differs; preserve backups and inspect before retry')
 
 
 def call(args: list[str], **kwargs) -> str:
@@ -67,6 +123,7 @@ def connect(sandbox: str, token: str) -> dict:
         call(cli + ['mcp', 'add', 'homecompute', '--url', URL, '--env', KEY,
                     '--trusted-private-host', 'homecompute-capabilities.home.arpa'], env={**env, KEY: token})
     token = ''
+    network_setup(sandbox, env)
     status = json.loads(call(cli + ['mcp', 'status', 'homecompute', '--json'], env=env))
     rows = status.get('bridges', [status.get('status', status)]) if isinstance(status, dict) else status
     if len(rows) != 1:

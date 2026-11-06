@@ -140,6 +140,16 @@ installs the exact skill through the native skill lifecycle. Conflicting
 registrations and edited skills are preserved for review. An uncertain native
 add must be inspected through native status before retrying.
 
+NemoClaw's generated Hermes MCP policy assumes the system Python or the `.venv`
+path. OpenShell observes the selected 0.23 image's actual executable as
+`/opt/hermes/python-runtime/bin/python3.14`. The connector adds only that exact
+release-pinned path to the existing MCP route, after verifying its endpoint,
+private IP, provider binding and original executable grants. It preserves every
+other policy field, retains private before/after policy backups, checks for
+concurrent changes, and requires full native policy readback. It neither adds a
+general Python wildcard nor opens another destination. Reapply the connector if
+a native MCP registration update regenerates its policy.
+
 Verify `nemohermes OWNER_SANDBOX mcp status homecompute --json --tools`, then
 exercise read-only Aula discovery, Tilbudstrolden store lookup and Home Assistant
 metadata from Hermes's actual tool client. Keep household payloads private;
