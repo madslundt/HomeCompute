@@ -22,8 +22,9 @@
     "custom_image": true
   },
   "latest_standalone_hermes": {
-    "version": "0.22.7",
-    "status": "not qualified with the NemoClaw managed integration"
+    "version": "0.23.0",
+    "status": "isolated managed integration candidate; production unchanged",
+    "qualification": "deploy/hermes/latest/qualification.json"
   },
   "browser_worker_image_id": "sha256:6beb74219f11b68cd1b1c590cda156f322c59f6b6800b7ca38fd427ed93a6d13"
 }

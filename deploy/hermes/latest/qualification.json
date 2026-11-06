@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "status": "candidate",
+  "upstream": {
+    "version": "0.23.0",
+    "tag": "v0.23.0",
+    "commit": "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19",
+    "archive_url": "https://api.github.com/repos/NousResearch/hermes-agent/tarball/v0.23.0",
+    "archive_sha256": "43a2a0011eb8395c1735d78551e0393750e13e5a9e68771cb8431c00586f102e"
+  },
+  "python": {
+    "sha256": "dfa4c5a40c47f338f41658017be550c72247c391e6bfb1fa4da03ebc8451abdf",
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.14.9+20261021-x86_64-unknown-linux-gnu-install_only.tar.gz"
+  },
+  "base_image": "ghcr.io/nvidia/nemoclaw/hermes-sandbox@sha256:f52d55af05b63302ca8ae54ca9141b80df433a72ce273ae4aeac08c5af2cb990",
+  "required_checks": [
+    "managed CLI adapter",
+    "managed policy and gateway startup",
+    "opaque local inference",
+    "Mattermost REST and WebSocket",
+    "browser_exec public navigation",
+    "browser private-network denial",
+    "native stop/start",
+    "VM boot"
+  ],
+  "supported_channels": [
+    "mattermost"
+  ],
+  "unsupported_channels": [
+    "whatsapp",
+    "googlechat",
+    "langfuse"
+  ],
+  "initial_checks": {
+    "homecompute_validation": "passed including flake evaluation",
+    "managed_cli_adapter": "passed against isolated Python 3.14.6 environment",
+    "upstream_mattermost_and_browser_unit_tests": {
+      "passed": 122,
+      "failed": 1,
+      "failure": "native admission test attempts gateway_voice_mode.json I/O outside its per-test home; reproduced in unmodified v0.23.0"
+    }
+  }
+}

@@ -10,7 +10,8 @@ for applied revisions, measured checks and remaining qualification gaps.
 
 `config/hermes-release.json` pins NemoClaw 0.0.141, OpenShell 0.0.116, and
 NVIDIA's complete managed Hermes sandbox by digest. This integrates Hermes
-0.21.3. Standalone Hermes 0.22.7 is newer, but is not yet qualified with the
+0.21.3. Standalone Hermes 0.23.0 is newer; its [isolated upgrade candidate](latest/README.md)
+is not yet qualified with the
 managed startup, credential, recovery and browser contracts. Do not replace
 the managed image with the standalone upstream image: it omits these contracts.
 

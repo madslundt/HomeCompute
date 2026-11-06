@@ -1,0 +1,943 @@
+diff --git a/agent/agent_init.py b/agent/agent_init.py
+index 241f094c..f472606e 100644
+--- a/agent/agent_init.py
++++ b/agent/agent_init.py
+@@ -1133,7 +1133,8 @@ def _init_session_state(agent, session_id, session_db, parent_session_id, reason
+
+ def _apply_display_config(agent, _agent_cfg, platform):
+     # show_commentary: Codex phase=commentary → interim path (true) or reasoning channel.
+-    agent.show_commentary = bool(_cfg_dict(_agent_cfg, "display").get("show_commentary", True))
++    # NemoClaw compatibility override: a missing key keeps commentary hidden.
++    agent.show_commentary = bool(_cfg_dict(_agent_cfg, "display").get("show_commentary", False))
+
+     # Window (seconds) for the bounded /fast auto|cold modes (agent.fast_mode).
+     agent.fast_auto_seconds = (_agent_cfg.get("agent") or {}).get("fast_auto_seconds", 60)
+diff --git a/agent/agent_runtime_helpers.py b/agent/agent_runtime_helpers.py
+index d628c122..bc8557c3 100644
+--- a/agent/agent_runtime_helpers.py
++++ b/agent/agent_runtime_helpers.py
+@@ -1518,53 +1518,8 @@ def _api_error_debug_info(error: Exception) -> dict[str, Any]:
+ def dump_api_request_debug(
+     agent, api_kwargs: dict[str, Any], *, reason: str, error: Optional[Exception] = None
+ ) -> Optional[Path]:
+-    """Dump the request body from api_kwargs (minus transport keys) for debugging provider 4xx failures."""
+-    try:
+-        body = {k: v for k, v in copy.deepcopy(api_kwargs).items() if v is not None and k != "timeout"}
+-        api_key = None
+-        # anthropic_messages keeps its SDK client on ``_anthropic_client`` (``client`` is None):
+-        # read the key from there so the dump does not say "Bearer None" (#24293).
+-        anthropic = agent.api_mode == "anthropic_messages"
+-        try:
+-            live = getattr(agent, "_anthropic_client", None) if anthropic else agent.client
+-            api_key = getattr(live, "api_key", None) or getattr(live, "auth_token", None)
+-        except Exception as e:
+-            _ra().logger.debug("Could not extract API key for debug dump: %s", e)
+-        endpoint = {"codex_responses": "/responses", "anthropic_messages": "/messages"}.get(
+-            agent.api_mode, "/chat/completions"
+-        )
+-        dump_payload: dict[str, Any] = {
+-            "timestamp": datetime.now().isoformat(), "session_id": agent.session_id, "reason": reason,
+-            "request": {
+-                "method": "POST", "url": f"{agent.base_url.rstrip('/')}{endpoint}",
+-                "headers": {
+-                    "Authorization": f"Bearer {agent._mask_api_key_for_logs(api_key)}",
+-                    "Content-Type": "application/json",
+-                },
+-                "body": body,
+-            },
+-        }
+-        if error is not None:
+-            dump_payload["error"] = _api_error_debug_info(error)
+-        # Sanitize the session ID (may come from an untrusted X-Hermes-Session-Id header) so a
+-        # "../"-shaped ID cannot write outside logs_dir.
+-        from agent.session_persistence import _safe_session_filename_component
+-        safe_sid = _safe_session_filename_component(agent.session_id)
+-        dump_file = agent.logs_dir / f"request_dump_{safe_sid}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.json"
+-        # Redact secrets first: this fires unconditionally on API errors and captures the full
+-        # request body, so context-embedded secrets would otherwise land in cleartext on disk.
+-        from agent.redact import redact_sensitive_text
+-        _serialized = json.dumps(dump_payload, ensure_ascii=False, indent=2, default=str)
+-        _redacted_payload = json.loads(redact_sensitive_text(_serialized, force=True))
+-        atomic_json_write(dump_file, _redacted_payload, default=str)
+-        agent._vprint(f"{agent.log_prefix}🧾 Request debug dump written to: {dump_file}")
+-        if env_var_enabled("HERMES_DUMP_REQUEST_STDOUT"):
+-            print(json.dumps(_redacted_payload, ensure_ascii=False, indent=2, default=str))
+-        return dump_file
+-    except Exception as dump_error:
+-        if agent.verbose_logging:
+-            logger.warning("Failed to dump API request debug payload: %s", dump_error)
+-        return None
++    """HomeCompute: request payload logging is disabled."""
++    return None
+
+
+ def _direct_native_anthropic_tool_cache_capability(
+diff --git a/agent/auxiliary_client.py b/agent/auxiliary_client.py
+index ac2566de..e0e8b8f7 100644
+--- a/agent/auxiliary_client.py
++++ b/agent/auxiliary_client.py
+@@ -6484,6 +6484,7 @@ def _forwards_max_tokens(provider: str, provider_norm: str, model: str, effectiv
+         or provider_norm == "openrouter"
+         or base_url_host_matches(effective_base, "openrouter.ai")
+         or _is_managed_local_endpoint(effective_base)
++        or base_url_host_matches(effective_base, "inference.local")
+     )
+
+
+diff --git a/agent/system_prompt.py b/agent/system_prompt.py
+index 479c9d46..33157d9c 100644
+--- a/agent/system_prompt.py
++++ b/agent/system_prompt.py
+@@ -247,11 +247,27 @@ def _agent_home(agent: Any) -> Optional[Path]:
+         pass
+     try:
+         db_path = getattr(getattr(agent, "_session_db", None), "db_path", None)
+-        return Path(db_path).parent if db_path else None
++        return _nemoclaw_ledger_home(Path(db_path)) if db_path else None
+     except Exception:
+         return None
+
+
++_NEMOCLAW_SHARED_STATE_LINK = Path("/sandbox/.hermes/state.db")
++_NEMOCLAW_SHARED_STATE_TARGET = Path("runtime/state.db")
++
++
++def _nemoclaw_ledger_home(db_path: Path) -> Path:
++    """Return the Hermes home that links NemoClaw's resolved session ledger."""
++    home = _NEMOCLAW_SHARED_STATE_LINK.parent
++    if (
++        db_path == home / _NEMOCLAW_SHARED_STATE_TARGET
++        and _NEMOCLAW_SHARED_STATE_LINK.is_symlink()
++        and _NEMOCLAW_SHARED_STATE_LINK.readlink() == _NEMOCLAW_SHARED_STATE_TARGET
++    ):
++        return home
++    return db_path.parent
++
++
+ def _agent_skills_dir(agent: Any) -> Optional[Path]:
+     """The agent's own ``<home>/skills`` dir, or None to use ambient home."""
+     home = _agent_home(agent)
+diff --git a/cron/executions.py b/cron/executions.py
+index 26f89649..c931dcc4 100644
+--- a/cron/executions.py
++++ b/cron/executions.py
+@@ -54,7 +54,7 @@ def _connect() -> sqlite3.Connection:
+     from cron.jobs import _ensure_cron_dir
+     from hermes_cli.sqlite_util import open_db
+
+-    path = EXECUTIONS_FILE or (get_hermes_home().resolve() / "cron" / "executions.db")
++    path = EXECUTIONS_FILE or (get_hermes_home().resolve() / "runtime" / "cron-executions.db")
+     _ensure_cron_dir(path.parent)
+     return open_db(path, db_label="cron/executions.db", synchronous_full=True, initialize=_initialize_schema)
+
+diff --git a/cron/jobs.py b/cron/jobs.py
+index 1809214b..5deafb8e 100644
+--- a/cron/jobs.py
++++ b/cron/jobs.py
+@@ -2865,6 +2865,71 @@ def _sweep_completed_oneshots(
+
+ # --- Due scan ---
+
++def rearm_nemoclaw_drained_oneshots(not_before: datetime, profile_homes) -> int:
++    """Re-arm one-shots held overdue by NemoClaw's restore drain.
++
++    The root-owned controller calls this helper while the external drain still
++    blocks dispatch and passes the authenticated marker creation time. It
++    changes only enabled scheduled one-shots that have never run, carry no
++    dispatch or fire claim, and became due at or after that marker was acquired.
++    Each validated profile uses its own cron-store context, jobs lock, and
++    normal save path so profile isolation and ownership remain intact.
++    """
++    now = _hermes_now()
++    not_before = _ensure_aware(not_before)
++    if not_before > now:
++        raise RuntimeError("NemoClaw cron restore drain time is in the future")
++    rearm_gate = not_before.isoformat()
++    replacement = now + timedelta(seconds=2)
++    replacement_schedule = parse_schedule(replacement.isoformat())
++    replacement_next = compute_next_run(replacement_schedule)
++    if replacement_next is None:
++        raise RuntimeError("NemoClaw cron restore could not schedule delayed one-shots")
++
++    changed = 0
++    for profile_home in profile_homes:
++        profile_changed = 0
++        with use_cron_store(profile_home):
++            with _jobs_lock():
++                jobs = load_jobs()
++                for job in jobs:
++                    schedule = job.get("schedule")
++                    repeat = job.get("repeat")
++                    if (
++                        not isinstance(schedule, dict)
++                        or schedule.get("kind") != "once"
++                        or job.get("enabled", True) is not True
++                        or job.get("state") not in {None, "scheduled"}
++                        or job.get("last_run_at") is not None
++                        or job.get("run_claim") is not None
++                        or job.get("fire_claim") is not None
++                        or (isinstance(repeat, dict) and repeat.get("completed", 0) != 0)
++                    ):
++                        continue
++                    run_at = schedule.get("run_at")
++                    next_run_at = job.get("next_run_at")
++                    if not isinstance(run_at, str) or not isinstance(next_run_at, str):
++                        continue
++                    try:
++                        scheduled = _ensure_aware(datetime.fromisoformat(run_at))
++                        next_run = _ensure_aware(datetime.fromisoformat(next_run_at))
++                    except (TypeError, ValueError):
++                        continue
++                    if scheduled < not_before or next_run < not_before:
++                        continue
++                    if scheduled > now or next_run > now:
++                        continue
++                    job["schedule"] = dict(replacement_schedule)
++                    job["schedule_display"] = replacement_schedule.get("display")
++                    job["next_run_at"] = replacement_next
++                    job["nemoclaw_restore_rearm_gate"] = rearm_gate
++                    profile_changed += 1
++                if profile_changed:
++                    save_jobs(jobs)
++        changed += profile_changed
++    return changed
++
++
+ def get_due_jobs() -> list[dict[str, Any]]:
+     """Return all jobs due now. A recurring job more than one period stale (gateway down, or a run
+     overran the interval) has its backlog collapsed — next_run_at fast-forwards so nothing
+diff --git a/cron/scheduler.py b/cron/scheduler.py
+index ff780ef6..4c655c26 100644
+--- a/cron/scheduler.py
++++ b/cron/scheduler.py
+@@ -1299,7 +1299,7 @@ def _get_hermes_home() -> Path:
+ def _get_lock_paths() -> tuple[Path, Path]:
+     """Resolve cron lock paths at call time so profile/env changes are honored."""
+     hermes_home = _get_hermes_home()
+-    lock_dir = hermes_home / "cron"
++    lock_dir = hermes_home / "runtime"
+     return lock_dir, lock_dir / ".tick.lock"
+
+
+diff --git a/gateway/drain_control.py b/gateway/drain_control.py
+index e005b948..b941bef8 100644
+--- a/gateway/drain_control.py
++++ b/gateway/drain_control.py
+@@ -90,6 +90,7 @@ def ws_method_refused_while_draining(runner, method) -> bool:
+     return bool(getattr(runner, "_draining", False)) and method not in RESTART_WAIT_WS_METHODS
+
+ _DRAIN_REQUEST_FILENAME = ".drain_request.json"
++_NEMOCLAW_CRON_RESTORE_DRAIN_PATH = Path("/sandbox/.nemoclaw/hermes-cron-restore-drain.json")
+ # Drain-gated lifecycle actions complete in minutes; an hour bounds the wedge a leaked
+ # marker can cause. Long drains refresh the marker instead of raising this.
+ # Max-age fallback for a same-epoch orphaned marker (#85433). Long-running drains refresh the marker via
+@@ -192,7 +193,7 @@ def _active_drain_body(home: Optional[Path]) -> Optional[dict[str, Any]]:
+     return body
+
+
+-def drain_requested(*, home: Optional[Path] = None) -> bool:
++def operator_drain_requested(*, home: Optional[Path] = None) -> bool:
+     """True iff an active (present, same-epoch, unexpired) begin-drain marker exists.
+
+     A marker whose ``epoch`` does not match the current instantiation epoch is treated as absent: it
+@@ -207,6 +208,62 @@ def drain_requested(*, home: Optional[Path] = None) -> bool:
+     return _active_drain_body(home) is not None
+
+
++def nemoclaw_cron_restore_drain_requested() -> bool:
++    """Return whether NemoClaw's restart-stable rebuild marker is present.
++
++    This marker deliberately has no Hermes instantiation epoch. NemoClaw owns
++    its complete lifecycle and clears it only after restored cron state is
++    revalidated. Open the root-owned state directory itself and resolve the
++    marker relative to that stable descriptor so a sandbox user cannot bypass
++    the gate by replacing the directory entry. Any unsafe metadata or lookup
++    error fails toward keeping dispatch drained.
++    """
++    import os
++    import stat
++
++    state_root = _NEMOCLAW_CRON_RESTORE_DRAIN_PATH.parent
++    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
++    try:
++        state_root_fd = os.open(state_root, flags)
++    except OSError:
++        return True
++    try:
++        metadata = os.fstat(state_root_fd)
++        if (
++            not stat.S_ISDIR(metadata.st_mode)
++            or metadata.st_uid != 0
++            or metadata.st_gid != 0
++            or stat.S_IMODE(metadata.st_mode) & 0o022
++        ):
++            return True
++        try:
++            os.stat(
++                _NEMOCLAW_CRON_RESTORE_DRAIN_PATH.name,
++                dir_fd=state_root_fd,
++                follow_symlinks=False,
++            )
++        except FileNotFoundError:
++            return False
++        except OSError:
++            return True
++        return True
++    except OSError:
++        return True
++    finally:
++        try:
++            os.close(state_root_fd)
++        except OSError:
++            pass
++
++
++def drain_requested(*, home: Optional[Path] = None) -> bool:
++    """Return whether either operator or NemoClaw drain is active."""
++    return (
++        nemoclaw_cron_restore_drain_requested()
++        or operator_drain_requested(home=home)
++    )
++
++
+ def drain_notification_suppressed(*, home: Optional[Path] = None) -> bool:
+     """True iff an ACTIVE marker asks to suppress the shutdown broadcast.
+
+diff --git a/gateway/run_runtime_init.py b/gateway/run_runtime_init.py
+index 38e3f835..8895fb43 100644
+--- a/gateway/run_runtime_init.py
++++ b/gateway/run_runtime_init.py
+@@ -59,7 +59,8 @@ class GatewayRuntimeInitMixin:
+         self._systemd_watchdog = None
+         # External (NAS-driven) drain, distinct from one-way ``_draining``: set while ``.drain_request.json``
+         # exists — NEW turns refused, process stays up, removing the marker reverts to ``running``.
+-        self._external_drain_active = False
++        from gateway.drain_control import drain_requested
++        self._external_drain_active = drain_requested()
+         # ``_signal_initiated_shutdown``: SIGTERM/SIGINT with no planned-stop/takeover marker (container,
+         # OOM, bare kill); _stop_impl must NOT persist gateway_state=stopped or container_boot won't restart.
+         self._restart_requested = self._signal_initiated_shutdown = self._restart_task_started = False
+diff --git a/gateway/run_shutdown.py b/gateway/run_shutdown.py
+index db1786f7..a5433aa2 100644
+--- a/gateway/run_shutdown.py
++++ b/gateway/run_shutdown.py
+@@ -24,7 +24,7 @@ from typing import Any, Callable, Dict, Optional
+ from agent.i18n import t
+ from gateway.config import Platform
+ from gateway.restart import (
+-    DEFAULT_GATEWAY_CRON_DRAIN_TIMEOUT, GATEWAY_SERVICE_RESTART_EXIT_CODE,
++    DEFAULT_GATEWAY_CRON_DRAIN_TIMEOUT, EXTERNAL_GATEWAY_SUPERVISOR_ENV, GATEWAY_SERVICE_RESTART_EXIT_CODE,
+     effective_stop_drain_timeout, effective_stop_watchdog_delay, resolve_cron_drain_budget
+ )
+ from gateway.run_common import _UNSET
+@@ -34,6 +34,7 @@ from gateway.shutdown_watchdog import arm_shutdown_watchdog, resolve_shutdown_wa
+
+ # Log-record parity with the origin module.
+ logger = logging.getLogger("gateway.run")
++NEMOCLAW_GATEWAY_RECOVERY_EXIT_CODE = 79
+
+
+ def _exit_with_failure_verdict(runner) -> bool:
+@@ -52,6 +53,13 @@ def _resolve_gateway_exit_verdict(runner, signal_initiated_shutdown: bool) -> bo
+     if runner.exit_code is not None:
+         raise SystemExit(runner.exit_code)
+     if signal_initiated_shutdown and not runner._restart_requested:
++        if os.environ.get(EXTERNAL_GATEWAY_SUPERVISOR_ENV) == "1":
++            logger.info(
++                "Exiting with code %d (externally supervised signal shutdown) "
++                "so NemoClaw can gate recovery.",
++                NEMOCLAW_GATEWAY_RECOVERY_EXIT_CODE,
++            )
++            raise SystemExit(NEMOCLAW_GATEWAY_RECOVERY_EXIT_CODE)
+         logger.info(
+             "Exiting with code 1 (signal-initiated shutdown without restart "
+             "request) so the service manager can revive the gateway."
+@@ -706,6 +714,7 @@ class GatewayShutdownMixin(GatewaySessionEndMixin):
+     def _enter_external_drain(self) -> None:
+         """Begin external drain: refuse NEW turns (in-flight ones are NOT interrupted). Idempotent."""
+         if self._external_drain_active:
++            self._update_runtime_status("draining")
+             return
+         self._external_drain_active = True
+         logger.info(
+diff --git a/gateway/status.py b/gateway/status.py
+index 614607a9..a5126977 100644
+--- a/gateway/status.py
++++ b/gateway/status.py
+@@ -307,7 +307,7 @@ def scoped_lock_owner_label(record: Optional[dict[str, Any]]) -> Optional[str]:
+
+
+ def _get_pid_path() -> Path:
+-    return _get_process_hermes_home() / "gateway.pid"
++    return _get_process_hermes_home() / "runtime" / "gateway.pid"
+
+
+ def _get_gateway_lock_path(pid_path: Optional[Path] = None) -> Path:
+@@ -315,7 +315,7 @@ def _get_gateway_lock_path(pid_path: Optional[Path] = None) -> Path:
+
+
+ def _get_runtime_status_path() -> Path:
+-    return _get_process_hermes_home() / _RUNTIME_STATUS_FILE
++    return _get_process_hermes_home() / "runtime" / _RUNTIME_STATUS_FILE
+
+
+ def _get_lock_dir() -> Path:
+@@ -589,7 +589,7 @@ def _gateway_command_subcommand(command: str | None) -> str | None:
+         return "run"
+     joined = " ".join(tokens)
+     if "hermes_cli.main" not in joined and "hermes_cli/main.py" not in joined and not any(
+-        b in ("hermes", "hermes.exe") for b in basenames
++        b in ("hermes", "hermes.exe", "hermes.real") for b in basenames
+     ):
+         return None
+     # Drop --profile X / -p X / --profile=X / -p=X (consumes a VALUE of "gateway" too).
+diff --git a/hermes_cli/backup.py b/hermes_cli/backup.py
+index ed6d22db..20e989c0 100644
+--- a/hermes_cli/backup.py
++++ b/hermes_cli/backup.py
+@@ -1104,7 +1104,7 @@ def _revive_gateway_after_import(hermes_root: Path) -> None:
+ # directories (recursive); missing entries are skipped. Pairing data lives in platform JSON blobs
+ # outside state.db, so it is listed explicitly — ``hermes update`` snapshots this set (#15733).
+ _QUICK_STATE_FILES = (
+-    "state.db", "config.yaml", ".env", "auth.json", "cron/jobs.json", "cron/executions.db",
++    "state.db", "config.yaml", ".env", "auth.json", "cron/jobs.json", "runtime/cron-executions.db",
+     "gateway_state.json", "channel_directory.json", "channel_aliases.json", "processes.json",
+     "gateway/discord_message_recovery.db",  # Discord reconnect replay ledger
+     # Per-profile user stores, destroyed if the update flow replaces the file and the post-update
+diff --git a/hermes_cli/cli_config_load.py b/hermes_cli/cli_config_load.py
+index 281dd848..3c9988d5 100644
+--- a/hermes_cli/cli_config_load.py
++++ b/hermes_cli/cli_config_load.py
+@@ -206,7 +206,7 @@ def _cli_config_defaults():
+             # /resume recap tuning and show_reasoning: keep in sync with hermes_cli/config.py DEFAULT_CONFIG
+             "resume_display": "full", "resume_exchanges": 10, "resume_max_user_chars": 300,
+             "resume_max_assistant_chars": 200, "resume_max_assistant_lines": 3, "resume_skip_tool_only": True,
+-            "show_reasoning": True, "reasoning_full": False, "streaming": True, "busy_input_mode": "interrupt",
++            "show_reasoning": False, "reasoning_full": False, "streaming": True, "busy_input_mode": "interrupt",
+             "cli_layout": "modern",
+             "persistent_output": True, "persistent_output_max_lines": 200,
+             # Also clear scrollback on redraw/resize recovery; off because users prefer history.
+diff --git a/hermes_cli/cli_init_mixin.py b/hermes_cli/cli_init_mixin.py
+index 1eef85d5..2b2719da 100644
+--- a/hermes_cli/cli_init_mixin.py
++++ b/hermes_cli/cli_init_mixin.py
+@@ -138,7 +138,7 @@ class CLIInitMixin:
+         self.resume_display = display.get("resume_display", "full")  # "full" | "minimal"
+         self.bell_on_complete = display.get("bell_on_complete", False)
+         self.bell_on_prompt = display.get("bell_on_prompt", False)  # bell when a blocking modal opens
+-        self.show_reasoning = display.get("show_reasoning", True)
++        self.show_reasoning = display.get("show_reasoning", False)
+         self.reasoning_full = display.get("reasoning_full", False)
+         _configure_output_history(
+             enabled=display.get("persistent_output", True),
+diff --git a/hermes_cli/config_defaults.py b/hermes_cli/config_defaults.py
+index 50117f6f..74e77fa8 100644
+--- a/hermes_cli/config_defaults.py
++++ b/hermes_cli/config_defaults.py
+@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
+         # WAL sizing pragmas (ints). None = SQLite defaults (autocheckpoint 1000 pages, no limit).
+         "wal_autocheckpoint": None,
+         "journal_size_limit": None,
++        "temp_store": 2,
+     },
+     # Server-process fd soft limit (clamped to the hard limit) + glibc arena cap; 0/false/null = off.
+     "runtime": {"nofile_soft_limit": 4096, "malloc_arena_max": 4},
+@@ -386,7 +387,8 @@ DEFAULT_CONFIG = {
+         # Keyless free-tier ring: with NO web backend configured or keyed, web_search/web_extract
+         # rotate round-robin across exa, parallel, firecrawl, keenable public free tiers, failing
+         # over on rate limits. Never pre-empts a configured/keyed backend. false = disable.
+-        "keyless_fallback": True,
++        # NemoClaw compatibility override: no web backend, so no anonymous search.
++        "keyless_fallback": False,
+         # One-shot rescue: when the chosen/keyed backend fails a call, THAT call retries once on the
+         # keyless ring; the next call tries the chosen backend again (no sticky failover). Off when
+         # keyless_fallback is false.
+@@ -837,7 +839,8 @@ DEFAULT_CONFIG = {
+         "bell_on_prompt": False,   # bell when a blocking prompt opens (clarify/approval/sudo)
+         # Stream reasoning live before the response; otherwise thinking models show only a spinner
+         # for tens of seconds.
+-        "show_reasoning": True,
++        # NemoClaw compatibility override: generated policy keeps reasoning hidden.
++        "show_reasoning": False,
+         # Post-response "Reasoning" recap collapses to 10 lines; true prints it all (live streaming
+         # is always full).
+         "reasoning_full": False,
+@@ -907,7 +910,7 @@ DEFAULT_CONFIG = {
+         "suppress_warning_notifications": False,
+         # Codex Responses commentary channel: true delivers completed commentary as mid-turn interim
+         # updates; false routes it to reasoning (visible only with show_reasoning).
+-        "show_commentary": True,
++        "show_commentary": False,
+         "tool_progress_command": False,  # enable /verbose command in messaging gateway
+         # display.tool_progress_overrides is deprecated (use display.platforms); a user-set value is
+         # still honored at runtime and folded into platforms by migration.
+@@ -1658,7 +1661,7 @@ DEFAULT_CONFIG = {
+         # channel — a pending approval there just blocks for the full timeout with nobody to answer (#37284,
+         # #87509): deny    — block the command instantly and let the agent find another way (default, safe;
+         # mirrors cron_mode deny) approve — auto-approve all dangerous commands on unattended platforms
+-        "mode": "smart",
++        "mode": "manual",
+         "timeout": 300,
+         "discord_prompt_timeout": 300,  # Discord buttons stay clickable (min 30 s, cap MAX_SAFE_TIMEOUT_S)
+         "cron_mode": "deny",
+@@ -2346,7 +2349,8 @@ DEFAULT_CONFIG = {
+         # Pre-update safety backup — ONE consolidated mechanism, three modes: Files over 1 GiB (e.g. a
+         # bloated state.db) are skipped with a warning so the snapshot stays fast. This is the #48200
+         # (wrong-path wipe) safety net.
+-        "pre_update_backup": "quick",
++        # NemoClaw compatibility override: generated policy leaves image state unchanged.
++        "pre_update_backup": False,
+         # Full backup zips to retain (older pruned after each success; floored to 1 so the newest is
+         # always kept). The quick snapshot always keeps exactly 1.
+         "backup_keep": 5,
+@@ -2367,7 +2371,8 @@ DEFAULT_CONFIG = {
+         "parked_branch_strategy": "switch",
+         # Refresh an installed cua-driver during `hermes update` (best-effort, macOS only). Turn off
+         # e.g. on non-admin accounts where /Applications isn't writable.
+-        "refresh_cua_driver": True,
++        # NemoClaw compatibility override: generated policy disables mutable CUA updates.
++        "refresh_cua_driver": False,
+     },
+     # LSP diagnostics (pyright, gopls, rust-analyzer...) in the post-write lint check of
+     # write_file/patch. Runs only when the cwd or edited file is inside a git worktree; otherwise
+diff --git a/hermes_cli/kanban_db_connect.py b/hermes_cli/kanban_db_connect.py
+index 19be46e4..bc0e7158 100644
+--- a/hermes_cli/kanban_db_connect.py
++++ b/hermes_cli/kanban_db_connect.py
+@@ -775,7 +775,7 @@ def connect(db_path: Optional[Path] = None, *, board: Optional[str] = None) -> s
+             # Idempotent; runs under _INIT_LOCK so same-process dispatcher
+             # threads can't race the ALTER TABLE pass with stale PRAGMA snapshots.
+             if resolved not in _INITIALIZED_PATHS:
+-                conn.executescript(_kb.SCHEMA_SQL)
++                conn.executescript("BEGIN IMMEDIATE;\n" + _kb.SCHEMA_SQL + "\nCOMMIT;")
+                 _migrate_add_optional_columns(conn)
+                 _INITIALIZED_PATHS.add(resolved)
+
+diff --git a/hermes_cli/oneshot.py b/hermes_cli/oneshot.py
+index cfddfc97..0482d986 100644
+--- a/hermes_cli/oneshot.py
++++ b/hermes_cli/oneshot.py
+@@ -12,6 +12,7 @@ import json
+ import logging
+ import os
+ import sys
++import uuid
+ from contextlib import redirect_stderr, redirect_stdout
+ import dataclasses
+ from dataclasses import dataclass
+@@ -573,6 +574,7 @@ def _run_agent(
+     # The try spans agent construction (not just ``chat``) so the store is always closed, even when
+     # ``AIAgent(...)`` raises — the one-shot exit path hard-exits via os._exit and skips finalizers.
+     agent = relay_session_id = None
++    oneshot_task_id = str(uuid.uuid4())
+     try:
+         agent = AIAgent(
+             api_key=runtime.get("api_key"),
+@@ -606,13 +608,13 @@ def _run_agent(
+         # Relay keys the root conversation to the id at turn entry; compression may rotate
+         # agent.session_id mid-turn without opening a second root, so keep the entry id.
+         relay_session_id = getattr(agent, "session_id", None)
+-        result = agent.run_conversation(prompt, conversation_history=conversation_history or None)
++        result = agent.run_conversation(prompt, conversation_history=conversation_history or None, task_id=oneshot_task_id)
+         if ledger:
+             _attach_auxiliary_usage(result, session_db, aux_before,
+                                     fallback_session_id=agent.session_id or resume_sid)
+         return (result.get("final_response") or "", result)
+     finally:
+-        _close_agent(agent, session_db, relay_session_id)
++        _close_agent(agent, session_db, relay_session_id, oneshot_task_id)
+
+
+ def _quietly(what: str, fn) -> None:
+@@ -623,24 +625,24 @@ def _quietly(what: str, fn) -> None:
+         logging.debug("oneshot %s failed", what, exc_info=True)
+
+
+-def _linger_for_background_completions() -> None:
++def _linger_for_background_completions(oneshot_task_id) -> None:
+     # Linger (bounded) for background processes this turn spawned with notify_on_complete=true BEFORE
+     # agent.close(): close() calls process_registry.kill_all(task_id) and the dying parent owns the
+     # children's stdout pipes, so exiting now destroys in-flight deliveries — including Bot Mode handoff
+     # replies dispatched from a short-lived recipient (#90879).
+     from tools.process_registry import process_registry
+
+-    process_registry.wait_for_pending_completions(None)
++    process_registry.wait_for_pending_completions(oneshot_task_id)
+
+
+-def _close_agent(agent, session_db, relay_session_id=None) -> None:
++def _close_agent(agent, session_db, relay_session_id=None, oneshot_task_id=None) -> None:
+     """Teardown mirroring gateway/run.py:_cleanup_agent_resources (NOT cli.py:_run_cleanup):
+     oneshot has no _active_agent_ref and the hard-exit path skips finalizers."""
+     if agent is not None:
+         # Linger (bounded) for notify_on_complete background processes BEFORE agent.close():
+         # close() kill_all()s the task and the dying parent owns the children's stdout pipes, so
+         # exiting now destroys in-flight deliveries (e.g. Bot Mode handoff replies).
+-        _quietly("background completion wait", _linger_for_background_completions)
++        _quietly("background completion wait", lambda: _linger_for_background_completions(oneshot_task_id))
+         if relay_session_id:
+             # run_conversation ends the turn but keeps the Relay root resumable; one-shot has no
+             # next turn and os._exit skips atexit, so close the root (and fire on_session_finalize).
+diff --git a/hermes_cli/sessions_cmd.py b/hermes_cli/sessions_cmd.py
+index ae92efd1..85f4c49c 100644
+--- a/hermes_cli/sessions_cmd.py
++++ b/hermes_cli/sessions_cmd.py
+@@ -339,7 +339,7 @@ def _cmd_list(db, args):
+     def _ws(s):  # repo/dir basename, "—" when unbound
+         key = _ws_key(s)
+         return ((os.path.basename(key.rstrip("/\\")) or key) if key else "—")[:16]
+-    _title = lambda s, n: (s.get("title") or "—")[:n]
++    _title = lambda s, n: ((s.get("preview") if s.get("title_source") in ("derived", "llm") else s.get("title")) or s.get("preview") or "—")[:n]
+     _preview = lambda s, n: s.get("preview", "")[:n]
+     _ago = lambda s: _relative_time(s.get("last_active"), session_id=s["id"])
+
+diff --git a/hermes_cli/update_cmd_maint.py b/hermes_cli/update_cmd_maint.py
+index 2f2535ea..41f35ecc 100644
+--- a/hermes_cli/update_cmd_maint.py
++++ b/hermes_cli/update_cmd_maint.py
+@@ -636,10 +636,11 @@ def _resolve_pre_update_backup_mode(args) -> str:
+         return "full"
+
+     try:
+-        raw = _load_updates_cfg().get("pre_update_backup", "quick")
++        # NemoClaw compatibility override: missing config skips state duplication.
++        raw = _load_updates_cfg().get("pre_update_backup", False)
+     except Exception as exc:
+         logger.debug("Could not load config for pre-update backup: %s", exc)
+-        raw = "quick"
++        raw = False  # NemoClaw config-error fallback.
+
+     if raw is True:
+         return "full"
+@@ -874,7 +875,7 @@ def _refresh_cua_driver_after_update() -> None:
+     """Reconcile an installed optional package, never a user-selected external binary."""
+     import pm
+
+-    if not _load_updates_cfg().get("refresh_cua_driver", True):
++    if not _load_updates_cfg().get("refresh_cua_driver", False):
+         return
+     if os.environ.get("HERMES_CUA_DRIVER_CMD", "").strip():
+         return
+diff --git a/hermes_cli/web_server_boundary.py b/hermes_cli/web_server_boundary.py
+index d4aeb4e0..a722b6be 100644
+--- a/hermes_cli/web_server_boundary.py
++++ b/hermes_cli/web_server_boundary.py
+@@ -104,6 +104,9 @@ def _is_accepted_host(
+         return True
+     bound_lc = bound_host.lower()
+     if bound_lc in _LOOPBACK_HOST_VALUES:
++        external_host = os.environ.get("_NEMOCLAW_HERMES_DASHBOARD_EXTERNAL_HOST", "").strip().lower().rstrip(".")
++        if external_host and host_only == external_host:
++            return True
+         return host_only in _LOOPBACK_HOST_VALUES
+     return host_only == bound_lc
+
+diff --git a/hermes_cli/web_server_messaging.py b/hermes_cli/web_server_messaging.py
+index 6a275b4e..a592a7df 100644
+--- a/hermes_cli/web_server_messaging.py
++++ b/hermes_cli/web_server_messaging.py
+@@ -208,8 +208,7 @@ _whatsapp_onboarding_sessions: dict[str, _WhatsAppOnboardingSession] = {}
+
+
+ def _whatsapp_session_path() -> Path:
+-    from hermes_constants import get_hermes_dir
+-    return get_hermes_dir("platforms/whatsapp/session", "whatsapp/session")
++    return Path("/sandbox/.hermes/platforms/whatsapp/session")
+
+
+ _WHATSAPP_PAYLOAD_FIELDS = (
+diff --git a/hermes_state.py b/hermes_state.py
+index 6a7ae615..7a881628 100644
+--- a/hermes_state.py
++++ b/hermes_state.py
+@@ -180,6 +180,90 @@ T = TypeVar("T")
+ # (tests monkeypatch the constant directly).
+ DEFAULT_DB_PATH = _IMPORT_DEFAULT_DB_PATH = get_hermes_home() / "state.db"
+
++_NEMOCLAW_SHARED_STATE_LINK = Path("/sandbox/.hermes/state.db")
++_NEMOCLAW_SHARED_STATE_DIRECTORY = Path("/sandbox/.hermes/runtime")
++_NEMOCLAW_SHARED_STATE_NAMES = ("state.db", "state.db-wal", "state.db-shm")
++
++
++def _nemoclaw_normalize_shared_state_permissions(db_path: Path) -> None:
++    """Keep only NemoClaw's fixed cross-UID session ledger group-writable."""
++    if Path(db_path) != _NEMOCLAW_SHARED_STATE_LINK:
++        return
++    link_metadata = os.lstat(_NEMOCLAW_SHARED_STATE_LINK)
++    if (
++        not stat.S_ISLNK(link_metadata.st_mode)
++        or os.readlink(_NEMOCLAW_SHARED_STATE_LINK) != "runtime/state.db"
++    ):
++        raise PermissionError("NemoClaw shared state link is unsafe")
++    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
++        raise PermissionError("NemoClaw shared state descriptor flags are unavailable")
++
++    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
++    directory_flags |= getattr(os, "O_CLOEXEC", 0)
++    directory_fd = os.open(_NEMOCLAW_SHARED_STATE_DIRECTORY, directory_flags)
++    try:
++        directory_metadata = os.fstat(directory_fd)
++        if (
++            not stat.S_ISDIR(directory_metadata.st_mode)
++            or stat.S_IMODE(directory_metadata.st_mode) != 0o2770
++        ):
++            raise PermissionError("NemoClaw shared state directory is unsafe")
++
++        file_flags = os.O_RDONLY | os.O_NOFOLLOW
++        file_flags |= getattr(os, "O_CLOEXEC", 0)
++        file_flags |= getattr(os, "O_NONBLOCK", 0)
++        for index, name in enumerate(_NEMOCLAW_SHARED_STATE_NAMES):
++            try:
++                descriptor = os.open(name, file_flags, dir_fd=directory_fd)
++            except FileNotFoundError:
++                if index == 0:
++                    for sidecar in _NEMOCLAW_SHARED_STATE_NAMES[1:]:
++                        try:
++                            os.stat(sidecar, dir_fd=directory_fd, follow_symlinks=False)
++                        except FileNotFoundError:
++                            continue
++                        raise PermissionError(
++                            "NemoClaw shared state sidecar exists without state.db"
++                        )
++                    return
++                continue
++            try:
++                before = os.fstat(descriptor)
++                if (
++                    not stat.S_ISREG(before.st_mode)
++                    or before.st_nlink != 1
++                    or before.st_gid != directory_metadata.st_gid
++                ):
++                    raise PermissionError(f"NemoClaw shared state file is unsafe: {name}")
++                if before.st_uid == os.geteuid():
++                    os.fchmod(descriptor, 0o660)
++                elif stat.S_IMODE(before.st_mode) != 0o660:
++                    raise PermissionError(
++                        f"NemoClaw shared state file is not group-writable: {name}"
++                    )
++                after = os.fstat(descriptor)
++                current = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
++                if (
++                    not stat.S_ISREG(after.st_mode)
++                    or after.st_nlink != 1
++                    or after.st_dev != before.st_dev
++                    or after.st_ino != before.st_ino
++                    or after.st_gid != directory_metadata.st_gid
++                    or stat.S_IMODE(after.st_mode) != 0o660
++                    or current.st_dev != after.st_dev
++                    or current.st_ino != after.st_ino
++                    or current.st_mode != after.st_mode
++                    or current.st_uid != after.st_uid
++                    or current.st_gid != after.st_gid
++                ):
++                    raise PermissionError(
++                        f"NemoClaw shared state file changed during normalization: {name}"
++                    )
++            finally:
++                os.close(descriptor)
++    finally:
++        os.close(directory_fd)
++
+ # Back off from read-only opens after one fails: not per query, but short enough that
+ # transient fd pressure doesn't strand the read pool.
+ _READ_OPEN_RETRY_SECONDS = 60.0
+@@ -814,6 +898,7 @@ class SessionDB(
+             # Existing WAL/SHM files may predate the main-file hardening;
+             # normalize any sidecars that became visible during WAL setup.
+             _secure_state_db_files(self.db_path)
++            _nemoclaw_normalize_shared_state_permissions(self.db_path)
+             apply_database_pragmas(conn, db_label="state.db")
+             conn.execute("PRAGMA foreign_keys=ON")
+             self._fts_cjk_loaded = load_fts5_cjk_extension(conn)
+@@ -829,6 +914,7 @@ class SessionDB(
+         # Create/tighten the main database before sqlite3.connect() so a
+         # permissive process umask can never expose a fresh profile store.
+         _secure_state_db_files(self.db_path, create_main=True)
++        _nemoclaw_normalize_shared_state_permissions(self.db_path)
+         self._conn = self._open_writer_conn()
+         self._init_schema()
+
+diff --git a/hermes_state_common.py b/hermes_state_common.py
+index c31526f0..c910cba8 100644
+--- a/hermes_state_common.py
++++ b/hermes_state_common.py
+@@ -163,7 +163,7 @@ def _sql_preview_raw(session_id_expr: str = "s.id") -> str:
+     stats older than idx_messages_session_id, SQLite otherwise reads and sorts the whole session (#119403)."""
+     return (f"COALESCE((SELECT {_PREVIEW_RAW_SELECT} FROM messages m INDEXED BY idx_messages_session"
+         f" WHERE m.session_id = {session_id_expr} AND m.role = 'user' AND m.content IS NOT NULL"
+-        f" AND {_PREVIEW_ELIGIBLE_SQL} ORDER BY m.timestamp, m.id LIMIT 1), '') AS _preview_raw")
++        f" AND {_PREVIEW_ELIGIBLE_SQL} ORDER BY m.timestamp DESC, m.id DESC LIMIT 1), '') AS _preview_raw")
+
+ # ── Session lineage predicates ({a} = sessions alias) ───────────────────────
+
+diff --git a/plugins/platforms/a2a/__init__.py b/plugins/platforms/a2a/__init__.py
+index 14b62553..edee9098 100644
+--- a/plugins/platforms/a2a/__init__.py
++++ b/plugins/platforms/a2a/__init__.py
+@@ -85,13 +85,7 @@ def interactive_setup() -> None:
+
+
+ def register(ctx) -> None:
+-    """Plugin entry point. Client tools register even when the inbound platform is disabled
+-    so the agent can call peers without exposing itself."""
+-    try:
+-        from .tools import register_tools
+-        register_tools(ctx)
+-    except Exception:
+-        logger.warning("A2A: failed to register client tools", exc_info=True)
++    """Register only the inbound adapter, which managed policy keeps disabled."""
+     try:
+         from .adapter import A2AAdapter
+         ctx.register_platform(
+diff --git a/plugins/platforms/a2a/plugin.yaml b/plugins/platforms/a2a/plugin.yaml
+index a45b0042..2728edc3 100644
+--- a/plugins/platforms/a2a/plugin.yaml
++++ b/plugins/platforms/a2a/plugin.yaml
+@@ -26,16 +26,6 @@ description: >
+
+   Pure stdlib transport (http.server + urllib) — no a2a-sdk dependency required.
+ author: Nous Research
+-# The outbound client tools. Declaring them here is what asks discovery to
+-# import `tools.py` in CLI/TUI processes, where the plugin is otherwise
+-# deferred and the tools would never register at all (#78050). The inbound
+-# adapter stays deferred either way — only this submodule is imported.
+-provides_tools:
+-  - a2a_discover
+-  - a2a_call
+-  - a2a_list
+-  - a2a_history
+-  - a2a_orchestrate
+ # requires_env / optional_env are surfaced in the `hermes config` UI via the
+ # platform-plugin env var injector in hermes_cli/config.py.
+ requires_env: []
+diff --git a/plugins/platforms/discord/recovery.py b/plugins/platforms/discord/recovery.py
+index 1e3bb60f..df5b113f 100644
+--- a/plugins/platforms/discord/recovery.py
++++ b/plugins/platforms/discord/recovery.py
+@@ -42,7 +42,7 @@ class DiscordRecoveryStore:
+                         self._initialize(conn)
+                         self._initialized = True
+                         with suppress(OSError):
+-                            os.chmod(path, 0o600)
++                            os.chmod(path, 0o660)
+                     result = fn(conn)
+                     conn.commit()
+                     return result
+diff --git a/pyproject.toml b/pyproject.toml
+index 3f1155f3..3d747b73 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -223,6 +223,8 @@ dependencies = [
+   "nemo-relay>=0.11,<0.12; ((sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'linux' and platform_machine == 'x86_64' and 'android' not in platform_release) or (sys_platform == 'linux' and platform_machine == 'aarch64' and 'android' not in platform_release) or (sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'win32' and platform_machine == 'ARM64')) and python_version >= '3.14'",]
+
+ [project.optional-dependencies]
++# NemoClaw's managed plugin and guards still use the PyYAML API.
++nemoclaw = ["pyyaml==6.0.3"]
+ # High-performance event loop — uvloop replaces the stdlib asyncio loop with
+ # a libuv-backed implementation for ~2-4x throughput on uvicorn.  Gated as an
+ # optional extra because libuv's ./configure does not run on Android/Termux
+diff --git a/tools/bot_mode_dm.py b/tools/bot_mode_dm.py
+index 4faabf75..d32b4b49 100644
+--- a/tools/bot_mode_dm.py
++++ b/tools/bot_mode_dm.py
+@@ -1010,10 +1010,26 @@ def _agent_home(agent: Any) -> str:
+     with contextlib.suppress(Exception):
+         db_path = getattr(getattr(agent, "_session_db", None), "db_path", None)
+         if db_path:
+-            return str(Path(db_path).parent)
++            return str(_nemoclaw_ledger_home(Path(db_path)))
+     return _default_home()
+
+
++_NEMOCLAW_SHARED_STATE_LINK = Path("/sandbox/.hermes/state.db")
++_NEMOCLAW_SHARED_STATE_TARGET = Path("runtime/state.db")
++
++
++def _nemoclaw_ledger_home(db_path: Path) -> Path:
++    """Return the Hermes home that links NemoClaw's resolved session ledger."""
++    home = _NEMOCLAW_SHARED_STATE_LINK.parent
++    if (
++        db_path == home / _NEMOCLAW_SHARED_STATE_TARGET
++        and _NEMOCLAW_SHARED_STATE_LINK.is_symlink()
++        and _NEMOCLAW_SHARED_STATE_LINK.readlink() == _NEMOCLAW_SHARED_STATE_TARGET
++    ):
++        return home
++    return db_path.parent
++
++
+ def _session_title(agent: Any) -> str:
+     title = str(getattr(agent, "_session_title_hint", "") or "").strip()
+     if title:
+diff --git a/tools/browser_session_cdp.py b/tools/browser_session_cdp.py
+index 442f2ad8..c551568a 100644
+--- a/tools/browser_session_cdp.py
++++ b/tools/browser_session_cdp.py
+@@ -30,6 +30,11 @@ def resolve_cdp_override(cdp_url: str) -> str:
+     raw = (cdp_url or "").strip()
+     if not raw:
+         return ""
++    # HomeCompute fixed CDP transport: credentials remain in OpenShell.
++    if raw == "ws://172.18.0.1:18810/devtools/browser/homecompute":
++        import os, subprocess
++        env = {key: os.environ[key] for key in ("PATH", "HTTP_PROXY", "HTTPS_PROXY", "BROWSER_TOKEN") if key in os.environ}
++        return subprocess.check_output(["/usr/local/bin/node", "/usr/local/lib/nemoclaw/browser-relay.mjs", "--ensure"], env=env, text=True, timeout=10).strip()
+     lowered = raw.lower()
+     if "/devtools/browser/" in lowered:
+         return raw
+diff --git a/tui_gateway/agent_factory.py b/tui_gateway/agent_factory.py
+index 11bd4a37..08039f81 100644
+--- a/tui_gateway/agent_factory.py
++++ b/tui_gateway/agent_factory.py
+@@ -295,7 +295,7 @@ def _load_provider_routing() -> dict:
+
+ def _load_show_reasoning() -> bool:
+     # Fallback True — keep in sync with DEFAULT_CONFIG display.show_reasoning (no DEFAULT_CONFIG merge here).
+-    return bool(_display_cfg().get("show_reasoning", True))
++    return bool(_display_cfg().get("show_reasoning", False))
+
+
+ def _load_memory_notifications() -> str:
+diff --git a/tui_gateway/methods_config.py b/tui_gateway/methods_config.py
+index d9f71d57..eab8ae09 100644
+--- a/tui_gateway/methods_config.py
++++ b/tui_gateway/methods_config.py
+@@ -220,7 +220,7 @@ def _cfg_get_reasoning(params):
+             raw_effort = False if parsed.get("enabled") is False else parsed.get("effort")
+         # YAML `reasoning_effort: false` means thinking disabled, not "unset".
+         effort = "none" if raw_effort is False else str(raw_effort or "medium")
+-    display = "show" if (cfg.get("display") or {}).get("show_reasoning", True) else "hide"
++    display = "show" if (cfg.get("display") or {}).get("show_reasoning", False) else "hide"
+     return {"value": effort, "display": display}
+
+
+diff --git a/uv.lock b/uv.lock
+index 2a9eb540..9a75327a 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -2480,6 +2480,9 @@ mistral = [
+ modal = [
+     { name = "modal" },
+ ]
++nemoclaw = [
++    { name = "pyyaml" },
++]
+ otlp = [
+     { name = "opentelemetry-exporter-otlp-proto-http" },
+     { name = "opentelemetry-sdk" },
+@@ -2730,6 +2733,7 @@ requires-dist = [
+     { name = "python-telegram-bot", extras = ["webhooks"], marker = "extra == 'termux'", specifier = "==22.8" },
+     { name = "pywin32", marker = "python_full_version >= '3.14' and sys_platform == 'win32'", specifier = ">=306,<312" },
+     { name = "pywinpty", marker = "python_full_version >= '3.14' and sys_platform == 'win32'", specifier = ">=3.0.5,<4" },
++    { name = "pyyaml", marker = "extra == 'nemoclaw'", specifier = "==6.0.3" },
+     { name = "qrcode", marker = "extra == 'dingtalk'", specifier = "==7.4.2" },
+     { name = "qrcode", marker = "extra == 'feishu'", specifier = "==7.4.2" },
+     { name = "qrcode", marker = "extra == 'messaging'", specifier = "==7.4.2" },
+@@ -2775,7 +2779,7 @@ requires-dist = [
+     { name = "winrt-windows-services-store", marker = "python_full_version >= '3.14' and sys_platform == 'win32'", specifier = ">=3.2.1,<4" },
+     { name = "youtube-transcript-api", marker = "extra == 'youtube'", specifier = "==1.2.4" },
+ ]
+-provides-extras = ["uvloop", "anthropic", "exa", "firecrawl", "parallel-web", "ddgs", "fal", "edge-tts", "neutts", "kittentts", "piper", "modal", "daytona", "vercel", "google-meet", "messaging", "cron", "slack", "matrix", "wecom", "keychain", "tts-premium", "voice", "wake", "telegram", "discord", "stt-whisper", "audio-io", "silk", "wake-openwakeword", "wake-sherpa", "wake-porcupine", "google-chat", "doc-extract", "documents", "documents-pdf", "trace-upload", "vision", "pty", "mcp", "nemo-relay", "sms", "teams", "computer-use", "acp", "mistral", "otlp", "bedrock", "vertex", "azure-identity", "termux", "termux-all", "dingtalk", "feishu", "google", "youtube", "web", "all"]
++provides-extras = ["nemoclaw", "uvloop", "anthropic", "exa", "firecrawl", "parallel-web", "ddgs", "fal", "edge-tts", "neutts", "kittentts", "piper", "modal", "daytona", "vercel", "google-meet", "messaging", "cron", "slack", "matrix", "wecom", "keychain", "tts-premium", "voice", "wake", "telegram", "discord", "stt-whisper", "audio-io", "silk", "wake-openwakeword", "wake-sherpa", "wake-porcupine", "google-chat", "doc-extract", "documents", "documents-pdf", "trace-upload", "vision", "pty", "mcp", "nemo-relay", "sms", "teams", "computer-use", "acp", "mistral", "otlp", "bedrock", "vertex", "azure-identity", "termux", "termux-all", "dingtalk", "feishu", "google", "youtube", "web", "all"]
+
+ [package.metadata.requires-dev]
+ dev = [
