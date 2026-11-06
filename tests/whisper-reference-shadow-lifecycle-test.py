@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Synthetic owner/resource lifecycle checks; no Docker or model operations."""
 import ast
+import contextlib
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import re
 import shlex
+import stat
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
@@ -21,7 +25,7 @@ lifecycle = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(lifecycle)
 import whisper_reference_guard as guard
 
-MODEL = {'schema_version': 1, 'model_sha256': 'a' * 64, 'model_snapshot': 'b' * 40,
+MODEL = {'schema_version': 1, 'model_bytes': 3095033483, 'model_sha256': 'a' * 64, 'model_snapshot': 'b' * 40,
          'runtime': 'openai-whisper-reference', 'runtime_commit': 'c' * 40,
          'loader_version': 'ggml-v1', 'loader_sha256': 'd' * 64,
          'base_manifest': 'nvcr.io/nvidia/pytorch@sha256:' + 'e' * 64,
@@ -204,13 +208,54 @@ class LifecycleTests(unittest.TestCase):
             guard.memory()
             with self.assertRaises(guard.MemoryFloor): guard.memory(loading=True)
 
+    def test_mounted_preflight_reads_no_payload_and_rejects_bad_metadata(self):
+        good = SimpleNamespace(st_mode=stat.S_IFREG | 0o444, st_dev=1, st_ino=2, st_size=MODEL['model_bytes'])
+        def execute(before, after):
+            with patch.object(os, 'lstat', return_value=before), patch.object(os, 'open', return_value=17), patch.object(os, 'fstat', return_value=after), patch.object(os, 'close') as close, patch.object(os, 'read', side_effect=AssertionError('No payload read')), patch.object(os, 'geteuid', return_value=10001), patch.object(os, 'getegid', return_value=10001), patch.object(sys, 'argv', ['probe', str(MODEL['model_bytes'])]), contextlib.redirect_stdout(io.StringIO()) as output:
+                exec(lifecycle.MODEL_PREFLIGHT, {})  # noqa: S102 - Execute fixed source against mocked metadata only.
+                close.assert_called_once_with(17)
+                return json.loads(output.getvalue())
+        self.assertEqual(execute(good, good)['bytes'], MODEL['model_bytes'])
+        for bad in (SimpleNamespace(**{**vars(good), 'st_mode': stat.S_IFDIR}),
+                    SimpleNamespace(**{**vars(good), 'st_mode': stat.S_IFLNK}),
+                    SimpleNamespace(**{**vars(good), 'st_size': 1})):
+            with self.assertRaises(AssertionError): execute(bad, bad)
+
+    def test_mounted_probe_requires_exact_owned_uid_file_and_size(self):
+        proof = {'uid': 10001, 'gid': 10001, 'readable_regular_file': True, 'bytes': MODEL['model_bytes'], 'payload_bytes_read': 0}
+        with patch.object(self.runtime, 'owned_container') as owner, patch.object(lifecycle, 'command', return_value=json.dumps(proof)) as command:
+            self.assertEqual(self.runtime.verify_mounted_model(self.record), proof)
+        owner.assert_called_once_with(self.record)
+        args = command.call_args.args[0]
+        self.assertEqual(args[:5], ['docker', 'exec', '--user', '10001:10001', CONTAINER])
+        self.assertEqual(args[-2:], [lifecycle.MODEL_PREFLIGHT, str(MODEL['model_bytes'])])
+        self.assertEqual(command.call_args.kwargs['timeout'], 8)
+        with patch.object(self.runtime, 'owned_container'), patch.object(lifecycle, 'command', return_value='{}'), self.assertRaises(guard.Refused):
+            self.runtime.verify_mounted_model(self.record)
+
+    def test_start_uses_owned_mounted_preflight_without_host_path_stat(self):
+        proof = {'uid': 10001, 'gid': 10001, 'readable_regular_file': True, 'bytes': MODEL['model_bytes'], 'payload_bytes_read': 0}
+        with patch.object(lifecycle, 'published_source'), patch.object(lifecycle, 'manifest', return_value=MODEL), patch.object(self.runtime, 'verify_image'), patch.object(lifecycle, 'memory', return_value=MEMORY), patch.object(self.runtime, 'source_digest', return_value='5' * 64), patch.object(Path, 'read_text', return_value='boot'), patch.object(Path, 'is_file', side_effect=PermissionError('protected host')), patch.object(Path, 'is_symlink', side_effect=PermissionError('protected host')), patch.object(lifecycle, 'command', return_value=CONTAINER), patch.object(self.runtime, 'verify_mounted_model', return_value=proof) as check, patch.object(self.runtime, 'no_active'):
+            result = self.runtime.start(REVISION, IMAGE)
+        self.assertEqual(result['phase'], 'awaiting_guard')
+        self.assertEqual(result['mounted_model_preflight'], proof)
+        check.assert_called_once()
+
+    def test_bad_mounted_preflight_cleans_only_new_waiting_candidate(self):
+        with patch.object(lifecycle, 'published_source'), patch.object(lifecycle, 'manifest', return_value=MODEL), patch.object(self.runtime, 'verify_image'), patch.object(lifecycle, 'memory', return_value=MEMORY), patch.object(self.runtime, 'source_digest', return_value='5' * 64), patch.object(Path, 'read_text', return_value='boot'), patch.object(lifecycle, 'command', return_value=CONTAINER), patch.object(self.runtime, 'verify_mounted_model', side_effect=guard.Refused('bad metadata')), patch.object(self.guard, 'terminate_owned', return_value={'status': 'stopped', 'force_kill': False}) as stop, self.assertRaises(guard.Refused):
+            self.runtime.start(REVISION, IMAGE)
+        self.assertFalse((self.state / 'active.json').exists())
+        self.assertTrue(stop.call_args.kwargs['loading'])
+        self.assertEqual(stop.call_args.args[0]['container_id'], CONTAINER)
+        self.assertEqual(len(list(self.state.glob('failed-start-*'))), 1)
+
     def test_load_cannot_release_without_current_guard(self):
         self.record['phase'] = 'awaiting_guard'
         with patch.object(self.guard, 'alive', side_effect=guard.Refused('absent')), patch.object(lifecycle, 'command') as command, self.assertRaises(guard.Refused):
             self.runtime.release_load(self.record)
             command.assert_not_called()
         self.save()
-        with patch.object(self.guard, 'alive', return_value={'qualification_failed': False}), patch.object(self.guard, 'sample', return_value=MEMORY) as sample, patch.object(self.runtime, 'owned_container'), patch.object(lifecycle, 'command'):
+        with patch.object(self.guard, 'alive', return_value={'qualification_failed': False}), patch.object(self.guard, 'sample', return_value=MEMORY) as sample, patch.object(self.runtime, 'verify_mounted_model', return_value={'bytes': MODEL['model_bytes']}), patch.object(lifecycle, 'command'):
             self.runtime.release_load(self.record)
         sample.assert_called_once_with(self.record, loading=True)
         self.assertEqual(guard.read_json(self.state / 'active.json')['phase'], 'loading')

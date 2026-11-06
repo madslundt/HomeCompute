@@ -42,6 +42,20 @@ while not Path('/tmp/load-enabled').is_file():
  time.sleep(.1)
 os.execvp('python3',['python3','-I','-B','/opt/homecompute/adapter.py'])
 """
+MODEL_PREFLIGHT = """import json,os,stat,sys
+p='/models/ggml-large-v3.bin'
+before=os.lstat(p)
+assert stat.S_ISREG(before.st_mode)
+fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+try:
+ info=os.fstat(fd)
+ assert stat.S_ISREG(info.st_mode)
+ assert (before.st_dev,before.st_ino)==(info.st_dev,info.st_ino)
+ assert info.st_size==int(sys.argv[1])
+ assert os.geteuid()==10001 and os.getegid()==10001
+finally:os.close(fd)
+print(json.dumps({'uid':10001,'gid':10001,'readable_regular_file':True,'bytes':info.st_size,'payload_bytes_read':0}))
+"""
 HEALTH_PROGRAM = """import urllib.request,urllib.error
 try:r=urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=3)
 except urllib.error.HTTPError as error:
@@ -238,8 +252,6 @@ class Runtime:
         model = manifest()
         self.verify_image(image_id, revision, model)
         before = memory(loading=True)
-        if not Path(MODEL).is_file() or Path(MODEL).is_symlink():
-            raise Refused("Approved existing model must be a regular file")
         owner = secrets.token_hex(12)
         record = {"owner": owner, "name": "hc-whisper-reference-" + owner, "phase": "creating",
                   "source_revision": revision, "image_id": image_id, "model_pin": model,
@@ -252,7 +264,8 @@ class Runtime:
             record["container_id"] = command(self.run_arguments(record))
             record["phase"] = "awaiting_guard"
             write_json(self.state / "active.json", record, replace=True)
-            self.owned_container(record)
+            record["mounted_model_preflight"] = self.verify_mounted_model(record)
+            write_json(self.state / "active.json", record, replace=True)
             return record
         except BaseException:
             try:
@@ -264,13 +277,28 @@ class Runtime:
                 self.guard.remove_active(record)
             raise
 
+    def verify_mounted_model(self, record):
+        # The daemon mounts only the fixed approved path. Do not traverse protected
+        # host ancestors as the SSH user or claim that mounted lstat resolves them.
+        # Full model SHA/layout verification remains mandatory during guarded load.
+        self.owned_container(record)
+        size = record["model_pin"]["model_bytes"]
+        if type(size) is not int or size <= 0:
+            raise Refused("Invalid pinned model size")
+        value = json.loads(command(["docker", "exec", "--user", "10001:10001", record["container_id"],
+                                    "python3", "-I", "-B", "-c", MODEL_PREFLIGHT, str(size)], timeout=8))
+        if value != {"uid": 10001, "gid": 10001, "readable_regular_file": True,
+                     "bytes": size, "payload_bytes_read": 0}:
+            raise Refused("Mounted model metadata differs")
+        return value
+
     def release_load(self, record):
         if record["phase"] != "awaiting_guard":
             raise Refused("Load was already released")
         if self.guard.alive(record).get("qualification_failed") is not False:
             raise Refused("Observed resource failure invalidates this trial")
         self.guard.sample(record, loading=True)
-        self.owned_container(record)
+        record["mounted_model_preflight"] = self.verify_mounted_model(record)
         program = "import os;f=os.open('/tmp/load-enabled',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600);os.close(f)"
         command(["docker", "exec", record["container_id"], "python3", "-I", "-B", "-c", program])
         record["phase"] = "loading"
