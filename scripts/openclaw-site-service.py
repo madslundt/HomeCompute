@@ -20,6 +20,8 @@ from openclaw_site_registry import SiteRegistry
 from openclaw_site_sessions import SiteSessions
 from openclaw_site_view_transport import asset, websocket
 
+OPENCLAW_SITES_PORT = 18816
+
 
 def tokens(path: Path) -> dict:
     value = json.loads(read_private(path.parent, path.name, 4096))
@@ -51,7 +53,7 @@ class Server(ThreadingHTTPServer):
         self.operations, self.identities = operations, identities
         self.sessions, self.owner_token = sessions, owner_token
         self.slots = threading.BoundedSemaphore(16)
-        super().__init__(('127.0.0.1', 18816), Handler)
+        super().__init__(('127.0.0.1', OPENCLAW_SITES_PORT), Handler)
 
     def handle_error(self, *_args):
         pass
@@ -96,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
     def actor(self):
         if (len(self.path) > 128 or '?' in self.path or '#' in self.path
                 or len(self.headers) > 24 or sum(len(k) + len(v) for k, v in self.headers.items()) > 4096
-                or self.headers.get_all('Host', []) != ['127.0.0.1:18816']
+                or self.headers.get_all('Host', []) != [f'127.0.0.1:{OPENCLAW_SITES_PORT}']
                 or self.headers.get('Origin') is not None
                 or len(self.headers.get_all('Authorization', [])) != 1):
             return None

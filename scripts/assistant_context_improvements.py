@@ -934,7 +934,7 @@ class ImprovementController:
 
 class SystemdPolicyOps:
     UNIT="homecompute-assistant-context.service"
-    HEALTH="http://127.0.0.1:18816/v1/health"
+    HEALTH="http://127.0.0.1:18826/v1/health"
     HEALTH_TOKEN=Path("/run/credentials/homecompute-assistant-context-improvements.service/policy-health-token")
     EXTERNAL_HEALTH_TOKEN=Path("/etc/homecompute/assistant-context-policy-health-token")
     def __init__(self, runner: Callable[..., Any] = subprocess.run, *, token_file: Path | None = None, test_mode: bool = False):

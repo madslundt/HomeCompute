@@ -331,8 +331,8 @@ class ReconciliationTests(unittest.TestCase):
         client.coverage("calendar", "2026-11-06T10:05:00Z", True)
         client.failure("daythread", "2026-11-06T10:06:00Z")
         self.assertEqual([row[0].full_url for row in opener.requests], [
-            "http://127.0.0.1:18816/v1/events", "http://127.0.0.1:18816/v1/coverage",
-            "http://127.0.0.1:18816/v1/coverage/failure"])
+            "http://127.0.0.1:18826/v1/events", "http://127.0.0.1:18826/v1/coverage",
+            "http://127.0.0.1:18826/v1/coverage/failure"])
         self.assertTrue(all(row[0].get_header("Authorization") == "Bearer synthetic-collector-token-value-long-enough"
                             for row in opener.requests))
         coverage = json.loads(opener.requests[1][0].data)

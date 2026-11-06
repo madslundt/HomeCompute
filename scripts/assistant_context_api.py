@@ -25,6 +25,7 @@ from assistant_context_tools import PREFIX, SOURCES, private_bytes, validate
 
 MAX_BODY = 98304
 MAX_RESPONSE = 131072
+DEFAULT_CONTEXT_PORT = 18826
 EVENT_KEYS = {'schema_version', 'source', 'object_id', 'revision', 'event_type',
               'operation', 'occurred_at', 'source_ref', 'payload'}
 
@@ -461,7 +462,7 @@ class ContextService:
         return {source: status for source, status in self.coverage(client.scope).items() if source in client.sources}
 
 
-def serve(service: ContextService, configured: list[Client], address=('127.0.0.1', 18816)):
+def serve(service: ContextService, configured: list[Client], address=('127.0.0.1', DEFAULT_CONTEXT_PORT)):
     if address[0] != '127.0.0.1':
         raise ValueError('context service must bind loopback')
     budget = threading.BoundedSemaphore(8)

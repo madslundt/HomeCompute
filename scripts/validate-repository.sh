@@ -132,6 +132,7 @@ python3 "$REPO_ROOT/tests/assistant-attention-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-api-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-bridge-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-credentials-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-port-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-delivery-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-integration-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-retrieval-test.py"
@@ -1260,7 +1261,7 @@ jq -e --arg relay_config "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" '
 # host-network exception; changing it requires reviewing this gate too.
 python3 - "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" <<'PY'
 import hashlib, pathlib, sys
-assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "f440c89381f7f77984a87368a5f73e8fa616eb94d57b761572bc892a14db9f49"
+assert hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() == "02f2c75b79b27fda0c772b79189811e55af11284af3aad819a2a3bc30d13149a"
 PY
 
 # ADR-017 puts the gateway, automations, and agent sandboxes on one kernel, so
