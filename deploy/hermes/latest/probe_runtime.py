@@ -84,7 +84,56 @@ def main():
         assert verdict.blocked, 'private URL literal admitted'
     finally:
         set_live_cdp_override(None)
-    print('PASS: version, Python, privacy, runtime paths, recovery, MCP proxy and browser harness')
+    # Exercise the real NOFOLLOW/flock and Unix peer checks with the managed
+    # layout. The fixture has a legacy alias and a separately private control
+    # directory; no real Hermes home is touched by this test.
+    from gateway import homecompute_paths
+    from gateway.runtime_ownership import ProfileOwnership, OwnershipConflict
+    from gateway.control_socket import GatewayControlServer
+    from hermes_cli.gateway_runtime_discovery import connect_private, DiscoveryError
+    with tempfile.TemporaryDirectory() as directory:
+        home = (Path(directory) / 'home').resolve(); home.mkdir(mode=0o770)
+        home.chmod(0o3770)
+        (home / 'runtime').mkdir(mode=0o770)
+        (home / 'gateway.lock').symlink_to('runtime/gateway.lock')
+        previous = homecompute_paths.MANAGED_HOME
+        homecompute_paths.MANAGED_HOME = home
+        first, second = ProfileOwnership(), ProfileOwnership()
+        try:
+            first.reserve([home])
+            try:
+                second.reserve([home])
+            except OwnershipConflict:
+                pass
+            else:
+                raise AssertionError('second owner acquired the managed lock')
+            first.release(home)
+            second.reserve([home])
+            second.release(home)
+
+            async def check_control():
+                server = GatewayControlServer(home=home)
+                assert await server.start(), 'private control listener unavailable'
+                try:
+                    peer = await asyncio.to_thread(connect_private, home, 2)
+                    peer.close()
+                    control = homecompute_paths.control_home(home)
+                    control.chmod(0o777)
+                    try:
+                        connect_private(home, 2)
+                    except DiscoveryError:
+                        pass
+                    else:
+                        raise AssertionError('unsafe control directory admitted')
+                    finally:
+                        control.chmod(0o700)
+                finally:
+                    await server.stop()
+            asyncio.run(check_control())
+        finally:
+            first.release(home); second.release(home)
+            homecompute_paths.MANAGED_HOME = previous
+    print('PASS: version, Python, privacy, runtime paths, recovery, MCP proxy, browser, lock ownership and private control')
 
 
 if __name__ == '__main__':

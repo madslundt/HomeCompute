@@ -34,6 +34,17 @@ transports now have upstream implementations; do not reintroduce the old
 implementations over them. The removed legacy session-reset datatype needs no
 port. The session preview now changes the single shared SQL helper.
 
+Hermes 0.23 reserves profiles with a no-follow lock open. For the fixed managed
+home, map that open to the real `runtime/gateway.lock` inode, retaining all inode,
+ownership and flock checks. Its control socket uses an owner-private
+`runtime/control` directory; discovery and the server validate that directory
+and the kernel-reported peer UID. The logical profile home remains unchanged.
+The runtime probe exercises competing lock owners, a real Unix connection and
+rejection of an unsafe control-directory mode. Copy the managed plugin into the
+allowed `/opt/hermes` tree rather than linking to a path outside Landlock roots.
+The first synthetic sandbox `hermes-v023-check` is retained in Error after these
+startup incompatibilities; the corrected attempt uses `hermes-v023-verify`.
+
 The old browser tools and agent-browser resolver were removed upstream.
 `browser_exec` uses the release-pinned browser-harness package. The CDP override
 resolver moved to `tools/browser_session_cdp.py`; only the exact owned endpoint
@@ -62,16 +73,23 @@ Retain the build receipt and observed immutable image ID privately. A failed
 managed adapter check is an upgrade blocker; do not weaken or skip it. Building
 an image does not migrate application data or establish managed readiness.
 After a successful image build, the guarded guest helper can create the
-separate `hermes-v023-check` sandbox using the same published recipe:
+separate `hermes-v023-verify` sandbox using the same published recipe:
 
 ```bash
 ./scripts/setup-hermes-guest.sh qualify-latest --config "$config"
+./scripts/setup-hermes-guest.sh probe-latest --config "$config"
 ```
 
 This command still requires the existing household backup/network gates and
 approved local route. It clears inherited messaging credentials, changes no
 owner configuration and installs no boot unit. Do not connect it as a second
 listener for the owner's bot. Qualification must use synthetic turns only.
+`probe-latest` verifies the exact runtime stamp before attaching existing
+OpenShell-held credentials. Its Mattermost policy permits only identity lookup
+and WebSocket authentication, and it explicitly disables the candidate's bot
+listener. It opens and closes a named public browser tab in the dedicated Hermes
+worker; OpenClaw's browser remains separate. Native canary stop/start is part of
+the probe. The owner DM and final boot test still require the selected release.
 
 Before any cutover, complete all runtime gates in `qualification.json` on an
 isolated sandbox, retain the prior image and verified recovery boundary, then

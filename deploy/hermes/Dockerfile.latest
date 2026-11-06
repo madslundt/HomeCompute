@@ -20,7 +20,7 @@ RUN mkdir -p /tmp/hermes-latest/python-runtime \
     && git -C /tmp/hermes-latest apply /tmp/homecompute-managed-integration.patch \
     && rm -rf /opt/hermes \
     && mv /tmp/hermes-latest /opt/hermes \
-    && ln -s /opt/nemoclaw-hermes-plugin /opt/hermes/plugins/nemoclaw \
+    && cp -a /opt/nemoclaw-hermes-plugin /opt/hermes/plugins/nemoclaw \
     && rm /tmp/hermes-latest.tar.gz /tmp/hermes-python.tar.gz /tmp/homecompute-managed-integration.patch
 WORKDIR /opt/hermes
 ENV HERMES_RUNTIME_DIR=/opt/hermes/tools
@@ -66,7 +66,21 @@ RUN python3 -c 'import json; p="/usr/local/share/nemoclaw/hermes-cli-adapter-v1.
     && /usr/local/bin/hermes --version
 COPY latest/probe_runtime.py /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
 RUN chmod 0444 /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py \
-    && /opt/hermes/.venv/bin/python -I /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
+    && /usr/bin/setpriv --reuid=sandbox --regid=sandbox --init-groups -- /opt/hermes/.venv/bin/python -I /usr/local/lib/nemoclaw/homecompute-hermes-latest-probe.py
+# Run upstream transport and ownership regressions on Linux. Test dependencies
+# live only in this temporary build environment, never the shipped runtime.
+RUN HERMES_HOME=/tmp/homecompute-hermes-test-build /opt/hermes/python-runtime/bin/python3 -m pm.build_env \
+      --source /opt/hermes --python /opt/hermes/python-runtime/bin/python3 \
+      --out /tmp/homecompute-hermes-test-env --sealed --no-install-project --group dev \
+      --extra nemoclaw --extra messaging --extra web --extra mcp --extra acp --extra anthropic \
+    && HERMES_HOME=/tmp/homecompute-hermes-test-home PYTHONDONTWRITEBYTECODE=1 \
+      /tmp/homecompute-hermes-test-env/bin/python -m pytest -q \
+      tests/gateway/test_mattermost.py \
+      tests/tools/test_browser_use_cli.py tests/tools/test_browser_use_cli_owned_daemon.py \
+      tests/gateway/test_runtime_ownership.py tests/gateway/test_control_socket.py \
+      tests/gateway/test_control_socket_peer_security.py tests/hermes_cli/test_gateway_runtime_discovery.py \
+    && rm -rf /tmp/homecompute-hermes-test-build /tmp/homecompute-hermes-test-env \
+      /tmp/homecompute-hermes-test-home /opt/hermes/.pytest_cache /root/.cache/uv
 COPY browser-relay.mjs /usr/local/lib/nemoclaw/browser-relay.mjs
 RUN chmod 0444 /usr/local/lib/nemoclaw/browser-relay.mjs
 ENV HERMES_DUMP_REQUESTS=0 HERMES_DUMP_REQUEST_STDOUT=0 \

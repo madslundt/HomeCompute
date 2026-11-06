@@ -219,6 +219,61 @@ index ff780ef6..4c655c26 100644
      return lock_dir, lock_dir / ".tick.lock"
 
 
+diff --git a/gateway/control_socket.py b/gateway/control_socket.py
+index ddcb81aa..e29c1c71 100644
+--- a/gateway/control_socket.py
++++ b/gateway/control_socket.py
+@@ -9,6 +9,8 @@ Consumers PREFER the socket and fall back to the state-file/scan layer when it d
+
+ from __future__ import annotations
+
++from gateway.homecompute_paths import control_home, prepare_control_home
++
+ import asyncio
+ import contextlib
+ import errno
+@@ -115,18 +117,19 @@ def _publish_pointer(pointer_file: Path, bind_path: Path) -> None:
+
+ def resolve_server_socket_path(home: Path) -> tuple[Path, Optional[Path]]:
+     """Return ``(bind_path, pointer_file)``; pointer_file is set only for the temp-dir fallback."""
+-    direct = Path(home) / _SOCKET_FILENAME
+-    return (direct, None) if _fits_sun_path(direct) else (_fallback_socket_path(home), Path(home) / _POINTER_FILENAME)
++    directory = prepare_control_home(Path(home))
++    direct = directory / _SOCKET_FILENAME
++    return (direct, None) if _fits_sun_path(direct) else (_fallback_socket_path(home), directory / _POINTER_FILENAME)
+
+
+ def resolve_client_socket_path(home: Path) -> Optional[Path]:
+     """Where a client should connect for ``home``, or None when nothing exists."""
+-    direct = Path(home) / _SOCKET_FILENAME
++    direct = control_home(Path(home)) / _SOCKET_FILENAME
+     with contextlib.suppress(OSError):  # an un-stat-able stale inode (#123761) is absent, not an error
+         if direct.exists():
+             return direct
+     with contextlib.suppress(OSError):
+-        pointer = Path(home) / _POINTER_FILENAME
++        pointer = control_home(Path(home)) / _POINTER_FILENAME
+         target = pointer.read_text(encoding="utf-8-sig").strip() if pointer.is_file() else ""
+         if target and Path(target).exists():
+             return Path(target)
+@@ -243,7 +246,7 @@ class GatewayControlServer:
+                 raise
+             logger.warning("Control socket cannot be created in %s (%s); listening in a private temp directory",
+                            self._home, exc.strerror or exc)
+-            pointer_file = Path(self._home) / _POINTER_FILENAME
++            pointer_file = control_home(Path(self._home)) / _POINTER_FILENAME
+             bind_path = await self._bind_posix(_fallback_socket_path(self._home), pointer_file)
+         self._bind_path = bind_path
+         info = bind_path.lstat()
+@@ -402,7 +405,7 @@ class GatewayControlServer:
+             return None
+         try:
+             from hermes_cli.gateway_runtime_discovery import home_mode_unsafe, socket_peer_uid
+-            home = self._home
++            home = control_home(self._home)
+             info = home.lstat()
+             if (home.absolute() != home.resolve() or not stat.S_ISDIR(info.st_mode)
+                     or info.st_uid != os.getuid() or home_mode_unsafe(info, home)):  # windows-footgun: ok — POSIX-only helper
 diff --git a/gateway/drain_control.py b/gateway/drain_control.py
 index e005b948..b941bef8 100644
 --- a/gateway/drain_control.py
@@ -303,6 +358,40 @@ index e005b948..b941bef8 100644
  def drain_notification_suppressed(*, home: Optional[Path] = None) -> bool:
      """True iff an ACTIVE marker asks to suppress the shutdown broadcast.
 
+diff --git a/gateway/homecompute_paths.py b/gateway/homecompute_paths.py
+new file mode 100644
+index 00000000..c36ff862
+--- /dev/null
++++ b/gateway/homecompute_paths.py
+@@ -0,0 +1,28 @@
++"""Managed runtime artifacts without changing the logical Hermes profile home."""
++from pathlib import Path
++import os
++import stat
++
++MANAGED_HOME = Path('/sandbox/.hermes')
++
++
++def state_path(home: Path, name: str) -> Path:
++    home = Path(home)
++    if home == MANAGED_HOME and name in {'gateway.pid', 'gateway.lock', 'gateway_state.json'}:
++        return home / 'runtime' / name
++    return home / name
++
++
++def control_home(home: Path) -> Path:
++    home = Path(home)
++    return home / 'runtime' / 'control' if home == MANAGED_HOME else home
++
++
++def prepare_control_home(home: Path) -> Path:
++    directory = control_home(home)
++    if directory != Path(home):
++        directory.mkdir(mode=0o700, exist_ok=True)
++        info = directory.lstat()
++        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
++            raise PermissionError('unsafe managed control directory')
++    return directory
 diff --git a/gateway/run_runtime_init.py b/gateway/run_runtime_init.py
 index 38e3f835..8895fb43 100644
 --- a/gateway/run_runtime_init.py
@@ -360,6 +449,60 @@ index db1786f7..a5433aa2 100644
              return
          self._external_drain_active = True
          logger.info(
+diff --git a/gateway/runtime_ownership.py b/gateway/runtime_ownership.py
+index 41a80f60..f7bbf547 100644
+--- a/gateway/runtime_ownership.py
++++ b/gateway/runtime_ownership.py
+@@ -7,6 +7,8 @@ still names the inode it locked.
+ """
+ from __future__ import annotations
+
++from gateway.homecompute_paths import state_path
++
+ from contextlib import contextmanager
+ import json
+ import logging
+@@ -168,7 +170,7 @@ class ProfileOwnership:
+                     if home in self._handles:
+                         continue
+                     make_user_dir(home, mode=0o700, parents=True, exist_ok=True)
+-                    path = home / 'gateway.lock'
++                    path = state_path(home, 'gateway.lock')
+                     fd = _open_lock(path)
+                     handle = os.fdopen(fd, 'r+', encoding='utf-8')  # windows-footgun: ok — write-only
+                     try:
+@@ -230,7 +232,7 @@ def maintenance_holder(home: Path, purpose: str) -> dict | None:
+     reservation (see :meth:`ProfileOwnership.reserve`), else None. Advisory only: it names the
+     holder for a refusal or a short wait, it never grants the lock."""
+     from gateway.status import _live_pid_from_record, _read_gateway_lock_record
+-    record = _read_gateway_lock_record(canonical_home(home) / 'gateway.lock')
++    record = _read_gateway_lock_record(state_path(canonical_home(home), 'gateway.lock'))
+     if not record or record.get('purpose') != purpose or _live_pid_from_record(record) is None:
+         return None
+     return record
+@@ -245,7 +247,7 @@ def lock_record_unpublished(home: Path) -> bool:
+     later home refuses), so whoever holds the flock now has not published either. Advisory only,
+     never grants the lock."""
+     from gateway.status import _live_pid_from_record, _read_gateway_lock_record
+-    record = _read_gateway_lock_record(canonical_home(home) / 'gateway.lock')
++    record = _read_gateway_lock_record(state_path(canonical_home(home), 'gateway.lock'))
+     return not record or _live_pid_from_record(record) in (None, os.getpid())
+
+
+@@ -319,11 +321,11 @@ def live_runtime_owner(home: Path) -> int | None:
+     maintenance), else None. A purpose-marked maintenance holder is never an owner."""
+     from gateway.status import _live_pid_from_record, _read_gateway_lock_record, get_running_pid
+     home = canonical_home(home)
+-    record = _read_gateway_lock_record(home / 'gateway.lock')
++    record = _read_gateway_lock_record(state_path(home, 'gateway.lock'))
+     live = _live_pid_from_record(record) if record else None
+     if live is not None and record.get('purpose'):
+         return None  # the flock holder is maintenance, so no gateway can hold it too
+-    return get_running_pid(home / 'gateway.pid', cleanup_stale=False) or live
++    return get_running_pid(state_path(home, 'gateway.pid'), cleanup_stale=False) or live
+
+
+ @contextmanager
 diff --git a/gateway/status.py b/gateway/status.py
 index 614607a9..a5126977 100644
 --- a/gateway/status.py
@@ -500,6 +643,84 @@ index 50117f6f..74e77fa8 100644
      },
      # LSP diagnostics (pyright, gopls, rust-analyzer...) in the post-write lint check of
      # write_file/patch. Runs only when the cwd or edited file is inside a git worktree; otherwise
+diff --git a/hermes_cli/gateway_runtime.py b/hermes_cli/gateway_runtime.py
+index 818ace3c..30f377e4 100644
+--- a/hermes_cli/gateway_runtime.py
++++ b/hermes_cli/gateway_runtime.py
+@@ -2,6 +2,8 @@
+
+ from __future__ import annotations
+
++from gateway.homecompute_paths import MANAGED_HOME, state_path
++
+ from dataclasses import dataclass
+ import ipaddress
+ import math
+@@ -76,7 +78,7 @@ def gateway_profile_home(home: str | Path) -> Path:
+
+ def _overlay_owner_home(home: Path) -> Path:
+     """Return the owner named by a private overlay's gateway lock, if it has one."""
+-    if os.name == "nt":
++    if os.name == "nt" or home == MANAGED_HOME:
+         return home
+     from hermes_cli.gateway_runtime_discovery import DiscoveryError, _private_lock, _private_node
+     lock = home / "gateway.lock"
+@@ -256,7 +258,7 @@ def _owner_pid(home: Path) -> int | None:
+         recorded_gateway_home_conflicts,
+     )
+     for name in ("gateway.pid", "gateway.lock"):
+-        record = _read_json_file(home / name, bare_pid_ok=True)
++        record = _read_json_file(state_path(home, name), bare_pid_ok=True)
+         pid = _live_pid_from_record(record)
+         if pid is None or pid == os.getpid():
+             continue
+@@ -306,7 +308,7 @@ def discover_gateway_endpoint(profile_home: str | Path, *, timeout: float = 2.0)
+         state = missing_owner_state(home)
+         if state == "inaccessible" and os.name != "nt":
+             from gateway.runtime_ownership import unreadable_lock_recovery
+-            if detail := unreadable_lock_recovery(home / "gateway.lock"):
++            if detail := unreadable_lock_recovery(state_path(home, "gateway.lock")):
+                 return GatewayDiscovery(state, reason_code="foreign_stale_lock", detail=detail)
+         return GatewayDiscovery(state)
+     except TimeoutError:
+diff --git a/hermes_cli/gateway_runtime_discovery.py b/hermes_cli/gateway_runtime_discovery.py
+index 9988b063..c80c0570 100644
+--- a/hermes_cli/gateway_runtime_discovery.py
++++ b/hermes_cli/gateway_runtime_discovery.py
+@@ -3,6 +3,8 @@ upgraded same-owner ``gateway.lock`` is narrowed to 0600, see :func:`_private_lo
+
+ from __future__ import annotations
+
++from gateway.homecompute_paths import state_path, control_home
++
+ import errno
+ import json
+ import os
+@@ -141,12 +143,12 @@ def connect_private(home: Path, timeout: float) -> socket.socket:
+
+
+ def _socket_path(home: Path) -> Path:
+-    _private_node(home, kind="directory", home=True)
+-    direct = home / "gateway.sock"
++    _private_node(control_home(home), kind="directory", home=True)
++    direct = control_home(home) / "gateway.sock"
+     if os.path.lexists(direct):
+         _private_node(direct, kind="socket")
+         return direct
+-    pointer = home / "gateway.sock.path"
++    pointer = control_home(home) / "gateway.sock.path"
+     # Reject non-regular metadata before a FIFO can wait for a writer.
+     flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK  # windows-footgun: ok — POSIX socket discovery only
+     with os.fdopen(os.open(pointer, flags), "rb") as stream:  # windows-footgun: ok — binary POSIX descriptor
+@@ -233,7 +235,7 @@ def _private_lock(lock: Path) -> None:
+ def missing_owner_state(home: Path) -> Literal["starting", "absent", "inaccessible"]:
+     """A reservation before PID/control publication already excludes a new owner."""
+     from gateway.status import _is_gateway_runtime_lock_active_strict
+-    lock = home / "gateway.lock"
++    lock = state_path(home, "gateway.lock")
+     try:
+         if os.name != "nt":
+             _private_lock(lock)
 diff --git a/hermes_cli/kanban_db_connect.py b/hermes_cli/kanban_db_connect.py
 index 19be46e4..bc0e7158 100644
 --- a/hermes_cli/kanban_db_connect.py
