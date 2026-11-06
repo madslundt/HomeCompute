@@ -17,6 +17,8 @@ MAX_BODY_BYTES = MAX_AUDIO_BYTES + 128_000
 MAX_CONFIGURED_AUDIO_SECONDS = 7_200
 MAX_CONFIGURED_UPLOAD_BYTES = 256 * 1024 * 1024
 MAX_RESPONSE_BYTES = 8_000_000
+# WHISPER_MAX_DECODERS in the checksum-pinned upstream src/whisper.cpp.
+MAX_NATIVE_DECODERS = 8
 CONTROL_TOKEN = re.compile(r"<\|[^|\r\n]{1,80}\|>")
 FIELD_NAME = re.compile(r"^[A-Za-z0-9_.\[\]-]{1,80}$")
 ALLOWED_FIELDS = {"model", "response_format", "language", "language_candidates", "prompt", "temperature",
@@ -154,9 +156,9 @@ def normalize_fields(fields: dict[str, str]) -> tuple[str, list[tuple[str, str]]
         if not 0 <= value <= 448:
             raise RequestError(400, "Invalid decoding parameter")
         native.append(("max_context", str(value)))
-    beam_size = _bounded_integer(fields.get("beam_size", "5"), "beam_size", -1, 16,
+    beam_size = _bounded_integer(fields.get("beam_size", "5"), "beam_size", -1, MAX_NATIVE_DECODERS,
                                  allow_minus_one=True)
-    best_of = _bounded_integer(fields.get("best_of", "5"), "best_of", 1, 16)
+    best_of = _bounded_integer(fields.get("best_of", "5"), "best_of", 1, MAX_NATIVE_DECODERS)
     max_len = _bounded_integer(fields.get("max_len", "-1"), "max_len", -1, 1000,
                                allow_minus_one=True)
     native.extend((("beam_size", str(beam_size)), ("best_of", str(best_of)),

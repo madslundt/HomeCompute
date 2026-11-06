@@ -89,7 +89,7 @@ to a 60-character segment wrap, while the native decoder wraps only when the
 value is positive. This avoids HTTP-only forced word splits. Both image builds
 guard these pinned source semantics before compiling.
 Explicit `language`, `prompt`, `temperature`, `temperature_inc`,
-`beam_size` (-1 or 1–16), `best_of` (1–16), `translate`,
+`beam_size` (-1 or 1–8), `best_of` (1–8), `translate`,
 `carry_initial_prompt`, `max_context`, `max_len` (-1 or 1–1000),
 `no_timestamps` and response format
 values are forwarded. `text`, `json` and `verbose_json` formats are supported.

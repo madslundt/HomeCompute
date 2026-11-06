@@ -387,6 +387,15 @@ class AdapterContractTests(unittest.TestCase):
         _, bounded_wrap = ADAPTER.normalize_fields({"model": "whisper", "max_len": "80"})
         self.assertIn(("max_len", "80"), bounded_wrap)
 
+    def test_decoder_counts_match_pinned_native_maximum(self):
+        for field in ("beam_size", "best_of"):
+            _, native = ADAPTER.normalize_fields({"model": "whisper", field: "8"})
+            self.assertEqual(dict(native)[field], "8")
+            for value in ("9", "10", "16"):
+                with self.subTest(field=field, value=value), self.assertRaises(ADAPTER.RequestError) as error:
+                    ADAPTER.normalize_fields({"model": "whisper", field: value})
+                self.assertEqual(error.exception.status, 400)
+
     def test_rejects_unsupported_fields_and_word_timestamps(self):
         body, content_type = multipart([("model", "whisper"), ("initial_prompt", "unmapped")], wav_bytes())
         with self.assertRaisesRegex(ADAPTER.RequestError, "Unsupported"):
