@@ -22,6 +22,14 @@ def patch(current, source):
         raise ValueError('canonical-hermes-card-required')
     card = cards[0].rstrip()
     if 'homecore-hermes' in current or '    - Hermes:' in current:
+        # Upgrade only the exact original managed Mattermost card. A separate
+        # Mattermost card remains the chat entry point.
+        legacy = ('    - Hermes:\n        id: homecore-hermes\n'
+                  '        icon: mdi-robot-happy-outline\n'
+                  '        href: https://mattermost.home.arpa/homecompute/messages/@hermes-agent\n'
+                  '        description: Personal Hermes assistant in Mattermost')
+        if legacy in current and current.count('    - Hermes:') == 1:
+            return current.replace(legacy, card, 1)
         if card not in current:
             raise ValueError('existing-hermes-card-differs')
         return current

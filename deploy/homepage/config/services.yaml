@@ -52,8 +52,8 @@
     - Hermes:
         id: homecore-hermes
         icon: mdi-robot-happy-outline
-        href: https://mattermost.home.arpa/homecompute/messages/@hermes-agent
-        description: Personal Hermes assistant in Mattermost
+        href: https://agents.home.arpa/hermes/
+        description: Hermes dashboard · personal assistant and OMH workflows
 
     - Mattermost:
         id: homecore-mattermost

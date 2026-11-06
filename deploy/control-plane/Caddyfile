@@ -381,12 +381,25 @@ agents.home.arpa {
 	handle @private {
 		# The observer still validates Origin and requires its own password.
 		# Its native listener and both relay hops remain on private interfaces.
-		reverse_proxy 172.28.200.1:18802 {
-			header_up Host 127.0.0.1:18802
-			header_up X-HomeCompute-Office-Origin https://agents.home.arpa
-			transport http {
-				dial_timeout 3s
-				response_header_timeout 10s
+		redir /hermes /hermes/ 308
+		handle_path /hermes/* {
+			# Hermes retains its native password, CSRF and WebSocket gates.
+			reverse_proxy 172.28.200.1:18805 {
+				header_up X-Forwarded-Prefix /hermes
+				transport http {
+					dial_timeout 3s
+					response_header_timeout 10m
+				}
+			}
+		}
+		handle {
+			reverse_proxy 172.28.200.1:18802 {
+				header_up Host 127.0.0.1:18802
+				header_up X-HomeCompute-Office-Origin https://agents.home.arpa
+				transport http {
+					dial_timeout 3s
+					response_header_timeout 10s
+				}
 			}
 		}
 	}
