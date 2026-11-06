@@ -43,13 +43,21 @@
   homecompute.hermesDashboard.enable = true;
   homecompute.mattermost.enable = true;
   homecompute.serviceRecovery.enable = true;
-  # Bring up only the synthetic shadow API first. Household sync, inference,
-  # delivery and restore admission remain separate reviewed enablement gates.
+  # Household admission follows the isolated encrypted-NAS restore and current
+  # deletion replay proof. Delivery and external publication stay separately gated.
   homecompute.assistantContext = {
     enable = true;
     mode = lib.mkDefault "shadow";
-    dataClassification = "synthetic-only";
-    restoreVerified = false;
+    dataClassification = "household";
+    restoreVerified = true;
+    sync = {
+      enable = true;
+      caFile = "/etc/homecompute/daythread-assistant-context-ca.crt";
+    };
+    inference = {
+      embedding = true;
+      briefings = true;
+    };
   };
   homecompute.nasRecoveryBackup = {
     enable = true;

@@ -17,6 +17,55 @@ sync_spec.loader.exec_module(sync_module)
 
 
 class EventContractTests(unittest.TestCase):
+    def test_aula_account_feeds_require_selection_of_the_entire_current_roster(self):
+        class Facade:
+            def __init__(self): self.calls = []
+            def request(self, operation, params):
+                self.calls.append((operation, params))
+                if operation == "homecompute_school_discover":
+                    return {"data": {"children": [{"id": 14}, {"id": 93}]}}
+                if operation == "homecompute_school_calendar":
+                    return {"data": {"events": [], "next_offset": None}}
+                if operation == "homecompute_school_posts":
+                    return {"data": {"posts": [{"postId": 7, "title": "Synthetic notice"}]}}
+                if operation == "homecompute_school_threads":
+                    return {"data": {"threads": []}}
+                raise AssertionError(operation)
+
+        for selected in ([14, 93], [14]):
+            with self.subTest(selected=selected):
+                facade = Facade()
+                with patch.object(sync_module.openclaw_services, "Services", return_value=facade):
+                    snapshots = sync_module.read_aula({"aula": {
+                        "enabled": True, "profile_ids": selected, "range": "this_week"}})
+                self.assertEqual(facade.calls[1][1]["profile_ids"], ",".join(map(str, selected)))
+                account_calls = [row for row in facade.calls if row[0] in {
+                    "homecompute_school_posts", "homecompute_school_threads"}]
+                if len(selected) == 2:
+                    self.assertEqual(account_calls, [
+                        ("homecompute_school_posts", {}), ("homecompute_school_threads", {})])
+                    self.assertEqual(snapshots[1].objects[0].object_id, "post:7")
+                else:
+                    self.assertEqual(account_calls, [])
+                    self.assertEqual(snapshots[1].objects, ())
+                    self.assertEqual(snapshots[2].objects, ())
+                    self.assertIn("subset", snapshots[1].limitation)
+                self.assertTrue(snapshots[0].complete)
+                self.assertFalse(snapshots[1].complete)
+                self.assertFalse(snapshots[2].complete)
+
+    def test_aula_unknown_or_ambiguous_roster_fails_before_any_content_read(self):
+        for children in ([], [{"id": 14}, {"id": 14}], [{"id": "14"}], [{"id": 93}]):
+            with self.subTest(children=children):
+                class Facade:
+                    def request(self, operation, params):
+                        if operation != "homecompute_school_discover":
+                            raise AssertionError("Content read before selection qualification")
+                        return {"data": {"children": children}}
+                with patch.object(sync_module.openclaw_services, "Services", return_value=Facade()):
+                    with self.assertRaises(ValueError):
+                        sync_module.read_aula({"aula": {"enabled": True, "profile_ids": [14]}})
+
     def test_envelope_is_exact_and_scope_is_not_source_data(self):
         event = sources.normalize_event("aula", "calendar:42", 1, "calendar.snapshot", "upsert",
             "2026-11-06T10:15:00+01:00", "aula:calendar:42",

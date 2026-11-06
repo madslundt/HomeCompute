@@ -1,9 +1,13 @@
 # Private assistant context
 
-Source candidate for the [assistant plan](../../docs/proactive-personal-assistant-plan.md),
+Implementation of the [assistant plan](../../docs/proactive-personal-assistant-plan.md),
 [ADR-029](../../docs/adr/029-proactive-assistant-context.md) and
-[issue 61](https://github.com/madslundt/HomeCompute/issues/61). Disabled by
-default; no production installation or household readiness is claimed.
+[issue 61](https://github.com/madslundt/HomeCompute/issues/61). The module is
+disabled by default. The home-core declaration enables household collection
+and local inference with attention in shadow mode after the
+[recorded recovery qualification](../../docs/operations/assistant-context-household-admission.md).
+Automatic delivery, delegation and improvement publication remain separately
+gated. Verify the affected authenticated routes after deploying the declaration.
 
 ## Boundaries
 
