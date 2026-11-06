@@ -49,6 +49,13 @@ class DashboardIngressTest(unittest.TestCase):
         self.assertIn('header_up X-Forwarded-Prefix /hermes', block)
         self.assertNotIn('header_up Host', block)
         self.assertNotIn('Authorization', block)
+        self.assertIn('keepalive off', block)
+
+    def test_exact_previous_dashboard_route_upgrades_without_replacing_other_sites(self):
+        caddy, home = self.patch()
+        previous = caddy.replace('\t\t\t\t\t# Avoid stale sockets across the native forwarding chain.\n'
+                                 '\t\t\t\t\tkeepalive off\n', '')
+        self.assertEqual(module.patch(previous, home, self.source_caddy, self.source_home), (caddy, home))
 
 
 class NativeTransferTest(unittest.TestCase):

@@ -314,6 +314,8 @@ updates. OMH external memory and dreaming stay off: Mattermost personal scope is
 not recognized by its current memory classifier. Existing Hermes memory,
 Mattermost, browser, MCP and deferred model credentials must survive unchanged.
 Profiles remain a later change. See the [source audit](../../docs/research/oh-my-hermes-managed-integration-2026-11-06.md).
+The [6 November rollout verification](../../docs/hermes-omh-validation-2026-11-06.md)
+records the applied revisions, actual client checks and remaining platform gaps.
 
 Dashboard credentials are generated once into the existing protected guest
 `~/.config/homecompute-hermes/secrets/dashboard-login.json`; never print this
