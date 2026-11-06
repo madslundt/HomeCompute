@@ -510,7 +510,8 @@ old and target maintenance bundle hashes are recorded. Recovery checks each
 installed file and generated dispatcher against those two exact versions, with
 root ownership and exact modes: an interrupted install of our own bundle can
 recover, but unrelated later updates cannot be silently overwritten. The
-retained vLLM engine must still have its reviewed 0.08 GPU reservation and 12-GiB memory limit, with at least
+retained vLLM engine must match the complete published recovery Compose command
+and entrypoint, including its reviewed 0.08 GPU reservation, and retain its 12-GiB memory limit, with at least
 12 GiB currently available. These checks are not GPU startup proof; native GPU
 placement, readiness, post-load headroom and authenticated smokes remain gates.
 
