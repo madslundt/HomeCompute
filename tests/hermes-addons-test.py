@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('hermes_ingress', ROOT / 'scripts/setup-hermes-dashboard-ingress.py')
@@ -81,6 +82,20 @@ class DashboardIngressTest(unittest.TestCase):
 
 
 class NativeTransferTest(unittest.TestCase):
+    def test_only_explicit_predispatch_database_lock_can_retry(self):
+        spec = importlib.util.spec_from_file_location('addons_retry', ROOT / 'scripts/setup-hermes-addons.py')
+        addons = importlib.util.module_from_spec(spec); spec.loader.exec_module(addons)
+        busy = SimpleNamespace(returncode=1, stdout=b'', stderr=b'workspace lookup failed: database is locked')
+        ready = SimpleNamespace(returncode=0, stdout=b'verified', stderr=b'')
+        with patch.object(addons.subprocess, 'run', side_effect=[busy, ready]) as run, patch.object(addons.time, 'sleep'):
+            self.assertEqual(addons.call(['nemohermes', 'owner', 'exec', '--', 'python3'], b'synthetic'), b'verified')
+            self.assertEqual(run.call_count, 2)
+        for command, failure in [('start', busy), ('exec', SimpleNamespace(
+                returncode=1, stdout=b'', stderr=b'execution outcome uncertain'))]:
+            with patch.object(addons.subprocess, 'run', return_value=failure) as run, patch.object(addons.time, 'sleep'):
+                with self.assertRaises(ValueError): addons.call(['nemohermes', 'owner', command])
+                self.assertEqual(run.call_count, 1)
+
     def test_large_wheel_uses_bounded_verified_parts_and_refuses_corruption(self):
         spec = importlib.util.spec_from_file_location('addons', ROOT / 'scripts/setup-hermes-addons.py')
         addons = importlib.util.module_from_spec(spec); spec.loader.exec_module(addons)

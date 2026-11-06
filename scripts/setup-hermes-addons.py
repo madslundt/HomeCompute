@@ -15,6 +15,7 @@ import secrets
 import stat
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 REMOTE = '/sandbox/.local/share/homecompute/omh'
@@ -23,8 +24,17 @@ ENV = {**os.environ, 'NEMOCLAW_GATEWAY_PORT': '8080', 'OPENSHELL_GATEWAY': 'nemo
 
 
 def call(args, data=None, timeout=300):
-    result = subprocess.run(args, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            env=ENV, timeout=timeout)
+    # A busy OpenShell workspace database rejects exec before dispatch. Retry
+    # only that explicit admission failure, never a started/uncertain command
+    # or a lifecycle mutation such as stop/start.
+    attempts = 5 if len(args) > 2 and args[0] == 'nemohermes' and args[2] == 'exec' else 1
+    for attempt in range(attempts):
+        result = subprocess.run(args, input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                env=ENV, timeout=timeout)
+        if (not result.returncode or b'workspace lookup failed' not in result.stderr
+                or b'database is locked' not in result.stderr or attempt == attempts - 1):
+            break
+        time.sleep(0.2 * (attempt + 1))
     if result.returncode:
         raise ValueError('guarded operation failed: ' + Path(args[0]).name + '; inspect private native state')
     return result.stdout
