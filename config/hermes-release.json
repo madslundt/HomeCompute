@@ -7,11 +7,12 @@
     "install_script_sha256": "bafd48cd005e11e064e0c4caa0968a4c781453ccebcf4593855f85d28afbdeb8"
   },
   "managed_components": {
-    "hermes_version": "0.21.3",
-    "hermes_tag": "v2026.9.14",
+    "hermes_version": "0.23.0",
+    "hermes_tag": "v0.23.0",
     "openshell_version": "0.0.116",
     "openshell_tag": "v0.0.116",
-    "openshell_commit": "d1155aa70042d3e2ee49dbfa15346b108b7c1d92"
+    "openshell_commit": "d1155aa70042d3e2ee49dbfa15346b108b7c1d92",
+    "hermes_commit": "2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19"
   },
   "managed_hermes_base_image": "ghcr.io/nvidia/nemoclaw/hermes-sandbox@sha256:f52d55af05b63302ca8ae54ca9141b80df433a72ce273ae4aeac08c5af2cb990",
   "policy": {
@@ -23,8 +24,10 @@
   },
   "latest_standalone_hermes": {
     "version": "0.23.0",
-    "status": "isolated managed integration candidate; production unchanged",
+    "status": "selected managed integration; live rollout pending",
     "qualification": "deploy/hermes/latest/qualification.json"
   },
-  "browser_worker_image_id": "sha256:6beb74219f11b68cd1b1c590cda156f322c59f6b6800b7ca38fd427ed93a6d13"
+  "browser_worker_image_id": "sha256:6beb74219f11b68cd1b1c590cda156f322c59f6b6800b7ca38fd427ed93a6d13",
+  "household_sandbox": "hermes-personal-v23",
+  "image_recipe": "deploy/hermes/Dockerfile.latest"
 }

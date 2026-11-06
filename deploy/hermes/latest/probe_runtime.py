@@ -100,6 +100,17 @@ def main():
         homecompute_paths.MANAGED_HOME = home
         first, second = ProfileOwnership(), ProfileOwnership()
         try:
+            state = home / 'state.db'
+            (home / 'runtime/state.db').write_bytes(b'synthetic ledger')
+            state.symlink_to('runtime/state.db')
+            assert homecompute_paths.database_home(state) == home
+            assert homecompute_paths.database_home(home / 'runtime/state.db') == home
+            foreign = Path(directory).resolve() / 'foreign'; foreign.mkdir()
+            (foreign / 'state.db').write_bytes(b'foreign ledger')
+            state.unlink(); state.symlink_to(foreign / 'state.db')
+            assert homecompute_paths.database_home(state) != home
+            assert homecompute_paths.database_home(home / 'runtime/state.db') != home
+            state.unlink(); state.symlink_to('runtime/state.db')
             first.reserve([home])
             try:
                 second.reserve([home])
@@ -117,6 +128,8 @@ def main():
                 try:
                     peer = await asyncio.to_thread(connect_private, home, 2)
                     peer.close()
+                    # Let the server observe EOF before asyncio tears down transports.
+                    await asyncio.sleep(0.1)
                     control = homecompute_paths.control_home(home)
                     control.chmod(0o777)
                     try:

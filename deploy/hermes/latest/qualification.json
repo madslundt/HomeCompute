@@ -39,7 +39,13 @@
       "failed": 1,
       "failure": "native admission test attempts gateway_voice_mode.json I/O outside its per-test home; reproduced in unmodified v0.23.0"
     },
-    "linux_image_runtime": "passed at a2a2ab6 before private-control fix"
+    "linux_image_runtime": {
+      "source_revision": "7501aa37ad38b32e4d220ca338ad6dd660511a72",
+      "image_id": "sha256:6a067ee0f7802e2cbc2abdf38bd4b3fba8205f121d2e7c1c053481432702dcf8",
+      "upstream_tests_passed": 213,
+      "upstream_tests_skipped": 2,
+      "managed_runtime_probe": "passed as sandbox UID998"
+    }
   },
   "runtime_attempts": [
     {
@@ -47,6 +53,26 @@
       "revision": "a2a2ab69e2a8a39e545ba10dcd0ea1e947540431",
       "result": "startup failed; no Mattermost attached",
       "reason": "native gateway.lock symlink rejected by new no-follow reservation; plugin symlink outside Landlock roots"
+    },
+    {
+      "name": "hermes-v023-verify",
+      "revision": "6cb74494eade7c281e51e7b838b426f57734fed4",
+      "result": "startup failed; no Mattermost attached",
+      "reason": "new session authority rejects managed state.db symlink layout"
     }
-  ]
+  ],
+  "native_integration": {
+    "source_revision": "5ec312db70ccfa607463a13a4ae9097224f19ae0",
+    "sandbox": "hermes-personal-v23",
+    "container_id": "28576751-17a8-435c-b591-9c0a2c8527a0",
+    "image_id": "sha256:18731c6de4ce67c56ad1ab6632c5c1c68c10963ee9ec571cfdfab122f8fe091e",
+    "startup": "passed",
+    "authenticated_inference": "passed automation-moe",
+    "mattermost_rest_and_websocket": "passed; listener disabled",
+    "browser_exec_public_and_private_denial": "passed",
+    "native_stop_start": "passed on repeat, followed by two clean stop/start/Ready cycles; initial native Stopped discrepancy recovered by vendor-documented retry",
+    "owner_dm_and_boot": "pending",
+    "agent_browser_turn": "passed: tool_search, tool_describe, browser_exec; public title returned and final marker recorded",
+    "packaging": "initial agent turn reports missing required ffmpeg/ripgrep; complete artifact rebuild pending"
+  }
 }

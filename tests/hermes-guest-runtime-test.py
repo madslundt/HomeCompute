@@ -46,14 +46,14 @@ class HermesGuestRuntimeTest(unittest.TestCase):
 
     def write_config(self, extra: str = "", **overrides: str) -> None:
         values = {
-            "HERMES_SANDBOX_NAME": "hermes-personal",
+            "HERMES_SANDBOX_NAME": "hermes-personal-v23",
             "HERMES_ENDPOINT_URL": "http://ai.home.arpa:18080/v1",
             "HERMES_MODEL": "automation-moe",
             "HERMES_TRUSTED_PRIVATE_HOSTS": "ai.home.arpa,home-core.tail479ad.ts.net",
             "HERMES_CA_BUNDLE": str(self.ca),
             "HERMES_LITELLM_API_KEY_FILE": str(self.key),
             "HERMES_EVIDENCE_DIR": str(self.evidence),
-            "HERMES_RESTORE_TARGET": "hermes-personal",
+            "HERMES_RESTORE_TARGET": "hermes-personal-v23",
             "HERMES_BACKUP_READINESS_FILE": str(self.backup_gate),
             "HERMES_NETWORK_READINESS_FILE": str(self.network_gate),
             "HERMES_MATTERMOST_URL": "https://home-core.tail479ad.ts.net:9443",
@@ -110,19 +110,19 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                 case "$*" in
                   --version) printf 'nemohermes v0.0.141\\n' ;;
                   doctor\\ --json) printf '{{"schemaVersion":1,"ok":true}}\\n' ;;
-                  hermes-personal\\ status\\ --json|hermes-personal-verify\\ status\\ --json)
+                  hermes-personal-v23\\ status\\ --json|hermes-personal-v23-verify\\ status\\ --json)
                     printf '{{"agent":"hermes","phase":"Ready","openshellVersion":"0.0.116","inferenceHealth":{{"ok":true}},"recordedRoute":{{"model":"automation-moe"}}}}\\n'
                     ;;
-                  hermes-personal\\ inference\\ get\\ --json|hermes-personal-verify\\ inference\\ get\\ --json)
+                  hermes-personal-v23\\ inference\\ get\\ --json|hermes-personal-v23-verify\\ inference\\ get\\ --json)
                     printf '{{"model":"automation-moe","provider":"custom"}}\\n'
                     ;;
-                  hermes-personal\\ exec\\ --\\ hermes\\ --version|hermes-personal-verify\\ exec\\ --\\ hermes\\ --version)
-                    printf 'Hermes Agent v0.21.3\\n'
+                  hermes-personal-v23\\ exec\\ --\\ hermes\\ --version|hermes-personal-v23-verify\\ exec\\ --\\ hermes\\ --version)
+                    printf 'Hermes Agent v0.23.0\\n'
                     ;;
-                  hermes-personal\\ connect\\ --probe-only|hermes-personal-verify\\ connect\\ --probe-only)
+                  hermes-personal-v23\\ connect\\ --probe-only|hermes-personal-v23-verify\\ connect\\ --probe-only)
                     printf 'Probe timing: result=ready\\n'
                     ;;
-                  hermes-personal\\ exec\\ --stdin\\ --\\ python3\\ -)
+                  hermes-personal-v23\\ exec\\ --stdin\\ --\\ python3\\ -)
                     body="$(cat)"
                     if [[ "$body" == *HERMES_INFERENCE_OK* ]]; then
                       printf '{{"authenticated_inference":true,"model":"automation-moe"}}\\n'
@@ -130,19 +130,19 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                       printf '{{"rest_authenticated":true,"websocket_authenticated":true}}\\n'
                     fi
                     ;;
-                  hermes-personal\\ channels\\ status\\ *) printf '{{"connected":true}}\\n' ;;
-                  hermes-personal\\ policy\\ add\\ *) printf 'policy applied\\n' ;;
-                  hermes-personal\\ channels\\ add\\ mattermost)
+                  hermes-personal-v23\\ channels\\ status\\ *) printf '{{"connected":true}}\\n' ;;
+                  hermes-personal-v23\\ policy\\ add\\ *) printf 'policy applied\\n' ;;
+                  hermes-personal-v23\\ channels\\ add\\ mattermost)
                     test "${{MATTERMOST_URL:-}}" = https://home-core.tail479ad.ts.net:9443
                     test "${{MATTERMOST_TOKEN:-}}" = test-mattermost-token
                     test "${{MATTERMOST_ALLOWED_USERS:-}}" = 1oipaix7gin73jczp97tcfmyac
                     printf 'channel added\\n'
                     ;;
-                  list\\ --json) printf '{{"sandboxes":[{{"name":"hermes-personal"}}]}}\\n' ;;
-                  hermes-personal\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
-                  hermes-personal\\ gateway\\ restart) printf 'restarted\\n' ;;
-                  hermes-personal\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
-                  onboard\\ --agent\\ hermes\\ --name\\ hermes-personal\\ --from\\ *|onboard\\ --agent\\ hermes\\ --name\\ hermes-v023-verify\\ --from\\ *)
+                  list\\ --json) printf '{{"sandboxes":[{{"name":"hermes-personal-v23"}}]}}\\n' ;;
+                  hermes-personal-v23\\ snapshot\\ restore\\ *) printf 'restored\\n' ;;
+                  hermes-personal-v23\\ gateway\\ restart) printf 'restarted\\n' ;;
+                  hermes-personal-v23\\ snapshot\\ create\\ --name\\ *) printf 'created\\n' ;;
+                  onboard\\ --agent\\ hermes\\ --name\\ hermes-personal-v23\\ --from\\ *|onboard\\ --agent\\ hermes\\ --name\\ hermes-personal-v23\\ --from\\ *)
                     test "${{COMPATIBLE_API_KEY:-}}" = '{self.secret}'
                     test "${{NEMOCLAW_POLICY_TIER:-}}" = restricted
                     test "${{NEMOCLAW_WEB_SEARCH_PROVIDER:-}}" = none
@@ -193,7 +193,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
     def test_release_tuple_is_exact(self) -> None:
         release = json.loads(MANIFEST.read_text(encoding="utf-8"))
         self.assertEqual(release["nemoclaw"]["commit"], "b7dcc9bb76197fb28ec673867c35974ac799eb15")
-        self.assertEqual(release["managed_components"]["hermes_version"], "0.21.3")
+        self.assertEqual(release["managed_components"]["hermes_version"], "0.23.0")
         self.assertEqual(release["managed_components"]["openshell_version"], "0.0.116")
         self.assertEqual(release["policy"]["tier"], "restricted")
         self.assertTrue(release["policy"]["messaging"])
@@ -234,7 +234,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         result = self.sourced_call("preflight_runtime() { :; }\nonboard_canary", env)
         self.assertEqual(result.returncode, 0, result.stderr)
         invocation = log.read_text(encoding="utf-8")
-        self.assertIn("onboard --agent hermes --name hermes-personal", invocation)
+        self.assertIn("onboard --agent hermes --name hermes-personal-v23", invocation)
         self.assertNotIn(self.secret, invocation)
         self.assertNotIn("must-be-cleared", result.stdout + result.stderr + invocation)
 
@@ -247,21 +247,21 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertIn("backup readiness record", result.stderr)
         self.assertFalse(log.exists(), "NemoClaw was invoked before prerequisites passed")
 
-    def test_latest_candidate_is_separate_and_cannot_inherit_the_owner_bot(self) -> None:
+    def test_qualification_cannot_reconfigure_the_selected_owner(self) -> None:
         bin_dir, log = self.make_mock_nemohermes()
         result = self.sourced_call(
-            'preflight_runtime() { :; }\nonboard_canary --latest-qualification\n'
-            'printf "owner=%s\\n" "$HERMES_SANDBOX_NAME"',
-            {"PATH": f"{bin_dir}:{os.environ['PATH']}",
-             "MATTERMOST_TOKEN": "must-be-cleared"},
+            'preflight_runtime() { :; }\nonboard_canary --latest-qualification',
+            {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
         )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        invocation = log.read_text(encoding="utf-8")
-        self.assertIn("onboard --agent hermes --name hermes-v023-verify", invocation)
-        self.assertIn("deploy/hermes/Dockerfile.latest", invocation)
-        self.assertNotIn("--name hermes-personal", invocation)
-        self.assertIn("owner=hermes-personal", result.stdout)
-        self.assertNotIn("must-be-cleared", result.stdout + result.stderr + invocation)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('must not reconfigure', result.stderr)
+        self.assertFalse(log.exists())
+
+    def test_old_owner_name_is_rejected_by_the_new_release(self) -> None:
+        self.write_config(HERMES_SANDBOX_NAME='hermes-personal', HERMES_RESTORE_TARGET='hermes-personal')
+        result = self.run_cli('validate')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('selected household sandbox', result.stderr)
 
     def test_candidate_credentials_are_not_attached_to_an_unreviewed_runtime(self) -> None:
         import importlib.util
@@ -270,13 +270,19 @@ class HermesGuestRuntimeTest(unittest.TestCase):
             'latest_probe', ROOT / 'scripts/probe-hermes-latest-integrations.py')
         probe = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(probe)
-        with patch.dict(os.environ, {'OPENSHELL_GATEWAY': 'nemoclaw', 'NEMOCLAW_GATEWAY_PORT': '8080'}), \
+        candidate_root = self.root / 'candidate'; (candidate_root / 'config').mkdir(parents=True)
+        (candidate_root / 'config/hermes-release.json').write_text('{}')
+        qualification = candidate_root / 'deploy/hermes/latest/qualification.json'
+        qualification.parent.mkdir(parents=True)
+        qualification.write_text((ROOT / 'deploy/hermes/latest/qualification.json').read_text())
+        with patch.object(probe, 'ROOT', candidate_root), \
+                patch.dict(os.environ, {'OPENSHELL_GATEWAY': 'nemoclaw', 'NEMOCLAW_GATEWAY_PORT': '8080'}), \
                 patch.object(probe, 'call', return_value='{"agent":"hermes","phase":"Ready"}') as calls, \
                 patch.object(probe, 'execute', return_value='{"commit":"unreviewed","baseVersion":"0.23.0"}'):
             with self.assertRaisesRegex(RuntimeError, 'Pinned candidate runtime required'):
                 probe.main()
         self.assertEqual(calls.call_count, 1)
-        self.assertEqual(calls.call_args.args[0], ['nemohermes', 'hermes-v023-verify', 'status', '--json'])
+        self.assertEqual(calls.call_args.args[0], ['nemohermes', 'hermes-personal-v23', 'status', '--json'])
 
     def test_mattermost_connection_keeps_token_out_of_command_and_output(self) -> None:
         import importlib.util
@@ -290,7 +296,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
                        "MATTERMOST_ALLOWED_USERS": "owner", "MATTERMOST_REPLY_MODE": "thread",
                        "MATTERMOST_REQUIRE_MENTION": "true"}
         absent = subprocess.CompletedProcess([], 1, "", "provider not found")
-        with patch.dict(os.environ, environment), patch.object(connector, "call") as calls, \
+        with patch.dict(os.environ, environment), patch.object(connector, "call", return_value='{"agent":"hermes","phase":"Stopped"}') as calls, \
                 patch.object(connector.subprocess, "run", return_value=absent):
             connector.main()
         for invocation in calls.call_args_list:
@@ -323,6 +329,40 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         self.assertEqual(configured['model']['context_length'], 65536)
         self.assertEqual(configured['agent']['reasoning_effort'], 'medium')
         self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o640)
+
+    def test_owner_config_install_is_private_idempotent_and_never_overwrites(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('owner_config', ROOT / 'scripts/setup-hermes-owner-config.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        destination = self.root.resolve() / 'hermes-personal-v23.env'
+        self.root.chmod(0o755)  # Actual guest config parent is public-readable, never writable.
+        module.install(destination, 'synthetic-config\n')
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        module.install(destination, 'synthetic-config\n')
+        with self.assertRaisesRegex(ValueError, 'refusing replacement'):
+            module.install(destination, 'different-config\n')
+        self.assertEqual(destination.read_text(), 'synthetic-config\n')
+        destination.unlink(); destination.symlink_to(self.config)
+        with self.assertRaisesRegex(ValueError, 'refusing replacement'):
+            module.install(destination, 'synthetic-config\n')
+
+    def test_owner_config_refuses_a_writable_parent(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('owner_config', ROOT / 'scripts/setup-hermes-owner-config.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        self.root.chmod(0o777)
+        with self.assertRaisesRegex(ValueError, 'group or world write'):
+            module.install(self.root.resolve() / 'hermes-personal-v23.env', 'synthetic\n')
+
+    def test_cutover_refuses_a_second_live_owner_bot(self):
+        import importlib.util
+        from unittest.mock import patch
+        spec = importlib.util.spec_from_file_location('cutover', ROOT / 'scripts/connect-hermes-mattermost.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        with patch.object(module, 'call', return_value='{"agent":"hermes","phase":"Ready"}') as calls:
+            with self.assertRaisesRegex(RuntimeError, 'natively Stopped'):
+                module.main()
+        self.assertEqual(calls.call_count, 1)
 
     def test_browser_command_dispatches_the_owned_connector(self):
         source = self.root / 'release'; (source / 'scripts').mkdir(parents=True)

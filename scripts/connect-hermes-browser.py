@@ -12,8 +12,8 @@ spec = importlib.util.spec_from_file_location('messaging', ROOT / 'scripts/conne
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 call = module.call
-NAME = 'hermes-personal'
-PROVIDER = NAME + '-browser'
+NAME = json.loads((ROOT / 'config/hermes-release.json').read_text())['household_sandbox']
+PROVIDER = 'hermes-personal-browser'
 PROFILE = 'homecompute-hermes-browser-v1'
 OS = ['openshell', '-g', 'nemoclaw']
 
@@ -68,7 +68,8 @@ path = home / 'config.yaml'
 config = yaml.safe_load(path.read_text()) or {}
 config.setdefault('browser', {})['cdp_url'] = url
 # Keep the pinned bundled browser tools; avoid auto-installing Browser Use.
-config['browser']['backend'] = 'off'
+config['browser'].pop('backend', None)
+config['browser']['allow_private_urls'] = False
 path.write_text(yaml.safe_dump(config, sort_keys=False))
 print('Browser configured with an opaque gateway credential reference')
 '''

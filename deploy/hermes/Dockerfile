@@ -1,3 +1,4 @@
+# Legacy Hermes 0.21.3 recipe retained for rollback; see config/hermes-release.json for selection.
 # Preserve the complete managed startup and credential contracts. The published
 # image's default inference environment is Nemotron/inference.local; explicitly
 # pin the approved local route for every gateway restart and reconstruction.
