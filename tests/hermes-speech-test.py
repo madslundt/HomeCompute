@@ -25,9 +25,20 @@ setup = load('speech_setup', 'scripts/setup-hermes-speech.py')
 payload = load('speech_config', 'deploy/hermes/speech/configure.py')
 client = load('speech_client', 'deploy/hermes/speech/client.py')
 recovery = load('speech_recovery', 'scripts/recover-hermes-dashboard.py')
+bridge = load('speech_bridge', 'scripts/setup-hermes-speech-bridge.py')
 
 
 class PolicyTest(unittest.TestCase):
+    def test_bridge_plan_accepts_selected_source_and_refuses_unknown_installed_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / 'adapter.py'
+            target.write_bytes((ROOT / 'scripts/openclaw-communication.py').read_bytes())
+            with patch.object(bridge, 'TARGET', target):
+                selected = bridge.plan('a' * 40)
+                self.assertEqual(selected['before'], selected['after'])
+                target.write_text('unknown private workaround')
+                with self.assertRaises(ValueError): bridge.plan('a' * 40)
+
     def setUp(self):
         self.before = {'network_policies': {'other': {'preserve': True},
             'mcp_bridge_homecompute': {'endpoints': [{'host': 'homecompute-capabilities.home.arpa',

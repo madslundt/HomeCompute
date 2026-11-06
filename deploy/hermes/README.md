@@ -43,8 +43,8 @@ assets directory, with mode-0600 files. Do not install packages into the sealed
 Hermes runtime.
 
 Publish and validate the selected release on origin/master. On home-core, run
-the existing guarded `setup-hermes-mcp.py --revision FULL_SHA` plan, then apply
-its exact reported plan hash. This changes only the owner speech admission in
+the guarded `setup-hermes-speech-bridge.py --revision FULL_SHA` plan, then apply
+its exact reported `--expected-plan-sha256` with `--apply`. This changes only the owner speech admission in
 the installed adapter. In a clean published guest checkout:
 
 ```bash

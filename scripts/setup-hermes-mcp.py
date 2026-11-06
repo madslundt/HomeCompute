@@ -20,7 +20,7 @@ ADAPTER = 'homecompute-openclaw-adapter.service'
 FILES = {
     'scripts/openclaw-communication.py': (
         Path('/opt/homecompute/openclaw-communication/scripts/openclaw-communication.py'),
-        '4c694e4828ac81f15ce046038246a51ac5d78f7a3f3c5c8c6e04ce8134e7cb9d'),
+        'e6e78cb73968b3e3f2239d6d0e0ff8c223275ee45e0038ef1d3595fdb0ee4873'),
     'scripts/openclaw_capabilities.py': (
         Path('/opt/homecompute/openclaw-communication/scripts/openclaw_capabilities.py'),
         'cd270c88a5adb8a901995d293f862abf29883bede90bfde285da8e29d269337e'),
