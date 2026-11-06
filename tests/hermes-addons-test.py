@@ -79,5 +79,21 @@ class NativeTransferTest(unittest.TestCase):
                     addons.upload_asset(['native'], source, expected)
 
 
+class ConfigSerializationTest(unittest.TestCase):
+    def test_root_provider_list_is_indented_and_deferred_credentials_survive(self):
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest('PyYAML runtime integration also runs in the isolated OMH fixture')
+        spec = importlib.util.spec_from_file_location('payload', ROOT / 'deploy/hermes/omh/configure.py')
+        payload = importlib.util.module_from_spec(spec); spec.loader.exec_module(payload)
+        original = {'custom_providers': [{'name': 'local', 'api_key': '${COMPATIBLE_API_KEY}'}],
+                    'plugins': {'enabled': ['nemoclaw']}, 'memory': {'memory_enabled': True}}
+        self.assertIn('\n- ', yaml.safe_dump(original))
+        encoded = payload.encode_config(original, yaml)
+        self.assertNotIn(b'\n- ', encoded)
+        self.assertEqual(yaml.safe_load(encoded), original)
+
+
 if __name__ == '__main__':
     unittest.main()

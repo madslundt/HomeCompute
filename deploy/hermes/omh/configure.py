@@ -50,8 +50,20 @@ def run(args, env=None):
         raise ValueError('OMH operation failed; inspect private operation.log')
 
 
+def encode_config(value, yaml):
+    class IndentedDumper(yaml.SafeDumper):
+        def increase_indent(self, flow=False, indentless=False):
+            return super().increase_indent(flow, False)
+
+    encoded = yaml.dump(value, Dumper=IndentedDumper, sort_keys=False).encode()
+    if yaml.safe_load(encoded) != value:
+        raise ValueError('configuration serialization changed its values')
+    return encoded
+
+
 def configure(request):
     import yaml
+
     pin = request['pin']
     path = HOME / 'config.yaml'
     real(path)
@@ -104,6 +116,10 @@ def configure(request):
                    'OMH_PIP_ARGS': '--no-index --no-deps', 'PIP_NO_INDEX': '1'}
     try:
         run(['sh', str(ASSETS / 'install.sh')], environment)
+        # PyYAML's valid column-zero sequence items (custom_providers) are
+        # rejected by OMH's conservative text editor. Indent lists without
+        # changing any parsed setting; preserve the original bytes for rollback.
+        write(path, encode_config(before, yaml), 0o640)
         cli = ['/sandbox/.local/bin/omh', '--omh-home', str(OMH), '--hermes-home', str(HOME)]
         run(cli + ['setup', '--core', '--no-interactive', '--json', '--memory-mode', 'off',
                    '--default-executor', 'hermes', '--no-menubar'])
@@ -137,7 +153,7 @@ def configure(request):
         write(profile, (json.dumps(value, indent=2) + '\n').encode())
         run(cli + ['update-check', 'set', '--mode', 'off', '--json'])
         run(cli + ['theme', 'update-check', 'off'])
-        encoded = yaml.safe_dump(after, sort_keys=False).encode()
+        encoded = encode_config(after, yaml)
         write(path, encoded, 0o640)
         record = {'commit': pin['commit'], 'version': pin['version'], 'config_before': sha(before_bytes),
                   'config_after': sha(encoded), 'backup': str(backup), 'native_memory_preserved': True,
