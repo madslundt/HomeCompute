@@ -69,6 +69,7 @@ class CandidateConfig:
     native_threads: int = 4
     device: str = "cpu"
     recover_trailing_speech: bool = False
+    language_boundaries: bool = False
 
 
 def _bounded_env(name: str, default: int, maximum: int) -> int:
@@ -99,6 +100,9 @@ def load_config() -> CandidateConfig:
     recovery = os.environ.get("WHISPER_CPP_RECOVER_TRAILING_SPEECH", "false")
     if recovery not in {"true", "false"} or recovery == "true" and device != "cuda":
         raise ValueError("invalid WHISPER_CPP_RECOVER_TRAILING_SPEECH")
+    boundaries = os.environ.get("WHISPER_CPP_LANGUAGE_BOUNDARIES", "false")
+    if boundaries not in {"true", "false"} or boundaries == "true" and recovery != "true":
+        raise ValueError("invalid WHISPER_CPP_LANGUAGE_BOUNDARIES")
     if recovery == "true":
         _RECOVERY_MODULE.verify_detector()
     return CandidateConfig(
@@ -113,6 +117,7 @@ def load_config() -> CandidateConfig:
         native_threads=_bounded_env("WHISPER_CPP_NATIVE_THREADS", 4, 8),
         device=device,
         recover_trailing_speech=recovery == "true",
+        language_boundaries=boundaries == "true",
     )
 
 
@@ -177,11 +182,13 @@ def _native_request(body: bytes, content_type: str, timeout: float) -> bytes:
 
 def transcribe_audio(audio: bytes, duration: float, response_format: str,
                      native_fields: list[tuple[str, str]], timeout: int, *,
-                     recover_trailing_speech: bool = False) -> tuple[bytes, str]:
+                     recover_trailing_speech: bool = False,
+                     language_boundaries: bool = False) -> tuple[bytes, str]:
     if (recover_trailing_speech and response_format == "verbose_json"
             and dict(native_fields).get("no_timestamps", "false") == "false"):
         return _RECOVERY_MODULE.transcribe(
-            audio, duration, native_fields, timeout, request=_native_request, codec=_CODEC_MODULE)
+            audio, duration, native_fields, timeout, request=_native_request, codec=_CODEC_MODULE,
+            language_boundaries=language_boundaries)
     if duration <= NATIVE_WINDOW_SECONDS or "language_candidates" not in dict(native_fields):
         # Preserve the qualified production request boundary unless explicitly
         # opting into per-window detection with a language candidate profile.
@@ -320,13 +327,21 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "upload_timeout_seconds": self.server.config.upload_timeout_seconds,
                 "native_timeout_seconds": self.server.config.native_timeout_seconds,
                 "native_window_seconds": NATIVE_WINDOW_SECONDS,
-                "native_window_policy": ("vad_suffix_recovery_opt_in" if self.server.config.recover_trailing_speech
+                "native_window_policy": ("language_boundary_recovery_opt_in" if self.server.config.language_boundaries
+                                         else "vad_suffix_recovery_opt_in" if self.server.config.recover_trailing_speech
                                          else "language_candidates_opt_in"),
                 "suffix_recovery_policy": {"enabled": self.server.config.recover_trailing_speech,
                                            "version": _RECOVERY_MODULE.VERSION,
                                            "vad_model_sha256": _RECOVERY_MODULE._VAD.PIN["sha256"],
                                            "requires": "verbose_json_with_timestamps",
                                            "max_extra_requests_per_window": 1},
+                "language_boundary_policy": {
+                    "enabled": self.server.config.language_boundaries,
+                    "version": _RECOVERY_MODULE._BOUNDARIES.VERSION,
+                    "requires": "verbose_json_with_timestamps_and_language_candidates",
+                    "language_probe": "native_detect_language_only",
+                    "asr_audio": "original_pcm",
+                },
             }, sort_keys=True).encode())
             return
         if self.path != "/v1/models":
@@ -378,7 +393,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
             self.request.settimeout(self.server.config.native_timeout_seconds + 60)
             payload, content_type = transcribe_audio(
                 audio, duration, response_format, native_fields, self.server.config.native_timeout_seconds,
-                recover_trailing_speech=self.server.config.recover_trailing_speech)
+                recover_trailing_speech=self.server.config.recover_trailing_speech,
+                language_boundaries=self.server.config.language_boundaries)
             self.respond(200, payload, content_type, provenance=True)
         except RequestError as error:
             self.respond(error.status, json.dumps({"error": error.message}).encode())

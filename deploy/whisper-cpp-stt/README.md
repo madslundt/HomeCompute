@@ -64,6 +64,29 @@ retention, identical-input repeats and long-recording gates. Keep all private
 recordings, transcripts, summaries and receipts outside Git. Speaker detection is
 not part of this experiment.
 
+An additional diagnostic flag, `WHISPER_CPP_LANGUAGE_BOUNDARIES=true`, requires
+trailing recovery and applies only to timestamped verbose requests with language
+candidates. It proposes internal pauses using a detector-only copy normalized in
+one-second blocks toward -24 dBFS RMS, with gain capped at 30 dB. The ASR samples
+remain unchanged. At least 800 ms of low detector probability, bounded by voiced
+frames, proposes a midpoint; every child retains at least three seconds and all
+source frames are conserved. Detector probabilities do not prove silence.
+
+The existing native `detect_language=true` operation probes each proposed child
+without decoding transcript tokens. Only two different selected languages with
+original probabilities at least 0.5 authorize partitioned transcription. Otherwise
+the complete original window retains its right context and suffix policy. When
+authorized, every child is decoded and retained in source order; no hypothesis
+text selects boundaries or a winning response. Probe/observation failures return
+an error. All probes and ASR calls share the original deadline and cumulative
+response bound. `language_boundary_recovery` records changed geometry and call
+counts, including actual child ASR language selections separately from probes,
+without claiming speech completeness. The one-suffix limit applies per decoded
+child; a thirty-second base window has at most ten children and thirty total
+native calls including probes, ASR and suffixes. Explicit language or translation
+requests keep their existing behavior. The diagnostic overlay enables both
+flags; canonical builds keep both off. This remains unqualified for production.
+
 For a recording known to contain Danish and English, an experimental request can
 set `language_candidates=da,en` while leaving `language=auto`. Each native window
 selects the highest original detection probability among those languages, using
