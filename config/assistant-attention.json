@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "policy_version": "1.0.0",
+  "mode": "shadow",
+  "timezone": "Europe/Copenhagen",
+  "quiet_hours": {"start": "22:00", "end": "07:00"},
+  "daily_discretionary_notification_limit": 2,
+  "max_snooze_days": 30,
+  "freshness_max_age_minutes": 1440,
+  "rules": [
+    {"source": "home-assistant", "event_type": "ha.metadata", "outcome": "digest", "class": "home_metadata_change"},
+    {"source": "home-assistant", "event_type": "ha.check", "outcome": "digest", "class": "home_check_change"},
+    {"source": "home-assistant", "event_type": "ha.energy", "outcome": "digest", "class": "energy_change"},
+    {"source": "aula", "event_type": "aula.calendar.snapshot", "outcome": "digest", "class": "school_calendar_change"},
+    {"source": "aula", "event_type": "aula.post.snapshot", "outcome": "digest", "class": "school_post_change"},
+    {"source": "aula", "event_type": "aula.thread.snapshot", "outcome": "digest", "class": "school_thread_change"},
+    {"source": "aula", "event_type": "aula.letter.snapshot", "outcome": "digest", "class": "school_letter_change"},
+    {"source": "calendar", "event_type": "calendar.event", "outcome": "digest", "class": "calendar_change"},
+    {"source": "daythread", "event_type": "daythread.summary", "outcome": "digest", "class": "daythread_summary_change"},
+    {"source": "daythread", "event_type": "daythread.commitment", "outcome": "digest", "class": "daythread_commitment_change"}
+  ],
+  "learning": {
+    "repeated_feedback_threshold": 3,
+    "allowed_candidate_classes": ["briefing-format", "attention-threshold"],
+    "automatic_activation": false
+  }
+}

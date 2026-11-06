@@ -9,6 +9,7 @@
     ./hardware-configuration.nix
     ../../modules/nixos/application-config.nix
     ../../modules/nixos/agent-office.nix
+    ../../modules/nixos/assistant-context.nix
     ../../modules/nixos/hermes-dashboard.nix
     ../../modules/nixos/system.nix
     ../../modules/nixos/networking.nix
@@ -42,6 +43,14 @@
   homecompute.hermesDashboard.enable = true;
   homecompute.mattermost.enable = true;
   homecompute.serviceRecovery.enable = true;
+  # Bring up only the synthetic shadow API first. Household sync, inference,
+  # delivery and restore admission remain separate reviewed enablement gates.
+  homecompute.assistantContext = {
+    enable = true;
+    mode = lib.mkDefault "shadow";
+    dataClassification = "synthetic-only";
+    restoreVerified = false;
+  };
   homecompute.nasRecoveryBackup = {
     enable = true;
     share = "homecompute-backups";

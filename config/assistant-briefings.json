@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "timezone": "Europe/Copenhagen",
+  "sources": ["home-assistant", "daythread", "aula", "calendar"],
+  "max_records": 80,
+  "formatting": {"max_bullets": 6, "max_chars": 500, "include_source_links": true},
+  "trusted_adaptation": {"minimum_relevance": 0.72, "minimum_repeat_evidence": 3},
+  "max_age_minutes": {
+    "home-assistant": 360,
+    "daythread": 10080,
+    "aula": 2880,
+    "calendar": 360
+  },
+  "reasoning": {
+    "enabled": false,
+    "endpoint": "https://ai.home.arpa/v1/chat/completions",
+    "model": "automation-moe",
+    "credential_env": "HOMECOMPUTE_BRIEFING_TOKEN",
+    "timeout_seconds": 8,
+    "max_tokens": 500,
+    "max_concurrency": 1
+  },
+  "routines": [
+    {"id": "morning-overview", "owner": "WxRovre260928abc", "kind": "daily", "local_time": "05:00", "window": "today"},
+    {"id": "tomorrow-preparation", "owner": "WKu7Zv4dE4ztnaRY", "kind": "daily", "local_time": "20:30", "window": "tomorrow"}
+  ],
+  "delivery": {"enabled": false, "route": "homecompute-context-owner", "standing_grant_required": true, "no_model_selected_destination": true}
+}

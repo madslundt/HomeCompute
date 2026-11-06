@@ -1,0 +1,3 @@
+# Rendered source contract for the dedicated core-to-worker public key.
+# setup-assistant-context-worker-ssh.py inserts exactly one validated key blob.
+restrict,command="exec /usr/bin/env PATH=/home/hermes-operator/.local/bin:/home/hermes-operator/.npm-global/bin:/usr/local/bin:/usr/bin:/bin NEMOCLAW_GATEWAY_PORT=9123 /home/hermes-operator/.local/bin/nemoclaw agent-openclaw exec -- python3 /sandbox/.openclaw/homecompute-assistant-context-worker.py --stdio" ssh-ed25519 {{PUBLIC_KEY_BLOB}} homecompute-assistant-context-worker

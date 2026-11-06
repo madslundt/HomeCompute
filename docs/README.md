@@ -69,6 +69,7 @@ and other personal-agent services remain deferred.
 | Run the explicit Codex local trial | [Codex GB10 Local trial](codex-local-trial.md), [Codex compatibility](research/codex-compatibility.md), and verification tests V-CODEX-TRIAL-001/V-CODEX-E2E-001 |
 | Integrate other developer harnesses | [Agent harness operations](agent-harness-operations.md), [ADR-018](adr/018-multiple-developer-harnesses.md), and their verification tests |
 | Review OpenClaw and unattended Codex | [Discovery/workflow assessment](openclaw-discovery.md), [operations and architecture](openclaw-operations.md), [runtime evidence](openclaw-runtime-research.md), and [NemoClaw target](openclaw-nemoclaw.md) |
+| Build a proactive assistant across Home Assistant, Daythread, Aula and Calendar | [Implementation plan](proactive-personal-assistant-plan.md), [context service runbook](../deploy/assistant-context/README.md), and [ADR-029](adr/029-proactive-assistant-context.md) |
 | Improve Atlas tasks, handoffs, schedules, reminders and follow-ups | [Updated implementation plan](openclaw-grok-bot-plan.md), [live audit (2026-11-03)](operations/openclaw-atlas-audit-2026-11-03.md), and [upgrade compatibility assessment](research/openclaw-upgrade-assessment-2026-11-03.md) |
 | Inspect measured OpenClaw optimization opportunities | [Local-model/Rakazo diagnostic baseline](benchmarks/openclaw-rakazo-baseline-2026-10-29.md) |
 | Review OpenClaw reasoning and prompt/tool optimization | [Measured canary results and promotion gates](benchmarks/openclaw-performance-2026-10-30.md) |
@@ -162,6 +163,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-026](adr/026-openclaw-public-browser.md) | Public browser URLs and owner-requested page interaction; private-network and credential boundaries remain enforced |
 | [ADR-027](adr/027-unified-whisper-large-v3-stt.md) | Full Whisper Large-v3 for every STT language, with guarded retirement and retained API compatibility |
 | [ADR-028](adr/028-omnivoice-danish-english-tts.md) | Owner-selected OmniVoice replacement for Plapre; Danish-first placement measurements and retained CPU fallback |
+| [ADR-029](adr/029-proactive-assistant-context.md) | Opt-in scoped context service, Hermes owner conversation and existing action controllers |
 
 ## Research and model evidence
 

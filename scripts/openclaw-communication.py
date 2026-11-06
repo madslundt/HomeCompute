@@ -83,7 +83,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
           infrastructure: Any = None, tasks: Any = None, maintenance: Any = None,
           mcp_tokens: dict[str, str] | None = None, ha_actions: bool = False,
           services: Any = None, operations_search: Any = None, embedding_client: Any = None,
-          speech_client: Any = None, access: Any = None, site: Any = None) -> ThreadingHTTPServer:
+          speech_client: Any = None, access: Any = None, site: Any = None,
+          assistant_context: Any = None) -> ThreadingHTTPServer:
     if address[0] != "127.0.0.1":
         raise ValueError("private adapter must bind loopback; use an approved SSH forward")
     if (set(tokens) != {"collector", "conversation", "delivery"} or len(set(tokens.values())) != 3
@@ -93,6 +94,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
         raise ValueError('account-access tools require authenticated native MCP transport')
     if site is not None and access is None:
         raise ValueError('site-operation tools require the finite account-access bridge')
+    if assistant_context is not None and (mcp_tokens is None or 'hermes-owner' not in mcp_tokens):
+        raise ValueError('assistant context requires the independent owner Hermes MCP principal')
     if mcp_tokens is not None:
         if (not {"openclaw"} <= set(mcp_tokens) <= {"openclaw", "hermes", "hermes-owner"} or tasks is None
                 or len(set(mcp_tokens.values())) != len(mcp_tokens)
@@ -106,6 +109,9 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
         mcp_tokens = {actor: value for actor, value in mcp_tokens.items() if actor != 'hermes'}
         from openclaw_capabilities import Capabilities, HomeAssistant, HermesServices, Maintenance
         hermes_services = HermesServices(services) if services is not None else None
+        if assistant_context is not None:
+            from assistant_context_tools import ContextServices
+            hermes_services = ContextServices(hermes_services, assistant_context)
         if access is not None:
             from openclaw_access_bridge import CompositeServices
             services = CompositeServices(services, access, site)
@@ -328,6 +334,7 @@ def main() -> None:
     parser.add_argument("--mcp-tokens", type=Path, help="optional owner-private JSON with the OpenClaw MCP credential")
     parser.add_argument("--ha-actions", action="store_true", help="enable proposal/status/cancel IPC to the separate HA approval controller; no execution authority")
     parser.add_argument("--services", type=Path, help="private finite school/shopping/search facade configuration")
+    parser.add_argument("--assistant-context", type=Path, help="explicit owner-only context client configuration; no ingestion or approval grants")
     parser.add_argument("--integrations", type=Path, help="source-owned specialist MCP/API provider catalog")
     parser.add_argument("--household", type=Path, help="private finite HA shopping, discount-watch and storage configuration")
     parser.add_argument("--calendar", type=Path, help="private finite Google Calendar facade configuration")
@@ -396,6 +403,12 @@ def main() -> None:
     if args.integrations:
         from openclaw_integrations import Integrations, IntegrationServices
         services = IntegrationServices(services, Integrations(args.integrations, args.state / 'integrations'))
+    assistant_context = None
+    if args.assistant_context:
+        if not mcp_tokens or 'hermes-owner' not in mcp_tokens:
+            parser.error('assistant context requires the independently admitted Hermes owner')
+        from assistant_context_tools import ContextClient
+        assistant_context = ContextClient(args.assistant_context)
     access = None
     if args.access_config:
         from openclaw_access_bridge import AccessBridge
@@ -416,7 +429,8 @@ def main() -> None:
 
     server = serve(store, tokens, registry_keys(args.registry), native_turn, infrastructure=infrastructure,
                    tasks=tasks, maintenance=maintenance, mcp_tokens=mcp_tokens, ha_actions=args.ha_actions,
-                   services=services, operations_search=operations_search, access=access, site=site)
+                   services=services, operations_search=operations_search, access=access, site=site,
+                   assistant_context=assistant_context)
     try:
         server.serve_forever()
     finally:

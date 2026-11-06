@@ -1,0 +1,98 @@
+{
+  "schema_version": 1,
+  "enabled": false,
+  "owner_scope": {
+    "principal": "owner",
+    "domain": "personal",
+    "visibility": "private"
+  },
+  "preserve_agent_ids": [
+    "main", "personal", "researcher", "engineer", "operator", "shopper",
+    "keeper", "travel", "cook", "administrator", "finance", "family"
+  ],
+  "native_runtime": {
+    "product": "OpenClaw",
+    "version": "2026.9.1",
+    "source_tag": "v2026.9.1",
+    "agent_id": "assistant-context-worker",
+    "gateway_port": 9123,
+    "model_alias": "inference/automation-moe",
+    "native_methods": {
+      "submit": "agent",
+      "status": "agent.wait",
+      "cancel": "sessions.abort"
+    },
+    "session_key_prefix": "agent:assistant-context-worker:hc-"
+  },
+  "native_agent": {
+    "name": "HomeCompute context worker",
+    "description": "Isolated no-tool analysis role for bounded owner-private context requests.",
+    "workspace": "/sandbox/.openclaw/workspace-assistant-context-worker",
+    "agentDir": "/sandbox/.openclaw/agents/assistant-context-worker/agent",
+    "model": {
+      "primary": "inference/automation-moe",
+      "fallbacks": []
+    },
+    "timeoutSeconds": 300,
+    "heartbeat": { "every": "0m" },
+    "skills": [],
+    "subagents": { "allowAgents": [], "requireAgentId": true },
+    "tools": { "profile": "minimal", "allow": [], "deny": ["*"] },
+    "memory": { "search": { "enabled": false, "sources": [], "extraPaths": [] } }
+  },
+  "tasks": {
+    "allowed_types": ["analysis", "summary", "comparison"],
+    "allowed_source_refs": ["home-assistant", "daythread", "aula", "calendar"],
+    "max_source_refs": 16,
+    "max_task_bytes": 12000,
+    "max_prompt_bytes": 16384,
+    "max_result_bytes": 65536,
+    "max_runtime_seconds": 300,
+    "max_lifetime_seconds": 86400,
+    "max_active_runs": 1
+  },
+  "transport": {
+    "kind": "fixed-ssh-stdio",
+    "host": "10.77.20.2",
+    "user": "hermes-operator",
+    "identity_file": "/run/credentials/homecompute-assistant-context.service/openclaw_worker_ssh_key",
+    "known_hosts_file": "/run/credentials/homecompute-assistant-context.service/openclaw_worker_known_hosts",
+    "external_credentials": {
+      "ssh_identity_source": "/etc/homecompute/assistant-context-worker/id_ed25519",
+      "ssh_known_hosts_source": "/etc/homecompute/assistant-context-worker/known_hosts",
+      "systemd_load_credentials": [
+        "openclaw_worker_ssh_key:/etc/homecompute/assistant-context-worker/id_ed25519",
+        "openclaw_worker_known_hosts:/etc/homecompute/assistant-context-worker/known_hosts"
+      ]
+    },
+    "remote_worker": "/sandbox/.openclaw/homecompute-assistant-context-worker.py",
+    "native_cli": [
+      "env",
+      "PATH=/home/hermes-operator/.local/bin:/home/hermes-operator/.npm-global/bin:/usr/local/bin:/usr/bin:/bin",
+      "NEMOCLAW_GATEWAY_PORT=9123",
+      "nemoclaw",
+      "agent-openclaw",
+      "exec",
+      "--",
+      "openclaw",
+      "gateway",
+      "call"
+    ]
+  },
+  "files": {
+    "state": "/srv/state/assistant-context/delegation.sqlite3",
+    "worker_source": "scripts/assistant-context-worker.py",
+    "installer": "scripts/setup-assistant-context-worker.py"
+  },
+  "security": {
+    "model_arguments_cannot_select_scope_thread_role_endpoint_or_channel": true,
+    "gateway_bearer_stays_inside_managed_guest": true,
+    "worker_capabilities": [],
+    "worker_messaging": false,
+    "worker_delegation": false,
+    "worker_cloud_fallback": false,
+    "worker_depth": 1,
+    "worker_concurrency": 1,
+    "uncertain_runs_are_never_resent": true
+  }
+}
