@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "sandbox": "hermes-personal-v23",
+  "base_url": "https://homecompute-capabilities.home.arpa:19445/v1",
+  "transcription_model": "whisper",
+  "voices": {
+    "da": "danish-default",
+    "en": "english-default"
+  },
+  "default_language": "da",
+  "assets": [
+    {
+      "name": "langdetect-1.0.9.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/0e/72/a3add0e4eec4eb9e2569554f7c70f4a3c27712f40e3284d483e88094cc0e/langdetect-1.0.9.tar.gz",
+      "sha256": "cbc1fef89f8d062739774bd51eda3da3274006b3661d199c2655f6b3f6d605a0"
+    },
+    {
+      "name": "six-1.17.0-py2.py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
+      "sha256": "4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274"
+    },
+    {
+      "name": "hermes-webapp.tar.gz",
+      "sha256": "bada27fa9768ebde950373c2ebe7a3941685cba93542af1f9f8e1b1ddd2b2f06",
+      "build": "scripts/build-hermes-webapp.py"
+    }
+  ]
+}

@@ -1,5 +1,83 @@
 # Hermes household owner agent
 
+## Hands-free browser voice
+
+The owner URL `https://agents.home.arpa/hermes/` serves Hermes's native Webapp
+with its browser microphone and continuous voice conversation controls. The
+older administrative dashboard embeds a terminal and does not have those
+browser controls. Its loopback listener remains available for operator recovery.
+Both surfaces retain native password authentication; the Webapp uses the same
+owner account. No public listener or external speech provider is introduced.
+
+After signing in, open a new conversation, choose **Start voice conversation**
+from the microphone menu, and allow microphone access. Hermes listens again
+after replying. Say **stop**, **stop samtalen**, or **goodbye hermes** to end the
+voice session. Use headphones for the most reliable interruption and echo
+handling. Browser microphone permissions, certificate trust and device audio
+remain client prerequisites.
+
+`config/hermes-speech.json` owns the Whisper/OmniVoice integration and the
+offline dependency/artifact pins. Whisper detects the input language. A seeded,
+offline Danish/English classifier selects `tts-danish`/`danish-default` or
+`tts-english`/`english-default` from each reply sentence; short ambiguous text
+can select the wrong language. The command provider's `voice` setting can pin
+either approved voice instead of `auto`. It uses complete WAV sentences, not a
+provider-native realtime speech model. The sandbox receives only its existing
+opaque managed owner credential, admitted to the two exact audio POST paths.
+The retired `hermes` bearer remains denied. The trusted adapter keeps its
+existing input limits, speech verification and local fallback behavior.
+
+Build the Webapp from the release-pinned source in a disposable container of
+the qualified Hermes image:
+
+```bash
+python3 scripts/build-hermes-webapp.py --output /absolute/private/new-build
+```
+
+The builder uses the pinned Node/npm and upstream lockfile, normalizes the tar
+metadata, and prints the artifact digest. Review that digest in
+`config/hermes-speech.json` before publication. Keep the artifact and build log
+outside Git; the same source/toolchain can rebuild it. Place that artifact and
+the two checksum-pinned language packages in an operator-owned mode-0700 guest
+assets directory, with mode-0600 files. Do not install packages into the sealed
+Hermes runtime.
+
+Publish and validate the selected release on origin/master. On home-core, run
+the guarded `setup-hermes-speech-bridge.py --revision FULL_SHA` plan, then apply
+its exact reported `--expected-plan-sha256` with `--apply`. This changes only the owner speech admission in
+the installed adapter. In a clean published guest checkout:
+
+```bash
+python3 scripts/setup-hermes-speech.py --revision FULL_SHA --assets /absolute/private/assets
+python3 scripts/setup-hermes-speech.py --revision FULL_SHA --assets /absolute/private/assets --apply
+sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA
+./scripts/setup-hermes-guest.sh install-startup --config "$config"
+```
+
+The speech installer requires the existing fresh household backup/network gates,
+the qualified owner image and the verified MCP target. It backs up config and
+policy, preserves all inference, OMH, browser, household and memory settings,
+installs the packaged Webapp separately, configures its native authenticated
+loopback listener on 8646, and restarts only the selected Hermes sandbox through
+NemoClaw. The relay changes from the admin dashboard to that Webapp only after
+an unauthenticated config request returns 401 and the basic login exists.
+
+Native forwards can disappear while the sandbox remains Ready. Startup now
+runs native recovery after starting the sandbox. The source-owned user service
+`homecompute-hermes-dashboard-watch.service` probes the authenticated Webapp
+forward every 20 seconds and invokes native recovery if needed. It never owns
+the in-sandbox gateway process. Verify the effective user boot transaction,
+authenticated Webapp chat, both speech languages, audio playback/rearming,
+stop phrases and restart recovery; API-only tests do not prove microphone use.
+
+For rollback, run the same speech installer with `--apply --rollback`. It closes
+the guest relay first, restores the verified private config/environment and
+policy preimages, disables its watcher and restarts natively. Restore the former
+relay with the retained previous release's guarded installer after verifying its
+native login. Keep conversations, OMH data, model caches and speech artifacts.
+Undo speech before an older OMH config rollback: its full-config guard correctly
+refuses a later configuration it does not own.
+
 Hermes is being reintroduced alongside OpenClaw in the isolated Ubuntu agents
 VM. The owner uses the dedicated Mattermost bot `hermes-agent`; the existing
 n8n `hermes` identity is independent. Additional profiles are deferred.

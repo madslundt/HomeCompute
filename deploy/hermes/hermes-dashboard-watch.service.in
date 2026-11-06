@@ -1,0 +1,19 @@
+# HomeCompute-managed authenticated Hermes frontend forwarding
+[Unit]
+Description=Recover the native Hermes private browser forward
+Requires=homecompute-hermes-personal.service
+After=default.target homecompute-hermes-personal.service
+PartOf=homecompute-hermes-personal.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Environment=PATH=@OPERATOR_HOME@/.local/bin:@OPERATOR_HOME@/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 @RELEASE@/scripts/recover-hermes-dashboard.py --watch
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
