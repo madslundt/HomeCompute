@@ -19,8 +19,9 @@ COPY requirements.lock /opt/homecompute/requirements.lock
 # No dependency resolver or isolated build environment may replace vendor Torch/CUDA.
 # The only source distribution is the pinned pure-Python official Whisper package;
 # its build uses the cached base's setuptools/wheel, with no build dependencies fetched.
+# Explicit PEP668 consent applies only inside this image; --isolated ignores base pip environment settings.
 RUN python3 -I -B -c 'import importlib.metadata as m,json,platform,sys; assert platform.machine()=="aarch64"; assert sys.version_info[:2]==(3,12); expected={"torch":"2.11.0a0+eb65b36914.nv26.2","torchvision":"0.25.0a0+1e53952f.nv26.2.44259020","numpy":"2.1.0","numba":"0.63.1","llvmlite":"0.46.0","regex":"2026.1.15","requests":"2.32.5","tqdm":"4.67.3","setuptools":"81.0.0","wheel":"0.42.0"}; assert all(m.version(k)==v for k,v in expected.items()); open("/tmp/base-versions.json","w").write(json.dumps(expected))' \
- && python3 -m pip --isolated --disable-pip-version-check install --no-index --no-cache-dir --no-deps --no-build-isolation --require-hashes --only-binary=tiktoken,more-itertools -r requirements.lock \
+ && python3 -m pip --isolated --disable-pip-version-check install --break-system-packages --no-index --no-cache-dir --no-deps --no-build-isolation --require-hashes --only-binary=tiktoken,more-itertools -r requirements.lock \
  && python3 -I -B -c 'import importlib.metadata as m,json; expected=json.load(open("/tmp/base-versions.json")); assert all(m.version(k)==v for k,v in expected.items()); assert m.version("openai-whisper")=="20250625"; assert m.version("tiktoken")=="0.12.0"; assert m.version("more-itertools")=="10.8.0"' \
  && rm /tmp/base-versions.json
 COPY model-pin.json ggml_loader.py engine.py protocol.py adapter.py /opt/homecompute/

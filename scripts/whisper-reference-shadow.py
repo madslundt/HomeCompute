@@ -125,7 +125,7 @@ class Runtime:
         log_path = self.state / ("build-" + revision + "-" + secrets.token_hex(4) + ".log")
         fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "wb") as log:
-            command(["docker", "build", "--platform", "linux/arm64", "--pull=false", "--memory", str(LIMIT),
+            command(["docker", "build", "--platform", "linux/arm64", "--pull=false", "--force-rm", "--memory", str(LIMIT),
                      "--memory-swap", str(LIMIT), "--cpu-period", "100000", "--cpu-quota", "400000",
                      "--build-arg", "HOME_COMPUTE_REVISION=" + revision, "-t", tag, str(SOURCE)],
                     timeout=3600, log=log, env={**os.environ, "DOCKER_BUILDKIT": "0"})

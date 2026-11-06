@@ -104,6 +104,7 @@ class LifecycleTests(unittest.TestCase):
             result = self.runtime.build(REVISION)
         args = command.call_args_list[1].args[0]
         self.assertIn('--pull=false', args)
+        self.assertIn('--force-rm', args)
         self.assertEqual(args[args.index('--memory') + 1], str(guard.LIMIT))
         self.assertEqual(args[args.index('--memory-swap') + 1], str(guard.LIMIT))
         self.assertEqual(args[args.index('--cpu-quota') + 1], '400000')
@@ -291,7 +292,7 @@ class DockerDeclarationTests(unittest.TestCase):
             names.append(fields[0])
         self.assertEqual(names, ['openai-whisper', 'tiktoken', 'more-itertools'])
         self.assertIn('cp312-cp312-manylinux_2_28_aarch64.whl', lines[1])
-        for flag in ('--isolated', '--no-index', '--no-deps', '--no-build-isolation', '--require-hashes'):
+        for flag in ('--isolated', '--break-system-packages', '--no-index', '--no-deps', '--no-build-isolation', '--require-hashes'):
             self.assertIn(flag, self.docker)
         self.assertIn('assert all(m.version(k)==v for k,v in expected.items())', self.docker)
 
