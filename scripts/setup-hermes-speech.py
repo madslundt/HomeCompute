@@ -68,6 +68,10 @@ def main():
     query = ['get', pin['sandbox'], '--base', '-o', 'json']
     before = json.loads(addons.call(policy_cli + query))['policy']
     after = policy_candidate(before, pin['sandbox'])
+    unit = Path.home() / '.config/systemd/user/homecompute-hermes-dashboard-watch.service'
+    if unit.is_symlink() or (unit.exists() and not unit.read_text().startswith(
+            '# HomeCompute-managed authenticated Hermes frontend forwarding\n')):
+        raise ValueError('unknown existing dashboard watcher requires review')
     for asset in pin['assets']:
         path = args.assets / asset['name']
         addons.private(path)
@@ -118,15 +122,13 @@ def main():
             payload = (ROOT / 'deploy/hermes/speech/configure.py').read_text()
             result = addons.call(cli + ['exec', '--stdin', '--', '/opt/hermes/.venv/bin/python', '-c', payload],
                 json.dumps({'pin': pin, 'revision': args.revision}).encode())
+        if unit.exists():
+            addons.call(['systemctl', '--user', 'stop', unit.name])
         addons.call(cli + ['stop'])
         addons.call(cli + ['start'])
         addons.call(['python3', str(ROOT / 'scripts/recover-hermes-dashboard.py')])
-        unit = Path.home() / '.config/systemd/user/homecompute-hermes-dashboard-watch.service'
         rendered = (ROOT / 'deploy/hermes/hermes-dashboard-watch.service.in').read_text().replace(
             '@RELEASE@', str(ROOT)).replace('@OPERATOR_HOME@', str(Path.home()))
-        if unit.is_symlink() or (unit.exists() and not unit.read_text().startswith(
-                '# HomeCompute-managed authenticated Hermes frontend forwarding\n')):
-            raise ValueError('unknown existing dashboard watcher requires review')
         if args.rollback:
             addons.call(['systemctl', '--user', 'disable', '--now', unit.name])
         else:
