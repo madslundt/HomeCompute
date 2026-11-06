@@ -4,9 +4,10 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds candidate `hc8`, retaining the experimental `hc6`
-windowing and unknown-timing behavior and the `hc7` bounded window diagnostics.
-It adds an optional language candidate list for native automatic detection.
+The current source builds candidate `hc9`, retaining the `hc7` bounded window
+diagnostics and `hc8` optional language candidate list. Bounded native windowing
+now requires an explicit candidate list; omitted candidates preserve the `hc4`
+full native request boundary, including for long uploads.
 These changes are not part of the production image and are not qualified for rollout.
 Selecting an image in source does not establish that it has been deployed.
 
@@ -233,6 +234,7 @@ not enabled on the selected production runtime.
 
 Candidate `hc8` additionally implements the opt-in `language_candidates` request
 field described above. No candidate language restriction is configured by default.
+Candidate `hc9` confines the experimental windowing to requests using that field.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
@@ -464,8 +466,9 @@ sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-
 ## Experimental bounded native windows for long uploads
 
 This policy is unqualified and is absent from the selected `hc4` production
-image. The `hc6` adapter candidate preserves the existing native request for inputs
-up to 30 seconds. Longer validated WAV uploads are partitioned into contiguous
+image. The current adapter preserves the existing native request for all inputs
+without `language_candidates`, and for inputs up to 30 seconds. Longer validated
+WAV uploads with an explicit candidate list are partitioned into contiguous
 30-second PCM windows plus the remaining tail. If the tail is shorter than
 3 seconds, the final two windows share their remaining frames equally (at most
 one frame difference), avoiding an isolated tiny request while keeping both
@@ -473,9 +476,9 @@ windows at most 30 seconds. Exact 3-second tails are unchanged. Every input fram
 without silence removal, VAD, gain changes, overlap or response selection.
 Each native request preserves the caller's decoding fields: `auto` detects
 language afresh in each window; explicit language and prompt remain explicit.
-This experiments with the pinned native implementation's single language detection
-at the beginning of a whole request. It produced new language-conversion errors
-and retained a known omission. It can also introduce boundary errors,
+The earlier unrestricted `hc6` windowing experiment produced new language-conversion
+errors and retained a known omission. Candidate-restricted windowing still requires
+qualification and can introduce boundary errors,
 so short-window evidence is not a substitute for long-recording qualification.
 
 One admission semaphore remains held throughout all windows and response
@@ -498,6 +501,8 @@ language metadata, not a human accuracy claim. Optional word alignment that
 accepts only one language cannot align `mixed`; consumers must retain canonical
 text/native segments and report unsupported alignment rather than force a
 single language. The up-to-30-second native dispatch is unchanged. The explicit
+`no_timestamps` option alone does not activate windowing. Native omitted times
+remain absent; source window bounds are not speech timestamp estimates. The explicit
 unknown-timing rule applies to verbose responses at every input length. Long
 aggregation retains null times and the unknown marker, and rebases only the
 verified character anchors for those segments.

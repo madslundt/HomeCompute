@@ -136,6 +136,37 @@ class WindowContractTests(unittest.TestCase):
 
 
 class NativeDispatchTests(unittest.TestCase):
+    def test_candidate_windowing_does_not_carry_into_next_default_request(self):
+        original = wav(496000)
+        fields = [('response_format', 'json'), ('language', 'auto')]
+        observed = []
+        def native(body, content_type, timeout):
+            observed.append(ADAPTER.parse_multipart(body, content_type))
+            return b'{"text":"Synthetic"}'
+        with patch.object(ADAPTER, '_native_request', side_effect=native):
+            ADAPTER.transcribe_audio(original, 31, 'json', fields + [('language_candidates', 'da,en')], 900)
+            ADAPTER.transcribe_audio(original, 31, 'json', fields, 900)
+        self.assertEqual(len(observed), 3)
+        self.assertTrue(all(item[0]['language_candidates'] == 'da,en' for item in observed[:2]))
+        self.assertEqual(observed[-1], (dict(fields), original))
+
+    def test_default_long_input_and_no_timestamps_keep_one_original_native_request(self):
+        original = wav(976000)
+        for no_timestamps in ('false', 'true'):
+            fields = [('response_format', 'json'), ('language', 'auto'),
+                      ('no_timestamps', no_timestamps)]
+            def native(body, content_type, timeout):
+                parsed, audio = ADAPTER.parse_multipart(body, content_type)
+                self.assertEqual(audio, original)
+                self.assertEqual(parsed, dict(fields))
+                self.assertEqual(timeout, 900)
+                return b'{"text":"Original full recording"}'
+            with patch.object(ADAPTER, '_native_request', side_effect=native) as call, \
+                    patch.object(ADAPTER, 'native_audio_windows', side_effect=AssertionError('not opted in')):
+                payload, _ = ADAPTER.transcribe_audio(original, 61, 'json', fields, 900)
+            self.assertEqual(call.call_count, 1)
+            self.assertEqual(json.loads(payload)['text'], 'Original full recording')
+
     def test_short_original_wav_fields_format_and_timeout_are_unchanged(self):
         for frames in (1, 1600, 480000):
             original = wav(frames)
@@ -154,9 +185,9 @@ class NativeDispatchTests(unittest.TestCase):
 
     def test_long_calls_cover_frames_and_preserve_explicit_or_auto_language(self):
         original = wav(976000)
-        for language in ('auto', 'da'):
+        for language in ('auto', 'da', 'fr'):
             fields = [('response_format', 'json'), ('language', language), ('prompt', 'Neutral'),
-                      ('temperature', '0.0'), ('temperature_inc', '0.0')]
+                      ('temperature', '0.0'), ('temperature_inc', '0.0'), ('language_candidates', 'da,en')]
             observed = []
             def native(body, content_type, timeout):
                 parsed, audio = ADAPTER.parse_multipart(body, content_type)
@@ -182,22 +213,25 @@ class NativeDispatchTests(unittest.TestCase):
                     return b'{"text":"Native"}'
                 return verbose('Native')
             with self.subTest(format_=format_), patch.object(ADAPTER, '_native_request', side_effect=native) as call:
-                payload, _ = ADAPTER.transcribe_audio(original, 31, format_, [('response_format', format_)], 900)
+                payload, _ = ADAPTER.transcribe_audio(original, 31, format_, [('response_format', format_), ('language_candidates', 'da,en')], 900)
             self.assertEqual(call.call_count, 2)
             text = payload.decode() if format_ == 'text' else json.loads(payload)['text']
             self.assertEqual(text, 'Native\nNative\n' if format_ == 'verbose_json' else 'Native\nNative')
 
     def test_http_later_window_error_returns_error_without_partial_text_or_provenance(self):
-        server = ADAPTER.CandidateServer(ADAPTER.CandidateConfig(Path('/unused'), Path('/unused')),
+        server = ADAPTER.CandidateServer(ADAPTER.CandidateConfig(Path('/unused'), Path('/unused'), device='cuda'),
                                         b'synthetic-secret-value', ('127.0.0.1', 0))
         self.addCleanup(server.server_close)
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
         server_thread.start(); self.addCleanup(server.shutdown)
-        body, content_type = ADAPTER.make_native_multipart([('model', 'whisper')], wav(496000))
+        body, content_type = ADAPTER.make_native_multipart([('model', 'whisper'), ('language_candidates', 'da,en')], wav(496000))
         request = urllib.request.Request(
             f'http://127.0.0.1:{server.server_address[1]}/v1/audio/transcriptions', data=body,
             headers={'Authorization': 'Bearer synthetic-secret-value', 'Content-Type': content_type})
-        with patch.object(ADAPTER, '_native_request', side_effect=[b'{"text":"Private partial words"}',
+        with patch.object(ADAPTER, '_native_health', return_value={
+                'status': 'ok', 'compute_backend': 'cuda', 'gpu_model_buffer_bytes': 4096,
+                'inference_busy': False}), \
+                patch.object(ADAPTER, '_native_request', side_effect=[b'{"text":"Private partial words"}',
                           ADAPTER.RequestError(502, 'Speech backend is unavailable')]), \
                 self.assertRaises(urllib.error.HTTPError) as failure:
             urllib.request.urlopen(request, timeout=3)
@@ -209,7 +243,7 @@ class NativeDispatchTests(unittest.TestCase):
 
     def test_one_deadline_is_decremented_and_late_result_never_succeeds(self):
         original = wav(496000)
-        fields = [('response_format', 'text'), ('language', 'auto')]
+        fields = [('response_format', 'text'), ('language', 'auto'), ('language_candidates', 'da,en')]
         with patch.object(ADAPTER.time, 'monotonic', side_effect=[0, 1, 4, 5, 9, 9]), \
                 patch.object(ADAPTER, '_native_request', return_value=b'words') as native:
             ADAPTER.transcribe_audio(original, 31, 'text', fields, 10)
@@ -228,7 +262,7 @@ class NativeDispatchTests(unittest.TestCase):
         with patch.object(ADAPTER, '_native_request', side_effect=[b'{"text":"First"}',
                           ADAPTER.RequestError(502, 'Speech backend is unavailable')]) as native, \
                 self.assertRaisesRegex(ADAPTER.RequestError, 'unavailable'):
-            ADAPTER.transcribe_audio(wav(496000), 31, 'json', [('response_format', 'json')], 900)
+            ADAPTER.transcribe_audio(wav(496000), 31, 'json', [('response_format', 'json'), ('language_candidates', 'da,en')], 900)
         self.assertEqual(native.call_count, 2)
 
     def test_whole_upload_admission_and_health_remain_busy_between_native_calls(self):
@@ -250,7 +284,7 @@ class NativeDispatchTests(unittest.TestCase):
                 yield window
         url = f'http://127.0.0.1:{server.server_address[1]}'
         headers = {'Authorization': 'Bearer synthetic-secret-value'}
-        body, content_type = ADAPTER.make_native_multipart([('model', 'whisper'), ('response_format', 'json')], wav(496000))
+        body, content_type = ADAPTER.make_native_multipart([('model', 'whisper'), ('response_format', 'json'), ('language_candidates', 'da,en')], wav(496000))
         received = []
         def post():
             try:

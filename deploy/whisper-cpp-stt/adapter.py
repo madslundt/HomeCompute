@@ -165,8 +165,9 @@ def _native_request(body: bytes, content_type: str, timeout: float) -> bytes:
 
 def transcribe_audio(audio: bytes, duration: float, response_format: str,
                      native_fields: list[tuple[str, str]], timeout: int) -> tuple[bytes, str]:
-    if duration <= NATIVE_WINDOW_SECONDS:
-        # Preserve the existing request bytes/fields/format for short inputs.
+    if duration <= NATIVE_WINDOW_SECONDS or "language_candidates" not in dict(native_fields):
+        # Preserve the qualified production request boundary unless explicitly
+        # opting into per-window detection with a language candidate profile.
         native_body, native_type = make_native_multipart(native_fields, audio)
         raw = _native_request(native_body, native_type, timeout)
         return normalize_native_response(raw, response_format, duration)
@@ -302,6 +303,7 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "upload_timeout_seconds": self.server.config.upload_timeout_seconds,
                 "native_timeout_seconds": self.server.config.native_timeout_seconds,
                 "native_window_seconds": NATIVE_WINDOW_SECONDS,
+                "native_window_policy": "language_candidates_opt_in",
             }, sort_keys=True).encode())
             return
         if self.path != "/v1/models":
