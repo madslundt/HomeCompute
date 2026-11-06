@@ -40,7 +40,8 @@ _CODEC_SPEC.loader.exec_module(_CODEC_MODULE)
 for _name in ("MODEL_ID", "ALIASES", "MAX_AUDIO_SECONDS", "MAX_BODY_BYTES",
               "MAX_CONFIGURED_AUDIO_SECONDS", "MAX_CONFIGURED_UPLOAD_BYTES",
               "MAX_RESPONSE_BYTES", "RequestError", "parse_multipart", "validate_audio",
-              "normalize_fields", "make_native_multipart", "normalize_native_response"):
+              "normalize_fields", "make_native_multipart", "normalize_native_response",
+              "NATIVE_WINDOW_SECONDS", "native_audio_windows", "combine_native_windows"):
     globals()[_name] = getattr(_CODEC_MODULE, _name)
 
 
@@ -133,7 +134,7 @@ def read_api_key(path: Path) -> bytes:
     return key
 
 
-def _native_request(body: bytes, content_type: str, timeout: int) -> bytes:
+def _native_request(body: bytes, content_type: str, timeout: float) -> bytes:
     request = urllib.request.Request(
         f"http://127.0.0.1:{NATIVE_PORT}/inference", data=body,
         headers={"Content-Type": content_type, "User-Agent": "homecompute-whisper-cpp/1"},
@@ -150,6 +151,36 @@ def _native_request(body: bytes, content_type: str, timeout: int) -> bytes:
         raise RequestError(502, "Speech backend rejected the request") from None
     except (TimeoutError, urllib.error.URLError, OSError):
         raise RequestError(502, "Speech backend is unavailable") from None
+
+
+def transcribe_audio(audio: bytes, duration: float, response_format: str,
+                     native_fields: list[tuple[str, str]], timeout: int) -> tuple[bytes, str]:
+    if duration <= NATIVE_WINDOW_SECONDS:
+        # Preserve the existing request bytes/fields/format for short inputs.
+        native_body, native_type = make_native_multipart(native_fields, audio)
+        raw = _native_request(native_body, native_type, timeout)
+        return normalize_native_response(raw, response_format, duration)
+    deadline = time.monotonic() + timeout
+
+    def responses():
+        response_bytes = 0
+        for offset, window_duration, window in native_audio_windows(audio):
+            native_body, native_type = make_native_multipart(native_fields, window)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RequestError(502, "Speech backend deadline exceeded")
+            raw = _native_request(native_body, native_type, remaining)
+            if time.monotonic() >= deadline:
+                raise RequestError(502, "Speech backend deadline exceeded")
+            response_bytes += len(raw)
+            if response_bytes > MAX_RESPONSE_BYTES:
+                raise RequestError(502, "Speech backend response is too large")
+            yield offset, window_duration, raw
+
+    result = combine_native_windows(responses(), response_format, duration)
+    if time.monotonic() >= deadline:
+        raise RequestError(502, "Speech backend deadline exceeded")
+    return result
 
 
 class CandidateServer(ThreadingHTTPServer):
@@ -260,6 +291,7 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "max_upload_bytes": self.server.config.max_upload_bytes,
                 "upload_timeout_seconds": self.server.config.upload_timeout_seconds,
                 "native_timeout_seconds": self.server.config.native_timeout_seconds,
+                "native_window_seconds": NATIVE_WINDOW_SECONDS,
             }, sort_keys=True).encode())
             return
         if self.path != "/v1/models":
@@ -307,9 +339,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
             duration = validate_audio(audio, self.server.config.max_audio_seconds)
             response_format, native_fields = normalize_fields(fields)
             self.request.settimeout(self.server.config.native_timeout_seconds + 60)
-            native_body, native_type = make_native_multipart(native_fields, audio)
-            raw = _native_request(native_body, native_type, self.server.config.native_timeout_seconds)
-            payload, content_type = normalize_native_response(raw, response_format, duration)
+            payload, content_type = transcribe_audio(
+                audio, duration, response_format, native_fields, self.server.config.native_timeout_seconds)
             self.respond(200, payload, content_type, provenance=True)
         except RequestError as error:
             self.respond(error.status, json.dumps({"error": error.message}).encode())

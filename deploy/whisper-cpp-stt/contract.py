@@ -250,3 +250,102 @@ def normalize_native_response(payload: bytes, response_format: str, duration: fl
             segment.pop("start_offset", None)
             segment.pop("end_offset", None)
     return json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode(), "application/json"
+
+
+NATIVE_WINDOW_SECONDS = 30
+MIN_NATIVE_TAIL_SECONDS = 3
+
+
+def native_audio_windows(audio: bytes):
+    """Partition validated PCM frames without changing, skipping or duplicating samples."""
+    with wave.open(io.BytesIO(audio), "rb") as source:
+        count = source.getnframes()
+        frames_per_window = NATIVE_WINDOW_SECONDS * 16_000
+        begin = 0
+        while begin < count:
+            remaining = count - begin
+            frames = min(frames_per_window, remaining)
+            if 0 < remaining - frames < MIN_NATIVE_TAIL_SECONDS * 16_000:
+                # Avoid an isolated tiny final request. Divide the final pair
+                # evenly by integer frames; every sample still appears once.
+                frames = remaining // 2
+            pcm = source.readframes(frames)
+            if len(pcm) != frames * 2:
+                raise RequestError(400, "PCM WAV payload is truncated")
+            output = io.BytesIO()
+            with wave.open(output, "wb") as target:
+                target.setnchannels(1)
+                target.setsampwidth(2)
+                target.setframerate(16_000)
+                target.writeframes(pcm)
+            yield begin / 16_000, frames / 16_000, output.getvalue()
+            begin += frames
+
+
+def combine_native_windows(responses, response_format: str, duration: float) -> tuple[bytes, str]:
+    """Combine independently normalized native windows, retaining only proved anchors."""
+    text_parts = []
+    text_length = 0
+    last_character = ""
+    segments = []
+    language_windows = []
+    languages = []
+    task = None
+    normalized_bytes = 0
+    for offset, window_duration, raw in responses:
+        normalized, content_type = normalize_native_response(raw, response_format, window_duration)
+        normalized_bytes += len(normalized)
+        if normalized_bytes > MAX_RESPONSE_BYTES:
+            raise RequestError(502, "Speech backend response is too large")
+        result = None if response_format == "text" else json.loads(normalized)
+        text = normalized.decode("utf-8") if result is None else result["text"]
+        # Keep each native canonical text intact. Add only an explicit separator
+        # where two nonempty outputs otherwise concatenate words across a boundary.
+        separator = "\n" if (text and text_length and
+                              not last_character.isspace() and not text[0].isspace()) else ""
+        text_parts.append(separator)
+        text_length += len(separator)
+        if response_format == "verbose_json":
+            for segment in result["segments"]:
+                segment["id"] = len(segments)
+                if segment.get("start") is not None:
+                    segment["start"] += offset
+                    segment["end"] += offset
+                if "start_offset" in segment:
+                    segment["start_offset"] += text_length
+                    segment["end_offset"] += text_length
+                segments.append(segment)
+            language = result.get("language")
+            if not isinstance(language, str) or not language or len(language) > 64:
+                language = None
+            language_windows.append({"start": offset, "end": offset + window_duration,
+                                     "language": language})
+            if language is not None and text.strip() and language not in languages:
+                languages.append(language)
+            if task is None:
+                task = result.get("task")
+            elif result.get("task") != task:
+                raise RequestError(502, "Speech backend returned inconsistent tasks")
+        text_parts.append(text)
+        text_length += len(text)
+        if text:
+            last_character = text[-1]
+    text = "".join(text_parts)
+    if response_format == "text":
+        payload = text.encode("utf-8")
+        content_type = "text/plain; charset=utf-8"
+    else:
+        result = {"text": text}
+        if response_format == "verbose_json":
+            result.update(segments=segments, duration=duration, language_windows=language_windows)
+            if len(languages) == 1:
+                result["language"] = languages[0]
+            elif len(languages) > 1:
+                result["language"] = "mixed"
+            if task is not None:
+                result["task"] = task
+        payload = json.dumps(result, ensure_ascii=False, separators=(",", ":")).encode()
+        content_type = "application/json"
+    if len(payload) > MAX_RESPONSE_BYTES:
+        raise RequestError(502, "Speech backend response is too large")
+    return payload, content_type

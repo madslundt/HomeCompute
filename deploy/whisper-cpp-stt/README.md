@@ -182,9 +182,12 @@ also resets decoder zero's random generator to its original seed, as the
 upstream request initialization already does for the other decoders. This
 prevents earlier requests from changing later stochastic greedy/fallback
 sampling. Model weights, language detection, decoding defaults, and timestamp
-probability fields are unchanged. The new `hc4` image is a qualification
-candidate; the previously qualified `hc3` image below retains its exact identity
-until a separately validated promotion.
+probability fields are unchanged. The `hc4` image remains a short-input
+reliability candidate; its long-input qualification found omitted speech and
+Danish translated into English. Both defects were also reproduced with the
+preceding `hc3` runtime. The `hc5` adapter candidate below requires a new full
+qualification; the previously qualified `hc3` image below retains its
+exact identity until a separately validated promotion.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
@@ -384,6 +387,42 @@ vLLM primary, run the existing source-owned rollback action:
 sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-stt.py \
   --revision FULL_SHA --action cuda-candidate-rollback
 ```
+
+## Bounded native windows for long uploads
+
+The `hc5` adapter candidate preserves the existing native request for inputs
+up to 30 seconds. Longer validated WAV uploads are partitioned into contiguous
+30-second PCM windows plus the remaining tail. If the tail is shorter than
+3 seconds, the final two windows share their remaining frames equally (at most
+one frame difference), avoiding an isolated tiny request while keeping both
+windows at most 30 seconds. Exact 3-second tails are unchanged. Every input frame is sent once,
+without silence removal, VAD, gain changes, overlap or response selection.
+Each native request preserves the caller's decoding fields: `auto` detects
+language afresh in each window; explicit language and prompt remain explicit.
+This addresses the pinned native implementation's single language detection
+at the beginning of a whole request. It can also introduce boundary errors,
+so short-window evidence is not a substitute for long-recording qualification.
+
+One admission semaphore remains held throughout all windows and response
+assembly. The configured native timeout is one monotonic inference deadline
+for the complete upload, not a new allowance per window. The existing upload
+read timeout remains separate. A failed, malformed or late native window fails
+the whole request; no partial canonical transcript is returned. Native response
+bytes and the final aggregate share bounded response limits. Health remains
+busy between windows even when native inference is momentarily idle, and
+rollback waits for adapter idle plus drained client connections.
+
+Text and JSON preserve each normalized native text and insert a separator only
+when adjoining words otherwise concatenate. Verbose JSON retains native segment
+metadata, rebases timestamps to the original recording, renumbers segment IDs,
+and rebases character anchors only when native canonical serialization proved
+them. It reports the original WAV duration. `language_windows` records each
+window's source times and native detected language; global `language` is `mixed`
+when nonempty outputs contain multiple detected languages. This is detected
+language metadata, not a human accuracy claim. Optional word alignment that
+accepts only one language cannot align `mixed`; consumers must retain canonical
+text/native segments and report unsupported alignment rather than force a
+single language. The up-to-30-second response contract is unchanged.
 
 The intake gate treats only successful `iptables -w -S` and `-S OUTPUT`
 snapshots as evidence that a nonce chain or jump is absent. Command errors,
