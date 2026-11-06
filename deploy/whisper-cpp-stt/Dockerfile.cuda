@@ -3,13 +3,13 @@ FROM --platform=linux/arm64 ${CUDA_BASE_IMAGE} AS build
 ARG CUDA_BASE_IMAGE
 ARG WHISPER_CPP_COMMIT=f049fff95a089aa9969deb009cdd4892b3e74916
 ARG HOME_COMPUTE_REVISION
-ARG CUDA_PATCHER_SHA256=8639875ec008a0ac440887b837c5c0a5766e70fb03d8f9c728ab5860a7bd60a5
+ARG CUDA_PATCHER_SHA256=907b96a5fbe732aa7724866ad3f94775d9abddedede190d01cbc7737cccc9d51
 LABEL org.opencontainers.image.source="https://github.com/ggml-org/whisper.cpp" \
       org.opencontainers.image.revision="${WHISPER_CPP_COMMIT}" \
       io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.whisper-cpp.runtime-commit="${WHISPER_CPP_COMMIT}" \
       io.homecompute.whisper-cpp.model-sha256="64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2" \
-      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-decoder-audit-v6" \
+      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-timestamp-normalization-v8" \
       io.homecompute.whisper-cpp.cuda-patcher-sha256="${CUDA_PATCHER_SHA256}" \
       io.homecompute.whisper-cpp.backend="cuda-121a" \
       io.homecompute.whisper-cpp.cuda-base="${CUDA_BASE_IMAGE}"
@@ -45,13 +45,13 @@ FROM --platform=linux/arm64 ${CUDA_BASE_IMAGE} AS runtime
 ARG CUDA_BASE_IMAGE
 ARG WHISPER_CPP_COMMIT=f049fff95a089aa9969deb009cdd4892b3e74916
 ARG HOME_COMPUTE_REVISION
-ARG CUDA_PATCHER_SHA256=8639875ec008a0ac440887b837c5c0a5766e70fb03d8f9c728ab5860a7bd60a5
+ARG CUDA_PATCHER_SHA256=907b96a5fbe732aa7724866ad3f94775d9abddedede190d01cbc7737cccc9d51
 LABEL org.opencontainers.image.source="https://github.com/ggml-org/whisper.cpp" \
       org.opencontainers.image.revision="${WHISPER_CPP_COMMIT}" \
       io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.whisper-cpp.runtime-commit="${WHISPER_CPP_COMMIT}" \
       io.homecompute.whisper-cpp.model-sha256="64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2" \
-      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-decoder-audit-v6" \
+      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-timestamp-normalization-v8" \
       io.homecompute.whisper-cpp.cuda-patcher-sha256="${CUDA_PATCHER_SHA256}" \
       io.homecompute.whisper-cpp.backend="cuda-121a" \
       io.homecompute.whisper-cpp.cuda-base="${CUDA_BASE_IMAGE}"

@@ -4,7 +4,7 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds candidate `hc10`, retaining the `hc7` bounded window
+The current source builds candidate `hc12`, retaining the `hc7` bounded window
 diagnostics and `hc8` optional language candidate list. Bounded native windowing
 now requires an explicit candidate list; omitted candidates preserve the `hc4`
 full native request boundary, including for long uploads.
@@ -189,7 +189,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-candidate build applies `strict-gpu-decoder-audit-v6` to the exact pinned upstream source
+candidate build applies `strict-gpu-timestamp-normalization-v8` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
@@ -247,6 +247,23 @@ algorithm change. Identical-audio response parity is required before interpretin
 its traces. The trace helper's exact SHA-256 is embedded in the verified patcher;
 the patcher compiles the same verified helper bytes. Both are source-controlled,
 and a missing or changed helper fails the build.
+
+Candidate `hc12` independently tests timestamp-mask probability normalization
+against `hc10`; it does not include the separate `hc11` EOT-ranking experiment.
+When the existing timestamp-mass rule forces timestamp output, it recomputes
+log probabilities after masking text tokens. This scores the surviving
+conditional distribution. The forcing predicate uses the original probabilities
+and is unchanged. Non-forcing processing, temperature order, beam population,
+final-ranking formula, seek guards and language policy remain unchanged.
+
+The recomputation changes stored probabilities, including sampled timestamp
+probability metadata. Consequently cumulative scores, average confidence,
+fallback and silence decisions, and optional token-timing thresholds can change
+even though their formulas are untouched. This is a single normalization
+operation, not a final-ranking-only adjustment or a claim of complete decoder
+equivalence. Synthetic conditional probabilities do not establish recognition
+quality. Lexical omission, source-language, silence, timing-contract, repeatability
+and long-input checks are required before promotion.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
