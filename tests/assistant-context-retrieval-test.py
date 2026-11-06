@@ -128,14 +128,17 @@ class RetrievalTests(unittest.TestCase):
                 vector[0] = 1.0
                 return Response(json.dumps({"data": [{"index": 0, "embedding": vector}]}).encode())
         token_file = Path(self.temp.name) / "harrier-token"
-        token_file.write_text("synthetic-harrier-token-value-1234567890\n")
-        token_file.chmod(0o400)  # systemd LoadCredential projection
         opener = Opener()
-        client = AuthenticatedHarrierClient(token_file, opener=opener)
-        client.embed(["synthetic query"])
-        self.assertEqual(opener.request.full_url, "https://ai.home.arpa/v1/embeddings")
-        self.assertEqual(opener.request.get_header("Authorization"), "Bearer synthetic-harrier-token-value-1234567890")
-        self.assertEqual(opener.request.get_method(), "POST")
+        for token in ("synthetic-harrier-token-value-1234567890", "sk-" + "a" * 22):
+            if token_file.exists():
+                token_file.chmod(0o600)
+            token_file.write_text(token + "\n")
+            token_file.chmod(0o400)  # systemd LoadCredential projection
+            client = AuthenticatedHarrierClient(token_file, opener=opener)
+            client.embed(["synthetic query"])
+            self.assertEqual(opener.request.full_url, "https://ai.home.arpa/v1/embeddings")
+            self.assertEqual(opener.request.get_header("Authorization"), "Bearer " + token)
+            self.assertEqual(opener.request.get_method(), "POST")
         token_file.chmod(0o640)
         with self.assertRaises(ValueError):
             AuthenticatedHarrierClient(token_file, opener=opener)
