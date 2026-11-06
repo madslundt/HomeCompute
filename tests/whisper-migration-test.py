@@ -174,7 +174,7 @@ class MigrationTests(unittest.TestCase):
             run.assert_called_once_with(['docker', 'image', 'inspect', LIFECYCLE.CPP_QUALIFIED_IMAGE_NAME])
         for mutation in ({'Id': 'sha256:' + 'c' * 64},
                          {'label': 'io.homecompute.source-revision', 'value': 'a' * 40},
-                         {'label': 'io.homecompute.whisper-cpp.cuda-patch', 'value': LIFECYCLE.CPP_CUDA_PATCH_VERSION}):
+                         {'label': 'io.homecompute.whisper-cpp.cuda-patch', 'value': 'unqualified-native-patch'}):
             candidate = copy.deepcopy(image)
             if 'Id' in mutation:
                 candidate['Id'] = mutation['Id']

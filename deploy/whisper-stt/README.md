@@ -27,11 +27,15 @@ multipart body and the six CPP provenance headers. The exact qualified CUDA
 image and its guarded promotion/rollback are documented in the
 [whisper.cpp runbook](../whisper-cpp-stt/README.md); when rolled back, the
 long-recording endpoint is unavailable rather than silently using vLLM.
+The selected `hc4` CPP replacement is qualified for request determinism and
+operational behavior. Known long-input omissions and language conversion remain
+unresolved; this selection does not qualify transcription accuracy or complete
+speech coverage. The later bounded-window `hc5`/`hc6` experiments are not selected.
 
 ## Opt-in vLLM runtime candidate
 
-The production service continues to use the NVIDIA vLLM 0.19 image pinned
-above. The explicit `prepare-runtime-candidate` action builds a profile-gated
+The NVIDIA vLLM 0.19 image pinned above is retained for rollback when CPP is
+promoted. The explicit `prepare-runtime-candidate` action builds a profile-gated
 candidate image from that same immutable image and the pinned source checksums
 in `scripts/patch-vllm-whisper-runtime.py`. It applies two source edits:
 

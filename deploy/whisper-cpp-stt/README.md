@@ -1,11 +1,16 @@
-# Opt-in whisper.cpp CPU qualification candidate
+# Whisper.cpp runtimes and qualification
 
-This is an isolated, opt-in CPU candidate for full Whisper Large-v3. It adds no
-production alias, host port, backend route, GPU workload, model download or
-automatic fallback. The normal Whisper lifecycle and vLLM primary remain
-separately owned. Candidate startup is a manually invoked Compose profile; the
-runtime has no external network, uses a read-only model/key mount, and serializes
-inference.
+This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
+promotion lifecycle for full Whisper Large-v3. The source-selected production
+replacement is immutable `hc4`, qualified for request determinism and the
+operational contract. Its known long-input accuracy defects remain unresolved.
+The current source builds experimental `hc6`; its windowing and unknown-timing
+changes are not part of that production image and are not qualified for rollout.
+Selecting an image in source does not establish that it has been deployed.
+
+The CPU candidate adds no production alias, host port, backend route or automatic
+fallback. Candidate startup is a manually invoked Compose profile; the runtime
+has no external network, uses a read-only model/key mount, and serializes inference.
 
 ## Immutable runtime and artifact
 
@@ -79,7 +84,8 @@ in seconds relative to this request. It adds `kind: "segment"` and exclusive
 `start_offset` / `end_offset` character anchors only when the sanitized native
 segment serialization exactly matches the returned top-level text. It strips
 whisper special-token spellings from returned text, preserves native segment
-times without clamping. A finite, nonnegative, ordered segment whose start is
+times without clamping. The selected `hc4` image rejects out-of-range native
+timestamps. In the experimental `hc6` source only, a finite, nonnegative, ordered segment whose start is
 before the input's end but whose end exceeds it receives `start: null`, `end: null`,
 and `timing_status: "unknown_out_of_bounds"`; its text and any verified character
 anchors remain available. This is unknown timing, not a timestamp corrected to
@@ -156,11 +162,11 @@ upstream v1.9.1 CMake source supports `121a-real` with CUDA 12.9 and newer;
 the candidate pins that architecture explicitly. NVIDIA lists GB10 as compute
 capability 12.1, and the inspected host driver is 580.178.04. CUDA 13.x's
 documented Linux compatibility floor is R580. This supports building the
-candidate. The exact patched CUDA source, target runtime compatibility, model
-load, memory use, quality, and latency have since been verified by the guarded
-private full-recording qualification recorded below. Permanent production
-promotion and route activation are still pending source review and operator
-action.
+candidate. Runtime compatibility, model load, memory use, latency and request
+repeatability were measured in the private qualification recorded below.
+Accuracy and complete speech coverage are not qualified. Deployment of the
+selected replacement still requires the published guarded lifecycle and actual
+client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
@@ -187,15 +193,18 @@ also resets decoder zero's random generator to its original seed, as the
 upstream request initialization already does for the other decoders. This
 prevents earlier requests from changing later stochastic greedy/fallback
 sampling. Model weights, language detection, decoding defaults, and timestamp
-probability fields are unchanged. The `hc4` image remains a short-input
-reliability candidate; its long-input qualification found omitted speech and
-Danish translated into English. Both defects were also reproduced with the
-preceding `hc3` runtime. The `hc5` bounded-window candidate then failed a long
-English upload because a native segment ended 420 ms beyond its 30-second input.
-The `hc6` adapter preserves that canonical text while explicitly marking its
-unsupported timing unknown; it requires fresh qualification. The previously
-qualified `hc3` image retains its exact identity until a separately validated
-promotion.
+probability fields are unchanged. The selected `hc4` image retains the original
+adapter and native request boundaries. Its long-input review found omitted
+speech and Danish rendered in English; exact controls reproduced both with the
+preceding `hc3` runtime. Those failed accuracy findings remain valid. The scoped
+replacement qualifies the deterministic sampling repair and operational behavior,
+not a claim that every spoken word or source language is preserved.
+
+The separate `hc5` bounded-window experiment failed a long English upload because
+a native segment ended 420 ms beyond its 30-second input. Experimental `hc6`
+preserved that text with explicit unknown timing, but produced new Welsh output
+in English passages and did not recover the original omitted passage with its
+actual window boundaries. Neither experiment is selected for production.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains
@@ -368,9 +377,34 @@ or restore health, the intake gate remains active; `cuda-candidate-status`
 reports `gate_held`, and the same rollback action reuses the verified gate
 chain on retry.
 
-The exact image that completed the private full-recording GPU qualification is
-`sha256:d6da07a313bc18c336e4ccb9c2680f209d80c079a5fb42e9eb6b522e244448b3`,
-built from HomeCompute source `50ee4f9666c26df89bccab30c83e9cd6dcc0faba`.
+The exact image selected for the reliability-only replacement is
+`sha256:2a9e90e60708dbfb6c95c68b84bb93385cccdeb6a3861761347a8f045f406164`,
+built from HomeCompute source `bdb35cb972abe273d64ac4087b32a2ca2a2c61b9`
+and tagged `1.9.1-large-v3-f16-cuda121a-hc4`. It uses patch
+`strict-gpu-request-determinism-v3`, patcher SHA-256
+`0d91dddf479f120f2b421a8a1a61531d1c2675d4013f3d1e6d6fd15434bc62a1`.
+Its qualification status is `qualified_reliability`, scope
+`request_determinism`; accuracy remains `NOT_QUALIFIED`.
+
+The 2026-11-05 short-input comparison produced 48 outputs from 124 provider
+requests: all 12 clips matched across four runs, and repeated identical requests
+matched before and after the corpus. The 2026-11-06 operational long-input run
+completed eight uploads covering three complete recordings of approximately
+1,122, 1,650 and 3,643 seconds, split only at the existing 1,200-second upload
+limit. It verified response provenance, canonical character anchors, in-range
+native segment times, 413 bounds, 429 admission and healthy idle recovery. The
+full Danish response was byte-identical after intervening English/mixed requests.
+All 65 recorded resource samples exceeded 10% available host memory (minimum
+11.31%). One concurrent candidate startup failed NVIDIA context allocation
+despite no cgroup OOM; a bounded retry succeeded. This does not waive any
+startup, GPU-placement, headroom, idle or rollback gate.
+
+The original full-coverage/accuracy result remains **not qualified**: a roughly
+22-second passage was omitted and later Danish was rendered in English. Both
+were reproduced on the retained `hc3` runtime. Vendor transcript comparisons
+are not human ground truth and establish no accuracy gain. Selecting the
+unchanged-boundary `hc4` image excludes the new `hc5`/`hc6` windowing regressions.
+
 Promotion verifies that image ID plus its source/runtime/model/CUDA labels;
 it does not build or pull a replacement. It applies the existing locks,
 intake gate, drain, exact primary capture, native GPU proof, and 12-GiB/10%
@@ -399,9 +433,10 @@ sudo python3 -I -B /srv/homecompute/releases/FULL_SHA/scripts/bootstrap-whisper-
   --revision FULL_SHA --action cuda-candidate-rollback
 ```
 
-## Bounded native windows for long uploads
+## Experimental bounded native windows for long uploads
 
-The `hc6` adapter candidate preserves the existing native request for inputs
+This policy is unqualified and is absent from the selected `hc4` production
+image. The `hc6` adapter candidate preserves the existing native request for inputs
 up to 30 seconds. Longer validated WAV uploads are partitioned into contiguous
 30-second PCM windows plus the remaining tail. If the tail is shorter than
 3 seconds, the final two windows share their remaining frames equally (at most
@@ -410,8 +445,9 @@ windows at most 30 seconds. Exact 3-second tails are unchanged. Every input fram
 without silence removal, VAD, gain changes, overlap or response selection.
 Each native request preserves the caller's decoding fields: `auto` detects
 language afresh in each window; explicit language and prompt remain explicit.
-This addresses the pinned native implementation's single language detection
-at the beginning of a whole request. It can also introduce boundary errors,
+This experiments with the pinned native implementation's single language detection
+at the beginning of a whole request. It produced new language-conversion errors
+and retained a known omission. It can also introduce boundary errors,
 so short-window evidence is not a substitute for long-recording qualification.
 
 One admission semaphore remains held throughout all windows and response

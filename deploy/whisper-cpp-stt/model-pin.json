@@ -42,6 +42,6 @@
   "notes": [
     "The GGML conversion is not byte-identical to the pinned Hugging Face safetensors files.",
     "The guarded preparation action provisions this exact public snapshot outside Git; inference never downloads it and mounts it read-only.",
-    "CPU and CUDA builds are separate qualification candidates; neither has a production alias or route."
+    "CPU and current-source CUDA builds are separate qualification candidates. Production uses only the immutable qualified image selected by the lifecycle and model catalog; current candidate source is not a production image."
   ]
 }
