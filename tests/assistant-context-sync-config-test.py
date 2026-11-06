@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import shutil
@@ -107,6 +108,45 @@ class SyncConfigSetupTests(unittest.TestCase):
         self.target.symlink_to(self.example)
         with self.assertRaises(setup.SetupRefused):
             self.bootstrap.plan(self.revision, [])
+
+    def test_reviewed_profile_selection_update_retains_private_before_image(self) -> None:
+        initial = self.bootstrap.plan(self.revision, [])
+        self.bootstrap.apply(self.revision, [], initial["plan_sha256"])
+        before = self.target.read_bytes()
+        selected = self.bootstrap.plan(self.revision, [14, 93])
+        self.assertEqual(selected["state"], "selection_change")
+        self.assertEqual(selected["preimage_sha256"], setup.digest(before))
+        result = self.bootstrap.apply(self.revision, [14, 93], selected["plan_sha256"])
+        self.assertEqual(result["status"], "updated")
+        config = sync.load_config(self.target)
+        self.assertEqual(config["aula"]["profile_ids"], [14, 93])
+        self.assertTrue(config["aula"]["enabled"])
+        backup = self.target.parent / "selection-history" / (setup.digest(before) + ".json")
+        self.assertEqual(backup.read_bytes(), before)
+        self.assertEqual(backup.stat().st_mode & 0o7777, 0o600)
+        self.assertEqual(backup.parent.stat().st_mode & 0o7777, 0o700)
+        fresh = self.bootstrap.plan(self.revision, [14, 93])
+        self.assertEqual(self.bootstrap.apply(self.revision, [14, 93], fresh["plan_sha256"])["status"],
+                         "already_configured")
+
+    def test_selection_update_rejects_stale_plan_and_unrelated_config_changes(self) -> None:
+        initial = self.bootstrap.plan(self.revision, [])
+        self.bootstrap.apply(self.revision, [], initial["plan_sha256"])
+        old_plan = self.bootstrap.plan(self.revision, [14, 93])
+        other_plan = self.bootstrap.plan(self.revision, [14])
+        self.bootstrap.apply(self.revision, [14], other_plan["plan_sha256"])
+        current = self.target.read_bytes()
+        with self.assertRaises(setup.SetupRefused):
+            self.bootstrap.apply(self.revision, [14, 93], old_plan["plan_sha256"])
+        self.assertEqual(self.target.read_bytes(), current)
+        unrelated = json.loads(current)
+        unrelated['calendar']['aliases'] = ['family']
+        self.target.write_bytes(setup.canonical(unrelated))
+        plan = self.bootstrap.plan(self.revision, [14, 93])
+        self.assertEqual(plan['state'], 'drift')
+        with self.assertRaises(setup.SetupRefused):
+            self.bootstrap.apply(self.revision, [14, 93], plan['plan_sha256'])
+        self.assertEqual(self.target.read_bytes(), setup.canonical(unrelated))
 
     def test_published_guard_checks_exact_rooted_release_and_tracked_bytes(self) -> None:
         releases = self.root / "releases"

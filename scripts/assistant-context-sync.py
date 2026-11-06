@@ -160,6 +160,16 @@ def read_aula(config: dict) -> list[Snapshot]:
     if not profiles:
         raise ValueError("Aula needs explicit owner profile IDs")
     facade = openclaw_services.Services(OPENCLAW_CONFIG / "services.json")
+    discovery = facade.request("homecompute_school_discover", {}).get("data")
+    children = discovery.get("children") if isinstance(discovery, dict) else None
+    if (not isinstance(children, list) or not 1 <= len(children) <= 8
+            or any(not isinstance(row, dict) or type(row.get("id")) is not int
+                   or not 1 <= row["id"] <= 999_999_999 for row in children)):
+        raise ValueError("Aula child roster is unavailable")
+    available = {row["id"] for row in children}
+    if len(available) != len(children) or not set(profiles) <= available:
+        raise ValueError("Aula selection differs from the current authorized child roster")
+    account_feeds = set(profiles) == available
     observed = datetime.now(timezone.utc).isoformat()
     snapshots = []
     offset = 0
@@ -196,26 +206,35 @@ def read_aula(config: dict) -> list[Snapshot]:
 
     # The current source bridge exposes only bounded first pages for posts and
     # threads; preserve partial coverage and never tombstone from these reads.
-    posts = facade.request("homecompute_school_posts", {"profile_ids": ",".join(str(value) for value in profiles)})
-    snapshots.append(aula_snapshot(_rows(posts.get("data"), ("posts", "items", "results")),
-        observed_at=observed, coverage_key="posts:first-page:profiles:" + ",".join(map(str, profiles)),
-        complete=False, family="post", limitation="Existing Aula post bridge reads one bounded page; source removals are not inferred."))
-    threads = facade.request("homecompute_school_threads", {})
-    thread_rows = _rows(threads.get("data"), ("threads", "items", "results"))
+    post_rows = []
     messages = []
-    for row in thread_rows[:20]:
-        thread_id = row.get("threadId", row.get("id"))
-        if thread_id is None:
-            continue
-        detail = facade.request("homecompute_school_thread", {"thread_id": str(thread_id)})
-        data = detail.get("data")
-        if isinstance(data, dict):
-            for message in data.get("messages", [])[:20] if isinstance(data.get("messages"), list) else []:
-                if isinstance(message, dict):
-                    messages.append(dict(message, threadId=thread_id))
+    if account_feeds:
+        # Pinned Aula discovery explicitly requires omitting child profile IDs
+        # for the guardian's institution/club post feed. Never broaden a subset
+        # selection to these account-wide posts or message threads.
+        posts = facade.request("homecompute_school_posts", {})
+        post_rows = _rows(posts.get("data"), ("posts", "items", "results"))
+        threads = facade.request("homecompute_school_threads", {})
+        thread_rows = _rows(threads.get("data"), ("threads", "items", "results"))
+        for row in thread_rows[:20]:
+            thread_id = row.get("threadId", row.get("id"))
+            if thread_id is None:
+                continue
+            detail = facade.request("homecompute_school_thread", {"thread_id": str(thread_id)})
+            data = detail.get("data")
+            if isinstance(data, dict):
+                for message in data.get("messages", [])[:20] if isinstance(data.get("messages"), list) else []:
+                    if isinstance(message, dict):
+                        messages.append(dict(message, threadId=thread_id))
+    skipped = "Account-wide feed not read because only a subset of the current child roster is selected."
+    snapshots.append(aula_snapshot(post_rows,
+        observed_at=observed, coverage_key="posts:first-page:profiles:" + ",".join(map(str, profiles)),
+        complete=False, family="post", limitation=(
+            "Existing Aula post bridge reads one bounded account page; source removals are not inferred."
+            if account_feeds else skipped)))
     snapshots.append(aula_snapshot(messages, observed_at=observed,
         coverage_key="thread-messages:first-page", complete=False, family="thread",
-        limitation="Existing Aula thread bridge exposes first-page messages only."))
+        limitation="Existing Aula thread bridge exposes first-page messages only." if account_feeds else skipped))
 
     for week in selection.get("iso_weeks", []):
         offset = 0

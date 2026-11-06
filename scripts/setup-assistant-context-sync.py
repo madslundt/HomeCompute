@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
@@ -14,6 +15,7 @@ import secrets
 import stat
 import subprocess
 import sys
+import tempfile
 from typing import Any
 
 
@@ -165,6 +167,14 @@ class SyncConfigBootstrap:
             raw, preimage = self._read_target()
         if raw is not None and raw != encoded:
             state = "drift"
+            try:
+                previous = json.loads(raw, object_pairs_hook=_unique_object)
+                old_ids = previous["aula"]["profile_ids"]
+                previous_canonical, _ = build_config(old_ids, self.example)
+                if raw == previous_canonical:
+                    state = "selection_change"
+            except (ValueError, KeyError, TypeError):
+                pass
         elif raw is None:
             state = "absent"
         else:
@@ -195,6 +205,21 @@ class SyncConfigBootstrap:
         return {**body, "plan_sha256": digest(canonical(body))}
 
     def apply(self, revision: str, profile_ids: list[int], expected_plan_sha256: str) -> dict[str, Any]:
+        self._ensure_directory()
+        descriptor = os.open(self.directory / "context-sync.lock",
+                             os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != self.service_uid or info.st_gid != self.service_gid
+                    or stat.S_IMODE(info.st_mode) != 0o600):
+                raise SetupRefused("private source-selection lock is unsafe")
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return self._apply_locked(revision, profile_ids, expected_plan_sha256)
+        finally:
+            os.close(descriptor)
+
+    def _apply_locked(self, revision: str, profile_ids: list[int], expected_plan_sha256: str) -> dict[str, Any]:
         reviewed = self.plan(revision, profile_ids)
         if (not isinstance(expected_plan_sha256, str)
                 or SHA256_RE.fullmatch(expected_plan_sha256) is None
@@ -208,12 +233,63 @@ class SyncConfigBootstrap:
 
         self._ensure_directory()
         encoded, _ = build_config(profile_ids, self.example)
-        self._create(encoded)
+        changed = reviewed["state"] == "selection_change"
+        if changed:
+            self._replace_selection(encoded, reviewed["preimage_sha256"])
+        else:
+            self._create(encoded)
         installed = self._read_target()[0]
         if installed != encoded:
             raise SetupRefused("private config failed post-install verification")
-        return {"status": "created", "target": str(self.target),
+        return {"status": "updated" if changed else "created", "target": str(self.target),
                 "config_sha256": digest(encoded)}
+
+    def _replace_selection(self, encoded: bytes, expected_preimage: str) -> None:
+        previous, signature = self._read_target()
+        if previous is None or signature != expected_preimage:
+            raise SetupRefused("private config changed before selection update")
+        history = self.directory / "selection-history"
+        if not self._directory(history, self.service_uid, self.service_gid, private=True):
+            history.mkdir(mode=0o700)
+            os.chown(history, self.service_uid, self.service_gid)
+        backup = history / (expected_preimage + ".json")
+        if backup.exists() or backup.is_symlink():
+            info = backup.lstat()
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or info.st_uid != self.service_uid or info.st_gid != self.service_gid
+                    or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > MAX_CONFIG_BYTES
+                    or backup.read_bytes() != previous):
+                raise SetupRefused("private selection before-image differs")
+        else:
+            fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            os.fchown(fd, self.service_uid, self.service_gid)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(previous)
+                stream.flush()
+                os.fsync(stream.fileno())
+            directory_fd = os.open(history, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        fd, temporary_name = tempfile.mkstemp(prefix=".context-sync-selection-", dir=self.directory)
+        temporary = Path(temporary_name)
+        try:
+            os.fchown(fd, self.service_uid, self.service_gid)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(encoded)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if self._read_target()[1] != expected_preimage:
+                raise SetupRefused("private config changed during selection update")
+            os.replace(temporary, self.target)
+            directory_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _ensure_directory(self) -> None:
         if self._directory(self.directory, self.service_uid, self.service_gid, private=True):
