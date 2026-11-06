@@ -447,6 +447,9 @@ install_startup() {
     die 'Startup unit paths must not contain systemd metacharacters'
   systemctl --user is-enabled --quiet nemoclaw-openshell-gateway.service ||
     die 'The vendor-managed OpenShell gateway boot unit must be enabled first'
+  # System and user managers otherwise shut down independently: Docker can
+  # terminate the sandbox before its native StopSandbox transaction completes.
+  sudo -n python3 "$REPO_ROOT/scripts/install-hermes-system-boot.py"
   python3 - "$REPO_ROOT" "$config_path" "$HOME" <<'PYTHON'
 from pathlib import Path
 import os, tempfile, time
@@ -479,6 +482,7 @@ PYTHON
   # Verify the boot transaction too; verifying this unit alone misses cycles
   # introduced by default.target's automatically ordered Wants= dependencies.
   verify_startup_transaction
+  systemctl --user reset-failed homecompute-hermes-personal.service
   systemctl --user restart homecompute-hermes-personal.service
   systemctl --user is-active --quiet homecompute-hermes-personal.service
   log 'Hermes native boot lifecycle is installed and started'
