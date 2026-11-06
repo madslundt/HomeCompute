@@ -16,8 +16,8 @@ def install(destination: Path, content: str) -> None:
         if parent.is_symlink():
             raise ValueError('real configuration directory required')
     info = destination.parent.stat()
-    if info.st_uid != os.getuid() or info.st_mode & 0o077:
-        raise ValueError('private operator-owned directory required')
+    if info.st_uid != os.getuid() or info.st_mode & 0o022:
+        raise ValueError('operator-owned directory without group or world write required')
     if destination.exists() or destination.is_symlink():
         info = destination.lstat()
         if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_nlink != 1

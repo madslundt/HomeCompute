@@ -335,6 +335,7 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('owner_config', ROOT / 'scripts/setup-hermes-owner-config.py')
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
         destination = self.root.resolve() / 'hermes-personal-v23.env'
+        self.root.chmod(0o755)  # Actual guest config parent is public-readable, never writable.
         module.install(destination, 'synthetic-config\n')
         self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
         module.install(destination, 'synthetic-config\n')
@@ -344,6 +345,14 @@ class HermesGuestRuntimeTest(unittest.TestCase):
         destination.unlink(); destination.symlink_to(self.config)
         with self.assertRaisesRegex(ValueError, 'refusing replacement'):
             module.install(destination, 'synthetic-config\n')
+
+    def test_owner_config_refuses_a_writable_parent(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('owner_config', ROOT / 'scripts/setup-hermes-owner-config.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        self.root.chmod(0o777)
+        with self.assertRaisesRegex(ValueError, 'group or world write'):
+            module.install(self.root.resolve() / 'hermes-personal-v23.env', 'synthetic\n')
 
     def test_cutover_refuses_a_second_live_owner_bot(self):
         import importlib.util

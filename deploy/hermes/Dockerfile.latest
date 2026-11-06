@@ -92,8 +92,9 @@ RUN HERMES_HOME=/tmp/homecompute-hermes-test-build /opt/hermes/python-runtime/bi
       /tmp/homecompute-hermes-test-home /opt/hermes/.pytest_cache /root/.cache/uv
 # Required PM tools must ship in this externally managed artifact. Runtime
 # install drift cannot repair a sealed image, even when browsing itself works.
-RUN /opt/hermes/python-runtime/bin/python3 -c 'from pm import ensure; ensure("ffmpeg", explicit=True); ensure("ripgrep", explicit=True)' \
-    && chmod -R a+rX /opt/hermes/tools \
+RUN /opt/hermes/python-runtime/bin/python3 -c 'from pathlib import Path; from pm import prepare_tools; from pm.store import current_target; prepare_tools(["ffmpeg", "ripgrep"], out=Path("/opt/hermes/tools"), target=current_target())' \
+    && find /opt/hermes/tools -type d ! -perm -0005 -exec chmod a+rX {} + \
+    && find /opt/hermes/tools -type f \( ! -perm -0004 -o \( -perm /111 ! -perm -0001 \) \) -exec chmod a+rX {} + \
     && HOME=/sandbox /usr/bin/setpriv --reuid=sandbox --regid=sandbox --init-groups -- /opt/hermes/.venv/bin/python -I -c 'import pm; problems=pm.check(); assert not problems, problems'
 COPY browser-relay.mjs /usr/local/lib/nemoclaw/browser-relay.mjs
 RUN chmod 0444 /usr/local/lib/nemoclaw/browser-relay.mjs
