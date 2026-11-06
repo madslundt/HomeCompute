@@ -47,6 +47,10 @@ in
       description = "Root-owned published HomeCompute release used by opt-in source sync and improvement jobs.";
     };
     sync.enable = lib.mkEnableOption "periodic bounded context source scans as the existing source-owning identity";
+    sync.caFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str; default = null;
+      description = "Optional externally provisioned public Daythread CA bundle for this collector only.";
+    };
     improvements = {
       enable = lib.mkEnableOption "standing-grant improvement proposals and reconciliation";
       githubTokenFile = lib.mkOption { type = lib.types.str; default = "/etc/homecompute/assistant-improvement-github-token"; };
@@ -99,6 +103,10 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
+        assertion = cfg.sync.caFile == null || externalPath cfg.sync.caFile;
+        message = "Assistant collector CA must be an external absolute file when configured.";
+      }
+      {
         assertion = builtins.all externalPath [ cfg.credentialsFile cfg.inference.embeddingCredentialFile
           cfg.inference.briefingCredentialFile cfg.inference.caFile cfg.delegation.identityFile cfg.delegation.knownHostsFile cfg.delivery.authFile cfg.jobsSourceDirectory cfg.improvements.githubTokenFile cfg.improvements.healthTokenFile ];
         message = "Assistant context credentials must be an external absolute path, never a Nix-store value.";
@@ -134,8 +142,10 @@ in
       wants = [ "network-online.target" ];
       unitConfig.ConditionPathExists = "/var/lib/homecompute-assistant/context-sync.json";
       environment.PYTHONDONTWRITEBYTECODE = "1";
+      environment.SSL_CERT_FILE = lib.mkIf (cfg.sync.caFile != null) "%d/daythread-ca";
       serviceConfig = {
         Type = "oneshot"; User = "homecompute-openclaw"; Group = "homecompute-openclaw"; UMask = "0077";
+        LoadCredential = lib.optional (cfg.sync.caFile != null) "daythread-ca:${cfg.sync.caFile}";
         ExecStart = "${pkgs.python3}/bin/python3 ${cfg.jobsSourceDirectory}/scripts/assistant-context-sync.py";
         NoNewPrivileges = true; PrivateTmp = true; ProtectSystem = "strict"; ProtectHome = true;
         ReadWritePaths = [ "/var/lib/homecompute-assistant" ];

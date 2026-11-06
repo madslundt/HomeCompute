@@ -76,6 +76,13 @@ TOOLS = [
          {'limit': LIMIT}, []),
 ]
 
+SYSTEMD_CONTEXT_CREDENTIALS = frozenset({
+    Path('/run/credentials/homecompute-assistant-context.service/clients'),
+    Path('/run/credentials/homecompute-assistant-context.service/embedding'),
+    Path('/run/credentials/homecompute-assistant-context.service/briefing'),
+    Path('/run/credentials/homecompute-assistant-context.service/delivery'),
+})
+
 
 def validate(name: str, arguments: Any) -> dict:
     definition = next((row for row in TOOLS if row['name'] == name), None)
@@ -137,12 +144,22 @@ def validate(name: str, arguments: Any) -> dict:
     return dict(arguments)
 
 
+def private_file_metadata_allowed(path: Path, info: os.stat_result, effective_uid: int) -> bool:
+    mode = stat.S_IMODE(info.st_mode)
+    ordinary = info.st_uid in {0, effective_uid} and mode in {0o400, 0o600}
+    systemd_projection = (
+        Path(path) in SYSTEMD_CONTEXT_CREDENTIALS
+        and info.st_uid == 0 and info.st_gid == 0 and mode == 0o440
+    )
+    return stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and (ordinary or systemd_projection)
+
+
 def private_bytes(path: Path, limit: int = 65536) -> bytes:
+    path = Path(path)
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(fd)
-        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid not in {0, os.geteuid()}
-                or stat.S_IMODE(info.st_mode) not in {0o400, 0o600} or info.st_size > limit):
+        if not private_file_metadata_allowed(path, info, os.geteuid()) or info.st_size > limit:
             raise ValueError('private context configuration required')
         raw = os.read(fd, limit + 1)
         if len(raw) > limit:

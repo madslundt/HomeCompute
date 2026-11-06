@@ -9,6 +9,7 @@ from pathlib import Path
 import stat
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 
@@ -19,6 +20,7 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 sys.path.insert(0, str(ROOT / "scripts"))
 from assistant_context_api import clients as load_server_clients
+from assistant_context_tools import private_file_metadata_allowed
 
 
 class CredentialBootstrapTests(unittest.TestCase):
@@ -142,6 +144,21 @@ class CredentialBootstrapTests(unittest.TestCase):
         self.owner.symlink_to(self.root / "elsewhere")
         with self.assertRaises(MODULE.SetupRefused):
             self.installer.plan(self.revision)
+
+
+class SystemdCredentialProjectionTests(unittest.TestCase):
+    def test_only_fixed_root_owned_systemd_0440_projection_is_allowed(self) -> None:
+        projection = Path("/run/credentials/homecompute-assistant-context.service/clients")
+        metadata = SimpleNamespace(st_mode=stat.S_IFREG | 0o440, st_nlink=1,
+                                   st_uid=0, st_gid=0, st_size=128)
+        self.assertTrue(private_file_metadata_allowed(projection, metadata, 991))
+        self.assertFalse(private_file_metadata_allowed(Path("/tmp/clients"), metadata, 991))
+        self.assertFalse(private_file_metadata_allowed(
+            Path("/run/credentials/homecompute-assistant-context-improvements.service/clients"), metadata, 991))
+        self.assertFalse(private_file_metadata_allowed(projection, SimpleNamespace(
+            st_mode=metadata.st_mode, st_nlink=1, st_uid=0, st_gid=984, st_size=128), 991))
+        self.assertFalse(private_file_metadata_allowed(projection, SimpleNamespace(
+            st_mode=metadata.st_mode, st_nlink=2, st_uid=0, st_gid=0, st_size=128), 991))
 
 
 if __name__ == "__main__":
