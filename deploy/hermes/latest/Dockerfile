@@ -10,7 +10,7 @@ RUN if [ -n "$NEMOCLAW_CORPORATE_CA_B64" ]; then \
       && chmod 0444 /usr/local/share/nemoclaw/corporate-ca.pem /usr/local/share/ca-certificates/homecompute.crt \
       && update-ca-certificates; \
     fi
-ADD --checksum=sha256:43a2a0011eb8395c1735d78551e0393750e13e5a9e68771cb8431c00586f102e https://api.github.com/repos/NousResearch/hermes-agent/tarball/v0.23.0 /tmp/hermes-latest.tar.gz
+ADD --checksum=sha256:0250ce85c071ebceefc5b9d1b58a7a52f71d2849a6ef1d0a70af07d108ef08dc https://codeload.github.com/NousResearch/hermes-agent/tar.gz/2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 /tmp/hermes-latest.tar.gz
 ADD --checksum=sha256:dfa4c5a40c47f338f41658017be550c72247c391e6bfb1fa4da03ebc8451abdf https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.14.9+20261021-x86_64-unknown-linux-gnu-install_only.tar.gz /tmp/hermes-python.tar.gz
 COPY latest/managed-integration.patch /tmp/homecompute-managed-integration.patch
 RUN mkdir /tmp/hermes-latest /usr/local/lib/homecompute-python \
