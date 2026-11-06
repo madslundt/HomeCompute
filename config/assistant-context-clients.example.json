@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "clients": [
+    {
+      "name": "hermes-owner",
+      "token": "replace-with-independent-random-assistant-token",
+      "role": "assistant",
+      "principal_scope": "owner",
+      "data_domain": "personal",
+      "visibility": "private",
+      "sources": ["home-assistant", "daythread", "aula", "calendar"]
+    },
+    {
+      "name": "owner-source-sync",
+      "token": "replace-with-independent-random-collector-token",
+      "role": "collector",
+      "principal_scope": "owner",
+      "data_domain": "personal",
+      "visibility": "private",
+      "sources": ["home-assistant", "daythread", "aula", "calendar"]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "status": "candidate-not-installed",
+  "source": "HomeCompute assistant-context outbox",
+  "route_name": "homecompute-context-owner",
+  "endpoint": "http://10.77.20.2:8644/webhooks/homecompute-context-owner",
+  "profile": "default",
+  "audience": "owner-private-mattermost-dm",
+  "hermes_static_route": {
+    "events": ["homecompute_attention"],
+    "secret": "REPLACE_WITH_EXTERNAL_PRIVATE_ROUTE_SECRET",
+    "profile": "default",
+    "prompt": "{message}",
+    "deliver": "mattermost",
+    "deliver_extra": {
+      "chat_id": "REPLACE_WITH_EXTERNAL_OWNER_DM_ID"
+    },
+    "deliver_only": true,
+    "mirror_to_session": true
+  },
+  "private_auth_file": "/etc/homecompute-assistant-context/delivery-auth.json",
+  "standing_grant_file": "/etc/homecompute-assistant-context/delivery-auth.json",
+  "standing_grant": "The external mode-0600 grant is operator-owned, revocable, and expires within 90 days. Qualification must verify a private Mattermost channel of type D bound to the exact owner and Hermes bot user IDs, the exact destination, and this installed route's SHA-256. The grant restricts permitted sources and attention-policy versions. The file records qualification evidence; it is not live health evidence and does not enable delivery by itself.",
+  "secret_handling": "Pinned Hermes config does not expand per-route ${...} values. Keep the secret and Mattermost chat ID in the private auth file, then apply them to the private Hermes route config through its operator-owned patch procedure.",
+  "qualification": {
+    "enabled": false,
+    "requires_active_attention_policy": true,
+    "requires_owner_destination_approval": true,
+    "requires_route_registration_evidence": true,
+    "requires_private_network_and_backup_gates": true,
+    "deliver_only_prevents_agent_tool_execution": true
+  }
+}

@@ -1,0 +1,387 @@
+#!/usr/bin/env python3
+"""Run bounded HomeCompute source snapshots and submit them to the local context API.
+
+Configuration and credentials are private operator-owned files. API endpoint and
+provider bridge locations are fixed in source. Daythread is intentionally absent
+from the default CLI until an authenticated fixed transport exists.
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import date, datetime, timezone
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import sys
+import urllib.parse
+import urllib.request
+from zoneinfo import ZoneInfo
+
+from assistant_context_sources import (RevisionLedger, Snapshot, DaythreadClient, aula_snapshot,
+    aula_calendar_coverage, calendar_snapshot, ha_snapshot, rfc3339)
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import homeassistant_observations
+import openclaw_calendar
+import openclaw_services
+
+CONFIG_PATH = Path("/var/lib/homecompute-assistant/context-sync.json")
+STATE_PATH = Path("/var/lib/homecompute-assistant/source-revisions.sqlite3")
+INGEST_TOKEN_PATH = Path("/var/lib/homecompute-assistant/context-ingest-token")
+DAYTHREAD_TOKEN_PATH = Path("/var/lib/homecompute-assistant/daythread-export-token")
+INGEST_BASE = "http://127.0.0.1:18816"
+OPENCLAW_CONFIG = Path("/var/lib/homecompute-openclaw/config")
+MAX_CONFIG_BYTES = 16_384
+MAX_INGEST_RESPONSE = 4096
+MAX_DAYTHREAD_RESPONSE = 128 * 1024
+
+
+def private_bytes(path: Path, maximum: int) -> bytes:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                or info.st_uid not in {0, os.geteuid()} or stat.S_IMODE(info.st_mode) != 0o600
+                or info.st_size > maximum):
+            raise ValueError("Private assistant configuration refused")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            data = stream.read(maximum + 1)
+        if len(data) > maximum:
+            raise ValueError("Private assistant configuration refused")
+        return data
+    finally:
+        os.close(fd)
+
+
+def load_config(path: Path) -> dict:
+    try:
+        config = json.loads(private_bytes(path, MAX_CONFIG_BYTES))
+    except (OSError, ValueError, UnicodeError, json.JSONDecodeError):
+        raise ValueError("Private assistant configuration unavailable") from None
+    if (not isinstance(config, dict) or set(config) not in (
+            {"schema_version", "aula", "calendar"}, {"schema_version", "aula", "calendar", "daythread"})
+            or type(config.get("schema_version")) is not int or config["schema_version"] != 1):
+        raise ValueError("Assistant source configuration refused")
+    config.setdefault("daythread", {"enabled": False, "host": ""})
+    aula, calendar = config["aula"], config["calendar"]
+    if not isinstance(aula, dict) or set(aula) - {"enabled", "profile_ids", "range", "child_ids", "institution_codes", "iso_weeks"}:
+        raise ValueError("Aula configuration refused")
+    if type(aula.get("enabled", False)) is not bool:
+        raise ValueError("Aula configuration refused")
+    profiles = aula.get("profile_ids", [])
+    if (not isinstance(profiles, list) or len(profiles) > 8
+            or any(type(value) is not int or not 1 <= value <= 999_999_999 for value in profiles)
+            or len(set(profiles)) != len(profiles)):
+        raise ValueError("Aula profile selection refused")
+    if aula.get("range", "this_week") not in {"today", "tomorrow", "this_week", "next_week"}:
+        raise ValueError("Aula range refused")
+    child_ids, institutions, weeks = (aula.get("child_ids", []), aula.get("institution_codes", []),
+                                      aula.get("iso_weeks", []))
+    if (not isinstance(child_ids, list) or len(child_ids) > 8
+            or any(type(value) is not int or not 1 <= value <= 999_999_999 for value in child_ids)
+            or len(set(child_ids)) != len(child_ids)):
+        raise ValueError("Aula child selection refused")
+    if (not isinstance(institutions, list) or len(institutions) > 8
+            or any(not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", value) for value in institutions)
+            or len(set(institutions)) != len(institutions)):
+        raise ValueError("Aula institution selection refused")
+    if (not isinstance(weeks, list) or len(weeks) > 4
+            or any(not isinstance(value, str) or not re.fullmatch(r"[0-9]{4}-W[0-9]{2}", value) for value in weeks)
+            or len(set(weeks)) != len(weeks)):
+        raise ValueError("Aula weekly-letter selection refused")
+    if weeks and (not child_ids or not institutions):
+        raise ValueError("Aula weekly letters require child and institution selections")
+    if not isinstance(calendar, dict) or set(calendar) - {"enabled", "aliases", "start", "end"}:
+        raise ValueError("Calendar configuration refused")
+    if type(calendar.get("enabled", False)) is not bool:
+        raise ValueError("Calendar configuration refused")
+    aliases = calendar.get("aliases", [])
+    if (not isinstance(aliases, list) or not 1 <= len(aliases) <= 5
+            or len(set(aliases)) != len(aliases)
+            or any(value not in openclaw_calendar.ALIASES for value in aliases)):
+        if calendar.get("enabled", False) or aliases:
+            raise ValueError("Calendar aliases refused")
+    if calendar.get("enabled", False):
+        try:
+            openclaw_calendar.times(calendar["start"], calendar["end"], False)
+        except (KeyError, ValueError):
+            raise ValueError("Calendar interval refused") from None
+    daythread = config["daythread"]
+    if (not isinstance(daythread, dict) or set(daythread) - {"enabled", "host"}
+            or type(daythread.get("enabled", False)) is not bool):
+        raise ValueError("Daythread configuration refused")
+    host = daythread.get("host", "")
+    if not isinstance(host, str) or (host and not re.fullmatch(
+            r"(?:daythread\.home\.arpa|daythread\.[a-z0-9-]{1,40}\.ts\.net)", host)):
+        raise ValueError("Daythread private host refused")
+    if daythread.get("enabled") and not host:
+        raise ValueError("Daythread export host required")
+    return config
+
+
+def _rows(value, keys: tuple[str, ...]) -> list[dict]:
+    if isinstance(value, list) and all(isinstance(row, dict) for row in value):
+        return value
+    if isinstance(value, dict):
+        for key in keys:
+            rows = value.get(key)
+            if isinstance(rows, list) and all(isinstance(row, dict) for row in rows):
+                return rows
+    raise ValueError("Source did not return a recognized bounded collection")
+
+
+def read_ha() -> Snapshot:
+    token = private_bytes(OPENCLAW_CONFIG / "ha-metadata-reader-token", 256).decode("ascii").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token):
+        raise ValueError("Home Assistant bridge credential refused")
+    projection = homeassistant_observations.local_read(token)
+    return ha_snapshot(projection)
+
+
+def read_aula(config: dict) -> list[Snapshot]:
+    selection = config["aula"]
+    if not selection.get("enabled"):
+        return []
+    profiles = selection.get("profile_ids", [])
+    if not profiles:
+        raise ValueError("Aula needs explicit owner profile IDs")
+    facade = openclaw_services.Services(OPENCLAW_CONFIG / "services.json")
+    observed = datetime.now(timezone.utc).isoformat()
+    snapshots = []
+    offset = 0
+    rows: list[dict] = []
+    complete = False
+    for _ in range(25):
+        result = facade.request("homecompute_school_calendar", {
+            "profile_ids": ",".join(str(value) for value in profiles),
+            "range": selection.get("range", "this_week"), "offset": str(offset),
+        })
+        data = result.get("data")
+        rows.extend(_rows(data, ("events", "items", "calendar", "results")))
+        if len(rows) > 1000 or not isinstance(data, dict):
+            raise ValueError("Aula calendar page exceeds source limits")
+        next_offset = data.get("next_offset")
+        if next_offset is None:
+            complete = True
+            break
+        if not isinstance(next_offset, (str, int)) or str(next_offset) == str(offset):
+            raise ValueError("Aula calendar pagination refused")
+        try:
+            offset = int(next_offset)
+        except ValueError:
+            raise ValueError("Aula calendar pagination refused") from None
+        if not 0 <= offset <= 10_000:
+            raise ValueError("Aula calendar pagination refused")
+    # Relative Aula ranges move with the date. Pin a scan to its local run date
+    # so today's complete page cannot tombstone records seen in a different window.
+    local_day = datetime.now(ZoneInfo("Europe/Copenhagen")).date().isoformat()
+    coverage = aula_calendar_coverage(selection.get("range", "this_week"), profiles,
+                                      date.fromisoformat(local_day))
+    snapshots.append(aula_snapshot(rows, observed_at=observed, coverage_key=coverage, complete=complete,
+                         family="calendar", limitation="Aula bridge pages are fresh reads, not a stable provider snapshot."))
+
+    # The current source bridge exposes only bounded first pages for posts and
+    # threads; preserve partial coverage and never tombstone from these reads.
+    posts = facade.request("homecompute_school_posts", {"profile_ids": ",".join(str(value) for value in profiles)})
+    snapshots.append(aula_snapshot(_rows(posts.get("data"), ("posts", "items", "results")),
+        observed_at=observed, coverage_key="posts:first-page:profiles:" + ",".join(map(str, profiles)),
+        complete=False, family="post", limitation="Existing Aula post bridge reads one bounded page; source removals are not inferred."))
+    threads = facade.request("homecompute_school_threads", {})
+    thread_rows = _rows(threads.get("data"), ("threads", "items", "results"))
+    messages = []
+    for row in thread_rows[:20]:
+        thread_id = row.get("threadId", row.get("id"))
+        if thread_id is None:
+            continue
+        detail = facade.request("homecompute_school_thread", {"thread_id": str(thread_id)})
+        data = detail.get("data")
+        if isinstance(data, dict):
+            for message in data.get("messages", [])[:20] if isinstance(data.get("messages"), list) else []:
+                if isinstance(message, dict):
+                    messages.append(dict(message, threadId=thread_id))
+    snapshots.append(aula_snapshot(messages, observed_at=observed,
+        coverage_key="thread-messages:first-page", complete=False, family="thread",
+        limitation="Existing Aula thread bridge exposes first-page messages only."))
+
+    for week in selection.get("iso_weeks", []):
+        offset = 0
+        letters = []
+        full = False
+        for _ in range(25):
+            result = facade.request("homecompute_school_weekly_letter", {
+                "child_ids": ",".join(str(value) for value in selection["child_ids"]),
+                "institution_codes": ",".join(selection["institution_codes"]),
+                "iso_week": week, "offset": str(offset),
+            })
+            data = result.get("data")
+            letters.extend(_rows(data, ("letters", "items")))
+            if len(letters) > 1000 or not isinstance(data, dict):
+                raise ValueError("Aula weekly letter page exceeds source limits")
+            next_offset = data.get("next_offset")
+            if next_offset is None:
+                full = True
+                break
+            if not isinstance(next_offset, (str, int)) or str(next_offset) == str(offset):
+                raise ValueError("Aula weekly letter pagination refused")
+            offset = int(next_offset)
+            if not 0 <= offset <= 10_000:
+                raise ValueError("Aula weekly letter pagination refused")
+        letters = [dict(row, iso_week=week) for row in letters]
+        snapshots.append(aula_snapshot(letters, observed_at=observed,
+            coverage_key="weekly-letter:" + week + ":children:" + ",".join(map(str, selection["child_ids"])),
+            complete=full, family="letter", limitation="Weekly-letter chunks are paged source projections."))
+    return snapshots
+
+
+def read_calendar(config: dict, state: Path) -> list[Snapshot]:
+    selection = config["calendar"]
+    if not selection.get("enabled"):
+        return []
+    facade = openclaw_calendar.Calendar(OPENCLAW_CONFIG / "calendar.json", state.parent)
+    observed = datetime.now(timezone.utc).isoformat()
+    snapshots = []
+    for alias in selection["aliases"]:
+        result = facade.request("homecompute_calendar_events", {
+            "calendar": alias, "start": selection["start"], "end": selection["end"],
+        })
+        rows = _rows(result, ("events",))
+        complete = result.get("truncated") is False
+        coverage = f"{alias}:{selection['start']}:{selection['end']}"
+        snapshots.append(calendar_snapshot(rows, observed_at=observed, coverage_key=coverage,
+            complete=complete, limitation="Google bridge returns one bounded page; truncated pages never imply deletion."))
+    return snapshots
+
+
+class Ingest:
+    def __init__(self, token: str):
+        self.token = token
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), openclaw_services.NoRedirect())
+
+    def _post(self, path: str, body: dict):
+        if path not in {"/v1/events", "/v1/coverage"}:
+            raise ValueError("Unsupported context API operation")
+        data = json.dumps(body, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode()
+        request = urllib.request.Request(INGEST_BASE + path, data=data, method="POST", headers={
+                "Authorization": "Bearer " + self.token,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            })
+        try:
+            with self.opener.open(request, timeout=8) as response:
+                payload = response.read(MAX_INGEST_RESPONSE + 1)
+                if response.status not in {200, 201, 202} or len(payload) > MAX_INGEST_RESPONSE:
+                    raise ValueError("Context ingest refused")
+                result = json.loads(payload)
+            if not isinstance(result, dict) or result.get("accepted") is not True:
+                raise ValueError("Context ingest not acknowledged")
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            # Never include URLs, response bodies, tokens or source content in errors.
+            raise ValueError("Context ingest unavailable") from None
+
+    def __call__(self, event: dict):
+        self._post("/v1/events", event)
+
+    def coverage(self, source: str, observed_at: str, complete: bool):
+        self._post("/v1/coverage", {"source": source, "observed_at": rfc3339(observed_at),
+                                    "complete": complete})
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class DaythreadHTTPS:
+    """HTTPS transport to one operator-pinned private Daythread hostname."""
+    def __init__(self, host: str, token: str):
+        if not re.fullmatch(r"(?:daythread\.home\.arpa|daythread\.[a-z0-9-]{1,40}\.ts\.net)", host):
+            raise ValueError("Daythread private host refused")
+        self.base = "https://" + host
+        self.token = token
+        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+
+    def get(self, path: str, params: dict) -> dict:
+        if path != "/v1/integrations/assistant-context" or set(params) - {"limit", "cursor"}:
+            raise ValueError("Daythread export route refused")
+        url = self.base + path + "?" + urllib.parse.urlencode(params)
+        request = urllib.request.Request(url, method="GET", headers={
+            "Authorization": "Bearer " + self.token,
+            "Accept": "application/json",
+        })
+        try:
+            with self.opener.open(request, timeout=8) as response:
+                if response.status != 200:
+                    raise ValueError("Daythread export unavailable")
+                raw = response.read(MAX_DAYTHREAD_RESPONSE + 1)
+                if len(raw) > MAX_DAYTHREAD_RESPONSE:
+                    raise ValueError("Daythread export response too large")
+            def unique_fields(pairs):
+                value = {}
+                for key, item in pairs:
+                    if key in value:
+                        raise ValueError("duplicate provider field")
+                    value[key] = item
+                return value
+
+            value = json.loads(raw, object_pairs_hook=unique_fields,
+                               parse_constant=lambda _value: (_ for _ in ()).throw(ValueError()))
+            if not isinstance(value, dict):
+                raise ValueError("Daythread export refused")
+            return value
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            raise ValueError("Daythread export unavailable") from None
+
+
+def sync(config_path: Path = CONFIG_PATH, state_path: Path = STATE_PATH) -> dict[str, dict[str, int]]:
+    config = load_config(config_path)
+    token = private_bytes(INGEST_TOKEN_PATH, 256).decode("ascii").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", token):
+        raise ValueError("Context ingest credential refused")
+    snapshots: list[Snapshot] = [read_ha()]
+    snapshots.extend(read_aula(config))
+    snapshots.extend(read_calendar(config, state_path))
+    daythread = config["daythread"]
+    if daythread.get("enabled"):
+        token = private_bytes(DAYTHREAD_TOKEN_PATH, 512).decode("ascii").strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{40,256}", token):
+            raise ValueError("Daythread export credential refused")
+        snapshots.append(DaythreadClient(DaythreadHTTPS(daythread["host"], token)).read())
+    ledger = RevisionLedger(str(state_path))
+    try:
+        ingest = Ingest(token)
+        result: dict[str, dict[str, int]] = {}
+        coverage: dict[str, list[Snapshot]] = {}
+        for snapshot in snapshots:
+            counts = ledger.apply(snapshot, ingest)
+            total = result.setdefault(snapshot.source, {"upserted": 0, "unchanged": 0, "deleted": 0})
+            for key, value in counts.items():
+                total[key] += value
+            coverage.setdefault(snapshot.source, []).append(snapshot)
+        for source, rows in coverage.items():
+            latest = max(rows, key=lambda row: row.observed_at).observed_at
+            ingest.coverage(source, latest, all(row.complete for row in rows))
+        return result
+    finally:
+        ledger.close()
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=CONFIG_PATH)
+    parser.add_argument("--state", type=Path, default=STATE_PATH)
+    args = parser.parse_args(argv)
+    try:
+        result = sync(args.config, args.state)
+    except Exception:
+        print("Assistant context sync failed; inspect private operator logs.", file=sys.stderr)
+        return 1
+    # Counts only. Never print source payloads, event IDs, references or credentials.
+    print(json.dumps(result, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

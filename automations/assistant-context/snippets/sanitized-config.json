@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "aula": {
+    "enabled": false,
+    "profile_ids": [],
+    "range": "this_week",
+    "child_ids": [],
+    "institution_codes": [],
+    "iso_weeks": []
+  },
+  "calendar": {
+    "enabled": false,
+    "aliases": [],
+    "start": "2026-11-02T00:00:00+01:00",
+    "end": "2026-11-09T00:00:00+01:00"
+  },
+  "daythread": {"enabled": false, "host": ""}
+}

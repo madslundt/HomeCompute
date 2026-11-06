@@ -9,6 +9,7 @@
     ./hardware-configuration.nix
     ../../modules/nixos/application-config.nix
     ../../modules/nixos/agent-office.nix
+    ../../modules/nixos/assistant-context.nix
     ../../modules/nixos/hermes-dashboard.nix
     ../../modules/nixos/system.nix
     ../../modules/nixos/networking.nix

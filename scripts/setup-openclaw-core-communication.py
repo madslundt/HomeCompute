@@ -37,6 +37,7 @@ FILES = (
     'scripts/openclaw_maintenance.py', 'scripts/openclaw_access_bridge.py',
     'scripts/openclaw_site_registry.py', 'scripts/openclaw_bitwarden.py',
     'scripts/openclaw_capabilities.py', 'scripts/openclaw_services.py', 'scripts/homeassistant_actions.py',
+    'scripts/assistant_context_tools.py',
     'scripts/openclaw_integrations.py', 'scripts/openclaw_integration_policy.py', 'scripts/openclaw_places.py',
     'scripts/openclaw_hotels.py',
     'scripts/openclaw_integration_http.py',
@@ -80,6 +81,7 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
     calendar_args = ['--calendar', str(CONFIG / 'calendar.json')] if service_args and (CONFIG / 'calendar.json').exists() else []
     task_args = ['--household-tasks', str(CONFIG / 'household-tasks.json')] if service_args and (CONFIG / 'household-tasks.json').exists() else []
     family_args = ['--family-tasks', str(CONFIG / 'family-tasks.json')] if service_args and (CONFIG / 'family-tasks.json').exists() else []
+    context_args = ['--assistant-context', str(CONFIG / 'assistant-context.json')] if mcp_args and (CONFIG / 'assistant-context.json').exists() else []
     # Mail is optional and currently retired. Retained private files cannot
     # silently reconnect a mailbox when the communication bundle is reapplied.
     mail_args: list[str] = []
@@ -94,7 +96,7 @@ def commands(python: Path = PYTHON) -> dict[str, list[str]]:
                     '--registry', str(registry),
                     '--infrastructure-registry', str(registry),
                     '--core-host-mode', *ha_args, *maintenance_args, *mcp_args, *ha_action_args, *service_args,
-                    *integration_args, *household_args, *calendar_args, *task_args, *family_args, *mail_args, *access_args, *site_args],
+                    *integration_args, *household_args, *calendar_args, *task_args, *family_args, *mail_args, *access_args, *site_args, *context_args],
         'telegram': [str(python), str(scripts / 'openclaw-telegram.py'), 'run',
                      '--config', str(CONFIG / 'telegram.json'),
                      '--tokens', str(CONFIG / 'telegram-tokens.json'),

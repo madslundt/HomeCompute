@@ -125,6 +125,14 @@ python3 "$REPO_ROOT/tests/openclaw-recovery-verification-test.py"
 python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
+printf '[validate] scoped proactive assistant context tests\n'
+python3 "$REPO_ROOT/tests/assistant-context-store-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-sources-test.py"
+python3 "$REPO_ROOT/tests/assistant-attention-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-api-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-bridge-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-delivery-test.py"
+python3 "$REPO_ROOT/tests/assistant-context-integration-test.py"
 python3 "$REPO_ROOT/tests/hermes-addons-test.py"
 python3 "$REPO_ROOT/tests/hermes-systemd-boot-test.py"
 python3 "$REPO_ROOT/tests/hermes-system-boot-install-test.py"
@@ -1301,9 +1309,12 @@ fi
 [[ ! -e "$REPO_ROOT/deploy/hermes/compose.yaml" ]]
 # Optional agent office runs inside the existing sandbox, not a host container.
 [[ ! -e "$REPO_ROOT/deploy/agent-office/compose.yaml" ]]
+# Assistant context is an opt-in NixOS service with a private user and loopback
+# API. This directory is its runbook, not a second container lifecycle.
+[[ ! -e "$REPO_ROOT/deploy/assistant-context/compose.yaml" ]]
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
@@ -1334,6 +1345,9 @@ if command -v nix >/dev/null 2>&1; then
   nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
     "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
+  nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
+    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
+    >/dev/null
 else
   printf '[validate] Nix flake evaluation (containerized)\n'
   docker run --rm \
@@ -1343,7 +1357,8 @@ else
     sh -ec \
       'nix --extra-experimental-features "nix-command flakes" flake check path:/src --no-build --all-systems
        nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
-       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
+       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
 fi
 
 printf '[validate] PASS\n'
