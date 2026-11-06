@@ -387,6 +387,8 @@ agents.home.arpa {
 			reverse_proxy 172.28.200.1:18805 {
 				header_up X-Forwarded-Prefix /hermes
 				transport http {
+					# Avoid stale sockets across the native forwarding chain.
+					keepalive off
 					dial_timeout 3s
 					response_header_timeout 10m
 				}
