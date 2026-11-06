@@ -241,8 +241,10 @@ class BridgeLifecycle:
         matching = [row for row in client_file['clients']
                     if isinstance(row, dict) and row.get('name') == 'hermes-owner']
         allowed_sources = {'home-assistant', 'daythread', 'aula', 'calendar'}
-        if (len(matching) != 1 or set(matching[0]) != {'name', 'token', 'role', 'principal_scope',
+        if (len(matching) != 1 or set(matching[0]) - {'origin_id'} != {'name', 'token', 'role', 'principal_scope',
                 'data_domain', 'visibility', 'sources'}
+                or 'origin_id' in matching[0] and (not isinstance(matching[0]['origin_id'], str)
+                    or re.fullmatch(r'[A-Za-z0-9._:-]{1,160}', matching[0]['origin_id']) is None)
                 or matching[0]['role'] != 'assistant' or matching[0]['principal_scope'] != 'owner'
                 or matching[0]['data_domain'] != 'personal' or matching[0]['visibility'] != 'private'
                 or not isinstance(matching[0]['token'], str) or not TOKEN_PATTERN.fullmatch(matching[0]['token'])

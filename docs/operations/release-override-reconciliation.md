@@ -5,10 +5,16 @@ remove their markers to force a release. First inspect the real containers,
 preserve the maintenance records, and select the already approved running
 versions in the canonical non-secret environment templates.
 
-The October 28 reconciliation retains n8n 2.46.0, Homepage 2.7.0 and Mattermost
-11.11.3 at their observed immutable digests. Homepage's active services file
-differs from the published source only in the Spark-model icon; that choice is
-now captured in source too. No new application version or migration is selected.
+The October 28 reconciliation retains n8n 2.46.0 and Homepage 2.7.0 at their
+observed immutable digests. Mattermost was then pinned at 11.11.3; its selected
+source pin is now 11.11.4 at
+`sha256:80314a833cfc8113bc0be508113cf7a8d91ad1a394a7a74866ac728b29d84762`.
+The private Docker-maintenance receipt `6adcae0da0de4e5889975e0f0bf86c55`
+records a completed, verified transition from 11.11.3; the live container is
+running healthy with that exact image and no restart. Its `.active` guard remains
+in place until this source pin is published and the guarded reconciliation below
+archives the guard. Homepage's active services file differs from the published
+source only in the Spark-model icon; that choice is now captured in source too.
 Spark's running 9 GiB KV-cache setting is already captured in the published
 registry, roster, setup validator and tests; keep its local patch as evidence
 until its older source checkout is safely updated.

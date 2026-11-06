@@ -236,6 +236,18 @@ class ContextBridgeLifecycleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'OpenClaw already exposes'):
             self.bridge.plan(REVISION)
 
+    def test_accepts_bound_origin_without_changing_owner_scope(self) -> None:
+        value = json.loads(self.layout.credential_source.read_text())
+        value['clients'][0]['origin_id'] = 'owner-mattermost-context'
+        private_json(self.layout.credential_source, value)
+        private_json(self.layout.systemd_credential, value)
+        self.bridge._context_token()
+        value['clients'][0]['origin_id'] = {'untrusted': 'scope'}
+        private_json(self.layout.credential_source, value)
+        private_json(self.layout.systemd_credential, value)
+        with self.assertRaises(ValueError):
+            self.bridge._context_token()
+
     def test_refuses_mismatched_external_context_token(self) -> None:
         changed = {'schema_version': 1, 'clients': [{
             'name': 'hermes-owner', 'token': 'different-assistant-token-value-for-tests-only-2026',
