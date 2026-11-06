@@ -75,6 +75,17 @@ def probe(module) -> None:
     token = json.loads(module.TOKENS.read_bytes())['hermes-owner']
     connection = http.client.HTTPConnection('127.0.0.1', 18793, timeout=15)
     try:
+        # A Type=simple unit is active before Python has imported its facades and
+        # bound the listener. Wait for the socket, without retrying an RPC verdict.
+        for attempt in range(50):
+            try:
+                connection.connect()
+                break
+            except ConnectionRefusedError:
+                connection.close()
+                if attempt == 49:
+                    raise
+                time.sleep(0.1)
         connection.request('POST', '/mcp', json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}),
                            {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
                             'Accept': 'application/json, text/event-stream'})
@@ -194,8 +205,9 @@ def main() -> int:
             return 0
         finally:
             os.close(descriptor)
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
-        print('Hermes MCP setup refused; preserve private state and reconcile the exact plan.', file=sys.stderr)
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
+        print('Hermes MCP setup refused (' + type(error).__name__ +
+              '); preserve private state and reconcile the exact plan.', file=sys.stderr)
         return 2
 
 

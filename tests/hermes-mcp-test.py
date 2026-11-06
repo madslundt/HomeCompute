@@ -154,5 +154,27 @@ class ConnectionTests(unittest.TestCase):
             with self.assertRaises(ValueError): connect.gates()
 
 
+class ProbeTests(unittest.TestCase):
+    def test_waits_for_type_simple_listener_without_retrying_authentication(self):
+        names = ('homecompute_school_discover', 'homecompute_shopping_search',
+                 'homecompute_system_read', 'homecompute_ha_propose')
+        response = Mock(status=200)
+        response.read.return_value = json.dumps({'result': {'tools': [{'name': name} for name in names]}}).encode()
+        connection = Mock()
+        connection.connect.side_effect = [ConnectionRefusedError(), ConnectionRefusedError(), None]
+        connection.getresponse.return_value = response
+        module = SimpleNamespace(TOKENS=SimpleNamespace(read_bytes=lambda: b'{"hermes-owner":"synthetic"}'))
+        with patch.object(setup.http.client, 'HTTPConnection', return_value=connection), patch.object(setup.time, 'sleep'):
+            setup.probe(module)
+        self.assertEqual(connection.connect.call_count, 3)
+        connection.request.assert_called_once()
+        response.status = 401
+        connection.connect.side_effect = None
+        connection.request.reset_mock()
+        with patch.object(setup.http.client, 'HTTPConnection', return_value=connection), patch.object(setup.time, 'sleep'):
+            with self.assertRaises(ValueError): setup.probe(module)
+        connection.request.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()
