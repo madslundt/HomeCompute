@@ -6,8 +6,8 @@ LABEL org.opencontainers.image.source="https://github.com/madslundt/HomeCompute"
       org.opencontainers.image.revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.qwen-asr.scope="isolated-shadow-only" \
-      io.homecompute.qwen-asr.model-sha256="2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1" \
-      io.homecompute.qwen-asr.model-snapshot="bcd2b5b7f32b480ab5790554cfa8347f246a14f3" \
+      io.homecompute.qwen-asr.model-sha256="d3f212dd20abecd315d830bc54ae3865e56ebfc3276484e57b771288ba27fd35" \
+      io.homecompute.qwen-asr.model-snapshot="7f1569a48a89f3e3f4dc3a5c9d28bddd903bc76c" \
       io.homecompute.qwen-asr.runtime-commit="446a570e62b04a89ea001604ada7366baac2ea67" \
       io.homecompute.qwen-asr.engine-sha256="${ENGINE_SHA256}"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \

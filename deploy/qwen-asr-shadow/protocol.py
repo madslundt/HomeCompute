@@ -12,7 +12,7 @@ MAX_BODY_BYTES = 1_000_000
 MAX_AUDIO_SECONDS = 30
 MAX_RESPONSE_BYTES = 8_000_000
 FIELDS = frozenset({"model", "response_format", "language"})
-MODELS = frozenset({"whisper", "qwen3-asr-1.7b", "Qwen/Qwen3-ASR-1.7B-hf"})
+MODELS = frozenset({"whisper", "qwen3-asr-0.6b", "Qwen/Qwen3-ASR-0.6B-hf"})
 
 
 class InvalidRequest(ValueError):

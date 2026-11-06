@@ -5,8 +5,13 @@ tracked in [issue 74](https://github.com/madslundt/HomeCompute/issues/74).
 It does not change ADR-027, speech routes, the model roster, or speaker detection.
 No Compose service or production alias is provided.
 
+The 1.7B checkpoint crossed the host-memory floor during both CPU-then-CUDA and
+direct CUDA startup trials on the shared Spark host. Neither trial reached ASR.
+The current 0.6B checkpoint is a separate capacity and quality candidate; the
+weights change while recognition settings and benchmark requests remain fixed.
+
 `model-pin.json` pins the official
-[Qwen/Qwen3-ASR-1.7B-hf](https://huggingface.co/Qwen/Qwen3-ASR-1.7B-hf)
+[Qwen/Qwen3-ASR-0.6B-hf](https://huggingface.co/Qwen/Qwen3-ASR-0.6B-hf)
 snapshot, all eight public files, the native Transformers implementation and seven
 overlay wheels. The exact NGC ARM64 base retains its vendor Torch/CUDA packages.
 Checkpoint tensors load directly to CUDA through the native explicit device map,

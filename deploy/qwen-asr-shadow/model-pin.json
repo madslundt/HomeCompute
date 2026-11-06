@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "scope": "isolated-shadow-only",
-  "model_repository": "Qwen/Qwen3-ASR-1.7B-hf",
-  "model_snapshot": "bcd2b5b7f32b480ab5790554cfa8347f246a14f3",
-  "model_sha256": "2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1",
-  "model_bytes": 4076193080,
-  "parameter_count": 2038052480,
-  "parameter_bytes": 4076104960,
+  "model_repository": "Qwen/Qwen3-ASR-0.6B-hf",
+  "model_snapshot": "7f1569a48a89f3e3f4dc3a5c9d28bddd903bc76c",
+  "model_sha256": "d3f212dd20abecd315d830bc54ae3865e56ebfc3276484e57b771288ba27fd35",
+  "model_bytes": 1564928088,
+  "parameter_count": 782426112,
+  "parameter_bytes": 1564852224,
   "runtime": "transformers",
   "runtime_commit": "446a570e62b04a89ea001604ada7366baac2ea67",
   "base_manifest": "nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9",
@@ -31,8 +31,8 @@
     {
       "path": "README.md",
       "size": 16538,
-      "git_blob_sha1": "e5bb005ab9a6445c7b1a91c6b250855f5d8e4bbd",
-      "sha256": "427b9a6a4a32477e9df8790ef92f5cbcde790ee148ee5dd8c36f77d9556998a2"
+      "git_blob_sha1": "6bd0dfad309578014c4f1c669c23e5a3fdb4e849",
+      "sha256": "742006d0f99ce6475b1c5e7b66e4a2f166cce836dd7ce3d7f20707252859195a"
     },
     {
       "path": "chat_template.jinja",
@@ -42,9 +42,9 @@
     },
     {
       "path": "config.json",
-      "size": 2399,
-      "git_blob_sha1": "331292992b1933c69fc83d77f0de560ab122a0d5",
-      "sha256": "117ac8e63e2af7cae3665e5a632d6eb03f5f384915519ceb6403c15ec6533f63"
+      "size": 2398,
+      "git_blob_sha1": "3b4221f651b59ec21f545e5852b4d6cb23420b09",
+      "sha256": "9eecf6f1b383e343889c2e6010e632590fa57d4bc678e151c7d6a160a0dfb04a"
     },
     {
       "path": "generation_config.json",
@@ -54,8 +54,8 @@
     },
     {
       "path": "model.safetensors",
-      "size": 4076193080,
-      "sha256": "2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1"
+      "size": 1564928088,
+      "sha256": "d3f212dd20abecd315d830bc54ae3865e56ebfc3276484e57b771288ba27fd35"
     },
     {
       "path": "processor_config.json",
