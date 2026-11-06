@@ -17,7 +17,7 @@
     "model": "automation-moe",
     "credential_env": "HOMECOMPUTE_BRIEFING_TOKEN",
     "timeout_seconds": 8,
-    "max_tokens": 500,
+    "max_tokens": 320,
     "max_concurrency": 1
   },
   "routines": [

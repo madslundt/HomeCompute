@@ -64,9 +64,13 @@ authenticated export path; its ordinary profile header is not proof of identity.
 
 ## Status
 
-Implemented as an opt-in source candidate. Production enablement, actual
-authenticated client paths, notification ownership changes, and standing action
-or automatic deployment permissions remain unqualified and undeployed.
+Implemented as an opt-in module. Core household collection and the owner's
+native two-way Mattermost tool path were qualified on 2026-11-06; see the
+[dated operational evidence](../operations/assistant-context-household-admission.md)
+for release identities, coverage and inference limits. Notification ownership
+changes, background delegation and improvement publication remain separately
+gated. This does not grant standing device-action or automatic deployment
+permissions.
 
 ## Related documents
 

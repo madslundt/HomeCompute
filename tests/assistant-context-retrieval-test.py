@@ -86,6 +86,38 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(result["results"][0]["object_id"], "diary:2026-11-06")
         self.assertIsNone(result["results"][0]["semantic_score"])
 
+    def test_populated_cold_search_bounds_new_embeddings_and_makes_cache_progress(self):
+        class BudgetEmbeddings(FakeEmbeddings):
+            def embed(self, texts):
+                if len(texts) > 3 or any(len(text.encode()) > 384 for text in texts[1:]):
+                    raise TimeoutError("realistic cold corpus exceeds the interactive CPU budget")
+                return super().embed(texts)
+
+        for index in range(100):
+            self.store.ingest(OWNER, event(f"populated-{index}", text="Synthetic household observation æøå. " * 70))
+        model = BudgetEmbeddings()
+        retrieval = AssistantContextRetrieval(self.store, self.cache, embedding_client=model)
+        first = retrieval.search(OWNER, "household observation", source_grants=["daythread"])
+        self.assertFalse(first["degraded"])
+        self.assertEqual(first["semantic_coverage"], {"candidate_count": 80, "scored_count": 2, "pending_count": 78})
+        second = retrieval.search(OWNER, "household observation", source_grants=["daythread"])
+        self.assertFalse(second["degraded"])
+        self.assertEqual(second["semantic_coverage"]["scored_count"], 4)
+        self.assertEqual([len(call) for call in model.calls], [3, 3])
+        self.assertNotIn("shared-1", str(model.calls))
+
+    def test_short_document_embedding_keeps_human_text_and_full_ids_remain_lexical(self):
+        identity = 'opaque-' + 'x' * 240
+        self.store.ingest(OWNER, event(identity, text='Remember the library books tomorrow.'))
+        model = FakeEmbeddings()
+        retrieval = AssistantContextRetrieval(self.store, self.cache, embedding_client=model)
+        result = retrieval.search(OWNER, identity, source_grants=['daythread'], limit=1)
+        document_texts = model.calls[0][1:]
+        self.assertTrue(any('Remember the library books' in text for text in document_texts))
+        self.assertTrue(all(len(text.encode()) <= 384 for text in document_texts))
+        self.assertFalse(any(identity in text for text in document_texts))
+        self.assertEqual(result['results'][0]['object_id'], identity)
+
     def test_source_revision_change_uses_new_cache_key_and_scope_purge_is_bounded(self):
         model = FakeEmbeddings()
         retrieval = AssistantContextRetrieval(self.store, self.cache, embedding_client=model)

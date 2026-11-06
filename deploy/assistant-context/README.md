@@ -30,6 +30,14 @@ permissions or tools. A reviewed improvement candidate is not deployed code.
 Journal search supports bounded scope-filtered Harrier/lexical rank fusion,
 with explicit lexical fallback on embedding failure. Its embedding credential
 is separate from source collectors. Existing workflow retrieval is unchanged.
+Each search warms at most two missing document vectors from 384-byte excerpts,
+then scores the available vectors within the bounded 80-candidate pool. The
+response's `semantic_coverage` reports candidate, scored and pending counts;
+successful inference does not imply a fully embedded archive. All authorized
+records in the bounded snapshot remain eligible for lexical ranking. The
+context-specific embedding revision invalidates older excerpt representations.
+Semantic excerpts prioritize human text; full IDs, dates and metadata remain in
+the lexical representation and returned references.
 Source coverage is partial, not a complete
 archive of recordings, school history, calendars or home telemetry.
 
@@ -76,6 +84,16 @@ handle; model arguments cannot choose an origin, native role or destination.
 
 Briefings report calendar overlaps, possible Daythread follow-ups, source coverage
 and cited cross-source interpretations. Per-source freshness budgets apply.
+They interleave up to twenty records per source so frequent home observations
+cannot crowd out the other providers. Calendar filtering applies the requested
+window before its item cap. The response retains up to forty items and marks
+`source_items_truncated` when either per-source or response limits omit records.
+Local interpretation receives one recent
+observation per available source, at most 240 UTF-8 bytes each, and generates at
+most two short cited items within its fixed request budget. Recent observations
+from partial feeds can be cited while preserving incomplete coverage; stale or
+unavailable records cannot authorize model citations. Deterministic source
+excerpts likewise include recent partial observations without inferring absence.
 Optional local model output must cite current supplied source revisions; valid
 citations do not independently prove that an interpretation follows from them.
 Deterministic fallback remains available. No briefing executes a device action.
