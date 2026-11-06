@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "candidate",
+  "status": "selected; owner messaging, browser and boot verified",
   "upstream": {
     "version": "0.23.0",
     "tag": "v0.23.0",
@@ -74,5 +74,18 @@
     "owner_dm_and_boot": "pending",
     "agent_browser_turn": "passed: tool_search, tool_describe, browser_exec; public title returned and final marker recorded",
     "packaging": "initial agent turn reports missing required ffmpeg/ripgrep; complete artifact rebuild pending"
+  },
+  "complete_artifact": {
+    "source_revision": "75975d2f7e342ed33865391d58d766dc5fcefc82",
+    "sandbox": "hermes-personal-v23",
+    "container_id": "d90b7fc4-1506-4d12-b055-f0ab2aa4dcc7",
+    "image_id": "sha256:f15b60053b28b681efe555f89a6d170c7f7cd51036ed570b9951908c19f85311",
+    "runtime_pm_check": [],
+    "native_inference_mattermost_browser_restart": "passed",
+    "owner_mattermost_version_and_browser": "passed HERMES_023_MM_OK",
+    "full_vm_reboot": "passed changed boot ID, enabled/active source-owned unit, zero guest failed units",
+    "postboot_owner_browser": "passed HERMES_023_BOOT_OK; fresh browser_exec result confirmed in synthetic session ledger",
+    "postboot_health_evidence": "/var/lib/homecompute-hermes/evidence/20261106T102049Z-health",
+    "rollback_instance": "hermes-personal stopped, retained with prior image and state"
   }
 }

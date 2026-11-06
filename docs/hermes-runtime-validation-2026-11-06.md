@@ -5,7 +5,92 @@ promotion gate. The owner selected local `automation-moe`, approved household
 classification and encrypted Synology recovery, and authorized a clean Hermes
 installation. Additional profiles and Oh My Hermes remain deferred.
 
-## Applied source and runtime
+## Later same-day upgrade: Hermes 0.23.0
+
+This section supersedes the initial 0.21.3 runtime below. Upstream's latest
+release was rechecked as [v0.23.0](https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.0),
+commit `2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19`.
+
+The applied image, configuration installers, Mattermost/browser connectors and
+boot unit use published source `75975d2f7e342ed33865391d58d766dc5fcefc82` through
+the guarded Hermes guest lifecycle. The selected owner is `hermes-personal-v23`,
+container `openshell-default--hermes-personal-v23-d90b7fc4-1506-4d12-b055-f0ab2aa4dcc7`,
+image `sha256:f15b60053b28b681efe555f89a6d170c7f7cd51036ed570b9951908c19f85311`.
+Its private config is `~/.config/homecompute-hermes/hermes-personal-v23.env`.
+The installed unit and system shutdown-ordering file were compared with their
+source-rendered contents after reboot. Both matched, lingering was enabled,
+and the guest reported zero failed system or user units.
+
+The overlay retains NemoClaw 0.0.141 and OpenShell 0.0.116. It adds the pinned
+Python 3.14.9 environment, Node 26.12.1/npm 12.0.2 frontend toolchain,
+browser-harness 0.1.13, ffmpeg 9.0.1 and ripgrep 15.2.0 from upstream's frozen
+locks. Build-owned tools are prepared directly into the sealed payload store;
+installing them into the build user's writable home does not qualify the image.
+The final unprivileged build check and the live post-reboot `pm.check()` both
+reported no install drift. The managed control, ownership and database-home
+ports are documented in [the integration directory](../deploy/hermes/latest/README.md).
+
+The existing owner-only `hermes-agent` bot and dedicated browser profile were
+reused. The retained 0.21.3 instance was natively stopped through its original
+unit before enabling the new listener. Its image
+`sha256:8b6f951702a24592169a02791955ee0457bc562199f91960c56a69058223bf54`,
+state and original private configuration remain available for rollback. No
+household history was imported into the fresh new instance. Only the synthetic
+pre-cutover candidate was recreated without a state import to complete its
+bundled-tool packaging; the original household instance was preserved.
+
+Observed checks:
+
+- 213 selected upstream Linux transport, ownership and session regressions passed;
+  two tests were skipped. The separate upstream native-admission home-isolation
+  failure remains recorded in `qualification.json`; actual owner DMs passed.
+- All 22 focused HomeCompute Hermes lifecycle tests and the complete repository
+  validation passed, including Nix evaluation. `git diff --check` passed.
+- Authenticated local `automation-moe` inference, Mattermost REST/WebSocket auth,
+  public `browser_exec` navigation and private-destination denial passed in the
+  complete image. Native stop/start recovery passed; the earlier candidate also
+  completed two additional clean stop/start/Ready cycles.
+- A real owner Mattermost message ran `hermes --version`, used the browser and
+  returned `HERMES_023_MM_OK` with the version and public title.
+- A full graceful agents VM reboot changed the boot ID. The new unit came up
+  enabled and active, its sandbox was running with zero crash restarts, and
+  OpenClaw was running and healthy. The old Hermes container remained stopped.
+- A new Mattermost request after that reboot invoked `browser_exec` and returned
+  `HERMES_023_BOOT_OK`. A read-only query restricted to that synthetic session
+  confirmed a fresh browser result and final response after the request.
+- Post-reboot health passed at
+  `/var/lib/homecompute-hermes/evidence/20261106T102049Z-health`.
+  An earlier attempt contended with another live NemoClaw host command; retrying
+  after the lock owner exited passed. No lock or authority marker was removed.
+- Local model, 65,536 context, medium reasoning, deferred inference credential,
+  owner messaging and browser restrictions matched the intended values.
+- Homepage's existing DM card matched source, and its API health and rendered
+  page checks passed. No Homepage change was needed for this upgrade.
+
+After clearing unused build cache, Docker reported 3.039 GB reclaimed and the
+77 GiB guest filesystem had about 18 GiB available. Running and retained images,
+containers and durable volumes were preserved. At one idle sample Hermes used
+675 MiB and about 1% CPU; its browser used 318 MiB. These are bounded observations,
+not an overnight soak or a model-quality/performance qualification.
+
+The platform `status`, `services`, `doctor` and `drift` inventories were inspected.
+Both host release markers remain older than current Git; this dedicated Hermes
+rollout does not establish a full NixOS/Spark reconciliation. Core's platform
+health monitor currently flags NAS backup readiness: the scheduled backup is
+retrying with exit 75 because active HTTP use requires recovery preparation to
+defer. The last completed encrypted archive is still the 00:20:48 UTC snapshot
+`093a7dff9ce129319a459a625536b386a8dadef89f5e298a17a4bcbb6f42b30b`.
+It predates this upgrade. No new full-VM archive or restore of the final 0.23
+state is claimed; the existing approved restore admission and retained previous
+instance remain the recovery evidence. The scheduled backup was not forced
+through active workload use.
+
+Concurrent household MCP setup is owned by its separate guarded lifecycle and
+receipts. Its commits were preserved when publishing this evidence. It is not
+part of the Mattermost/browser/boot qualification above; do not infer working
+Aula or Home Assistant tools from these upgrade checks.
+
+## Initial 0.21.3 source and runtime
 
 | Concern | Source / lifecycle |
 | --- | --- |
@@ -15,15 +100,15 @@ installation. Additional profiles and Oh My Hermes remain deferred.
 | Dedicated browser worker assets | `29948c36157d63b1c39e0f1eed49a018b3931ed1`, `setup-openclaw-browser.py --principal hermes` |
 | Homepage card | `07ccb1c515ab9bcca2acb3c8b8cebb0343217a2c`, guarded `setup-hermes-homepage.py` |
 
-The final sandbox is `hermes-personal` on OpenShell gateway 8080. OpenClaw keeps
+The initial sandbox was `hermes-personal` on OpenShell gateway 8080. OpenClaw keeps
 gateway 9123, its existing browser and its existing Mattermost credentials.
 The dedicated bot is `hermes-agent`; the n8n bot named `hermes` is independent.
 The Homepage card opens the dedicated Mattermost DM. Dashboard forwards remain
 private.
-The final managed image ID is
+The initial managed image ID was
 `sha256:8b6f951702a24592169a02791955ee0457bc562199f91960c56a69058223bf54`.
 
-The tuple is NemoClaw 0.0.141, OpenShell 0.0.116 and managed Hermes 0.21.3.
+The initial tuple was NemoClaw 0.0.141, OpenShell 0.0.116 and managed Hermes 0.21.3.
 Standalone upstream Hermes 0.22.7 is newer and remains unqualified with the
 managed integration. This installation does not satisfy a claim that standalone
 0.22.7 is deployed. See [the pinned tuple](../config/hermes-release.json) and
