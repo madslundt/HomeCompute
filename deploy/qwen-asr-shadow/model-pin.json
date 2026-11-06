@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "scope": "isolated-shadow-only",
+  "model_repository": "Qwen/Qwen3-ASR-1.7B-hf",
+  "model_snapshot": "bcd2b5b7f32b480ab5790554cfa8347f246a14f3",
+  "model_sha256": "2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1",
+  "model_bytes": 4076193080,
+  "parameter_count": 2038052480,
+  "parameter_bytes": 4076104960,
+  "runtime": "transformers",
+  "runtime_commit": "446a570e62b04a89ea001604ada7366baac2ea67",
+  "base_manifest": "nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9",
+  "base_arm64_image": "sha256:c0e6c0b168faa1be027564e9a004e842c342e22ea51903d5fc7b9008850398d0",
+  "dtype": "bfloat16",
+  "max_audio_seconds": 30,
+  "max_upload_bytes": 1000000,
+  "engine_version": "qwen-native-hf-v1",
+  "engine_sha256": "64a56a998c1d0e1a39eece7082b3531a02f565fd3f78bb495a7c820564af88d3",
+  "packages": {
+    "torch": "2.11.0a0+eb65b36914.nv26.2",
+    "torchvision": "0.25.0a0+1e53952f.nv26.2.44259020",
+    "transformers": "5.22.1",
+    "huggingface-hub": "1.31.0",
+    "tokenizers": "0.23.1",
+    "safetensors": "0.8.0",
+    "hf-xet": "1.5.2",
+    "click": "8.4.2"
+  },
+  "files": [
+    {
+      "path": "README.md",
+      "size": 16538,
+      "git_blob_sha1": "e5bb005ab9a6445c7b1a91c6b250855f5d8e4bbd",
+      "sha256": "427b9a6a4a32477e9df8790ef92f5cbcde790ee148ee5dd8c36f77d9556998a2"
+    },
+    {
+      "path": "chat_template.jinja",
+      "size": 1434,
+      "git_blob_sha1": "491fff331513a97316daf53591c7b9b9da53ef8c",
+      "sha256": "f50e6b694fbf4a683206e37869990d68333fe95d285730f084c838a34b0d98c2"
+    },
+    {
+      "path": "config.json",
+      "size": 2399,
+      "git_blob_sha1": "331292992b1933c69fc83d77f0de560ab122a0d5",
+      "sha256": "117ac8e63e2af7cae3665e5a632d6eb03f5f384915519ceb6403c15ec6533f63"
+    },
+    {
+      "path": "generation_config.json",
+      "size": 165,
+      "git_blob_sha1": "3ed98c80087572bad932a83279c5602e58bbfc5c",
+      "sha256": "9939fc9388b79bd70757f938b87381e817173d6a6158f5af6506c0b73e775c3c"
+    },
+    {
+      "path": "model.safetensors",
+      "size": 4076193080,
+      "sha256": "2db53c7d81bd9b8cbc6a074e89be2c968a0d373fb4ee68bb1b1e14f7042dfee1"
+    },
+    {
+      "path": "processor_config.json",
+      "size": 487,
+      "git_blob_sha1": "a07dff48032bed341260501d6688036c6fd7f3ef",
+      "sha256": "bc0b230081b44e629dd5b9045b78495615c1831b4b9f4cffe97bd37e82a6156a"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 11429653,
+      "sha256": "fe1fad59be22a41ee293363fcf95fdedbc7c93f3b49270b1d2e18bd1399a7a05"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "size": 998,
+      "git_blob_sha1": "aa62b6c06ab8a704dc0895420fb1d2515954a49c",
+      "sha256": "945e980986de2ca7768f3326bfdbb4fbea3406f972b8ae0be233089f2b253c11"
+    }
+  ],
+  "runtime_files": {
+    "models/qwen3_asr/__init__.py": "f0f4878c00939b14691f4c19b8a4b91c609fed6182133f4636f499202485424e",
+    "models/qwen3_asr/configuration_qwen3_asr.py": "22efa4e3ded9e290cad48ff26bfb260e3fe04a938332f8c13d26b4635fcc0baa",
+    "models/qwen3_asr/feature_extraction_qwen3_asr.py": "95d23cca9645546b9f6a97885eace5c02a95f5048bf3616e03f00041fd993a74",
+    "models/qwen3_asr/modeling_qwen3_asr.py": "f6247469bc82ee40aa83909c530053d6bfbb1cfa8d34e74ff842f81f6c0bb2a4",
+    "models/qwen3_asr/modular_qwen3_asr.py": "4f2b844674825b14f1a2520791ef72d4258e61557244d57f5574548880a5b41a",
+    "models/qwen3_asr/processing_qwen3_asr.py": "5ff7ace057ae959fb0cd551775cbbfdad8c003eb731bf0f1f39bfc6452ce86fa"
+  },
+  "decoding_defaults": {
+    "do_sample": false,
+    "num_beams": 1,
+    "max_new_tokens": 512,
+    "use_cache": true,
+    "cache_implementation": "dynamic",
+    "disable_compile": true,
+    "language": null,
+    "prompt": null,
+    "attn_implementation": "sdpa",
+    "audio_sampling_rate": 16000,
+    "audio_dither": 0.0,
+    "audio_truncation": false
+  },
+  "qualification": "Unqualified capacity, accuracy, repeatability and long-input behavior; no production selection."
+}
