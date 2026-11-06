@@ -4,7 +4,7 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds candidate `hc9`, retaining the `hc7` bounded window
+The current source builds candidate `hc10`, retaining the `hc7` bounded window
 diagnostics and `hc8` optional language candidate list. Bounded native windowing
 now requires an explicit candidate list; omitted candidates preserve the `hc4`
 full native request boundary, including for long uploads.
@@ -189,7 +189,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-candidate build applies `strict-gpu-language-candidates-v5` to the exact pinned upstream source
+candidate build applies `strict-gpu-decoder-audit-v6` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
@@ -235,6 +235,18 @@ not enabled on the selected production runtime.
 Candidate `hc8` additionally implements the opt-in `language_candidates` request
 field described above. No candidate language restriction is configured by default.
 Candidate `hc9` confines the experimental windowing to requests using that field.
+
+Diagnostic `hc10` adds per-decoder scalar audit rows to the same optional trace.
+The rows distinguish original token-path termination from retained timestamped
+output, record complete versus retained-path scores and active-beam counts,
+and identify the selected decoder. They include token categories and timestamp
+offsets, never ordinary token IDs or text. This instrumentation does not change
+ranking, beam expansion, timestamp grammar, seek decisions or language policy.
+It is intended to distinguish competing causes of incomplete output before any
+algorithm change. Identical-audio response parity is required before interpreting
+its traces. The trace helper's exact SHA-256 is embedded in the verified patcher;
+the patcher compiles the same verified helper bytes. Both are source-controlled,
+and a missing or changed helper fails the build.
 
 The patch changes no model weights. Its upstream base commit, patcher checksum,
 and image labels are pinned in `model-pin.json` and `Dockerfile.cuda`. CPU remains

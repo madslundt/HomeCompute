@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from hashlib import sha256
 from pathlib import Path
-import subprocess
-
 
 UPSTREAM_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-PATCH_VERSION = "strict-gpu-language-candidates-v5"
+PATCH_VERSION = "strict-gpu-decoder-audit-v6"
 PATCHES = {
     "src/whisper.cpp": (
         "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
@@ -128,113 +127,23 @@ SAMPLING_PATCHES = (
 )
 
 
-TRACE_REQUEST_ANCHOR = """int whisper_full_with_state(
-        struct whisper_context * ctx,
-          struct whisper_state * state,
-    struct whisper_full_params   params,
-                   const float * samples,
-                           int   n_samples) {
-    // clear old results
-    auto & result_all = state->result_all;
-
-    result_all.clear();
-"""
-
-TRACE_WRITER = r"""// Private, opt-in metadata only. Trace failure never changes inference.
-static void whisper_write_window_trace(const char * line, size_t length) {
-    constexpr off_t limit = 1024 * 1024;
-    if (length == 0 || length > 1024) {
-        return;
-    }
-    const int fd = open("/tmp/whisper-window-trace.jsonl",
-            O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600);
-    if (fd < 0) {
-        return;
-    }
-    if (flock(fd, LOCK_EX | LOCK_NB) == 0) {
-        struct stat status;
-        if (fstat(fd, &status) == 0 && S_ISREG(status.st_mode) &&
-                status.st_uid == geteuid() && status.st_nlink == 1 &&
-                (status.st_mode & 0777) == 0600 && status.st_size >= 0 &&
-                status.st_size <= limit - static_cast<off_t>(length)) {
-            const auto written = write(fd, line, length);
-            if (written > 0 && static_cast<size_t>(written) != length) {
-                // Do not leave a partial JSON line after a short write.
-                (void) ftruncate(fd, status.st_size);
-            }
-        }
-        (void) flock(fd, LOCK_UN);
-    }
-    (void) close(fd);
-}
-
-"""
-
-TRACE_INITIALIZE = """
-    const char * window_trace_env = std::getenv("WHISPER_CPP_TRACE_WINDOWS");
-    const bool trace_windows = window_trace_env != nullptr && std::strcmp(window_trace_env, "1") == 0;
-"""
-
-TRACE_SEEK_ANCHOR = """            // update audio window
-            seek += seek_delta;
-"""
-
-TRACE_RECORD = r"""
-            if (trace_windows) {
-                const int trace_errno = errno;
-                int timestamp_id_offset = -1;
-                int timestamp_tid_offset = -1;
-                for (auto token = tokens_cur.rbegin(); token != tokens_cur.rend(); ++token) {
-                    if (token->id >= whisper_token_beg(ctx)) {
-                        timestamp_id_offset = token->id - whisper_token_beg(ctx);
-                        if (token->tid >= whisper_token_beg(ctx)) {
-                            timestamp_tid_offset = token->tid - whisper_token_beg(ctx);
-                        }
-                        break;
-                    }
-                }
-                char probability[32] = "null";
-                if (std::isfinite(state->no_speech_prob)) {
-                    std::snprintf(probability, sizeof(probability), "%.9g", state->no_speech_prob);
-                }
-                const char * language = whisper_lang_str(state->lang_id);
-                char line[1024];
-                const int length = std::snprintf(line, sizeof(line),
-                        "{\"version\":1,\"seek_start_cs\":%d,\"seek_end_cs\":%d,"
-                        "\"seek_before_cs\":%d,\"seek_after_cs\":%d,"
-                        "\"seek_delta_before_cs\":%d,\"seek_delta_after_cs\":%d,"
-                        "\"result_len\":%d,\"last_timestamp_id_offset\":%d,"
-                        "\"last_timestamp_tid_offset\":%d,\"single_timestamp_ending\":%s,"
-                        "\"max_tokens_timestamp_ending\":%s,\"is_no_speech\":%s,"
-                        "\"no_speech_probability\":%s,\"language\":\"%s\"}\n",
-                        seek_start, seek_end, seek - seek_delta, seek,
-                        best_decoder.seek_delta, seek_delta, result_len,
-                        timestamp_id_offset, timestamp_tid_offset,
-                        single_timestamp_ending ? "true" : "false",
-                        max_tokens_timestamp_ending ? "true" : "false",
-                        is_no_speech ? "true" : "false", probability,
-                        language != nullptr ? language : "unknown");
-                if (length > 0 && static_cast<size_t>(length) < sizeof(line)) {
-                    whisper_write_window_trace(line, static_cast<size_t>(length));
-                }
-                errno = trace_errno;
-            }
-"""
-
-WINDOW_TRACE_PATCHES = (
-    ("#include <cstdio>\n", "#include <cstdio>\n#include <cerrno>\n#include <cstdlib>\n"
-     "#include <fcntl.h>\n#include <sys/file.h>\n#include <sys/stat.h>\n#include <unistd.h>\n"),
-    (TRACE_REQUEST_ANCHOR, TRACE_WRITER + TRACE_REQUEST_ANCHOR + TRACE_INITIALIZE),
-    (TRACE_SEEK_ANCHOR, TRACE_SEEK_ANCHOR + TRACE_RECORD),
-)
-
-
-def patch_window_trace(source: str) -> str:
-    for old, new in WINDOW_TRACE_PATCHES:
-        if source.count(old) != 1:
-            raise ValueError("Pinned whisper.cpp window trace anchor is missing or ambiguous")
-        source = source.replace(old, new, 1)
-    return source
+# Execute exactly the reviewed helper bytes, without a second file read.
+TRACE_PATCHER_SHA256 = "244bfc3fcd3bef4c6cf1dfe0fc98a69aaab98fb1626c2a8c339d0a12d975bf04"
+trace_path = Path(__file__).with_name("whisper-cpp-trace-patch.py")
+trace_bytes = trace_path.read_bytes()
+if sha256(trace_bytes).hexdigest() != TRACE_PATCHER_SHA256:
+    raise ValueError("Pinned whisper.cpp trace helper checksum changed")
+trace_namespace = {}
+exec(compile(trace_bytes, str(trace_path), "exec"), trace_namespace)  # noqa: S102 - checksum-verified source
+TRACE_REQUEST_ANCHOR = trace_namespace["TRACE_REQUEST_ANCHOR"]
+TRACE_WRITER = trace_namespace["TRACE_WRITER"]
+TRACE_INITIALIZE = trace_namespace["TRACE_INITIALIZE"]
+TRACE_SEEK_ANCHOR = trace_namespace["TRACE_SEEK_ANCHOR"]
+TRACE_RECORD = trace_namespace["TRACE_RECORD"]
+WINDOW_TRACE_PATCHES = trace_namespace["WINDOW_TRACE_PATCHES"]
+DECODER_TRACE_PATCHES = trace_namespace["DECODER_TRACE_PATCHES"]
+patch_window_trace = trace_namespace["patch_window_trace"]
+patch_decoder_trace = trace_namespace["patch_decoder_trace"]
 
 
 LANGUAGE_HELPERS = r"""static bool whisper_valid_language_candidates(const int * ids, int count) {
@@ -414,7 +323,7 @@ def apply(root: Path) -> None:
         raise ValueError("Pinned whisper.cpp GPU placement API anchor is missing or ambiguous")
     source = source.replace(IMPLEMENTATION_ANCHOR, IMPLEMENTATION + IMPLEMENTATION_ANCHOR, 1)
     source = patch_sampling(source)
-    source = patch_window_trace(source)
+    source = patch_decoder_trace(patch_window_trace(source))
     updates[0] = (source_path, source.encode("utf-8"))
     updates = [(path, patch_language_candidates(content.decode("utf-8"), str(path.relative_to(root))).encode("utf-8"))
                for path, content in updates]
@@ -432,7 +341,7 @@ def verify(root: Path) -> bool:
     header = (root / "include/whisper.h").read_text()
     language_ok = all((root / relative).read_text().count(new) == 1
                       for relative, patches in LANGUAGE_PATCHES.items() for _old, new in patches)
-    return (language_ok and all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES) and
+    return (language_ok and all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES + DECODER_TRACE_PATCHES) and
             SAMPLING_PATCHES[-1][0] not in whisper and
             "required GPU backend initialization failed" in whisper and
             "size_t whisper_model_gpu_buffer_size(struct whisper_context * ctx)" in whisper and

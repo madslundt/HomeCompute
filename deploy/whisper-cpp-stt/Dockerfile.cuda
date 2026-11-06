@@ -3,13 +3,13 @@ FROM --platform=linux/arm64 ${CUDA_BASE_IMAGE} AS build
 ARG CUDA_BASE_IMAGE
 ARG WHISPER_CPP_COMMIT=f049fff95a089aa9969deb009cdd4892b3e74916
 ARG HOME_COMPUTE_REVISION
-ARG CUDA_PATCHER_SHA256=76ee7adee37b3b94994d1240f660390f56f664b75cf7153f0014605a27d90a8c
+ARG CUDA_PATCHER_SHA256=8639875ec008a0ac440887b837c5c0a5766e70fb03d8f9c728ab5860a7bd60a5
 LABEL org.opencontainers.image.source="https://github.com/ggml-org/whisper.cpp" \
       org.opencontainers.image.revision="${WHISPER_CPP_COMMIT}" \
       io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.whisper-cpp.runtime-commit="${WHISPER_CPP_COMMIT}" \
       io.homecompute.whisper-cpp.model-sha256="64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2" \
-      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-language-candidates-v5" \
+      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-decoder-audit-v6" \
       io.homecompute.whisper-cpp.cuda-patcher-sha256="${CUDA_PATCHER_SHA256}" \
       io.homecompute.whisper-cpp.backend="cuda-121a" \
       io.homecompute.whisper-cpp.cuda-base="${CUDA_BASE_IMAGE}"
@@ -17,7 +17,7 @@ LABEL org.opencontainers.image.source="https://github.com/ggml-org/whisper.cpp" 
 RUN nvcc --version | grep -q 'release 13.1, V13.1.115' \
  && test "$(cmake --version | head -n 1)" = 'cmake version 3.31.6' \
  && test "$(gcc -dumpfullversion)" = '13.3.0'
-COPY patch-whisper-cpp-cuda.py /opt/homecompute/patch-whisper-cpp-cuda.py
+COPY patch-whisper-cpp-cuda.py whisper-cpp-trace-patch.py /opt/homecompute/
 COPY verify-cuda-linkage.py /opt/homecompute/verify-cuda-linkage.py
 RUN echo "${CUDA_PATCHER_SHA256}  /opt/homecompute/patch-whisper-cpp-cuda.py" | sha256sum -c -
 RUN git init /src \
@@ -45,13 +45,13 @@ FROM --platform=linux/arm64 ${CUDA_BASE_IMAGE} AS runtime
 ARG CUDA_BASE_IMAGE
 ARG WHISPER_CPP_COMMIT=f049fff95a089aa9969deb009cdd4892b3e74916
 ARG HOME_COMPUTE_REVISION
-ARG CUDA_PATCHER_SHA256=76ee7adee37b3b94994d1240f660390f56f664b75cf7153f0014605a27d90a8c
+ARG CUDA_PATCHER_SHA256=8639875ec008a0ac440887b837c5c0a5766e70fb03d8f9c728ab5860a7bd60a5
 LABEL org.opencontainers.image.source="https://github.com/ggml-org/whisper.cpp" \
       org.opencontainers.image.revision="${WHISPER_CPP_COMMIT}" \
       io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.whisper-cpp.runtime-commit="${WHISPER_CPP_COMMIT}" \
       io.homecompute.whisper-cpp.model-sha256="64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2" \
-      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-language-candidates-v5" \
+      io.homecompute.whisper-cpp.cuda-patch="strict-gpu-decoder-audit-v6" \
       io.homecompute.whisper-cpp.cuda-patcher-sha256="${CUDA_PATCHER_SHA256}" \
       io.homecompute.whisper-cpp.backend="cuda-121a" \
       io.homecompute.whisper-cpp.cuda-base="${CUDA_BASE_IMAGE}"
