@@ -121,3 +121,106 @@ def provision():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser();parser.add_argument("--provision", action="store_true", required=True)
     parser.parse_args();provision()
+
+
+class SegmentParams(C.Structure):
+    _fields_ = [("threshold", C.c_float), ("min_speech_duration_ms", C.c_int),
+                ("min_silence_duration_ms", C.c_int), ("max_speech_duration_s", C.c_float),
+                ("speech_pad_ms", C.c_int), ("samples_overlap", C.c_float)]
+
+
+def speech_spans(pcm: bytes, *, model_path=MODEL, library_path=LIBRARY) -> list[list[int]]:
+    """Unpadded native-default speech segments on raw PCM; never crop ASR audio.
+
+    Segment hysteresis and native short-gap merging remain unchanged. These
+    segments authorize only a local ranking comparison, never speech coverage.
+    """
+    if not isinstance(pcm, bytes) or not pcm or len(pcm) % 2 or len(pcm) > 30 * 16000 * 2:
+        raise ValueError("Invalid bounded local-ranking VAD audio")
+    verify_model(model_path)
+    if C.sizeof(Params) != 12 or C.sizeof(SegmentParams) != 24:
+        raise RuntimeError("Unsupported native VAD ABI")
+    lib = C.CDLL(str(library_path))
+    declarations = {
+        "whisper_vad_default_context_params": ([], Params),
+        "whisper_vad_init_from_file_with_params": ([C.c_char_p, Params], C.c_void_p),
+        "whisper_vad_detect_speech": ([C.c_void_p, C.POINTER(C.c_float), C.c_int], C.c_bool),
+        "whisper_vad_n_probs": ([C.c_void_p], C.c_int),
+        "whisper_vad_probs": ([C.c_void_p], C.POINTER(C.c_float)),
+        "whisper_vad_default_params": ([], SegmentParams),
+        "whisper_vad_segments_from_probs": ([C.c_void_p, SegmentParams], C.c_void_p),
+        "whisper_vad_segments_n_segments": ([C.c_void_p], C.c_int),
+        "whisper_vad_segments_get_segment_t0": ([C.c_void_p, C.c_int], C.c_float),
+        "whisper_vad_segments_get_segment_t1": ([C.c_void_p, C.c_int], C.c_float),
+        "whisper_vad_free_segments": ([C.c_void_p], None),
+        "whisper_vad_free": ([C.c_void_p], None),
+    }
+    for name, (arguments, result) in declarations.items():
+        function = getattr(lib, name)
+        function.argtypes, function.restype = arguments, result
+    callback_type = C.CFUNCTYPE(None, C.c_int, C.c_void_p, C.c_void_p)
+    lib.whisper_log_set.argtypes, lib.whisper_log_set.restype = [callback_type, C.c_void_p], None
+    errors = []
+
+    @callback_type
+    def log(level, _message, _data):
+        if level == 4:
+            errors.append(True)
+
+    context = segments = None
+    lib.whisper_log_set(log, None)
+    try:
+        params = lib.whisper_vad_default_context_params()
+        params.n_threads, params.use_gpu, params.gpu_device = 1, False, 0
+        context = lib.whisper_vad_init_from_file_with_params(os.fsencode(model_path), params)
+        if not context or errors:
+            raise RuntimeError("Native VAD initialization failed")
+        samples = array("h", pcm)
+        if sys.byteorder != "little":
+            samples.byteswap()
+        floats = array("f", (value / 32768.0 for value in samples))
+        pointer = (C.c_float * len(floats)).from_buffer(floats)
+        if not lib.whisper_vad_detect_speech(context, pointer, len(floats)) or errors:
+            raise RuntimeError("Native VAD observation failed")
+        count = lib.whisper_vad_n_probs(context)
+        values = lib.whisper_vad_probs(context)
+        if count != (len(samples) + 511) // 512 or not values or any(
+                not math.isfinite(values[i]) or not 0 <= values[i] <= 1 for i in range(count)):
+            raise RuntimeError("Invalid native VAD probabilities")
+        params = lib.whisper_vad_default_params()
+        if (params.threshold != 0.5 or params.min_speech_duration_ms != 250
+                or params.min_silence_duration_ms != 100 or params.speech_pad_ms != 30
+                or params.max_speech_duration_s != float.fromhex("0x1.fffffep+127")
+                or abs(params.samples_overlap - 0.1) > 1e-8):
+            raise RuntimeError("Native VAD defaults differ")
+        params.speech_pad_ms = 0  # Padding must never create same-segment eligibility.
+        segments = lib.whisper_vad_segments_from_probs(context, params)
+        if not segments or errors:
+            raise RuntimeError("Native VAD segments unavailable")
+        segment_count = lib.whisper_vad_segments_n_segments(segments)
+        if not 0 <= segment_count <= count:
+            raise RuntimeError("Invalid native VAD segment count")
+        result, previous = [], -1
+        for index in range(segment_count):
+            seconds = [lib.whisper_vad_segments_get_segment_t0(segments, index) / 100,
+                       lib.whisper_vad_segments_get_segment_t1(segments, index) / 100]
+            if any(not math.isfinite(value) or value < 0 for value in seconds):
+                raise RuntimeError("Invalid native VAD segment endpoint")
+            points = [round(value * 16000 / 512) * 512 for value in seconds]
+            if any(abs(value - point / 16000) > 0.00501 for value, point in zip(seconds, points)):
+                raise RuntimeError("Native VAD endpoint grid differs")
+            start, end = points
+            # Native probability padding may extend the final segment by <512
+            # samples; intersect metadata with the exact submitted sample range.
+            end = min(end, len(samples))
+            if not previous < start < end <= len(samples):
+                raise RuntimeError("Invalid native VAD speech geometry")
+            result.append([start, end])
+            previous = end
+        return result
+    finally:
+        if segments:
+            lib.whisper_vad_free_segments(segments)
+        if context:
+            lib.whisper_vad_free(context)
+        lib.whisper_log_set(callback_type(), None)

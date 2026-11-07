@@ -8,7 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 
 UPSTREAM_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-PATCH_VERSION = "strict-gpu-decoder-audit-v6"
+PATCH_VERSION = "strict-gpu-local-eot-ranking-v8"
 PATCHES = {
     "src/whisper.cpp": (
         "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
@@ -144,6 +144,14 @@ WINDOW_TRACE_PATCHES = trace_namespace["WINDOW_TRACE_PATCHES"]
 DECODER_TRACE_PATCHES = trace_namespace["DECODER_TRACE_PATCHES"]
 patch_window_trace = trace_namespace["patch_window_trace"]
 patch_decoder_trace = trace_namespace["patch_decoder_trace"]
+
+
+local_path = Path(__file__).with_name("whisper-cpp-local-eot-patch.py")
+local_bytes = local_path.read_bytes()
+if sha256(local_bytes).hexdigest() != "d68a95dfe78cf7a3a67fd55aae17dfb1df4345702b088eb1e47af17627a8e047":
+    raise ValueError("Pinned local EOT patch helper checksum changed")
+local_namespace = {}
+exec(compile(local_bytes, str(local_path), "exec"), local_namespace)  # noqa: S102 - checksum-verified source
 
 
 LANGUAGE_HELPERS = r"""static bool whisper_valid_language_candidates(const int * ids, int count) {
@@ -325,8 +333,9 @@ def apply(root: Path) -> None:
     source = patch_sampling(source)
     source = patch_decoder_trace(patch_window_trace(source))
     updates[0] = (source_path, source.encode("utf-8"))
-    updates = [(path, patch_language_candidates(content.decode("utf-8"), str(path.relative_to(root))).encode("utf-8"))
-               for path, content in updates]
+    updates = [(path, local_namespace["apply_file"](
+        patch_language_candidates(content.decode("utf-8"), str(path.relative_to(root))),
+        str(path.relative_to(root))).encode("utf-8")) for path, content in updates]
     for path, content in updates:
         temporary = path.with_suffix(path.suffix + ".homecompute-tmp")
         temporary.write_bytes(content)
@@ -336,10 +345,15 @@ def apply(root: Path) -> None:
 
 
 def verify(root: Path) -> bool:
-    whisper = (root / "src/whisper.cpp").read_text()
-    server = (root / "examples/server/server.cpp").read_text()
-    header = (root / "include/whisper.h").read_text()
-    language_ok = all((root / relative).read_text().count(new) == 1
+    try:
+        restored = {relative: local_namespace["undo_file"]((root / relative).read_text(), relative)
+                    for relative in local_namespace["FILE_PATCHES"]}
+    except ValueError:
+        return False
+    whisper = restored["src/whisper.cpp"]
+    server = restored["examples/server/server.cpp"]
+    header = restored["include/whisper.h"]
+    language_ok = all(restored[relative].count(new) == 1
                       for relative, patches in LANGUAGE_PATCHES.items() for _old, new in patches)
     return (language_ok and all(whisper.count(new) == 1 for _old, new in SAMPLING_PATCHES + WINDOW_TRACE_PATCHES + DECODER_TRACE_PATCHES) and
             SAMPLING_PATCHES[-1][0] not in whisper and
