@@ -59,6 +59,52 @@ then broader short/repeat/quiet/noise and exact full-Danish gates. The known lon
 Danish language-conversion defect remains unresolved. Production stays hc4;
 speaker work remains on hold. No native build, model call or promotion is claimed.
 
+## Experimental independent language boundaries
+
+The source-only singleton policy is disabled unless the operator enables
+`WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=true` with language boundaries and local
+endpoint ranking. It also requires a published `language-observer-pin.json`,
+the exact eight observer source files in the image, and the three public
+graph/manifest/parity artifacts on the read-only `/models/language-observer` mount.
+Metadata-only startup preflight refuses missing or changed artifacts before
+native model loading. No request field can provide a model, path, pin or policy.
+
+`Dockerfile.verified-language` uses a clean published repository archive as its
+root build context. Its native parent image, native source and observer source
+are explicit build arguments. The image contains source and public pin metadata;
+the runtime graph bundle stays on the separate read-only mount. A missing
+runtime-verified bundle pin prevents the image build.
+
+After validating all original PCM partitions and native language observations,
+the policy observes only confident singleton proposals between equal, different
+neighbor languages. The two existing cuts need confirmation from a separate
+full107-class CPU observer on that same original proposal. When its top language
+differs, retain the larger audio context for ordinary automatic transcription.
+An unsupported language is evidence against confirming the cut; it never becomes
+an ASR label or establishes the neighboring language. This creates no cut and
+forces no language. Overlapping veto requests preserve both original cut pairs.
+Malformed, failed or late observations fail before ASR. Audio stays unchanged.
+
+`language_observer.py` sends one bounded batch to one isolated CPU child and
+loads its graph once. Its time limit shares the transcription request deadline;
+source, model, public parity and both runtime version identities are pinned.
+Public parity proves numeric compatibility, not language accuracy.
+The observer failed one of nine distinct language-label controls. That result
+remains a failure. The cut confirmation policy has a separate development
+prescreen and requires prospective transcription checks on exact short and full
+recordings, including content review of every vetoed mixed-recording island.
+It has no speaker or summary output.
+
+`scripts/whisper-verified-language-shadow.py` and its checksummed
+`whisper_observer_artifact_probe.py` companion own only an isolated
+diagnostic lifecycle. Stage both from the same published source, with reviewed
+pins for the image, exact three-file public bundle, baked bundle pin and
+cut confirmation prescreen receipt. It retains the six-GiB/no-swap budget, independent
+guardian, startup/request deadlines and exact-owner normal close; it verifies
+the read-only bundle before releasing model load. It has no production route or
+promotion action. Never stage benchmark audio, transcripts or private references
+inside that public artifact directory.
+
 ## Experimental trailing-speech recovery
 
 [Issue 78](https://github.com/madslundt/HomeCompute/issues/78) tracks an opt-in

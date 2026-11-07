@@ -1,0 +1,16 @@
+{
+  "approved_warning_sha256": "b38b47c9f99134e55c166097fccbc04c6d6a621e81cd2a033e2341b470e0fba1",
+  "code_sha256": {
+    "classify.py": "27a0c31e7218b295bfaaa7ab6c518d686d6442ba3dae85f7c2777f9a5417b964",
+    "common.py": "7dff068fcf429a468a32b093cb48ca427a4d2e92e2cfcb1ab4b6b9ea5a82fd42",
+    "dependencies.json": "2ecb6d0329a0177eb73dd437d734730f39c97d715d23e21aeb6103a12cf5b16b",
+    "export.py": "7f8561edce5041c25153d17749dea89c571a2cb8948f0745e7b4e5dc47961c6c",
+    "graph.py": "eb5c71734f3e17a63628798b042f54b78b908b8f56ef043d15e1147eaa90e7be",
+    "installer_check.py": "e553a4ce25965764d81e271e419164d989f65307665a0e11ace5c5cc83442d45",
+    "model.json": "e11a5cef521662c5e9241e25cfc2ef43e7667fa80be5362da43c67abb0479d55",
+    "requirements.lock": "ba9eae3b0e6b5c79200f8728b98d6cc33808c7d37edb22599d6e6e957753e289"
+  },
+  "manifest_sha256": "e26ea03ec7fd6c517110c4af91ee60e55203efacb69f9c6a698a426a0721ae16",
+  "parity_sha256": "62f948336ddb2709982c095d4602f896f24bb3cd2604125b81f376f8d5906fe1",
+  "source_revision": "55a58e415d8fb8019fc7cddd014fa664a2770631"
+}

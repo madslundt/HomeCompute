@@ -194,6 +194,54 @@ class RegionValidationTests(unittest.TestCase):
         self.assertEqual([(start, duration) for start, duration, _ in regions], [(0, 4), (4, 8)])
         self.assertEqual(b"".join(pcm(data) for _, _, data in regions), pcm(self.original))
 
+    def test_independent_observer_vetoes_only_an_isolated_disagreement(self):
+        probes = [probe(), probe("en"), probe()]
+        for language, expected in [("da", None), ("en", [(0, 4), (4, 4), (8, 4)]),
+                                   ("sv", None)]:
+            with self.subTest(language=language):
+                audit = []
+                observer = Mock(return_value=[language])
+                regions = B.language_regions(self.original, self.proposals, probes, ["da", "en"],
+                                             observe_islands=observer, island_audit=audit)
+                observer.assert_called_once_with((self.proposals[1][2],))
+                if expected is None:
+                    self.assertIsNone(regions)
+                else:
+                    self.assertEqual([(offset, duration) for offset, duration, _ in regions], expected)
+                    self.assertEqual(b"".join(pcm(data) for _, _, data in regions), pcm(self.original))
+                self.assertEqual(audit, [{"source_start_frame": 64000, "frames": 64000,
+                                         "native_language": "en", "flanking_language": "da",
+                                         "observed_language": language, "vetoed": language != "en"}])
+
+    def test_edge_and_weak_transitions_are_not_observed(self):
+        observer = Mock()
+        for probes in ([probe(), probe("en"), probe("en")], [probe(), probe("en"), probe("da", .49)]):
+            regions = B.language_regions(self.original, self.proposals, probes, ["da", "en"],
+                                         observe_islands=observer)
+            self.assertEqual([(offset, duration) for offset, duration, _ in regions], [(0, 4), (4, 8)])
+        observer.assert_not_called()
+
+    def test_adjacent_incompatible_vetoes_keep_both_cut_pairs(self):
+        original = source(16000 * 16)
+        raw = pcm(original)
+        proposals = [(offset, 4, wav(raw[offset * 32000:(offset + 4) * 32000]))
+                     for offset in (0, 4, 8, 12)]
+        observer = Mock(return_value=["da", "en"])
+        audit = []
+        regions = B.language_regions(original, proposals, [probe(), probe("en"), probe(), probe("en")],
+                                     ["da", "en"], observe_islands=observer, island_audit=audit)
+        self.assertEqual(regions, proposals)
+        observer.assert_called_once_with((proposals[1][2], proposals[2][2]))
+        self.assertEqual([row["vetoed"] for row in audit], [False, False])
+
+    def test_malformed_observations_cannot_silently_alter_cuts(self):
+        for observed in ("da", [], ["Danish"], ["da", "en"], [None]):
+            audit = []
+            with self.subTest(observed=observed), self.assertRaisesRegex(ValueError, "independent"):
+                B.language_regions(self.original, self.proposals, [probe(), probe("en"), probe()],
+                                   ["da", "en"], observe_islands=Mock(return_value=observed), island_audit=audit)
+            self.assertEqual(audit, [])
+
     def test_short_unchanged_input_and_no_confident_boundary_returns_none(self):
         original = source(100)
         proposals = B.partitions(original, observe=lambda _: [0.9])

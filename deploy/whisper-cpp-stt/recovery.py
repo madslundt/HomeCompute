@@ -114,13 +114,15 @@ def candidate(audio: bytes, result: dict):
 
 
 def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock=time.monotonic,
-               language_boundaries=False, filter_non_speech=False, local_eot_ranking=False):
+               language_boundaries=False, filter_non_speech=False, local_eot_ranking=False,
+               language_observer=None):
     """At most one additional native call per <=30s window; no recursive retries."""
     deadline = clock() + timeout
     response_bytes, native_calls = 0, 0
     audits = []
     boundary_audits = []
     proposal_audits = []
+    island_audits = []
     non_speech_audits = []
     language_probes = 0
 
@@ -219,7 +221,19 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
             except Exception:
                 raise codec.RequestError(502, "Language boundary observation unavailable") from None
         try:
-            regions = _BOUNDARIES.language_regions(audio, proposals, probes, candidates.split(","))
+            def observe_islands(inputs):
+                remaining = deadline - clock()
+                if remaining <= 0:
+                    raise ObservationUnavailable("Language boundary observation timed out")
+                results = language_observer(inputs, remaining)
+                if clock() >= deadline:
+                    raise ObservationUnavailable("Language boundary observation timed out")
+                return results
+
+            regions = _BOUNDARIES.language_regions(
+                audio, proposals, probes, candidates.split(","),
+                observe_islands=observe_islands if language_observer is not None else None,
+                island_audit=island_audits)
         except Exception:
             raise codec.RequestError(502, "Language boundary observation unavailable") from None
         if regions is not None:
@@ -264,7 +278,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                                                     "asr_language_windows": actual})
                     yield offset, seconds, raw
         payload, content_type = codec.combine_native_windows(responses(), "verbose_json", duration)
-    if audits or boundary_audits or non_speech_audits:
+    if audits or boundary_audits or non_speech_audits or island_audits:
         value = json.loads(payload)
         if audits:
             value["suffix_recovery"] = {"version": VERSION, "windows": audits,
@@ -277,6 +291,11 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                 "native_calls": native_calls, "language_probes": language_probes,
                 "asr_pcm_unchanged": True, "source_frames_conserved": True,
                 "coverage_claim": False,
+            }
+        if island_audits:
+            value["independent_language_boundaries"] = {
+                "version": _BOUNDARIES.ISLAND_POLICY, "islands": island_audits,
+                "source_frames_conserved": True, "asr_language_forced": False,
             }
         if non_speech_audits:
             value["non_speech_filter"] = {"version": _NON_SPEECH.VERSION,
