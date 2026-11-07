@@ -302,29 +302,38 @@ class ObserverTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.control._job('classify', 'same', wav())
 
-    def test_collect_copies_and_hashes_before_normal_stop(self):
-        row = self.control.read(); row['mode'] = 'export'; row['used_ids'] = ['public-export']
+    def test_collect_streams_binary_files_with_checks_before_normal_stop(self):
+        row = self.control.read()
+        row.update(mode='export', used_ids=['public-export'], last_guard_sample=O.time.monotonic(),
+                   deadline=O.time.monotonic()+60)
         self.control.save(row)
-        graph = b'public synthetic graph stub'
-        manifest = {'graph_sha256': C.sha(graph), 'code_sha256': C.code_hashes(), 'model': C.PIN,
-                    'source_revision': self.auth['source_revision']}
+        public = self.directory
+        graph = bytes(range(256)) * 512
+        manifest = {'graph_sha256': C.sha(graph), 'graph_bytes': len(graph), 'code_sha256': C.code_hashes(),
+                    'model': C.PIN, 'source_revision': self.auth['source_revision']}
         raw = json.dumps(manifest).encode()
+        (public / 'observer.ts').write_bytes(graph)
+        (public / 'manifest.json').write_bytes(raw)
         A.create(self.state / 'result-owner-public-export.json', {
             'graph_sha256': C.sha(graph), 'manifest_sha256': C.sha(raw)})
         destination = self.directory / 'collected'
-        def copy_public(args, **kwargs):
-            self.assertEqual(args[:2], ['docker', 'cp'])
-            Path(args[-1]).write_bytes(graph if args[-2].endswith('observer.ts') else raw)
-            return subprocess.CompletedProcess(args, 0, b'', b'')
-        with patch.object(self.control, 'guard_alive', return_value=True), \
-             patch.object(self.control, 'inspect', return_value=owned_row(row)), \
-             patch.object(O, 'run', side_effect=copy_public):
+        popen = subprocess.Popen
+        def execute_reader(args, **kwargs):
+            self.assertEqual(args[:7], ['docker', 'exec', 'cid', 'python3', '-I', '-B', '-c'])
+            self.assertIn(args[-3], ('/tmp/export/manifest.json', '/tmp/export/observer.ts'))
+            return popen([sys.executable, *args[4:-3], str(public / Path(args[-3]).name), *args[-2:]], **kwargs)
+        with patch.object(self.control, 'guard_alive', return_value=True), patch.object(self.control, 'inspect'), \
+             patch.object(subprocess, 'Popen', side_effect=execute_reader):
             receipt = self.control.collect(destination)
-        self.assertTrue(receipt['copied_before_stop'])
-        self.assertEqual(receipt['files_sha256']['observer.ts'], C.sha(graph))
-        self.assertEqual(destination.stat().st_mode & 0o777, 0o555)
-        self.assertIn('collection', self.control.read())
-        destination.chmod(0o700)
+            self.assertEqual((destination / 'observer.ts').read_bytes(), graph)
+            self.assertEqual(self.control.read()['collection'], receipt)
+            destination.chmod(0o700)
+            (public / 'observer.ts').rename(public / 'target')
+            (public / 'observer.ts').symlink_to(public / 'target')
+            with self.assertRaises(ValueError):
+                O.X.stream('cid', destination, 'observer.ts', len(graph), C.sha(graph), O.time.monotonic()+5)
+            self.assertTrue((destination / 'observer.ts.stderr').read_bytes())
+            self.assertEqual((destination / 'observer.ts').read_bytes(), graph)
 
     def test_hard_download_cap_stops_stream_and_preserves_failed_attempt(self):
         cap = 10

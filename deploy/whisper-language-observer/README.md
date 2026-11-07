@@ -107,8 +107,9 @@ failed phase and stops only the owned worker. Failure artifacts remain; forced
 termination is never described as successful qualification.
 
 After export or runtime verification succeeds, `collect --output NEW_EXTERNAL_DIR`
-copies only the known public graph/manifest or synthetic parity report with
-`docker cp`, hashes them against the successful job result, and records an
+streams only the known public graph and manifest or synthetic parity report
+from the owned tmpfs through `docker exec` without a TTY. The transfer has a
+30-second deadline and checks file type, byte bounds and SHA-256 before recording an
 extraction receipt **before** `stop`. Graphs are capped at128MiB. Collected files
 are0444 and their directory0555; a private0700 host parent protects the cache
 while the read-only bind remains readable by UID10001. The operator reviews the

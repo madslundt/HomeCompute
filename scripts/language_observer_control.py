@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('_observer_artifacts', ROOT / 'scripts/language_observer_artifacts.py')
 A = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(A)
+spec = importlib.util.spec_from_file_location('_observer_collection', ROOT / 'scripts/language_observer_collection.py')
+X = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(X)
 PIN, _LOCK = A.pins()
 LABEL = 'io.homecompute.language-observer.owner'
 LIMIT = PIN['container_memory_bytes']
@@ -293,7 +296,7 @@ class Controller:
         require(mode in ('export', 'verify', 'classify') and re.fullmatch('[a-zA-Z0-9_-]{1,64}', case), 'Safe job mode/ID required')
         with self.lock():
             record = self.read()
-            require(record['mode'] == mode and record['job'] is None and self.guard_alive(record) and
+            require(record['mode'] == mode and record['phase'] != 'collecting' and record['job'] is None and self.guard_alive(record) and
                     time.monotonic() - record.get('last_guard_sample', 0) <= 5,
                     'Independent live guardian must sample before any model import/load')
             require(case not in record['used_ids'], 'Already attempted; no retry')
@@ -374,32 +377,41 @@ class Controller:
             raise
 
     def collect(self, destination: Path) -> dict:
-        with self.lock():
-            record = self.read()
-            require(record['phase'] == 'idle' and record['job'] is None and not record['failed'] and
-                    not record.get('collection') and self.guard_alive(record), 'Successful guarded idle export/verify required')
-            require(record['mode'] in ('export', 'verify'), 'Only public model artifacts may be extracted')
         external(str(destination.parent))
         require(not destination.exists() and not destination.is_symlink(), 'New extraction directory required')
         require(A.shutil.disk_usage(destination.parent).free >= PIN['disk_reserve_bytes'] + PIN['maximum_graph_bytes'],
                 'Extraction disk reserve insufficient')
-        destination.mkdir(mode=0o700)
+        with self.lock():
+            record = self.read()
+            require(record['phase'] == 'idle' and record['job'] is None and not record['failed'] and
+                    not record.get('collection'), 'Successful idle export/verify required')
+            require(record['mode'] in ('export', 'verify'), 'Only public model artifacts may be extracted')
+            deadline = min(record['deadline'], time.monotonic() + 30)
+            self.check_collection_guard(record, record, deadline)
+            destination.mkdir(mode=0o700)
+            record['phase'] = 'collecting'
+            self.save(record)
         try:
             self.inspect(record)
-            names = ('observer.ts', 'manifest.json') if record['mode'] == 'export' else ('parity.json',)
-            prefix = '/tmp/export/' if record['mode'] == 'export' else '/tmp/'
-            for name in names:
-                run(['docker', 'cp', record['container_id'] + ':' + prefix + name, str(destination / name)])
             spec = importlib.util.spec_from_file_location('_observer_collect', A.SOURCE / 'common.py')
             codec = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(codec)
-            hashes = {name: codec.sha(codec.read(destination / name,
-                      PIN['maximum_graph_bytes'] if name == 'observer.ts' else 1_000_000)) for name in names}
             result = A.read_json(self.state / ('result-' + record['owner'] + '-' + record['used_ids'][-1] + '.json'))
             if record['mode'] == 'export':
+                hashes = {'manifest.json': result['manifest_sha256'], 'observer.ts': result['graph_sha256']}
+            else:
+                raw = (json.dumps(result, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+                hashes = {'parity.json': codec.sha(raw)}
+            for name, digest in hashes.items():
+                with self.lock():
+                    self.check_collection_guard(record, self.read(), deadline)
+                maximum = PIN['maximum_graph_bytes'] if name == 'observer.ts' else 1_000_000
+                X.stream(record['container_id'], destination, name, maximum, digest, deadline)
+            self.inspect(record)
+            if record['mode'] == 'export':
                 manifest = codec.load(destination / 'manifest.json')
-                require(hashes['manifest.json'] == result['manifest_sha256'] and
-                        hashes['observer.ts'] == manifest['graph_sha256'] == result['graph_sha256'] and
+                require((destination / 'observer.ts').stat().st_size == manifest['graph_bytes'] and
+                        hashes['observer.ts'] == manifest['graph_sha256'] and
                         manifest['code_sha256'] == codec.code_hashes() and manifest['model'] == PIN and
                         manifest['source_revision'] == record['source_revision'], 'Extracted public graph provenance differs')
             else:
@@ -408,20 +420,26 @@ class Controller:
             receipt = {'source_revision': record['source_revision'], 'image_id': record['image_id'],
                        'owner': record['owner'], 'container_id': record['container_id'], 'files_sha256': hashes,
                        'copied_before_stop': True, 'directory': str(destination)}
-            codec.save(destination / 'extraction.json', receipt)
-            for path in destination.iterdir():
-                path.chmod(0o444)
-            destination.chmod(0o555)
             with self.lock():
                 current = self.read()
-                require(current['owner'] == record['owner'] and not current['failed'] and self.guard_alive(current),
-                        'Guardian failed during extraction')
-                current['collection'] = receipt
+                self.check_collection_guard(record, current, deadline)
+                codec.save(destination / 'extraction.json', receipt)
+                for path in destination.iterdir():
+                    path.chmod(0o444)
+                destination.chmod(0o555)
+                current.update(collection=receipt, phase='idle')
                 self.save(current)
             return receipt
         except BaseException:
             self.fail('public_artifact_extraction_failed')
             raise
+
+    def check_collection_guard(self, original: dict, current: dict, deadline: float) -> None:
+        now = time.monotonic()
+        require(all(current.get(key) == original.get(key) for key in ('owner', 'container_id', 'guardian')) and
+                current['phase'] == original['phase'] and self.guard_alive(current) and
+                now - current.get('last_guard_sample', 0) <= 5 and now < deadline,
+                'Exact fresh guardian required throughout public extraction')
 
     def stop(self) -> dict:
         with self.lock():
