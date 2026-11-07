@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import importlib.util
 import json
 import math
@@ -21,9 +22,17 @@ def sibling(name):
 C, G = sibling('common'), sibling('graph')
 
 
+def runtime_identity(torch) -> dict[str, str]:
+    # TorchVersion.__eq__ normalizes versions; pin the raw module spelling too.
+    result = {'runtime_torch': importlib.metadata.version('torch'),
+              'runtime_torch_module': str(torch.__version__)}
+    C.require(result == {key: C.PIN[key] for key in result}, 'Exact NVIDIA Torch identities required')
+    return result
+
+
 def configure():
     import torch
-    C.require(torch.__version__ == C.PIN['runtime_torch'], 'Exact NVIDIA Torch runtime required')
+    runtime_identity(torch)
     C.require(not any(name == 'speechbrain' or name.startswith('speechbrain.') or
                       name == 'torchaudio' or name.startswith('torchaudio.') for name in sys.modules),
               'Classification runtime must not import SpeechBrain or torchaudio')
@@ -86,7 +95,7 @@ def verify(directory: Path, expected: str, report: Path) -> dict:
                             zip(sample['official_log_posteriors'], actual))})
     result = {'passed': True, 'scope': 'public-synthetic-runtime-parity-only',
               'manifest_sha256': expected, 'graph_sha256': value['graph_sha256'],
-              'source_revision': value['source_revision'], 'runtime_torch': torch.__version__,
+              'source_revision': value['source_revision'], **runtime_identity(torch),
               'torch_threads': torch.get_num_threads(), 'cuda_initialized': False,
               'samples': results, 'classification_authorized': False}
     C.save(report, result)
@@ -101,6 +110,7 @@ def classify(directory: Path, expected: str, parity: Path, parity_sha: str,
     C.require(proof.get('passed') is True and proof.get('manifest_sha256') == expected and
               proof.get('graph_sha256') == value['graph_sha256'] and
               proof.get('runtime_torch') == C.PIN['runtime_torch'] and
+              proof.get('runtime_torch_module') == C.PIN['runtime_torch_module'] and
               proof.get('source_revision') == value['source_revision'] and
               [(x.get('frames'), x.get('kind')) for x in proof.get('samples', [])] == list(C.SYNTHETIC) and
               proof.get('cuda_initialized') is False and proof.get('torch_threads') == 1, 'Actual NVIDIA runtime parity required')
@@ -120,7 +130,7 @@ def classify(directory: Path, expected: str, parity: Path, parity_sha: str,
             'model_files': C.PIN['files'], 'graph_sha256': value['graph_sha256'],
             'manifest_sha256': expected, 'runtime_parity_sha256': parity_sha,
             'source_revision': value['source_revision'], 'code_sha256': C.code_hashes(),
-            'runtime_torch': torch.__version__, 'device': 'cpu', 'torch_threads': 1,
+            **runtime_identity(torch), 'device': 'cpu', 'torch_threads': 1,
             'elapsed_seconds': time.monotonic() - started,
             'calibrated_language_correctness_claim': False, 'asr_or_speaker_output': False}
 

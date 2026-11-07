@@ -20,6 +20,7 @@
   "base_image_id": "sha256:c0e6c0b168faa1be027564e9a004e842c342e22ea51903d5fc7b9008850398d0",
   "base_manifest": "nvcr.io/nvidia/pytorch@sha256:8014e4ffc674ae9cc9aecad04b64b29c3d311ed738e54ac3042d2d45690d19e9",
   "runtime_torch": "2.11.0a0+eb65b36914.nv26.2",
+  "runtime_torch_module": "2.11.0a0+eb65b36914.nv26.02",
   "runtime_torchvision": "0.25.0a0+1e53952f.nv26.2.44259020",
   "input_contract": "batch-one-int16-little-endian-mono-16000Hz; fixed division by32768 inside graph",
   "output_contract": "1x107-float32-log-posteriors-in-original-label-order",

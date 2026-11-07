@@ -29,6 +29,10 @@ library and Python paths are sanitized for export. The NVIDIA Torch/Torchvision
 package file hashes are checked before and after installation; no NVIDIA package
 is replaced. Build has no network or model assets. The worker runtime uses only
 the unchanged NVIDIA Torch2.11a0 and does not import SpeechBrain/torchaudio.
+Its distribution version is pinned as `2.11.0a0+eb65b36914.nv26.2`; the raw
+module version is separately pinned as `2.11.0a0+eb65b36914.nv26.02`.
+Verification and classification check and record both exact strings, avoiding
+`TorchVersion`'s normalized equality and a mismatch after JSON serialization.
 
 Public weights and wheels total255,015,678bytes. Fetching is a separate explicitly
 authorized operation; exact URL/redirect allowlists, per-artifact hashes and a
