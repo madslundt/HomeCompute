@@ -121,6 +121,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
     audits = []
     boundary_audits = []
     proposal_audits = []
+    context_audits = []
     non_speech_audits = []
     language_probes = 0
 
@@ -196,7 +197,8 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
         probes = []
         probe_fields = [(key, value) for key, value in native_fields if key != "detect_language"]
         probe_fields.append(("detect_language", "true"))
-        for _offset, seconds, data in proposals:
+        def probe(data, seconds):
+            nonlocal language_probes
             raw = call(data, probe_fields)
             language_probes += 1
             try:
@@ -207,18 +209,21 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                         or not math.isfinite(value["duration"])
                         or abs(value["duration"] - seconds) > 0.001):
                     raise ValueError("Invalid language-only response")
-                probes.append(value)
+                return value
             except Exception:
                 raise codec.RequestError(502, "Language boundary observation unavailable") from None
+        probes = [probe(data, seconds) for _offset, seconds, data in proposals]
         try:
-            regions = _BOUNDARIES.language_regions(audio, proposals, probes, candidates.split(","))
+            regions = _BOUNDARIES.language_regions(audio, proposals, probes, candidates.split(","),
+                                                   corroborate=probe, context_audits=context_audits)
         except Exception:
             raise codec.RequestError(502, "Language boundary observation unavailable") from None
-        if regions is not None:
+        if regions is not None or context_audits:
             proposal_audits.extend({"source_start_frame": round(offset * RATE),
                                     "frames": round(seconds * RATE),
                                     "language_selection": probe["language_selection"]}
                                    for (offset, seconds, _data), probe in zip(proposals, probes))
+        if regions is not None:
             boundary_audits.extend({"source_region_start_frame": round(offset * RATE),
                                     "source_region_frames": round(seconds * RATE),
                                     "decoded_windows": []}
@@ -256,16 +261,18 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                                                     "asr_language_windows": actual})
                     yield offset, seconds, raw
         payload, content_type = codec.combine_native_windows(responses(), "verbose_json", duration)
-    if audits or boundary_audits or non_speech_audits:
+    if audits or boundary_audits or context_audits or non_speech_audits:
         value = json.loads(payload)
         if audits:
             value["suffix_recovery"] = {"version": VERSION, "windows": audits,
                                         "native_calls": native_calls,
                                         "max_extra_requests_per_window": 1, "coverage_claim": False}
-        if boundary_audits:
+        if boundary_audits or context_audits:
             value["language_boundary_recovery"] = {
                 "version": _BOUNDARIES.VERSION, "regions": boundary_audits,
                 "proposals": proposal_audits,
+                "island_context_observations": context_audits,
+                "fallback_original_contexts": regions is None,
                 "native_calls": native_calls, "language_probes": language_probes,
                 "asr_pcm_unchanged": True, "source_frames_conserved": True,
                 "coverage_claim": False,

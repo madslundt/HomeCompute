@@ -13,7 +13,7 @@ import re
 import sys
 import wave
 
-VERSION = "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-v2"
+VERSION = "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-island-context30s-v3"
 RATE = 16000
 FRAME_SAMPLES = 512
 MIN_PAUSE_FRAMES = 4
@@ -173,11 +173,15 @@ def _sample_position(seconds: object) -> int:
 
 
 def language_regions(audio: bytes, proposals: list[tuple[float, float, bytes]],
-                     probes: list[dict], candidates: list[str]) -> list[tuple[float, float, bytes]] | None:
+                     probes: list[dict], candidates: list[str], *,
+                     corroborate: Callable[[bytes, float], dict] | None = None,
+                     context_audits: list[dict] | None = None) -> list[tuple[float, float, bytes]] | None:
     """Merge all adjacent proposals lacking a confident language transition.
 
     All source samples and observations are validated before any decision. Weak
     intervening evidence cannot establish a boundary between nonadjacent probes.
+    A confident isolated proposal bracketed by the same other language needs
+    confirmation on its original adjacent audio before either cut is accepted.
     Returned global regions may exceed thirty seconds; callers bound ASR later.
     """
     frames, pcm = _read_pcm(audio)
@@ -200,9 +204,41 @@ def language_regions(audio: bytes, proposals: list[tuple[float, float, bytes]],
         ends.append(cursor)
     if cursor != frames:
         raise ValueError("Proposals do not conserve every source sample")
+    if context_audits is not None and not isinstance(context_audits, list):
+        raise ValueError("Invalid context audit collector")
+    vetoes = set()
+    for index in range(1, len(selections) - 1):
+        left, island, right = selections[index - 1:index + 2]
+        begin, end = ends[index - 1], ends[index]
+        if (left["selected"] != right["selected"] or island["selected"] == left["selected"]
+                or any(item["selected_probability"] < .5 for item in (left, island, right))
+                or end - begin == MAX_PROPOSAL_SAMPLES):
+            continue
+        if corroborate is None:
+            raise ValueError("Isolated language change requires contextual observation")
+        context_begin = ends[index - 2] if index > 1 else 0
+        context_end = ends[index + 1]
+        if context_end - context_begin > MAX_PROPOSAL_SAMPLES:
+            context_begin = max(context_begin, min((begin + end - MAX_PROPOSAL_SAMPLES) // 2,
+                                                   context_end - MAX_PROPOSAL_SAMPLES))
+            context_end = context_begin + MAX_PROPOSAL_SAMPLES
+        result = corroborate(_wav(pcm[context_begin * 2:context_end * 2]),
+                             (context_end - context_begin) / RATE)
+        selection = _selections([result], candidates)[0]
+        confirmed = selection["selected"] == island["selected"] and selection["selected_probability"] >= .5
+        if not confirmed:
+            vetoes.update((index - 1, index))
+        if context_audits is not None:
+            context_audits.append({"proposal_index": index, "island_start_frame": begin,
+                                  "island_frames": end - begin, "context_start_frame": context_begin,
+                                  "context_frames": context_end - context_begin,
+                                  "island_language_selection": dict(island),
+                                  "context_language_selection": dict(selection),
+                                  "decision": "confirmed" if confirmed else "vetoed",
+                                  "coverage_claim": False})
     cuts = [0]
     for index, (left, right) in enumerate(zip(selections, selections[1:])):
-        if (left["selected"] != right["selected"] and left["selected_probability"] >= 0.5
+        if (index not in vetoes and left["selected"] != right["selected"] and left["selected_probability"] >= 0.5
                 and right["selected_probability"] >= 0.5):
             cuts.append(ends[index])
     if len(cuts) == 1:

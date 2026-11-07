@@ -116,7 +116,8 @@ class LanguageWindowTests(unittest.TestCase):
     def test_long_combination_retains_actual_child_provenance_at_global_offsets(self):
         children=[(index*8,8,audio(8)) for index in range(4)]
         replies=[result(duration=8),result(duration=8),
-                 result(language='da',duration=8),result(duration=8),result(' First window',duration=16),
+                 result(language='da',duration=8),result(duration=8),result(language='da',duration=24),
+                 result(' First window',duration=16),
                  result(' Anden',language='da',duration=8),result(' Final',duration=8)]
         with patch.object(R._BOUNDARIES,'partitions',return_value=children), \
                 patch.object(A,'_native_request',side_effect=replies):
@@ -127,6 +128,37 @@ class LanguageWindowTests(unittest.TestCase):
         actual=[region['decoded_windows'][0]['asr_language_windows'][0] for region in audit[1:]]
         self.assertEqual([(item['start'],item['end']) for item in actual],[(16,24),(24,32)])
         self.assertEqual([item['language_selection']['selected'] for item in actual],['da','en'])
+
+    def test_isolated_change_is_checked_before_any_transcript_is_decoded(self):
+        children=[(index*4,4,audio(4)) for index in range(3)]
+        replies=[result(language='da'),result(),result(language='da'),
+                 result(language='da',duration=12),result(' Hele konteksten',language='da',duration=12)]
+        with patch.object(R._BOUNDARIES,'partitions',return_value=children), \
+                patch.object(A,'_native_request',side_effect=replies) as request:
+            raw,_=A.transcribe_audio(audio(12),12,'verbose_json',[('language_candidates','da,en')],10,
+                recover_trailing_speech=True,language_boundaries=True)
+        body=json.loads(raw);audit=body['language_boundary_recovery']
+        self.assertEqual(body['text'],' Hele konteksten\n')
+        self.assertEqual(audit['language_probes'],4);self.assertEqual(audit['native_calls'],5)
+        self.assertTrue(audit['fallback_original_contexts']);self.assertEqual(audit['regions'],[])
+        self.assertEqual(audit['island_context_observations'][0]['decision'],'vetoed')
+        for call in request.call_args_list[:4]:
+            with patch.object(A._CODEC_MODULE,'ALLOWED_FIELDS',A._CODEC_MODULE.ALLOWED_FIELDS|{'detect_language'}):
+                fields,_=A.parse_multipart(call.args[0],call.args[1])
+            self.assertEqual(fields['detect_language'],'true')
+        fields,data=A.parse_multipart(*request.call_args.args[:2])
+        self.assertNotIn('detect_language',fields);self.assertEqual(data,audio(12))
+
+    def test_invalid_island_context_probe_fails_before_transcription(self):
+        children=[(index*4,4,audio(4)) for index in range(3)]
+        for bad in (b'{}',result(' Not a language probe',duration=12),A.RequestError(502,'fixed')):
+            with self.subTest(bad=bad), \
+                    patch.object(R._BOUNDARIES,'partitions',return_value=children), \
+                    patch.object(A,'_native_request',side_effect=[result(language='da'),result(),
+                                 result(language='da'),bad]) as request,self.assertRaises(A.RequestError):
+                A.transcribe_audio(audio(12),12,'verbose_json',[('language_candidates','da,en')],10,
+                    recover_trailing_speech=True,language_boundaries=True)
+            self.assertEqual(request.call_count,4)
 
     def test_language_regions_cross_old_fixed_boundaries_before_asr_is_bounded(self):
         proposals=[(0,20,audio(20)),(20,20,audio(20)),(40,13,audio(13))]

@@ -129,7 +129,7 @@ class SharedObservationTests(unittest.TestCase):
         self.assertEqual(B.observed_probabilities(original, observe=observe), list(values))
         observe.assert_called_once_with(B._normalized_pcm(pcm(original)))
         self.assertEqual(B.VERSION,
-            "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-v2")
+            "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-island-context30s-v3")
 
     def test_public_helper_rejects_invalid_last_frame_and_propagates_model_failure(self):
         for value in (math.nan, math.inf, True, -0.1, 1.1):
@@ -251,6 +251,70 @@ class NormalizationTests(unittest.TestCase):
         self.assertGreater(result[-1], 1)
         self.assertLessEqual(max(result), 32767)
         self.assertGreaterEqual(min(result), -32768)
+
+
+class IsolatedLanguageTests(unittest.TestCase):
+    def regions(self, sizes, selections, corroborate, audit):
+        original = source(sum(sizes))
+        raw, cursor, proposals = pcm(original), 0, []
+        for size in sizes:
+            proposals.append((cursor / 16000, size / 16000,
+                              wav(raw[cursor * 2:(cursor + size) * 2])))
+            cursor += size
+        return original, B.language_regions(original, proposals, selections, ["da", "en"],
+                                             corroborate=corroborate, context_audits=audit)
+
+    def test_high_confidence_singleton_needs_original_surrounding_audio_confirmation(self):
+        audit = []
+        observation = Mock(return_value=probe("da"))
+        original, regions = self.regions([64000, 49664, 64000],
+            [probe(), probe("en", .999), probe()], observation, audit)
+        self.assertIsNone(regions)
+        data, seconds = observation.call_args.args
+        self.assertEqual(pcm(data), pcm(original))
+        self.assertEqual(seconds, 177664 / 16000)
+        self.assertEqual(audit[0]["decision"], "vetoed")
+        self.assertEqual(audit[0]["island_start_frame"], 64000)
+        self.assertEqual(audit[0]["island_frames"], 49664)
+
+    def test_confirmed_short_real_change_keeps_both_cuts_and_original_pcm(self):
+        audit = []
+        original, regions = self.regions([64000, 48000, 64000],
+            [probe(), probe("en"), probe()], Mock(return_value=probe("en", .5)), audit)
+        self.assertEqual([len(pcm(data)) // 2 for _, _, data in regions], [64000, 48000, 64000])
+        self.assertEqual(b"".join(pcm(data) for _, _, data in regions), pcm(original))
+        self.assertEqual(audit[0]["decision"], "confirmed")
+
+    def test_context_is_capped_at_native_window_and_centered_on_whole_island(self):
+        audit = []
+        observation = Mock(return_value=probe("en"))
+        original, _ = self.regions([480000, 64000, 480000],
+            [probe(), probe("en"), probe()], observation, audit)
+        data, seconds = observation.call_args.args
+        self.assertEqual(seconds, 30)
+        self.assertEqual(pcm(data), pcm(original)[272000 * 2:752000 * 2])
+        self.assertEqual(audit[0]["context_start_frame"], 272000)
+        self.assertEqual(audit[0]["context_frames"], 480000)
+
+    def test_consecutive_language_evidence_and_recording_edges_need_no_new_probe(self):
+        observation = Mock(side_effect=AssertionError("No isolated island"))
+        for selections in ([probe(), probe("en"), probe("en"), probe()],
+                           [probe("en"), probe(), probe(), probe("en")]):
+            _, regions = self.regions([48000] * 4, selections, observation, [])
+            self.assertIsNotNone(regions)
+        observation.assert_not_called()
+
+    def test_weak_context_vetoes_without_relabeling_original_observations(self):
+        selections = [probe(), probe("en"), probe()]
+        before = copy.deepcopy(selections)
+        _, regions = self.regions([48000] * 3, selections, Mock(return_value=probe("en", .49)), [])
+        self.assertIsNone(regions)
+        self.assertEqual(selections, before)
+
+    def test_missing_invalid_or_failed_corroboration_cannot_silently_accept_island(self):
+        for observe in (None, Mock(return_value={}), Mock(side_effect=ValueError("synthetic"))):
+            with self.subTest(observe=observe), self.assertRaises(ValueError):
+                self.regions([48000] * 3, [probe(), probe("en"), probe()], observe, [])
 
 
 class LanguageDecisionTests(unittest.TestCase):

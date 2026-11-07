@@ -84,12 +84,27 @@ cross prior thirty-second boundaries; only after region selection does the
 adapter bound ASR requests to thirty seconds. Every region is retained in source
 order; no hypothesis text selects boundaries or a winning response.
 
+A single confident proposal bracketed by the same other language additionally
+requires contextual corroboration before either adjacent cut is accepted. The
+adapter probes the original three-proposal span, capped at the native thirty-second
+context and centered on the complete island when that cap applies. A matching
+selected language with original probability at least 0.5 confirms the cuts;
+disagreement or weak evidence vetoes both cuts without relabeling any observation
+or forcing an ASR language. A proposal already occupying the full native context
+is unchanged. Consecutive same-language proposals and recording edges retain the
+existing policy. This check uses language observations only, before transcript
+decoding. It is a candidate policy, not proof of language or speech coverage;
+qualification must protect genuine short language switches as well as reject
+spurious islands. `island_context_observations` retains numeric decisions, source
+geometry and original selections, including when all cuts are vetoed and the
+original contexts are used.
+
 Probe/observation failures return an error. All probes and ASR calls share the
 original deadline and cumulative response bound. `language_boundary_recovery`
 records proposal observations, merged regions and actual decoded ASR selections,
 without claiming speech completeness. The one-suffix limit applies per decoded
 window. The minimum proposal length bounds a 1,200-second upload to at most
-400 probes; each decoded window permits one original and at most one suffix ASR
+400 proposal probes and at most 398 additional island-context probes; each decoded window permits one original and at most one suffix ASR
 call. Explicit language or translation requests keep their existing behavior.
 The diagnostic overlay enables these flags; canonical builds keep them off.
 This remains unqualified for production.
