@@ -1,14 +1,16 @@
-# The native engine is the exact previously built hc10 image. No decoder rebuild
-# or numerical change is part of this adapter-only diagnostic.
-ARG NATIVE_BASE_IMAGE=sha256:9a76da1fcca77de1f4dff6ff284e5397ac05e22a9a9a373134b2c09e676c9f91
-FROM ${NATIVE_BASE_IMAGE}
+# Isolated ranking diagnostic: exact hc11/v7 native engine with the unchanged
+# h17 adapter recovery/language/non-speech policies and pinned detector bytes.
+FROM sha256:84abcd6b3489162a6e479c29411acbb68598b9a4f48096e3372ee64b1aa6d8d4 AS detector
+FROM sha256:dd7c842ebe50ba85773d21653cb1c29353b622848cfa709140123d5d375a2f22
 ARG HOME_COMPUTE_REVISION
 LABEL io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
-      io.homecompute.whisper-cpp.native-source-revision="6ac1847d9abe6446d91c28bf06067b52d38e17e0" \
-      io.homecompute.whisper-cpp.native-parent-image="sha256:9a76da1fcca77de1f4dff6ff284e5397ac05e22a9a9a373134b2c09e676c9f91" \
+      io.homecompute.whisper-cpp.native-source-revision="b440dae9d55d2419c72520dcd098d980ea30ba41" \
+      io.homecompute.whisper-cpp.native-parent-image="sha256:dd7c842ebe50ba85773d21653cb1c29353b622848cfa709140123d5d375a2f22" \
+      io.homecompute.whisper-cpp.detector-parent-image="sha256:84abcd6b3489162a6e479c29411acbb68598b9a4f48096e3372ee64b1aa6d8d4" \
       io.homecompute.whisper-cpp.recovery="silero-v5.1.2-cpu-prob0.5-grace500ms-contiguous512ms-suffix-v1"
 USER root
 COPY adapter.py contract.py verify_model.py recovery.py silero_vad.py language_boundaries.py non_speech.py vad-pin.json /opt/homecompute/
+COPY --from=detector /opt/homecompute/ggml-silero-v5.1.2.bin /opt/homecompute/
 RUN python3 -I -B /opt/homecompute/silero_vad.py --provision \
  && chmod 0555 /opt/homecompute/*.py \
  && chmod 0444 /opt/homecompute/vad-pin.json /opt/homecompute/ggml-silero-v5.1.2.bin

@@ -4,8 +4,8 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds candidate `hc10`, retaining the `hc7` bounded window
-diagnostics and `hc8` optional language candidate list. Bounded native windowing
+The current source prepares an unqualified ranked-recovery candidate, retaining
+the `hc7` bounded window diagnostics and `hc8` optional language candidate list. Bounded native windowing
 now requires an explicit candidate list; omitted candidates preserve the `hc4`
 full native request boundary, including for long uploads.
 These changes are not part of the production image and are not qualified for rollout.
@@ -14,8 +14,8 @@ Selecting an image in source does not establish that it has been deployed.
 ## Experimental trailing-speech recovery
 
 [Issue 78](https://github.com/madslundt/HomeCompute/issues/78) tracks an opt-in
-adapter policy for native early-stop omissions. It leaves the hc10 native engine,
-ASR checkpoint, decoder, prompts and numerical settings unchanged. The policy is
+adapter policy for native early-stop omissions. The h17 adapter policy leaves
+ASR checkpoint, prompts and numerical settings unchanged. The policy is
 off by default in the canonical builds. Set
 `WHISPER_CPP_RECOVER_TRAILING_SPEECH=true` only for a qualified CUDA candidate;
 the CPU ASR runtime rejects this setting. Recovery requires `verbose_json` with
@@ -46,15 +46,35 @@ recovery. All native calls share one deadline and cumulative response-byte bound
 Detector or required-suffix failures return an error rather than silently marking
 a partial result successful. Unknown native timing never supplies an invented seek.
 
-`Dockerfile.cuda` can rebuild this policy from the pinned native source.
-`Dockerfile.recovery` is a diagnostic overlay on the exact cached hc10 image
-`sha256:9a76da1fcca77de1f4dff6ff284e5397ac05e22a9a9a373134b2c09e676c9f91`,
-whose native source is `6ac1847d9abe6446d91c28bf06067b52d38e17e0`. It changes only
-the adapter and public detector assets and enables the experimental flag. Before
-building, verify the base image's actual ID and ARM64 architecture. Build from the
-clean, reviewed, published source revision with `--pull=false --force-rm`, the
+`Dockerfile.recovery` now prepares a source-only ranking diagnostic on the exact
+cached hc11/v7 native image
+`sha256:dd7c842ebe50ba85773d21653cb1c29353b622848cfa709140123d5d375a2f22`,
+whose native source is `b440dae9d55d2419c72520dcd098d980ea30ba41`.
+It preserves the h17 adapter recovery, language-boundary v2 and non-speech policies.
+The only adapter changes are truthful native patch metadata. The same pinned
+Silero model is copied from exact h17 image
+`sha256:84abcd6b3489162a6e479c29411acbb68598b9a4f48096e3372ee64b1aa6d8d4`
+and verified locally; neither native engine nor model is rebuilt or downloaded.
+`Dockerfile.cuda` also records the exact v7 patcher for reproducibility, but is not
+the native build path for this controlled comparison. Before building, verify both
+cached image IDs, native source/patcher labels and ARM64 architecture. Build only
+from clean, reviewed, published source with `--pull=false --force-rm`, the existing
 6 GiB/no-swap/four-CPU envelope, `--build-arg HOME_COMPUTE_REVISION=FULL_SHA`, and
 `-f deploy/whisper-cpp-stt/Dockerfile.recovery deploy/whisper-cpp-stt`.
+
+The diagnostic changes only final decoder ranking relative to h17. A completed
+path contributes its terminal EOT log probability only when EOT is the sole token
+excluded from retained output. It uses the existing retained-length penalty and
+strict winner comparison. Retained confidence, entropy, fallback, beam expansion,
+timestamp grammar, seek policy, language probes, weights and prompts are unchanged.
+A changed winner can affect subsequent confidence/fallback decisions. This
+objective was previously tested without h17 recovery on one omission fixture;
+that failure does not qualify this new combination or establish it will recover
+another word. First require the two controlled original/sandwich cases to pass
+explicit reference review; stop if the new missing-word case remains incomplete.
+Do not broaden the panel or promote on scalar rank evidence alone. No runtime
+build, model call, accuracy qualification or production change is established by
+this source preparation.
 
 Use the guarded isolated lifecycle and memory floor described below. Verify actual
 source/image/model/native pins and `suffix_recovery_policy.enabled` in health.
@@ -289,7 +309,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-candidate build applies `strict-gpu-decoder-audit-v6` to the exact pinned upstream source
+candidate build applies `strict-gpu-complete-eot-ranking-v7` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting
