@@ -30,7 +30,7 @@ def record():return {'owner':'a'*24,'name':'hc-whisper-nonspeech-hc17-'+'a'*24,
 def container(r):
  return {'Id':r['container_id'],'Name':'/'+r['name'],'Image':r['image_id'],
     'Config':{'User':'10001:10001','Labels':{M.OWNER_LABEL:r['owner']},
-              'Env':['WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=true']},
+              'Env':['WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=true','WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP=true']},
     'State':{'Running':True},'HostConfig':{'NetworkMode':'none','Memory':M.LIMIT,'MemorySwap':M.LIMIT,
       'NanoCpus':4000000000,'ReadonlyRootfs':True,'Privileged':False,'PortBindings':{},'PidsLimit':128,
       'LogConfig':{'Type':'none'},'RestartPolicy':{'Name':'no'},'CapDrop':['ALL'],'SecurityOpt':['no-new-privileges']},
@@ -62,6 +62,7 @@ class Tests(unittest.TestCase):
   for field,value in [('RW',True),('Destination','/opt/homecompute'),('Source','/other')]:
    bad=copy.deepcopy(actual);bad['Mounts'][1][field]=value;variants.append(bad)
   bad=copy.deepcopy(actual);bad['Mounts'].append(dict(bad['Mounts'][1]));variants.append(bad)
+  bad=copy.deepcopy(actual);bad['Config']['Env'].remove('WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP=true');variants.append(bad)
   for env in ([],['WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=false'],['WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=true']*2):
    bad=copy.deepcopy(actual);bad['Config']['Env']=env;variants.append(bad)
   for bad in variants:

@@ -74,6 +74,7 @@ class CandidateConfig:
     filter_non_speech: bool = False
     local_eot_ranking: bool = False
     language_observer: Callable[[tuple[bytes, ...], float], list[str]] | None = None
+    repair_overlap: bool = False
 
 
 def _bounded_env(name: str, default: int, maximum: int) -> int:
@@ -120,6 +121,10 @@ def load_config() -> CandidateConfig:
     if (verify_islands not in {"true", "false"}
             or verify_islands == "true" and (boundaries != "true" or local_eot != "true")):
         raise ValueError("invalid WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS")
+    repair_overlap = os.environ.get("WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP", "false")
+    if (repair_overlap not in {"true", "false"}
+            or repair_overlap == "true" and verify_islands != "true"):
+        raise ValueError("invalid WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP")
     language_observer = None
     if verify_islands == "true":
         # The bundle is supplied by the published image, never by a request.
@@ -161,6 +166,7 @@ def load_config() -> CandidateConfig:
         filter_non_speech=non_speech == "true",
         local_eot_ranking=local_eot == "true",
         language_observer=language_observer,
+        repair_overlap=repair_overlap == "true",
     )
 
 
@@ -229,13 +235,14 @@ def transcribe_audio(audio: bytes, duration: float, response_format: str,
                      language_boundaries: bool = False,
                      filter_non_speech: bool = False,
                      local_eot_ranking: bool = False,
-                     language_observer=None) -> tuple[bytes, str]:
+                     language_observer=None, repair_overlap=False) -> tuple[bytes, str]:
     if (recover_trailing_speech and response_format == "verbose_json"
             and dict(native_fields).get("no_timestamps", "false") == "false"):
         return _RECOVERY_MODULE.transcribe(
             audio, duration, native_fields, timeout, request=_native_request, codec=_CODEC_MODULE,
             language_boundaries=language_boundaries, filter_non_speech=filter_non_speech,
-            local_eot_ranking=local_eot_ranking, language_observer=language_observer)
+            local_eot_ranking=local_eot_ranking, language_observer=language_observer,
+            repair_overlap=repair_overlap)
     if duration <= NATIVE_WINDOW_SECONDS or "language_candidates" not in dict(native_fields):
         # Preserve the qualified production request boundary unless explicitly
         # opting into per-window detection with a language candidate profile.
@@ -395,6 +402,12 @@ class CandidateHandler(BaseHTTPRequestHandler):
                     "decode_count_baseline": "pre_veto_layout",
                     "max_extra_primary_decodes": 0,
                 },
+                "boundary_overlap_repair_policy": {
+                    "enabled": self.server.config.repair_overlap,
+                    "version": _RECOVERY_MODULE._OVERLAP.VERSION,
+                    "word_timing": _RECOVERY_MODULE._OVERLAP.TIMING,
+                    "max_donor_decodes": _RECOVERY_MODULE._OVERLAP.MAX_DONORS,
+                },
                 "local_eot_ranking_policy": {
                     "enabled": self.server.config.local_eot_ranking,
                     "version": "raw-silero-same-segment-strictly-later-terminal-eot-v1",
@@ -478,7 +491,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 language_boundaries=self.server.config.language_boundaries,
                 filter_non_speech=self.server.config.filter_non_speech,
                 local_eot_ranking=self.server.config.local_eot_ranking,
-                language_observer=self.server.config.language_observer)
+                language_observer=self.server.config.language_observer,
+                repair_overlap=self.server.config.repair_overlap)
             self.respond(200, payload, content_type, provenance=True)
         except RequestError as error:
             self.respond(error.status, json.dumps({"error": error.message}).encode())
@@ -521,6 +535,8 @@ def native_command(config: CandidateConfig) -> list[str]:
         command.append("--no-gpu")
     else:
         command.extend(("--device", "0"))
+    if config.repair_overlap:
+        command.extend(("--no-flash-attn", "--dtw", "large.v3"))
     return command
 
 

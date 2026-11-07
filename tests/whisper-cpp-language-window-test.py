@@ -35,6 +35,43 @@ def result(text='', language='en', duration=4, probability=.9):
 
 
 class LanguageWindowTests(unittest.TestCase):
+    def test_overlap_adds_only_timed_native_words_and_rejects_ambiguous_or_untimed_donor(self):
+        overlap = R._OVERLAP
+        left = " the council discussed the harbor when..."
+        right = " we then walked home."
+        text = left + "\n" + right + "\n"
+        base = {"text": text, "segments": [
+            {"text": left, "start_offset": 0, "end_offset": len(left)},
+            {"text": right, "start": 5, "start_offset": len(left) + 1,
+             "end_offset": len(left) + 1 + len(right)},
+        ]}
+        seam = 5 * overlap.RATE
+        anchor = overlap.anchors(base, seam)
+        self.assertIsNotNone(anchor)
+        pieces = [" the", " council", " discussed", " the", " harbor", " when",
+                  " rain", " be", "gan", ",", " we", " then", " walked", " home", "."]
+        donor = {"task": "transcribe", "language_selection": {
+            "selected": "en", "selected_probability": .9}, "segments": [{
+                "text": "".join(pieces), "start": 3, "end": 9,
+                "words": [{"word": word, "t_dtw": 360 + i * 30}
+                          for i, word in enumerate(pieces)],
+            }]}
+        geometry = (0, seam, 8 * overlap.RATE, 9 * overlap.RATE, "en")
+        edit = overlap.insertion(donor, anchor, *geometry)
+        self.assertIsNotNone(edit)
+        view = overlap.overlay(text, [edit])
+        self.assertEqual(view["text"], left + "\n rain began, we then walked home.\n")
+        at = edit["insert_offset"]
+        self.assertEqual(view["text"][:at] + view["text"][at + len(edit["text"]):], text)
+        self.assertEqual([(w["text"], w["start_frame"], w["end_frame"]) for w in edit["words"]],
+                         [("rain", 86400, 91200), ("began", 91200, 100800)])
+        for word in view["edits"][0]["words"]:
+            self.assertEqual(view["text"][word["start_offset"]:word["end_offset"]], word["text"])
+        donor["segments"][0]["words"][7]["t_dtw"] = -1
+        self.assertIsNone(overlap.insertion(donor, anchor, *geometry))
+        donor["segments"].append({"text": " we then walked home."})
+        self.assertIsNone(overlap.insertion(donor, anchor, *geometry))
+
     def execute(self, replies, *, candidates=True):
         fields=[('response_format','verbose_json'),('language','auto')]
         if candidates:fields.append(('language_candidates','da,en'))

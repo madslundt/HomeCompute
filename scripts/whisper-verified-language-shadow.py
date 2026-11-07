@@ -345,7 +345,8 @@ def owned_container(record):
         or 'ALL' not in (host.get('CapDrop') or []) or 'no-new-privileges' not in (host.get('SecurityOpt') or [])
         or len(mounts)!=2 or actual_mounts!=expected_mounts
         or any(x.get('Type')!='bind' or x.get('RW') is not False for x in mounts)
-        or [x for x in value['Config'].get('Env',[]) if x.startswith('WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=')]!=['WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=true']):
+        or [x for x in value['Config'].get('Env',[]) if x.startswith('WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=')]!=['WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS=true']
+        or [x for x in value['Config'].get('Env',[]) if x.startswith('WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP=')]!=['WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP=true']):
         raise Refused('Candidate identity or isolation differs')
     return value
 
@@ -361,6 +362,7 @@ def health(record,*,require_ready=True):
         or value.get('non_speech_policy')!={'enabled': True, 'version': 'exact-zero-or-normalized-vad0.5-native-no-speech0.6-v1', 'requires': 'verbose_json_with_timestamps', 'exact_zero_pcm': True, 'minimum_nonzero_seconds': 3, 'native_no_speech_minimum': 0.6, 'normalized_vad_maximum_exclusive': 0.5}
         or value.get('local_eot_ranking_policy')!={'enabled': True, 'version': 'raw-silero-same-segment-strictly-later-terminal-eot-v1', 'requires': 'verbose_json_with_timestamps_without_translation', 'native_vad_defaults': 'threshold0.5/minSpeech250ms/minSilence100ms/pad0', 'asr_audio': 'original_pcm', 'max_extra_asr_calls': 0}
         or value.get('independent_language_boundary_policy')!={'enabled':True,'version':'original-pcm-singleton-cut-confirmation-v2','observer_manifest_sha256':observer_pins(record)['files']['manifest.json']['sha256'],'requires':'confident_native_singleton_with_equal_flanking_languages','action':'veto_unconfirmed_existing_pair_of_cuts','asr_language_forced':False,'observer_device':'cpu'}
+        or value.get('boundary_overlap_repair_policy')!={'enabled':True,'version':'original-pcm-unique-anchor-insertion-v1','word_timing':'whisper_cpp_dtw_token_boundary_estimate','max_donor_decodes':3}
         or value.get('language_boundary_window_reflow_policy')!={'enabled':True,'version':'minimum-original-pcm-context-reflow-v1','requires':'applied_independent_singleton_veto','scope':'island_and_minimum_eligible_original_flank_context','prefers':'observed_pauses','decode_count_baseline':'pre_veto_layout','max_extra_primary_decodes':0}
         or value.get('compute_backend')!='cuda' or type(value.get('gpu_model_buffer_bytes')) is not int
         or value['gpu_model_buffer_bytes']<=0
@@ -408,7 +410,7 @@ def start():
          'WHISPER_CPP_NATIVE_THREADS':'4','WHISPER_CPP_TRACE_WINDOWS':'1',
          'WHISPER_CPP_RECOVER_TRAILING_SPEECH':'true','WHISPER_CPP_LANGUAGE_BOUNDARIES':'true',
          'WHISPER_CPP_FILTER_NON_SPEECH':'true','WHISPER_CPP_LOCAL_EOT_RANKING':'true',
-         'WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS':'true'}
+         'WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS':'true','WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP':'true'}
     for key,item in env.items():args+=['--env',key+'='+item]
     args+=[value['image_id'],'-I','-B','-c',entry]
     record['runtime_env']=env;write_json(STATE/'active.json',record)

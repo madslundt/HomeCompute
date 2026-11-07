@@ -101,6 +101,19 @@ boundary at that point.
 The response records the window reflow policy and the actual source ranges
 decoded.
 
+`WHISPER_CPP_REPAIR_BOUNDARY_OVERLAP=true` enables the optional
+`overlap_repair` view for verbose JSON. A veto must agree with the flanking
+language and touch a primary decode seam. The adapter can decode up to three
+original-PCM overlaps under the same request deadline. Unique lexical anchors
+and a positive, ordered timing estimate for each recovered word gate insertions.
+The canonical text and segment metadata remain intact. The optional view has
+its own corrected text, Unicode code-point offsets, and absolute 16 kHz sample
+ranges. These ranges use native DTW token boundary estimates. A word ends at
+the next token's alignment point. The mode disables native FlashAttention
+because the pinned Whisper runtime cannot compute DTW with it enabled.
+The adapter withholds insertions when token coverage or anchor evidence is
+ambiguous. Consumers must explicitly select the optional view.
+
 `language_observer.py` sends one bounded batch to one isolated CPU child and
 loads its graph once. Its time limit shares the transcription request deadline;
 source, model, public parity and both runtime version identities are pinned.

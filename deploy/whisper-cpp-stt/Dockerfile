@@ -42,10 +42,10 @@ RUN apt-get update \
 COPY --from=build /build/bin/whisper-server /usr/local/bin/whisper-server
 COPY --from=build /build/bin/lib*.so* /usr/local/lib/
 COPY adapter.py contract.py verify_model.py /opt/homecompute/
-COPY recovery.py silero_vad.py language_boundaries.py non_speech.py vad-pin.json /opt/homecompute/
+COPY recovery.py silero_vad.py language_boundaries.py non_speech.py overlap_repair.py vad-pin.json /opt/homecompute/
 ENV LD_LIBRARY_PATH=/usr/local/lib WHISPER_CPP_HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION}
 RUN chmod 0555 /usr/local/bin/whisper-server /usr/local/lib/lib*.so* \
- && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/contract.py /opt/homecompute/verify_model.py /opt/homecompute/recovery.py /opt/homecompute/language_boundaries.py /opt/homecompute/non_speech.py \
+ && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/contract.py /opt/homecompute/verify_model.py /opt/homecompute/recovery.py /opt/homecompute/language_boundaries.py /opt/homecompute/non_speech.py /opt/homecompute/overlap_repair.py \
  && ! ldd /usr/local/bin/whisper-server | grep -q 'not found'
 USER 10001:10001
 EXPOSE 8000
