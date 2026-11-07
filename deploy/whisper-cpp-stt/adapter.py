@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 import ctypes
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
@@ -72,6 +73,7 @@ class CandidateConfig:
     language_boundaries: bool = False
     filter_non_speech: bool = False
     local_eot_ranking: bool = False
+    language_observer: Callable[[tuple[bytes, ...], float], list[str]] | None = None
 
 
 def _bounded_env(name: str, default: int, maximum: int) -> int:
@@ -114,6 +116,31 @@ def load_config() -> CandidateConfig:
     local_eot = os.environ.get("WHISPER_CPP_LOCAL_EOT_RANKING", "false")
     if local_eot not in {"true", "false"} or local_eot == "true" and recovery != "true":
         raise ValueError("invalid WHISPER_CPP_LOCAL_EOT_RANKING")
+    verify_islands = os.environ.get("WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS", "false")
+    if (verify_islands not in {"true", "false"}
+            or verify_islands == "true" and (boundaries != "true" or local_eot != "true")):
+        raise ValueError("invalid WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS")
+    language_observer = None
+    if verify_islands == "true":
+        # The bundle is supplied by the published image, never by a request.
+        # No Torch/model import happens in the adapter process.
+        spec = importlib.util.spec_from_file_location(
+            "homecompute_whisper_language_observer", Path(__file__).with_name("language_observer.py"))
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        path = Path(__file__).with_name("language-observer-pin.json")
+        if path.stat().st_size > 20000:
+            raise ValueError("Invalid language observer bundle pin")
+        pin = json.loads(path.read_bytes())
+        if not isinstance(pin, dict) or set(pin) != {
+                "source_revision", "code_sha256", "manifest_sha256", "parity_sha256", "approved_warning_sha256"}:
+            raise ValueError("Invalid language observer bundle schema")
+        language_observer = module.LanguageObserver(module.ObserverBundle(
+            source_directory=Path("/opt/homecompute/language-observer"),
+            graph_directory=Path("/models/language-observer"),
+            parity_report=Path("/models/language-observer/parity.json"), **pin))
+        language_observer.preflight(30)
     if recovery == "true":
         _RECOVERY_MODULE.verify_detector()
     if local_eot == "true" and _RECOVERY_MODULE._VAD.speech_spans(bytes(1024)) != []:
@@ -133,6 +160,7 @@ def load_config() -> CandidateConfig:
         language_boundaries=boundaries == "true",
         filter_non_speech=non_speech == "true",
         local_eot_ranking=local_eot == "true",
+        language_observer=language_observer,
     )
 
 
@@ -200,13 +228,14 @@ def transcribe_audio(audio: bytes, duration: float, response_format: str,
                      recover_trailing_speech: bool = False,
                      language_boundaries: bool = False,
                      filter_non_speech: bool = False,
-                     local_eot_ranking: bool = False) -> tuple[bytes, str]:
+                     local_eot_ranking: bool = False,
+                     language_observer=None) -> tuple[bytes, str]:
     if (recover_trailing_speech and response_format == "verbose_json"
             and dict(native_fields).get("no_timestamps", "false") == "false"):
         return _RECOVERY_MODULE.transcribe(
             audio, duration, native_fields, timeout, request=_native_request, codec=_CODEC_MODULE,
             language_boundaries=language_boundaries, filter_non_speech=filter_non_speech,
-            local_eot_ranking=local_eot_ranking)
+            local_eot_ranking=local_eot_ranking, language_observer=language_observer)
     if duration <= NATIVE_WINDOW_SECONDS or "language_candidates" not in dict(native_fields):
         # Preserve the qualified production request boundary unless explicitly
         # opting into per-window detection with a language candidate profile.
@@ -348,6 +377,15 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "native_window_policy": ("language_boundary_recovery_opt_in" if self.server.config.language_boundaries
                                          else "vad_suffix_recovery_opt_in" if self.server.config.recover_trailing_speech
                                          else "language_candidates_opt_in"),
+                "independent_language_boundary_policy": {
+                    "enabled": self.server.config.language_observer is not None,
+                    "version": _RECOVERY_MODULE._BOUNDARIES.ISLAND_POLICY,
+                    "observer_manifest_sha256": (self.server.config.language_observer.bundle.manifest_sha256
+                                                 if self.server.config.language_observer is not None else None),
+                    "requires": "confident_native_singleton_with_equal_flanking_languages",
+                    "action": "veto_unconfirmed_existing_pair_of_cuts",
+                    "asr_language_forced": False, "observer_device": "cpu",
+                },
                 "local_eot_ranking_policy": {
                     "enabled": self.server.config.local_eot_ranking,
                     "version": "raw-silero-same-segment-strictly-later-terminal-eot-v1",
@@ -430,7 +468,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 recover_trailing_speech=self.server.config.recover_trailing_speech,
                 language_boundaries=self.server.config.language_boundaries,
                 filter_non_speech=self.server.config.filter_non_speech,
-                local_eot_ranking=self.server.config.local_eot_ranking)
+                local_eot_ranking=self.server.config.local_eot_ranking,
+                language_observer=self.server.config.language_observer)
             self.respond(200, payload, content_type, provenance=True)
         except RequestError as error:
             self.respond(error.status, json.dumps({"error": error.message}).encode())

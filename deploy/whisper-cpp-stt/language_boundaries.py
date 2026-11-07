@@ -14,6 +14,7 @@ import sys
 import wave
 
 VERSION = "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-v2"
+ISLAND_POLICY = "original-pcm-singleton-cut-confirmation-v2"
 RATE = 16000
 FRAME_SAMPLES = 512
 MIN_PAUSE_FRAMES = 4
@@ -172,8 +173,46 @@ def _sample_position(seconds: object) -> int:
     return round(scaled)
 
 
+def _boundary_cuts(selections: list[dict], ends: list[int],
+                   proposals: list[tuple[float, float, bytes]],
+                   observe_islands: Callable[[tuple[bytes, ...]], Sequence[str]] | None,
+                   island_audit: list[dict] | None) -> list[int]:
+    cuts = {index for index, (left, right) in enumerate(zip(selections, selections[1:]))
+            if (left["selected"] != right["selected"] and left["selected_probability"] >= 0.5
+                and right["selected_probability"] >= 0.5)}
+    if observe_islands is None:
+        return [ends[index] for index in sorted(cuts)]
+    islands = [i for i in range(1, len(selections) - 1) if i - 1 in cuts and i in cuts
+               and selections[i - 1]["selected"] == selections[i + 1]["selected"]]
+    if not islands:
+        return [ends[index] for index in sorted(cuts)]
+    # This is one batch of the exact original proposals, after validating source
+    # geometry. An observer may veto a pair of existing cuts, never create a cut
+    # or select the language of a native decode.
+    observed = observe_islands(tuple(proposals[i][2] for i in islands))
+    if (not isinstance(observed, (tuple, list)) or len(observed) != len(islands)
+            or any(not isinstance(code, str) or not re.fullmatch(r"[a-z]{2,3}", code)
+                   for code in observed)):
+        raise ValueError("Invalid independent language observations")
+    unconfirmed = {i for i, code in zip(islands, observed) if code != selections[i]["selected"]}
+    for i, code in zip(islands, observed):
+        # Disagreement with the isolated proposal does not establish another
+        # language. Retain context; overlapping veto requests keep both pairs.
+        veto = i in unconfirmed and i - 1 not in unconfirmed and i + 1 not in unconfirmed
+        if veto:
+            cuts.difference_update((i - 1, i))
+        if island_audit is not None:
+            island_audit.append({"source_start_frame": ends[i - 1], "frames": ends[i] - ends[i - 1],
+                                 "native_language": selections[i]["selected"],
+                                 "flanking_language": selections[i - 1]["selected"],
+                                 "observed_language": code, "vetoed": veto})
+    return [ends[index] for index in sorted(cuts)]
+
+
 def language_regions(audio: bytes, proposals: list[tuple[float, float, bytes]],
-                     probes: list[dict], candidates: list[str]) -> list[tuple[float, float, bytes]] | None:
+                     probes: list[dict], candidates: list[str], *,
+                     observe_islands: Callable[[tuple[bytes, ...]], Sequence[str]] | None = None,
+                     island_audit: list[dict] | None = None) -> list[tuple[float, float, bytes]] | None:
     """Merge all adjacent proposals lacking a confident language transition.
 
     All source samples and observations are validated before any decision. Weak
@@ -200,13 +239,9 @@ def language_regions(audio: bytes, proposals: list[tuple[float, float, bytes]],
         ends.append(cursor)
     if cursor != frames:
         raise ValueError("Proposals do not conserve every source sample")
-    cuts = [0]
-    for index, (left, right) in enumerate(zip(selections, selections[1:])):
-        if (left["selected"] != right["selected"] and left["selected_probability"] >= 0.5
-                and right["selected_probability"] >= 0.5):
-            cuts.append(ends[index])
-    if len(cuts) == 1:
+    interior = _boundary_cuts(selections, ends, proposals, observe_islands, island_audit)
+    if not interior:
         return None
-    cuts.append(frames)
+    cuts = [0, *interior, frames]
     return [(begin / RATE, (end - begin) / RATE, _wav(pcm[begin * 2:end * 2]))
             for begin, end in zip(cuts, cuts[1:])]

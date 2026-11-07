@@ -6,8 +6,9 @@ import json
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import wave
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,6 +114,49 @@ class LanguageWindowTests(unittest.TestCase):
                 request=A._native_request,codec=A._CODEC_MODULE,clock=lambda:next(ticks),language_boundaries=True)
         self.assertEqual([call.args[2] for call in request.call_args_list],[99,97,95])
 
+    def test_veto_merges_original_pcm_before_asr_and_uses_one_deadline(self):
+        proposals = [(offset, 4, audio(4)) for offset in (0, 4, 8)]
+        replies = [result(language=lang) for lang in ('da', 'en', 'da')]
+        replies.append(result(' Complete', language='da', duration=12))
+        ticks = itertools.count()
+        observations = []
+
+        def observe(chunks, remaining):
+            observations.append((chunks, remaining))
+            return ['da']
+
+        with patch.object(R._BOUNDARIES, 'partitions', return_value=proposals), \
+                patch.object(A, '_native_request', side_effect=replies) as request:
+            raw, _ = R.transcribe(audio(12), 12, [('language_candidates', 'da,en')], 100,
+                                  request=A._native_request, codec=A._CODEC_MODULE, clock=lambda: next(ticks),
+                                  language_boundaries=True, language_observer=observe)
+        self.assertEqual(observations, [((audio(4),), 93)])
+        self.assertEqual(request.call_count, 4)  # Three original LID probes and one merged decode.
+        fields, data = A.parse_multipart(*request.call_args.args[:2])
+        self.assertNotIn('language', fields)
+        self.assertEqual(data, audio(12))
+        value = json.loads(raw)
+        self.assertEqual(value['text'], ' Complete\n')
+        self.assertTrue(value['independent_language_boundaries']['islands'][0]['vetoed'])
+        self.assertNotIn('language_boundary_recovery', value)
+
+    def test_expired_independent_observation_prevents_asr(self):
+        proposals = [(offset, 4, audio(4)) for offset in (0, 4, 8)]
+        ticks = itertools.count()
+
+        def expired(_chunks, _remaining):
+            for _ in range(20):
+                next(ticks)
+            return ['da']
+
+        with patch.object(R._BOUNDARIES, 'partitions', return_value=proposals), \
+                patch.object(A, '_native_request', side_effect=[result(language=lang)
+                             for lang in ('da', 'en', 'da')]) as request, self.assertRaises(A.RequestError):
+            R.transcribe(audio(12), 12, [('language_candidates', 'da,en')], 20, request=A._native_request,
+                         codec=A._CODEC_MODULE, clock=lambda: next(ticks), language_boundaries=True,
+                         language_observer=expired)
+        self.assertEqual(request.call_count, 3)
+
     def test_long_combination_retains_actual_child_provenance_at_global_offsets(self):
         children=[(index*8,8,audio(8)) for index in range(4)]
         replies=[result(duration=8),result(duration=8),
@@ -143,6 +187,93 @@ class LanguageWindowTests(unittest.TestCase):
         audit=json.loads(raw)['language_boundary_recovery']['regions']
         self.assertEqual([(x['source_region_start_frame'],x['source_region_frames']) for x in audit],[(0,640000),(640000,208000)])
         self.assertEqual([x['frames'] for x in audit[0]['decoded_windows']],[480000,160000])
+
+    def test_independent_observer_is_operator_only_and_requires_existing_policies(self):
+        env = {'WHISPER_CPP_HOME_COMPUTE_REVISION': '1' * 40, 'WHISPER_CPP_IMAGE_ID': 'sha256:' + '2' * 64,
+               'WHISPER_CPP_DEVICE': 'cuda', 'WHISPER_CPP_RECOVER_TRAILING_SPEECH': 'true',
+               'WHISPER_CPP_LANGUAGE_BOUNDARIES': 'true'}
+        with patch.dict(os.environ, env, clear=True), patch.object(R, 'verify_detector'):
+            self.assertIsNone(A.load_config().language_observer)
+        for changes in ({'WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS': 'yes'},
+                        {'WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS': 'true'},
+                        {'WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS': 'true',
+                         'WHISPER_CPP_LANGUAGE_BOUNDARIES': 'false', 'WHISPER_CPP_LOCAL_EOT_RANKING': 'true'}):
+            with self.subTest(changes=changes), patch.dict(os.environ, {**env, **changes}, clear=True), \
+                    self.assertRaises(ValueError):
+                A.load_config()
+        for field in ('verify_language_islands', 'observer_manifest_sha256'):
+            with self.subTest(field=field), self.assertRaises(A.RequestError):
+                A.normalize_fields({field: 'true'})
+
+    def test_operator_bundle_preflight_is_forwarded_through_real_adapter_veto(self):
+        code = ('common.py', 'graph.py', 'export.py', 'classify.py', 'installer_check.py',
+                'model.json', 'dependencies.json', 'requirements.lock')
+        pin = {'source_revision': '3' * 40, 'code_sha256': {name: '4' * 64 for name in code},
+               'manifest_sha256': '5' * 64, 'parity_sha256': '6' * 64,
+               'approved_warning_sha256': '7' * 64}
+        pin_raw = json.dumps(pin).encode()
+        env = {'WHISPER_CPP_HOME_COMPUTE_REVISION': '1' * 40,
+               'WHISPER_CPP_IMAGE_ID': 'sha256:' + '2' * 64, 'WHISPER_CPP_DEVICE': 'cuda',
+               'WHISPER_CPP_RECOVER_TRAILING_SPEECH': 'true', 'WHISPER_CPP_LANGUAGE_BOUNDARIES': 'true',
+               'WHISPER_CPP_FILTER_NON_SPEECH': 'true', 'WHISPER_CPP_LOCAL_EOT_RANKING': 'true',
+               'WHISPER_CPP_VERIFY_LANGUAGE_ISLANDS': 'true'}
+        observer = Mock(return_value=['da'])
+        bundle_factory = Mock(side_effect=lambda **values: SimpleNamespace(**values))
+        def factory(bundle):
+            observer.bundle = bundle
+            return observer
+        fake_module = SimpleNamespace(ObserverBundle=bundle_factory, LanguageObserver=Mock(side_effect=factory))
+        module_name = 'homecompute_whisper_language_observer'
+        fake_spec = SimpleNamespace(name=module_name, loader=SimpleNamespace(exec_module=Mock()))
+        real_stat, real_read = Path.stat, Path.read_bytes
+        def stat(path, *args, **kwargs):
+            return (SimpleNamespace(st_size=len(pin_raw)) if path.name == 'language-observer-pin.json'
+                    else real_stat(path, *args, **kwargs))
+        def read(path):
+            return pin_raw if path.name == 'language-observer-pin.json' else real_read(path)
+        with patch.dict(os.environ, env, clear=True), patch.dict(sys.modules), \
+                patch.object(A.importlib.util, 'spec_from_file_location', return_value=fake_spec), \
+                patch.object(A.importlib.util, 'module_from_spec', return_value=fake_module), \
+                patch.object(Path, 'stat', stat), patch.object(Path, 'read_bytes', read), \
+                patch.object(R, 'verify_detector'), patch.object(R._VAD, 'speech_spans', return_value=[]):
+            config = A.load_config()
+        bundle_factory.assert_called_once_with(source_directory=Path('/opt/homecompute/language-observer'),
+                                               graph_directory=Path('/models/language-observer'),
+                                               parity_report=Path('/models/language-observer/parity.json'), **pin)
+        fake_module.LanguageObserver.assert_called_once_with(observer.bundle)
+        observer.preflight.assert_called_once_with(30)
+        self.assertIs(config.language_observer, observer)
+        proposals = [(offset, 4, audio(4, value)) for offset, value in ((0, 1), (4, 2), (8, 3))]
+        pcm = b''.join(R._BOUNDARIES._read_pcm(data)[1] for _, _, data in proposals)
+        original = R._BOUNDARIES._wav(pcm)
+        replies = [result(language=language) for language in ('da', 'en', 'da')]
+        replies.append(result(' Complete', language='da', duration=12))
+        with patch.object(R._BOUNDARIES, 'partitions', return_value=proposals), \
+                patch.object(R._VAD, 'speech_spans', return_value=[]), \
+                patch.object(A, '_native_request', side_effect=replies) as request:
+            raw, _ = A.transcribe_audio(original, 12, 'verbose_json', [('language_candidates', 'da,en')],
+                                       config.native_timeout_seconds,
+                                       recover_trailing_speech=config.recover_trailing_speech,
+                                       language_boundaries=config.language_boundaries,
+                                       filter_non_speech=config.filter_non_speech,
+                                       local_eot_ranking=config.local_eot_ranking,
+                                       language_observer=config.language_observer)
+        observer.assert_called_once()
+        inputs, remaining = observer.call_args.args
+        self.assertEqual(inputs, (proposals[1][2],))
+        self.assertGreater(remaining, 0)
+        self.assertLessEqual(remaining, config.native_timeout_seconds)
+        self.assertEqual(request.call_count, 4)
+        with patch.object(A._CODEC_MODULE, 'ALLOWED_FIELDS',
+                          A._CODEC_MODULE.ALLOWED_FIELDS | {'homecompute_eot_spans'}):
+            fields, submitted = A.parse_multipart(*request.call_args.args[:2])
+        self.assertEqual(submitted, original)
+        self.assertNotIn('language', fields)
+        self.assertNotIn('detect_language', fields)
+        self.assertEqual(fields['homecompute_eot_spans'], '')
+        value = json.loads(raw)
+        self.assertEqual(value['text'], ' Complete\n')
+        self.assertTrue(value['independent_language_boundaries']['islands'][0]['vetoed'])
 
     def test_enabled_whole_source_policy_cannot_advertise_unsupported_duration(self):
         env={'WHISPER_CPP_HOME_COMPUTE_REVISION':'1'*40,'WHISPER_CPP_IMAGE_ID':'sha256:'+'2'*64,
