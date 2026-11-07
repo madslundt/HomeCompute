@@ -1,4 +1,4 @@
-"""Bounded insertions from a donor decode with native token timing estimates."""
+"""Bounded edits from a donor decode with native token timing estimates."""
 import re
 import unicodedata
 
@@ -113,7 +113,11 @@ def _word_times(segment, matches):
                 indices.append(index)
         if not indices or indices[-1] + 1 >= len(points):
             return None
-        timing = points[indices[0]:indices[-1] + 2]
+        following = indices[-1] + 1
+        while (following + 1 < len(points) and points[following] == points[indices[0]]
+               and not WORD.search(pieces[following]["word"])):
+            following += 1
+        timing = points[indices[0]:following + 1]
         if (any(type(t) is not int or not 0 <= t <= 3000 for t in timing)
                 or any(a > b for a, b in zip(timing, timing[1:]))
                 or timing[0] >= timing[-1]):
@@ -191,17 +195,123 @@ def insertion(donor, anchor, start, seam, target_end, end, language):
     return None
 
 
+def anchored_edit(base, donor, row, start, end, language, *, edit_frames, insert_before=False):
+    """Build an edit for one proposed row or join between exact donor anchors."""
+    segments = base["segments"]
+    if type(row) is not int or row < 1:
+        return None
+    right_index = row if insert_before else row + 1
+    if (right_index >= len(segments) or type(start) is not int or type(end) is not int
+            or not 0 <= start < end <= 1200 * RATE or end - start > 30 * RATE
+            or not isinstance(donor, dict) or donor.get("task") != "transcribe"):
+        return None
+    if not isinstance(edit_frames, (tuple, list)) or len(edit_frames) != 2:
+        return None
+    edit_start, edit_end = edit_frames
+    if (type(edit_start) is not int or type(edit_end) is not int
+            or not start <= edit_start < edit_end <= end or edit_end - edit_start > 15 * RATE):
+        return None
+    selected = {"en": "english", "da": "danish"}.get(language)
+    selection = donor.get("language_selection")
+    if selected is None or donor.get("language") != selected:
+        return None
+    if selection is not None:
+        if (not isinstance(selection, dict) or selection.get("selected") != language
+                or type(selection.get("selected_probability")) not in (int, float)
+                or not 0.5 <= selection["selected_probability"] <= 1):
+            return None
+    rows = segments[row - 1:right_index + 1]
+    left, right = rows[0], rows[-1]
+    target = segments[row]
+    text = base["text"]
+    if any(type(s.get("start_offset")) is not int or type(s.get("end_offset")) is not int
+           or not 0 <= s["start_offset"] < s["end_offset"] <= len(text)
+           or text[s["start_offset"]:s["end_offset"]] != s.get("text")
+           for s in rows):
+        return None
+    if any(text[a["end_offset"]:b["start_offset"]] != "\n" for a, b in zip(rows, rows[1:])):
+        return None
+    try:
+        a = _frame(target.get("start"))
+        b = a if insert_before else _frame(target.get("end"))
+    except ValueError:
+        return None
+    if not start < a <= b <= end or not insert_before and a == b:
+        return None
+    _, prefix = _lexemes(left["text"])
+    _, suffix = _lexemes(right["text"])
+    if len(prefix) < 5 or len(suffix) < 5:
+        return None
+    donor_rows = donor.get("segments")
+    if (not isinstance(donor_rows, list) or not donor_rows or
+            any(not isinstance(s, dict) or not isinstance(s.get("text"), str) or not s["text"][:1].isspace()
+                or not isinstance(s.get("words"), list) for s in donor_rows)):
+        return None
+    raw = {"text": "".join(s["text"] for s in donor_rows),
+           "words": [word for s in donor_rows for word in s["words"]]}
+    matches, tokens = _lexemes(raw["text"])
+    left_hits = _matches(tokens, prefix[-5:], 0)
+    right_hits = _matches(tokens, suffix[:5], 0)
+    if len(left_hits) != 1 or len(right_hits) != 1:
+        return None
+    first, stop = left_hits[0] + 5, right_hits[0]
+    if not 0 < stop - first <= 24:
+        return None
+    old_words = _lexemes(target["text"])[1]
+    if not old_words or (not insert_before and tokens[first:stop] == old_words):
+        return None
+    bounds = _word_times(raw, matches[first - 1:stop + 1])
+    if bounds is None or bounds[-1][1] > end - start:
+        return None
+    first_frame, last_frame = bounds[1][0] + start, bounds[-2][1] + start
+    if not edit_start <= first_frame < last_frame <= edit_end:
+        return None
+    if insert_before:
+        # Canonical segment starts can follow the audible join. Exact lexical
+        # anchors carry the splice, but a distant match still cannot fill it.
+        if not a - 4 * RATE <= last_frame <= a + 4 * RATE:
+            return None
+    elif not (first_frame < b and last_frame > a):
+        return None
+    origin = matches[first].start()
+    patch = raw["text"][origin:matches[stop].start()].rstrip()
+    word_times = [{"text": m.group(), "start_offset": m.start() - origin,
+                   "end_offset": m.end() - origin, "start_frame": x + start,
+                   "end_frame": y + start}
+                  for m, (x, y) in zip(matches[first:stop], bounds[1:-1])]
+    leading = len(target["text"]) - len(target["text"].lstrip())
+    offset = target["start_offset"] + leading
+    if insert_before:
+        if WORD.match(target["text"], leading) is None:
+            return None
+        replace_end = offset
+        patch += " "
+    else:
+        trailing = len(target["text"]) - len(target["text"].rstrip())
+        replace_end = target["end_offset"] - trailing
+    return {"insert_offset": offset, "replace_end_offset": replace_end, "text": patch,
+            "words": word_times, "donor_start_frame": start, "donor_end_frame": end,
+            "target_start_frame": a, "target_end_frame": b, "language": language,
+            "approved_start_frame": edit_start, "approved_end_frame": edit_end,
+            "timing_method": TIMING}
+
+
 def overlay(text, edits):
-    """Apply insertions to a separate view, preserving canonical source offsets."""
+    """Apply bounded edits to a separate view, preserving canonical source offsets."""
     parts, mapped, cursor, shift = [], [], 0, 0
+    previous = -1
     for edit in sorted(edits, key=lambda value: value["insert_offset"]):
         at = edit["insert_offset"]
+        end = edit.get("replace_end_offset", at)
+        if at == previous or not cursor <= at <= end <= len(text):
+            raise ValueError("Overlapping or out-of-range transcript edits")
         parts.extend((text[cursor:at], edit["text"]))
         words = [{**word, "start_offset": word["start_offset"] + at + shift,
                   "end_offset": word["end_offset"] + at + shift} for word in edit["words"]]
         mapped.append({**edit, "words": words})
-        cursor = at
-        shift += len(edit["text"])
+        cursor = end
+        previous = at
+        shift += len(edit["text"]) - (end - at)
     parts.append(text[cursor:])
     return {"version": VERSION, "offset_unit": "unicode_code_point",
             "sample_rate": RATE, "text": "".join(parts), "edits": mapped}

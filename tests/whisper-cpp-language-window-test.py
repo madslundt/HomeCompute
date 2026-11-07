@@ -40,6 +40,51 @@ def result(text='', language='en', duration=4, probability=.9):
 
 
 class LanguageWindowTests(unittest.TestCase):
+    def test_timed_replacement_preserves_neighbors_across_donor_segments(self):
+        overlap = OVERLAP
+        rows = []
+        text = ""
+        for start, end, line in [
+                (0, 6, " We can test this on Monday."),
+                (6, 8, " An unsupported sentence."),
+                (8, 13, " The final decision comes tomorrow.")]:
+            rows.append(dict(text=line, start=start, end=end, start_offset=len(text),
+                             end_offset=len(text) + len(line)))
+            text += line + "\n"
+        base = dict(text=text, segments=rows, duration=13)
+        canonical = copy.deepcopy(base)
+        donor = {"task": "transcribe", "language": "english", "segments": []}
+        for tick, pieces in [(350, [" We", " can", " test", " this", " on", " Monday", "."]),
+                             (600, [" Yes", ",", " we", " should", " begin", "."]),
+                             (800, [" The", " final", " decision", " comes", " tomorrow", "."])]:
+            donor["segments"].append({"text": "".join(pieces), "words": [
+                {"word": piece, "t_dtw": tick + i * 10} for i, piece in enumerate(pieces)]})
+        bounds = (6 * overlap.RATE, 8 * overlap.RATE)
+        edit = overlap.anchored_edit(base, donor, 1, 0, 13 * overlap.RATE, "en", edit_frames=bounds)
+        self.assertIsNotNone(edit)
+        view = overlap.overlay(text, [edit])
+        self.assertEqual(view["text"], text.replace("An unsupported sentence.", "Yes, we should begin."))
+        self.assertEqual(base, canonical)
+        self.assertEqual([word["text"] for word in view["edits"][0]["words"]],
+                         ["Yes", "we", "should", "begin"])
+        for word in view["edits"][0]["words"]:
+            self.assertEqual(view["text"][word["start_offset"]:word["end_offset"]], word["text"])
+        self.assertEqual(edit["words"][0]["start_frame"], 6 * overlap.RATE)
+        gap = {**base, "text": text[:rows[1]["start_offset"]] + text[rows[2]["start_offset"]:],
+               "segments": [rows[0], {**rows[2], "start_offset": rows[1]["start_offset"],
+                                      "end_offset": rows[1]["start_offset"] + len(rows[2]["text"])}]}
+        insert = overlap.anchored_edit(gap, donor, 1, 0, 13 * overlap.RATE, "en",
+                                       edit_frames=bounds, insert_before=True)
+        self.assertEqual(overlap.overlay(gap["text"], [insert])["text"],
+                         gap["text"].replace("The final", "Yes, we should begin. The final"))
+        with self.assertRaises(ValueError):
+            overlap.overlay(gap["text"], [insert, insert])
+        self.assertIsNone(overlap.anchored_edit(base, donor, 1, 0, 13 * overlap.RATE, "en",
+                                               edit_frames=(bounds[0] + 1, bounds[1])))
+        donor["segments"].append(donor["segments"][-1])
+        self.assertIsNone(overlap.anchored_edit(base, donor, 1, 0, 13 * overlap.RATE, "en",
+                                               edit_frames=bounds))
+
     def test_overlap_adds_only_timed_native_words_and_rejects_ambiguous_or_untimed_donor(self):
         overlap = OVERLAP
         left = " the council discussed the harbor when..."
