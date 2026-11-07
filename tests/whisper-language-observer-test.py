@@ -250,8 +250,8 @@ class ObserverTests(unittest.TestCase):
         self.assertEqual(detail['unsupported_operators'], [name[:160] for name in names[:32]])
         torch.jit.export_opnames.return_value = ['aten::add.Tensor']
         self.assertEqual(G.validate(model, torch), ['aten::add.Tensor'])
-        torch.jit.export_opnames.return_value = ['aten::sub_.Scalar', 'aten::amax']
-        self.assertEqual(G.validate(model, torch), ['aten::amax', 'aten::sub_.Scalar'])
+        torch.jit.export_opnames.return_value = ['aten::sub_.Scalar', 'aten::relu_', 'aten::amax']
+        self.assertEqual(G.validate(model, torch), ['aten::amax', 'aten::relu_', 'aten::sub_.Scalar'])
         self.assertFalse({'ge', 'bitwise_not'} & G.ATEN)
         node = Mock(); node.kind.return_value = 'prim::Constant'; node.blocks.return_value = []
         output = Mock(); output.toIValue.return_value = 'cuda:0'; node.outputs.return_value = [output]

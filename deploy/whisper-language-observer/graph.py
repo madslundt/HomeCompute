@@ -6,7 +6,7 @@ import json
 ATEN = frozenset('abs add add_ amax arange batch_norm cat chunk clamp clamp_min clone contiguous conv1d '
                  'convolution _convolution detach div eq exp expand flatten full full_like index index_select '
                  'Int leaky_relu linear log log10 log_softmax lt masked_fill matmul max mean mul neg '
-                 'ones ones_like pad pow relu repeat reshape rsub select sigmoid size slice softmax sqrt square '
+                 'ones ones_like pad pow relu relu_ repeat reshape rsub select sigmoid size slice softmax sqrt square '
                  'squeeze stack stft sub sub_ sum tanh to transpose type_as unsqueeze view view_as_real '
                  'where zeros zeros_like constant_pad_nd'.split())
 PRIM = frozenset(('Constant', 'ListConstruct', 'ListUnpack', 'TupleConstruct', 'TupleUnpack',
