@@ -51,8 +51,10 @@ class PartitionTests(unittest.TestCase):
     def test_internal_pause_uses_exact_midpoint_and_conserves_original_pcm(self):
         original = source()
         observe = Mock(return_value=probabilities(160000, (100, 125)))
-        children = B.partitions(original, observe=observe)
+        pauses = []
+        children = B.partitions(original, observe=observe, pause_cuts=pauses)
         cut = (100 + 125) * 256
+        self.assertEqual(pauses, [cut])
         self.assertEqual([(start, seconds) for start, seconds, _ in children],
                          [(0, cut / 16000), (cut / 16000, (160000 - cut) / 16000)])
         self.assertEqual(b"".join(pcm(data) for _, _, data in children), pcm(original))
@@ -141,6 +143,32 @@ class SharedObservationTests(unittest.TestCase):
 
 
 class WholeRecordingTests(unittest.TestCase):
+    def test_scoped_reflow_preserves_unchanged_windows_and_prefers_real_pauses(self):
+        samples = lambda seconds: seconds * B.RATE
+        original = source(samples(142))
+        raw = pcm(original)
+        points = [0, 22, 44, 64, 70, 80, 86, 92, 101, 110, 130, 138, 142]
+        proposals = [(a, b - a, wav(raw[samples(a) * 2:samples(b) * 2]))
+                     for a, b in zip(points, points[1:])]
+        languages = ["da", "da", "da", "en", "da", "da", "en", "da", "da", "da", "en", "en"]
+        scoped = {}
+        regions = B.language_regions(original, proposals, [probe(x) for x in languages], ["da", "en"],
+                                     observe_islands=lambda _: ["da", "da"], scoped_windows=scoped,
+                                     pause_cuts=[samples(x) for x in (64, 80, 86, 101)])
+        self.assertEqual([(a, length) for a, length, _ in regions], [(0, 130), (130, 12)])
+        self.assertEqual(set(scoped), {0})
+        self.assertEqual(scoped[0], [(samples(a), samples(b)) for a, b in
+                         ((0, 30), (30, 60), (60, 80), (80, 101), (101, 122), (122, 130))])
+        windows = list(B.scoped_audio_windows(regions[0][2], 0, scoped[0]))
+        self.assertEqual(b"".join(pcm(data) for _, _, data in windows) + pcm(regions[1][2]), raw)
+
+    def test_scoped_reflow_without_feasible_pauses_uses_only_local_bounded_fallback(self):
+        scale = B.RATE
+        self.assertEqual(B._scoped_layout(0, 110 * scale, [50 * scale, 57 * scale],
+                                        [(50 * scale, 57 * scale)], [51 * scale]),
+                         [(a * scale, b * scale) for a, b in
+                          ((0, 30), (30, 60), (60, 87), (87, 110))])
+
     def test_global_observation_before_thirty_second_cuts_merges_language_context(self):
         frames = 53 * 16000
         original = source(frames)

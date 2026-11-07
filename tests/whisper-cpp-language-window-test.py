@@ -138,7 +138,10 @@ class LanguageWindowTests(unittest.TestCase):
         value = json.loads(raw)
         self.assertEqual(value['text'], ' Complete\n')
         self.assertTrue(value['independent_language_boundaries']['islands'][0]['vetoed'])
-        self.assertNotIn('language_boundary_recovery', value)
+        recovery = value['language_boundary_recovery']
+        self.assertEqual(recovery['window_reflow'], 'local-original-pcm-vad-pause-reflow-v1')
+        self.assertEqual([[(w['source_start_frame'], w['frames']) for w in r['decoded_windows']]
+                          for r in recovery['regions']], [[(0, 192000)]])
 
     def test_expired_independent_observation_prevents_asr(self):
         proposals = [(offset, 4, audio(4)) for offset in (0, 4, 8)]

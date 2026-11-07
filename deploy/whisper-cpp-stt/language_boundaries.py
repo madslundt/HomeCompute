@@ -15,6 +15,7 @@ import wave
 
 VERSION = "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-v2"
 ISLAND_POLICY = "original-pcm-singleton-cut-confirmation-v2"
+REFLOW_POLICY = "local-original-pcm-vad-pause-reflow-v1"
 RATE = 16000
 FRAME_SAMPLES = 512
 MIN_PAUSE_FRAMES = 4
@@ -97,7 +98,8 @@ def observed_probabilities(audio: bytes, *, observe: Callable[[bytes], Sequence[
     return list(probabilities)
 
 
-def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> list[tuple[float, float, bytes]]:
+def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]],
+               pause_cuts: list[int] | None = None) -> list[tuple[float, float, bytes]]:
     """Observe <=1200s globally, then propose sample-conserving <=30s atoms.
 
     Acoustic proposals precede fixed ASR windows, so language regions can cross
@@ -117,6 +119,8 @@ def partitions(audio: bytes, *, observe: Callable[[bytes], Sequence[float]]) -> 
                 cut = (pause_start + index) * (FRAME_SAMPLES // 2)
                 if cut - cuts[-1] >= MIN_CHILD_SAMPLES and frames - cut >= MIN_CHILD_SAMPLES:
                     cuts.append(cut)
+                    if pause_cuts is not None:
+                        pause_cuts.append(cut)
             pause_start = None
     if len(cuts) == 1 and frames <= MAX_PROPOSAL_SAMPLES:
         return [(0.0, frames / RATE, audio)]
@@ -176,16 +180,17 @@ def _sample_position(seconds: object) -> int:
 def _boundary_cuts(selections: list[dict], ends: list[int],
                    proposals: list[tuple[float, float, bytes]],
                    observe_islands: Callable[[tuple[bytes, ...]], Sequence[str]] | None,
-                   island_audit: list[dict] | None) -> list[int]:
+                   island_audit: list[dict] | None) -> tuple[list[int], list[int]]:
     cuts = {index for index, (left, right) in enumerate(zip(selections, selections[1:]))
             if (left["selected"] != right["selected"] and left["selected_probability"] >= 0.5
                 and right["selected_probability"] >= 0.5)}
+    original = [ends[index] for index in sorted(cuts)]
     if observe_islands is None:
-        return [ends[index] for index in sorted(cuts)]
+        return original, original
     islands = [i for i in range(1, len(selections) - 1) if i - 1 in cuts and i in cuts
                and selections[i - 1]["selected"] == selections[i + 1]["selected"]]
     if not islands:
-        return [ends[index] for index in sorted(cuts)]
+        return original, original
     # This is one batch of the exact original proposals, after validating source
     # geometry. An observer may veto a pair of existing cuts, never create a cut
     # or select the language of a native decode.
@@ -206,13 +211,100 @@ def _boundary_cuts(selections: list[dict], ends: list[int],
                                  "native_language": selections[i]["selected"],
                                  "flanking_language": selections[i - 1]["selected"],
                                  "observed_language": code, "vetoed": veto})
-    return [ends[index] for index in sorted(cuts)]
+    return original, [ends[index] for index in sorted(cuts)]
+
+
+def _pause_layout(begin: int, end: int, pauses: Sequence[int],
+                  islands: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Fit existing acoustic pauses to the same minimum decode count, if possible."""
+    bounded = list(_bounded_ranges(begin, end))
+    count = len(bounded)
+    if count == 1:
+        return bounded
+    length = end - begin
+    # Keep at least one minimum decode window of context around vetoed speech
+    # when feasible, then try other real pauses outside the rejected islands.
+    for margin in (MIN_CHILD_SAMPLES, 0):
+        available = [p for p in pauses if begin < p < end
+                     and not any(a - margin <= p <= b + margin for a, b in islands)]
+        states = {begin: (0, ())}
+        for step in range(1, count):
+            remaining = count - step
+            next_states = {}
+            for cut in available:
+                if not remaining * MIN_CHILD_SAMPLES <= end - cut <= remaining * MAX_PROPOSAL_SAMPLES:
+                    continue
+                distance = abs((cut - begin) * count - length * step)
+                paths = ((cost + distance, (*path, cut)) for prior, (cost, path) in states.items()
+                         if MIN_CHILD_SAMPLES <= cut - prior <= MAX_PROPOSAL_SAMPLES)
+                best = min(paths, default=None)
+                if best is not None:
+                    next_states[cut] = best
+            states = next_states
+            if not states:
+                break
+        if states:
+            _, path = min(states.values())
+            points = (begin, *path, end)
+            return list(zip(points, points[1:]))
+    # Dense speech may offer no usable set of pauses. The deterministic
+    # bounded fallback still reflows only this block and preserves every frame.
+    return bounded
+
+
+def _scoped_layout(begin: int, end: int, cuts: Sequence[int],
+                   islands: Sequence[tuple[int, int]], pauses: Sequence[int]
+                   ) -> list[tuple[int, int]]:
+    """Preserve the old primary windows outside overlapping veto neighborhoods."""
+    old_points = [begin, *(cut for cut in cuts if begin < cut < end), end]
+    old = [window for left, right in zip(old_points, old_points[1:])
+           for window in _bounded_ranges(left, right)]
+    index = {window: i for i, window in enumerate(old)}
+    blocks = []
+    for island in islands:
+        i = index[island]  # One exact original proposal, never over 30 seconds.
+        if not 0 < i < len(old) - 1:
+            raise ValueError("Vetoed island lacks neighboring context")
+        start, stop = i - 1, i + 2
+        if blocks and start < blocks[-1][1]:
+            blocks[-1][1] = max(blocks[-1][1], stop)
+            blocks[-1][2].append(island)
+        else:
+            blocks.append([start, stop, [island]])
+    result, cursor = [], 0
+    for start, stop, affected in blocks:
+        result.extend(old[cursor:start])
+        layout = _pause_layout(old[start][0], old[stop - 1][1], pauses, affected)
+        if len(layout) > stop - start:
+            raise ValueError("Scoped reflow added primary decodes")
+        result.extend(layout)
+        cursor = stop
+    result.extend(old[cursor:])
+    return result
+
+
+def scoped_audio_windows(audio: bytes, region_start: int, ranges: Sequence[tuple[int, int]]):
+    """Yield absolute-window geometry relative to its region, with original PCM."""
+    frames, pcm = _read_pcm(audio)
+    cursor = region_start
+    for begin, end in ranges:
+        if begin != cursor or not 0 < end - begin <= MAX_PROPOSAL_SAMPLES or end > region_start + frames:
+            raise ValueError("Invalid scoped decode geometry")
+        cursor = end
+    if cursor != region_start + frames:
+        raise ValueError("Scoped windows did not cover the region")
+    for begin, end in ranges:
+        yield (begin - region_start) / RATE, (end - begin) / RATE, _wav(
+            pcm[(begin - region_start) * 2:(end - region_start) * 2])
 
 
 def language_regions(audio: bytes, proposals: list[tuple[float, float, bytes]],
                      probes: list[dict], candidates: list[str], *,
                      observe_islands: Callable[[tuple[bytes, ...]], Sequence[str]] | None = None,
-                     island_audit: list[dict] | None = None) -> list[tuple[float, float, bytes]] | None:
+                     island_audit: list[dict] | None = None,
+                     pause_cuts: Sequence[int] = (),
+                     scoped_windows: dict[int, list[tuple[int, int]]] | None = None
+                     ) -> list[tuple[float, float, bytes]] | None:
     """Merge all adjacent proposals lacking a confident language transition.
 
     All source samples and observations are validated before any decision. Weak
@@ -239,9 +331,21 @@ def language_regions(audio: bytes, proposals: list[tuple[float, float, bytes]],
         ends.append(cursor)
     if cursor != frames:
         raise ValueError("Proposals do not conserve every source sample")
-    interior = _boundary_cuts(selections, ends, proposals, observe_islands, island_audit)
-    if not interior:
-        return None
+    audit = []
+    original, interior = _boundary_cuts(selections, ends, proposals, observe_islands, audit)
+    if island_audit is not None:
+        island_audit.extend(audit)
     cuts = [0, *interior, frames]
+    if scoped_windows is not None and original != interior:
+        islands = [(r["source_start_frame"], r["source_start_frame"] + r["frames"])
+                   for r in audit if r["vetoed"]]
+        for begin, end in zip(cuts, cuts[1:]):
+            affected = [island for island in islands if begin < island[0] and island[1] < end]
+            if affected:
+                scoped_windows[begin] = _scoped_layout(begin, end, original, affected, pause_cuts)
+    if not interior and not scoped_windows:
+        return None
+    if not interior:
+        return [(0.0, frames / RATE, audio)]
     return [(begin / RATE, (end - begin) / RATE, _wav(pcm[begin * 2:end * 2]))
             for begin, end in zip(cuts, cuts[1:])]
