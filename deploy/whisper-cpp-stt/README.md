@@ -85,14 +85,19 @@ an ASR label or establishes the neighboring language. This creates no cut and
 forces no language. Overlapping veto requests preserve both original cut pairs.
 Malformed, failed or late observations fail before ASR. Audio stays unchanged.
 
-An applied veto reflows only the old primary window for that island and the
-nearest old primary window on either side. Reflow blocks that share an old
-window are merged. Surviving language boundaries and every old primary window
-outside the blocks keep their exact source samples and positions. Within each
-block, the adapter prefers detected pause midpoints outside vetoed speech and
-uses the ordinary bounded layout if there is no feasible pause layout. It does
-not add primary decodes relative to the layout before the veto. In the
-fallback, a decode edge can still coincide with a vetoed language cut.
+An applied veto reflows the old primary window for that island with both
+neighboring primary windows if they fit together in one native window.
+Otherwise, prefer the shorter eligible neighbor. That neighbor must
+contribute at least the island's duration in original audio, and the pair
+must fit in one native window. If neither qualifies, include both. Reflow blocks
+that share an old window are merged. Surviving language boundaries and every
+old primary window outside the blocks keep their exact source samples and
+positions. Within each block, the adapter prefers detected pause midpoints
+outside vetoed speech and uses the ordinary bounded layout if there is no
+feasible pause layout. It does not add primary decodes relative to the layout
+before the veto. Preserved neighbors or the bounded fallback can leave a
+decode edge at a vetoed language cut; the veto removes the language region
+boundary at that point.
 The response records the window reflow policy and the actual source ranges
 decoded.
 

@@ -143,31 +143,37 @@ class SharedObservationTests(unittest.TestCase):
 
 
 class WholeRecordingTests(unittest.TestCase):
-    def test_scoped_reflow_preserves_unchanged_windows_and_prefers_real_pauses(self):
+    def test_minimum_reflow_shares_one_flank_and_preserves_the_other_windows(self):
         samples = lambda seconds: seconds * B.RATE
-        original = source(samples(142))
+        original = source(samples(157))
         raw = pcm(original)
-        points = [0, 22, 44, 64, 70, 80, 86, 92, 101, 110, 130, 138, 142]
+        points = [0, 22, 44, 62, 78, 84, 94, 100, 106, 115, 124, 145, 153, 157]
         proposals = [(a, b - a, wav(raw[samples(a) * 2:samples(b) * 2]))
                      for a, b in zip(points, points[1:])]
-        languages = ["da", "da", "da", "en", "da", "da", "en", "da", "da", "da", "en", "en"]
+        languages = ["da", "da", "da", "da", "en", "da", "da", "en", "da", "da", "da", "en", "en"]
         scoped = {}
         regions = B.language_regions(original, proposals, [probe(x) for x in languages], ["da", "en"],
                                      observe_islands=lambda _: ["da", "da"], scoped_windows=scoped,
-                                     pause_cuts=[samples(x) for x in (64, 80, 86, 101)])
-        self.assertEqual([(a, length) for a, length, _ in regions], [(0, 130), (130, 12)])
+                                     pause_cuts=[samples(x) for x in (78, 94, 100, 115)])
+        self.assertEqual([(a, length) for a, length, _ in regions], [(0, 145), (145, 12)])
         self.assertEqual(set(scoped), {0})
         self.assertEqual(scoped[0], [(samples(a), samples(b)) for a, b in
-                         ((0, 30), (30, 60), (60, 80), (80, 101), (101, 122), (122, 130))])
+                         ((0, 30), (30, 60), (60, 78), (78, 106), (106, 136), (136, 145))])
         windows = list(B.scoped_audio_windows(regions[0][2], 0, scoped[0]))
         self.assertEqual(b"".join(pcm(data) for _, _, data in windows) + pcm(regions[1][2]), raw)
 
     def test_scoped_reflow_without_feasible_pauses_uses_only_local_bounded_fallback(self):
         scale = B.RATE
-        self.assertEqual(B._scoped_layout(0, 110 * scale, [50 * scale, 57 * scale],
-                                        [(50 * scale, 57 * scale)], [51 * scale]),
+        self.assertEqual(B._scoped_layout(0, 110 * scale, [40 * scale, 60 * scale],
+                                        [(40 * scale, 60 * scale)], [51 * scale]),
                          [(a * scale, b * scale) for a, b in
-                          ((0, 30), (30, 60), (60, 87), (87, 110))])
+                          ((0, 30), (30, 60), (60, 90), (90, 110))])
+
+    def test_multiwindow_reflow_uses_feasible_acoustic_pause(self):
+        scale = B.RATE
+        self.assertEqual(B._pause_layout(0, 50 * scale, [25 * scale, 31 * scale],
+                                        [(12 * scale, 17 * scale)]),
+                         [(0, 25 * scale), (25 * scale, 50 * scale)])
 
     def test_global_observation_before_thirty_second_cuts_merges_language_context(self):
         frames = 53 * 16000
