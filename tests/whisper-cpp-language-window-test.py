@@ -1,4 +1,5 @@
 """Language probes select acoustic geometry; hypothesis text never selects it."""
+import copy
 import importlib.util
 import io
 import itertools
@@ -15,6 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('language_window_adapter', ROOT/'deploy/whisper-cpp-stt/adapter.py')
 A = importlib.util.module_from_spec(spec);sys.modules[spec.name] = A;spec.loader.exec_module(A)
 R = A._RECOVERY_MODULE
+overlap_spec = importlib.util.spec_from_file_location(
+    'overlap_repair', ROOT/'deploy/whisper-cpp-stt/overlap_repair.py')
+OVERLAP = importlib.util.module_from_spec(overlap_spec)
+overlap_spec.loader.exec_module(OVERLAP)
 
 
 def audio(seconds=8, value=1):
@@ -35,6 +40,106 @@ def result(text='', language='en', duration=4, probability=.9):
 
 
 class LanguageWindowTests(unittest.TestCase):
+    def test_timed_replacement_preserves_neighbors_across_donor_segments(self):
+        overlap = OVERLAP
+        rows = []
+        text = ""
+        for start, end, line in [
+                (0, 6, " We can test this on Monday."),
+                (6, 8, " An unsupported sentence."),
+                (8, 13, " The final decision comes tomorrow.")]:
+            rows.append(dict(text=line, start=start, end=end, start_offset=len(text),
+                             end_offset=len(text) + len(line)))
+            text += line + "\n"
+        base = dict(text=text, segments=rows, duration=13)
+        canonical = copy.deepcopy(base)
+        donor = {"task": "transcribe", "language": "english", "segments": []}
+        for tick, pieces in [(350, [" We", " can", " test", " this", " on", " Monday", "."]),
+                             (600, [" Yes", ",", " we", " should", " begin", "."]),
+                             (800, [" The", " final", " decision", " comes", " tomorrow", "."])]:
+            donor["segments"].append({"text": "".join(pieces), "words": [
+                {"word": piece, "t_dtw": tick + i * 10} for i, piece in enumerate(pieces)]})
+        bounds = (6 * overlap.RATE, 8 * overlap.RATE)
+        edit = overlap.anchored_edit(base, donor, 1, 0, 13 * overlap.RATE, "en", edit_frames=bounds)
+        self.assertIsNotNone(edit)
+        view = overlap.overlay(text, [edit])
+        self.assertEqual(view["text"], text.replace("An unsupported sentence.", "Yes, we should begin."))
+        self.assertEqual(base, canonical)
+        self.assertEqual([word["text"] for word in view["edits"][0]["words"]],
+                         ["Yes", "we", "should", "begin"])
+        for word in view["edits"][0]["words"]:
+            self.assertEqual(view["text"][word["start_offset"]:word["end_offset"]], word["text"])
+        self.assertEqual(edit["words"][0]["start_frame"], 6 * overlap.RATE)
+        gap = {**base, "text": text[:rows[1]["start_offset"]] + text[rows[2]["start_offset"]:],
+               "segments": [rows[0], {**rows[2], "start_offset": rows[1]["start_offset"],
+                                      "end_offset": rows[1]["start_offset"] + len(rows[2]["text"])}]}
+        insert = overlap.anchored_edit(gap, donor, 1, 0, 13 * overlap.RATE, "en",
+                                       edit_frames=bounds, insert_before=True)
+        self.assertEqual(overlap.overlay(gap["text"], [insert])["text"],
+                         gap["text"].replace("The final", "Yes, we should begin. The final"))
+        with self.assertRaises(ValueError):
+            overlap.overlay(gap["text"], [insert, insert])
+        self.assertIsNone(overlap.anchored_edit(base, donor, 1, 0, 13 * overlap.RATE, "en",
+                                               edit_frames=(bounds[0] + 1, bounds[1])))
+        donor["segments"].append(donor["segments"][-1])
+        self.assertIsNone(overlap.anchored_edit(base, donor, 1, 0, 13 * overlap.RATE, "en",
+                                               edit_frames=bounds))
+
+    def test_overlap_adds_only_timed_native_words_and_rejects_ambiguous_or_untimed_donor(self):
+        overlap = OVERLAP
+        left = " the council discussed the harbor when..."
+        right = " we then walked home."
+        text = left + "\n" + right + "\n"
+        base = {"text": text, "segments": [
+            {"text": left, "start_offset": 0, "end_offset": len(left)},
+            {"text": right, "start": 5, "start_offset": len(left) + 1,
+             "end_offset": len(left) + 1 + len(right)},
+        ]}
+        seam = 5 * overlap.RATE
+        anchor = overlap.anchors(base, seam)
+        self.assertIsNotNone(anchor)
+        pieces = [" the", " council", " discussed", " the", " harbor", " when",
+                  " rain", " be", "gan", ",", " we", " then", " walked", " home", "."]
+        donor = {"task": "transcribe", "language_selection": {
+            "selected": "en", "selected_probability": .9}, "segments": [{
+                "text": "".join(pieces), "start": 3, "end": 9,
+                "words": [{"word": word, "t_dtw": 360 + i * 30}
+                          for i, word in enumerate(pieces)],
+            }]}
+        geometry = (0, seam, 8 * overlap.RATE, 9 * overlap.RATE, "en")
+        edit = overlap.insertion(donor, anchor, *geometry)
+        self.assertIsNotNone(edit)
+        view = overlap.overlay(text, [edit])
+        self.assertEqual(view["text"], left + "\n rain began, we then walked home.\n")
+        at = edit["insert_offset"]
+        self.assertEqual(view["text"][:at] + view["text"][at + len(edit["text"]):], text)
+        self.assertEqual([(w["text"], w["start_frame"], w["end_frame"]) for w in edit["words"]],
+                         [("rain", 86400, 91200), ("began", 91200, 100800)])
+        for word in view["edits"][0]["words"]:
+            self.assertEqual(view["text"][word["start_offset"]:word["end_offset"]], word["text"])
+        rate = overlap.RATE
+        base["language_boundary_recovery"] = {"regions": [{"decoded_windows": [
+            {"source_start_frame": 0, "frames": 5 * rate},
+            {"source_start_frame": seam, "frames": 6 * rate},
+        ]}]}
+        island = {"source_start_frame": seam, "frames": 3 * rate, "flanking_language": "en",
+                  "observed_language": "en", "vetoed": True}
+        base["independent_language_boundaries"] = {"islands": [island]}
+        canonical = copy.deepcopy(base)
+        decode = Mock(return_value=donor)
+        separate = overlap.repair(base, decode)
+        decode.assert_called_once_with(0, 11 * rate)
+        self.assertEqual(separate["text"], view["text"])
+        self.assertEqual(base, canonical)
+        decode.reset_mock()
+        island.update(observed_language="da", vetoed=False)
+        self.assertIsNone(overlap.repair(base, decode))
+        decode.assert_not_called()
+        donor["segments"][0]["words"][7]["t_dtw"] = -1
+        self.assertIsNone(overlap.insertion(donor, anchor, *geometry))
+        donor["segments"].append({"text": " we then walked home."})
+        self.assertIsNone(overlap.insertion(donor, anchor, *geometry))
+
     def execute(self, replies, *, candidates=True):
         fields=[('response_format','verbose_json'),('language','auto')]
         if candidates:fields.append(('language_candidates','da,en'))

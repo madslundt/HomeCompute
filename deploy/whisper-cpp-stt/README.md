@@ -101,6 +101,25 @@ boundary at that point.
 The response records the window reflow policy and the actual source ranges
 decoded.
 
+`overlap_repair.py` supports offline evaluation of a separate timed donor
+decode against canonical verbose JSON. The caller supplies a decoder for
+original-PCM sample ranges. A veto must agree with the flanking language and
+touch a primary decode seam. The helper requests up to three overlaps of up to
+30 seconds each. Unique lexical anchors and ordered, positive word timing
+estimates gate insertions. The resulting view has its own text, Unicode
+code-point offsets, and absolute 16 kHz sample ranges. It leaves canonical text
+and segments intact. Ranges use native DTW token boundary estimates. A word
+ends at the next token's alignment point. The serving path continues to use
+its existing native decoder settings.
+
+Offline callers can also propose replacing one suspect segment or inserting
+words at a segment join. The donor must cover the proposed edit, transcribe the
+expected language, and contain unique, exact five-word anchors on both sides.
+The caller provides a bounded source interval for the edited words. The helper
+preserves all surrounding text and provides candidate word times in a separate
+view. Review the source speech and validate timing independently before
+accepting an edit.
+
 `language_observer.py` sends one bounded batch to one isolated CPU child and
 loads its graph once. Its time limit shares the transcription request deadline;
 source, model, public parity and both runtime version identities are pinned.
