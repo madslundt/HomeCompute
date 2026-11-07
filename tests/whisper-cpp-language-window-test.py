@@ -139,7 +139,7 @@ class LanguageWindowTests(unittest.TestCase):
         self.assertEqual(value['text'], ' Complete\n')
         self.assertTrue(value['independent_language_boundaries']['islands'][0]['vetoed'])
         recovery = value['language_boundary_recovery']
-        self.assertEqual(recovery['window_reflow'], 'local-original-pcm-vad-pause-reflow-v1')
+        self.assertEqual(recovery['window_reflow'], 'minimum-original-pcm-context-reflow-v1')
         self.assertEqual([[(w['source_start_frame'], w['frames']) for w in r['decoded_windows']]
                           for r in recovery['regions']], [[(0, 192000)]])
 

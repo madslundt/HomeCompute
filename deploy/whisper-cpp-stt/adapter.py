@@ -390,7 +390,7 @@ class CandidateHandler(BaseHTTPRequestHandler):
                     "enabled": self.server.config.language_observer is not None,
                     "version": _RECOVERY_MODULE._BOUNDARIES.REFLOW_POLICY,
                     "requires": "applied_independent_singleton_veto",
-                    "scope": "island_and_one_original_primary_window_on_each_side",
+                    "scope": "island_and_minimum_eligible_original_flank_context",
                     "prefers": "observed_pauses",
                     "decode_count_baseline": "pre_veto_layout",
                     "max_extra_primary_decodes": 0,

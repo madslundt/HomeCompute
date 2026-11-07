@@ -15,7 +15,7 @@ import wave
 
 VERSION = "whole-source-normalized-vad-1s-rms24dbfs-cap30db-pause128ms-adjacent-language-confidence0.5-v2"
 ISLAND_POLICY = "original-pcm-singleton-cut-confirmation-v2"
-REFLOW_POLICY = "local-original-pcm-vad-pause-reflow-v1"
+REFLOW_POLICY = "minimum-original-pcm-context-reflow-v1"
 RATE = 16000
 FRAME_SAMPLES = 512
 MIN_PAUSE_FRAMES = 4
@@ -255,7 +255,7 @@ def _pause_layout(begin: int, end: int, pauses: Sequence[int],
 def _scoped_layout(begin: int, end: int, cuts: Sequence[int],
                    islands: Sequence[tuple[int, int]], pauses: Sequence[int]
                    ) -> list[tuple[int, int]]:
-    """Preserve the old primary windows outside overlapping veto neighborhoods."""
+    """Use the smallest adjacent context that can cover the island in one decode."""
     old_points = [begin, *(cut for cut in cuts if begin < cut < end), end]
     old = [window for left, right in zip(old_points, old_points[1:])
            for window in _bounded_ranges(left, right)]
@@ -265,7 +265,17 @@ def _scoped_layout(begin: int, end: int, cuts: Sequence[int],
         i = index[island]  # One exact original proposal, never over 30 seconds.
         if not 0 < i < len(old) - 1:
             raise ValueError("Vetoed island lacks neighboring context")
-        start, stop = i - 1, i + 2
+        width = island[1] - island[0]
+        # A single flank must contribute at least as much original context
+        # as the island and fit with it in one native window. Prefer changing
+        # less source audio; ties keep the existing chronological order.
+        options = [(old[j][1] - old[j][0], j) for j in (i - 1, i + 1)
+                   if width <= old[j][1] - old[j][0] <= MAX_PROPOSAL_SAMPLES - width]
+        if options and old[i + 1][1] - old[i - 1][0] > MAX_PROPOSAL_SAMPLES:
+            _, adjacent = min(options)
+            start, stop = min(i, adjacent), max(i, adjacent) + 1
+        else:
+            start, stop = i - 1, i + 2
         if blocks and start < blocks[-1][1]:
             blocks[-1][1] = max(blocks[-1][1], stop)
             blocks[-1][2].append(island)
