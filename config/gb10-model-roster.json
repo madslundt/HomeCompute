@@ -1,6 +1,6 @@
 {
   "schema_version": 4,
-  "roster_version": "2026-11-02-unified-whisper-large-v3",
+  "roster_version": "2026-11-07-language-observer-staging",
   "hardware": {
     "accelerator": "NVIDIA GB10",
     "unified_memory_gib": 128,
@@ -240,6 +240,27 @@
       "license_id": "cc0-1.0",
       "disposition": "independent-cpu-fallback",
       "host_class": "home-core-cpu"
+    },
+    "language_observer_experiment": {
+      "model_id": "speechbrain/lang-id-voxlingua107-ecapa",
+      "revision": "0253049ae131d6a4be1c4f0d8b0ff483a0f8c8e9",
+      "license_id": "apache-2.0",
+      "disposition": "experimental-staging-only-unqualified",
+      "activation": "disabled",
+      "promotion_authorized": false,
+      "issue": "https://github.com/madslundt/HomeCompute/issues/89",
+      "staging_manifest": "deploy/whisper-language-observer/model.json",
+      "purpose": "auxiliary-language-classification-only-no-asr-or-speaker-identification",
+      "runtime_profile": {
+        "runtime": "torchscript-cpu-only",
+        "isolation_group": "experimental-language-observer",
+        "export_torch": "2.7.1",
+        "runtime_torch": "2.11.0a0+eb65b36914.nv26.2",
+        "memory_bytes": 2147483648,
+        "swap_bytes": 0,
+        "cpus": 4
+      },
+      "qualification": "unqualified; separate source review and authorization required before artifact fetch/build/model load; no production or capability route"
     }
   },
   "excluded_models": [
