@@ -1,5 +1,44 @@
 # Hermes household owner agent
 
+## Owner chat specialists
+
+Use a fresh chat in the existing owner-only Hermes Mattermost DM or authenticated
+Webapp. The specialist roles use the owner runtime and its existing scoped tools.
+
+| Role | Example |
+| --- | --- |
+| [Day Plan](skills/day-plan/SKILL.md) | `/day-plan Hvad skal jeg forberede til i morgen?` |
+| [Follow-through](skills/follow-through/SKILL.md) | `/follow-through What did I commit to yesterday?` |
+| [Home Ops](skills/home-ops/SKILL.md) | `/home-ops Is anything at home out of the ordinary?` |
+
+If a client handles slash commands locally, ask Hermes by skill name in plain
+text. The roles use Copenhagen dates, answer in the owner's language, and keep
+first replies short, source-linked and focused on the next action. Availability
+and freshness of Aula, Calendar, Daythread and Home Assistant evidence come from
+the existing tools. The skills are on demand and confer no additional authority.
+The owner chat still uses its existing action controllers and task lifecycle
+when asked for a change.
+
+From a clean published agents guest checkout, as the existing guest operator:
+
+```sh
+python3 scripts/setup-hermes-specialists.py --revision FULL_SHA
+python3 scripts/setup-hermes-specialists.py --revision FULL_SHA --apply
+```
+
+The installer verifies the selected Ready owner image and household readiness
+gates. It uses NemoClaw's native skill lifecycle for exact source matches or new
+canonical entries. It preserves conflicting skills and verifies readback.
+Inspect the plan before retrying an interrupted run. A partial install is
+resumable when all present entries match source.
+
+Run `nemohermes hermes-personal-v23 skill list`, then test each role in a
+fresh authenticated owner session with a read-only request. Check skill
+discovery, the reported sources and the handling of unavailable evidence.
+Use `--rollback` with the same published revision to remove the three exact
+source copies, then verify discovery in a new session. Conflicts hold rollback
+for review. This lifecycle requires neither a gateway restart nor a host release.
+
 ## Hands-free browser voice
 
 See [the dated browser voice verification](../../docs/hermes-voice-validation-2026-11-06.md)
