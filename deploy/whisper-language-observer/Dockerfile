@@ -19,6 +19,7 @@ RUN python3 -I -B /opt/language-observer/installer_check.py snapshot /tmp/nvidia
  && rm -rf /opt/observer-wheels /tmp/nvidia-packages.json \
  && chmod -R a-w /opt/language-observer /opt/observer-export
 ENV HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION} \
+    LOGNAME=language-observer \
     PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \
     HF_HUB_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 \
     CUDA_VISIBLE_DEVICES="" NVIDIA_VISIBLE_DEVICES=void \

@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import copy
+import getpass
 import importlib.util
 import io
 import json
 import math
 import os
+import pwd
 from pathlib import Path
 import subprocess
 import sys
@@ -45,7 +47,7 @@ def wav(frames=48000):
 def owned_row(record):
     return {'Id': record['container_id'], 'Image': record['image_id'], 'Name': '/' + record['name'],
             'Config': {'Labels': {O.LABEL: record['owner']}, 'User': '10001:10001',
-                       'Env': ['CUDA_VISIBLE_DEVICES=', 'NVIDIA_VISIBLE_DEVICES=void']},
+                       'Env': ['CUDA_VISIBLE_DEVICES=', 'NVIDIA_VISIBLE_DEVICES=void', 'LOGNAME=language-observer']},
             'Mounts': [{'Type': 'bind', 'Source': a, 'Destination': b, 'RW': False} for a, b in record['mounts']],
             'HostConfig': {'Memory': O.LIMIT, 'MemorySwap': O.LIMIT, 'NanoCpus': 4_000_000_000,
                 'Tmpfs': {'/tmp': 'rw,noexec,nosuid,nodev,size=256m,uid=10001,gid=10001,mode=0700'},
@@ -183,6 +185,34 @@ class ObserverTests(unittest.TestCase):
         altered = copy.deepcopy(row); altered['Config']['Labels'][O.LABEL] = 'foreign'
         with self.assertRaises(ValueError):
             inspect(altered)
+
+    def test_fixed_login_name_avoids_unmapped_uid_lookup(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(
+                pwd, 'getpwuid', side_effect=KeyError('getpwuid(): uid not found: 10001')) as lookup:
+            with self.assertRaises((KeyError, OSError)):
+                getpass.getuser()
+            lookup.assert_called_once()
+            with patch.dict(os.environ, {'LOGNAME': 'language-observer'}):
+                self.assertEqual(getpass.getuser(), 'language-observer')
+            lookup.assert_called_once()
+
+    def test_runtime_jobs_inherit_exact_worker_login_name(self):
+        self.assertIn('LOGNAME=language-observer', (C.ROOT / 'Dockerfile').read_text())
+        self.auth.update(graph_manifest_sha256='manifest', parity_sha256='parity', approved_warning_sha256='warnings')
+        for mode in ('verify', 'classify'):
+            record = {**self.record, 'mode': mode}
+            row = owned_row(record)
+            self.assertEqual(self.control.command(mode, 'case')[:5],
+                             ['python3', '-I', '-B', '/opt/language-observer/classify.py', mode])
+            with patch.object(O, 'run', return_value=subprocess.CompletedProcess(
+                    [], 0, json.dumps([row]).encode(), b'')):
+                self.control.inspect(record)
+            device_env = row['Config']['Env'][:-1]
+            for identity in ([], ['LOGNAME='], ['LOGNAME=other'], ['LOGNAME=language-observer', 'LOGNAME=other']):
+                row['Config']['Env'] = device_env + identity
+                with self.subTest(mode=mode, identity=identity), patch.object(O, 'run', return_value=
+                        subprocess.CompletedProcess([], 0, json.dumps([row]).encode(), b'')), self.assertRaises(ValueError):
+                    self.control.inspect(record)
 
     def test_uncertain_docker_failure_is_not_worker_absence(self):
         for error, absent in ((b'No such container: cid', True), (b'Cannot connect to Docker', False)):

@@ -154,6 +154,7 @@ class Controller:
                     host.get('CapDrop') == ['ALL'] and 'no-new-privileges' in host.get('SecurityOpt', []) and
                     host.get('Init') is True and host['PidsLimit'] == 128 and
                     mounts_match(record, row) and
+                    [item for item in config['Env'] if item.partition('=')[0] == 'LOGNAME'] == ['LOGNAME=language-observer'] and
                     all(item in config['Env'] for item in ['CUDA_VISIBLE_DEVICES=', 'NVIDIA_VISIBLE_DEVICES=void']),
                     'Worker isolation changed')
         return row

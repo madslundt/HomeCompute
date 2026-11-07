@@ -101,7 +101,9 @@ additionally takes `--input` pointing to its frozen private WAV.
 Every worker has2GiB RAM, zero swap,4CPU, Torch1thread, no GPU, network, ports,
 restart, capabilities or writable root filesystem. The model temporary filesystem `/tmp` is256MiB; `/dev/shm` is32MiB. Host admission requires `MemAvailable >= 10% MemTotal + 2GiB`; the
 independent guardian preserves the10% floor throughout. It verifies actual Docker
-ownership/resources, CPU-only exposure, cgroup swap and memory events. Host floor,
+ownership/resources, CPU-only exposure, cgroup swap and memory events. The fixed
+`LOGNAME=language-observer` gives NVIDIA Torch a stable cache identity during
+deterministic setup for both runtime verification and classification. Host floor,
 OOM, memory events, guardian loss, output overflow or deadline failure latches a
 failed phase and stops only the owned worker. Failure artifacts remain; forced
 termination is never described as successful qualification.
