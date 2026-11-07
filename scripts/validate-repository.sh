@@ -312,6 +312,7 @@ python3 "$REPO_ROOT/tests/whisper-cpp-language-boundaries-test.py"
 python3 "$REPO_ROOT/tests/whisper-cpp-language-window-test.py"
 python3 "$REPO_ROOT/tests/whisper-cpp-non-speech-test.py"
 python3 "$REPO_ROOT/tests/whisper-cpp-non-speech-window-test.py"
+python3 "$REPO_ROOT/tests/whisper-language-observer-test.py"
 python3 "$REPO_ROOT/tests/whisper-cuda-replacement-test.py"
 python3 "$REPO_ROOT/tests/whisper-retained-command-test.py"
 python3 -m unittest "$REPO_ROOT/tests/qwen27b-qualification-test.py"
@@ -1310,7 +1311,7 @@ fi
 [[ ! -e "$REPO_ROOT/deploy/agent-office/compose.yaml" ]]
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-language-observer whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
