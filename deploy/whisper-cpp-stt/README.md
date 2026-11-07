@@ -4,17 +4,65 @@ This directory owns the isolated CPU/CUDA candidates and the exact-image CUDA
 promotion lifecycle for full Whisper Large-v3. The source-selected production
 replacement is immutable `hc4`, qualified for request determinism and the
 operational contract. Its known long-input accuracy defects remain unresolved.
-The current source builds candidate `hc10`, retaining the `hc7` bounded window
+The current source prepares an unqualified local-EOT candidate, retaining the `hc7` bounded window
 diagnostics and `hc8` optional language candidate list. Bounded native windowing
 now requires an explicit candidate list; omitted candidates preserve the `hc4`
 full native request boundary, including for long uploads.
 These changes are not part of the production image and are not qualified for rollout.
 Selecting an image in source does not establish that it has been deployed.
 
+## Experimental local endpoint ranking
+
+`WHISPER_CPP_LOCAL_EOT_RANKING=false` by default preserves v6 final ranking.
+Explicit opt-in requires the existing CUDA trailing-recovery configuration and
+applies only to timestamped verbose ASR requests. Language-only probes and
+translation requests keep their previous dispatch. No public transcription field,
+UI control, checkpoint, prompt, beam size, fallback threshold or waveform changes.
+
+The adapter observes each exact raw native ASR input, including nested suffix
+inputs, on pinned CPU Silero with one thread and default threshold0.5,
+minimum speech250ms and minimum silence100ms. Only padding is zeroed: padding must
+not make two endpoints belong to one detected speech segment. Native hysteresis
+and short-gap merging remain part of that segment definition; a segment does not
+prove uninterrupted physical speech or transcript completeness. Segment metadata
+is intersected with the actual input sample bounds; ASR retains every input sample.
+
+A bounded internal-only multipart field carries ordered integer sample pairs to
+the loopback native server. Both server and core reject malformed, overlapping,
+non-grid or out-of-input spans before inference. A new synchronous entrypoint takes
+request-owned spans without changing the existing parameter-struct ABI or storing
+state between requests. Existing entrypoints and absent metadata keep v6 behavior.
+
+One decoder pass computes the legacy winner first and the complete-EOT objective
+winner on the same paths. Reranking requires completed nonfailed paths whose sole
+omitted token is EOT, and whose last retained token itself is a valid terminal
+timestamp. Both endpoints must lie strictly inside the same unpadded raw detected
+speech segment, and the alternative endpoint must be strictly later. Ordinary
+retained tokens after an earlier timestamp, missing timing, no spans, nonfinite
+scores, equal endpoints and cross-segment alternatives retain the legacy winner.
+Endpoint coordinates use the native window's seek-before plus retained timestamp
+tokens, never its seek-after advancement. Prefix confidence, entropy, tokens and
+RNG state are unchanged. A different winner can affect downstream fallback or
+suffix decisions, so this remains an unqualified experiment.
+
+Optional scalar-only trace event version3 `local_eot_rank` records legacy,
+complete-objective and chosen decoder IDs, sample endpoints and the segment gate.
+Existing version2 decoder events and normal API response bodies are unchanged.
+The private diagnostic transport must explicitly validate the new typed event;
+old trace validators must not silently discard it.
+
+Global complete-EOT ranking was rejected: it recovered a short English fixture
+but removed a substantive continuation from the original omission control. This
+local rule is retrospective exposed evidence only. Qualification must first replay
+the actual original, paired English and natural controls with strict content gates,
+then broader short/repeat/quiet/noise and exact full-Danish gates. The known long
+Danish language-conversion defect remains unresolved. Production stays hc4;
+speaker work remains on hold. No native build, model call or promotion is claimed.
+
 ## Experimental trailing-speech recovery
 
 [Issue 78](https://github.com/madslundt/HomeCompute/issues/78) tracks an opt-in
-adapter policy for native early-stop omissions. It leaves the hc10 native engine,
+adapter policy for native early-stop omissions. The original h17 policy leaves its native engine,
 ASR checkpoint, decoder, prompts and numerical settings unchanged. The policy is
 off by default in the canonical builds. Set
 `WHISPER_CPP_RECOVER_TRAILING_SPEECH=true` only for a qualified CUDA candidate;
@@ -46,15 +94,13 @@ recovery. All native calls share one deadline and cumulative response-byte bound
 Detector or required-suffix failures return an error rather than silently marking
 a partial result successful. Unknown native timing never supplies an invented seek.
 
-`Dockerfile.cuda` can rebuild this policy from the pinned native source.
-`Dockerfile.recovery` is a diagnostic overlay on the exact cached hc10 image
-`sha256:9a76da1fcca77de1f4dff6ff284e5397ac05e22a9a9a373134b2c09e676c9f91`,
-whose native source is `6ac1847d9abe6446d91c28bf06067b52d38e17e0`. It changes only
-the adapter and public detector assets and enables the experimental flag. Before
-building, verify the base image's actual ID and ARM64 architecture. Build from the
-clean, reviewed, published source revision with `--pull=false --force-rm`, the
-6 GiB/no-swap/four-CPU envelope, `--build-arg HOME_COMPUTE_REVISION=FULL_SHA`, and
-`-f deploy/whisper-cpp-stt/Dockerfile.recovery deploy/whisper-cpp-stt`.
+The current candidate must first rebuild the pinned native engine with
+`Dockerfile.cuda`. The old cached hc10/v6 image lacks its new request-scoped API.
+`Dockerfile.recovery` has no default native image: an optional later overlay needs
+an explicitly reviewed `NATIVE_BASE_IMAGE` and `NATIVE_SOURCE_REVISION`, and refuses
+a base missing the native endpoint-span entrypoint. Never relabel an old native
+image as this candidate. Image building and model starts require their separate
+guarded authorization; source preparation does not establish either.
 
 Use the guarded isolated lifecycle and memory floor described below. Verify actual
 source/image/model/native pins and `suffix_recovery_policy.enabled` in health.
@@ -289,7 +335,7 @@ client-path verification.
 
 The CUDA adapter mode refuses to start unless `libcudart.so.13` reports a
 visible device, and it does not pass `--no-gpu` to the pinned server. The CUDA
-candidate build applies `strict-gpu-decoder-audit-v6` to the exact pinned upstream source
+candidate build applies `strict-gpu-local-eot-ranking-v8` to the exact pinned upstream source
 files after verifying their SHA-256 digests. It refuses model initialization if
 the requested GPU backend cannot initialize or if no model weight buffer was
 actually allocated on a GPU backend. Native `/health` reports the resulting

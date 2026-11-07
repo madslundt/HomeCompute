@@ -13,8 +13,8 @@
     "architecture": "121a-real",
     "minimum_linux_driver_major": 580,
     "strict_gpu_patch": {
-      "version": "strict-gpu-decoder-audit-v6",
-      "patcher_sha256": "8639875ec008a0ac440887b837c5c0a5766e70fb03d8f9c728ab5860a7bd60a5",
+      "version": "strict-gpu-local-eot-ranking-v8",
+      "patcher_sha256": "e5ced318cad21fedc9d97d39c00a997d99812f6e78c0151b31001014b338f42a",
       "source_checksums": {
         "src/whisper.cpp": "a884ff3eb3bbf7558958c4d06a299cd8d97d87a7d5c7aac9138b8ff6a2ef04d7",
         "examples/server/server.cpp": "4edae36f55e3a751583cd2dfe32bb5b5516cf59a3c137254f08c7ac0bd3f5d59",

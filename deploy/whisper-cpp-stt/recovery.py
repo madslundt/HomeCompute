@@ -114,7 +114,7 @@ def candidate(audio: bytes, result: dict):
 
 
 def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock=time.monotonic,
-               language_boundaries=False, filter_non_speech=False):
+               language_boundaries=False, filter_non_speech=False, local_eot_ranking=False):
     """At most one additional native call per <=30s window; no recursive retries."""
     deadline = clock() + timeout
     response_bytes, native_calls = 0, 0
@@ -140,7 +140,15 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
         return raw
 
     def asr(offset, seconds, data):
-        raw = call(data)
+        fields = None
+        if local_eot_ranking and dict(native_fields).get("translate", "false") == "false":
+            try:
+                _frames, pcm = _BOUNDARIES._read_pcm(data)
+                spans = _VAD.speech_spans(pcm)
+                fields = [*native_fields, ("homecompute_eot_spans", ";".join(f"{start}:{end}" for start, end in spans))]
+            except Exception:
+                raise codec.RequestError(502, "Local ranking speech observation unavailable") from None
+        raw = call(data, fields)
         if not filter_non_speech:
             return raw
         normalized, _ = codec.normalize_native_response(raw, "verbose_json", seconds)

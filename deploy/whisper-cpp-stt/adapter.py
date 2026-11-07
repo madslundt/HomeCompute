@@ -51,8 +51,8 @@ _RECOVERY_SPEC.loader.exec_module(_RECOVERY_MODULE)
 
 
 RUNTIME_COMMIT = "f049fff95a089aa9969deb009cdd4892b3e74916"
-CUDA_PATCH_VERSION = "strict-gpu-decoder-audit-v6"
-CUDA_PATCHER_SHA256 = "8639875ec008a0ac440887b837c5c0a5766e70fb03d8f9c728ab5860a7bd60a5"
+CUDA_PATCH_VERSION = "strict-gpu-local-eot-ranking-v8"
+CUDA_PATCHER_SHA256 = "e5ced318cad21fedc9d97d39c00a997d99812f6e78c0151b31001014b338f42a"
 NATIVE_PORT = 8081
 
 
@@ -71,6 +71,7 @@ class CandidateConfig:
     recover_trailing_speech: bool = False
     language_boundaries: bool = False
     filter_non_speech: bool = False
+    local_eot_ranking: bool = False
 
 
 def _bounded_env(name: str, default: int, maximum: int) -> int:
@@ -110,8 +111,13 @@ def load_config() -> CandidateConfig:
     non_speech = os.environ.get("WHISPER_CPP_FILTER_NON_SPEECH", "false")
     if non_speech not in {"true", "false"} or non_speech == "true" and recovery != "true":
         raise ValueError("invalid WHISPER_CPP_FILTER_NON_SPEECH")
+    local_eot = os.environ.get("WHISPER_CPP_LOCAL_EOT_RANKING", "false")
+    if local_eot not in {"true", "false"} or local_eot == "true" and recovery != "true":
+        raise ValueError("invalid WHISPER_CPP_LOCAL_EOT_RANKING")
     if recovery == "true":
         _RECOVERY_MODULE.verify_detector()
+    if local_eot == "true" and _RECOVERY_MODULE._VAD.speech_spans(bytes(1024)) != []:
+        raise RuntimeError("Local ranking VAD silence warmup failed")
     return CandidateConfig(
         model_path=model_path,
         key_path=key_path,
@@ -126,6 +132,7 @@ def load_config() -> CandidateConfig:
         recover_trailing_speech=recovery == "true",
         language_boundaries=boundaries == "true",
         filter_non_speech=non_speech == "true",
+        local_eot_ranking=local_eot == "true",
     )
 
 
@@ -192,12 +199,14 @@ def transcribe_audio(audio: bytes, duration: float, response_format: str,
                      native_fields: list[tuple[str, str]], timeout: int, *,
                      recover_trailing_speech: bool = False,
                      language_boundaries: bool = False,
-                     filter_non_speech: bool = False) -> tuple[bytes, str]:
+                     filter_non_speech: bool = False,
+                     local_eot_ranking: bool = False) -> tuple[bytes, str]:
     if (recover_trailing_speech and response_format == "verbose_json"
             and dict(native_fields).get("no_timestamps", "false") == "false"):
         return _RECOVERY_MODULE.transcribe(
             audio, duration, native_fields, timeout, request=_native_request, codec=_CODEC_MODULE,
-            language_boundaries=language_boundaries, filter_non_speech=filter_non_speech)
+            language_boundaries=language_boundaries, filter_non_speech=filter_non_speech,
+            local_eot_ranking=local_eot_ranking)
     if duration <= NATIVE_WINDOW_SECONDS or "language_candidates" not in dict(native_fields):
         # Preserve the qualified production request boundary unless explicitly
         # opting into per-window detection with a language candidate profile.
@@ -339,6 +348,13 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 "native_window_policy": ("language_boundary_recovery_opt_in" if self.server.config.language_boundaries
                                          else "vad_suffix_recovery_opt_in" if self.server.config.recover_trailing_speech
                                          else "language_candidates_opt_in"),
+                "local_eot_ranking_policy": {
+                    "enabled": self.server.config.local_eot_ranking,
+                    "version": "raw-silero-same-segment-strictly-later-terminal-eot-v1",
+                    "requires": "verbose_json_with_timestamps_without_translation",
+                    "native_vad_defaults": "threshold0.5/minSpeech250ms/minSilence100ms/pad0",
+                    "asr_audio": "original_pcm", "max_extra_asr_calls": 0,
+                },
                 "suffix_recovery_policy": {"enabled": self.server.config.recover_trailing_speech,
                                            "version": _RECOVERY_MODULE.VERSION,
                                            "vad_model_sha256": _RECOVERY_MODULE._VAD.PIN["sha256"],
@@ -413,7 +429,8 @@ class CandidateHandler(BaseHTTPRequestHandler):
                 audio, duration, response_format, native_fields, self.server.config.native_timeout_seconds,
                 recover_trailing_speech=self.server.config.recover_trailing_speech,
                 language_boundaries=self.server.config.language_boundaries,
-                filter_non_speech=self.server.config.filter_non_speech)
+                filter_non_speech=self.server.config.filter_non_speech,
+                local_eot_ranking=self.server.config.local_eot_ranking)
             self.respond(200, payload, content_type, provenance=True)
         except RequestError as error:
             self.respond(error.status, json.dumps({"error": error.message}).encode())
