@@ -21,6 +21,16 @@ _SPEC = importlib.util.spec_from_file_location("whisper_silero_vad", Path(__file
 _VAD = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_VAD)
 
+_BOUNDARY_SPEC = importlib.util.spec_from_file_location(
+    "whisper_language_boundaries", Path(__file__).with_name("language_boundaries.py"))
+_BOUNDARIES = importlib.util.module_from_spec(_BOUNDARY_SPEC)
+_BOUNDARY_SPEC.loader.exec_module(_BOUNDARIES)
+
+_NON_SPEECH_SPEC = importlib.util.spec_from_file_location(
+    "whisper_non_speech", Path(__file__).with_name("non_speech.py"))
+_NON_SPEECH = importlib.util.module_from_spec(_NON_SPEECH_SPEC)
+_NON_SPEECH_SPEC.loader.exec_module(_NON_SPEECH)
+
 
 def verify_detector():
     _VAD.verify_model()
@@ -103,18 +113,24 @@ def candidate(audio: bytes, result: dict):
     return None
 
 
-def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock=time.monotonic):
+def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock=time.monotonic,
+               language_boundaries=False, filter_non_speech=False):
     """At most one additional native call per <=30s window; no recursive retries."""
     deadline = clock() + timeout
     response_bytes, native_calls = 0, 0
     audits = []
+    boundary_audits = []
+    proposal_audits = []
+    context_audits = []
+    non_speech_audits = []
+    language_probes = 0
 
-    def call(data):
+    def call(data, fields=None):
         nonlocal response_bytes, native_calls
         remaining = deadline - clock()
         if remaining <= 0:
             raise codec.RequestError(502, "Speech backend deadline exceeded")
-        body, content_type = codec.make_native_multipart(native_fields, data)
+        body, content_type = codec.make_native_multipart(native_fields if fields is None else fields, data)
         raw = request(body, content_type, remaining)
         native_calls += 1
         response_bytes += len(raw)
@@ -124,8 +140,28 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
             raise codec.RequestError(502, "Speech backend response is too large")
         return raw
 
+    def asr(offset, seconds, data):
+        raw = call(data)
+        if not filter_non_speech:
+            return raw
+        normalized, _ = codec.normalize_native_response(raw, "verbose_json", seconds)
+        result = json.loads(normalized)
+        try:
+            observation = _NON_SPEECH.decision(
+                data, result, normalized_observation=lambda value:
+                _BOUNDARIES.observed_probabilities(value, observe=activity))
+        except Exception:
+            raise codec.RequestError(502, "Non-speech observation unavailable") from None
+        if observation is None:
+            return raw
+        non_speech_audits.append({"source_start_frame": round(offset * RATE), **observation})
+        # No language or text anchor is inferred from a non-speech decision.
+        # Keep native producer identity in the authenticated response headers.
+        return json.dumps({"task": result.get("task"), "duration": seconds,
+                           "text": "", "segments": []}, separators=(",", ":")).encode()
+
     def one(offset, window_duration, window):
-        raw = call(window)
+        raw = asr(offset, window_duration, window)
         normalized, _ = codec.normalize_native_response(raw, "verbose_json", window_duration)
         try:
             tail = candidate(window, json.loads(normalized))
@@ -134,7 +170,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
         if tail is None:
             return raw
         seek, frames, suffix = tail
-        extra = call(suffix)
+        extra = asr(offset + seek / RATE, (frames - seek) / RATE, suffix)
         combined, _ = codec.combine_native_windows(
             [(0, window_duration, raw), (seek / RATE, (frames - seek) / RATE, extra)],
             "verbose_json", window_duration)
@@ -144,18 +180,108 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                        "overlapping_acoustic_context": True})
         return combined
 
-    if duration <= codec.NATIVE_WINDOW_SECONDS:
-        raw = one(0, duration, audio)
-        payload, content_type = codec.normalize_native_response(raw, "verbose_json", duration)
+    def language_regions():
+        nonlocal language_probes
+        fields = dict(native_fields)
+        candidates = fields.get("language_candidates")
+        if (not language_boundaries or candidates is None
+                or fields.get("language", "auto") != "auto"
+                or fields.get("translate", "false") != "false"):
+            return None
+        try:
+            proposals = _BOUNDARIES.partitions(audio, observe=activity)
+        except Exception:
+            raise codec.RequestError(502, "Language boundary observation unavailable") from None
+        if len(proposals) == 1:
+            return None
+        probes = []
+        probe_fields = [(key, value) for key, value in native_fields if key != "detect_language"]
+        probe_fields.append(("detect_language", "true"))
+        def probe(data, seconds):
+            nonlocal language_probes
+            raw = call(data, probe_fields)
+            language_probes += 1
+            try:
+                value = json.loads(raw)
+                if (not isinstance(value, dict) or value.get("text") != ""
+                        or value.get("segments") != [] or value.get("task") != "transcribe"
+                        or type(value.get("duration")) not in (int, float)
+                        or not math.isfinite(value["duration"])
+                        or abs(value["duration"] - seconds) > 0.001):
+                    raise ValueError("Invalid language-only response")
+                return value
+            except Exception:
+                raise codec.RequestError(502, "Language boundary observation unavailable") from None
+        probes = [probe(data, seconds) for _offset, seconds, data in proposals]
+        try:
+            regions = _BOUNDARIES.language_regions(audio, proposals, probes, candidates.split(","),
+                                                   corroborate=probe, context_audits=context_audits)
+        except Exception:
+            raise codec.RequestError(502, "Language boundary observation unavailable") from None
+        if regions is not None or context_audits:
+            proposal_audits.extend({"source_start_frame": round(offset * RATE),
+                                    "frames": round(seconds * RATE),
+                                    "language_selection": probe["language_selection"]}
+                                   for (offset, seconds, _data), probe in zip(proposals, probes))
+        if regions is not None:
+            boundary_audits.extend({"source_region_start_frame": round(offset * RATE),
+                                    "source_region_frames": round(seconds * RATE),
+                                    "decoded_windows": []}
+                                   for offset, seconds, _data in regions)
+        return regions
+
+    regions = language_regions()
+    if regions is None:
+        # With no confident adjacent language change, preserve the complete
+        # original window contexts. No child transcript has been decoded.
+        if duration <= codec.NATIVE_WINDOW_SECONDS:
+            raw = one(0, duration, audio)
+            payload, content_type = codec.normalize_native_response(raw, "verbose_json", duration)
+        else:
+            windows = ((offset, seconds, one(offset, seconds, data))
+                       for offset, seconds, data in codec.native_audio_windows(audio))
+            payload, content_type = codec.combine_native_windows(windows, "verbose_json", duration)
     else:
-        windows = ((offset, seconds, one(offset, seconds, data))
-                   for offset, seconds, data in codec.native_audio_windows(audio))
-        payload, content_type = codec.combine_native_windows(windows, "verbose_json", duration)
-    if audits:
+        def responses():
+            for (region_offset, _region_seconds, region), audit in zip(regions, boundary_audits):
+                for local_offset, seconds, data in codec.native_audio_windows(region):
+                    offset = region_offset + local_offset
+                    raw = one(offset, seconds, data)
+                    normalized, _ = codec.normalize_native_response(raw, "verbose_json", seconds)
+                    result = json.loads(normalized)
+                    actual = result.get("language_windows")
+                    if actual is None:
+                        actual = [{"start": 0, "end": seconds,
+                                   "language": result.get("language"),
+                                   "language_selection": result.get("language_selection")}]
+                    actual = [{**item, "start": offset + item["start"],
+                               "end": offset + item["end"]} for item in actual]
+                    audit["decoded_windows"].append({"source_start_frame": round(offset * RATE),
+                                                    "frames": round(seconds * RATE),
+                                                    "asr_language_windows": actual})
+                    yield offset, seconds, raw
+        payload, content_type = codec.combine_native_windows(responses(), "verbose_json", duration)
+    if audits or boundary_audits or context_audits or non_speech_audits:
         value = json.loads(payload)
-        value["suffix_recovery"] = {"version": VERSION, "windows": audits,
-                                    "native_calls": native_calls,
-                                    "max_extra_requests_per_window": 1, "coverage_claim": False}
+        if audits:
+            value["suffix_recovery"] = {"version": VERSION, "windows": audits,
+                                        "native_calls": native_calls,
+                                        "max_extra_requests_per_window": 1, "coverage_claim": False}
+        if boundary_audits or context_audits:
+            value["language_boundary_recovery"] = {
+                "version": _BOUNDARIES.VERSION, "regions": boundary_audits,
+                "proposals": proposal_audits,
+                "island_context_observations": context_audits,
+                "fallback_original_contexts": regions is None,
+                "native_calls": native_calls, "language_probes": language_probes,
+                "asr_pcm_unchanged": True, "source_frames_conserved": True,
+                "coverage_claim": False,
+            }
+        if non_speech_audits:
+            value["non_speech_filter"] = {"version": _NON_SPEECH.VERSION,
+                                          "windows": non_speech_audits,
+                                          "native_calls": native_calls,
+                                          "coverage_claim": False}
         payload = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
         if len(payload) > codec.MAX_RESPONSE_BYTES:
             raise codec.RequestError(502, "Speech backend response is too large")

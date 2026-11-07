@@ -65,12 +65,12 @@ RUN groupadd --gid 10001 stt \
 COPY --from=build /build/bin/whisper-server /usr/local/bin/whisper-server
 COPY --from=build /build/bin/lib*.so* /usr/local/lib/
 COPY adapter.py contract.py verify_model.py /opt/homecompute/
-COPY recovery.py silero_vad.py vad-pin.json /opt/homecompute/
+COPY recovery.py silero_vad.py language_boundaries.py non_speech.py vad-pin.json /opt/homecompute/
 COPY verify-cuda-linkage.py /opt/homecompute/
 RUN python3 -I -B /opt/homecompute/silero_vad.py --provision
 ENV WHISPER_CPP_HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION}
 RUN chmod 0555 /usr/local/bin/whisper-server /usr/local/lib/lib*.so* \
- && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/contract.py /opt/homecompute/verify_model.py /opt/homecompute/recovery.py /opt/homecompute/verify-cuda-linkage.py \
+ && chmod 0555 /opt/homecompute/adapter.py /opt/homecompute/contract.py /opt/homecompute/verify_model.py /opt/homecompute/recovery.py /opt/homecompute/language_boundaries.py /opt/homecompute/non_speech.py /opt/homecompute/verify-cuda-linkage.py \
  && ldd /usr/local/bin/whisper-server > /tmp/whisper-server.ldd \
  && python3 /opt/homecompute/verify-cuda-linkage.py /tmp/whisper-server.ldd \
  && rm /tmp/whisper-server.ldd

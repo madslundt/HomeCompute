@@ -154,6 +154,12 @@ class HttpRelayTests(unittest.TestCase):
         RELAY.validate_recording_pcm(parsed, config)
 
     def test_recording_route_forwards_exact_pcm_multipart_and_six_provenance_headers(self):
+        self.assert_recording_route_provenance()
+
+    def test_recording_route_forwards_optional_actual_backend_device(self):
+        self.assert_recording_route_provenance(device='cuda')
+
+    def assert_recording_route_provenance(self, device=None):
         recording = wav(seconds=0.2, rate=16000, channels=1)
         body, content_type = upload(recording, [
             ('model', 'whisper'), ('response_format', 'verbose_json'),
@@ -168,6 +174,8 @@ class HttpRelayTests(unittest.TestCase):
             'X-HomeCompute-STT-HomeCompute-Revision': 'source-pin',
             'X-HomeCompute-STT-Image-ID': 'image-pin',
         }
+        if device is not None:
+            provenance['X-HomeCompute-STT-Device'] = device
 
         class Backend(BaseHTTPRequestHandler):
             def do_POST(self):

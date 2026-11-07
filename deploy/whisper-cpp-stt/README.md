@@ -64,6 +64,68 @@ retention, identical-input repeats and long-recording gates. Keep all private
 recordings, transcripts, summaries and receipts outside Git. Speaker detection is
 not part of this experiment.
 
+An additional diagnostic flag, `WHISPER_CPP_LANGUAGE_BOUNDARIES=true`, requires
+trailing recovery and applies only to timestamped verbose requests with automatic
+language candidates. It observes the entire bounded recording before choosing
+ASR windows. A detector-only copy is normalized in one-second blocks toward
+-24 dBFS RMS, with gain capped at 30 dB and compact int16 storage. The ASR samples
+remain unchanged. Four complete 32 ms low-probability frames, bounded by voiced
+frames, propose a midpoint; this rounds the pinned native VAD's default 100 ms
+silence duration up to observation frames. Every proposal retains at least three
+seconds and at most thirty seconds, with all source frames conserved. Detector
+probabilities do not prove silence.
+
+The existing native `detect_language=true` operation probes each proposal without
+transcript-token decoding. Only adjacent different selected languages whose
+original probabilities are both at least 0.5 establish a region boundary. All
+other proposals merge back into their original acoustic context. If no boundary
+is established, the existing original window contexts remain intact. Regions may
+cross prior thirty-second boundaries; only after region selection does the
+adapter bound ASR requests to thirty seconds. Every region is retained in source
+order; no hypothesis text selects boundaries or a winning response.
+
+A single confident proposal bracketed by the same other language additionally
+requires contextual corroboration before either adjacent cut is accepted. The
+adapter probes the original three-proposal span, capped at the native thirty-second
+context and centered on the complete island when that cap applies. A matching
+selected language with original probability at least 0.5 confirms the cuts;
+disagreement or weak evidence vetoes both cuts without relabeling any observation
+or forcing an ASR language. A proposal already occupying the full native context
+is unchanged. Consecutive same-language proposals and recording edges retain the
+existing policy. This check uses language observations only, before transcript
+decoding. It is a candidate policy, not proof of language or speech coverage;
+qualification must protect genuine short language switches as well as reject
+spurious islands. `island_context_observations` retains numeric decisions, source
+geometry and original selections, including when all cuts are vetoed and the
+original contexts are used.
+
+Probe/observation failures return an error. All probes and ASR calls share the
+original deadline and cumulative response bound. `language_boundary_recovery`
+records proposal observations, merged regions and actual decoded ASR selections,
+without claiming speech completeness. The one-suffix limit applies per decoded
+window. The minimum proposal length bounds a 1,200-second upload to at most
+400 proposal probes and at most 398 additional island-context probes; each decoded window permits one original and at most one suffix ASR
+call. Explicit language or translation requests keep their existing behavior.
+The diagnostic overlay enables these flags; canonical builds keep them off.
+This remains unqualified for production.
+
+`WHISPER_CPP_FILTER_NON_SPEECH=true` adds a separate opt-in response decision to
+the verified CUDA recovery path. It requires timestamped verbose responses.
+After each original or suffix ASR call, exact all-zero PCM can authorize empty
+text independently of model predictions. Nonzero audio must contain at least
+three seconds, every nonempty native segment must report a finite no-speech
+probability of at least 0.6, and the normalized-copy detector's maximum probability
+must be below 0.5. Either positive signal preserves the complete native response;
+missing native confidence also preserves it. Failed detector observations return
+an error. No hypothesis phrase or RMS threshold authorizes removal.
+
+The empty response contains no invented language or timing anchors.
+`non_speech_filter` records source geometry and numeric decision evidence, without
+claiming speech completeness. The same deadline and response budget still apply.
+The diagnostic image enables this flag too; canonical builds default to off.
+Qualification must include known non-speech, quiet and attenuated speech positives,
+untouched human-reference tests, mixed-language retention and long recordings.
+
 For a recording known to contain Danish and English, an experimental request can
 set `language_candidates=da,en` while leaving `language=auto`. Each native window
 selects the highest original detection probability among those languages, using

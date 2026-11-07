@@ -45,7 +45,7 @@ def verify_model(path=MODEL):
 
 
 def probabilities(pcm: bytes, *, model_path=MODEL, library_path=LIBRARY) -> list[float]:
-    if not isinstance(pcm, bytes) or not pcm or len(pcm) % 2 or len(pcm) > 960000:
+    if not isinstance(pcm, bytes) or not pcm or len(pcm) % 2 or len(pcm) > 1200 * 16000 * 2:
         raise ValueError("Invalid bounded VAD audio")
     verify_model(model_path)
     if C.sizeof(Params) != 12:
