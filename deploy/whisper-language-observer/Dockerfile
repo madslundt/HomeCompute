@@ -17,7 +17,9 @@ RUN python3 -I -B /opt/language-observer/installer_check.py snapshot /tmp/nvidia
  && env -u LD_LIBRARY_PATH -u LD_PRELOAD -u PYTHONPATH -u PYTHONHOME /opt/observer-export/bin/python -I -B /opt/language-observer/installer_check.py export \
  && python3 -I -B /opt/language-observer/installer_check.py unchanged /tmp/nvidia-packages.json \
  && rm -rf /opt/observer-wheels /tmp/nvidia-packages.json \
- && chmod -R a-w /opt/language-observer /opt/observer-export
+ && chmod -R a+rX,a-w /opt/language-observer /opt/observer-export \
+ && env -u LD_LIBRARY_PATH -u LD_PRELOAD -u PYTHONPATH -u PYTHONHOME python3 -I -B /opt/language-observer/installer_check.py worker-export \
+ && python3 -I -B /opt/language-observer/installer_check.py worker-base
 ENV HOME_COMPUTE_REVISION=${HOME_COMPUTE_REVISION} \
     LOGNAME=language-observer \
     PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1 \

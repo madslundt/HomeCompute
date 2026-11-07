@@ -27,7 +27,11 @@ Torch2.7.1/torchaudio2.7.1/SpeechBrain1.1.2 venv without system packages.
 The locked Torch wheel reports runtime `2.7.1+cpu`; its distribution version is `2.7.1`. Dynamic
 library and Python paths are sanitized for export. The NVIDIA Torch/Torchvision
 package file hashes are checked before and after installation; no NVIDIA package
-is replaced. Build has no network or model assets. The worker runtime uses only
+is replaced. Public source and export-venv modes become readable/searchable and
+nonwritable independently of the host umask. Before admitting the image, the
+build drops supplementary groups, GID and UID to10001 and executes metadata
+checks in both interpreters, reading every copied public source without importing
+Torch or loading weights. Build has no network or model assets. The worker runtime uses only
 the unchanged NVIDIA Torch2.11a0 and does not import SpeechBrain/torchaudio.
 Its distribution version is pinned as `2.11.0a0+eb65b36914.nv26.2`; the raw
 module version is separately pinned as `2.11.0a0+eb65b36914.nv26.02`.

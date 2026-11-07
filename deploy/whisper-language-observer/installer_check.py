@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.metadata
 import hashlib
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -10,6 +11,20 @@ ROOT = Path(__file__).resolve().parent
 
 
 def main() -> None:
+    if sys.argv[1:] in (['worker-export'], ['worker-base']):
+        interpreter = '/opt/observer-export/bin/python' if sys.argv[1] == 'worker-export' else sys.executable
+        mode = 'export' if sys.argv[1] == 'worker-export' else 'base'
+        os.setgroups([])
+        os.setgid(10001)
+        os.setuid(10001)
+        os.execv(interpreter, [interpreter, '-I', '-B', str(Path(__file__).resolve()), mode])
+        raise RuntimeError('Worker metadata exec returned')
+    # Actual UID10001 build checks must read every copied source, not only metadata.
+    for name in ('common.py', 'graph.py', 'export.py', 'classify.py', 'installer_check.py',
+                 'model.json', 'dependencies.json', 'requirements.lock'):
+        with (ROOT / name).open('rb') as stream:
+            if len(stream.read(2_000_001)) > 2_000_000:
+                raise ValueError('Bounded readable public source required')
     pin = json.loads((ROOT / 'model.json').read_text())
     if sys.argv[1:] == ['export']:
         expected = {row['name']: row['version'] for row in json.loads((ROOT / 'dependencies.json').read_text())['wheels']}
@@ -44,7 +59,8 @@ def main() -> None:
                 raise ValueError('Global NVIDIA package files changed')
     else:
         raise ValueError('Explicit metadata mode required')
-    print(json.dumps({'metadata_verified': True, 'model_imports': 0}))
+    print(json.dumps({'metadata_verified': True, 'model_imports': 0, 'mode': sys.argv[1],
+                      'effective_uid': os.geteuid(), 'effective_gid': os.getegid()}))
 
 
 if __name__ == '__main__':
