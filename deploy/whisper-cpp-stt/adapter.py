@@ -386,6 +386,15 @@ class CandidateHandler(BaseHTTPRequestHandler):
                     "action": "veto_unconfirmed_existing_pair_of_cuts",
                     "asr_language_forced": False, "observer_device": "cpu",
                 },
+                "language_boundary_window_reflow_policy": {
+                    "enabled": self.server.config.language_observer is not None,
+                    "version": _RECOVERY_MODULE._BOUNDARIES.REFLOW_POLICY,
+                    "requires": "applied_independent_singleton_veto",
+                    "scope": "island_and_one_original_primary_window_on_each_side",
+                    "prefers": "observed_pauses",
+                    "decode_count_baseline": "pre_veto_layout",
+                    "max_extra_primary_decodes": 0,
+                },
                 "local_eot_ranking_policy": {
                     "enabled": self.server.config.local_eot_ranking,
                     "version": "raw-silero-same-segment-strictly-later-terminal-eot-v1",

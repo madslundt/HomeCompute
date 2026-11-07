@@ -85,6 +85,17 @@ an ASR label or establishes the neighboring language. This creates no cut and
 forces no language. Overlapping veto requests preserve both original cut pairs.
 Malformed, failed or late observations fail before ASR. Audio stays unchanged.
 
+An applied veto reflows only the old primary window for that island and the
+nearest old primary window on either side. Reflow blocks that share an old
+window are merged. Surviving language boundaries and every old primary window
+outside the blocks keep their exact source samples and positions. Within each
+block, the adapter prefers detected pause midpoints outside vetoed speech and
+uses the ordinary bounded layout if there is no feasible pause layout. It does
+not add primary decodes relative to the layout before the veto. In the
+fallback, a decode edge can still coincide with a vetoed language cut.
+The response records the window reflow policy and the actual source ranges
+decoded.
+
 `language_observer.py` sends one bounded batch to one isolated CPU child and
 loads its graph once. Its time limit shares the transcription request deadline;
 source, model, public parity and both runtime version identities are pinned.

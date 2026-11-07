@@ -123,6 +123,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
     boundary_audits = []
     proposal_audits = []
     island_audits = []
+    scoped_windows = {}
     non_speech_audits = []
     language_probes = 0
 
@@ -197,8 +198,9 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                 or fields.get("language", "auto") != "auto"
                 or fields.get("translate", "false") != "false"):
             return None
+        pause_cuts = [] if language_observer is not None else None
         try:
-            proposals = _BOUNDARIES.partitions(audio, observe=activity)
+            proposals = _BOUNDARIES.partitions(audio, observe=activity, pause_cuts=pause_cuts)
         except Exception:
             raise codec.RequestError(502, "Language boundary observation unavailable") from None
         if len(proposals) == 1:
@@ -233,7 +235,8 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
             regions = _BOUNDARIES.language_regions(
                 audio, proposals, probes, candidates.split(","),
                 observe_islands=observe_islands if language_observer is not None else None,
-                island_audit=island_audits)
+                island_audit=island_audits, pause_cuts=pause_cuts or (),
+                scoped_windows=scoped_windows if language_observer is not None else None)
         except Exception:
             raise codec.RequestError(502, "Language boundary observation unavailable") from None
         if regions is not None:
@@ -261,7 +264,11 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
     else:
         def responses():
             for (region_offset, _region_seconds, region), audit in zip(regions, boundary_audits):
-                for local_offset, seconds, data in codec.native_audio_windows(region):
+                region_start = audit["source_region_start_frame"]
+                ranges = scoped_windows.get(region_start)
+                windows = (codec.native_audio_windows(region) if ranges is None else
+                           _BOUNDARIES.scoped_audio_windows(region, region_start, ranges))
+                for local_offset, seconds, data in windows:
                     offset = region_offset + local_offset
                     raw = one(offset, seconds, data)
                     normalized, _ = codec.normalize_native_response(raw, "verbose_json", seconds)
@@ -292,6 +299,8 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
                 "asr_pcm_unchanged": True, "source_frames_conserved": True,
                 "coverage_claim": False,
             }
+            if scoped_windows:
+                value["language_boundary_recovery"]["window_reflow"] = _BOUNDARIES.REFLOW_POLICY
         if island_audits:
             value["independent_language_boundaries"] = {
                 "version": _BOUNDARIES.ISLAND_POLICY, "islands": island_audits,
