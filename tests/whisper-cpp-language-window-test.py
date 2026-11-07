@@ -1,4 +1,5 @@
 """Language probes select acoustic geometry; hypothesis text never selects it."""
+import copy
 import importlib.util
 import io
 import itertools
@@ -15,6 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('language_window_adapter', ROOT/'deploy/whisper-cpp-stt/adapter.py')
 A = importlib.util.module_from_spec(spec);sys.modules[spec.name] = A;spec.loader.exec_module(A)
 R = A._RECOVERY_MODULE
+overlap_spec = importlib.util.spec_from_file_location(
+    'overlap_repair', ROOT/'deploy/whisper-cpp-stt/overlap_repair.py')
+OVERLAP = importlib.util.module_from_spec(overlap_spec)
+overlap_spec.loader.exec_module(OVERLAP)
 
 
 def audio(seconds=8, value=1):
@@ -36,7 +41,7 @@ def result(text='', language='en', duration=4, probability=.9):
 
 class LanguageWindowTests(unittest.TestCase):
     def test_overlap_adds_only_timed_native_words_and_rejects_ambiguous_or_untimed_donor(self):
-        overlap = R._OVERLAP
+        overlap = OVERLAP
         left = " the council discussed the harbor when..."
         right = " we then walked home."
         text = left + "\n" + right + "\n"
@@ -67,6 +72,24 @@ class LanguageWindowTests(unittest.TestCase):
                          [("rain", 86400, 91200), ("began", 91200, 100800)])
         for word in view["edits"][0]["words"]:
             self.assertEqual(view["text"][word["start_offset"]:word["end_offset"]], word["text"])
+        rate = overlap.RATE
+        base["language_boundary_recovery"] = {"regions": [{"decoded_windows": [
+            {"source_start_frame": 0, "frames": 5 * rate},
+            {"source_start_frame": seam, "frames": 6 * rate},
+        ]}]}
+        island = {"source_start_frame": seam, "frames": 3 * rate, "flanking_language": "en",
+                  "observed_language": "en", "vetoed": True}
+        base["independent_language_boundaries"] = {"islands": [island]}
+        canonical = copy.deepcopy(base)
+        decode = Mock(return_value=donor)
+        separate = overlap.repair(base, decode)
+        decode.assert_called_once_with(0, 11 * rate)
+        self.assertEqual(separate["text"], view["text"])
+        self.assertEqual(base, canonical)
+        decode.reset_mock()
+        island.update(observed_language="da", vetoed=False)
+        self.assertIsNone(overlap.repair(base, decode))
+        decode.assert_not_called()
         donor["segments"][0]["words"][7]["t_dtw"] = -1
         self.assertIsNone(overlap.insertion(donor, anchor, *geometry))
         donor["segments"].append({"text": " we then walked home."})

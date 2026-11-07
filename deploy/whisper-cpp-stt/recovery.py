@@ -31,11 +31,6 @@ _NON_SPEECH_SPEC = importlib.util.spec_from_file_location(
 _NON_SPEECH = importlib.util.module_from_spec(_NON_SPEECH_SPEC)
 _NON_SPEECH_SPEC.loader.exec_module(_NON_SPEECH)
 
-_OVERLAP_SPEC = importlib.util.spec_from_file_location(
-    "whisper_overlap_repair", Path(__file__).with_name("overlap_repair.py"))
-_OVERLAP = importlib.util.module_from_spec(_OVERLAP_SPEC)
-_OVERLAP_SPEC.loader.exec_module(_OVERLAP)
-
 
 def verify_detector():
     _VAD.verify_model()
@@ -120,7 +115,7 @@ def candidate(audio: bytes, result: dict):
 
 def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock=time.monotonic,
                language_boundaries=False, filter_non_speech=False, local_eot_ranking=False,
-               language_observer=None, repair_overlap=False):
+               language_observer=None):
     """At most one additional native call per <=30s window; no recursive retries."""
     deadline = clock() + timeout
     response_bytes, native_calls = 0, 0
@@ -147,7 +142,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
             raise codec.RequestError(502, "Speech backend response is too large")
         return raw
 
-    def asr(offset, seconds, data, *, donor_only=False):
+    def asr(offset, seconds, data):
         fields = None
         if local_eot_ranking and dict(native_fields).get("translate", "false") == "false":
             try:
@@ -157,7 +152,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
             except Exception:
                 raise codec.RequestError(502, "Local ranking speech observation unavailable") from None
         raw = call(data, fields)
-        if not filter_non_speech or donor_only:
+        if not filter_non_speech:
             return raw
         normalized, _ = codec.normalize_native_response(raw, "verbose_json", seconds)
         result = json.loads(normalized)
@@ -292,48 +287,15 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
         payload, content_type = codec.combine_native_windows(responses(), "verbose_json", duration)
     if audits or boundary_audits or non_speech_audits or island_audits:
         value = json.loads(payload)
-        canonical_calls = native_calls
-        if repair_overlap and island_audits and boundary_audits:
-            edits = []
-            donor_audits = []
-            pcm = None
-            for start, seam, target_end, end, language in _OVERLAP.windows(
-                    island_audits, boundary_audits, proposal_audits):
-                anchor = _OVERLAP.anchors(value, seam)
-                if anchor is None or edits and edits[-1]["insert_offset"] >= anchor[0]:
-                    continue
-                if len(donor_audits) == _OVERLAP.MAX_DONORS:
-                    break
-                if pcm is None:
-                    _, pcm = _BOUNDARIES._read_pcm(audio)
-                donor = _BOUNDARIES._wav(pcm[start * 2:end * 2])
-                raw = asr(start / RATE, (end - start) / RATE, donor, donor_only=True)
-                try:
-                    result = json.loads(raw)
-                except (ValueError, UnicodeError):
-                    raise codec.RequestError(502, "Invalid overlap donor response") from None
-                if not isinstance(result, dict):
-                    raise codec.RequestError(502, "Invalid overlap donor response")
-                edit = _OVERLAP.insertion(result, anchor, start, seam, target_end, end, language)
-                if edit is not None and edits and edits[-1]["words"][-1]["end_frame"] > edit["words"][0]["start_frame"]:
-                    edit = None
-                donor_audits.append({"start_frame": start, "end_frame": end, "seam_frame": seam,
-                                     "target_end_frame": target_end, "accepted": edit is not None})
-                if edit is not None:
-                    edits.append(edit)
-            if donor_audits:
-                value["overlap_repair"] = _OVERLAP.overlay(value["text"], edits)
-                value["overlap_repair"]["native_donor_calls"] = len(donor_audits)
-                value["overlap_repair"]["donors"] = donor_audits
         if audits:
             value["suffix_recovery"] = {"version": VERSION, "windows": audits,
-                                        "native_calls": canonical_calls,
+                                        "native_calls": native_calls,
                                         "max_extra_requests_per_window": 1, "coverage_claim": False}
         if boundary_audits:
             value["language_boundary_recovery"] = {
                 "version": _BOUNDARIES.VERSION, "regions": boundary_audits,
                 "proposals": proposal_audits,
-                "native_calls": canonical_calls, "language_probes": language_probes,
+                "native_calls": native_calls, "language_probes": language_probes,
                 "asr_pcm_unchanged": True, "source_frames_conserved": True,
                 "coverage_claim": False,
             }
@@ -347,7 +309,7 @@ def transcribe(audio, duration, native_fields, timeout, *, request, codec, clock
         if non_speech_audits:
             value["non_speech_filter"] = {"version": _NON_SPEECH.VERSION,
                                           "windows": non_speech_audits,
-                                          "native_calls": canonical_calls,
+                                          "native_calls": native_calls,
                                           "coverage_claim": False}
         payload = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
         if len(payload) > codec.MAX_RESPONSE_BYTES:

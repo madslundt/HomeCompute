@@ -10,7 +10,7 @@ LABEL io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.whisper-cpp.native-parent-image="${NATIVE_BASE_IMAGE}" \
       io.homecompute.whisper-cpp.recovery="silero-v5.1.2-cpu-prob0.5-grace500ms-contiguous512ms-suffix-v1"
 USER root
-COPY adapter.py contract.py verify_model.py recovery.py silero_vad.py language_boundaries.py non_speech.py overlap_repair.py vad-pin.json /opt/homecompute/
+COPY adapter.py contract.py verify_model.py recovery.py silero_vad.py language_boundaries.py non_speech.py vad-pin.json /opt/homecompute/
 RUN nm -D --defined-only /usr/local/lib/libwhisper.so | grep -Eq '[[:space:]]T[[:space:]]whisper_full_with_endpoint_spans$' \
  && python3 -I -B /opt/homecompute/silero_vad.py --provision \
  && chmod 0555 /opt/homecompute/*.py \

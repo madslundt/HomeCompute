@@ -126,6 +126,8 @@ def _word_times(segment, matches):
 
 def insertion(donor, anchor, start, seam, target_end, end, language):
     """Return one insertion only when both lexical and timing gates agree."""
+    if not isinstance(donor, dict):
+        return None
     selection = donor.get("language_selection")
     if (donor.get("task") != "transcribe" or not isinstance(selection, dict)
             or selection.get("selected") != language
@@ -203,3 +205,29 @@ def overlay(text, edits):
     parts.append(text[cursor:])
     return {"version": VERSION, "offset_unit": "unicode_code_point",
             "sample_rate": RATE, "text": "".join(parts), "edits": mapped}
+
+
+def repair(base, decode_donor):
+    """Request bounded DTW donors from a separate decoder, leaving base intact."""
+    boundary = base.get("language_boundary_recovery", {})
+    independent = base.get("independent_language_boundaries", {})
+    edits, donors = [], []
+    for start, seam, target_end, end, language in windows(
+            independent.get("islands", []), boundary.get("regions", []),
+            boundary.get("proposals", [])):
+        anchor = anchors(base, seam)
+        if anchor is None or edits and edits[-1]["insert_offset"] >= anchor[0]:
+            continue
+        result = decode_donor(start, end)
+        edit = insertion(result, anchor, start, seam, target_end, end, language)
+        if edit is not None and edits and edits[-1]["words"][-1]["end_frame"] > edit["words"][0]["start_frame"]:
+            edit = None
+        donors.append({"start_frame": start, "end_frame": end, "seam_frame": seam,
+                       "target_end_frame": target_end, "accepted": edit is not None})
+        if edit is not None:
+            edits.append(edit)
+        if len(donors) == MAX_DONORS:
+            break
+    if donors:
+        return {**overlay(base["text"], edits), "native_donor_calls": len(donors), "donors": donors}
+    return None

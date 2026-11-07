@@ -14,7 +14,7 @@ LABEL io.homecompute.source-revision="${HOME_COMPUTE_REVISION}" \
       io.homecompute.whisper-cpp.observer-source-revision="${OBSERVER_SOURCE_REVISION}"
 USER root
 COPY deploy/whisper-cpp-stt/adapter.py deploy/whisper-cpp-stt/contract.py deploy/whisper-cpp-stt/verify_model.py /opt/homecompute/
-COPY deploy/whisper-cpp-stt/recovery.py deploy/whisper-cpp-stt/silero_vad.py deploy/whisper-cpp-stt/language_boundaries.py deploy/whisper-cpp-stt/non_speech.py deploy/whisper-cpp-stt/overlap_repair.py deploy/whisper-cpp-stt/vad-pin.json /opt/homecompute/
+COPY deploy/whisper-cpp-stt/recovery.py deploy/whisper-cpp-stt/silero_vad.py deploy/whisper-cpp-stt/language_boundaries.py deploy/whisper-cpp-stt/non_speech.py deploy/whisper-cpp-stt/vad-pin.json /opt/homecompute/
 COPY deploy/whisper-cpp-stt/language_observer.py deploy/whisper-cpp-stt/language-observer-pin.json /opt/homecompute/
 COPY deploy/whisper-language-observer/common.py deploy/whisper-language-observer/graph.py deploy/whisper-language-observer/export.py deploy/whisper-language-observer/classify.py deploy/whisper-language-observer/installer_check.py deploy/whisper-language-observer/model.json deploy/whisper-language-observer/dependencies.json deploy/whisper-language-observer/requirements.lock /opt/homecompute/language-observer/
 # Keep the bounded build worker observable for the resource verifier.
