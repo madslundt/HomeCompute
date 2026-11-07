@@ -30,7 +30,7 @@ def dependencies():
     for row in C.LOCK['wheels']:
         C.require(importlib.metadata.version(row['name']) == row['version'], 'Export package differs')
     import torch
-    C.require(torch.__version__ == '2.7.1' and torch.version.cuda is None, 'Official CPU Torch2.7.1 required')
+    C.require(torch.__version__ == '2.7.1+cpu' and torch.version.cuda is None, 'Official CPU Torch2.7.1 required')
     from speechbrain.lobes.features import Fbank
     from speechbrain.processing.features import InputNormalization
     from speechbrain.lobes.models.ECAPA_TDNN import ECAPA_TDNN

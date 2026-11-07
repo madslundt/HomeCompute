@@ -6,10 +6,12 @@ import importlib.util
 import io
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest.mock import Mock, patch
 import wave
@@ -451,6 +453,31 @@ class ObserverTests(unittest.TestCase):
                 else:
                     with self.assertRaises(ValueError):
                         O.authorization(path, digest, self.auth['source_revision'], 'fetch')
+
+
+    def test_exact_official_cpu_internal_version_differs_from_distribution_version(self):
+        torch = types.ModuleType('torch'); torch.version = types.SimpleNamespace(cuda=None)
+        modules = {'torch': torch}
+        for name, attribute in [('speechbrain.lobes.features', 'Fbank'),
+                                ('speechbrain.processing.features', 'InputNormalization'),
+                                ('speechbrain.lobes.models.ECAPA_TDNN', 'ECAPA_TDNN'),
+                                ('speechbrain.lobes.models.Xvector', 'Classifier')]:
+            modules[name] = types.ModuleType(name); setattr(modules[name], attribute, object())
+        versions = {row['name']: row['version'] for row in E.C.LOCK['wheels']}
+        self.assertEqual(versions['torch'], '2.7.1')
+        with patch.dict(sys.modules, modules), patch.object(sys, 'prefix', '/isolated'), \
+             patch.object(sys, 'base_prefix', '/base'), patch.object(Path, 'read_text', return_value='include-system-site-packages = false'), \
+             patch.object(E.importlib.metadata, 'version', side_effect=versions.__getitem__), \
+             patch.dict(os.environ, {'LD_LIBRARY_PATH': '', 'LD_PRELOAD': '', 'PYTHONPATH': '', 'PYTHONHOME': ''}):
+            torch.__version__ = '2.7.1+cpu'
+            self.assertIs(E.dependencies()[0], torch)
+            for version in ('2.7.1', '2.7.1+cu126', '2.11.0a0'):
+                torch.__version__ = version
+                with self.assertRaises(ValueError):
+                    E.dependencies()
+            torch.__version__ = '2.7.1+cpu'; torch.version.cuda = '12.6'
+            with self.assertRaises(ValueError):
+                E.dependencies()
 
 
 

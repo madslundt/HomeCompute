@@ -23,7 +23,8 @@ state keys, tensor dtypes/shapes and finite values. Unsafe or partial loads fail
 complete hashes, exact public URLs, byte lengths and dependency metadata. The
 requirements file repeats the install hashes. The cached NVIDIA image is used by
 immutable local image ID, without a pull. Export uses a separate CPU
-Torch2.7.1/torchaudio2.7.1/SpeechBrain1.1.2 venv without system packages. Dynamic
+Torch2.7.1/torchaudio2.7.1/SpeechBrain1.1.2 venv without system packages.
+The locked Torch wheel reports runtime `2.7.1+cpu`; its distribution version is `2.7.1`. Dynamic
 library and Python paths are sanitized for export. The NVIDIA Torch/Torchvision
 package file hashes are checked before and after installation; no NVIDIA package
 is replaced. Build has no network or model assets. The worker runtime uses only
