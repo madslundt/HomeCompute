@@ -29,6 +29,22 @@ KEEPALIVE_OFF = ('\t\t\t\t\t# Avoid stale sockets across the native forwarding c
                  '\t\t\t\t\tkeepalive off\n')
 CONNECTION_LIMIT = ('\t\t\t\t\t# Reserve native tunnel slots for chat, speech and operator access.\n'
                     '\t\t\t\t\tmax_conns_per_host 8\n')
+API_ROUTE = ('\t\t# Limit Hermes API requests to the Home Assistant host and the endpoints\n'
+             '\t\t# used by the vendored conversation integration.\n'
+             '\t\t@hermesApi {\n'
+             '\t\t\tremote_ip 192.168.30.30\n'
+             '\t\t\tpath /p/default/v1/models /p/default/v1/chat/completions /p/hermes-conversation-probe-does-not-exist/v1/models\n'
+             '\t\t}\n'
+             '\t\thandle @hermesApi {\n'
+             '\t\t\treverse_proxy 172.28.200.1:18805 {\n'
+             '\t\t\t\ttransport http {\n'
+             '\t\t\t\t\tmax_conns_per_host 8\n'
+             '\t\t\t\t\tkeepalive off\n'
+             '\t\t\t\t\tdial_timeout 3s\n'
+             '\t\t\t\t\tresponse_header_timeout 10m\n'
+             '\t\t\t\t}\n'
+             '\t\t\t}\n'
+             '\t\t}\n')
 
 
 def patch(caddy, current_homepage, source_caddy, source_homepage):
@@ -38,9 +54,10 @@ def patch(caddy, current_homepage, source_caddy, source_homepage):
         raise ValueError('canonical-Hermes-source-shape')
     block = blocks[0]
     if block not in caddy:
-        previous = block.replace(CONNECTION_LIMIT, '', 1)
+        no_api = block.replace(API_ROUTE, '', 1)
+        previous = no_api.replace(CONNECTION_LIMIT, '', 1)
         older = previous.replace(PRELOAD_REDIRECT, '', 1)
-        candidates = [value for value in dict.fromkeys((LEGACY_OFFICE, previous, older,
+        candidates = [value for value in dict.fromkeys((LEGACY_OFFICE, no_api, previous, older,
                       older.replace(KEEPALIVE_OFF, '', 1))) if caddy.count(value) == 1]
         if len(candidates) != 1:
             raise ValueError('existing-office-route-differs')

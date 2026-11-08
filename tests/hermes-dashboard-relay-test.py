@@ -150,6 +150,44 @@ class RelayTest(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(1.1)
         self.assertFalse(any(task.get_coro().__name__ == 'handle' for task in asyncio.all_tasks()))
 
+    def test_api_route_allows_only_default_profile_models_and_chat(self):
+        self.assertTrue(relay.api_request_header(
+            b'GET /p/default/v1/models HTTP/1.1\r\nAuthorization: Bearer synthetic\r\n'))
+        self.assertTrue(relay.api_request_header(
+            b'POST /p/default/v1/chat/completions HTTP/1.1\r\nAuthorization: Bearer synthetic\r\n'))
+        self.assertTrue(relay.api_request_header(
+            b'GET /p/hermes-conversation-probe-does-not-exist/v1/models HTTP/1.1\r\n'))
+        for request in (
+            b'GET /p/default/v1/runs HTTP/1.1\r\n',
+            b'GET /p/other/v1/models HTTP/1.1\r\n',
+            b'DELETE /p/default/v1/models HTTP/1.1\r\n',
+            b'POST /p/default/v1/chat/completions/extra HTTP/1.1\r\n',
+        ):
+            self.assertFalse(relay.api_request_header(request))
+
+    async def test_api_request_uses_only_its_health_gated_loopback_forward(self):
+        requests = []
+        async def api_backend(reader, writer):
+            request = await reader.readuntil(b'\r\n\r\n')
+            if b'GET /health ' in request:
+                writer.write(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok')
+                await writer.drain()
+                return
+            requests.append(request)
+            writer.write(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok')
+            await writer.drain()
+        api_port = await self.serve(api_backend)
+        with patch.object(relay, 'API_PORT', api_port):
+            relay_port = await self.serve(lambda r, w: relay.handle(r, w, port=api_port, timeout=0.15, delay=0))
+            reader, writer = await asyncio.open_connection('127.0.0.1', relay_port)
+            self.connections.append(writer)
+            request = (b'POST /p/default/v1/chat/completions HTTP/1.1\r\n'
+                       b'Authorization: Bearer synthetic\r\nContent-Length: 0\r\n\r\n')
+            writer.write(request); await writer.drain()
+            response = await asyncio.wait_for(reader.read(), 2)
+        self.assertTrue(response.endswith(b'\r\n\r\nok'), response)
+        self.assertEqual(requests, [request])
+
 
 class InstallerTest(unittest.TestCase):
     def setUp(self):
