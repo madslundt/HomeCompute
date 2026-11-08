@@ -175,6 +175,49 @@ n8n `hermes` identity is independent. Additional profiles are deferred.
 See [the dated runtime evidence](../../docs/hermes-runtime-validation-2026-11-06.md)
 for applied revisions, measured checks and remaining qualification gaps.
 
+## Home Assistant conversation API
+
+The Home Assistant conversation integration uses the API server in the owner
+profile. Its only client is the HA host at `192.168.30.30`; the API server keeps
+its default loopback bind on port `8642` inside the sandbox. The owner API
+forward uses guest loopback port `18642`, and the existing guest/dashboard
+relay routes only the integration's model-list and chat paths to it. Caddy
+admits those paths only from the HA host at the existing TLS origin
+`https://agents.home.arpa`. The HA Gateway URL is that origin root, profile
+`default`; do not add `/p/default/v1` to the configured URL.
+
+The API bearer key lives in the selected Hermes sandbox's private `.hermes/.env`
+and in the operator's mode-`0600` file
+`~/.config/homecompute-hermes/secrets/hermes-api-server-default` for private
+entry into HA. Generate 32 random bytes and encode them as lowercase hex; never
+put the value in argv, shell history, logs, Git, or chat. The HA integration
+stores its copy in its config entry outside Git. The API exposes the default
+profile's existing agent toolset, so keep its current sandbox and MCP policy in
+force. The relay also rejects API paths outside `/p/default/v1/models`,
+`/p/default/v1/chat/completions`, and the integration's nonexistent-profile
+probe.
+
+Apply the source-owned lifecycle from the published guest checkout:
+
+```sh
+python3 scripts/setup-hermes-ha-api.py --revision FULL_SHA --apply
+python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA --apply \
+  --expected-sha256 REVIEWED_PLAN_SHA256
+```
+
+Inspect each plan before applying. The API setup configures the existing owner
+profile, restarts only that Hermes sandbox, updates the forwarding watcher, and
+verifies the profile through its guest-loopback forward. The dashboard relay
+installer refreshes the source-pinned path filter. Apply the core ingress using
+`python3 scripts/setup-hermes-dashboard-ingress.py --revision FULL_SHA` from the
+published home-core release. Roll back the owner API settings from retained
+private before-files, then restore the prior relay and Caddy receipts through
+their guarded lifecycles:
+
+```sh
+python3 scripts/setup-hermes-ha-api.py --revision FULL_SHA --rollback
+```
+
 ## Release and policy
 
 `config/hermes-release.json` pins NemoClaw 0.0.141, OpenShell 0.0.116, and

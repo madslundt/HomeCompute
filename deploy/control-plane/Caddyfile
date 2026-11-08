@@ -379,6 +379,22 @@ agents.home.arpa {
 	encode zstd gzip
 	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
 	handle @private {
+		# Limit Hermes API requests to the Home Assistant host and the endpoints
+		# used by the vendored conversation integration.
+		@hermesApi {
+			remote_ip 192.168.30.30
+			path /p/default/v1/models /p/default/v1/chat/completions /p/hermes-conversation-probe-does-not-exist/v1/models
+		}
+		handle @hermesApi {
+			reverse_proxy 172.28.200.1:18805 {
+				transport http {
+					max_conns_per_host 8
+					keepalive off
+					dial_timeout 3s
+					response_header_timeout 10m
+				}
+			}
+		}
 		# The observer still validates Origin and requires its own password.
 		# Its native listener and both relay hops remain on private interfaces.
 		redir /hermes /hermes/ 308
