@@ -169,6 +169,28 @@ and verify Ready, same container, authenticated access and state continuity.
 Keep both database and application backups until verification. A changed
 identity, condition or version requires fresh diagnosis, not broader matching.
 
+If startup then reports that `/sandbox/.hermes/.env` contains an unreadable
+path component, inspect its owner and mode from the private whole-sandbox
+archive. The selected image expects this file to be owned by the sandbox user
+and group at mode `0640`; the 6 November UID transition left one retained
+runtime with it owned by `1000:1000`, which UID `998` cannot read. The guarded
+`scripts/recover-hermes-env-ownership.py` plan accepts only that exact old
+owner/mode or the already-repaired target, the same retained image/container,
+and a matching private archive. It changes metadata only and verifies that the
+secret file bytes remain identical. Stop the selected gateway and container,
+then run from the published guest release:
+
+```sh
+python3 scripts/recover-hermes-env-ownership.py --revision FULL_SHA --backup PRIVATE_TAR
+python3 scripts/recover-hermes-env-ownership.py --revision FULL_SHA --backup PRIVATE_TAR \
+  --apply --expected-sha256 REVIEWED_PLAN_SHA256
+```
+
+Afterward, use the guarded native Error-to-Stopped recovery if needed, start the
+owner through `setup-hermes-guest.sh start`, and verify the dashboard through
+its authenticated client path. Keep the sandbox and native database backups
+until the dashboard and normal stop/start lifecycle pass.
+
 Hermes is being reintroduced alongside OpenClaw in the isolated Ubuntu agents
 VM. The owner uses the dedicated Mattermost bot `hermes-agent`; the existing
 n8n `hermes` identity is independent. Additional profiles are deferred.

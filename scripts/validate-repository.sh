@@ -127,6 +127,7 @@ python3 "$REPO_ROOT/tests/openclaw-recovery-verification-test.py"
 python3 "$REPO_ROOT/tests/home-core-embeddings-test.py"
 printf '[validate] Hermes guest runtime tests\n'
 python3 "$REPO_ROOT/tests/hermes-guest-runtime-test.py"
+python3 "$REPO_ROOT/tests/hermes-env-ownership-recovery-test.py"
 printf '[validate] scoped proactive assistant context tests\n'
 python3 "$REPO_ROOT/tests/assistant-context-store-test.py"
 python3 "$REPO_ROOT/tests/assistant-context-sources-test.py"
