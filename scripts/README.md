@@ -21,7 +21,7 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-home-core-stt.sh` | Pinned Wyoming Faster Whisper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `setup-home-core-automation-backup.sh` | On-demand Qwen3.6 Q4 CPU standby for planned Spark swaps | `prepare`, `maintenance-start`, `smoke`, `maintenance-stop`, `status` |
 | `setup-hermes-guest.sh` | Household `hermes-personal` agent inside the isolated Ubuntu agents guest | `validate`, `preflight`, `install`, `onboard-canary`, `recreate`, `connect-mattermost`, `connect-browser`, `install-startup`, `health` |
-| `recover-hermes-env-ownership.py` | Guarded metadata-only repair for the retained Hermes UID transition incident | Private full-sandbox backup, exact sandbox/image identity, stopped gateway/container, reviewed plan SHA |
+| `recover-hermes-env-ownership.py` | Guarded config/.env metadata repair for the retained Hermes UID transition incident | Private full-sandbox backup, exact sandbox/image identity, stopped gateway/container, reviewed plan SHA |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |
 | `gb10_model_roster.py` | Offline hardware-roster validation | Immutable revisions, resolvable operating-profile references, runtime profile structure, and artifact bounds |

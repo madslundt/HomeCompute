@@ -169,16 +169,17 @@ and verify Ready, same container, authenticated access and state continuity.
 Keep both database and application backups until verification. A changed
 identity, condition or version requires fresh diagnosis, not broader matching.
 
-If startup then reports that `/sandbox/.hermes/.env` contains an unreadable
-path component, inspect its owner and mode from the private whole-sandbox
-archive. The selected image expects this file to be owned by the sandbox user
-and group at mode `0640`; the 6 November UID transition left one retained
-runtime with it owned by `1000:1000`, which UID `998` cannot read. The guarded
-`scripts/recover-hermes-env-ownership.py` plan accepts only that exact old
-owner/mode or the already-repaired target, the same retained image/container,
-and a matching private archive. It changes metadata only and verifies that the
-secret file bytes remain identical. Stop the selected gateway and container,
-then run from the published guest release:
+If startup reports unreadable `config.yaml` or `.env` paths, inspect their
+owners and modes in the private whole-sandbox archive. The 6 November UID
+transition left one retained runtime with both files owned by `1000:1000`, so
+UID `998` cannot read them. The selected image expects sandbox ownership
+`998:999`, with `config.yaml` retaining its private mode `0600` and `.env` at
+`0640`. The guarded `scripts/recover-hermes-env-ownership.py` plan accepts only
+the diagnosed prior ownership or the target, exact file bytes, the same
+retained image/container, and a matching private archive. It changes metadata
+only and verifies both files remain byte-identical. Stop the selected gateway
+and container, take a fresh mode-0600 full-sandbox archive, then run from the
+published guest release:
 
 ```sh
 python3 scripts/recover-hermes-env-ownership.py --revision FULL_SHA --backup PRIVATE_TAR
