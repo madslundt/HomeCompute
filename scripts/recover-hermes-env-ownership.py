@@ -101,14 +101,18 @@ def inspect(revision, backup_path):
         state_before = archive.extractfile(state_member).read(16)
     if not state_before.startswith(b"SQLite format 3\x00"):
         raise ValueError("real Hermes application database required in backup")
+    env_target = (hermes_dir.uid, hermes_dir.gid, TARGET_MODE)
+    env_backup_meta = (env_meta.uid, env_meta.gid, env_meta.mode)
     current, current_meta = docker_file(CONTAINER, ENV)
-    if current != env_before or (current_meta.uid, current_meta.gid, current_meta.mode) != (
-            env_meta.uid, env_meta.gid, env_meta.mode):
+    if current != env_before or (current_meta.uid, current_meta.gid, current_meta.mode) not in {
+            env_backup_meta, env_target}:
         raise ValueError("Hermes env changed since the selected full-sandbox backup")
+    config_target = (hermes_dir.uid, hermes_dir.gid, config_meta.mode)
+    config_backup_meta = (config_meta.uid, config_meta.gid, config_meta.mode)
     current_config, current_config_meta = docker_file(CONTAINER, CONFIG)
     if (current_config != config_before or
-            (current_config_meta.uid, current_config_meta.gid, current_config_meta.mode) !=
-            (config_meta.uid, config_meta.gid, config_meta.mode)):
+            (current_config_meta.uid, current_config_meta.gid, current_config_meta.mode) not in {
+                config_backup_meta, config_target}):
         raise ValueError("Hermes config changed since the selected full-sandbox backup")
     docker = json.loads(run(["docker", "inspect", CONTAINER]))[0]
     if (docker["Id"] != CONTAINER or docker["Name"] != "/openshell-default--" + NAME
@@ -121,13 +125,11 @@ def inspect(revision, backup_path):
     if gateway != b"inactive":
         raise ValueError("stop the selected OpenShell gateway before metadata repair")
 
-    env_target = (hermes_dir.uid, hermes_dir.gid, TARGET_MODE)
     env_actual = (current_meta.uid, current_meta.gid, current_meta.mode)
     if env_actual not in {(1000, 1000, TARGET_MODE), env_target}:
         raise ValueError("Hermes env owner/mode differs from the diagnosed UID transition")
     if config_meta.mode != 0o600:
         raise ValueError("Hermes config mode differs from the diagnosed private mode")
-    config_target = (hermes_dir.uid, hermes_dir.gid, config_meta.mode)
     config_actual = (current_config_meta.uid, current_config_meta.gid, current_config_meta.mode)
     if config_actual not in {(1000, 1000, config_meta.mode), config_target}:
         raise ValueError("Hermes config owner/mode differs from the diagnosed UID transition")
