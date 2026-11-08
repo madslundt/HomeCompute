@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Restore the qualified Hermes sandbox .env owner after the UID transition.
+"""Restore the qualified Hermes sandbox config owners after the UID transition.
 
-The release image requires /sandbox/.hermes/.env to be owned by the sandbox
-user/group at mode 0640. This repair changes metadata only and retains the exact
-file bytes. It is admitted only for the known retained owner container, a
-stopped gateway/container, and a matching private whole-sandbox backup.
+The release image requires config.yaml and .env to be owned by the sandbox
+user/group. This repair keeps config.yaml at its backed-up private mode and
+.env at mode 0640, changing metadata only while retaining exact file bytes. It
+is admitted only for the known retained owner container, a stopped
+gateway/container, and a matching private whole-sandbox backup.
 """
 import argparse
 import hashlib
@@ -120,23 +121,31 @@ def inspect(revision, backup_path):
     if gateway != b"inactive":
         raise ValueError("stop the selected OpenShell gateway before metadata repair")
 
-    target = (hermes_dir.uid, hermes_dir.gid, TARGET_MODE)
-    actual = (current_meta.uid, current_meta.gid, current_meta.mode)
-    if actual not in {(1000, 1000, TARGET_MODE), target}:
+    env_target = (hermes_dir.uid, hermes_dir.gid, TARGET_MODE)
+    env_actual = (current_meta.uid, current_meta.gid, current_meta.mode)
+    if env_actual not in {(1000, 1000, TARGET_MODE), env_target}:
         raise ValueError("Hermes env owner/mode differs from the diagnosed UID transition")
+    if config_meta.mode != 0o600:
+        raise ValueError("Hermes config mode differs from the diagnosed private mode")
+    config_target = (hermes_dir.uid, hermes_dir.gid, config_meta.mode)
+    config_actual = (current_config_meta.uid, current_config_meta.gid, current_config_meta.mode)
+    if config_actual not in {(1000, 1000, config_meta.mode), config_target}:
+        raise ValueError("Hermes config owner/mode differs from the diagnosed UID transition")
     report = {"revision": revision, "sandbox": NAME, "container": CONTAINER,
               "backup_sha256": backup_sha,
-              "env_before": {"uid": actual[0], "gid": actual[1], "mode": actual[2]},
-              "env_after": {"uid": target[0], "gid": target[1], "mode": target[2]},
+              "env_before": {"uid": env_actual[0], "gid": env_actual[1], "mode": env_actual[2]},
+              "env_after": {"uid": env_target[0], "gid": env_target[1], "mode": env_target[2]},
+              "config_before": {"uid": config_actual[0], "gid": config_actual[1], "mode": config_actual[2]},
+              "config_after": {"uid": config_target[0], "gid": config_target[1], "mode": config_target[2]},
               "config_sha256": hashlib.sha256(config_before).hexdigest(),
-              "already_repaired": actual == target}
-    return report, current, current_meta, target
+              "already_repaired": env_actual == env_target and config_actual == config_target}
+    return report, (current, current_meta, config_before, current_config_meta), (env_target, config_target)
 
 
-def replacement_tar(data, old_meta, target):
+def replacement_tar(name, data, old_meta, target):
     encoded = io.BytesIO()
     with tarfile.open(fileobj=encoded, mode="w") as archive:
-        member = tarfile.TarInfo(".env")
+        member = tarfile.TarInfo(name)
         member.size = len(data)
         member.uid, member.gid, member.mode = target
         member.uname, member.gname = "sandbox", "sandbox"
@@ -145,17 +154,24 @@ def replacement_tar(data, old_meta, target):
     return encoded.getvalue()
 
 
-def apply(report, data, old_meta, target, expected):
+def apply(report, files, targets, expected):
     if hashlib.sha256(json.dumps(report, sort_keys=True).encode()).hexdigest() != expected:
         raise ValueError("reviewed Hermes ownership plan changed")
     if report["already_repaired"]:
         return {"revision": report["revision"], "sandbox": NAME, "applied": True,
                 "already_repaired": True}
+    env_data, env_meta, config_data, config_meta = files
+    env_target, config_target = targets
     run(["docker", "cp", "-", CONTAINER + ":/sandbox/.hermes"],
-        replacement_tar(data, old_meta, target))
+        replacement_tar(".env", env_data, env_meta, env_target))
     check, metadata = docker_file(CONTAINER, ENV)
-    if check != data or (metadata.uid, metadata.gid, metadata.mode) != target:
+    if check != env_data or (metadata.uid, metadata.gid, metadata.mode) != env_target:
         raise ValueError("Hermes env metadata repair readback failed")
+    run(["docker", "cp", "-", CONTAINER + ":/sandbox/.hermes"],
+        replacement_tar("config.yaml", config_data, config_meta, config_target))
+    check, metadata = docker_file(CONTAINER, CONFIG)
+    if check != config_data or (metadata.uid, metadata.gid, metadata.mode) != config_target:
+        raise ValueError("Hermes config metadata repair readback failed")
 
     RECEIPT_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     info = RECEIPT_DIR.lstat()
@@ -179,11 +195,11 @@ def main():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--expected-sha256")
     args = parser.parse_args()
-    report, data, metadata, target = inspect(args.revision, args.backup)
+    report, files, targets = inspect(args.revision, args.backup)
     if args.apply:
         if not args.expected_sha256:
             raise ValueError("reviewed plan SHA-256 required for apply")
-        result = apply(report, data, metadata, target, args.expected_sha256)
+        result = apply(report, files, targets, args.expected_sha256)
     else:
         result = {**report, "plan_sha256": hashlib.sha256(
             json.dumps(report, sort_keys=True).encode()).hexdigest(), "applied": False}

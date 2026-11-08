@@ -30,16 +30,21 @@ def tar_member(name, data=b"synthetic-secret=not-a-real-credential\n", *, kind=t
 
 
 class HermesEnvOwnershipRecoveryTest(unittest.TestCase):
-    def test_replacement_preserves_env_bytes_and_sets_image_owner(self):
+    def test_replacement_preserves_file_bytes_and_sets_image_owner(self):
         data = b"synthetic-secret=not-a-real-credential\n"
-        original, metadata = RECOVERY.file_from_tar(tar_member(".env", data), ".env")
-        target = (998, 999, 0o640)
+        cases = ((".env", 0o640), ("config.yaml", 0o600))
+        for name, mode in cases:
+            with self.subTest(name=name):
+                original, metadata = RECOVERY.file_from_tar(
+                    tar_member(name, data, mode=mode), name)
+                target = (998, 999, mode)
 
-        repaired, repaired_meta = RECOVERY.file_from_tar(
-            RECOVERY.replacement_tar(original, metadata, target), ".env")
+                repaired, repaired_meta = RECOVERY.file_from_tar(
+                    RECOVERY.replacement_tar(name, original, metadata, target), name)
 
-        self.assertEqual(repaired, data)
-        self.assertEqual((repaired_meta.uid, repaired_meta.gid, repaired_meta.mode), target)
+                self.assertEqual(repaired, data)
+                self.assertEqual(
+                    (repaired_meta.uid, repaired_meta.gid, repaired_meta.mode), target)
 
     def test_accepts_directory_types_with_permission_bits_only(self):
         target = io.BytesIO()
