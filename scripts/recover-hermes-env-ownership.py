@@ -71,6 +71,16 @@ def private_backup(path):
     return path
 
 
+def validate_sandbox_directories(archive):
+    sandbox = archive.getmember("sandbox")
+    hermes_dir = archive.getmember("sandbox/.hermes")
+    if not sandbox.isdir() or not hermes_dir.isdir():
+        raise ValueError("expected Hermes sandbox directories in backup")
+    if hermes_dir.uid != 998 or hermes_dir.gid != 999:
+        raise ValueError("Hermes config directory owner differs from the selected image")
+    return sandbox, hermes_dir
+
+
 def inspect(revision, backup_path):
     if len(revision) != 40 or any(c not in "0123456789abcdef" for c in revision):
         raise ValueError("full published revision required")
@@ -81,18 +91,13 @@ def inspect(revision, backup_path):
     private_backup(backup_path)
     backup_sha = hashlib.file_digest(backup_path.open("rb"), "sha256").hexdigest()
     with tarfile.open(backup_path) as archive:
-        sandbox = archive.getmember("sandbox")
-        hermes_dir = archive.getmember("sandbox/.hermes")
+        sandbox, hermes_dir = validate_sandbox_directories(archive)
         env_before, env_meta = backup_file(archive, ENV)
         config_before, config_meta = backup_file(archive, CONFIG)
         state_member = archive.getmember(STATE_DB)
         if not state_member.isfile() or state_member.size < 16:
             raise ValueError("real Hermes application database required in backup")
         state_before = archive.extractfile(state_member).read(16)
-    if not stat.S_ISDIR(sandbox.mode) or not stat.S_ISDIR(hermes_dir.mode):
-        raise ValueError("expected Hermes sandbox directories in backup")
-    if hermes_dir.uid != 998 or hermes_dir.gid != 999:
-        raise ValueError("Hermes config directory owner differs from the selected image")
     if not state_before.startswith(b"SQLite format 3\x00"):
         raise ValueError("real Hermes application database required in backup")
     current, current_meta = docker_file(CONTAINER, ENV)

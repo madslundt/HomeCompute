@@ -41,6 +41,20 @@ class HermesEnvOwnershipRecoveryTest(unittest.TestCase):
         self.assertEqual(repaired, data)
         self.assertEqual((repaired_meta.uid, repaired_meta.gid, repaired_meta.mode), target)
 
+    def test_accepts_directory_types_with_permission_bits_only(self):
+        target = io.BytesIO()
+        with tarfile.open(fileobj=target, mode="w") as archive:
+            for name, uid, gid in (("sandbox", 998, 999),
+                                   ("sandbox/.hermes", 998, 999)):
+                member = tarfile.TarInfo(name)
+                member.type = tarfile.DIRTYPE
+                member.uid, member.gid, member.mode = uid, gid, 0o755
+                archive.addfile(member)
+        with tarfile.open(fileobj=io.BytesIO(target.getvalue())) as archive:
+            sandbox, hermes_dir = RECOVERY.validate_sandbox_directories(archive)
+        self.assertTrue(sandbox.isdir())
+        self.assertTrue(hermes_dir.isdir())
+
     def test_rejects_symlink_env_entry(self):
         with self.assertRaisesRegex(ValueError, "one regular Hermes file"):
             RECOVERY.file_from_tar(tar_member(".env", kind=tarfile.SYMTYPE), ".env")
