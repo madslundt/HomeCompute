@@ -1347,9 +1347,12 @@ jq -e '
 # Assistant context is an opt-in NixOS service with a private user and loopback
 # API. This directory is its runbook, not a second container lifecycle.
 [[ ! -e "$REPO_ROOT/deploy/assistant-context/compose.yaml" ]]
+# OpenCode is an opt-in NixOS service with a private user, loopback listener,
+# and Tailscale Serve route. Its runbook does not define a Compose workload.
+[[ ! -e "$REPO_ROOT/deploy/opencode/compose.yaml" ]]
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openbot openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openbot openclaw opencode piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
