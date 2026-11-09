@@ -4,7 +4,12 @@ set -Eeuo pipefail
 readonly CONTAINER=homecompute-openbot
 readonly IMAGE_DIGEST=sha256:e8c0338a76efe51e472ee5a90836d99fb7341924c5148eb1da78d402e693d514
 
-running="$(docker inspect --format '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)"
+running=false
+for ((attempt = 0; attempt < 30; attempt++)); do
+  running="$(docker inspect --format '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)"
+  [[ "$running" == true ]] && break
+  sleep 2
+done
 [[ "$running" == true ]] || { echo 'OpenBot container is not running' >&2; exit 1; }
 ports="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$CONTAINER")"
 [[ "$ports" == null || "$ports" == '{}' ]] || { echo 'OpenBot must not publish host ports' >&2; exit 1; }
