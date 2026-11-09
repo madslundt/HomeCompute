@@ -17,6 +17,7 @@ readonly ASSETS=(
   "$REPO_ROOT/deploy/openbot/network-policy.py"
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
   "$REPO_ROOT/config/openbot-network.json"
+  "$REPO_ROOT/config/openbot-install.json"
 )
 
 usage() {
@@ -60,18 +61,23 @@ login() {
 
 install_openbot() {
   require_published_release
-  local revision stage release
+  local revision stage release compose_package compose_version compose_cli_version compose_sha256 compose_architecture
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  compose_package="$(jq -er '.docker_compose.apt_package' "$REPO_ROOT/config/openbot-install.json")"
+  compose_version="$(jq -er '.docker_compose.apt_version' "$REPO_ROOT/config/openbot-install.json")"
+  compose_cli_version="$(jq -er '.docker_compose.cli_version' "$REPO_ROOT/config/openbot-install.json")"
+  compose_sha256="$(jq -er '.docker_compose.deb_sha256' "$REPO_ROOT/config/openbot-install.json")"
+  compose_architecture="$(jq -er '.architecture' "$REPO_ROOT/config/openbot-install.json")"
   stage="/tmp/homecompute-openbot-$revision"
   release="$REMOTE_BASE/releases/$revision"
-  ssh_guest bash -s -- "$REMOTE_BASE" "$stage" "$release" <<'REMOTE_PREP'
+  ssh_guest bash -s -- "$REMOTE_BASE" "$stage" "$release" "$compose_package" \
+    "$compose_version" "$compose_cli_version" "$compose_sha256" "$compose_architecture" <<'REMOTE_PREP'
 set -Eeuo pipefail
-base="$1"; stage="$2"
+base="$1"; stage="$2"; compose_package="$4"; compose_version="$5"
+compose_cli_version="$6"; compose_sha256="$7"; compose_architecture="$8"
 command -v docker >/dev/null
-docker compose version >/dev/null
 docker info >/dev/null
 test ! -L "$base" || { echo 'OpenBot data root must not be a symlink' >&2; exit 1; }
-install -d -m 0700 "$base" "$base/releases" "$stage"
 for path in "$base/current" "$base/compose.yaml" "$base/seccomp.json"; do
   if test -e "$path" || test -L "$path"; then
     echo 'Unmanaged OpenBot path already exists; preserve and inspect it' >&2
@@ -82,6 +88,22 @@ if docker inspect homecompute-openbot >/dev/null 2>&1; then
   echo 'Container name already exists; preserve and inspect it' >&2
   exit 1
 fi
+command -v apt-get >/dev/null
+test "$(dpkg --print-architecture)" = "$compose_architecture"
+installed_compose_version="$(dpkg-query -W -f='${Version}' "$compose_package" 2>/dev/null || true)"
+if test "$installed_compose_version" != "$compose_version"; then
+  sudo -n apt-get update -qq
+  package_dir="$(mktemp -d /tmp/homecompute-openbot-compose.XXXXXX)"
+  trap 'rm -rf "$package_dir"' EXIT
+  (cd "$package_dir" && apt-get download "$compose_package=$compose_version")
+  package="$package_dir/${compose_package}_${compose_version}_${compose_architecture}.deb"
+  test -f "$package"
+  printf '%s  %s\n' "$compose_sha256" "$package" | sha256sum -c -
+  sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends "$package"
+fi
+test "$(dpkg-query -W -f='${Version}' "$compose_package")" = "$compose_version"
+test "$(docker compose version --short | sed 's/^v//')" = "$compose_cli_version"
+install -d -m 0700 "$base" "$base/releases" "$stage"
 REMOTE_PREP
 
   scp -q -J home-core -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i "$KEY_FILE" "${ASSETS[@]}" "$GUEST:$stage/"
@@ -90,14 +112,14 @@ REMOTE_PREP
 set -Eeuo pipefail
 base="$1"; stage="$2"; release="$3"
 install -d -o hermes-operator -g hermes-operator -m 0700 "$release"
-for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health openbot-network.json; do
+for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health openbot-network.json openbot-install.json; do
   if test -e "$release/$file" || test -L "$release/$file"; then
     cmp -s "$stage/$file" "$release/$file" || { echo 'Published release assets differ; refusing overwrite' >&2; exit 1; }
   else
     sudo -n install -o hermes-operator -g hermes-operator -m 0600 "$stage/$file" "$release/$file"
   fi
 done
-sudo -n chmod 0644 "$release/compose.yaml" "$release/seccomp.json" "$release/homecompute-openbot.service" "$release/homecompute-openbot-firewall.service" "$release/openbot-network.json"
+sudo -n chmod 0644 "$release/compose.yaml" "$release/seccomp.json" "$release/homecompute-openbot.service" "$release/homecompute-openbot-firewall.service" "$release/openbot-network.json" "$release/openbot-install.json"
 sudo -n chmod 0755 "$release/network-policy.py" "$release/homecompute-openbot-health"
 sudo -n install -d -o root -g root -m 0755 /etc/homecompute-openbot /usr/local/libexec
 sudo -n install -o root -g root -m 0644 "$release/openbot-network.json" /etc/homecompute-openbot/network.json

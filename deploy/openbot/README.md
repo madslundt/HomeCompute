@@ -8,6 +8,9 @@ use the desktop/iPhone app or `https://openbot.run/app`.
 The upstream `v0.65.0` Linux/amd64 image is pinned by manifest digest in
 `compose.yaml`. Its upstream seccomp profile is tracked here and was checked
 against SHA-256 `665289e6a1c41045f55166d0b01993c929f71df78e3a3b264f3252bb8e0b3d9e`.
+The guest installer verifies the Ubuntu 24.04 `docker-compose-v2` package
+version and `.deb` SHA-256 from `config/openbot-install.json` before installing
+it, then checks the reported Compose CLI version.
 The container has no Docker socket, host-home mount, host networking, or
 published ports. Its only persistent mount is its private `/data` directory;
 its default capabilities are dropped. The agents-VM Docker bridge egress policy
