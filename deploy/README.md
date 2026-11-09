@@ -8,6 +8,8 @@ Deployment files are split by stable node role:
   control-plane Compose workload.
 - [`open-webui/`](open-webui/compose.yaml) contains the browser chat UI,
   connected to LiteLLM through the internal clients network.
+- [`opencode/`](opencode/README.md) documents the private Home Core coding
+  workspace and its NixOS/Tailscale lifecycle.
 - [`model-manager/`](model-manager/README.md) contains the gated Spark model
   lifecycle dashboard and its dedicated SSH bridge.
 - [`openbot/`](openbot/README.md) contains the pinned OpenBot team server for

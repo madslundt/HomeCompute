@@ -27,6 +27,7 @@ in
     ../../modules/nixos/agent-harness.nix
     ../../modules/nixos/openclaw.nix
     ../../modules/nixos/mattermost.nix
+    ../../modules/nixos/opencode.nix
     ../../modules/nixos/agents-vm.nix
     ../../modules/nixos/agents-vm-backup.nix
     ../../modules/nixos/docker.nix
@@ -45,6 +46,7 @@ in
   homecompute.agentOffice.enable = true;
   homecompute.hermesDashboard.enable = true;
   homecompute.mattermost.enable = true;
+  homecompute.opencode.enable = true;
   homecompute.serviceRecovery.enable = true;
   # Household admission follows the isolated encrypted-NAS restore and current
   # deletion replay proof. Delivery and external publication stay separately gated.

@@ -159,6 +159,14 @@
       ],
       "units": [
         {
+          "name": "homecompute-opencode.service",
+          "kind": "persistent"
+        },
+        {
+          "name": "homecompute-opencode-serve.service",
+          "kind": "persistent"
+        },
+        {
           "name": "homecompute-host-update.service",
           "kind": "oneshot"
         },

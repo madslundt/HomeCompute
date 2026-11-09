@@ -89,6 +89,12 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
+            "opencode/server-password" = {
+              sopsFile = ../../secrets/opencode.sops.yaml;
+              key = "server-password";
+              owner = "agent";
+              mode = "0400";
+            };
           } // lib.optionalAttrs (
             config.homecompute.backups.enable
             || config.homecompute.nasRecoveryBackup.enable
