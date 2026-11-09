@@ -55,6 +55,12 @@
         href: https://agents.home.arpa/hermes/
         description: Hermes dashboard · personal assistant and OMH workflows
 
+    - OpenBot:
+        id: homecore-openbot
+        icon: mdi-robot-outline
+        href: https://openbot.run/app
+        description: Open AI teammates · select the home-core server
+
     - Mattermost:
         id: homecore-mattermost
         icon: mattermost.png
