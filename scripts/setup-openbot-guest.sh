@@ -24,9 +24,10 @@ usage() {
   cat <<'EOF'
 Usage: setup-openbot-guest.sh install|login|status
 
-install  Install the pinned service into the agents VM. The current checkout
-         must be a clean commit equal to origin/master and Home Core's deployed
-         revision. This does not sign in to OpenBot or configure a provider.
+install  Install or reconcile the pinned service in the agents VM. The current
+         checkout must be a clean commit equal to origin/master and Home Core's
+         deployed revision. Managed upgrades preserve /data and refuse drift.
+         This does not sign in to OpenBot or configure a provider.
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 EOF
@@ -78,16 +79,68 @@ compose_cli_version="$6"; compose_sha256="$7"; compose_architecture="$8"
 command -v docker >/dev/null
 docker info >/dev/null
 test ! -L "$base" || { echo 'OpenBot data root must not be a symlink' >&2; exit 1; }
-for path in "$base/current" "$base/compose.yaml" "$base/seccomp.json"; do
+current="$base/current"
+if test -e "$current" || test -L "$current"; then
+  test -L "$current" || { echo 'Existing OpenBot current path is not a symlink' >&2; exit 1; }
+  previous_release="$(readlink -f "$current")"
+  previous_revision="${previous_release##*/}"
+  [[ "$previous_release" == "$base/releases/$previous_revision" && "$previous_revision" =~ ^[0-9a-f]{40}$ ]] || {
+    echo 'Existing OpenBot release is outside its managed version directory' >&2
+    exit 1
+  }
+  for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health openbot-network.json openbot-install.json; do
+    test -f "$previous_release/$file" && test ! -L "$previous_release/$file" || {
+      echo 'Existing OpenBot release is incomplete; preserve and inspect it' >&2; exit 1;
+    }
+  done
+  cmp -s "$previous_release/homecompute-openbot.service" /etc/systemd/system/homecompute-openbot.service || {
+    echo 'Existing OpenBot systemd unit differs from its managed release' >&2; exit 1;
+  }
+  cmp -s "$previous_release/homecompute-openbot-firewall.service" /etc/systemd/system/homecompute-openbot-firewall.service || {
+    echo 'Existing OpenBot firewall unit differs from its managed release' >&2; exit 1;
+  }
+  cmp -s "$previous_release/openbot-network.json" /etc/homecompute-openbot/network.json || {
+    echo 'Existing OpenBot network configuration differs from its managed release' >&2; exit 1;
+  }
+  cmp -s "$previous_release/network-policy.py" /usr/local/libexec/homecompute-openbot-network-policy || {
+    echo 'Existing OpenBot network helper differs from its managed release' >&2; exit 1;
+  }
+  cmp -s "$previous_release/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health || {
+    echo 'Existing OpenBot health helper differs from its managed release' >&2; exit 1;
+  }
+  if docker inspect homecompute-openbot >/dev/null 2>&1; then
+    project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' homecompute-openbot)"
+    service="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' homecompute-openbot)"
+    [[ "$project" == homecompute-openbot && "$service" == openbot ]] || {
+      echo 'Existing container name is not owned by the OpenBot Compose project' >&2; exit 1;
+    }
+  fi
+  test ! -L "$base/data" && test "$(stat -c %a "$base/data")" = 700 && test "$(stat -c %u "$base/data")" = 1000 || {
+    echo 'Existing OpenBot data directory has unexpected ownership or permissions' >&2; exit 1;
+  }
+else
+  for path in "$base/compose.yaml" "$base/seccomp.json" \
+      /etc/homecompute-openbot/network.json \
+      /etc/systemd/system/homecompute-openbot.service \
+      /etc/systemd/system/homecompute-openbot-firewall.service \
+      /usr/local/libexec/homecompute-openbot-network-policy \
+      /usr/local/libexec/homecompute-openbot-health; do
+    if test -e "$path" || test -L "$path"; then
+      echo 'Unmanaged OpenBot path already exists; preserve and inspect it' >&2
+      exit 1
+    fi
+  done
+  if docker inspect homecompute-openbot >/dev/null 2>&1; then
+    echo 'Container name already exists; preserve and inspect it' >&2
+    exit 1
+  fi
+fi
+for path in "$base/compose.yaml" "$base/seccomp.json"; do
   if test -e "$path" || test -L "$path"; then
     echo 'Unmanaged OpenBot path already exists; preserve and inspect it' >&2
     exit 1
   fi
 done
-if docker inspect homecompute-openbot >/dev/null 2>&1; then
-  echo 'Container name already exists; preserve and inspect it' >&2
-  exit 1
-fi
 command -v apt-get >/dev/null
 test "$(dpkg --print-architecture)" = "$compose_architecture"
 installed_compose_version="$(dpkg-query -W -f='${Version}' "$compose_package" 2>/dev/null || true)"
@@ -115,6 +168,7 @@ REMOTE_PREP
   ssh_guest bash -s -- "$REMOTE_BASE" "$stage" "$release" <<'REMOTE_INSTALL'
 set -Eeuo pipefail
 base="$1"; stage="$2"; release="$3"
+sudo -n systemctl stop homecompute-openbot.service >/dev/null 2>&1 || true
 install -d -o hermes-operator -g hermes-operator -m 0700 "$release"
 for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health openbot-network.json openbot-install.json; do
   if test -e "$release/$file" || test -L "$release/$file"; then
@@ -130,12 +184,7 @@ sudo -n install -o root -g root -m 0644 "$release/openbot-network.json" /etc/hom
 sudo -n install -o root -g root -m 0755 "$release/network-policy.py" /usr/local/libexec/homecompute-openbot-network-policy
 sudo -n install -o root -g root -m 0755 "$release/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health
 for file in homecompute-openbot.service homecompute-openbot-firewall.service; do
-  target="/etc/systemd/system/$file"
-  if test -e "$target" || test -L "$target"; then
-    cmp -s "$release/$file" "$target" || { echo 'Existing systemd unit differs from source; preserve and inspect it' >&2; exit 1; }
-  else
-    sudo -n install -o root -g root -m 0644 "$release/$file" "$target"
-  fi
+  sudo -n install -o root -g root -m 0644 "$release/$file" "/etc/systemd/system/$file"
 done
 if test ! -e "$base/data" && test ! -L "$base/data"; then
   install -d -o hermes-operator -g hermes-operator -m 0700 "$base/data"
@@ -143,14 +192,7 @@ fi
 test ! -L "$base/data"
 test "$(stat -c %a "$base/data")" = 700
 test "$(stat -c %u "$base/data")" = 1000
-if test -e "$base/current" || test -L "$base/current"; then
-  test -L "$base/current" && test "$(readlink -f "$base/current")" = "$(readlink -f "$release")" || {
-    echo 'An OpenBot release is already active; use its documented upgrade lifecycle' >&2
-    exit 1
-  }
-else
-  ln -s "$release" "$base/current"
-fi
+ln -sfnT "$release" "$base/current"
 sudo -n systemctl daemon-reload
 sudo -n systemctl enable --now homecompute-openbot-firewall.service
 sudo -n systemctl enable --now homecompute-openbot.service

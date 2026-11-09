@@ -1318,6 +1318,22 @@ if rg -n -g '*.yaml' -g '!**/openclaw/communication/compose.yaml' -g '!**/matter
   exit 1
 fi
 
+printf '[validate] OpenBot guest container boundary\n'
+openbot_json="$temporary_root/openbot.json"
+docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
+  -f "$REPO_ROOT/deploy/openbot/compose.yaml" config --format json >"$openbot_json"
+jq -e '
+  (.services | keys == ["openbot"]) and
+  (.services.openbot.image == "ghcr.io/nightly-labs/openbot@sha256:e8c0338a76efe51e472ee5a90836d99fb7341924c5148eb1da78d402e693d514") and
+  (.services.openbot.platform == "linux/amd64") and
+  (.services.openbot.cap_drop == ["ALL"] and .services.openbot.cap_add == ["SYS_CHROOT"]) and
+  (.services.openbot.security_opt | index("no-new-privileges:true") != null) and
+  (.services.openbot.ports == null and .services.openbot.network_mode != "host") and
+  (.services.openbot.volumes | length == 1 and .[0].target == "/data") and
+  (.services.openbot.shm_size == "1073741824" and .services.openbot.stop_grace_period == "1m0s") and
+  (.services.openbot.mem_limit == "8589934592" and .services.openbot.pids_limit == 2048)
+' "$openbot_json" >/dev/null
+
 # Adding a project here is the point at which its isolation gets reviewed.
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become

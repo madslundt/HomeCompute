@@ -3,6 +3,7 @@ Description=HomeCompute OpenBot team server
 Requires=homecompute-openbot-firewall.service docker.service
 After=homecompute-openbot-firewall.service docker.service
 PartOf=docker.service
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -15,7 +16,6 @@ ExecStop=/usr/bin/docker compose --project-name homecompute-openbot --file compo
 ExecReload=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml restart --timeout 60
 Restart=always
 RestartSec=10s
-StartLimitIntervalSec=0
 KillSignal=SIGINT
 KillMode=process
 StandardOutput=null
