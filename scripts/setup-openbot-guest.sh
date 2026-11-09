@@ -102,7 +102,11 @@ if test "$installed_compose_version" != "$compose_version"; then
   sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends "$package"
 fi
 test "$(dpkg-query -W -f='${Version}' "$compose_package")" = "$compose_version"
-test "$(docker compose version --short | sed 's/^v//')" = "$compose_cli_version"
+reported_compose_version="$(docker compose version --short | sed 's/^v//')"
+case "$reported_compose_version" in
+  "$compose_cli_version"|"$compose_cli_version"+*) ;;
+  *) echo 'Installed Compose CLI version differs from the pinned source version' >&2; exit 1 ;;
+esac
 install -d -m 0700 "$base" "$base/releases" "$stage"
 REMOTE_PREP
 
