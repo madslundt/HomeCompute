@@ -75,7 +75,9 @@ the owner's behalf.
 
 `homecompute-openbot.service` owns startup, restart, and graceful stop. It starts
 only after `homecompute-openbot-firewall.service` installs the container egress
-rules. Docker itself does not auto-start the container outside that ordering.
+rules. Its post-start check waits up to one minute for Compose to create and
+start the container before checking the image pin and absence of published
+ports. Docker itself does not auto-start the container outside that ordering.
 Re-running the source installer upgrades only an exact managed release and
 preserves `/data`; unknown paths or changed installed files stop the operation.
 Use `./scripts/setup-openbot-guest.sh status` for a read-only status check and
