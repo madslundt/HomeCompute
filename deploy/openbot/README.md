@@ -13,7 +13,8 @@ version and `.deb` SHA-256 from `config/openbot-install.json` before installing
 it, then checks the reported Compose CLI version.
 The container has no Docker socket, host-home mount, host networking, or
 published ports. Its only persistent mount is its private `/data` directory;
-its default capabilities are dropped. The agents-VM Docker bridge egress policy
+all capabilities are dropped except `SYS_CHROOT`, which Chromium's sandbox
+needs inside the container. `no-new-privileges` remains enabled. The agents-VM Docker bridge egress policy
 allows public TCP 80/443, the LiteLLM compatibility endpoint at
 `ai.home.arpa:18080`, and the documented TURN ports for the two currently
 resolved OpenBot relays. All other private and public UDP destinations are
@@ -75,6 +76,8 @@ the owner's behalf.
 `homecompute-openbot.service` owns startup, restart, and graceful stop. It starts
 only after `homecompute-openbot-firewall.service` installs the container egress
 rules. Docker itself does not auto-start the container outside that ordering.
+Re-running the source installer upgrades only an exact managed release and
+preserves `/data`; unknown paths or changed installed files stop the operation.
 Use `./scripts/setup-openbot-guest.sh status` for a read-only status check and
 the following command for a guarded restart:
 
