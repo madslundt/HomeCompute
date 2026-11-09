@@ -16,6 +16,7 @@ readonly ASSETS=(
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-firewall.service"
   "$REPO_ROOT/deploy/openbot/network-policy.py"
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
+  "$REPO_ROOT/scripts/configure-openbot-hermes.py"
   "$REPO_ROOT/config/openbot-network.json"
   "$REPO_ROOT/config/openbot-install.json"
 )
@@ -88,11 +89,19 @@ if test -e "$current" || test -L "$current"; then
     echo 'Existing OpenBot release is outside its managed version directory' >&2
     exit 1
   }
+  # Keep the pre-existing release immutable. A newly added source-managed helper
+  # need not exist in that older release, but an existing copy must be a real
+  # file so a path substitution cannot be mistaken for managed source.
   for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health openbot-network.json openbot-install.json; do
     test -f "$previous_release/$file" && test ! -L "$previous_release/$file" || {
       echo 'Existing OpenBot release is incomplete; preserve and inspect it' >&2; exit 1;
     }
   done
+  if test -e "$previous_release/configure-openbot-hermes.py" || test -L "$previous_release/configure-openbot-hermes.py"; then
+    test -f "$previous_release/configure-openbot-hermes.py" && test ! -L "$previous_release/configure-openbot-hermes.py" || {
+      echo 'Existing Hermes setup helper is not a regular managed file; preserve and inspect it' >&2; exit 1;
+    }
+  fi
   cmp -s "$previous_release/homecompute-openbot.service" /etc/systemd/system/homecompute-openbot.service || {
     echo 'Existing OpenBot systemd unit differs from its managed release' >&2; exit 1;
   }
@@ -170,7 +179,7 @@ set -Eeuo pipefail
 base="$1"; stage="$2"; release="$3"
 sudo -n systemctl stop homecompute-openbot.service >/dev/null 2>&1 || true
 install -d -o hermes-operator -g hermes-operator -m 0700 "$release"
-for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health openbot-network.json openbot-install.json; do
+for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health configure-openbot-hermes.py openbot-network.json openbot-install.json; do
   if test -e "$release/$file" || test -L "$release/$file"; then
     cmp -s "$stage/$file" "$release/$file" || { echo 'Published release assets differ; refusing overwrite' >&2; exit 1; }
   else
@@ -178,7 +187,7 @@ for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-op
   fi
 done
 sudo -n chmod 0644 "$release/compose.yaml" "$release/seccomp.json" "$release/homecompute-openbot.service" "$release/homecompute-openbot-firewall.service" "$release/openbot-network.json" "$release/openbot-install.json"
-sudo -n chmod 0755 "$release/network-policy.py" "$release/homecompute-openbot-health"
+sudo -n chmod 0755 "$release/network-policy.py" "$release/homecompute-openbot-health" "$release/configure-openbot-hermes.py"
 sudo -n install -d -o root -g root -m 0755 /etc/homecompute-openbot /usr/local/libexec
 sudo -n install -o root -g root -m 0644 "$release/openbot-network.json" /etc/homecompute-openbot/network.json
 sudo -n install -o root -g root -m 0755 "$release/network-policy.py" /usr/local/libexec/homecompute-openbot-network-policy

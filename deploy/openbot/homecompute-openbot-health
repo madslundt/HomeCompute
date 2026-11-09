@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 readonly CONTAINER=homecompute-openbot
-readonly IMAGE_DIGEST=sha256:e8c0338a76efe51e472ee5a90836d99fb7341924c5148eb1da78d402e693d514
+readonly IMAGE_DIGEST=sha256:049c2c16130f9577c5f84ee942045ee211c78f337414cda0d2aaf4e801fb4913
 
 running=false
 for ((attempt = 0; attempt < 30; attempt++)); do

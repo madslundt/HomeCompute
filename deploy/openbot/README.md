@@ -5,7 +5,7 @@ OpenBot is installed as a single pinned container in the Ubuntu agents VM on
 OpenBot image publishes no ports and has no bundled web client; after sign-in,
 use the desktop/iPhone app or `https://openbot.run/app`.
 
-The upstream `v0.65.0` Linux/amd64 image is pinned by manifest digest in
+The upstream `v0.66.0` Linux/amd64 image is pinned by manifest digest in
 `compose.yaml`. Its upstream seccomp profile is tracked here and was checked
 against SHA-256 `665289e6a1c41045f55166d0b01993c929f71df78e3a3b264f3252bb8e0b3d9e`.
 The guest installer verifies the Ubuntu 24.04 `docker-compose-v2` package
@@ -66,10 +66,12 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
 
 Connect a cloud provider from Provider settings using the account or API key
 you choose. Assign it only to agents intended to send data to that provider;
-cloud providers receive the prompts and files sent to their agents. The OpenBot
-owner can then create named agents and teams in the app. HomeCompute does not
-create personal agents, sign into a cloud account, or choose cloud providers on
-the owner's behalf.
+cloud providers receive the prompts and files sent to their agents. The
+recommended OpenBot roles and data boundaries are documented in
+[`docs/openbot-agent-setup.md`](../../docs/openbot-agent-setup.md); apply them in
+the UI because OpenBot has no supported declarative agent-roster import.
+HomeCompute does not sign into a cloud account or choose cloud providers on the
+owner's behalf.
 
 ## Operations and recovery
 
@@ -92,12 +94,27 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
 OpenBot keeps its database, credentials, keyring, workspaces, and logs together
 in the guest data directory. Do not copy only part of it. The agents-VM disk is
 included in the encrypted Home Core application-state backup and has a prior
-restore drill. Confirm a fresh completed NAS backup before adding household
-workspaces or provider sign-ins; the NAS backup timer was retrying when this
-source change began. To recover, restore the whole agents VM using its runbook,
+restore drill. Confirm a fresh completed NAS backup before an image update or
+before adding household workspaces or provider sign-ins. On 2026-11-09, the
+backup lifecycle reported retired and its last recorded snapshot was
+2026-10-28; resolve and verify that lifecycle before updating the image. To
+recover, restore the whole agents VM using its runbook,
 then run the service status command above. Code rollback does not restore
 OpenBot data. Keep the prior Home Core release and guest image pinned until the
 next off-host backup completes.
+
+The source-managed Hermes CLI inside OpenBot uses its own `/data/.hermes`
+configuration. To reconcile its local Home AI route after deployment, run:
+
+```bash
+ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
+  hermes-operator@10.77.20.2 \
+  'python3 ~/.local/share/homecompute-openbot/current/configure-openbot-hermes.py'
+```
+
+This configures inference only. It does not import the separate
+`hermes-personal-v23` owner's memories, skills or HomeCompute tools into
+OpenBot.
 
 OpenBot is licensed under PolyForm Noncommercial 1.0.0. This deployment is for
 personal, noncommercial use. Commercial use requires a separate license.

@@ -1324,7 +1324,7 @@ docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
   -f "$REPO_ROOT/deploy/openbot/compose.yaml" config --format json >"$openbot_json"
 jq -e '
   (.services | keys == ["openbot"]) and
-  (.services.openbot.image == "ghcr.io/nightly-labs/openbot@sha256:e8c0338a76efe51e472ee5a90836d99fb7341924c5148eb1da78d402e693d514") and
+  (.services.openbot.image == "ghcr.io/nightly-labs/openbot@sha256:049c2c16130f9577c5f84ee942045ee211c78f337414cda0d2aaf4e801fb4913") and
   (.services.openbot.platform == "linux/amd64") and
   (.services.openbot.cap_drop == ["ALL"] and .services.openbot.cap_add == ["SYS_CHROOT"]) and
   (.services.openbot.security_opt | index("no-new-privileges:true") != null) and

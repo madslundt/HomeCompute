@@ -1,7 +1,7 @@
 services:
   openbot:
     container_name: homecompute-openbot
-    image: ghcr.io/nightly-labs/openbot@sha256:e8c0338a76efe51e472ee5a90836d99fb7341924c5148eb1da78d402e693d514
+    image: ghcr.io/nightly-labs/openbot@sha256:049c2c16130f9577c5f84ee942045ee211c78f337414cda0d2aaf4e801fb4913
     platform: linux/amd64
     # systemd starts the container only after the per-container egress guard.
     restart: "no"
