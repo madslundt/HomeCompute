@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "ubuntu_release": "24.04",
+  "architecture": "amd64",
+  "docker_compose": {
+    "apt_package": "docker-compose-v2",
+    "apt_version": "2.40.3+ds1-0ubuntu1~24.04.1",
+    "cli_version": "2.40.3",
+    "deb_sha256": "192f3df16d0c832e1cbf2362889da56522267835cfb19541241b3dd0ed964039"
+  }
+}
