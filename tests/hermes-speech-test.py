@@ -206,12 +206,12 @@ class RecoveryTest(unittest.TestCase):
         run = Mock(return_value=SimpleNamespace(returncode=0))
         probe = Mock(side_effect=[False, True])
         launch = Mock(return_value=Mock(poll=Mock(return_value=None)))
-        self.assertTrue(recovery.ensure_forward(probe, run, launch=launch))
+        self.assertTrue(recovery.ensure_forward(probe, run=run, launch=launch))
         self.assertEqual(run.call_args.args[0], ['nemohermes', 'hermes-personal-v23', 'recover'])
         run.reset_mock()
-        self.assertFalse(recovery.ensure_forward(lambda: True, run)); run.assert_not_called()
+        self.assertFalse(recovery.ensure_forward(lambda: True, run=run)); run.assert_not_called()
         with self.assertRaises(RuntimeError):
-            recovery.ensure_forward(lambda: False, run, launch=launch, wait=lambda _: None)
+            recovery.ensure_forward(lambda: False, run=run, launch=launch, wait=lambda _: None)
 
     def test_real_socket_requires_401_rather_than_login_or_200(self):
         class Handler(http.server.BaseHTTPRequestHandler):

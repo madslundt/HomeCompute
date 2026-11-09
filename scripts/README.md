@@ -21,6 +21,8 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-home-core-stt.sh` | Pinned Wyoming Faster Whisper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `setup-home-core-automation-backup.sh` | On-demand Qwen3.6 Q4 CPU standby for planned Spark swaps | `prepare`, `maintenance-start`, `smoke`, `maintenance-stop`, `status` |
 | `setup-hermes-guest.sh` | Household `hermes-personal` agent inside the isolated Ubuntu agents guest | `validate`, `preflight`, `install`, `onboard-canary`, `recreate`, `connect-mattermost`, `connect-browser`, `install-startup`, `health` |
+| `setup-openbot-guest.sh` | Pinned OpenBot team server in the agents VM | Published-revision-guarded `install`, interactive `login`, redacted `status` |
+| `provision-openbot-litellm-key.py` | OpenBot custom local-model provider | Creates and installs a key scoped only to `automation-moe`; never prints the key |
 | `recover-hermes-env-ownership.py` | Guarded config/.env metadata repair for the retained Hermes UID transition incident | Private full-sandbox backup, exact sandbox/image identity, stopped gateway/container, reviewed plan SHA |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |

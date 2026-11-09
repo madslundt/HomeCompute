@@ -49,6 +49,10 @@ not yet a safe authenticated runtime query that joins live model processes to
 catalog identities. `doctor` also cannot verify private artifact contents or
 authenticated cross-host routes from the workstation.
 
+Containers inside the agents VM are separate from Home Core's Docker inventory.
+For the OpenBot server, use `./scripts/setup-openbot-guest.sh status` and its
+[workload runbook](../deploy/openbot/README.md).
+
 `updates` separates application/model monitor findings from DGX OS package
 candidates. Apt metadata can be stale; vendor updates must be checked and
 installed using NVIDIA/DGX supported maintenance procedures. The existing

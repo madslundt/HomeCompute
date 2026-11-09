@@ -4,6 +4,9 @@
   pkgs,
   ...
 }:
+let
+  openbotNetwork = builtins.fromJSON (builtins.readFile ../../config/openbot-network.json);
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -220,7 +223,10 @@
 
     # Public browsing and versioned image pulls are explicitly allowed; private
     # LAN, compute, link-local, and tailnet destinations remain rejected.
+    # OpenBot TURN is restricted to the current public relay IPs in its
+    # canonical network declaration; container egress is filtered separately.
     network.allowedInternetTcpPorts = [ 80 443 ];
+    network.openbotTurnAddresses = map (server: server.address) openbotNetwork.turn_servers;
     network.maintenanceEgress = false;
   };
 

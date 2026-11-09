@@ -77,6 +77,7 @@ and other personal-agent services remain deferred.
 | Integrate Home Assistant voice and tools | [Home Assistant model evaluation](research/home-assistant-model-evaluation.md), [ADR-008](adr/008-home-assistant-model-role.md), and verification tests V-HA-001/V-HA-002 |
 | Extend Meeting Assistant or process Plaud recordings | [ADR-012](adr/012-reuse-meeting-assistant.md), the meeting sections in [architecture](architecture.md) and [verification](verification-strategy.md) |
 | Add the Hermes personal assistant layer | [NemoClaw placement and Hermes setup](research/nemoclaw-machine-placement.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [ADR-013](adr/013-hermes-personal-agent-layer.md), and Phases I/J in the [implementation plan](implementation-plan.md) |
+| Run a self-hosted OpenBot team server | [OpenBot operations](../deploy/openbot/README.md), [assessment](research/openbot-home-core-assessment-2026-11-09.md), and [ADR-030](adr/030-openbot-team-server.md) |
 
 The two rendered overview diagrams are also useful entry points:
 
@@ -164,6 +165,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-027](adr/027-unified-whisper-large-v3-stt.md) | Full Whisper Large-v3 for every STT language, with guarded retirement and retained API compatibility |
 | [ADR-028](adr/028-omnivoice-danish-english-tts.md) | Owner-selected OmniVoice replacement for Plapre; Danish-first placement measurements and retained CPU fallback |
 | [ADR-029](adr/029-proactive-assistant-context.md) | Opt-in scoped context service, Hermes owner conversation and existing action controllers |
+| [ADR-030](adr/030-openbot-team-server.md) | Owner-managed OpenBot teams in the agents VM, local LiteLLM boundary, container egress restrictions, explicit cloud providers |
 
 ## Research and model evidence
 

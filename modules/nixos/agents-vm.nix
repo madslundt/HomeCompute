@@ -23,6 +23,10 @@ let
   allowedTcpRules = lib.concatMapStringsSep "\n" (port: ''
     iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -p tcp --dport ${toString port} -j ACCEPT
   '') cfg.network.allowedInternetTcpPorts;
+  openbotTurnRules = lib.concatMapStringsSep "\n" (address: ''
+    iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -d ${address}/32 -p udp -m multiport --dports 3478,49152:65535 -j ACCEPT
+    iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -d ${address}/32 -p tcp -m multiport --dports 3478,5349 -j ACCEPT
+  '') cfg.network.openbotTurnAddresses;
   maintenanceRules = lib.optionalString cfg.network.maintenanceEgress ''
     iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -p tcp -m multiport --dports 80,443 -j ACCEPT
     iptables -w -A HC-AGENTS-EGRESS -s ${guestAddress}/32 -p udp --dport 123 -j ACCEPT
@@ -193,6 +197,11 @@ in
         default = [ ];
         description = "Public Internet TCP ports available outside maintenance windows.";
       };
+      openbotTurnAddresses = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Reviewed public IPv4 TURN relays allowed for OpenBot from the agents VM.";
+      };
       maintenanceEgress = lib.mkOption {
         type = lib.types.bool;
         default = false;
@@ -266,6 +275,10 @@ in
       {
         assertion = cfg.resources.memoryMiB >= 8192 && cfg.resources.diskGiB >= 40;
         message = "homecompute.agentsVm resources must meet the NemoClaw minimums (8 GiB RAM and 40 GiB disk)";
+      }
+      {
+        assertion = lib.all (address: builtins.match "[0-9]{1,3}(\\.[0-9]{1,3}){3}" address != null) cfg.network.openbotTurnAddresses;
+        message = "homecompute.agentsVm.network.openbotTurnAddresses must contain IPv4 addresses";
       }
     ];
 
@@ -349,6 +362,7 @@ in
           iptables -w -A HC-AGENTS-EGRESS -d "$subnet" -j REJECT
         done
         ${allowedTcpRules}
+        ${openbotTurnRules}
         ${maintenanceRules}
         iptables -w -A HC-AGENTS-EGRESS -j REJECT
 

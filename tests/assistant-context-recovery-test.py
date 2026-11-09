@@ -14,6 +14,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -127,7 +128,7 @@ class AssistantContextRecoveryTests(unittest.TestCase):
         self.admission_path = self.root / 'source-controller-admission.json'
         admission = {'schema_version': 1, 'issuer': 'source-controller', 'status': 'current',
             'ledger_sha256': self.ledger_sha, 'scopes': ['owner/personal/private'],
-            'reconciled_at': '2026-11-06T12:00:00Z'}
+            'reconciled_at': datetime.now(timezone.utc).isoformat()}
         self.admission_bytes = json.dumps(admission, sort_keys=True, separators=(',', ':')).encode()
         self.admission_path.write_bytes(self.admission_bytes)
         self.admission_path.chmod(0o600)

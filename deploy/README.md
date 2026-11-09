@@ -10,6 +10,8 @@ Deployment files are split by stable node role:
   connected to LiteLLM through the internal clients network.
 - [`model-manager/`](model-manager/README.md) contains the gated Spark model
   lifecycle dashboard and its dedicated SSH bridge.
+- [`openbot/`](openbot/README.md) contains the pinned OpenBot team server for
+  the isolated Home Core agents VM and its container-specific egress policy.
 - [`homepage/`](homepage/README.md) contains the source-controlled service
   dashboard for `home-core`.
 - [`piper-tts/`](piper-tts/README.md) contains the CPU-native Danish Wyoming
