@@ -1,0 +1,37 @@
+services:
+  openbot:
+    container_name: homecompute-openbot
+    image: ghcr.io/nightly-labs/openbot@sha256:e8c0338a76efe51e472ee5a90836d99fb7341924c5148eb1da78d402e693d514
+    platform: linux/amd64
+    # systemd starts the container only after the per-container egress guard.
+    restart: "no"
+    security_opt:
+      - seccomp=/home/hermes-operator/.local/share/homecompute-openbot/current/seccomp.json
+      - no-new-privileges:true
+    shm_size: 1g
+    stop_grace_period: 60s
+    cpus: 4.0
+    mem_limit: 8g
+    pids_limit: 2048
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    volumes:
+      - /home/hermes-operator/.local/share/homecompute-openbot/data:/data
+    networks:
+      openbot:
+        ipv4_address: 172.30.192.2
+
+networks:
+  openbot:
+    name: homecompute-openbot
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.30.192.0/24
+          gateway: 172.30.192.1

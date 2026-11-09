@@ -1,0 +1,14 @@
+[Unit]
+Description=HomeCompute OpenBot container egress policy
+Requires=docker.service
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/homecompute-openbot-network-policy apply
+ExecStop=/usr/local/libexec/homecompute-openbot-network-policy remove
+
+[Install]
+WantedBy=multi-user.target

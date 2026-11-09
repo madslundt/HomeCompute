@@ -1,0 +1,27 @@
+[Unit]
+Description=HomeCompute OpenBot team server
+Requires=homecompute-openbot-firewall.service docker.service
+After=homecompute-openbot-firewall.service docker.service
+PartOf=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/hermes-operator/.local/share/homecompute-openbot/current
+ExecStartPre=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml config --quiet
+ExecStartPre=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml pull
+ExecStart=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml up --no-color --no-log-prefix --exit-code-from openbot
+ExecStartPost=/usr/local/libexec/homecompute-openbot-health
+ExecStop=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml stop --timeout 60
+ExecReload=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml restart --timeout 60
+Restart=always
+RestartSec=10s
+StartLimitIntervalSec=0
+KillSignal=SIGINT
+KillMode=process
+StandardOutput=null
+StandardError=null
+TimeoutStartSec=300
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

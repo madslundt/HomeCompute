@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "addresses_verified_on": "2026-11-09",
+  "docker_subnet": "172.30.192.0/24",
+  "container_address": "172.30.192.2",
+  "local_model_endpoint": {
+    "address": "10.77.20.1",
+    "port": 18080
+  },
+  "turn_servers": [
+    {
+      "hostname": "turn.openbot.run",
+      "address": "95.216.243.233"
+    },
+    {
+      "hostname": "turn2.openbot.run",
+      "address": "65.109.88.58"
+    }
+  ],
+  "turn_client_ports": {
+    "udp_listeners": [3478],
+    "udp_relay_range": [49152, 65535],
+    "tcp_listeners": [3478, 5349]
+  }
+}
