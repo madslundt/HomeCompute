@@ -70,9 +70,12 @@ backup before relying on session recovery after host disk loss.
 
 ## Security and resource boundary
 
-The `agent` user is deliberately absent from `wheel` and `docker`. Do not grant it
-access to `/run/secrets`, `/srv/state`, the Docker socket, or production deploy
-commands. OMP defaults to prompting before shell execution in this profile;
+The `agent` user is deliberately absent from `wheel` and `docker`. Host-shell
+access to `/run/secrets` and `/srv/state`, the Docker socket, and production
+deploy commands remain denied. The separate OpenCode systemd service gets only
+its own `/srv/state/opencode` bind mount and a narrowly scoped environment
+credential; its host process namespace cannot traverse other state or secret
+paths. OMP defaults to prompting before shell execution in this profile;
 `--auto-approve` is an explicit per-session choice whose impact is bounded by
 the operating-system account.
 
@@ -104,6 +107,6 @@ Homepage can link to a browser terminal, but it cannot turn an SSH URL into an
 embedded terminal. A browser terminal would expose an interactive shell as the
 `agent` account and therefore needs its own authenticated HTTPS service. Do not
 publish an unauthenticated ttyd/Wetty port merely because it is on the tailnet.
-The recommended future design is a loopback-only terminal service behind
-Tailscale Serve with identity-aware access, followed by a Homepage link. It is
-intentionally not enabled by this deployment.
+OpenCode's separately scoped browser coding service is documented in
+[ADR-031](adr/031-opencode-home-core-web-service.md); it is not a general
+browser terminal.
