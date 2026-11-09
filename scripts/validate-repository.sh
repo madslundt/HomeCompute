@@ -1333,7 +1333,7 @@ fi
 [[ ! -e "$REPO_ROOT/deploy/assistant-context/compose.yaml" ]]
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openbot openclaw piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort
