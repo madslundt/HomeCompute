@@ -57,8 +57,12 @@ def patch(caddy, current_homepage, source_caddy, source_homepage):
         no_api = block.replace(API_ROUTE, '', 1)
         previous = no_api.replace(CONNECTION_LIMIT, '', 1)
         older = previous.replace(PRELOAD_REDIRECT, '', 1)
+        previous_with_api = block.replace(CONNECTION_LIMIT, '', 1)
+        older_with_api = previous_with_api.replace(PRELOAD_REDIRECT, '', 1)
         candidates = [value for value in dict.fromkeys((LEGACY_OFFICE,
-                      block.replace(CONNECTION_LIMIT, '', 1), no_api, previous, older,
+                      previous_with_api, older_with_api,
+                      older_with_api.replace(KEEPALIVE_OFF, '', 1),
+                      no_api, previous, older,
                       older.replace(KEEPALIVE_OFF, '', 1))) if caddy.count(value) == 1]
         if len(candidates) != 1:
             raise ValueError('existing-office-route-differs')
