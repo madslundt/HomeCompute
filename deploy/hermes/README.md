@@ -606,14 +606,35 @@ before Hermes authentication despite the source allowlist. The endpoint is
 configured with `tailscale serve`, never Funnel, and the installer refuses an
 occupied or Funnel-enabled port.
 
-In Hermes Desktop, add a **Remote gateway** named `Home Core`, use that URL,
-then sign in with the existing Hermes dashboard username and password. Test the
-connection so both HTTP and `/api/ws` are checked. The guest Webapp relay,
-dashboard credentials, Hermes data and existing LAN Caddy route are unchanged.
-Rollback with `sudo python3 scripts/setup-hermes-dashboard-ingress.py
---rollback /var/lib/homecompute-hermes-dashboard/ingress-TIMESTAMP`; the guarded
-receipt restores only this new service and clears only Tailscale Serve port
-18796.
+The existing local route remains `https://agents.home.arpa/hermes`. Hermes
+accepts that configured public hostname and the additional tailnet hostname
+through `_NEMOCLAW_HERMES_DASHBOARD_EXTERNAL_HOST`. Apply the second hostname
+from a clean published agents-VM checkout; the guarded installer keeps a
+mode-0600 `.env` preimage on the VM, changes only this allowlist entry, and uses
+the native sandbox stop/start lifecycle:
+
+```bash
+python3 scripts/setup-hermes-dashboard-host.py --revision FULL_SHA
+python3 scripts/setup-hermes-dashboard-host.py --revision FULL_SHA --apply \
+  --expected-env-sha256 REVIEWED_PLAN_SHA256
+```
+
+To restore the captured `.env` preimage after verifying the receipt:
+
+```bash
+python3 scripts/setup-hermes-dashboard-host.py --revision FULL_SHA --rollback
+```
+
+In Hermes Desktop, add a **Remote gateway** named `Home Core`, use
+`https://home-core.tail479ad.ts.net:18796`, then sign in with the existing
+Hermes dashboard username and password. The tailnet endpoint also works at home
+when the client is connected to Tailscale; LAN-only clients keep using the
+existing `agents.home.arpa` route. Test the connection so both HTTP and
+`/api/ws` are checked. The guest Webapp relay, dashboard credentials, Hermes
+data and existing LAN Caddy route are unchanged. Rollback of the host ingress
+uses `sudo python3 scripts/setup-hermes-dashboard-ingress.py --rollback
+/var/lib/homecompute-hermes-dashboard/ingress-TIMESTAMP` and clears only
+Tailscale Serve port 18796.
 
 The pinned web build preloads lazy sidebar chunks at root-relative `/assets/`
 URLs. Caddy redirects only hashed JavaScript/CSS chunk names to the existing
