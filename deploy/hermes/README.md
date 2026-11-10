@@ -590,12 +590,30 @@ On home-core, stage the same published source under
 `sudo python3 scripts/setup-hermes-dashboard-ingress.py --revision FULL_SHA`,
 review its two config hashes, then add `--apply --expected-caddy-sha256 HASH
 --expected-homepage-sha256 HASH`. This guarded lifecycle builds only the two
-canonical Nix relay/firewall units, preserves unrelated routes and maintenance
+canonical Nix relay/firewall/Serve units, preserves unrelated routes and maintenance
 markers, briefly restarts Caddy (its admin API stays disabled), and changes the
 existing Hermes frontpager card to `https://agents.home.arpa/hermes/`. The only admitted
 bridge client is Caddy; native auth is required on approved LAN/Tailscale access.
 Verify Mattermost reconnects after this restart. No new public listener, model
 route or OpenClaw state is introduced.
+
+Hermes Desktop connects over the tailnet-only Tailscale Serve endpoint
+`https://home-core.tail479ad.ts.net:18796`. The host unit forwards directly to
+the existing authenticated guest relay at `10.77.20.2:18804`; Hermes keeps its
+native password, WebSocket and Origin checks. This bypasses the shared Docker
+published Caddy socket, which currently returns 403 to the tailnet request
+before Hermes authentication despite the source allowlist. The endpoint is
+configured with `tailscale serve`, never Funnel, and the installer refuses an
+occupied or Funnel-enabled port.
+
+In Hermes Desktop, add a **Remote gateway** named `Home Core`, use that URL,
+then sign in with the existing Hermes dashboard username and password. Test the
+connection so both HTTP and `/api/ws` are checked. The guest Webapp relay,
+dashboard credentials, Hermes data and existing LAN Caddy route are unchanged.
+Rollback with `sudo python3 scripts/setup-hermes-dashboard-ingress.py
+--rollback /var/lib/homecompute-hermes-dashboard/ingress-TIMESTAMP`; the guarded
+receipt restores only this new service and clears only Tailscale Serve port
+18796.
 
 The pinned web build preloads lazy sidebar chunks at root-relative `/assets/`
 URLs. Caddy redirects only hashed JavaScript/CSS chunk names to the existing

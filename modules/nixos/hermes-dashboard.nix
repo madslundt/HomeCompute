@@ -37,6 +37,22 @@ in
         CapabilityBoundingSet = "";
       };
     };
+    # Desktop connects to Hermes through Tailscale Serve. This routes around
+    # the shared Docker-published Caddy listener, which rejects the tailnet
+    # request before Hermes auth, while retaining the Webapp's native
+    # authentication and the guest relay's byte-for-byte HTTP/WebSocket path.
+    systemd.services.homecompute-hermes-dashboard-serve = {
+      description = "Private Tailscale HTTPS access to the authenticated Hermes dashboard";
+      wantedBy = [ "multi-user.target" ];
+      wants = [ "tailscaled.service" "homecompute-agents-vm.service" ];
+      after = [ "tailscaled.service" "homecompute-agents-vm.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = "${pkgs.tailscale}/bin/tailscale serve --bg --yes --https=18796 http://10.77.20.2:18804";
+        ExecStop = "${pkgs.tailscale}/bin/tailscale serve --https=18796 off";
+      };
+    };
     # A separately buildable unit permits the workload's guarded narrow rollout
     # without switching unrelated NixOS or Compose applications. The main
     # firewall declaration above also restores the rule after a firewall reload.

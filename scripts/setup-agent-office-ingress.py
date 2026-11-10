@@ -158,6 +158,7 @@ def main():
     report={'revision':args.revision,'before':dict(zip(('caddy','homepage'),map(sha,before))),
             'after':dict(zip(('caddy','homepage'),map(sha,after))), 'applied':False,
             'preserved_maintenance':maintenance_evidence()}
+    report.update(globals().get('EXTRA_EVIDENCE', {}))
     if not args.apply:
         print(json.dumps(report));return
     if [args.expected_caddy_sha256,args.expected_homepage_sha256]!=list(map(sha,before)):
@@ -166,7 +167,7 @@ def main():
     with ExitStack() as stack:
         for name in ('/var/lib/homecompute/deploy.lock','/var/lib/homecompute-docker-maintenance/operation.lock'):
             stream=stack.enter_context(open(name,'a'));fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        # Build only the two canonical Nix systemd unit derivations. No host
+        # Build only the selected canonical Nix systemd unit derivations. No host
         # generation switch, VM restart, Compose recreation or image pull.
         units={}
         unit_roots=STATE/'unit-roots'/args.revision
@@ -204,11 +205,17 @@ def main():
                 link=ATTACHED/name
                 if link.is_symlink():link.unlink()
                 link.symlink_to(target)
-            link=wants/UNITS[1]
-            if not link.is_symlink():link.symlink_to(ATTACHED/UNITS[1])
+            for name in UNITS[1:]:
+                link=wants/name
+                if link.exists() or link.is_symlink():
+                    if not link.is_symlink() or link.readlink()!=ATTACHED/name:
+                        raise ValueError('unmanaged-attached-wants-link-refused')
+                else:
+                    link.symlink_to(ATTACHED/name)
             call(['systemctl','daemon-reload'])
-            changed_unit=previous[str(ATTACHED/UNITS[1])] not in (None,str(units[UNITS[1]]))
-            call(['systemctl','restart' if changed_unit else 'start',UNITS[1]])
+            for name in UNITS[1:]:
+                changed_unit=previous[str(ATTACHED/name)] not in (None,str(units[name]))
+                call(['systemctl','restart' if changed_unit else 'start',name])
             for path,old,new in zip(paths,before,after):
                 if old!=new:in_place(path,old,new);changed.append((path,old,new))
             if before[0]!=after[0]:call(['docker','restart',CADDY],timeout=90)
@@ -222,6 +229,17 @@ def main():
         except Exception:
             for path,old,new in reversed(changed):in_place(path,new,old)
             for name in (CADDY,HOMEPAGE):call(['docker','restart',name],timeout=90)
+            for name in reversed(UNITS[1:]):
+                if previous[str(ATTACHED/name)] is None:
+                    subprocess.run(['systemctl','stop',name],check=False,
+                                   capture_output=True,text=True,timeout=30)
+                    link=ATTACHED/name
+                    if link.is_symlink() and str(link.readlink()).startswith('/nix/store/'):
+                        link.unlink()
+                    want=wants/name
+                    if want.is_symlink() and want.readlink()==ATTACHED/name:
+                        want.unlink()
+            call(['systemctl','daemon-reload'])
             # Units are source-backed and harmless behind authentication; retain
             # their receipt for operator inspection rather than hide a partial rollout.
             report.update(applied=False,recovery_required=True,previous_units=previous)
