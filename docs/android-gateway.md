@@ -65,9 +65,11 @@ If the connector reports NemoClaw's specific obsolete host-only credential
 boundary warning, inspect the native MCP status first. For that exact verified
 state only, `connect-mcp --repair-legacy-registration` stores a private,
 secret-free metadata backup, uses NemoClaw's server-scoped forced cleanup for
-the malformed legacy mapping, verifies it is gone, and adds it again with the
-dedicated owner credential. Other registration conflicts remain blocked for
-manual review.
+the malformed legacy mapping, verifies it is gone, then removes the named
+orphan provider only after confirming its type, credential key, and attachment
+are exclusive to that owner sandbox. It adds the server again with the
+dedicated owner credential. Other registration conflicts or shared provider
+attachments remain blocked for manual review.
 
 Import `automations/android-notifications/n8n-workflow.json` into the existing
 n8n instance. Create the `Android notification ingress` HTTP Header Auth

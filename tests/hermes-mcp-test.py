@@ -198,8 +198,28 @@ class ConnectionTests(unittest.TestCase):
                                    'Restart and rebuild fail closed for it; remove this server, then add it again with a dedicated service credential name.']}
         with tempfile.TemporaryDirectory() as temporary:
             commands = []
+            provider_present = True
+            provider_attached = True
             def call(args, **kwargs):
+                nonlocal provider_present, provider_attached
                 commands.append((args, kwargs))
+                if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
+                    rows = ([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'provider-id',
+                              'resource_version': 'rv1', 'type': 'nemoclaw-mcp-v1',
+                              'credential_keys': [connect.KEY]}] if provider_present else [])
+                    return json.dumps(rows)
+                if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
+                    return 'hermes-personal-v23\n'
+                if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
+                    return ('NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\n'
+                            + ('hermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+                               if provider_attached else ''))
+                if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'detach']:
+                    provider_attached = False
+                    return ''
+                if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'delete']:
+                    provider_present = False
+                    return ''
                 if args[2:4] == ['status', '--json']:
                     return json.dumps({'agent': 'hermes', 'phase': 'Ready', 'hostMounts': []})
                 if args[2:4] == ['mcp', 'list']:
@@ -237,6 +257,13 @@ class ConnectionTests(unittest.TestCase):
         self.assertNotIn(self.token, ' '.join(remove_args))
         self.assertEqual(remove_args[-1], '--force')
         self.assertNotIn(connect.KEY, remove_kwargs['env'])
+        detach_index = next(i for i, (args, _) in enumerate(commands)
+                            if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'detach'])
+        delete_index = next(i for i, (args, _) in enumerate(commands)
+                            if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'delete'])
+        self.assertLess(remove_index, detach_index)
+        self.assertLess(detach_index, delete_index)
+        self.assertLess(delete_index, add_index)
         add_args, add_kwargs = commands[add_index]
         self.assertNotIn(self.token, ' '.join(add_args))
         self.assertEqual(add_kwargs['env'][connect.KEY], self.token)
@@ -262,6 +289,51 @@ class ConnectionTests(unittest.TestCase):
             self.assertFalse(any(row.args[0][2:4] in (['mcp', 'add'], ['mcp', 'remove'])
                                  for row in call.call_args_list))
             self.assertFalse((Path(temporary) / '.local/state/homecompute/backups').exists())
+
+    def test_repair_recovery_requires_private_backup_from_exact_legacy_boundary_conflict(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            backup_dir = Path(temporary) / '.local/state/homecompute/backups'
+            backup_dir.mkdir(mode=0o700, parents=True)
+            path = backup_dir / '123-homecompute.json'
+            path.write_text(json.dumps({
+                'schema_version': 1,
+                'sandbox': 'hermes-personal-v23',
+                'server': 'homecompute',
+                'url': connect.URL,
+                'env_names': [],
+                'provider_state': 'conflict',
+                'private_target_state': 'match',
+                'warnings': ['This agent-source MCP credential name no longer satisfies the host-only credential boundary. '
+                             'Restart and rebuild fail closed for it; remove this server, then add it again with a dedicated service credential name.'],
+            }))
+            path.chmod(0o600)
+            with patch.object(connect.Path, 'home', return_value=Path(temporary)), \
+                 patch.object(connect, 'BACKUPS', backup_dir):
+                self.assertEqual(connect.private_legacy_backup('hermes-personal-v23'), str(path))
+                self.assertIsNone(connect.private_legacy_backup('hermes-personal'))
+                path.chmod(0o644)
+                self.assertIsNone(connect.private_legacy_backup('hermes-personal-v23'))
+
+    def test_stale_provider_cleanup_refuses_attachment_to_another_sandbox_before_mutation(self):
+        calls = []
+        def call(args, **kwargs):
+            calls.append(args)
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
+                return json.dumps([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
+                                    'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
+                                    'credential_keys': [connect.KEY]}])
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
+                return 'hermes-personal-v23\nhermes-personal\n'
+            if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
+                return ('NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\n'
+                        + ('hermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+                           if args[6] == 'hermes-personal' else ''))
+            return ''
+        with patch.object(connect, 'call', side_effect=call):
+            with self.assertRaisesRegex(ValueError, 'attached outside its owner sandbox'):
+                connect.clear_stale_provider('hermes-personal-v23', {})
+        self.assertFalse(any(args[3:5] == ['provider', 'delete'] or args[5] == 'detach'
+                             for args in calls))
 
     def test_gate_requires_private_fresh_owner_records(self):
         from datetime import datetime, timezone

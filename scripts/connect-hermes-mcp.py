@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import sys
@@ -23,6 +24,7 @@ ANDROID_SKILL = ROOT / 'deploy/hermes/skills/android-gateway'
 GATES = Path('/var/lib/homecompute-hermes/gates')
 PYTHON = '/opt/hermes/python-runtime/bin/python3.14'
 BACKUPS = Path.home() / '.local/state/homecompute/hermes-mcp-registration-backups'
+ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 
 def status_row(status: dict) -> dict:
@@ -100,6 +102,80 @@ def save_legacy_registration_backup(sandbox: str, list_row: dict, status: dict) 
         stream.flush()
         os.fsync(stream.fileno())
     return str(backup)
+
+
+def private_legacy_backup(sandbox: str) -> str | None:
+    try:
+        relative = BACKUPS.relative_to(Path.home())
+    except ValueError:
+        return None
+    cursor = Path.home()
+    if cursor.is_symlink():
+        return None
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            return None
+    try:
+        info = BACKUPS.stat()
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+            return False
+        for path in BACKUPS.glob('*-homecompute.json'):
+            item = path.lstat()
+            if (not stat.S_ISREG(item.st_mode) or item.st_nlink != 1 or item.st_uid != os.getuid()
+                    or stat.S_IMODE(item.st_mode) != 0o600 or item.st_size > 16384):
+                continue
+            value = json.loads(path.read_bytes())
+            warning_text = '\n'.join(value.get('warnings') or [])
+            if (value.get('schema_version') == 1 and value.get('sandbox') == sandbox
+                    and value.get('server') == 'homecompute'
+                    and value.get('url') == URL
+                    and value.get('env_names') == []
+                    and value.get('provider_state') == 'conflict'
+                    and value.get('private_target_state') == 'match'
+                    and 'credential name no longer satisfies the host-only credential boundary' in warning_text
+                    and 'remove this server, then add it again with a dedicated service credential name' in warning_text):
+                return str(path)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return None
+
+
+def clear_stale_provider(sandbox: str, env: dict) -> None:
+    cli = ['openshell', '-g', 'nemoclaw']
+    providers = json.loads(call(cli + ['provider', 'list', '--output', 'json'], env=env))
+    if not isinstance(providers, list):
+        raise ValueError('native provider inventory has an invalid shape')
+    matches = [row for row in providers if row.get('name') == sandbox + '-mcp-homecompute']
+    if not matches:
+        return
+    if len(matches) != 1:
+        raise ValueError('stale MCP provider identity is ambiguous; preserve it for review')
+    provider = matches[0]
+    if (provider.get('type') != 'nemoclaw-mcp-v1'
+            or provider.get('credential_keys') != [KEY]
+            or not provider.get('id') or not provider.get('resource_version')):
+        raise ValueError('stale MCP provider shape differs; preserve it for review')
+    names = call(cli + ['sandbox', 'list', '--names'], env=env).splitlines()
+    attached = []
+    for candidate in names:
+        candidate = candidate.strip()
+        if not candidate:
+            continue
+        table = ANSI.sub('', call(cli + ['sandbox', 'provider', 'list', candidate], env=env))
+        if any(line.split() and line.split()[0] == provider['name'] for line in table.splitlines()):
+            attached.append(candidate)
+    if any(name != sandbox for name in attached):
+        raise ValueError('stale MCP provider is attached outside its owner sandbox; preserve it for review')
+    if sandbox in attached:
+        call(cli + ['sandbox', 'provider', 'detach', sandbox, provider['name']], env=env)
+        verify = ANSI.sub('', call(cli + ['sandbox', 'provider', 'list', sandbox], env=env))
+        if any(line.split() and line.split()[0] == provider['name'] for line in verify.splitlines()):
+            raise ValueError('native stale MCP provider detach did not verify')
+    call(cli + ['provider', 'delete', provider['name']], env=env)
+    after = json.loads(call(cli + ['provider', 'list', '--output', 'json'], env=env))
+    if any(row.get('name') == provider['name'] for row in after):
+        raise ValueError('native stale MCP provider deletion did not verify')
 
 
 def network_candidate(before: dict, sandbox: str) -> dict:
@@ -211,12 +287,17 @@ def connect(sandbox: str, token: str, *, repair_legacy_registration: bool = Fals
             after_remove = json.loads(call(cli + ['mcp', 'list', '--json'], env=env))['bridges']
             if any(row.get('server') == 'homecompute' for row in after_remove):
                 raise ValueError('native MCP removal did not verify; preserve its backup and inspect status')
+            clear_stale_provider(sandbox, env)
             call(cli + ['mcp', 'add', 'homecompute', '--url', URL, '--env', KEY,
                         '--trusted-private-host', 'homecompute-capabilities.home.arpa'],
                  env={**env, KEY: token})
         elif list_row.get('url') != URL or list_row.get('env', {}).get('names') != [KEY]:
             raise ValueError('existing MCP registration differs; preserve it for review')
     else:
+        if repair_legacy_registration:
+            repair_backup = private_legacy_backup(sandbox)
+        if repair_backup:
+            clear_stale_provider(sandbox, env)
         # The native CLI owns policy, provider, opaque handles and gateway reload.
         # An unknown add outcome is left untouched for native reconciliation.
         call(cli + ['mcp', 'add', 'homecompute', '--url', URL, '--env', KEY,
