@@ -31,6 +31,7 @@ in
     ../../modules/nixos/opencode.nix
     ../../modules/nixos/agents-vm.nix
     ../../modules/nixos/agents-vm-backup.nix
+    ../../modules/nixos/toolbox-vm.nix
     ../../modules/nixos/docker.nix
     ../../modules/nixos/ssh.nix
     ../../modules/nixos/tailscale.nix
@@ -53,6 +54,12 @@ in
   homecompute.mattermost.enable = true;
   homecompute.opencode.enable = true;
   homecompute.serviceRecovery.enable = true;
+  homecompute.toolboxVm = {
+    enable = true;
+    sshKeys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILT+ES2e5sbGFzBMLOWKZMawBm/kyadBthAldjAmK8Uc mads@home-core-admin"
+    ];
+  };
   # Household admission follows the isolated encrypted-NAS restore and current
   # deletion replay proof. Delivery and external publication stay separately gated.
   homecompute.assistantContext = {
