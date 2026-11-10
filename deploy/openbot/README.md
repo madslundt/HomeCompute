@@ -16,9 +16,12 @@ published ports. Its only persistent mount is its private `/data` directory;
 all capabilities are dropped except `SYS_CHROOT`, which Chromium's sandbox
 needs inside the container. `no-new-privileges` remains enabled. The agents-VM Docker bridge egress policy
 allows public TCP 80/443, the LiteLLM compatibility endpoint at
-`ai.home.arpa:18080`, and the documented TURN ports for the two currently
-resolved OpenBot relays. All other private and public UDP destinations are
-blocked. The Home Core firewall repeats the TURN restriction by relay IP.
+`ai.home.arpa:18080`, the private LiteLLM gateway at `mcp.home.arpa:443`, and
+the documented TURN ports for the two currently resolved OpenBot relays. The
+gateway hostname resolves to the host-only bridge; egress allows only TCP 443
+to that address for MCP. The Android relay remains separately pinned to TCP
+19445. Other private destinations and public UDP destinations are blocked. The
+Home Core firewall repeats the TURN restriction by relay IP.
 
 TURN IPv4 addresses in `config/openbot-network.json` were resolved on
 2026-11-09. Refresh them with `getent ahostsv4 turn.openbot.run turn2.openbot.run`

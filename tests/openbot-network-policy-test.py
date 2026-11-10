@@ -29,7 +29,7 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
         self.patch.stop()
         self.temp.cleanup()
 
-    def test_apply_allows_only_the_fixed_android_mcp_host_port(self):
+    def test_apply_allows_exact_private_mcp_hosts_and_ports(self):
         calls = []
 
         def iptables(*arguments, check=True):
@@ -44,12 +44,23 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
         self.assertIn(expected, calls)
         self.assertFalse(any('--dport' in call and call[call.index('--dport') + 1] == '19445'
                              and call != expected for call in calls))
+        gateway = ('-A', policy.CHAIN, '-d', '10.77.20.1/32', '-p', 'tcp',
+                   '--dport', '443', '-j', 'ACCEPT')
+        self.assertIn(gateway, calls)
+        self.assertEqual(sum(call == gateway for call in calls), 1)
 
     def test_rejects_unreviewed_android_mcp_destination(self):
         value = json.loads(self.config.read_text())
         value['android_mcp_endpoint']['port'] = 19446
         self.config.write_text(json.dumps(value))
         with self.assertRaisesRegex(ValueError, 'Android MCP endpoint'):
+            policy.load_turn_addresses()
+
+    def test_rejects_unreviewed_mcp_gateway_destination(self):
+        value = json.loads(self.config.read_text())
+        value['mcp_gateway_endpoint']['port'] = 444
+        self.config.write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError, 'LiteLLM MCP gateway endpoint'):
             policy.load_turn_addresses()
 
 
