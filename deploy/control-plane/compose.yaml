@@ -104,9 +104,13 @@ services:
       - litellm_master_key
       - litellm_salt_key
       - postgres_app_password
+      - n8n_mcp_token
+    extra_hosts:
+      - homecompute-capabilities.home.arpa:10.77.20.1
     volumes:
       - ${LITELLM_CONFIG_FILE:-./litellm-config.yaml}:/etc/litellm/config.yaml:ro
       - ./litellm-entrypoint.sh:/opt/homecompute/litellm-entrypoint.sh:ro
+      - ${LITELLM_HOMECORE_CA_FILE:-/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt}:/run/homecompute/home-core-root.crt:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=101,gid=101,mode=1770
       - /app/cache:rw,noexec,nosuid,nodev,size=256m,uid=101,gid=101,mode=0770
@@ -472,3 +476,5 @@ secrets:
     file: ${POSTGRES_ADMIN_PASSWORD_FILE:?Set POSTGRES_ADMIN_PASSWORD_FILE}
   postgres_app_password:
     file: ${POSTGRES_APP_PASSWORD_FILE:?Set POSTGRES_APP_PASSWORD_FILE}
+  n8n_mcp_token:
+    file: ${N8N_MCP_TOKEN_FILE:?Set N8N_MCP_TOKEN_FILE}

@@ -30,6 +30,10 @@ ROOT_UID, TLS_UID, TLS_GID = 0, 1000, 1000
 RULE = ['INPUT', '-i', 'br-hc-agents', '-s', '10.77.20.2/32', '-d', '10.77.20.1/32',
         '-p', 'tcp', '--dport', '19445', '-m', 'conntrack', '--ctstate', 'NEW,ESTABLISHED',
         '-m', 'comment', '--comment', 'hc-native-mcp-relay', '-j', 'ACCEPT']
+LITELLM_RULE = ['INPUT', '-i', 'br-hc-ctrl', '-s', '172.28.200.3/32', '-d', '10.77.20.1/32',
+                '-p', 'tcp', '--dport', '19445', '-m', 'conntrack', '--ctstate', 'NEW,ESTABLISHED',
+                '-m', 'comment', '--comment', 'hc-native-mcp-litellm', '-j', 'ACCEPT']
+RULES = (RULE, LITELLM_RULE)
 
 
 def guard() -> None:
@@ -103,7 +107,7 @@ https://{HOST}:19445 {{
         max_size 10MB
     }}
     @mcp {{
-        remote_ip 10.77.20.2
+        remote_ip 10.77.20.2 172.28.200.3
         method POST
         path /mcp
         expression {{http.request.orig_uri}} == "/mcp"
@@ -173,17 +177,19 @@ def container_command() -> list[str]:
 def firewall(enable: bool) -> None:
     guard()
     command = [str(BIN / 'iptables'), '-w']
-    exists = call(command + ['-C', *RULE], check=False).returncode == 0
-    if enable:
-        if not exists:
-            call(command + ['-I', RULE[0], '1', *RULE[1:]])
-    else:
-        for _ in range(32):
+    for rule in RULES:
+        exists = call(command + ['-C', *rule], check=False).returncode == 0
+        if enable:
             if not exists:
-                return
-            call(command + ['-D', *RULE])
-            exists = call(command + ['-C', *RULE], check=False).returncode == 0
-        raise ValueError('too many duplicate managed firewall grants')
+                call(command + ['-I', rule[0], '1', *rule[1:]])
+        else:
+            for _ in range(32):
+                if not exists:
+                    break
+                call(command + ['-D', *rule])
+                exists = call(command + ['-C', *rule], check=False).returncode == 0
+            else:
+                raise ValueError('too many duplicate managed firewall grants')
 
 
 def unit_text() -> str:

@@ -744,6 +744,7 @@ COMPUTE_TTS_BASE_URL=http://10.77.10.10:8004/v1
 COMPUTE_API_KEY_FILE=$secret_file
 LITELLM_MASTER_KEY_FILE=$secret_file
 LITELLM_SALT_KEY_FILE=$secret_file
+N8N_MCP_TOKEN_FILE=$secret_file
 POSTGRES_ADMIN_PASSWORD_FILE=$secret_file
 POSTGRES_APP_PASSWORD_FILE=$secret_file
 EOF
@@ -759,7 +760,7 @@ jq -e '
   ([.services[].volumes[]? | select(.type == "bind" and .read_only != true) | .target] | sort) ==
     ["/config", "/data", "/var/lib/postgresql/data"] and
   ([.services[].volumes[]? | select(.type == "bind") | .target] | sort) ==
-    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/var/lib/postgresql/data"] and
+    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/run/homecompute/home-core-root.crt", "/var/lib/postgresql/data"] and
   (.services.caddy.ports | length == 3) and
   ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2", "127.0.0.2"]) and
   ([.services.caddy.ports[] | select(.host_ip == "127.0.0.2" and .published == "80" and .target == 8080)] | length == 1) and

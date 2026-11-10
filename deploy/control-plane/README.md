@@ -55,20 +55,33 @@ revoke any virtual key.
 ## Central MCP gateway
 
 LiteLLM also owns the private MCP gateway on `https://mcp.home.arpa/mcp`. Keep
-server definitions in `litellm-config.yaml`. At present, the catalog contains
-read-only Aula and TilbudsTrolden services on the isolated `mcp-backends`
-network. Caddy and LiteLLM share the private gateway network; n8n also joins a
-dedicated internal client network. n8n retains its existing direct MCP path
-until saved workflows are migrated and verified through LiteLLM.
+server definitions in `litellm-config.yaml`. The catalog contains the local
+read-only Aula and TilbudsTrolden services, public Context7 documentation, and
+the owner-only n8n instance MCP. It also has three aliases for the private
+HomeCompute capability relay: Hermes owner, OpenClaw agent, and Android-only
+read access. Those aliases keep the existing per-principal bearer credentials;
+clients send them as server-specific `x-mcp-<server-alias>-authorization`
+headers alongside a separate LiteLLM key. The relay accepts LiteLLM only from
+its fixed source address and `/mcp` path. LiteLLM trusts the relay using the
+read-only Home Core CA certificate. Context7 and n8n share the isolated internal
+client network with LiteLLM; the two local MCP backends remain on the separate
+`mcp-backends` network. n8n's instance MCP token is mounted from the SOPS-managed
+`control-plane/n8n-mcp-token` secret. Existing direct clients stay in place
+until their individual grants and workflows are migrated and verified.
 
 LiteLLM's Admin UI manages MCP access on this private host. The deployment marks
 existing unscoped virtual keys `no-mcp-servers` before Caddy exposes the route;
 programmatically generated service keys use the same deny sentinel. Give each
 client a separate virtual key, assign only its approved MCP access group, and
 remove unneeded tools in that key's settings. Servers are configured with
-`allow_all_keys: false`; do not grant Aula to OpenBot's shared agent list by
-default. For keys created in the Admin UI, select No MCP Servers unless you are
-granting reviewed access. The UI stores virtual keys and grants in the existing
+`allow_all_keys: false`; `n8n-owner` grants the full reviewed instance catalog,
+while `docs-public` grants only Context7. Each HomeCompute relay alias has a
+distinct access group, and its client must present that principal's existing
+bearer. Do not grant Aula, `n8n-owner`, or Hermes-owner access to OpenBot's
+shared agent list by default. Android access is read-only; grant it only after
+its five-tool inventory is verified. For keys created in the Admin UI, select
+No MCP Servers unless you are granting reviewed access. The UI stores virtual
+keys and grants in the existing
 LiteLLM database; the release config remains the source for the server catalog.
 For setup and the client migration plan, see [ADR-032](../../docs/adr/032-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).

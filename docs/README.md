@@ -196,7 +196,7 @@ remain historical; they are not erased or treated as the current target.
 | Current model shortlist | [ADR-019](adr/019-single-gb10-model-roster.md), [machine-readable roster](../config/gb10-model-roster.json), [Flash-Next single-GB10 review](research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md) |
 | Text roles | [General](research/general-model-evaluation.md), [coding](research/coding-model-evaluation.md), [Home Assistant](research/home-assistant-model-evaluation.md) |
 | Speech | [Danish TTS qualification](tts-qualification.md), [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
-| Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [MCP gateway evaluation](research/mcp-gateway-evaluation-2026-11-10.md) |
+| Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [MCP gateway evaluation](research/mcp-gateway-evaluation-2026-11-10.md), [current MCP access inventory](research/mcp-access-inventory-2026-11-10.md) |
 
 ## Repository artifacts
 

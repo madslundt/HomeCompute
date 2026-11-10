@@ -31,26 +31,39 @@ platform manifests. The upstream publishes a cosign verification procedure;
 unverified. See the official [release listing](https://github.com/BerriAI/litellm/releases)
 and [1.107.0 incident report](https://github.com/BerriAI/litellm/issues/47826).
 
-The two current local HTTP MCP services are:
+The reviewed source catalog now includes these local and hosted MCP services:
 
 | Server | Gateway target | Initial access group |
 | --- | --- | --- |
 | Aula | `http://aula-mcp:7878/mcp` | `aula-read` |
 | TilbudsTrolden | `http://tilbudstrolden-mcp:8000/mcp` | `offers-read` |
+| Context7 | `https://mcp.context7.com/mcp` | `docs-public` |
+| n8n instance MCP | `http://n8n:5678/mcp-server/http` | `n8n-owner` |
+| HomeCompute capability relay, Hermes principal | `https://homecompute-capabilities.home.arpa:19445/mcp` | `hermes-owner-tools` |
+| HomeCompute capability relay, OpenClaw principal | `https://homecompute-capabilities.home.arpa:19445/mcp` | `openclaw-agent-tools` |
+| HomeCompute capability relay, OpenBot Android principal | `https://homecompute-capabilities.home.arpa:19445/mcp` | `openbot-android-read` |
 
-The proposed source uses the Caddy hostname `mcp.home.arpa`, keeps Caddy and
-LiteLLM on a private gateway bridge, puts n8n and LiteLLM on a separate internal
-client bridge, and connects LiteLLM plus the two MCP backends to a third
-internal bridge. NixOS firewall rules constrain calls over that new backend
-bridge to LiteLLM's fixed source IP and the two MCP ports. n8n retains its
-existing direct connection over the automation migration network; preserve that
-compatibility lane until saved workflows are moved and verified through the
-gateway. LiteLLM becomes the shared path before it becomes the exclusive path.
+The source uses the Caddy hostname `mcp.home.arpa`, keeps Caddy and LiteLLM on a
+private gateway bridge, puts n8n and LiteLLM on a separate internal client
+bridge, and connects LiteLLM plus the two local MCP backends to a third internal
+bridge. NixOS firewall rules constrain calls over the backend bridge to
+LiteLLM's fixed source IP and the two MCP ports. The native capability relay's
+guarded setup also permits only LiteLLM's fixed edge IP to call `/mcp`; the
+relay keeps validating each existing Hermes, OpenClaw, or Android bearer. LiteLLM
+trusts the relay with the read-only Home Core root certificate and sends role
+tokens only through server-specific headers. Context7 is a cloud HTTPS MCP;
+n8n uses a SOPS-managed bearer token mounted only into LiteLLM. The n8n group is
+owner-only because its verified live catalog includes workflow execution and
+administration, credential listing, agent and skill changes, and data-table
+writes. Its registered names are allowlisted to the 55 tools discovered from
+the authenticated Codex client on 2026-11-10. Existing direct clients stay as a
+compatibility lane until their individual tool grants and workflows are migrated
+and verified through the gateway.
 
 ## Access and client migration
 
-Both registered services set `allow_all_keys: false`; each is assigned to a
-separate access group. LiteLLM documents that access is open if no entity has
+Each server sets `allow_all_keys: false`; each is assigned to a separate access
+group. LiteLLM documents that access is open if no entity has
 an MCP permission list, so the rollout marks every existing unscoped virtual
 key with `no-mcp-servers` before Caddy publishes the endpoint. Programmatically
 created service keys also carry that sentinel. Clients receive access only
@@ -64,9 +77,12 @@ client key.
 Registering the catalog does not migrate saved n8n workflows or configure
 OpenBot, Hermes, Codex, or OpenClaw. Each client should be pointed at the same
 MCP endpoint and given a separate service key with only its approved access
-group and tools. Review the live tool inventory before granting access to
-family data. In particular, OpenBot shares its MCP list across agents, so Aula
-must not be granted there by default.
+group and tools. For the HomeCompute relay aliases, keep each client's original
+role bearer in its secure client configuration and send it only in that server's
+`x-mcp-<alias>-authorization` header. Review the live tool inventory before
+granting access to family data. In particular, OpenBot shares its MCP list
+across agents, so Aula, Hermes-owner, and n8n-owner access must not be granted
+there by default.
 
 ## Security note
 

@@ -17,16 +17,26 @@ DEFAULT_DENY = (ROOT / "scripts/setup-litellm-mcp-default-deny.py").read_text()
 
 
 class LiteLLMMCPGatewayTests(unittest.TestCase):
-    def test_only_reviewed_local_mcp_servers_are_registered(self) -> None:
-        self.assertRegex(CONFIG, r"(?ms)^mcp_servers:\s*\n\s+aula:")
+    def test_reviewed_local_and_hosted_mcp_servers_are_registered(self) -> None:
+        self.assertRegex(CONFIG, r"(?ms)^mcp_servers:\s*\n\s+context7:")
+        self.assertIn("url: https://mcp.context7.com/mcp", CONFIG)
+        self.assertIn("url: http://n8n:5678/mcp-server/http", CONFIG)
+        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 3)
         self.assertIn("url: http://aula-mcp:7878/mcp", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
-        self.assertEqual(len(re.findall(r"(?m)^  (?:aula|tilbudstrolden):$", CONFIG)), 2)
+        self.assertEqual(len(re.findall(r"(?m)^  (?:context7|n8n|homecompute-hermes|homecompute-openclaw|homecompute-openbot-android|aula|tilbudstrolden):$", CONFIG)), 7)
+        self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  aula:")])), 55)
+        self.assertIn("auth_value: os.environ/N8N_MCP_TOKEN", CONFIG)
 
     def test_server_registration_is_never_public_and_uses_named_access_groups(self) -> None:
         self.assertIn("allow_all_keys: false", CONFIG)
         self.assertIn("access_groups: [aula-read]", CONFIG)
         self.assertIn("access_groups: [offers-read]", CONFIG)
+        self.assertIn("access_groups: [docs-public]", CONFIG)
+        self.assertIn("access_groups: [n8n-owner]", CONFIG)
+        self.assertIn("access_groups: [hermes-owner-tools]", CONFIG)
+        self.assertIn("access_groups: [openclaw-agent-tools]", CONFIG)
+        self.assertIn("access_groups: [openbot-android-read]", CONFIG)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)
 
@@ -39,11 +49,18 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("mcp-backends:", AUTOMATION)
         self.assertIn('name: homecompute-control-plane_mcp-clients', AUTOMATION)
         self.assertIn('name: homecompute-control-plane_mcp-backends', AUTOMATION)
+        self.assertIn("N8N_MCP_TOKEN_FILE", COMPOSE)
+        self.assertIn("n8n_mcp_token", COMPOSE)
+        self.assertIn("homecompute-capabilities.home.arpa:10.77.20.1", COMPOSE)
+        self.assertIn("home-core-root.crt", COMPOSE)
+        self.assertIn("N8N_MCP_TOKEN", (ROOT / "deploy/control-plane/litellm-entrypoint.sh").read_text())
+        self.assertIn("SSL_CERT_FILE", (ROOT / "deploy/control-plane/litellm-entrypoint.sh").read_text())
 
     def test_private_front_door_and_backend_firewall_are_present(self) -> None:
         self.assertIn("{$MCP_FQDN}", CADDY)
         self.assertIn("import litellm_proxy", CADDY)
         self.assertIn("HC-MCP-BACKENDS", NETWORK)
+        self.assertIn("172.28.200.3/32", (ROOT / "scripts/setup-native-capabilities.py").read_text())
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878", NETWORK)
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000", NETWORK)
         self.assertIn("-j REJECT", NETWORK)

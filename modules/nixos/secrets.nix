@@ -61,6 +61,10 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
+            "control-plane/n8n-mcp-token" = {
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
             "control-plane/postgres-admin-password" = {
               group = "homecompute-secrets";
               mode = "0440";
