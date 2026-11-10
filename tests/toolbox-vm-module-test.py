@@ -32,6 +32,7 @@ class ToolboxVmModuleTest(unittest.TestCase):
         self.assertIn("ProtectSystem = \"strict\";", MODULE)
         self.assertIn("DeviceAllow = [\"/dev/kvm rw\" \"/dev/net/tun rw\"];", MODULE)
         self.assertIn("MemAvailable:", MODULE)
+        self.assertIn('required_kib="$(( (', MODULE)
         self.assertIn("plus 4 GiB host headroom", MODULE)
 
     def test_guest_disk_and_seed_are_recoverable(self):
