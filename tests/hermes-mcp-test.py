@@ -86,6 +86,17 @@ class SetupTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.reviewed()
         self.calls.assert_not_called()
 
+    def test_exact_legacy_native_capability_preimage_is_accepted(self):
+        name = 'scripts/setup-native-capabilities.py'
+        target, _ = setup.FILES[name]
+        legacy = b'previous published native capability source'
+        allowed = dict(setup.COMPATIBLE_PREIMAGES)
+        allowed[name] = {setup.digest(legacy)}
+        with patch.object(setup, 'COMPATIBLE_PREIMAGES', allowed):
+            target.write_bytes(legacy)
+            plan = setup.plan(self.module, 'a' * 40)
+        self.assertEqual(plan['files'][name]['before'], setup.digest(legacy))
+
     def test_applied_installation_can_be_upgraded_with_receipt_and_credentials_preserved(self):
         plan, digest = self.reviewed()
         setup.apply(self.module, plan, digest)

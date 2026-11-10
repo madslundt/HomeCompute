@@ -31,6 +31,14 @@ FILES = {
         Path('/opt/homecompute/openclaw-communication/deploy/codex-worker/mcp_adapter.py'),
         '02c1ffbc3a3e835fdc2a81a0e54b2e45d8857abd955c588709eeadbd3e4f27ec'),
 }
+# Exact previously published Home Core content observed during LiteLLM rollout
+# (the source file at revision 040bb71). Accept it as an installer preimage so
+# the guarded transaction can replace it with the selected release.
+COMPATIBLE_PREIMAGES = {
+    'scripts/setup-native-capabilities.py': {
+        'f71e3c34d954fdc686d22bda8bc9b678d4b96d1ea455e3560ca574fd595b4159',
+    },
+}
 
 
 def digest(raw: bytes) -> str:
@@ -81,7 +89,7 @@ def plan(module, revision: str) -> dict:
     for name, (target, previous) in FILES.items():
         module.regular(target, 0)
         before, after = digest(target.read_bytes()), digest((ROOT / name).read_bytes())
-        if before not in {previous, after}:
+        if before not in {previous, after, *COMPATIBLE_PREIMAGES.get(name, set())}:
             raise ValueError('installed source differs from the reviewed preimage; preserve and reconcile drift')
         files[name] = {'before': before, 'after': after}
     return {'revision': revision, 'files': files, 'credential_file_sha256': digest(module.TOKENS.read_bytes())}
