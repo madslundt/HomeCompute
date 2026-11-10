@@ -73,8 +73,8 @@ in
         Group = "homecompute-android";
         UMask = "0077";
         LoadCredential = [
-          "portal-token:-${cfg.portalTokenFile}"
-          "n8n-webhook-token:-${cfg.webhookTokenFile}"
+          "portal-token:${cfg.portalTokenFile}"
+          "n8n-webhook-token:${cfg.webhookTokenFile}"
         ];
         ExecStart = "${python}/bin/python ${source}/scripts/android_notifications.py";
         Restart = "always";
