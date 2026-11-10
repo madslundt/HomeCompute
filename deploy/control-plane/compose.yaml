@@ -110,7 +110,7 @@ services:
     volumes:
       - ${LITELLM_CONFIG_FILE:-./litellm-config.yaml}:/etc/litellm/config.yaml:ro
       - ./litellm-entrypoint.sh:/opt/homecompute/litellm-entrypoint.sh:ro
-      - ${LITELLM_HOMECORE_CA_FILE:-/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt}:/run/homecompute/home-core-root.crt:ro
+      - /etc/homecompute/control-plane/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=101,gid=101,mode=1770
       - /app/cache:rw,noexec,nosuid,nodev,size=256m,uid=101,gid=101,mode=0770

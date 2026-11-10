@@ -56,6 +56,9 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("n8n_mcp_token", COMPOSE)
         self.assertIn("homecompute-capabilities.home.arpa:10.77.20.1", COMPOSE)
         self.assertIn("home-core-root.crt", COMPOSE)
+        self.assertIn("/etc/homecompute/control-plane/home-core-root.crt:/run/homecompute/home-core-root.crt:ro", COMPOSE)
+        self.assertIn("install -D -m 0644", DEPLOY)
+        self.assertIn("/etc/homecompute/control-plane/home-core-root.crt", DEPLOY)
         self.assertIn("N8N_MCP_TOKEN", (ROOT / "deploy/control-plane/litellm-entrypoint.sh").read_text())
         self.assertIn("SSL_CERT_FILE", (ROOT / "deploy/control-plane/litellm-entrypoint.sh").read_text())
 

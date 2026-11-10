@@ -76,6 +76,11 @@ rm -f -- /usr/local/lib/systemd/system/homecompute-gateway-certificate.service \
   /usr/local/lib/systemd/system/timers.target.wants/homecompute-token-usage.timer
 rm -f -- /etc/systemd/system.control/homecompute-token-usage.service.d/90-cache-pricing.conf
 systemctl daemon-reload
+# Caddy's private storage keeps its public root certificate root-only. LiteLLM
+# runs as UID 101, so publish a read-only copy at a stable, world-readable path.
+install -D -m 0644 \
+  /srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt \
+  /etc/homecompute/control-plane/home-core-root.crt
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
