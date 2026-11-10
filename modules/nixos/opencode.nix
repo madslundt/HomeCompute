@@ -66,16 +66,14 @@ in
         Type = "simple";
         User = "agent";
         Group = "users";
-        WorkingDirectory = "/run/homecompute-opencode/projects";
+        WorkingDirectory = cfg.projectsDirectory;
         Slice = "user-1001.slice";
-        RuntimeDirectory = "homecompute-opencode";
-        RuntimeDirectoryMode = "0700";
         Environment = [
-          "HOME=/run/homecompute-opencode"
-          "XDG_CONFIG_HOME=/run/homecompute-opencode/config"
-          "XDG_DATA_HOME=/run/homecompute-opencode/data"
-          "XDG_STATE_HOME=/run/homecompute-opencode/state"
-          "XDG_CACHE_HOME=/run/homecompute-opencode/cache"
+          "HOME=${cfg.stateDirectory}"
+          "XDG_CONFIG_HOME=${cfg.stateDirectory}/config"
+          "XDG_DATA_HOME=${cfg.stateDirectory}/data"
+          "XDG_STATE_HOME=${cfg.stateDirectory}/state"
+          "XDG_CACHE_HOME=${cfg.stateDirectory}/cache"
           "OPENCODE_CONFIG=/etc/opencode.json"
           "OPENCODE_DISABLE_PROJECT_CONFIG=true"
         ];
@@ -94,7 +92,7 @@ in
         PrivateDevices = true;
         ProtectSystem = "strict";
         ProtectHome = true;
-        BindReadWritePaths = [ "${cfg.stateDirectory}:/run/homecompute-opencode" ];
+        BindReadWritePaths = [ cfg.stateDirectory ];
         ProtectKernelTunables = true;
         ProtectKernelModules = true;
         ProtectControlGroups = true;
