@@ -123,18 +123,26 @@ def probe(module) -> None:
     if not {'homecompute_school_discover', 'homecompute_shopping_search', 'homecompute_system_read',
             'homecompute_ha_propose'} <= names:
         raise ValueError('required household services unavailable')
-    if not {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-            'homecompute_android_visible_text', 'homecompute_android_screenshot'} <= names:
-        raise ValueError('read-only Android MCP tools unavailable')
+    android_read = {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
+                    'homecompute_android_visible_text', 'homecompute_android_screenshot'}
+    android_actions = {'homecompute_android_launch_app', 'homecompute_android_tap', 'homecompute_android_swipe',
+                       'homecompute_android_type_text', 'homecompute_android_navigation_key'}
+    if not (android_read | android_actions) <= names:
+        raise ValueError('Android MCP tools unavailable')
     if names & {'homecompute_ha_execute', 'homecompute_ha_approve', 'homecompute_maintenance_run'}:
         raise ValueError('unexpected privileged Hermes tool')
     openbot_tools = tools_for(tokens['openbot-android'])
-    expected_android = {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-                        'homecompute_android_visible_text', 'homecompute_android_screenshot'}
-    if {row.get('name') for row in openbot_tools} != expected_android:
-        raise ValueError('OpenBot Android principal is not restricted to the five read-only tools')
-    if any(not row.get('annotations', {}).get('readOnlyHint') for row in openbot_tools):
-        raise ValueError('OpenBot Android principal exposes a non-read-only tool')
+    if {row.get('name') for row in openbot_tools} != android_read | android_actions:
+        raise ValueError('OpenBot Android principal tool set differs from the scoped tablet grant')
+    if any(not row.get('annotations', {}).get('readOnlyHint') for row in openbot_tools
+           if row.get('name') in android_read):
+        raise ValueError('OpenBot Android read tools are not marked read-only')
+    if any(row.get('annotations', {}).get('readOnlyHint') for row in openbot_tools
+           if row.get('name') in android_actions):
+        raise ValueError('OpenBot Android interaction tools are not marked as actions')
+    if any(row.get('name') in {'homecompute_android_send_sms', 'homecompute_android_send_message'}
+           for row in openbot_tools):
+        raise ValueError('automatic Android messaging is outside the admitted grant')
 
 
 def apply(module, reviewed: dict, expected: str) -> dict:

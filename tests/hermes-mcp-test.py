@@ -459,17 +459,20 @@ class ProbeTests(unittest.TestCase):
         household = ('homecompute_school_discover', 'homecompute_shopping_search',
                      'homecompute_system_read', 'homecompute_ha_propose',
                      'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-                     'homecompute_android_visible_text', 'homecompute_android_screenshot')
-        android = ('homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-                   'homecompute_android_visible_text', 'homecompute_android_screenshot')
-        rows = lambda names: [{'name': name, 'annotations': {'readOnlyHint': True}} for name in names]
+                     'homecompute_android_visible_text', 'homecompute_android_screenshot',
+                     'homecompute_android_launch_app', 'homecompute_android_tap', 'homecompute_android_swipe',
+                     'homecompute_android_type_text', 'homecompute_android_navigation_key')
+        android = tuple(name for name in household if name.startswith('homecompute_android_'))
+        actions = {'homecompute_android_launch_app', 'homecompute_android_tap', 'homecompute_android_swipe',
+                   'homecompute_android_type_text', 'homecompute_android_navigation_key'}
+        rows = lambda names: [{'name': name, 'annotations': {'readOnlyHint': name not in actions}} for name in names]
         module = SimpleNamespace(TOKENS=SimpleNamespace(read_bytes=lambda: b'{"hermes-owner":"owner", "openbot-android":"openbot"}'))
         with patch.object(setup, 'tools_for', side_effect=[rows(household), rows(android)]) as tools_for:
             setup.probe(module)
         self.assertEqual([call.args[0] for call in tools_for.call_args_list], ['owner', 'openbot'])
 
         with patch.object(setup, 'tools_for', side_effect=[rows(household), rows(android + ('homecompute_task_submit',))]):
-            with self.assertRaisesRegex(ValueError, 'restricted to the five'):
+            with self.assertRaisesRegex(ValueError, 'tool set differs'):
                 setup.probe(module)
 
     def test_tools_for_waits_for_listener_but_never_retries_authentication(self):

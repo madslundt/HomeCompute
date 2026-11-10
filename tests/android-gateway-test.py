@@ -129,7 +129,7 @@ class AndroidGatewayTests(unittest.TestCase):
             self.assertNotIn("Hello", str(rows))
             second.db.close()
 
-    def test_android_portal_tool_surface_is_read_only_and_auth_required(self):
+    def test_android_portal_has_scoped_controls_and_authenticates_requests(self):
         spec = importlib.util.spec_from_file_location("openclaw_capabilities", ROOT / "scripts/openclaw_capabilities.py")
         capabilities = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = capabilities
@@ -152,23 +152,49 @@ class AndroidGatewayTests(unittest.TestCase):
                 request = fetch.call_args.args[0]
                 self.assertEqual(request.get_header("Authorization"), "Bearer 0123456789abcdef0123456789abcdef")
                 self.assertTrue(result["available"])
-            with self.assertRaises(ValueError):
-                portal.validate("homecompute_android_tap", {"x": 1, "y": 1})
+                portal.request("homecompute_android_tap", {"x": 100, "y": 200})
+                action = fetch.call_args.args[0]
+                self.assertEqual(action.method, "POST")
+                self.assertEqual(action.full_url, "http://127.0.0.1:8080/tap")
+                self.assertEqual(json.loads(action.data), {"x": 100, "y": 200})
+                self.assertEqual(action.get_header("Authorization"), "Bearer 0123456789abcdef0123456789abcdef")
+                portal.request("homecompute_android_type_text", {"text": "hello"})
+                typed = fetch.call_args.args[0]
+                self.assertEqual(typed.full_url, "http://127.0.0.1:8080/keyboard/input")
+                self.assertEqual(json.loads(typed.data), {"base64_text": "aGVsbG8=", "clear": False})
+                portal.request("homecompute_android_swipe", {"start_x": 1, "start_y": 2,
+                              "end_x": 3, "end_y": 4, "duration_ms": 500})
+                swiped = fetch.call_args.args[0]
+                self.assertEqual(json.loads(swiped.data),
+                                 {"startX": 1, "startY": 2, "endX": 3, "endY": 4, "duration": 500})
+                portal.request("homecompute_android_navigation_key", {"key": "BACK"})
+                keyed = fetch.call_args.args[0]
+                self.assertEqual(json.loads(keyed.data), {"key_code": 4})
+            with self.assertRaises(ValueError): portal.validate("homecompute_android_tap", {"x": -1, "y": 1})
+            with self.assertRaises(ValueError): portal.validate("homecompute_android_type_text", {"text": "bad\ninput"})
             with patch("openclaw_capabilities.urllib.request.urlopen", side_effect=capabilities.urllib.error.URLError("offline")):
                 unavailable = portal.request("homecompute_android_status", {})
                 self.assertFalse(unavailable["available"])
-            self.assertEqual({row["name"] for row in portal.tools}, {
-                "homecompute_android_status", "homecompute_android_screen", "homecompute_android_apps",
-                "homecompute_android_visible_text", "homecompute_android_screenshot"})
+            expected = {row["name"] for row in capabilities.ANDROID_READ_TOOLS + capabilities.ANDROID_ACTION_TOOLS}
+            self.assertEqual({row["name"] for row in portal.tools}, expected)
+            self.assertTrue(all(row["annotations"].get("readOnlyHint") for row in portal.tools
+                                if row["name"] not in capabilities.ANDROID_ACTION_NAMES))
+            self.assertTrue(all(not row["annotations"].get("readOnlyHint") for row in portal.tools
+                                if row["name"] in capabilities.ANDROID_ACTION_NAMES))
+            self.assertFalse(any("sms" in row["name"] or "message" in row["name"] for row in portal.tools))
 
-    def test_openbot_principal_inventory_contains_only_android_read_tools(self):
+    def test_openbot_principal_inventory_contains_only_android_tools(self):
         spec = importlib.util.spec_from_file_location("openclaw_capabilities", ROOT / "scripts/openclaw_capabilities.py")
         capabilities = importlib.util.module_from_spec(spec)
         sys.modules[spec.name] = capabilities
         spec.loader.exec_module(capabilities)
-        names = {"homecompute_android_status", "homecompute_android_screen", "homecompute_android_apps",
-                 "homecompute_android_visible_text", "homecompute_android_screenshot"}
-        tools = [{"name": name, "annotations": {"readOnlyHint": True}} for name in names]
+        names = {row["name"] for row in capabilities.ANDROID_READ_TOOLS + capabilities.ANDROID_ACTION_TOOLS}
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "android-gateway.json"
+            config.write_text(json.dumps({"device_id": "tablet-1", "base_url": "http://127.0.0.1:8080",
+                                          "token_file": str(Path(temp) / "portal-token")}))
+            with patch.object(capabilities, "Path", return_value=config):
+                tools = capabilities.AndroidOnlyServices().tools
         adapter_spec = importlib.util.spec_from_file_location("mcp_adapter", ROOT / "deploy/codex-worker/mcp_adapter.py")
         adapter = importlib.util.module_from_spec(adapter_spec)
         sys.modules[adapter_spec.name] = adapter

@@ -187,16 +187,20 @@ class TransportTests(unittest.TestCase):
                 communication.serve(self.store, TOKENS, ALLOWED, lambda *_: '', tasks=tasks,
                     mcp_tokens={**native, 'openclaw': value})
 
-    def test_openbot_android_principal_is_read_only_and_has_only_five_android_tools(self):
+    def test_openbot_android_principal_has_only_scoped_android_tools(self):
         from types import SimpleNamespace
         from unittest.mock import Mock, patch
         import openclaw_capabilities as capabilities
         android_names = {row['name'] for row in capabilities.ANDROID_TOOLS}
-        service = SimpleNamespace(tools=[{**row, 'inputSchema': {'type': 'object', 'additionalProperties': False,
-                                                                    'properties': {}, 'required': []},
-                                           'annotations': {'readOnlyHint': True, 'openWorldHint': False}}
-                                          for row in capabilities.ANDROID_TOOLS],
-            validate=lambda name, args: args if name in android_names and args == {} else (_ for _ in ()).throw(ValueError()),
+        service = SimpleNamespace(tools=[
+            ({**row, 'inputSchema': {'type': 'object', 'additionalProperties': False,
+                                     'properties': {}, 'required': []},
+              'annotations': {'readOnlyHint': True, 'openWorldHint': False}}
+             if row['name'] not in capabilities.ANDROID_ACTION_NAMES else
+             {key: value for key, value in row.items() if key not in {'endpoint', 'method'}})
+            for row in capabilities.ANDROID_TOOLS],
+            validate=lambda name, args: args if name in android_names and isinstance(args, dict)
+            else (_ for _ in ()).throw(ValueError()),
             request=Mock(return_value={'available': True, 'device_id': 'lenovo-tab-m11'}))
         mcp = {'openclaw': 'native-openclaw-' + 'x' * 40,
                'openbot-android': 'native-openbot-' + 'y' * 40}
@@ -215,13 +219,17 @@ class TransportTests(unittest.TestCase):
         try:
             inventory = rpc('tools/list')['result']['tools']
             self.assertEqual({row['name'] for row in inventory}, android_names)
-            self.assertTrue(all(row['annotations']['readOnlyHint'] for row in inventory))
+            self.assertTrue(all(row['annotations']['readOnlyHint'] for row in inventory
+                                if row['name'] not in capabilities.ANDROID_ACTION_NAMES))
+            self.assertTrue(all(not row['annotations']['readOnlyHint'] for row in inventory
+                                if row['name'] in capabilities.ANDROID_ACTION_NAMES))
             self.assertFalse(rpc('tools/call', {'name': 'homecompute_android_status', 'arguments': {}})['result']['isError'])
             rejected = rpc('tools/call', {'name': 'homecompute_task_submit', 'arguments': {}})
             self.assertEqual(rejected['error']['code'], -32602)
-            rejected = rpc('tools/call', {'name': 'homecompute_android_tap', 'arguments': {'x': 1, 'y': 1}})
-            self.assertEqual(rejected['error']['code'], -32602)
-            service.request.assert_called_once_with('homecompute_android_status', {})
+            tap = rpc('tools/call', {'name': 'homecompute_android_tap', 'arguments': {'x': 1, 'y': 1}})
+            self.assertFalse(tap['result']['isError'])
+            service.request.assert_any_call('homecompute_android_tap', {'x': 1, 'y': 1})
+            self.assertFalse(any('sms' in row['name'] or 'message' in row['name'] for row in inventory))
         finally:
             server.shutdown(); server.server_close(); thread.join()
 

@@ -31,7 +31,7 @@ HERMES_SERVICE_TOOLS = frozenset('homecompute_' + name for name in (
 ))
 
 
-ANDROID_TOOLS = [
+ANDROID_READ_TOOLS = [
     {"name": "homecompute_android_status", "description": "Check the configured Android Portal connection.", "endpoint": "/ping"},
     {"name": "homecompute_android_screen", "description": "Read the Android accessibility tree; prefer this over screenshots.", "endpoint": "/a11y_tree"},
     {"name": "homecompute_android_apps", "description": "List launchable Android application packages.", "endpoint": "/packages"},
@@ -40,8 +40,41 @@ ANDROID_TOOLS = [
 ]
 
 
+def android_action_tool(name: str, description: str, endpoint: str,
+                        properties: dict, required: list[str]) -> dict:
+    return {"name": "homecompute_android_" + name, "description": description,
+            "endpoint": endpoint, "method": "POST",
+            "inputSchema": {"type": "object", "properties": properties,
+                            "required": required, "additionalProperties": False},
+            "annotations": {"readOnlyHint": False, "destructiveHint": True,
+                            "idempotentHint": False, "openWorldHint": False}}
+
+
+ANDROID_ACTION_TOOLS = [
+    android_action_tool("launch_app", "Launch one installed Android app by package name.", "/app",
+        {"package": {"type": "string", "minLength": 3, "maxLength": 128,
+                      "pattern": r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+"}}, ["package"]),
+    android_action_tool("tap", "Tap one point on the tablet screen. Inspect the screen before choosing coordinates.", "/tap",
+        {"x": {"type": "integer", "minimum": 0, "maximum": 4095},
+         "y": {"type": "integer", "minimum": 0, "maximum": 4095}}, ["x", "y"]),
+    android_action_tool("swipe", "Swipe between two screen points. Inspect the screen before choosing coordinates.", "/swipe",
+        {"start_x": {"type": "integer", "minimum": 0, "maximum": 4095},
+         "start_y": {"type": "integer", "minimum": 0, "maximum": 4095},
+         "end_x": {"type": "integer", "minimum": 0, "maximum": 4095},
+         "end_y": {"type": "integer", "minimum": 0, "maximum": 4095},
+         "duration_ms": {"type": "integer", "minimum": 50, "maximum": 2000}},
+        ["start_x", "start_y", "end_x", "end_y"]),
+    android_action_tool("type_text", "Type plain text into the focused field. Never use this to send messages or submit forms.", "/keyboard/input",
+        {"text": {"type": "string", "minLength": 1, "maxLength": 1000}}, ["text"]),
+    android_action_tool("navigation_key", "Navigate using BACK, HOME, or a D-pad direction.", "/keyboard/key",
+        {"key": {"type": "string", "enum": ["BACK", "HOME", "DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT"]}}, ["key"]),
+]
+ANDROID_TOOLS = ANDROID_READ_TOOLS + ANDROID_ACTION_TOOLS
+ANDROID_ACTION_NAMES = frozenset(row["name"] for row in ANDROID_ACTION_TOOLS)
+
+
 class AndroidPortal:
-    """Fixed, authenticated, read-only Mobilerun Portal client."""
+    """Fixed, authenticated Mobilerun Portal client with scoped UI controls."""
     def __init__(self):
         path = Path('/etc/homecompute/android-gateway.json')
         self.enabled = path.is_file()
@@ -63,26 +96,69 @@ class AndroidPortal:
             self.base_url = value['base_url'].rstrip('/')
             self.device_id = value['device_id']
             self.token_file = Path(value['token_file'])
-        self.tools = [{"name": row["name"], "description": row["description"],
-                       "inputSchema": {"type": "object", "additionalProperties": False,
-                                       "properties": {}, "required": []},
-                       "annotations": {"readOnlyHint": True, "openWorldHint": False}}
-                      for row in ANDROID_TOOLS] if self.enabled else []
+        self.tools = []
+        if self.enabled:
+            for row in ANDROID_READ_TOOLS:
+                self.tools.append({"name": row["name"], "description": row["description"],
+                                   "inputSchema": {"type": "object", "additionalProperties": False,
+                                                   "properties": {}, "required": []},
+                                   "annotations": {"readOnlyHint": True, "openWorldHint": False}})
+            self.tools.extend({key: value for key, value in row.items()
+                               if key not in {"endpoint", "method"}} for row in ANDROID_ACTION_TOOLS)
 
     def validate(self, name: str, arguments: Any) -> dict[str, Any]:
-        if not self.enabled or name not in {row['name'] for row in ANDROID_TOOLS} or arguments != {}:
+        if not self.enabled or name not in {row['name'] for row in ANDROID_TOOLS} or not isinstance(arguments, dict):
             raise ValueError('Android tool is disabled or arguments are invalid')
-        return {}
+        if name not in ANDROID_ACTION_NAMES:
+            if arguments:
+                raise ValueError('Android read tool arguments are invalid')
+            return {}
+        schema = next(row['inputSchema'] for row in ANDROID_ACTION_TOOLS if row['name'] == name)
+        if set(arguments) - set(schema['properties']) or not set(schema['required']) <= set(arguments):
+            raise ValueError('Android interaction arguments are invalid')
+        for key, rule in schema['properties'].items():
+            if key not in arguments:
+                continue
+            value = arguments[key]
+            if rule['type'] == 'integer':
+                if type(value) is not int or not rule['minimum'] <= value <= rule['maximum']:
+                    raise ValueError('Android interaction arguments are invalid')
+            elif (not isinstance(value, str)
+                  or 'minLength' in rule and len(value) < rule['minLength']
+                  or 'maxLength' in rule and len(value) > rule['maxLength']
+                  or 'enum' in rule and value not in rule['enum']
+                  or 'pattern' in rule and not re.fullmatch(rule['pattern'], value)):
+                raise ValueError('Android interaction arguments are invalid')
+        if name == 'homecompute_android_type_text' and any(ord(char) < 32 or ord(char) == 127 for char in arguments['text']):
+            raise ValueError('Android text input must be printable single-line text')
+        return arguments
 
     def request(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate(name, arguments)
-        endpoint = next(row['endpoint'] for row in ANDROID_TOOLS if row['name'] == name)
+        row = next(row for row in ANDROID_TOOLS if row['name'] == name)
+        endpoint = row['endpoint']
         try:
             token = self.token_file.read_text().strip()
             if not 16 <= len(token) <= 4096 or any(char.isspace() for char in token):
                 raise ValueError('Portal credential invalid')
-            req = urllib.request.Request(self.base_url + endpoint,
-                headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json'})
+            method = row.get('method', 'GET')
+            payload = dict(arguments)
+            if name == 'homecompute_android_swipe':
+                payload = {'startX': arguments['start_x'], 'startY': arguments['start_y'],
+                           'endX': arguments['end_x'], 'endY': arguments['end_y']}
+                if 'duration_ms' in arguments:
+                    payload['duration'] = arguments['duration_ms']
+            elif name == 'homecompute_android_type_text':
+                import base64
+                payload = {'base64_text': base64.b64encode(arguments['text'].encode()).decode(), 'clear': False}
+            elif name == 'homecompute_android_navigation_key':
+                payload = {'key_code': {'BACK': 4, 'HOME': 3, 'DPAD_UP': 19, 'DPAD_DOWN': 20,
+                                        'DPAD_LEFT': 21, 'DPAD_RIGHT': 22}[arguments['key']]}
+            body = json.dumps(payload).encode() if method == 'POST' else None
+            headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/json'}
+            if body is not None:
+                headers['Content-Type'] = 'application/json'
+            req = urllib.request.Request(self.base_url + endpoint, data=body, headers=headers, method=method)
             with urllib.request.urlopen(req, timeout=8) as response:
                 raw = response.read(2_000_001)
             if len(raw) > 2_000_000:
@@ -118,7 +194,7 @@ class HermesServices:
 
 
 class AndroidOnlyServices:
-    """Separate OpenBot principal with only the fixed read-only Android tools."""
+    """Separate OpenBot principal with only the fixed Android Portal tools."""
 
     def __init__(self):
         self.android = AndroidPortal()
