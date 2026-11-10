@@ -24,8 +24,10 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 3)
         self.assertIn("url: http://aula-mcp:7878/mcp", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
-        self.assertEqual(len(re.findall(r"(?m)^  (?:context7|n8n|homecompute-hermes|homecompute-openclaw|homecompute-openbot-android|aula|tilbudstrolden):$", CONFIG)), 7)
-        self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute-hermes:")])), 55)
+        server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
+        self.assertEqual(len(server_names), 7)
+        self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
+        self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
         self.assertIn("auth_value: os.environ/N8N_MCP_TOKEN", CONFIG)
 
     def test_server_registration_is_never_public_and_uses_named_access_groups(self) -> None:
@@ -37,7 +39,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("access_groups: [hermes-owner-tools]", CONFIG)
         self.assertIn("access_groups: [openclaw-agent-tools]", CONFIG)
         self.assertIn("access_groups: [openbot-android-bounded-ui]", CONFIG)
-        self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute-openbot-android:"):CONFIG.index("  aula:")])), 10)
+        self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)
 
