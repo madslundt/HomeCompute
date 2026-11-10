@@ -72,6 +72,39 @@ class EventContractTests(unittest.TestCase):
                         sync_module.read_aula({"aula": {"enabled": True, "profile_ids": [14]}})
                 self.assertTrue(facade.closed)
 
+    def test_aula_thread_detail_failure_keeps_partial_source_results_and_closes_session(self):
+        class Facade:
+            def __init__(self): self.calls = []; self.closed = False
+            def close(self): self.closed = True
+            def request(self, operation, params):
+                self.calls.append((operation, params))
+                if operation == "homecompute_school_discover":
+                    return {"data": {"children": [{"id": 14}]}}
+                if operation == "homecompute_school_calendar":
+                    return {"data": {"events": [], "next_offset": None}}
+                if operation == "homecompute_school_posts":
+                    return {"data": {"posts": [{"postId": 7, "title": "Synthetic notice"}]}}
+                if operation == "homecompute_school_threads":
+                    return {"data": {"threads": [{"id": 101}, {"id": 102}, {"id": 103}]}}
+                if operation == "homecompute_school_thread" and params["thread_id"] == "101":
+                    return {"data": {"messages": [{"messageId": 1, "text": "Synthetic earlier thread"}]}}
+                if operation == "homecompute_school_thread":
+                    raise ValueError("synthetic upstream throttling")
+                raise AssertionError(operation)
+
+        facade = Facade()
+        with patch.object(sync_module.openclaw_services, "Services", return_value=facade):
+            snapshots = sync_module.read_aula({"aula": {
+                "enabled": True, "profile_ids": [14], "range": "this_week"}})
+        self.assertTrue(facade.closed)
+        self.assertEqual(snapshots[1].objects[0].object_id, "post:7")
+        self.assertEqual(len(snapshots[2].objects), 1)
+        self.assertFalse(snapshots[2].complete)
+        self.assertIn("Detail reads stopped after an unavailable response", snapshots[2].limitation)
+        attempted_threads = [params["thread_id"] for operation, params in facade.calls
+                             if operation == "homecompute_school_thread"]
+        self.assertEqual(attempted_threads, ["101", "102"])
+
     def test_envelope_is_exact_and_scope_is_not_source_data(self):
         event = sources.normalize_event("aula", "calendar:42", 1, "calendar.snapshot", "upsert",
             "2026-11-06T10:15:00+01:00", "aula:calendar:42",

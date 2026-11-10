@@ -217,6 +217,7 @@ def _read_aula_with_facade(config: dict, facade) -> list[Snapshot]:
     # threads; preserve partial coverage and never tombstone from these reads.
     post_rows = []
     messages = []
+    thread_details_complete = True
     if account_feeds:
         # Pinned Aula discovery explicitly requires omitting child profile IDs
         # for the guardian's institution/club post feed. Never broaden a subset
@@ -229,7 +230,14 @@ def _read_aula_with_facade(config: dict, facade) -> list[Snapshot]:
             thread_id = row.get("threadId", row.get("id"))
             if thread_id is None:
                 continue
-            detail = facade.request("homecompute_school_thread", {"thread_id": str(thread_id)})
+            try:
+                detail = facade.request("homecompute_school_thread", {"thread_id": str(thread_id)})
+            except (OSError, ValueError):
+                # A bounded detail feed is partial by design. If Aula throttles
+                # or refuses one detail, retain prior reads and stop this page
+                # instead of discarding the source's calendar and post scans.
+                thread_details_complete = False
+                break
             data = detail.get("data")
             if isinstance(data, dict):
                 for message in data.get("messages", [])[:20] if isinstance(data.get("messages"), list) else []:
@@ -243,7 +251,9 @@ def _read_aula_with_facade(config: dict, facade) -> list[Snapshot]:
             if account_feeds else skipped)))
     snapshots.append(aula_snapshot(messages, observed_at=observed,
         coverage_key="thread-messages:first-page", complete=False, family="thread",
-        limitation="Existing Aula thread bridge exposes first-page messages only." if account_feeds else skipped))
+        limitation=("Existing Aula thread bridge exposes first-page messages only."
+                    + (" Detail reads stopped after an unavailable response; retained messages are partial."
+                       if not thread_details_complete else "") if account_feeds else skipped)))
 
     for week in selection.get("iso_weeks", []):
         offset = 0
