@@ -115,13 +115,19 @@ choice, retaining private before-files and updating the speech receipt without
 restarting the agent. Any unrelated config change is refused. This keeps the
 privacy choice reproducible and preserves rollback guards after browser testing.
 
-Native forwards can disappear while the sandbox remains Ready. Startup now
-runs native recovery after starting the sandbox. The source-owned user service
-`homecompute-hermes-dashboard-watch.service` probes the authenticated Webapp
-forward every 20 seconds and invokes native recovery if needed. It never owns
-the in-sandbox gateway process. Verify the effective user boot transaction,
-authenticated Webapp chat, both speech languages, audio playback/rearming,
-stop phrases and restart recovery; API-only tests do not prove microphone use.
+Native forwards can disappear while the sandbox remains Ready. Startup runs
+native recovery after starting the sandbox. The source-owned user service
+`homecompute-hermes-dashboard-watch.service` is wanted alongside the Hermes
+startup unit, so an intermittent Hermes startup failure cannot cancel the
+watcher; it probes the authenticated Webapp forward every 20 seconds and invokes
+native recovery if needed. It never owns the in-sandbox gateway process. Refresh
+only the watcher from a clean published guest release with
+`python3 scripts/setup-hermes-ha-api.py --revision FULL_SHA --refresh-watcher`,
+review the plan, then add `--apply`. This mode changes no Hermes profile or API
+settings and does not restart the owner sandbox. Verify the effective user boot
+transaction, authenticated Webapp chat, both speech languages, audio
+playback/rearming, stop phrases and restart recovery; API-only tests do not prove
+microphone use.
 
 Keep the Hermes Caddy upstream bounded to eight simultaneous connections.
 OpenShell 0.0.116 permits twenty SSH/service-forward connections per sandbox;
@@ -376,7 +382,11 @@ requires fresh private household backup/network gates, uses native `mcp add`,
 requires verified credential resolution and matching private target pins, and
 installs the exact skill through the native skill lifecycle. Conflicting
 registrations and edited skills are preserved for review. An uncertain native
-add must be inspected through native status before retrying.
+add must be inspected through native status before retrying. It also adds the
+`mcp-homecompute` toolset to Hermes's `api_server` platform while preserving
+the existing toolsets, so API-backed Hermes sessions can invoke the connected
+MCP server by default. Read-only verification should use the actual Hermes
+agent; a successful `mcp status` or `mcp test` only proves discovery.
 
 NemoClaw's generated Hermes MCP policy assumes the system Python or the `.venv`
 path. OpenShell observes the selected 0.23 image's actual executable as

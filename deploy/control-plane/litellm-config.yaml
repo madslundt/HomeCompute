@@ -240,9 +240,20 @@ mcp_servers:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http
     auth_type: oauth_delegate
-    description: Android-only read principal; caller supplies its role-scoped bearer
+    description: Android bounded UI principal; caller supplies its role-scoped bearer
     allow_all_keys: false
-    access_groups: [openbot-android-read]
+    access_groups: [openbot-android-bounded-ui]
+    allowed_tools:
+      - homecompute_android_status
+      - homecompute_android_screen
+      - homecompute_android_apps
+      - homecompute_android_visible_text
+      - homecompute_android_screenshot
+      - homecompute_android_launch_app
+      - homecompute_android_tap
+      - homecompute_android_swipe
+      - homecompute_android_type_text
+      - homecompute_android_navigation_key
   aula:
     url: http://aula-mcp:7878/mcp
     transport: http

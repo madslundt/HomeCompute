@@ -169,6 +169,23 @@ def update_watcher(revision: str) -> None:
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def refresh_watcher(revision: str) -> None:
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    state_info = STATE.lstat()
+    if (stat.S_ISLNK(state_info.st_mode) or not stat.S_ISDIR(state_info.st_mode)
+            or state_info.st_uid != os.getuid() or stat.S_IMODE(state_info.st_mode) != 0o700):
+        raise ValueError('private Hermes API state directory required')
+    lock_path = STATE / 'install.lock'
+    with lock_path.open('a') as lock:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        update_watcher(revision)
+        call(['systemctl', '--user', 'reset-failed',
+              'homecompute-hermes-dashboard-watch.service'])
+        call(['systemctl', '--user', 'restart',
+              'homecompute-hermes-dashboard-watch.service'])
+
+
 def verify_api_profile(key: bytes) -> None:
     """Verify auth and profile multiplexing without printing response data."""
     headers = {'Authorization': 'Bearer ' + key.decode('ascii')}
@@ -201,12 +218,21 @@ def main() -> None:
     parser.add_argument('--revision', required=True)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--rollback', action='store_true')
+    parser.add_argument('--refresh-watcher', action='store_true',
+                        help='refresh only the source-owned dashboard watcher unit')
     parser.add_argument('--key-file', type=Path, default=KEY_PATH)
     args = parser.parse_args()
+    if args.refresh_watcher and args.rollback:
+        raise ValueError('watcher refresh cannot be combined with rollback')
     if args.apply and args.rollback:
         raise ValueError('select apply or rollback')
     if len(args.revision) != 40 or any(c not in '0123456789abcdef' for c in args.revision):
         raise ValueError('full release revision required')
+    if args.refresh_watcher and not args.apply:
+        print(json.dumps({'revision': args.revision, 'watcher_only': True,
+                          'dependency': 'Wants=homecompute-hermes-personal.service',
+                          'applied': False}))
+        return
     if not args.apply and not args.rollback:
         print(json.dumps({'revision': args.revision, 'sandbox': NAME,
                           'api_host': '127.0.0.1', 'api_port': 8642,
@@ -219,6 +245,11 @@ def main() -> None:
     status = json.loads(call(['nemohermes', NAME, 'status', '--json']))
     if status.get('phase') != 'Ready' or status.get('agent') != 'hermes' or status.get('hostMounts'):
         raise ValueError('ready isolated owner sandbox required')
+    if args.refresh_watcher:
+        refresh_watcher(args.revision)
+        print(json.dumps({'revision': args.revision, 'watcher_only': True,
+                          'applied': True, 'owner_sandbox_restarted': False}))
+        return
     key = private_file(args.key_file) if args.apply else b''
     STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
     state_info = STATE.lstat()

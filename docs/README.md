@@ -169,7 +169,8 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-029](adr/029-proactive-assistant-context.md) | Opt-in scoped context service, Hermes owner conversation and existing action controllers |
 | [ADR-030](adr/030-openbot-team-server.md) | Owner-managed OpenBot teams in the agents VM, local LiteLLM boundary, container egress restrictions, explicit cloud providers |
 | [ADR-031](adr/031-opencode-home-core-web-service.md) | Private OpenCode web service on Home Core, isolated agent account and project/state paths, tailnet-only access |
-| [ADR-032](adr/032-litellm-mcp-gateway.md) | Reuse LiteLLM as the central MCP gateway with explicit per-key tool grants and isolated backend networking |
+| [ADR-032](adr/032-bounded-android-ui-mcp.md) | Bounded Android UI controls through MCP; explicit user intent, no SMS or automatic message sending |
+| [ADR-033](adr/033-litellm-mcp-gateway.md) | Reuse LiteLLM as the central MCP gateway with explicit per-key tool grants and isolated backend networking |
 
 ## Research and model evidence
 

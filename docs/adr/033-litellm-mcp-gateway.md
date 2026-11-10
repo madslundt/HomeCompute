@@ -1,4 +1,4 @@
-# ADR-032: Use LiteLLM as the central MCP gateway
+# ADR-033: Use LiteLLM as the central MCP gateway
 
 Status: Accepted; implementation and rollout pending the normal reviewed release.
 
@@ -11,11 +11,12 @@ Caddy front door. n8n, OpenBot, Hermes, Codex, OpenClaw, and other MCP clients
 should point at one MCP endpoint. Server registration and tool permissions
 should be managed centrally, with separate grants for each client.
 
-The current local HTTP MCP inventory is Aula and TilbudsTrolden. Both backends
-are unauthenticated. A dedicated backend bridge and host firewall rule constrain
-LiteLLM's new path. n8n still has its existing direct connection over the
-automation migration network so current saved workflows keep working until
-they are migrated to LiteLLM.
+The inventory includes local Aula and TilbudsTrolden, the n8n instance MCP,
+hosted Context7, and separate role-scoped paths through the HomeCompute
+capability relay. The Android principal exposes five read tools and five bounded
+UI interaction tools. n8n still has direct saved workflow connections, and
+agent registrations remain on their existing paths until each client is
+migrated and verified.
 
 ## Decision
 
@@ -25,14 +26,19 @@ LiteLLM image in `config/control-plane.env.example`, register the MCP catalog in
 `https://mcp.home.arpa/mcp` endpoint through Caddy. The LiteLLM Admin UI remains
 available on that private hostname for server, key, team, and tool grants.
 
-The two initial servers belong to the `aula-read` and `offers-read` access
-groups. They are not public to every LiteLLM key. Because LiteLLM's default is
-open when no entity has an MCP permission list, the rollout must mark every
-existing unscoped virtual key `no-mcp-servers` before publishing the MCP route;
-generated service keys carry that sentinel as well. Require explicit key-level
-MCP grants, disable prompts/resources because the registered services are
-tool-only, and keep only the selected upstream bridges reachable from LiteLLM.
-Do not give Aula access to OpenBot's shared agent tool list by default.
+Each server alias belongs to its own access group: `aula-read`, `offers-read`,
+`docs-public`, `n8n-owner`, `hermes-owner-tools`, `openclaw-agent-tools`, and
+`openbot-android-bounded-ui`. They are not public to every LiteLLM key. The
+n8n catalog is restricted to the 55 tools observed from its authenticated live
+endpoint. The Android alias is restricted to its ten reviewed tablet tools;
+the five interaction tools remain governed by the existing bounded-action
+policy. Because LiteLLM's default is open when no entity has an MCP permission
+list, the rollout must mark every existing unscoped virtual key
+`no-mcp-servers` before publishing the MCP route; generated service keys carry
+that sentinel as well. Require explicit key-level MCP grants, disable
+prompts/resources, and keep only selected upstream paths reachable from
+LiteLLM. Do not grant Aula, n8n-owner, Hermes-owner, or Android tools to
+OpenBot's shared agent list by default.
 
 The tracked file defines the server catalog; LiteLLM's database owns dynamic
 virtual keys and per-client grants. Each client is configured once with the
@@ -64,8 +70,7 @@ cutover is complete.
 MCPHub provides a dedicated server registry and operator UI. It would create a
 second service and state database on Home Core. LiteLLM already supplies the
 shared endpoint, virtual-key database, and access management needed here, so
-the additional control plane is not justified for the current two-server
-inventory.
+the additional control plane is not justified for the current inventory.
 
 ### Direct MCP configuration in each client
 

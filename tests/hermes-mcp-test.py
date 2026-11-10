@@ -158,6 +158,8 @@ class ConnectionTests(unittest.TestCase):
             if args[2:4] == ['mcp', 'status']: return json.dumps(self.status)
             if args[2] == 'exec':
                 program = kwargs.get('input', '')
+                if 'platform_toolsets' in program:
+                    return 'enabled'
                 if 'android-gateway' in program:
                     if not hasattr(self, 'android_probe_count'):
                         self.android_probe_count = 0
@@ -174,6 +176,45 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(addition[1]['env'][connect.KEY], self.token)
         self.assertEqual(addition[1]['env']['OPENSHELL_GATEWAY'], 'nemoclaw')
         self.assertFalse(any('stop' in args or 'start' in args or 'recreate' in args for args, _ in commands))
+        self.assertTrue(any(args[2] == 'exec' and 'mcp-homecompute' in kwargs.get('input', '')
+                            for args, kwargs in commands))
+
+    def test_api_server_toolset_enablement_is_idempotent_and_non_secret(self):
+        observed = []
+        def call(args, **kwargs):
+            observed.append((args, kwargs))
+            return 'enabled\n'
+        with patch.object(connect, 'call', side_effect=call):
+            connect.enable_api_server_toolset('hermes-personal-v23', {})
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0][0][2:], ['exec', '--stdin', '--', 'python3', '-'])
+        self.assertIn('mcp-homecompute', observed[0][1]['input'])
+        self.assertNotIn(self.token, observed[0][1]['input'])
+
+    def test_connection_preserves_an_operator_edited_android_skill(self):
+        commands = []
+        def call(args, **kwargs):
+            commands.append((args, kwargs))
+            if args[2:4] == ['status', '--json']:
+                return json.dumps({'agent': 'hermes', 'phase': 'Ready', 'hostMounts': []})
+            if args[2:4] == ['mcp', 'list']:
+                return json.dumps({'bridges': []})
+            if args[2:4] == ['mcp', 'status']:
+                return json.dumps(self.status)
+            if args[2] == 'exec':
+                program = kwargs.get('input', '')
+                if 'platform_toolsets' in program:
+                    return 'enabled'
+                if 'android-gateway' in program:
+                    return 'operator-edited'
+                return self.digest
+            return ''
+        with patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), \
+                patch.object(connect, 'call', side_effect=call):
+            result = connect.connect('hermes-personal', self.token)
+        self.assertEqual(result['android_skill_state'], 'preserved-existing')
+        self.assertFalse(any(args[2:4] == ['skill', 'install'] and args[-1] == str(connect.ANDROID_SKILL)
+                             for args, _ in commands))
 
     def test_existing_conflicting_registration_or_unknown_probe_does_not_remove_or_replace(self):
         for url, verified in (('https://other.example/mcp', True), (connect.URL, None)):
@@ -233,6 +274,8 @@ class ConnectionTests(unittest.TestCase):
                         row[0][2:4] == ['mcp', 'add'] for row in commands) else self.status)
                 if args[2] == 'exec':
                     program = kwargs.get('input', '')
+                    if 'platform_toolsets' in program:
+                        return 'enabled'
                     if 'android-gateway' in program:
                         if not hasattr(self, 'repair_android_probe_count'):
                             self.repair_android_probe_count = 0
@@ -416,17 +459,20 @@ class ProbeTests(unittest.TestCase):
         household = ('homecompute_school_discover', 'homecompute_shopping_search',
                      'homecompute_system_read', 'homecompute_ha_propose',
                      'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-                     'homecompute_android_visible_text', 'homecompute_android_screenshot')
-        android = ('homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-                   'homecompute_android_visible_text', 'homecompute_android_screenshot')
-        rows = lambda names: [{'name': name, 'annotations': {'readOnlyHint': True}} for name in names]
+                     'homecompute_android_visible_text', 'homecompute_android_screenshot',
+                     'homecompute_android_launch_app', 'homecompute_android_tap', 'homecompute_android_swipe',
+                     'homecompute_android_type_text', 'homecompute_android_navigation_key')
+        android = tuple(name for name in household if name.startswith('homecompute_android_'))
+        actions = {'homecompute_android_launch_app', 'homecompute_android_tap', 'homecompute_android_swipe',
+                   'homecompute_android_type_text', 'homecompute_android_navigation_key'}
+        rows = lambda names: [{'name': name, 'annotations': {'readOnlyHint': name not in actions}} for name in names]
         module = SimpleNamespace(TOKENS=SimpleNamespace(read_bytes=lambda: b'{"hermes-owner":"owner", "openbot-android":"openbot"}'))
         with patch.object(setup, 'tools_for', side_effect=[rows(household), rows(android)]) as tools_for:
             setup.probe(module)
         self.assertEqual([call.args[0] for call in tools_for.call_args_list], ['owner', 'openbot'])
 
         with patch.object(setup, 'tools_for', side_effect=[rows(household), rows(android + ('homecompute_task_submit',))]):
-            with self.assertRaisesRegex(ValueError, 'restricted to the five'):
+            with self.assertRaisesRegex(ValueError, 'tool set differs'):
                 setup.probe(module)
 
     def test_tools_for_waits_for_listener_but_never_retries_authentication(self):

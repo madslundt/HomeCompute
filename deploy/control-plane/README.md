@@ -74,16 +74,18 @@ existing unscoped virtual keys `no-mcp-servers` before Caddy exposes the route;
 programmatically generated service keys use the same deny sentinel. Give each
 client a separate virtual key, assign only its approved MCP access group, and
 remove unneeded tools in that key's settings. Servers are configured with
-`allow_all_keys: false`; `n8n-owner` grants the full reviewed instance catalog,
+`allow_all_keys: false`; `n8n-owner` grants the reviewed instance catalog,
 while `docs-public` grants only Context7. Each HomeCompute relay alias has a
 distinct access group, and its client must present that principal's existing
 bearer. Do not grant Aula, `n8n-owner`, or Hermes-owner access to OpenBot's
-shared agent list by default. Android access is read-only; grant it only after
-its five-tool inventory is verified. For keys created in the Admin UI, select
+shared agent list by default. The Android alias is explicitly allowlisted to
+five read tools and five bounded UI interaction tools; grant its group only
+after the connection test verifies that exact ten-tool inventory. For keys
+created in the Admin UI, select
 No MCP Servers unless you are granting reviewed access. The UI stores virtual
 keys and grants in the existing
 LiteLLM database; the release config remains the source for the server catalog.
-For setup and the client migration plan, see [ADR-032](../../docs/adr/032-litellm-mcp-gateway.md)
+For setup and the client migration plan, see [ADR-033](../../docs/adr/033-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
 
 Speech clients use the [speech API contract](../../docs/speech-api.md).

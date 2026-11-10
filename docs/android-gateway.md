@@ -4,11 +4,14 @@
 
 Mobilerun Portal remains on the Lenovo tablet. Hermes runs in the isolated
 agents VM and reaches Android through the existing authenticated
-`homecompute-capabilities` MCP endpoint. Its owner-only tool whitelist adds five
-read-only Portal operations; it does not expose the community server's broad
-149-tool surface, ADB, app navigation, taps, typing, replies, or sends. The
-adapter uses Portal HTTP on home-core, so the Hermes sandbox receives no new
-LAN route.
+`homecompute-capabilities` MCP endpoint. Its Android grant includes five
+read-only Portal operations and five bounded UI actions: app launch, tap,
+swipe, plain-text input, and safe navigation keys. It does not expose the
+community server's broad 149-tool surface, ADB, SMS, file, clipboard, APK
+installation, or direct message-sending endpoints. UI actions require an
+explicit owner request and must not submit messages, forms, or purchases.
+Automatic messaging remains disabled. The adapter uses Portal HTTP on
+home-core, so the Hermes sandbox receives no new LAN route.
 
 `homecompute-android-notifications.service` listens to the Portal WebSocket,
 filters package IDs, deduplicates event identifiers in a private SQLite file,
@@ -19,8 +22,8 @@ error execution data are disabled. It does not invoke Hermes or an LLM.
 
 The community `mobilerun-mcp` project is not selected: current upstream exposes
 149 tools spanning ADB, Portal, cloud, and write operations. A local facade on
-the existing MCP adapter keeps the initial grant limited to five Portal GET
-calls and avoids a second Android control framework.
+the existing MCP adapter keeps the grant limited to five Portal GET calls and
+five fixed UI action calls and avoids a second Android control framework.
 
 ## Source and configuration
 
@@ -91,12 +94,15 @@ put the token in shell history or a URL.
 
 Use Hermes's `homecompute_android_status`, `homecompute_android_screen`,
 `homecompute_android_apps`, `homecompute_android_visible_text`, and
-`homecompute_android_screenshot` tools. Status/read tools return an explicit
-unavailable result when the device or credential cannot be reached. Screenshots
-can contain private conversation content; accessibility reads should be
-preferred. Messenger UI layouts, notification previews, and message visibility
-depend on app settings and are not a reliable substitute for an official
-personal-messages API.
+`homecompute_android_screenshot` tools for inspection. After the owner asks for
+a specific bounded UI task, `homecompute_android_launch_app`,
+`homecompute_android_tap`, `homecompute_android_swipe`,
+`homecompute_android_type_text`, and `homecompute_android_navigation_key` can
+perform UI navigation. Status/read tools return an explicit unavailable result
+when the device or credential cannot be reached. Screenshots can contain
+private conversation content; prefer accessibility reads. Messenger UI
+layouts, notification previews, and message visibility depend on app settings
+and are not a reliable substitute for an official personal-messages API.
 
 ## Tablet completion checklist
 
@@ -107,19 +113,20 @@ personal-messages API.
   `secrets/home-core.sops.yaml`, then rebuild/apply the reviewed home-core revision.
 - [ ] Import the n8n workflow, bind the Header Auth credential, and keep it
   inactive until a synthetic notification passes validation.
-- [ ] Run `/ping`, authenticated `/state`, Hermes MCP discovery/read-only call,
-  and notification-to-n8n smoke checks. Confirm no Android action or message is
-  sent.
-- [ ] Activate the workflow only after those checks pass. Keep write tools
-  disabled.
+- [x] Run `/ping`, authenticated `/state`, Hermes MCP discovery and a Hermes
+  read-only screen call. Confirm WebSocket health and synthetic notification
+  ingestion to n8n.
+- [x] Enable bounded UI navigation after the read-only path passed. Direct SMS,
+  file, clipboard, APK-install and message-send tools remain absent.
+- [ ] Complete OpenBot's custom MCP test. Its hosted test currently cannot reach
+  the private endpoint, so keep that server entry unsaved until the test lists
+  all ten scoped tools.
 
 ## Current limits
 
-No physical tablet was available during implementation. Portal authentication,
-device inspection, Hermes tool calls against the tablet, and n8n delivery remain
-unverified until the checklist is completed. Tasker and AutoNotification are
-optional and are not needed for Portal notification capture. Android UI
-automation and Messenger/WhatsApp conversation reads can be fragile. The
-initial source has no message-send or approval capability; do not add one until
-an exact-recipient, exact-content, expiring, duplicate-safe approval contract is
-implemented and separately reviewed.
+Tasker and AutoNotification are optional and are not needed for Portal
+notification capture. Android UI automation and Messenger/WhatsApp conversation
+reads can be fragile. Generic tap and text-entry tools can still change app
+state, so use them only for explicitly requested UI work and never to send
+messages or submit forms. The notification path does not invoke an LLM or send
+messages.

@@ -41,7 +41,13 @@ The reviewed source catalog now includes these local and hosted MCP services:
 | n8n instance MCP | `http://n8n:5678/mcp-server/http` | `n8n-owner` |
 | HomeCompute capability relay, Hermes principal | `https://homecompute-capabilities.home.arpa:19445/mcp` | `hermes-owner-tools` |
 | HomeCompute capability relay, OpenClaw principal | `https://homecompute-capabilities.home.arpa:19445/mcp` | `openclaw-agent-tools` |
-| HomeCompute capability relay, OpenBot Android principal | `https://homecompute-capabilities.home.arpa:19445/mcp` | `openbot-android-read` |
+| HomeCompute capability relay, OpenBot Android principal | `https://homecompute-capabilities.home.arpa:19445/mcp` | `openbot-android-bounded-ui` |
+
+The Android alias allowlists exactly ten tools: five read-only Portal queries
+and five bounded UI interactions. It uses a dedicated `openbot-android-bounded-ui`
+group, and the role's existing policy forbids message sending, form submission,
+and purchases. The group is not assigned to an OpenBot key until the client
+test verifies this inventory.
 
 The source uses the Caddy hostname `mcp.home.arpa`, keeps Caddy and LiteLLM on a
 private gateway bridge, puts n8n and LiteLLM on a separate internal client
