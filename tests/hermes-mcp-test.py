@@ -335,6 +335,55 @@ class ConnectionTests(unittest.TestCase):
         self.assertFalse(any(args[3:5] == ['provider', 'delete'] or args[5] == 'detach'
                              for args in calls))
 
+    def test_stale_provider_cleanup_accepts_only_exact_binding_only_detach_diagnostic(self):
+        calls = []
+        provider_present = True
+        def call(args, **kwargs):
+            nonlocal provider_present
+            calls.append(args)
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
+                rows = ([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
+                          'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
+                          'credential_keys': [connect.KEY]}] if provider_present else [])
+                return json.dumps(rows)
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
+                return 'hermes-personal-v23\n'
+            if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
+                return 'NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\nhermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+            if args[5] == 'detach':
+                raise ValueError("native openshell -g nemoclaw sandbox failed: Error:   × code: 'The system is not in a state required for the operation's\n"
+                                 "  │ execution', message: \"credential_binding references provider 'hermes-\n"
+                                 "  │ personal-v23-mcp-homecompute', but that provider is not attached to the\n"
+                                 "  │ sandbox\"")
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'delete']:
+                provider_present = False
+                return ''
+            return ''
+        with patch.object(connect, 'call', side_effect=call):
+            connect.clear_stale_provider('hermes-personal-v23', {})
+        self.assertIn(['openshell', '-g', 'nemoclaw', 'provider', 'delete',
+                       'hermes-personal-v23-mcp-homecompute'], calls)
+
+    def test_stale_provider_cleanup_does_not_accept_other_detach_errors(self):
+        calls = []
+        def call(args, **kwargs):
+            calls.append(args)
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
+                return json.dumps([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
+                                    'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
+                                    'credential_keys': [connect.KEY]}])
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
+                return 'hermes-personal-v23\n'
+            if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
+                return 'NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\nhermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+            if args[5] == 'detach':
+                raise ValueError('permission denied for provider detach')
+            return ''
+        with patch.object(connect, 'call', side_effect=call):
+            with self.assertRaisesRegex(ValueError, 'permission denied'):
+                connect.clear_stale_provider('hermes-personal-v23', {})
+        self.assertFalse(any(args[3:5] == ['provider', 'delete'] for args in calls))
+
     def test_gate_requires_private_fresh_owner_records(self):
         from datetime import datetime, timezone
         with tempfile.TemporaryDirectory() as temporary, patch.object(connect, 'GATES', Path(temporary)):

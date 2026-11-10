@@ -168,10 +168,24 @@ def clear_stale_provider(sandbox: str, env: dict) -> None:
     if any(name != sandbox for name in attached):
         raise ValueError('stale MCP provider is attached outside its owner sandbox; preserve it for review')
     if sandbox in attached:
-        call(cli + ['sandbox', 'provider', 'detach', sandbox, provider['name']], env=env)
-        verify = ANSI.sub('', call(cli + ['sandbox', 'provider', 'list', sandbox], env=env))
-        if any(line.split() and line.split()[0] == provider['name'] for line in verify.splitlines()):
-            raise ValueError('native stale MCP provider detach did not verify')
+        binding_only = False
+        try:
+            call(cli + ['sandbox', 'provider', 'detach', sandbox, provider['name']], env=env)
+        except ValueError as error:
+            diagnostic = ANSI.sub('', str(error))
+            diagnostic = re.sub(r'-\s*[│|]\s*', '-', diagnostic)
+            diagnostic = re.sub(r'\s*[│|]\s*', ' ', diagnostic)
+            diagnostic = re.sub(r'\s+', ' ', diagnostic)
+            expected = ("code: 'The system is not in a state required for the operation's execution', "
+                        f'message: "credential_binding references provider \'{provider["name"]}\', '
+                        'but that provider is not attached to the sandbox"')
+            if expected not in diagnostic:
+                raise
+            binding_only = True
+        if not binding_only:
+            verify = ANSI.sub('', call(cli + ['sandbox', 'provider', 'list', sandbox], env=env))
+            if any(line.split() and line.split()[0] == provider['name'] for line in verify.splitlines()):
+                raise ValueError('native stale MCP provider detach did not verify')
     call(cli + ['provider', 'delete', provider['name']], env=env)
     after = json.loads(call(cli + ['provider', 'list', '--output', 'json'], env=env))
     if any(row.get('name') == provider['name'] for row in after):
