@@ -154,10 +154,14 @@ def apply(module, reviewed: dict, expected: str) -> dict:
     if receipt_path.exists():
         receipt = json.loads(receipt_path.read_bytes())
         if receipt['state'] == 'applied':
-            if any(row['before'] != row['after'] for row in reviewed['files'].values()):
-                raise ValueError('existing installation needs reconciliation before replacement')
-            probe(module)
-            return receipt
+            if digest(module.TOKENS.read_bytes()) != receipt['tokens_sha256']:
+                raise ValueError('later credential changes block installation replacement')
+            if any(row['before'] != receipt['files'].get(name)
+                   for name, row in reviewed['files'].items()):
+                raise ValueError('installed source differs from the active receipt')
+            if all(row['before'] == row['after'] for row in reviewed['files'].values()):
+                probe(module)
+                return receipt
     state = adapter_state()
     if state != 'active' and not (receipt and receipt.get('state') == 'rolled-back'
                                   and state in {'inactive', 'failed', 'activating'}):

@@ -86,6 +86,22 @@ class SetupTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.reviewed()
         self.calls.assert_not_called()
 
+    def test_applied_installation_can_be_upgraded_with_receipt_and_credentials_preserved(self):
+        plan, digest = self.reviewed()
+        setup.apply(self.module, plan, digest)
+        admitted = self.tokens.read_bytes()
+        for name, (target, _) in list(setup.FILES.items()):
+            (setup.ROOT / name).write_bytes(b'newer source')
+            setup.FILES[name] = (target, setup.digest(target.read_bytes()))
+        plan, digest = self.reviewed()
+        upgraded = setup.apply(self.module, plan, digest)
+        self.assertEqual(upgraded['state'], 'applied')
+        self.assertEqual(self.tokens.read_bytes(), admitted)
+        self.assertTrue(all(path.read_bytes() == b'newer source' for path, _ in setup.FILES.values()))
+        self.assertEqual(setup.rollback(self.module)['state'], 'rolled-back')
+        self.assertEqual(self.tokens.read_bytes(), admitted)
+        self.assertTrue(all(path.read_bytes() == b'new source' for path, _ in setup.FILES.values()))
+
     def test_failed_live_probe_restores_original_files_and_bearers(self):
         before = self.tokens.read_bytes(); plan, digest = self.reviewed()
         self.probe.side_effect = ValueError('synthetic failure')
