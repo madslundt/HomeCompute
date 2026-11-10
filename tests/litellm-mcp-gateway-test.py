@@ -75,6 +75,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
 
     def test_existing_unscoped_keys_are_denied_before_caddy_starts(self) -> None:
         self.assertIn("/key/list", DEFAULT_DENY)
+        self.assertIn("item.get('token')", DEFAULT_DENY)
+        self.assertNotIn("item.get('token_id')", DEFAULT_DENY)
         self.assertIn("'no-mcp-servers'", DEFAULT_DENY)
         self.assertIn("/key/update", DEFAULT_DENY)
         self.assertIn("setup-litellm-mcp-default-deny.py", DEPLOY)

@@ -40,7 +40,9 @@ explicit = 0
 for item in keys:
     if not isinstance(item, dict):
         raise RuntimeError('LiteLLM returned a malformed key record')
-    key_id = item.get('token_id')
+    # LiteLLM 1.108.4 returns the hashed key identifier as `token` from
+    # /key/list; `token_id` is not present in that response shape.
+    key_id = item.get('token')
     permission = item.get('object_permission') or {}
     if not isinstance(key_id, str) or not key_id:
         raise RuntimeError('LiteLLM key record did not include its hashed token id')
