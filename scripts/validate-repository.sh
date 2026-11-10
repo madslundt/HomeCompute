@@ -767,6 +767,7 @@ jq -e '
   ([.services.caddy.ports[] | select(.host_ip == "127.0.0.2" and .published == "80" and .target == 8080)] | length == 1) and
   (all(.services.caddy.ports[]; .protocol == "tcp")) and
   (.services.litellm.ports == null) and
+  (any(.services.litellm.volumes[]; .source == "/etc/homecompute/control-plane/home-core-root.crt" and .target == "/run/homecompute/home-core-root.crt" and .read_only == true)) and
   (.services.postgres.ports == null) and
   (.networks["mcp-web"].internal == true) and
   (.networks["mcp-clients"].internal == true) and

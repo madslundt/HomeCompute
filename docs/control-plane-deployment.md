@@ -145,6 +145,10 @@ explicitly runs `scripts/setup-network-inference.py --enable-plapre`.
   root-owned, group `homecompute-secrets` (989), mode 0440.
 - Production environment: `/etc/homecompute/control-plane.env`, root-owned 0600.
 - Durable data: `/srv/state/control-plane/{caddy-data,caddy-config,postgres-data}`.
+- LiteLLM trusts Home Core's private Caddy CA for the relay endpoint. The deploy
+  script copies the public `root.crt` from Caddy's root-only storage to
+  `/etc/homecompute/control-plane/home-core-root.crt` with mode 0644; Compose
+  mounts that copy read-only into LiteLLM, which runs as UID 101.
 - PostgreSQL starts as UID/GID 70 and retains supplementary secret group 989.
   Its data directory is provisioned as owner 70:70, mode 0700.
 - Caddy retains `NET_BIND_SERVICE` because the official binary's file capability
