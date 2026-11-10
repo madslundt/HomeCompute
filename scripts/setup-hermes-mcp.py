@@ -23,10 +23,11 @@ FILES = {
         'e6e78cb73968b3e3f2239d6d0e0ff8c223275ee45e0038ef1d3595fdb0ee4873'),
     'scripts/openclaw_capabilities.py': (
         Path('/opt/homecompute/openclaw-communication/scripts/openclaw_capabilities.py'),
-        '462aa96391b5c1c4bb7ba1a80b1bee987a5db0537eb56631704593a1746aaea1'),
+        'cd270c88a5adb8a901995d293f862abf29883bede90bfde285da8e29d269337e'),
     'scripts/setup-native-capabilities.py': (
         Path('/opt/homecompute/native-capabilities/setup-native-capabilities.py'),
-        'ccaf6a57bf6b6839f37fd8eed5d32f58d71c52049450708ee167d5346a8e1998'),
+        # Preimage preserved by the prior applied receipt before rollback.
+        'f954e6c60d75cc924a728b369320ffc8b692ccfad15c67bffea8096cc5f03936'),
 }
 
 
