@@ -157,6 +157,27 @@ For a new Compose workload:
 5. Document backup consistency, restore, health, update, and rollback before
    migration.
 
+## Expand the agents VM root disk
+
+Set `homecompute.agentsVm.resources.diskGiB` in the home-core host declaration.
+The VM startup unit grows an existing qcow2 image to that target while the VM is
+stopped and never shrinks an image. The Ubuntu guest's root partition and ext4
+filesystem need a separate online grow after the virtual disk expands:
+
+```bash
+sudo growpart /dev/vda 1
+sudo resize2fs /dev/vda1
+df -h /
+```
+
+Confirm a recent completed off-host application archive before applying the
+host generation. Apply and verify the source through the normal reviewed
+HomeCompute release and NixOS rollout. If the guest partition or filesystem
+step fails, keep the expanded virtual disk and retry the grow operation; do not
+shrink the qcow2 image as a rollback. The added capacity is sparse until the
+guest writes data, so monitor free space on the host filesystem as the guest
+uses it.
+
 ## Add another NixOS host or user
 
 Add a host under `hosts/<hostname>/` with its generated and reviewed hardware

@@ -224,6 +224,7 @@ in
     # Budget 8 GiB for OpenClaw, 4 GiB for Chromium, and 4 GiB for
     # guest services and browser proxies.
     resources.memoryMiB = 16384;
+    resources.diskGiB = 200;
     sshAuthorizedKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILT+ES2e5sbGFzBMLOWKZMawBm/kyadBthAldjAmK8Uc mads@home-core-admin"
     ];

@@ -20,6 +20,7 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn("enable = true;", HOST)
         self.assertIn('dataClassification = "household";', HOST)
         self.assertIn("restoreVerified = true;", HOST)
+        self.assertIn("resources.diskGiB = 200;", HOST)
         self.assertIn("network.allowedInternetTcpPorts = [ 80 443 ];", HOST)
         self.assertIn("network.maintenanceEgress = false;", HOST)
         self.assertIn("includeApplicationState = true;", HOST)
@@ -30,6 +31,13 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertNotIn("/releases/noble/release/ubuntu-24.04", MODULE)
         self.assertIn("qemu-img convert -f qcow2 -O qcow2", MODULE)
         self.assertNotIn("qemu-img create -f qcow2 -F qcow2 -b", MODULE)
+
+    def test_existing_vm_disk_only_grows_to_the_declared_capacity(self) -> None:
+        self.assertIn("current_disk_bytes=", MODULE)
+        self.assertIn("target_disk_bytes=", MODULE)
+        self.assertIn('if [ "$current_disk_bytes" -lt "$target_disk_bytes" ]; then', MODULE)
+        self.assertIn('qemu-img resize ${guestDisk} "$target_disk_bytes"', MODULE)
+        self.assertIn("existing disks only grow", MODULE)
 
     def test_activation_requires_backup_and_operator_key(self) -> None:
         self.assertIn("config.homecompute.backups.enable", MODULE)

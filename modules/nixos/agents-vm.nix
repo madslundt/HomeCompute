@@ -163,6 +163,7 @@ in
       diskGiB = lib.mkOption {
         type = lib.types.ints.positive;
         default = 80;
+        description = "Target virtual disk size in GiB; existing disks only grow.";
       };
     };
 
@@ -519,6 +520,11 @@ in
           trap - EXIT
         fi
         test "$(qemu-img info --output=json ${guestDisk} | ${pkgs.jq}/bin/jq -r .format)" = qcow2
+        current_disk_bytes="$(qemu-img info --output=json ${guestDisk} | ${pkgs.jq}/bin/jq -r '.["virtual-size"]')"
+        target_disk_bytes="$(( ${toString cfg.resources.diskGiB} * 1024 * 1024 * 1024 ))"
+        if [ "$current_disk_bytes" -lt "$target_disk_bytes" ]; then
+          qemu-img resize ${guestDisk} "$target_disk_bytes"
+        fi
       '';
       script = ''
         exec qemu-system-x86_64 \
