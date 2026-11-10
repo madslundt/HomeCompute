@@ -1,4 +1,5 @@
 """Owner admission, rollback and native connection boundaries; synthetic credentials only."""
+import copy
 import hashlib
 import importlib.util
 import json
@@ -203,6 +204,8 @@ class ConnectionTests(unittest.TestCase):
             def call(args, **kwargs):
                 nonlocal provider_present, provider_attached
                 commands.append((args, kwargs))
+                if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
+                    return json.dumps({'policy': {'network_policies': {}}})
                 if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
                     rows = ([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'provider-id',
                               'resource_version': 'rv1', 'type': 'nemoclaw-mcp-v1',
@@ -318,6 +321,8 @@ class ConnectionTests(unittest.TestCase):
         calls = []
         def call(args, **kwargs):
             calls.append(args)
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
+                return json.dumps({'policy': {'network_policies': {}}})
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
                 return json.dumps([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
                                     'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
@@ -341,6 +346,8 @@ class ConnectionTests(unittest.TestCase):
         def call(args, **kwargs):
             nonlocal provider_present
             calls.append(args)
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
+                return json.dumps({'policy': {'network_policies': {}}})
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
                 rows = ([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
                           'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
@@ -368,6 +375,8 @@ class ConnectionTests(unittest.TestCase):
         calls = []
         def call(args, **kwargs):
             calls.append(args)
+            if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
+                return json.dumps({'policy': {'network_policies': {}}})
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
                 return json.dumps([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
                                     'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
@@ -454,6 +463,32 @@ class NetworkTests(unittest.TestCase):
             with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23')
         before = self.policy(); before['network_policies']['mcp_bridge_homecompute']['binaries'].append({'path': '/**'})
         with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23')
+
+    def test_stale_provider_policy_cleanup_selects_only_exact_speech_routes(self):
+        sandbox = 'hermes-personal-v23'
+        network = {}
+        for key, path in (('homecompute_transcription', '/v1/audio/transcriptions'),
+                          ('homecompute_speech', '/v1/audio/speech')):
+            network[key] = {'name': key, 'binaries': [{'path': connect.PYTHON}], 'endpoints': [{
+                'host': 'homecompute-capabilities.home.arpa', 'port': 19445, 'path': path,
+                'allowed_ips': ['10.77.20.1'],
+                'credential_binding': {'provider': sandbox + '-mcp-homecompute'},
+                'protocol': 'rest', 'enforcement': 'enforce',
+                'rules': [{'allow': {'method': 'POST', 'path': path}}],
+            }]}
+        policy = {'unrelated': {'preserve': True}, 'network_policies': network}
+        entries = connect.speech_policy_entries(policy, sandbox)
+        self.assertEqual(set(entries), set(network))
+        invalid = copy.deepcopy(policy)
+        invalid['network_policies']['homecompute_speech']['endpoints'][0]['rules'] = [
+            {'allow': {'method': 'POST', 'path': '/**'}}]
+        with self.assertRaisesRegex(ValueError, 'differs'):
+            connect.speech_policy_entries(invalid, sandbox)
+        invalid = copy.deepcopy(policy)
+        invalid['network_policies']['other'] = {'endpoints': [{
+            'credential_binding': {'provider': sandbox + '-mcp-homecompute'}}]}
+        with self.assertRaisesRegex(ValueError, 'unexpected policy'):
+            connect.speech_policy_entries(invalid, sandbox)
 
 
 if __name__ == '__main__':

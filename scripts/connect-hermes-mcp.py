@@ -24,6 +24,7 @@ ANDROID_SKILL = ROOT / 'deploy/hermes/skills/android-gateway'
 GATES = Path('/var/lib/homecompute-hermes/gates')
 PYTHON = '/opt/hermes/python-runtime/bin/python3.14'
 BACKUPS = Path.home() / '.local/state/homecompute/hermes-mcp-registration-backups'
+POLICY_BACKUPS = Path.home() / '.local/state/homecompute/hermes-mcp-policy'
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
 
@@ -141,7 +142,82 @@ def private_legacy_backup(sandbox: str) -> str | None:
     return None
 
 
-def clear_stale_provider(sandbox: str, env: dict) -> None:
+def speech_policy_entries(policy: dict, sandbox: str) -> dict:
+    """Select only the two exact source-owned speech routes that bind this provider."""
+    network = policy.get('network_policies')
+    if not isinstance(network, dict):
+        raise ValueError('base network policy inventory is invalid')
+    expected_binding = {'provider': sandbox + '-mcp-homecompute'}
+    selected = {}
+    for key, path in (('homecompute_transcription', '/v1/audio/transcriptions'),
+                      ('homecompute_speech', '/v1/audio/speech')):
+        entry = network.get(key)
+        if entry is None:
+            continue
+        expected = {'name': key, 'binaries': [{'path': PYTHON}], 'endpoints': [{
+            'host': 'homecompute-capabilities.home.arpa', 'port': 19445, 'path': path,
+            'allowed_ips': ['10.77.20.1'], 'credential_binding': expected_binding,
+            'protocol': 'rest', 'enforcement': 'enforce',
+            'rules': [{'allow': {'method': 'POST', 'path': path}}],
+        }]}
+        if entry != expected:
+            raise ValueError('existing Hermes speech policy differs from the exact managed route')
+        selected[key] = entry
+    for key, entry in network.items():
+        if not isinstance(entry, dict):
+            continue
+        if key not in selected and any(
+                isinstance(endpoint, dict)
+                and endpoint.get('credential_binding') == expected_binding
+                for endpoint in entry.get('endpoints', [])):
+            raise ValueError('unexpected policy still references the stale MCP provider')
+    return selected
+
+
+def update_speech_policy(sandbox: str, env: dict, entries: dict, *, remove: bool) -> None:
+    if not entries:
+        return
+    cli = ['openshell', '-g', 'nemoclaw', 'policy']
+    query = ['get', sandbox, '--base', '-o', 'json']
+    before = json.loads(call(cli + query, env=env))['policy']
+    network = before.get('network_policies')
+    if not isinstance(network, dict):
+        raise ValueError('base network policy inventory is invalid')
+    after = copy.deepcopy(before)
+    target = after['network_policies']
+    for key, entry in entries.items():
+        current = target.get(key)
+        if remove:
+            if current != entry:
+                raise ValueError('speech policy changed before stale provider cleanup')
+            del target[key]
+        else:
+            if current is not None and current != entry:
+                raise ValueError('speech policy changed before MCP provider restoration')
+            target[key] = entry
+    if before == after:
+        return
+    if any(path.is_symlink() for path in (POLICY_BACKUPS, *POLICY_BACKUPS.parents)):
+        raise ValueError('private nonsymlink MCP policy backup directory required')
+    POLICY_BACKUPS.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if POLICY_BACKUPS.stat().st_uid != os.getuid() or POLICY_BACKUPS.stat().st_mode & 0o077:
+        raise ValueError('private operator-owned MCP policy backup directory required')
+    transaction = POLICY_BACKUPS / str(time.time_ns())
+    transaction.mkdir(mode=0o700)
+    for name, value in (('before', before), ('after', after)):
+        path = transaction / ('policy-' + name + '.json')
+        with path.open('x') as stream:
+            os.chmod(path, 0o600)
+            json.dump(value, stream, sort_keys=True)
+    if json.loads(call(cli + query, env=env))['policy'] != before:
+        raise ValueError('native policy changed during MCP policy preparation')
+    call(cli + ['set', sandbox, '--policy', str(transaction / 'policy-after.json'),
+                '--wait', '--timeout', '45'], env=env)
+    if json.loads(call(cli + query, env=env))['policy'] != after:
+        raise ValueError('native MCP policy update did not verify; preserve private backup')
+
+
+def clear_stale_provider(sandbox: str, env: dict) -> dict:
     cli = ['openshell', '-g', 'nemoclaw']
     providers = json.loads(call(cli + ['provider', 'list', '--output', 'json'], env=env))
     if not isinstance(providers, list):
@@ -156,6 +232,9 @@ def clear_stale_provider(sandbox: str, env: dict) -> None:
             or provider.get('credential_keys') != [KEY]
             or not provider.get('id') or not provider.get('resource_version')):
         raise ValueError('stale MCP provider shape differs; preserve it for review')
+    policy = json.loads(call(['openshell', '-g', 'nemoclaw', 'policy', 'get', sandbox,
+                              '--base', '-o', 'json'], env=env))['policy']
+    speech_entries = speech_policy_entries(policy, sandbox)
     names = call(cli + ['sandbox', 'list', '--names'], env=env).splitlines()
     attached = []
     for candidate in names:
@@ -167,6 +246,7 @@ def clear_stale_provider(sandbox: str, env: dict) -> None:
             attached.append(candidate)
     if any(name != sandbox for name in attached):
         raise ValueError('stale MCP provider is attached outside its owner sandbox; preserve it for review')
+    update_speech_policy(sandbox, env, speech_entries, remove=True)
     if sandbox in attached:
         binding_only = False
         try:
@@ -190,6 +270,7 @@ def clear_stale_provider(sandbox: str, env: dict) -> None:
     after = json.loads(call(cli + ['provider', 'list', '--output', 'json'], env=env))
     if any(row.get('name') == provider['name'] for row in after):
         raise ValueError('native stale MCP provider deletion did not verify')
+    return speech_entries
 
 
 def network_candidate(before: dict, sandbox: str) -> dict:
@@ -284,6 +365,7 @@ def connect(sandbox: str, token: str, *, repair_legacy_registration: bool = Fals
     entries = json.loads(call(cli + ['mcp', 'list', '--json'], env=env))['bridges']
     existing = [row for row in entries if row.get('server') == 'homecompute']
     repair_backup = None
+    speech_entries = {}
     if existing:
         if len(existing) != 1:
             raise ValueError('existing MCP registration differs; preserve it for review')
@@ -301,7 +383,7 @@ def connect(sandbox: str, token: str, *, repair_legacy_registration: bool = Fals
             after_remove = json.loads(call(cli + ['mcp', 'list', '--json'], env=env))['bridges']
             if any(row.get('server') == 'homecompute' for row in after_remove):
                 raise ValueError('native MCP removal did not verify; preserve its backup and inspect status')
-            clear_stale_provider(sandbox, env)
+            speech_entries = clear_stale_provider(sandbox, env)
             call(cli + ['mcp', 'add', 'homecompute', '--url', URL, '--env', KEY,
                         '--trusted-private-host', 'homecompute-capabilities.home.arpa'],
                  env={**env, KEY: token})
@@ -311,13 +393,14 @@ def connect(sandbox: str, token: str, *, repair_legacy_registration: bool = Fals
         if repair_legacy_registration:
             repair_backup = private_legacy_backup(sandbox)
         if repair_backup:
-            clear_stale_provider(sandbox, env)
+            speech_entries = clear_stale_provider(sandbox, env)
         # The native CLI owns policy, provider, opaque handles and gateway reload.
         # An unknown add outcome is left untouched for native reconciliation.
         call(cli + ['mcp', 'add', 'homecompute', '--url', URL, '--env', KEY,
                     '--trusted-private-host', 'homecompute-capabilities.home.arpa'], env={**env, KEY: token})
     token = ''
     network_setup(sandbox, env)
+    update_speech_policy(sandbox, env, speech_entries, remove=False)
     status = json.loads(call(cli + ['mcp', 'status', 'homecompute', '--json'], env=env))
     row = status_row(status)
     if (row.get('url') != URL or row.get('provider', {}).get('credentialResolution', {}).get('ok') is not True
