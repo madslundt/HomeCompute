@@ -131,7 +131,7 @@ class RelaySetupTest(unittest.TestCase):
 
     def test_fixed_caddy_boundary_rejects_other_methods_paths_queries_and_sources(self):
         config = setup.caddyfile()
-        for value in ('bind 10.77.20.1', 'remote_ip 10.77.20.2', 'method POST', 'path /mcp',
+        for value in ('bind 10.77.20.1', 'remote_ip 10.77.20.2 172.28.200.3', 'method POST', 'path /mcp',
                       'expression {http.request.orig_uri} == "/mcp"', 'reverse_proxy 127.0.0.1:18793',
                       'admin off', 'auto_https off', 'output discard', 'respond 404'):
             self.assertIn(value, config)
@@ -150,19 +150,26 @@ class RelaySetupTest(unittest.TestCase):
         self.assertNotIn('--privileged', command); self.assertNotIn('--publish', command)
 
     def test_firewall_addition_and_removal_only_change_exact_owned_grant(self):
-        with patch.object(setup, 'call', side_effect=[SimpleNamespace(returncode=1), SimpleNamespace(returncode=0)]) as call:
+        with patch.object(setup, 'call', side_effect=[SimpleNamespace(returncode=1), SimpleNamespace(returncode=0),
+                                                       SimpleNamespace(returncode=1), SimpleNamespace(returncode=0)]) as call:
             setup.firewall(True)
             self.assertEqual(call.call_args_list[1].args[0][2:], ['-I', 'INPUT', '1', *setup.RULE[1:]])
-        with patch.object(setup, 'call', side_effect=[SimpleNamespace(returncode=0), SimpleNamespace(returncode=0), SimpleNamespace(returncode=1)]) as call:
+            self.assertEqual(call.call_args_list[3].args[0][2:], ['-I', 'INPUT', '1', *setup.LITELLM_RULE[1:]])
+        with patch.object(setup, 'call', side_effect=[SimpleNamespace(returncode=0), SimpleNamespace(returncode=0),
+                                                       SimpleNamespace(returncode=1), SimpleNamespace(returncode=0),
+                                                       SimpleNamespace(returncode=0), SimpleNamespace(returncode=1)]) as call:
             setup.firewall(False)
             self.assertEqual(call.call_args_list[1].args[0][2:], ['-D', *setup.RULE])
+            self.assertEqual(call.call_args_list[4].args[0][2:], ['-D', *setup.LITELLM_RULE])
         with patch.object(setup, 'call', return_value=SimpleNamespace(returncode=0)) as call:
             setup.firewall(True)
-            self.assertEqual(call.call_count, 1)
+            self.assertEqual(call.call_count, 2)
         self.assertIn('br-hc-agents', setup.RULE)
         self.assertIn('10.77.20.2/32', setup.RULE)
         self.assertIn('10.77.20.1/32', setup.RULE)
         self.assertIn('19445', setup.RULE)
+        self.assertIn('br-hc-ctrl', setup.LITELLM_RULE)
+        self.assertIn('172.28.200.3/32', setup.LITELLM_RULE)
 
     def test_run_failure_removes_grant_and_unit_stops_only_own_container(self):
         with patch.object(setup, 'check'), patch.object(setup, 'firewall') as firewall, \

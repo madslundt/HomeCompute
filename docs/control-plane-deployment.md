@@ -16,6 +16,11 @@ the services below; database restores and migration rollback startup were rehear
 | Spark Hviske HTTP | Hviske v5.3 + Python/FFmpeg relay | `stt-danish` through home-core HTTPS; keyless audio transcription |
 | Automation standby | Approved server digest | Qwen3.6 Q4 cached, normally stopped |
 
+The deployed host remains on LiteLLM 1.104.2 until the reviewed MCP gateway
+release is merged and deployed. The source change targets the upstream 1.108.4
+LTS image and adds the private `mcp.home.arpa` gateway; this document's table is
+the currently deployed baseline, not proof that the proposal is live.
+
 Immutable image digests are recorded in `config/control-plane.env.example`.
 The update verified immutable public registry digests and platform identities;
 independent cosign verification was not performed for these new pins. The original

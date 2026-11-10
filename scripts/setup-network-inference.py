@@ -155,6 +155,7 @@ import json, urllib.request
 master = open('/run/secrets/litellm_master_key').read().strip()
 body = {'models': %s, 'key_alias': 'network-inference',
         'user_id': 'network-inference', 'duration': None,
+        'object_permission': {'mcp_servers': ['no-mcp-servers']},
         'metadata': {'purpose': 'keyless private-network inference'}}
 req = urllib.request.Request('http://127.0.0.1:4000/key/generate',
     data=json.dumps(body).encode(),

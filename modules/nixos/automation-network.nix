@@ -186,6 +186,27 @@
           iptables -w -D DOCKER-USER ! -i br-hc-n8n -d "$service_ip/32" -j REJECT
         done
       done
+
+      # Keep unauthenticated local MCP servers callable only by LiteLLM.
+      iptables -w -I DOCKER-USER 1 -i br-hc-mcp -j REJECT
+      while iptables -w -C DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS
+      done
+      iptables -w -N HC-MCP-BACKENDS 2>/dev/null || true
+      iptables -w -F HC-MCP-BACKENDS
+      iptables -w -A HC-MCP-BACKENDS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -A HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878 -j RETURN
+      iptables -w -A HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000 -j RETURN
+      iptables -w -A HC-MCP-BACKENDS -j REJECT
+      iptables -w -I DOCKER-USER 1 -i br-hc-mcp -j HC-MCP-BACKENDS
+      iptables -w -C HC-MCP-BACKENDS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -C HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878 -j RETURN
+      iptables -w -C HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000 -j RETURN
+      iptables -w -C HC-MCP-BACKENDS -j REJECT
+      iptables -w -C DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS
+      while iptables -w -C DOCKER-USER -i br-hc-mcp -j REJECT 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-mcp -j REJECT
+      done
     '';
 
     preStop = ''
@@ -249,6 +270,14 @@
       if iptables -w -L HC-AUTOMATION -n >/dev/null 2>&1; then
         iptables -w -F HC-AUTOMATION
         iptables -w -X HC-AUTOMATION
+      fi
+      iptables -w -I DOCKER-USER 1 -i br-hc-mcp -j REJECT
+      while iptables -w -C DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS 2>/dev/null; do
+        iptables -w -D DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS
+      done
+      if iptables -w -L HC-MCP-BACKENDS -n >/dev/null 2>&1; then
+        iptables -w -F HC-MCP-BACKENDS
+        iptables -w -X HC-MCP-BACKENDS
       fi
 
       # Keep both guards installed if this unit stops while Docker is still

@@ -276,6 +276,7 @@ class InferenceKeySetup:
         data = self._api("/key/generate", {
             "models": [spec["model"]], "key_alias": spec["owner"],
             "user_id": spec["owner"], "duration": None,
+            "object_permission": {"mcp_servers": ["no-mcp-servers"]},
             "metadata": {"purpose": spec["purpose"], "setup_intent_id": intent_id},
         })
         key = data.get("key")

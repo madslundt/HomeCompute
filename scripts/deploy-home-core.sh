@@ -149,6 +149,10 @@ docker exec -i homecompute-control-plane-postgres-1 \
 # On first installation, LiteLLM creates its tables during the step above.
 docker exec -i homecompute-control-plane-postgres-1 \
   psql -X -v ON_ERROR_STOP=1 -U postgres -d litellm < "$release/deploy/control-plane/token-usage.sql"
+# LiteLLM defaults MCP access to open when no key or team declares a policy.
+# Apply an explicit deny to existing unscoped keys before starting Caddy with
+# the MCP hostname; preserve any already explicit MCP grants.
+python3 "$release/scripts/setup-litellm-mcp-default-deny.py"
 install -D -m 0755 "$release/scripts/token-usage.py" /usr/local/bin/homecompute-token-usage
 usage_directory=/srv/state/control-plane/caddy-data/token-usage
 install -d -m 0755 "$usage_directory"

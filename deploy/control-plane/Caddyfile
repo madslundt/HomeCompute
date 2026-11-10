@@ -361,6 +361,21 @@ import /config/video-api/Caddyfile
 	import ai_api
 }
 
+# The MCP hostname exposes LiteLLM's authenticated MCP endpoint and operator
+# UI. It stays on the existing private LAN/Tailscale Caddy listeners.
+{$MCP_FQDN} {
+	tls internal
+	encode zstd gzip
+	import litellm_proxy
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
 {$AI_LEGACY_FQDN} {
 	tls /data/tailscale-tls/current/cert.pem /data/tailscale-tls/current/key.pem
 	import ai_api

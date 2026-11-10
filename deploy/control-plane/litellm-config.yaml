@@ -138,6 +138,8 @@ general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
   store_model_in_db: false
+  require_key_mcp_access_defined: true
+  mcp_disabled_capabilities: [prompts, resources]
   store_prompts_in_spend_logs: false
   disable_spend_logs: false
   disable_error_logs: true
@@ -146,3 +148,121 @@ router_settings:
   routing_strategy: simple-shuffle
   allowed_fails: 1
   cooldown_time: 5
+
+# Keep the MCP catalog in the reviewed release. Access grants remain in
+# LiteLLM's database and are assigned to each virtual key or team in the UI.
+mcp_servers:
+  context7:
+    url: https://mcp.context7.com/mcp?client=claude-code-plugin
+    transport: http
+    description: Public library documentation lookup from Context7
+    allow_all_keys: false
+    access_groups: [docs-public]
+  n8n:
+    url: http://n8n:5678/mcp-server/http
+    transport: http
+    auth_type: bearer_token
+    auth_value: os.environ/N8N_MCP_TOKEN
+    description: Owner-only n8n instance MCP; tool names restricted to the reviewed live catalog
+    allow_all_keys: false
+    access_groups: [n8n-owner]
+    allowed_tools:
+      - search_workflows
+      - execute_workflow
+      - get_workflow_execution
+      - search_workflow_executions
+      - get_workflow_details
+      - get_workflow_history
+      - get_workflow_version
+      - get_workflow_versions_diff
+      - publish_workflow
+      - unpublish_workflow
+      - prepare_workflow_pin_data
+      - test_workflow
+      - list_credentials
+      - list_n8n_gateway_services
+      - list_workflow_tags
+      - search_data_tables
+      - create_data_table
+      - rename_data_table
+      - add_data_table_column
+      - delete_data_table_column
+      - rename_data_table_column
+      - add_data_table_rows
+      - get_data_table_rows
+      - search_nodes
+      - get_node_types
+      - get_workflow_best_practices
+      - explore_node_resources
+      - validate_workflow
+      - validate_node_config
+      - create_workflow_from_code
+      - search_projects
+      - archive_workflow
+      - update_workflow
+      - restore_workflow_version
+      - get_workflow_sdk_reference
+      - search_agents
+      - get_agent
+      - create_agent
+      - mutate_agent
+      - validate_agent
+      - call_agent
+      - publish_agent
+      - unpublish_agent
+      - revert_agent
+      - list_agent_versions
+      - delete_agent
+      - discover_agent_assets
+      - verify_agent_mcp_server
+      - update_agent_integration
+      - get_agent_builder_reference
+      - search_n8n_skills
+      - get_skill
+      - create_skill
+      - update_skill
+      - delete_skill
+  homecompute-hermes:
+    url: https://homecompute-capabilities.home.arpa:19445/mcp
+    transport: http
+    auth_type: oauth_delegate
+    description: Hermes-owner capability principal; caller supplies its role-scoped bearer
+    allow_all_keys: false
+    access_groups: [hermes-owner-tools]
+  homecompute-openclaw:
+    url: https://homecompute-capabilities.home.arpa:19445/mcp
+    transport: http
+    auth_type: oauth_delegate
+    description: OpenClaw capability principal; caller supplies its role-scoped bearer
+    allow_all_keys: false
+    access_groups: [openclaw-agent-tools]
+  homecompute-openbot-android:
+    url: https://homecompute-capabilities.home.arpa:19445/mcp
+    transport: http
+    auth_type: oauth_delegate
+    description: Android bounded UI principal; caller supplies its role-scoped bearer
+    allow_all_keys: false
+    access_groups: [openbot-android-bounded-ui]
+    allowed_tools:
+      - homecompute_android_status
+      - homecompute_android_screen
+      - homecompute_android_apps
+      - homecompute_android_visible_text
+      - homecompute_android_screenshot
+      - homecompute_android_launch_app
+      - homecompute_android_tap
+      - homecompute_android_swipe
+      - homecompute_android_type_text
+      - homecompute_android_navigation_key
+  aula:
+    url: http://aula-mcp:7878/mcp
+    transport: http
+    description: Read-only Aula calendar and school information
+    allow_all_keys: false
+    access_groups: [aula-read]
+  tilbudstrolden:
+    url: http://tilbudstrolden-mcp:8000/mcp
+    transport: http
+    description: Read-only Danish retail offer search
+    allow_all_keys: false
+    access_groups: [offers-read]
