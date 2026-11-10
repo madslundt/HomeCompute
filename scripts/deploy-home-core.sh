@@ -50,7 +50,12 @@ if [[ ! -d "$release" ]]; then
   git clone https://github.com/madslundt/HomeCompute.git "$release"
 fi
 if ! git -C "$release" cat-file -e "$revision^{commit}" 2>/dev/null; then
-  git -C "$release" fetch origin "$revision"
+  # GitHub may refuse a direct fetch of an advertised commit SHA. Fetch the
+  # published release branch first, then retain SHA fetch for historical pins.
+  git -C "$release" fetch origin master
+  if ! git -C "$release" cat-file -e "$revision^{commit}" 2>/dev/null; then
+    git -C "$release" fetch origin "$revision"
+  fi
 fi
 [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]] || {
   printf 'Release checkout is dirty; preserving it: %s\n' "$release" >&2; exit 1;
