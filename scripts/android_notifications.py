@@ -179,7 +179,7 @@ def run(config_path: Path, portal_token_path: Path, webhook_token_path: Path) ->
             if not listener.portal_token:
                 raise OSError("Portal credential is not provisioned")
             url = cfg["websocket_url"].rstrip("/") + "/?eventFormat=rpc"
-            with websockets.sync.client.connect(url, additional_headers={"Authorization": "Bearer " + token},
+            with websockets.sync.client.connect(url, additional_headers={"Authorization": "Bearer " + listener.portal_token},
                     open_timeout=10, close_timeout=2, max_size=1_048_576) as ws:
                 listener.state.connected = True
                 listener.state.last_error = None

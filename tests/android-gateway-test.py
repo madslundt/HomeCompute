@@ -6,8 +6,9 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -40,6 +41,42 @@ class AndroidGatewayTests(unittest.TestCase):
         self.assertEqual(portal.name, "portal-token")
         self.assertEqual(webhook.name, "n8n-webhook-token")
         self.assertIn("homecompute-android-notifications.service", str(portal.parent))
+
+    def test_websocket_auth_uses_the_loaded_portal_credential(self):
+        class Socket:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+            def recv(self, timeout): raise KeyboardInterrupt
+        class Server:
+            def serve_forever(self): pass
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "android-notifications.json"
+            config.write_text(json.dumps({"device_id": "tablet-1", "websocket_url": "ws://tablet:8081",
+                "allowed_packages": ["com.facebook.orca"], "webhook_url": "http://127.0.0.1:15678/hook"}))
+            credentials = root / "credentials"
+            credentials.mkdir()
+            portal_token = credentials / "portal-token"
+            webhook_token = credentials / "n8n-webhook-token"
+            portal_token.write_text("synthetic-portal-token")
+            webhook_token.write_text("synthetic-webhook-token")
+            websocket = types.ModuleType("websockets")
+            websocket.__path__ = []
+            sync = types.ModuleType("websockets.sync")
+            sync.__path__ = []
+            client = types.ModuleType("websockets.sync.client")
+            client.connect = Mock(return_value=Socket())
+            sync.client = client
+            websocket.sync = sync
+            modules = {"websockets": websocket, "websockets.sync": sync, "websockets.sync.client": client}
+            environment = {"ANDROID_CONFIG": str(config), "CREDENTIALS_DIRECTORY": str(credentials),
+                           "STATE_DIRECTORY": str(root / "state")}
+            with patch.dict(sys.modules, modules), patch.dict("os.environ", environment), \
+                 patch.object(notifications, "health_server", return_value=Server()):
+                with self.assertRaises(KeyboardInterrupt):
+                    notifications.run(config, portal_token, webhook_token)
+            self.assertEqual(client.connect.call_args.kwargs["additional_headers"],
+                             {"Authorization": "Bearer synthetic-portal-token"})
 
     def test_allowlist_and_deduplication(self):
         with tempfile.TemporaryDirectory() as temp:
