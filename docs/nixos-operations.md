@@ -207,7 +207,10 @@ steps against local Git repositories with synthetic Nix and GitHub commands.
 The push uses an explicit lease on the update branch's observed remote SHA;
 this works with a shallow default-branch checkout and refuses to overwrite a
 concurrent branch update. A missing remote branch uses an empty lease so only
-branch creation is allowed.
+branch creation is allowed. Pull-request detection lists open pull requests
+for the branch: `gh pr view <branch>` also resolves a merged pull request from
+a previous run with exit status zero and would silently skip proposing the
+next week's update.
 
 GitHub must allow Actions to create pull requests. An administrator can apply
 the tracked repository setting from the repository root:
