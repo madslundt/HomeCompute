@@ -241,14 +241,15 @@ def certificate() -> bool:
     return True
 
 
-def native_tokens(*, admit_hermes: bool = False) -> bool:
+def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = False) -> bool:
     user = pwd.getpwnam('homecompute-openclaw')
     if TOKENS.exists() or TOKENS.is_symlink():
         regular(TOKENS, user.pw_uid, 0o600)
         if TOKENS.stat().st_size > 16384:
             raise ValueError('native credential file exceeds budget')
         value = json.loads(TOKENS.read_bytes())
-        if (not isinstance(value, dict) or not {'openclaw'} <= set(value) <= {'openclaw', 'hermes', 'hermes-owner'}
+        if (not isinstance(value, dict) or not {'openclaw'} <= set(value) <=
+                {'openclaw', 'hermes', 'hermes-owner', 'openbot-android'}
                 or any(not isinstance(token, str) or len(token) < 32 or '\n' in token or '\r' in token
                        or token.startswith(('replace', 'openshell:resolve:')) for token in value.values())
                 or len(set(value.values())) != len(value)):
@@ -264,6 +265,8 @@ def native_tokens(*, admit_hermes: bool = False) -> bool:
         value = {'openclaw': secrets.token_urlsafe(48)}
     if admit_hermes and 'hermes-owner' not in value:
         value['hermes-owner'] = secrets.token_urlsafe(48)
+    if admit_openbot_android and 'openbot-android' not in value:
+        value['openbot-android'] = secrets.token_urlsafe(48)
     if value == before:
         return False
     write(TOKENS, json.dumps(value).encode(), user.pw_uid, user.pw_gid, 0o600)

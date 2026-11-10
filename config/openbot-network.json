@@ -7,6 +7,10 @@
     "address": "10.77.20.1",
     "port": 18080
   },
+  "android_mcp_endpoint": {
+    "address": "10.77.20.1",
+    "port": 19445
+  },
   "turn_servers": [
     {
       "hostname": "turn.openbot.run",

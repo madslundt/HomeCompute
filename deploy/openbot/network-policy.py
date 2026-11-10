@@ -14,6 +14,7 @@ SUBNET = ipaddress.ip_network('172.30.192.0/24')
 CONTAINER = ipaddress.ip_address('172.30.192.2')
 HOST = ipaddress.ip_address('10.77.20.1')
 LOCAL_MODEL_PORT = 18080
+ANDROID_MCP_PORT = 19445
 BLOCKED = (
     '0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
     '169.254.0.0/16', '172.16.0.0/12', '192.0.0.0/24',
@@ -31,6 +32,9 @@ def load_turn_addresses() -> list[ipaddress.IPv4Address]:
     endpoint = value.get('local_model_endpoint', {})
     if endpoint != {'address': str(HOST), 'port': LOCAL_MODEL_PORT}:
         raise ValueError('OpenBot local model endpoint does not match the reviewed boundary')
+    android_mcp = value.get('android_mcp_endpoint', {})
+    if android_mcp != {'address': str(HOST), 'port': ANDROID_MCP_PORT}:
+        raise ValueError('OpenBot Android MCP endpoint does not match the reviewed boundary')
     turn = value.get('turn_client_ports', {})
     if turn != {'udp_listeners': [3478], 'udp_relay_range': [49152, 65535],
                 'tcp_listeners': [3478, 5349]}:
@@ -74,6 +78,7 @@ def apply() -> None:
     iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'udp', '--dport', '53', '-j', 'ACCEPT')
     iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', '53', '-j', 'ACCEPT')
     iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(LOCAL_MODEL_PORT), '-j', 'ACCEPT')
+    iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(ANDROID_MCP_PORT), '-j', 'ACCEPT')
     for address in addresses:
         for port in ('3478', '49152:65535'):
             iptables('-A', CHAIN, '-d', f'{address}/32', '-p', 'udp', '--dport', port, '-j', 'ACCEPT')

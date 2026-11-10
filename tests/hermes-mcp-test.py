@@ -68,7 +68,7 @@ class SetupTests(unittest.TestCase):
         receipt = setup.apply(self.module, plan, digest)
         admitted = self.tokens.read_bytes()
         self.assertNotEqual(before, admitted)
-        self.assertEqual(set(json.loads(admitted)), {'openclaw', 'hermes-owner'})
+        self.assertEqual(set(json.loads(admitted)), {'openclaw', 'hermes-owner', 'openbot-android'})
         self.assertNotIn('x' * 48, json.dumps(receipt))
         self.assertTrue(all(path.read_bytes() == b'new source' for path, _ in setup.FILES.values()))
         plan, digest = self.reviewed()
@@ -107,7 +107,7 @@ class SetupTests(unittest.TestCase):
         plan, digest = self.reviewed()
         receipt = setup.apply(self.module, plan, digest)
         self.assertEqual(receipt['state'], 'applied')
-        self.assertEqual(set(json.loads(self.tokens.read_bytes())), {'openclaw', 'hermes-owner'})
+        self.assertEqual(set(json.loads(self.tokens.read_bytes())), {'openclaw', 'hermes-owner', 'openbot-android'})
 
     def test_rollback_preserves_later_source_or_credential_changes(self):
         plan, digest = self.reviewed(); setup.apply(self.module, plan, digest)
@@ -412,26 +412,38 @@ class ConnectionTests(unittest.TestCase):
 
 
 class ProbeTests(unittest.TestCase):
-    def test_waits_for_type_simple_listener_without_retrying_authentication(self):
-        names = ('homecompute_school_discover', 'homecompute_shopping_search',
-                 'homecompute_system_read', 'homecompute_ha_propose',
-                 'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-                 'homecompute_android_visible_text', 'homecompute_android_screenshot')
+    def test_probe_checks_household_and_android_only_principals(self):
+        household = ('homecompute_school_discover', 'homecompute_shopping_search',
+                     'homecompute_system_read', 'homecompute_ha_propose',
+                     'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
+                     'homecompute_android_visible_text', 'homecompute_android_screenshot')
+        android = ('homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
+                   'homecompute_android_visible_text', 'homecompute_android_screenshot')
+        rows = lambda names: [{'name': name, 'annotations': {'readOnlyHint': True}} for name in names]
+        module = SimpleNamespace(TOKENS=SimpleNamespace(read_bytes=lambda: b'{"hermes-owner":"owner", "openbot-android":"openbot"}'))
+        with patch.object(setup, 'tools_for', side_effect=[rows(household), rows(android)]) as tools_for:
+            setup.probe(module)
+        self.assertEqual([call.args[0] for call in tools_for.call_args_list], ['owner', 'openbot'])
+
+        with patch.object(setup, 'tools_for', side_effect=[rows(household), rows(android + ('homecompute_task_submit',))]):
+            with self.assertRaisesRegex(ValueError, 'restricted to the five'):
+                setup.probe(module)
+
+    def test_tools_for_waits_for_listener_but_never_retries_authentication(self):
         response = Mock(status=200)
-        response.read.return_value = json.dumps({'result': {'tools': [{'name': name} for name in names]}}).encode()
+        response.read.return_value = json.dumps({'result': {'tools': [{'name': 'read'}]}}).encode()
         connection = Mock()
         connection.connect.side_effect = [ConnectionRefusedError(), ConnectionRefusedError(), None]
         connection.getresponse.return_value = response
-        module = SimpleNamespace(TOKENS=SimpleNamespace(read_bytes=lambda: b'{"hermes-owner":"synthetic"}'))
         with patch.object(setup.http.client, 'HTTPConnection', return_value=connection), patch.object(setup.time, 'sleep'):
-            setup.probe(module)
+            self.assertEqual(setup.tools_for('synthetic'), [{'name': 'read'}])
         self.assertEqual(connection.connect.call_count, 3)
         connection.request.assert_called_once()
         response.status = 401
         connection.connect.side_effect = None
         connection.request.reset_mock()
         with patch.object(setup.http.client, 'HTTPConnection', return_value=connection), patch.object(setup.time, 'sleep'):
-            with self.assertRaises(ValueError): setup.probe(module)
+            with self.assertRaises(ValueError): setup.tools_for('synthetic')
         connection.request.assert_called_once()
 
 

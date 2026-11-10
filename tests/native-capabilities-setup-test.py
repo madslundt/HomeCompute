@@ -111,6 +111,16 @@ class RelaySetupTest(unittest.TestCase):
         self.assertFalse(setup.native_tokens())
         self.assertEqual(json.loads(setup.TOKENS.read_bytes()), admitted)
 
+    def test_openbot_android_principal_is_independently_issued(self):
+        setup.TOKENS.write_text(json.dumps({'openclaw': 'existing-openclaw-' + 'x' * 40,
+                                            'hermes-owner': 'existing-hermes-' + 'y' * 40}))
+        setup.TOKENS.chmod(0o600)
+        self.assertTrue(setup.native_tokens(admit_openbot_android=True))
+        admitted = json.loads(setup.TOKENS.read_bytes())
+        self.assertEqual(set(admitted), {'openclaw', 'hermes-owner', 'openbot-android'})
+        self.assertEqual(len(set(admitted.values())), 3)
+        self.assertFalse(setup.native_tokens(admit_openbot_android=True))
+
     def test_existing_partial_certificate_requires_reconciliation_without_issuer_changes(self):
         setup.TLS.mkdir(parents=True)
         (setup.TLS / 'server.key').write_text('existing-key')

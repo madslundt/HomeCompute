@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
 spec = importlib.util.spec_from_file_location("android_notifications", ROOT / "scripts/android_notifications.py")
 notifications = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = notifications
@@ -159,6 +160,23 @@ class AndroidGatewayTests(unittest.TestCase):
             self.assertEqual({row["name"] for row in portal.tools}, {
                 "homecompute_android_status", "homecompute_android_screen", "homecompute_android_apps",
                 "homecompute_android_visible_text", "homecompute_android_screenshot"})
+
+    def test_openbot_principal_inventory_contains_only_android_read_tools(self):
+        spec = importlib.util.spec_from_file_location("openclaw_capabilities", ROOT / "scripts/openclaw_capabilities.py")
+        capabilities = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = capabilities
+        spec.loader.exec_module(capabilities)
+        names = {"homecompute_android_status", "homecompute_android_screen", "homecompute_android_apps",
+                 "homecompute_android_visible_text", "homecompute_android_screenshot"}
+        tools = [{"name": name, "annotations": {"readOnlyHint": True}} for name in names]
+        adapter_spec = importlib.util.spec_from_file_location("mcp_adapter", ROOT / "deploy/codex-worker/mcp_adapter.py")
+        adapter = importlib.util.module_from_spec(adapter_spec)
+        sys.modules[adapter_spec.name] = adapter
+        adapter_spec.loader.exec_module(adapter)
+        ledger = types.SimpleNamespace(read_only_only=True, services=types.SimpleNamespace(tools=tools),
+                                       actions=None, infrastructure=None, home_assistant=None,
+                                       maintenance=None, operations_search=None)
+        self.assertEqual({row["name"] for row in adapter.tool_inventory(ledger)}, names)
 
 
 def _response(status):

@@ -84,8 +84,7 @@ def plan(module, revision: str) -> dict:
     return {'revision': revision, 'files': files, 'credential_file_sha256': digest(module.TOKENS.read_bytes())}
 
 
-def probe(module) -> None:
-    token = json.loads(module.TOKENS.read_bytes())['hermes-owner']
+def tools_for(token: str) -> list[dict]:
     connection = http.client.HTTPConnection('127.0.0.1', 18793, timeout=15)
     try:
         # A Type=simple unit is active before Python has imported its facades and
@@ -106,17 +105,33 @@ def probe(module) -> None:
         raw = response.read(262145)
         if response.status != 200 or len(raw) > 262144:
             raise ValueError('Hermes bridge authentication failed')
-        names = {row['name'] for row in json.loads(raw)['result']['tools']}
-        if not {'homecompute_school_discover', 'homecompute_shopping_search', 'homecompute_system_read',
-                'homecompute_ha_propose'} <= names:
-            raise ValueError('required household services unavailable')
-        if not {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
-                'homecompute_android_visible_text', 'homecompute_android_screenshot'} <= names:
-            raise ValueError('read-only Android MCP tools unavailable')
-        if names & {'homecompute_ha_execute', 'homecompute_ha_approve', 'homecompute_maintenance_run'}:
-            raise ValueError('unexpected privileged Hermes tool')
+        tools = json.loads(raw)['result']['tools']
+        if not isinstance(tools, list):
+            raise ValueError('MCP tool list is invalid')
+        return tools
     finally:
         connection.close()
+
+
+def probe(module) -> None:
+    tokens = json.loads(module.TOKENS.read_bytes())
+    tools = tools_for(tokens['hermes-owner'])
+    names = {row['name'] for row in tools}
+    if not {'homecompute_school_discover', 'homecompute_shopping_search', 'homecompute_system_read',
+            'homecompute_ha_propose'} <= names:
+        raise ValueError('required household services unavailable')
+    if not {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
+            'homecompute_android_visible_text', 'homecompute_android_screenshot'} <= names:
+        raise ValueError('read-only Android MCP tools unavailable')
+    if names & {'homecompute_ha_execute', 'homecompute_ha_approve', 'homecompute_maintenance_run'}:
+        raise ValueError('unexpected privileged Hermes tool')
+    openbot_tools = tools_for(tokens['openbot-android'])
+    expected_android = {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
+                        'homecompute_android_visible_text', 'homecompute_android_screenshot'}
+    if {row.get('name') for row in openbot_tools} != expected_android:
+        raise ValueError('OpenBot Android principal is not restricted to the five read-only tools')
+    if any(not row.get('annotations', {}).get('readOnlyHint') for row in openbot_tools):
+        raise ValueError('OpenBot Android principal exposes a non-read-only tool')
 
 
 def apply(module, reviewed: dict, expected: str) -> dict:
@@ -154,7 +169,7 @@ def apply(module, reviewed: dict, expected: str) -> dict:
         for name, (target, _) in FILES.items():
             row = metadata[name]
             module.write(target, (ROOT / name).read_bytes(), row['uid'], row['gid'], row['mode'])
-        module.native_tokens(admit_hermes=True)
+        module.native_tokens(admit_hermes=True, admit_openbot_android=True)
         call(['systemctl', 'start', ADAPTER])
         probe(module)
         receipt = {'state': 'applied', 'revision': reviewed['revision'], 'plan_sha256': expected,
@@ -217,6 +232,8 @@ def main() -> int:
     actions.add_argument('--apply', action='store_true')
     actions.add_argument('--rollback', action='store_true')
     actions.add_argument('--export-credential', action='store_true', help='private pipe to the guest connector only')
+    actions.add_argument('--export-openbot-android-credential', action='store_true',
+                         help='private pipe to OpenBot MCP settings only')
     parser.add_argument('--expected-plan-sha256')
     args = parser.parse_args()
     try:
@@ -228,6 +245,10 @@ def main() -> int:
             if args.export_credential:
                 module.regular(module.TOKENS, module.pwd.getpwnam('homecompute-openclaw').pw_uid, 0o600)
                 sys.stdout.write(json.loads(module.TOKENS.read_bytes())['hermes-owner'])
+                return 0
+            if args.export_openbot_android_credential:
+                module.regular(module.TOKENS, module.pwd.getpwnam('homecompute-openclaw').pw_uid, 0o600)
+                sys.stdout.write(json.loads(module.TOKENS.read_bytes())['openbot-android'])
                 return 0
             if args.rollback:
                 result = rollback(module)

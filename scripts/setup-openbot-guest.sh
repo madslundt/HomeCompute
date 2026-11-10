@@ -79,6 +79,9 @@ base="$1"; stage="$2"; compose_package="$4"; compose_version="$5"
 compose_cli_version="$6"; compose_sha256="$7"; compose_architecture="$8"
 command -v docker >/dev/null
 docker info >/dev/null
+test -r /home/hermes-operator/.config/homecompute-hermes/certs/home-core-root.crt || {
+  echo 'Home Core root CA is missing from the Hermes guest configuration' >&2; exit 1;
+}
 test ! -L "$base" || { echo 'OpenBot data root must not be a symlink' >&2; exit 1; }
 current="$base/current"
 if test -e "$current" || test -L "$current"; then
@@ -189,6 +192,9 @@ done
 sudo -n chmod 0644 "$release/compose.yaml" "$release/seccomp.json" "$release/homecompute-openbot.service" "$release/homecompute-openbot-firewall.service" "$release/openbot-network.json" "$release/openbot-install.json"
 sudo -n chmod 0755 "$release/network-policy.py" "$release/homecompute-openbot-health" "$release/configure-openbot-hermes.py"
 sudo -n install -d -o root -g root -m 0755 /etc/homecompute-openbot /usr/local/libexec
+sudo -n install -o root -g root -m 0444 \
+  /home/hermes-operator/.config/homecompute-hermes/certs/home-core-root.crt \
+  /etc/homecompute-openbot/home-core-root.crt
 sudo -n install -o root -g root -m 0644 "$release/openbot-network.json" /etc/homecompute-openbot/network.json
 sudo -n install -o root -g root -m 0755 "$release/network-policy.py" /usr/local/libexec/homecompute-openbot-network-policy
 sudo -n install -o root -g root -m 0755 "$release/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health

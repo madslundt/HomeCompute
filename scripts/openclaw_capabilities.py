@@ -117,6 +117,20 @@ class HermesServices:
         return self.services.request(name, arguments)
 
 
+class AndroidOnlyServices:
+    """Separate OpenBot principal with only the fixed read-only Android tools."""
+
+    def __init__(self):
+        self.android = AndroidPortal()
+        self.tools = list(self.android.tools)
+
+    def validate(self, name: str, arguments: Any) -> dict[str, Any]:
+        return self.android.validate(name, arguments)
+
+    def request(self, name: str, arguments: Any) -> dict[str, Any]:
+        return self.android.request(name, arguments)
+
+
 class HomeAssistant:
     """Fixed local IPC, authenticated Unix peer and trusted adapter-assigned actor."""
     def __init__(self, actor: str):
@@ -246,13 +260,14 @@ class Capabilities:
 
     def __init__(self, tasks: Tasks, infrastructure: Any = None, actions: dict[str, str] | None = None,
                  home_assistant: HomeAssistant | None = None, maintenance: Maintenance | None = None,
-                 services: Any = None, operations_search: Any = None):
+                 services: Any = None, operations_search: Any = None, read_only_only: bool = False):
         self.tasks, self.infrastructure = tasks, infrastructure
         self.actions = Actions(tasks, actions) if actions else None
         self.home_assistant = home_assistant
         self.maintenance = maintenance
         self.services = services
         self.operations_search = operations_search
+        self.read_only_only = read_only_only
 
     def admitted(self, row: dict[str, Any]) -> bool:
         return isinstance(row, dict) and row.get("project") in self.tasks.projects

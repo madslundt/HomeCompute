@@ -97,7 +97,7 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
     if assistant_context is not None and (mcp_tokens is None or 'hermes-owner' not in mcp_tokens):
         raise ValueError('assistant context requires the independent owner Hermes MCP principal')
     if mcp_tokens is not None:
-        if (not {"openclaw"} <= set(mcp_tokens) <= {"openclaw", "hermes", "hermes-owner"} or tasks is None
+        if (not {"openclaw"} <= set(mcp_tokens) <= {"openclaw", "hermes", "hermes-owner", "openbot-android"} or tasks is None
                 or len(set(mcp_tokens.values())) != len(mcp_tokens)
                 or any(not isinstance(value, str) or len(value) < 32 or "\r" in value or "\n" in value
                        or value.startswith(("replace", "openshell:resolve:"))
@@ -107,7 +107,7 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
         # The retired `hermes` bearer stays denied. Reintroduction requires an
         # independently issued owner credential through the source-owned installer.
         mcp_tokens = {actor: value for actor, value in mcp_tokens.items() if actor != 'hermes'}
-        from openclaw_capabilities import Capabilities, HomeAssistant, HermesServices, Maintenance
+        from openclaw_capabilities import Capabilities, HomeAssistant, HermesServices, Maintenance, AndroidOnlyServices
         hermes_services = HermesServices(services) if services is not None else None
         if assistant_context is not None:
             from assistant_context_tools import ContextServices
@@ -115,12 +115,18 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
         if access is not None:
             from openclaw_access_bridge import CompositeServices
             services = CompositeServices(services, access, site)
-        capabilities = {actor: Capabilities(tasks, infrastructure, store.settings["actions"],
-                       HomeAssistant('hermes' if actor == 'hermes-owner' else actor) if ha_actions else None,
-                       Maintenance() if actor == 'openclaw' and Path('/run/homecompute-infrastructure-maintenance/agent.sock').exists() else None,
-                       services if actor == 'openclaw' else hermes_services,
-                       operations_search if actor == 'openclaw' else None)
-                       for actor in mcp_tokens}
+        capabilities = {}
+        for actor in mcp_tokens:
+            if actor == 'openbot-android':
+                capabilities[actor] = Capabilities(
+                    tasks, services=AndroidOnlyServices(), read_only_only=True)
+            else:
+                capabilities[actor] = Capabilities(tasks, infrastructure, store.settings["actions"],
+                    HomeAssistant('hermes' if actor == 'hermes-owner' else actor)
+                    if ha_actions and actor in {'openclaw', 'hermes-owner'} else None,
+                    Maintenance() if actor == 'openclaw' and Path('/run/homecompute-infrastructure-maintenance/agent.sock').exists() else None,
+                    services if actor == 'openclaw' else hermes_services,
+                    operations_search if actor == 'openclaw' else None)
         # Reuse the broker's bounded protocol adapter; no calls to native_turn.
         import sys
         sys.path.insert(0, str(ROOT / "deploy/codex-worker"))

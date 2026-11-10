@@ -187,6 +187,44 @@ class TransportTests(unittest.TestCase):
                 communication.serve(self.store, TOKENS, ALLOWED, lambda *_: '', tasks=tasks,
                     mcp_tokens={**native, 'openclaw': value})
 
+    def test_openbot_android_principal_is_read_only_and_has_only_five_android_tools(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        import openclaw_capabilities as capabilities
+        android_names = {row['name'] for row in capabilities.ANDROID_TOOLS}
+        service = SimpleNamespace(tools=[{**row, 'inputSchema': {'type': 'object', 'additionalProperties': False,
+                                                                    'properties': {}, 'required': []},
+                                           'annotations': {'readOnlyHint': True, 'openWorldHint': False}}
+                                          for row in capabilities.ANDROID_TOOLS],
+            validate=lambda name, args: args if name in android_names and args == {} else (_ for _ in ()).throw(ValueError()),
+            request=Mock(return_value={'available': True, 'device_id': 'lenovo-tab-m11'}))
+        mcp = {'openclaw': 'native-openclaw-' + 'x' * 40,
+               'openbot-android': 'native-openbot-' + 'y' * 40}
+        tasks = SimpleNamespace(projects={'synthetic-demo'}, tokens={'assistant': 'broker-assistant', 'snapshot': 'broker-snapshot'})
+        with patch.object(capabilities, 'AndroidPortal', return_value=service):
+            server = communication.serve(self.store, TOKENS, ALLOWED, lambda *_: '', ('127.0.0.1', 0), lambda: NOW,
+                tasks=tasks, mcp_tokens=mcp)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        def rpc(method, params=None, role='openbot-android'):
+            req = urllib.request.Request(f'http://127.0.0.1:{server.server_address[1]}/mcp',
+                data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or {}}).encode(),
+                headers={'Authorization': 'Bearer ' + mcp[role], 'Content-Type': 'application/json',
+                         'Accept': 'application/json, text/event-stream'})
+            with urllib.request.urlopen(req, timeout=3) as response:
+                return json.loads(response.read())
+        try:
+            inventory = rpc('tools/list')['result']['tools']
+            self.assertEqual({row['name'] for row in inventory}, android_names)
+            self.assertTrue(all(row['annotations']['readOnlyHint'] for row in inventory))
+            self.assertFalse(rpc('tools/call', {'name': 'homecompute_android_status', 'arguments': {}})['result']['isError'])
+            rejected = rpc('tools/call', {'name': 'homecompute_task_submit', 'arguments': {}})
+            self.assertEqual(rejected['error']['code'], -32602)
+            rejected = rpc('tools/call', {'name': 'homecompute_android_tap', 'arguments': {'x': 1, 'y': 1}})
+            self.assertEqual(rejected['error']['code'], -32602)
+            service.request.assert_called_once_with('homecompute_android_status', {})
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+
     def test_native_mcp_rejects_missing_or_extra_assistants(self):
         from types import SimpleNamespace
         tasks = SimpleNamespace(projects=set(), tokens={})

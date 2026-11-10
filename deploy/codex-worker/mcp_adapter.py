@@ -125,7 +125,8 @@ def tool_inventory(ledger: Tasks) -> list[dict[str, Any]]:
     if getattr(ledger, 'operations_search', None) is not None:
         from semantic_operations import TOOL
         operations_tools = [TOOL]
-    return (TOOLS + (ACTION_TOOLS if getattr(ledger, "actions", None) is not None else [])
+    base_tools = [] if getattr(ledger, "read_only_only", False) else TOOLS
+    return (base_tools + (ACTION_TOOLS if getattr(ledger, "actions", None) is not None else [])
             + (READ_TOOLS if getattr(ledger, "infrastructure", None) is not None else [])
             + (HA_TOOLS if getattr(ledger, "home_assistant", None) is not None else [])
             + (MAINTENANCE_TOOLS if getattr(ledger, "maintenance", None) is not None else [])
