@@ -460,15 +460,15 @@ assert not p.is_symlink() and not p.parent.is_symlink()
 print(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else 'absent')
 '''
     android_current = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=android_program, env=env).strip()
-    if android_current not in {'absent', android_expected}:
-        raise ValueError('existing Android skill differs; preserve private edits')
     if android_current == 'absent':
         call(cli + ['skill', 'install', str(ANDROID_SKILL)], env=env)
-    android_installed = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=android_program, env=env).strip()
-    if android_installed != android_expected:
-        raise ValueError('native Android skill readback differs')
+        android_current = call(cli + ['exec', '--stdin', '--', 'python3', '-'],
+                               input=android_program, env=env).strip()
+        if android_current != android_expected:
+            raise ValueError('native Android skill readback differs')
     result = {'sandbox': sandbox, 'server': 'homecompute', 'credential_verified': True,
-              'skill_sha256': expected, 'android_skill_sha256': android_expected}
+              'skill_sha256': expected, 'android_skill_state':
+              'source-installed' if android_current == android_expected else 'preserved-existing'}
     if repair_backup:
         result['replaced_legacy_registration_backup'] = repair_backup
     return result

@@ -191,6 +191,31 @@ class ConnectionTests(unittest.TestCase):
         self.assertIn('mcp-homecompute', observed[0][1]['input'])
         self.assertNotIn(self.token, observed[0][1]['input'])
 
+    def test_connection_preserves_an_operator_edited_android_skill(self):
+        commands = []
+        def call(args, **kwargs):
+            commands.append((args, kwargs))
+            if args[2:4] == ['status', '--json']:
+                return json.dumps({'agent': 'hermes', 'phase': 'Ready', 'hostMounts': []})
+            if args[2:4] == ['mcp', 'list']:
+                return json.dumps({'bridges': []})
+            if args[2:4] == ['mcp', 'status']:
+                return json.dumps(self.status)
+            if args[2] == 'exec':
+                program = kwargs.get('input', '')
+                if 'platform_toolsets' in program:
+                    return 'enabled'
+                if 'android-gateway' in program:
+                    return 'operator-edited'
+                return self.digest
+            return ''
+        with patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), \
+                patch.object(connect, 'call', side_effect=call):
+            result = connect.connect('hermes-personal', self.token)
+        self.assertEqual(result['android_skill_state'], 'preserved-existing')
+        self.assertFalse(any(args[2:4] == ['skill', 'install'] and args[-1] == str(connect.ANDROID_SKILL)
+                             for args, _ in commands))
+
     def test_existing_conflicting_registration_or_unknown_probe_does_not_remove_or_replace(self):
         for url, verified in (('https://other.example/mcp', True), (connect.URL, None)):
             state = {**self.status, 'url': url, 'provider': {'credentialResolution': {'ok': verified}}}
