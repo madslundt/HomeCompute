@@ -26,8 +26,7 @@ FILES = {
         'cd270c88a5adb8a901995d293f862abf29883bede90bfde285da8e29d269337e'),
     'scripts/setup-native-capabilities.py': (
         Path('/opt/homecompute/native-capabilities/setup-native-capabilities.py'),
-        # Preimage preserved by the prior applied receipt before rollback.
-        'f954e6c60d75cc924a728b369320ffc8b692ccfad15c67bffea8096cc5f03936'),
+        'ccaf6a57bf6b6839f37fd8eed5d32f58d71c52049450708ee167d5346a8e1998'),
 }
 
 
