@@ -95,7 +95,7 @@ in {
         Restart = "on-failure";
       };
     };
-    boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
+    boot.kernel.sysctl."net.ipv4.ip_forward" = lib.mkDefault 1;
     systemd.services.homecompute-toolbox-network = {
       wantedBy = ["multi-user.target"]; before = ["homecompute-toolbox-firewall.service" "homecompute-toolbox-vm.service"];
       path = [pkgs.iproute2]; serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
