@@ -22,8 +22,8 @@ in
 {
   options.homecompute.androidGateway = {
     enable = lib.mkEnableOption "local Android Portal read-only gateway and notification listener";
-    portalTokenFile = lib.mkOption { type = lib.types.str; default = "/etc/homecompute/android-portal-token"; };
-    webhookTokenFile = lib.mkOption { type = lib.types.str; default = "/etc/homecompute/android-n8n-webhook-token"; };
+    portalTokenFile = lib.mkOption { type = lib.types.str; default = "/run/secrets/android/portal-token"; };
+    webhookTokenFile = lib.mkOption { type = lib.types.str; default = "/run/secrets/android/n8n-webhook-token"; };
     webhookUrl = lib.mkOption { type = lib.types.str; default = "http://127.0.0.1:15678/webhook/android-notifications"; };
     portalHost = lib.mkOption { type = lib.types.str; default = "android-tablet.home.arpa"; };
     httpPort = lib.mkOption { type = lib.types.port; default = 8080; };

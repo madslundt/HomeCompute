@@ -39,15 +39,16 @@ Portal HTTP and WebSocket servers and Notification Access must be enabled in
 Mobilerun Portal. Enable its notification event toggle. Keep the tablet and
 home-core on the trusted local network; do not expose Portal ports publicly.
 
-Provision the Portal token at `/etc/homecompute/android-portal-token` as a
-root-managed external credential readable only by the existing
-`homecompute-openclaw` adapter identity. The notification service reads its
-copy through systemd credentials. Provision the independent n8n header-auth
-secret at `/etc/homecompute/android-n8n-webhook-token`; use the same random
-value in n8n's `Authorization` Header Auth credential as `Bearer <value>`.
-Neither token belongs in Git or command arguments. These files are external to
-the Nix store and repository. Use the host's approved encrypted secret
-provisioning process for durable recovery.
+Add the Portal token under `android.portal-token` in
+`secrets/home-core.sops.yaml`; sops-nix installs it at
+`/run/secrets/android/portal-token`, readable by the existing
+`homecompute-openclaw` adapter identity. Add an independent random webhook token
+under `android.n8n-webhook-token`; sops-nix exposes it only to the notification
+service through systemd credentials. Configure that same webhook token in n8n's
+`Authorization` Header Auth credential as `Bearer <value>`. Neither token
+belongs in plaintext files, Git, or command arguments. Edit the encrypted file
+with `sops secrets/home-core.sops.yaml`; do not paste credential values into
+chat or shell commands.
 
 ## Activate MCP and n8n
 
@@ -92,8 +93,8 @@ personal-messages API.
 - [ ] Reserve a private tablet hostname/IP and update `portalHost`.
 - [ ] Install Mobilerun Portal, enable local HTTP and WebSocket servers, and
   enable Notification Access and notification events.
-- [ ] Provision the Portal token and independent n8n webhook token as external
-  credentials, then rebuild/apply the reviewed home-core revision.
+- [ ] Add the Portal token and independent n8n webhook token to the encrypted
+  `secrets/home-core.sops.yaml`, then rebuild/apply the reviewed home-core revision.
 - [ ] Import the n8n workflow, bind the Header Auth credential, and keep it
   inactive until a synthetic notification passes validation.
 - [ ] Run `/ping`, authenticated `/state`, Hermes MCP discovery/read-only call,

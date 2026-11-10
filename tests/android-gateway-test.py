@@ -35,6 +35,12 @@ class AndroidGatewayTests(unittest.TestCase):
         event = notifications.normalize({"method": "events/device", "params": self.frame()}, "tablet-1")
         self.assertEqual(event["device_id"], "tablet-1")
 
+    def test_missing_systemd_credentials_still_uses_retryable_paths(self):
+        portal, webhook = notifications.credential_paths({})
+        self.assertEqual(portal.name, "portal-token")
+        self.assertEqual(webhook.name, "n8n-webhook-token")
+        self.assertIn("homecompute-android-notifications.service", str(portal.parent))
+
     def test_allowlist_and_deduplication(self):
         with tempfile.TemporaryDirectory() as temp:
             listener = notifications.Listener({"device_id": "tablet-1", "allowed_packages": ["com.facebook.orca"],

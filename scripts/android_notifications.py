@@ -202,6 +202,13 @@ def run(config_path: Path, portal_token_path: Path, webhook_token_path: Path) ->
             backoff = next_backoff(backoff)
 
 
+def credential_paths(env: dict[str, str] | None = None) -> tuple[Path, Path]:
+    values = os.environ if env is None else env
+    directory = Path(values.get(
+        "CREDENTIALS_DIRECTORY", "/run/credentials/homecompute-android-notifications.service"))
+    return directory / "portal-token", directory / "n8n-webhook-token"
+
+
 if __name__ == "__main__":
-    run(Path(os.environ["ANDROID_CONFIG"]), Path(os.environ["CREDENTIALS_DIRECTORY"]) / "portal-token",
-        Path(os.environ["CREDENTIALS_DIRECTORY"]) / "n8n-webhook-token")
+    portal_token, webhook_token = credential_paths()
+    run(Path(os.environ["ANDROID_CONFIG"]), portal_token, webhook_token)
