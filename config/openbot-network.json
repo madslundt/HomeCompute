@@ -11,6 +11,10 @@
     "address": "10.77.20.1",
     "port": 19445
   },
+  "mcp_gateway_endpoint": {
+    "address": "10.77.20.1",
+    "port": 443
+  },
   "turn_servers": [
     {
       "hostname": "turn.openbot.run",

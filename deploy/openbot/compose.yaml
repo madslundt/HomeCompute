@@ -7,6 +7,7 @@ services:
       NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
     extra_hosts:
       - homecompute-capabilities.home.arpa:10.77.20.1
+      - mcp.home.arpa:10.77.20.1
     # systemd starts the container only after the per-container egress guard.
     restart: "no"
     security_opt:

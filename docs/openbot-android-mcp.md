@@ -4,8 +4,9 @@ OpenBot reaches the tablet through LiteLLM's private MCP gateway, which forwards
 to the Home Core native HTTPS relay under the `openbot-android` principal. That
 principal receives an independent bearer from the native secret store and
 exposes five read-only Portal calls and five bounded UI interaction calls. The
-OpenBot guest's current egress policy allows the native relay directly; it must
-be updated to reach the gateway before the client is migrated.
+OpenBot pins `mcp.home.arpa` to the Home Core host-only bridge and allows only
+TCP 443 to that address for the gateway. The Android relay remains separately
+pinned to TCP 19445.
 
 - `homecompute_android_status`
 - `homecompute_android_screen`
@@ -41,7 +42,7 @@ to the LiteLLM gateway:
 - Name: `homecompute`
 - URL: `https://mcp.home.arpa/mcp`
 - Header: `x-litellm-api-key: Bearer <OpenBot Android virtual key>`
-- Header: `x-mcp-homecompute-openbot-android-authorization: Bearer <openbot-android credential>`
+- Header: `x-mcp-homecompute_openbot_android-authorization: Bearer <openbot-android credential>`
 
 Retrieve the credential only through the guarded private export path and enter
 it into OpenBot's secure header field. The virtual key must have only the
@@ -50,9 +51,8 @@ Hermes, or OpenClaw capability groups. Use **Test connection** before saving;
 the result must list exactly the ten tools above and no task, Home Assistant, or
 maintenance tools. The server setting is shared across OpenBot agents. The
 OpenBot MCP principal itself remains Android-only even if its clients request
-other tool names. Verify the agents VM can reach `mcp.home.arpa` over an approved
-network path before saving; the current egress policy may need a source-owned
-allow rule through the gateway's private front door.
+other tool names. The OpenBot container resolves `mcp.home.arpa` to
+`10.77.20.1`; verify TLS and the gateway's root CA before saving the setting.
 
 Verify at least one read-only status call from an OpenBot Hermes agent before
 using the interaction tools. Keep automatic messaging disabled through this
