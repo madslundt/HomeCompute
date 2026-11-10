@@ -169,6 +169,23 @@ def update_watcher(revision: str) -> None:
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def refresh_watcher(revision: str) -> None:
+    STATE.mkdir(mode=0o700, parents=True, exist_ok=True)
+    state_info = STATE.lstat()
+    if (stat.S_ISLNK(state_info.st_mode) or not stat.S_ISDIR(state_info.st_mode)
+            or state_info.st_uid != os.getuid() or stat.S_IMODE(state_info.st_mode) != 0o700):
+        raise ValueError('private Hermes API state directory required')
+    lock_path = STATE / 'install.lock'
+    with lock_path.open('a') as lock:
+        os.chmod(lock_path, 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        update_watcher(revision)
+        call(['systemctl', '--user', 'reset-failed',
+              'homecompute-hermes-dashboard-watch.service'])
+        call(['systemctl', '--user', 'restart',
+              'homecompute-hermes-dashboard-watch.service'])
+
+
 def verify_api_profile(key: bytes) -> None:
     """Verify auth and profile multiplexing without printing response data."""
     headers = {'Authorization': 'Bearer ' + key.decode('ascii')}
@@ -229,11 +246,7 @@ def main() -> None:
     if status.get('phase') != 'Ready' or status.get('agent') != 'hermes' or status.get('hostMounts'):
         raise ValueError('ready isolated owner sandbox required')
     if args.refresh_watcher:
-        update_watcher(args.revision)
-        call(['systemctl', '--user', 'reset-failed',
-              'homecompute-hermes-dashboard-watch.service'])
-        call(['systemctl', '--user', 'restart',
-              'homecompute-hermes-dashboard-watch.service'])
+        refresh_watcher(args.revision)
         print(json.dumps({'revision': args.revision, 'watcher_only': True,
                           'applied': True, 'owner_sandbox_restarted': False}))
         return

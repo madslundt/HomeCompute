@@ -19,8 +19,9 @@ class HermesDashboardWatchTest(unittest.TestCase):
     def test_watcher_only_refresh_preserves_owner_sandbox(self):
         self.assertIn("parser.add_argument('--refresh-watcher', action='store_true'", SETUP)
         self.assertIn("'owner_sandbox_restarted': False", SETUP)
-        refresh = SETUP.split('if args.refresh_watcher:', 2)[-1].split('key = private_file', 1)[0]
-        self.assertIn('update_watcher(args.revision)', refresh)
+        self.assertIn('refresh_watcher(args.revision)', SETUP)
+        refresh = SETUP.split('def refresh_watcher', 1)[1].split('\ndef verify_api_profile', 1)[0]
+        self.assertIn('update_watcher(revision)', refresh)
         self.assertIn('homecompute-hermes-dashboard-watch.service', refresh)
         self.assertNotIn("call(['nemohermes', NAME, 'stop']", refresh)
         self.assertNotIn("call(['nemohermes', NAME, 'start']", refresh)
