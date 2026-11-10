@@ -235,7 +235,8 @@ class ConnectionTests(unittest.TestCase):
         self.assertLess(remove_index, add_index)
         remove_args, remove_kwargs = commands[remove_index]
         self.assertNotIn(self.token, ' '.join(remove_args))
-        self.assertEqual(remove_kwargs['env'][connect.KEY], self.token)
+        self.assertEqual(remove_args[-1], '--force')
+        self.assertNotIn(connect.KEY, remove_kwargs['env'])
         add_args, add_kwargs = commands[add_index]
         self.assertNotIn(self.token, ' '.join(add_args))
         self.assertEqual(add_kwargs['env'][connect.KEY], self.token)

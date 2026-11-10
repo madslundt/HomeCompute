@@ -207,7 +207,7 @@ def connect(sandbox: str, token: str, *, repair_legacy_registration: bool = Fals
             if not legacy_boundary_conflict(list_row, old_status, sandbox):
                 raise ValueError('existing MCP registration is outside the reviewed legacy boundary-conflict case')
             repair_backup = save_legacy_registration_backup(sandbox, list_row, old_status)
-            call(cli + ['mcp', 'remove', 'homecompute'], env={**env, KEY: token})
+            call(cli + ['mcp', 'remove', 'homecompute', '--force'], env=env)
             after_remove = json.loads(call(cli + ['mcp', 'list', '--json'], env=env))['bridges']
             if any(row.get('server') == 'homecompute' for row in after_remove):
                 raise ValueError('native MCP removal did not verify; preserve its backup and inspect status')
