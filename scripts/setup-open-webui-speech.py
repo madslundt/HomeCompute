@@ -112,7 +112,8 @@ def setup(apply=False, revision=None):
     changed = proposed != before
     if apply:
         if not key:
-            generated = keys.api('/key/generate', {'models': MODELS, 'key_alias': OWNER, 'user_id': OWNER, 'duration': None})
+            generated = keys.api('/key/generate', {'models': MODELS, 'key_alias': OWNER, 'user_id': OWNER, 'duration': None,
+                'object_permission': {'mcp_servers': ['no-mcp-servers']}})
             key = generated['key']
             if not key.startswith('sk-') or set(generated['models']) != set(MODELS):
                 raise ValueError('Unexpected speech credential')

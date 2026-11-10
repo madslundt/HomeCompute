@@ -16,6 +16,9 @@ services:
       - ${HOMECOMPUTE_CA_CERT_FILE:-/srv/state/automation/certs/homecompute-caddy-root.crt}:/etc/ssl/certs/homecompute-caddy-root.crt:ro
     extra_hosts:
       - homeassistant.local:192.168.30.30
+    networks:
+      mcp-clients:
+        ipv4_address: ${N8N_MCP_CLIENTS_IP:?Set N8N_MCP_CLIENTS_IP}
     ports:
       - "127.0.0.1:15678:5678"
       - "192.168.30.122:15678:5678"
@@ -54,6 +57,8 @@ services:
     networks:
       migration:
         ipv4_address: 172.28.201.3
+      mcp-backends:
+        ipv4_address: ${AULA_MCP_BACKENDS_IP:?Set AULA_MCP_BACKENDS_IP}
     cpus: 1.0
     mem_limit: 512m
     pids_limit: 128
@@ -93,6 +98,8 @@ services:
     networks:
       migration:
         ipv4_address: 172.28.201.4
+      mcp-backends:
+        ipv4_address: ${TILBUDSTROLDEN_MCP_BACKENDS_IP:?Set TILBUDSTROLDEN_MCP_BACKENDS_IP}
     cpus: 0.5
     mem_limit: 256m
     pids_limit: 64
@@ -117,3 +124,9 @@ networks:
     ipam:
       config:
         - subnet: 172.28.201.0/24
+  mcp-clients:
+    external: true
+    name: homecompute-control-plane_mcp-clients
+  mcp-backends:
+    external: true
+    name: homecompute-control-plane_mcp-backends

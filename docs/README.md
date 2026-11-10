@@ -169,6 +169,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-029](adr/029-proactive-assistant-context.md) | Opt-in scoped context service, Hermes owner conversation and existing action controllers |
 | [ADR-030](adr/030-openbot-team-server.md) | Owner-managed OpenBot teams in the agents VM, local LiteLLM boundary, container egress restrictions, explicit cloud providers |
 | [ADR-031](adr/031-opencode-home-core-web-service.md) | Private OpenCode web service on Home Core, isolated agent account and project/state paths, tailnet-only access |
+| [ADR-032](adr/032-litellm-mcp-gateway.md) | Reuse LiteLLM as the central MCP gateway with explicit per-key tool grants and isolated backend networking |
 
 ## Research and model evidence
 
@@ -195,7 +196,7 @@ remain historical; they are not erased or treated as the current target.
 | Current model shortlist | [ADR-019](adr/019-single-gb10-model-roster.md), [machine-readable roster](../config/gb10-model-roster.json), [Flash-Next single-GB10 review](research/qwen3.8-flash-next-primary-model-evaluation-2026-09-11.md) |
 | Text roles | [General](research/general-model-evaluation.md), [coding](research/coding-model-evaluation.md), [Home Assistant](research/home-assistant-model-evaluation.md) |
 | Speech | [Danish TTS qualification](tts-qualification.md), [STT](research/stt-model-evaluation.md), [TTS](research/tts-model-evaluation.md), [Danish TTS recommendation](research/danish-tts-recommendation.md) |
-| Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md) |
+| Integrations | [Codex compatibility](research/codex-compatibility.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [MCP gateway evaluation](research/mcp-gateway-evaluation-2026-11-10.md) |
 
 ## Repository artifacts
 

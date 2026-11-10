@@ -131,6 +131,7 @@ def provision(*, apply: bool, runner: Callable[..., Any] = subprocess.run) -> di
         'user_id': OWNER,
         'duration': None,
         'metadata': {'purpose': 'OpenCode coding workspace; automation-moe only'},
+        'object_permission': {'mcp_servers': ['no-mcp-servers']},
     }, runner=runner)
     key = data.get('key')
     if (not isinstance(key, str) or not key.startswith('sk-') or re.search(r'\s', key)

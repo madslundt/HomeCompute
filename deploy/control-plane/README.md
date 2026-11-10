@@ -47,9 +47,31 @@ maintenance action.
 
 Home and automation have per-deployment request budgets of 20 and 600 seconds.
 Those values are initial budgets, not final p95/p99-based SLOs. Verify timeout
-behavior against the pinned LiteLLM 1.99.1 image with synthetic refused,
-non-responsive, error, and streaming upstreams before promoting the generated
-config. Model generation does not create, broaden, or revoke any virtual key.
+behavior against the image pinned in `config/control-plane.env.example` with
+synthetic refused, non-responsive, error, and streaming upstreams before
+promoting the generated config. Model generation does not create, broaden, or
+revoke any virtual key.
+
+## Central MCP gateway
+
+LiteLLM also owns the private MCP gateway on `https://mcp.home.arpa/mcp`. Keep
+server definitions in `litellm-config.yaml`. At present, the catalog contains
+read-only Aula and TilbudsTrolden services on the isolated `mcp-backends`
+network. Caddy and LiteLLM share the private gateway network; n8n also joins a
+dedicated internal client network. n8n retains its existing direct MCP path
+until saved workflows are migrated and verified through LiteLLM.
+
+LiteLLM's Admin UI manages MCP access on this private host. The deployment marks
+existing unscoped virtual keys `no-mcp-servers` before Caddy exposes the route;
+programmatically generated service keys use the same deny sentinel. Give each
+client a separate virtual key, assign only its approved MCP access group, and
+remove unneeded tools in that key's settings. Servers are configured with
+`allow_all_keys: false`; do not grant Aula to OpenBot's shared agent list by
+default. For keys created in the Admin UI, select No MCP Servers unless you are
+granting reviewed access. The UI stores virtual keys and grants in the existing
+LiteLLM database; the release config remains the source for the server catalog.
+For setup and the client migration plan, see [ADR-032](../../docs/adr/032-litellm-mcp-gateway.md)
+and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
 
 Speech clients use the [speech API contract](../../docs/speech-api.md).
 `whisper` serves transcription. `tts-danish` and `tts-english` are stable

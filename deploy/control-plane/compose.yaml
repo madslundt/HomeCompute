@@ -27,6 +27,7 @@ services:
       OPEN_WEBUI_CLIENT_IP: ${OPEN_WEBUI_CLIENT_IP:-172.28.210.5}
       CHAT_FQDN: ${CHAT_FQDN:?Set CHAT_FQDN}
       MODELS_FQDN: ${MODELS_FQDN:?Set MODELS_FQDN}
+      MCP_FQDN: ${MCP_FQDN:?Set MCP_FQDN}
       CADDY_HTTPS_PORT: "8443"
       HOMEPAGE_HTTP_UPSTREAM: ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:80
     ports:
@@ -63,6 +64,8 @@ services:
         gw_priority: 1
       clients:
         ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
+      mcp-web:
+        ipv4_address: ${CADDY_MCP_WEB_IP:?Set CADDY_MCP_WEB_IP}
 
   litellm:
     image: ${LITELLM_IMAGE:?Set LITELLM_IMAGE to an immutable image digest}
@@ -135,6 +138,12 @@ services:
         ipv4_address: ${LITELLM_CLIENTS_IP:?Set LITELLM_CLIENTS_IP}
       state: {}
       automation-backup: {}
+      mcp-web:
+        ipv4_address: ${LITELLM_MCP_WEB_IP:?Set LITELLM_MCP_WEB_IP}
+      mcp-clients:
+        ipv4_address: ${LITELLM_MCP_CLIENTS_IP:?Set LITELLM_MCP_CLIENTS_IP}
+      mcp-backends:
+        ipv4_address: ${LITELLM_MCP_BACKENDS_IP:?Set LITELLM_MCP_BACKENDS_IP}
 
   automation-backup:
     profiles: [automation-backup]
@@ -424,6 +433,33 @@ networks:
     ipam:
       config:
         - subnet: ${CONTROL_PLANE_CLIENTS_SUBNET:?Set CONTROL_PLANE_CLIENTS_SUBNET}
+  mcp-web:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_MCP_WEB_SUBNET:?Set CONTROL_PLANE_MCP_WEB_SUBNET}
+  mcp-clients:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-hc-mcp-clients
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_MCP_CLIENTS_SUBNET:?Set CONTROL_PLANE_MCP_CLIENTS_SUBNET}
+          gateway: ${CONTROL_PLANE_MCP_CLIENTS_GATEWAY:?Set CONTROL_PLANE_MCP_CLIENTS_GATEWAY}
+  mcp-backends:
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-hc-mcp
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_MCP_BACKENDS_SUBNET:?Set CONTROL_PLANE_MCP_BACKENDS_SUBNET}
+          gateway: ${CONTROL_PLANE_MCP_BACKENDS_GATEWAY:?Set CONTROL_PLANE_MCP_BACKENDS_GATEWAY}
 
 secrets:
   compute_api_key:

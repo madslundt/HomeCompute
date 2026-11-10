@@ -113,6 +113,7 @@ def setup(*, apply: bool = False, runner: Callable[..., Any] = subprocess.run) -
     if not exists:
         data = api('/key/generate', {'models': ['embedding'], 'key_alias': OWNER,
                    'user_id': OWNER, 'duration': None,
+                   'object_permission': {'mcp_servers': ['no-mcp-servers']},
                    'metadata': {'purpose': 'local Open WebUI document embeddings'}}, runner=runner)
         key = data.get('key', '')
         if (data.get('models') != ['embedding'] or data.get('expires') is not None

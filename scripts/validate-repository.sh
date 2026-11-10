@@ -370,6 +370,7 @@ python3 "$REPO_ROOT/tests/homecompute-cli-test.py"
 python3 "$REPO_ROOT/tests/client-model-access-test.py"
 python3 "$REPO_ROOT/tests/litellm-routing-integration-test.py"
 python3 "$REPO_ROOT/tests/control-plane-routing-test.py"
+python3 "$REPO_ROOT/tests/litellm-mcp-gateway-test.py"
 python3 "$REPO_ROOT/tests/token-usage-test.py"
 python3 "$REPO_ROOT/scripts/gb10_model_roster.py" \
   --roster "$REPO_ROOT/config/gb10-model-roster.json"
@@ -693,6 +694,15 @@ HVISKE_PROXY_EDGE_IP=172.28.200.5
 CONTROL_PLANE_CLIENTS_SUBNET=172.28.210.0/24
 CADDY_CLIENTS_IP=172.28.210.2
 LITELLM_CLIENTS_IP=172.28.210.3
+CONTROL_PLANE_MCP_WEB_SUBNET=172.28.214.0/24
+CADDY_MCP_WEB_IP=172.28.214.2
+LITELLM_MCP_WEB_IP=172.28.214.3
+CONTROL_PLANE_MCP_CLIENTS_SUBNET=172.28.211.0/24
+CONTROL_PLANE_MCP_CLIENTS_GATEWAY=172.28.211.1
+LITELLM_MCP_CLIENTS_IP=172.28.211.2
+CONTROL_PLANE_MCP_BACKENDS_SUBNET=172.28.212.0/24
+CONTROL_PLANE_MCP_BACKENDS_GATEWAY=172.28.212.1
+LITELLM_MCP_BACKENDS_IP=172.28.212.2
 CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=127.0.0.1
 CONTROL_PLANE_LAN_BIND_ADDRESS=127.0.0.2
 CONTROL_PLANE_TAILSCALE_HTTPS_PORT=8443
@@ -703,6 +713,7 @@ N8N_FQDN=n8n.home.arpa
 N8N_UPSTREAM=http://192.168.30.122:15678
 CHAT_FQDN=chat.home.arpa
 MODELS_FQDN=models.home.arpa
+MCP_FQDN=mcp.home.arpa
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
@@ -755,6 +766,13 @@ jq -e '
   (all(.services.caddy.ports[]; .protocol == "tcp")) and
   (.services.litellm.ports == null) and
   (.services.postgres.ports == null) and
+  (.networks["mcp-web"].internal == true) and
+  (.networks["mcp-clients"].internal == true) and
+  (.networks["mcp-backends"].internal == true) and
+  (.services.caddy.networks["mcp-web"].ipv4_address == "172.28.214.2") and
+  (.services.litellm.networks["mcp-web"].ipv4_address == "172.28.214.3") and
+  (.services.litellm.networks["mcp-clients"].ipv4_address == "172.28.211.2") and
+  (.services.litellm.networks["mcp-backends"].ipv4_address == "172.28.212.2") and
   (.services.postgres.user == "70:70") and
   (.services.postgres.cap_add == null) and
   (.services.postgres.cap_drop | index("ALL") != null) and
@@ -972,14 +990,18 @@ jq -e '
   (any(.services.n8n.volumes[]; .source == "/srv/state/automation/certs/homecompute-caddy-root.crt" and .target == "/etc/ssl/certs/homecompute-caddy-root.crt" and .read_only == true)) and
   (.networks.migration.internal != true) and
   (.networks.migration.enable_ipv6 == false) and
-  (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n")
+  (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n") and
+  (.services.n8n.networks["mcp-clients"].ipv4_address == "172.28.211.3") and
+  (.networks["mcp-clients"].name == "homecompute-control-plane_mcp-clients") and
+  (.networks["mcp-backends"].name == "homecompute-control-plane_mcp-backends")
 ' "$automation_json" >/dev/null
 jq -e '
   .services["aula-mcp"] |
   (.ports | length == 1) and
   (.ports[0].host_ip == "127.0.0.1" and .ports[0].target == 7878) and
   (.networks.migration.ipv4_address == "172.28.201.3") and
-  (.networks | keys == ["migration"]) and
+  (.networks["mcp-backends"].ipv4_address == "172.28.212.3") and
+  (.networks | keys == ["mcp-backends", "migration"]) and
   (.user == "1000:1000" and .read_only == true) and
   (.cap_drop | index("ALL") != null) and
   (.security_opt | index("no-new-privileges:true") != null) and
@@ -990,6 +1012,11 @@ jq -e '
   (.volumes | length == 1) and
   (.volumes[0].source == "/srv/state/automation/aula-mcp" and .volumes[0].target == "/data") and
   (.mem_limit > 0 and .cpus > 0 and .pids_limit > 0)
+' "$automation_json" >/dev/null
+jq -e '
+  (.services["tilbudstrolden-mcp"].networks.migration.ipv4_address == "172.28.201.4") and
+  (.services["tilbudstrolden-mcp"].networks["mcp-backends"].ipv4_address == "172.28.212.4") and
+  (.services["tilbudstrolden-mcp"].networks | keys == ["mcp-backends", "migration"])
 ' "$automation_json" >/dev/null
 # Books is reconciled separately from the general deployment. Validate its
 # explicit host bindings, resource limits, and image pins before accepting it.

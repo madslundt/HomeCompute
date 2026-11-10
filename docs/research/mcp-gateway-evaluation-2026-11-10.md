@@ -1,0 +1,81 @@
+# MCP gateway evaluation — 2026-11-10
+
+## Recommendation
+
+Use the LiteLLM Proxy MCP Gateway already deployed on Home Core. Its supported
+Streamable HTTP endpoint, management UI, per-key/team/organization permissions,
+and tool-level filtering match the requested control model. It also reuses the
+existing proxy, Caddy front door, PostgreSQL database, secret lifecycle, and
+client keys. MCPHub remains a credible choice when a separately operated MCP
+registry/database is valuable; that separation is not needed for the current
+Home Core inventory.
+
+LiteLLM's official [MCP overview](https://docs.litellm.ai/docs/mcp/) documents a
+fixed endpoint and permissions by key, team, or organization. Its
+[permission guide](https://docs.litellm.ai/docs/mcp_control) describes
+server-level grants, tool filtering, access groups, and the explicit-key-access
+setting. The [client access guide](https://docs.litellm.ai/docs/proxy/access_management/mcp)
+shows how to grant servers and tools to keys or teams.
+
+## Local fit and required changes
+
+The current source pins `ghcr.io/berriai/litellm-non_root:v1.104.2`. LiteLLM's
+upstream release process was compromised for `1.107.0`; the official incident
+report says the malicious package release was removed and details its recovery
+actions. This proposal uses the official `1.108.4` LTS release from November 9,
+not the affected tag, and pins its immutable OCI index digest
+`sha256:f14a4cd90546d56a673a3a4240199da54f1912138444c3b7ab9705e01df17cdf`.
+`docker buildx imagetools inspect` resolved the digest to Linux amd64 and arm64
+platform manifests. The upstream publishes a cosign verification procedure;
+`cosign` is unavailable locally, so this image signature remains independently
+unverified. See the official [release listing](https://github.com/BerriAI/litellm/releases)
+and [1.107.0 incident report](https://github.com/BerriAI/litellm/issues/47826).
+
+The two current local HTTP MCP services are:
+
+| Server | Gateway target | Initial access group |
+| --- | --- | --- |
+| Aula | `http://aula-mcp:7878/mcp` | `aula-read` |
+| TilbudsTrolden | `http://tilbudstrolden-mcp:8000/mcp` | `offers-read` |
+
+The proposed source uses the Caddy hostname `mcp.home.arpa`, keeps Caddy and
+LiteLLM on a private gateway bridge, puts n8n and LiteLLM on a separate internal
+client bridge, and connects LiteLLM plus the two MCP backends to a third
+internal bridge. NixOS firewall rules constrain calls over that new backend
+bridge to LiteLLM's fixed source IP and the two MCP ports. n8n retains its
+existing direct connection over the automation migration network; preserve that
+compatibility lane until saved workflows are moved and verified through the
+gateway. LiteLLM becomes the shared path before it becomes the exclusive path.
+
+## Access and client migration
+
+Both registered services set `allow_all_keys: false`; each is assigned to a
+separate access group. LiteLLM documents that access is open if no entity has
+an MCP permission list, so the rollout marks every existing unscoped virtual
+key with `no-mcp-servers` before Caddy publishes the endpoint. Programmatically
+created service keys also carry that sentinel. Clients receive access only
+after an operator grants their separate key an access group and approved tools.
+`require_key_mcp_access_defined: true` prevents team inheritance when teams do
+have grants; it does not replace the explicit deny default. Prompts and
+resources are disabled at the gateway because the current local services are
+used for tools. The Caddy route is private and LiteLLM still requires a valid
+client key.
+
+Registering the catalog does not migrate saved n8n workflows or configure
+OpenBot, Hermes, Codex, or OpenClaw. Each client should be pointed at the same
+MCP endpoint and given a separate service key with only its approved access
+group and tools. Review the live tool inventory before granting access to
+family data. In particular, OpenBot shares its MCP list across agents, so Aula
+must not be granted there by default.
+
+## Security note
+
+LiteLLM maintains a public security advisory feed. One October 27, 2026
+[critical advisory](https://github.com/BerriAI/litellm/security/advisories/GHSA-w4c7-34wj-hqm8)
+lists versions below `1.104.8` among affected versions, specifically for the
+Enterprise proxy. Home Core uses the `litellm-non_root` image and no Enterprise
+license is configured, so that advisory's Enterprise-only impact is not
+asserted for this deployment. The newer LTS pin was selected to avoid carrying
+an older release while adding an externally reachable MCP route. Verify the
+exact deployed package edition, version, and release migrations during the
+reviewed rollout.
