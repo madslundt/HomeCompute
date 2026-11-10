@@ -1,7 +1,7 @@
 # HomeCompute-managed authenticated Hermes frontend forwarding
 [Unit]
 Description=Recover the native Hermes private browser forward
-Requires=homecompute-hermes-personal.service
+Wants=homecompute-hermes-personal.service
 After=default.target homecompute-hermes-personal.service
 PartOf=homecompute-hermes-personal.service
 StartLimitIntervalSec=0
