@@ -50,6 +50,7 @@ class SetupTests(unittest.TestCase):
         start(patch.object(self.module, 'regular', side_effect=lambda path, owner=None, mode=None: regular(path, os.getuid(), mode)))
         start(patch.object(self.module.os, 'fchown')); start(patch.object(self.module.os, 'chown'))
         self.calls = start(patch.object(setup, 'call', return_value='active'))
+        self.adapter_state = start(patch.object(setup, 'adapter_state', return_value='active'))
         self.probe = start(patch.object(setup, 'probe'))
 
     def tearDown(self):
@@ -91,6 +92,21 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(self.tokens.read_bytes(), before)
         self.assertTrue(all(path.read_bytes() == b'old source' for path, _ in setup.FILES.values()))
         self.assertFalse((setup.STATE / 'receipt.json').exists())
+
+    def test_failed_adapter_is_allowed_only_for_a_rolled_back_recovery(self):
+        plan, digest = self.reviewed()
+        self.adapter_state.return_value = 'failed'
+        with self.assertRaises(ValueError): setup.apply(self.module, plan, digest)
+        self.assertFalse((setup.STATE / 'receipt.json').exists())
+
+        self.adapter_state.return_value = 'active'
+        setup.apply(self.module, plan, digest)
+        setup.rollback(self.module)
+        self.adapter_state.return_value = 'failed'
+        plan, digest = self.reviewed()
+        receipt = setup.apply(self.module, plan, digest)
+        self.assertEqual(receipt['state'], 'applied')
+        self.assertEqual(set(json.loads(self.tokens.read_bytes())), {'openclaw', 'hermes-owner'})
 
     def test_rollback_preserves_later_source_or_credential_changes(self):
         plan, digest = self.reviewed(); setup.apply(self.module, plan, digest)

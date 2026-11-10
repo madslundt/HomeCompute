@@ -41,6 +41,17 @@ def call(args: list[str]) -> str:
     return result.stdout.strip()
 
 
+def adapter_state() -> str:
+    result = subprocess.run(['systemctl', 'is-active', ADAPTER], capture_output=True,
+                            text=True, timeout=30)
+    state = result.stdout.strip()
+    if state not in {'active', 'inactive', 'failed', 'activating'}:
+        raise ValueError('adapter state is not recognized')
+    if state == 'active' and result.returncode != 0:
+        raise ValueError('adapter state could not be verified')
+    return state
+
+
 def native():
     spec = importlib.util.spec_from_file_location('native_setup', ROOT / 'scripts/setup-native-capabilities.py')
     module = importlib.util.module_from_spec(spec)
@@ -112,15 +123,19 @@ def apply(module, reviewed: dict, expected: str) -> dict:
     if digest(json.dumps(reviewed, sort_keys=True).encode()) != expected:
         raise ValueError('reviewed plan changed')
     module.directory(STATE, 0o700)
-    if (STATE / 'receipt.json').exists():
-        receipt = json.loads((STATE / 'receipt.json').read_bytes())
+    receipt_path = STATE / 'receipt.json'
+    receipt = None
+    if receipt_path.exists():
+        receipt = json.loads(receipt_path.read_bytes())
         if receipt['state'] == 'applied':
             if any(row['before'] != row['after'] for row in reviewed['files'].values()):
                 raise ValueError('existing installation needs reconciliation before replacement')
             probe(module)
             return receipt
-    if call(['systemctl', 'is-active', ADAPTER]) != 'active':
-        raise ValueError('existing adapter must be active')
+    state = adapter_state()
+    if state != 'active' and not (receipt and receipt.get('state') == 'rolled-back'
+                                  and state in {'inactive', 'failed', 'activating'}):
+        raise ValueError('existing adapter must be active outside guarded rollback recovery')
     backup = STATE / str(time.time_ns())
     module.directory(backup, 0o700)
     paths = {name: target for name, (target, _) in FILES.items()}
