@@ -209,7 +209,8 @@ test "$(stat -c %a "$base/data")" = 700
 test "$(stat -c %u "$base/data")" = 1000
 ln -sfnT "$release" "$base/current"
 sudo -n systemctl daemon-reload
-sudo -n systemctl enable --now homecompute-openbot-firewall.service
+sudo -n systemctl enable homecompute-openbot-firewall.service
+sudo -n systemctl restart homecompute-openbot-firewall.service
 sudo -n systemctl enable --now homecompute-openbot.service
 sudo -n systemctl --no-pager --quiet is-active homecompute-openbot.service
 sudo -n /usr/local/libexec/homecompute-openbot-health
