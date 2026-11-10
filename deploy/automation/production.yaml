@@ -22,7 +22,7 @@ services:
       - "100.110.248.102:15678:5678"
 
   aula-mcp:
-    image: homecompute/aula-mcp:d9a27d84933446783c89446ba3e9d799fd47ea2c-n8n1
+    image: homecompute/aula-mcp:d9a27d84933446783c89446ba3e9d799fd47ea2c-n8n1-context-a488bbc
     pull_policy: never
     build:
       context: .

@@ -61,7 +61,7 @@
           "source_lane": "registry"
         },
         "homecompute-automation-aula-mcp-1": {
-          "tracked_tag": "d9a27d84933446783c89446ba3e9d799fd47ea2c-n8n1",
+          "tracked_tag": "d9a27d84933446783c89446ba3e9d799fd47ea2c-n8n1-context-a488bbc",
           "source_lane": "source_pin"
         },
         "homecompute-immich-immich-server-1": {

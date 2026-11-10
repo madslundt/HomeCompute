@@ -3,12 +3,15 @@ FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-# Reviewed upstream main commit, frozen dependencies, and digest-pinned runtimes.
+# Pinned upstream base plus reviewed local patches, frozen dependencies, and digest-pinned runtimes.
 RUN git init . && git remote add origin https://github.com/Casperjuel/aula-mcp.git \
     && git fetch --depth 1 origin d9a27d84933446783c89446ba3e9d799fd47ea2c \
     && git checkout --detach FETCH_HEAD && rm -rf .git
 COPY aula-n8n.patch /tmp/aula-n8n.patch
-RUN git apply --unidiff-zero --check /tmp/aula-n8n.patch \
+COPY aula-profile-context.patch /tmp/aula-profile-context.patch
+RUN git apply --unidiff-zero --check /tmp/aula-profile-context.patch \
+    && git apply --unidiff-zero /tmp/aula-profile-context.patch \
+    && git apply --unidiff-zero --check /tmp/aula-n8n.patch \
     && git apply --unidiff-zero /tmp/aula-n8n.patch
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate \
     && pnpm install --frozen-lockfile

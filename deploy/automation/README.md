@@ -146,16 +146,23 @@ The local Dockerfile builds frozen upstream dependencies using Node and runs
 the server with Bun; both base images are pinned by digest.
 `scripts/deploy-home-core.sh` rebuilds this image during deployment. Aula is
 absent from the isolated restore stack.
+The `aula-profile-context.patch` backports upstream commit
+`a488bbc00875a942cc48a3e856558d46523f12d8` (2026-11-08): Aula requires
+`profiles.getProfileContext` before messaging, posts and notifications GETs.
+The collector opens a fresh MCP session for each thread detail read, so the
+profile context must be selected inside the client for each read. The patch
+includes the upstream regression tests for this behavior, including a new
+client after token refresh. It is applied before the compatibility patch below.
 The local `aula-n8n.patch` changes MCP tool-name dots to underscores because
 OpenAI accepts only letters, digits, underscores, and hyphens in function
 names. It also expresses positive integer IDs as `minimum: 1` instead of
 `exclusiveMinimum: 0`, which is equivalent for integer IDs and compatible with
 Gemini's function-schema subset. The patch also keeps discovery metadata and
-upstream tests aligned with the registered names. Aula 1.6.1 includes fixes
+upstream tests aligned with the registered names. Aula 1.6.2 includes fixes
 for MitID broker redirects, Danish Keychain records, Aula API v24 retries, and
 attachments delivered through `media.file`, plus Min Uddannelse homework text.
-Reapply and review this patch whenever the upstream commit changes; the image
-build fails if it no longer applies cleanly.
+Reapply and review both patches whenever the upstream commit changes; the image
+build fails if either patch no longer applies cleanly.
 
 The previous deployed image was built on 2026-09-20 from upstream commit
 `af49805ae9c6d7c9026f6e559f2e01ca209c9e46`. Rebuild and recreate Aula from
