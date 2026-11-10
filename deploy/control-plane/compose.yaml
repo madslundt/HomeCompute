@@ -449,7 +449,7 @@ networks:
     internal: true
     enable_ipv6: false
     driver_opts:
-      com.docker.network.bridge.name: br-hc-mcp-clients
+      com.docker.network.bridge.name: br-hc-mcpcl
     ipam:
       config:
         - subnet: ${CONTROL_PLANE_MCP_CLIENTS_SUBNET:?Set CONTROL_PLANE_MCP_CLIENTS_SUBNET}

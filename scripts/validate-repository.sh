@@ -770,6 +770,7 @@ jq -e '
   (.services.postgres.ports == null) and
   (.networks["mcp-web"].internal == true) and
   (.networks["mcp-clients"].internal == true) and
+  (.networks["mcp-clients"].driver_opts["com.docker.network.bridge.name"] == "br-hc-mcpcl") and
   (.networks["mcp-backends"].internal == true) and
   (.services.caddy.networks["mcp-web"].ipv4_address == "172.28.214.2") and
   (.services.litellm.networks["mcp-web"].ipv4_address == "172.28.214.3") and
