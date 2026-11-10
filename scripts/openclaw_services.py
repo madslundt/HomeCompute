@@ -259,7 +259,7 @@ def weekly_letter_page(payload: Any, offset: int) -> dict[str, Any]:
 class Services:
     def __init__(self, config: Path, household: Any = None, calendar: Any = None, *, ranker: Any = None,
                  school_index: Any = None, research_index: Any = None, household_tasks: Any = None, mail: Any = None,
-                 family_tasks: Any = None):
+                 family_tasks: Any = None, reuse_mcp_sessions: bool = False):
         try:
             cfg=json.loads(private(config,4096))
             if (not isinstance(cfg,dict) or set(cfg)!={'schema_version','tavily_token_file'}
@@ -272,6 +272,9 @@ class Services:
         except (OSError,ValueError,UnicodeError,RecursionError):
             raise ValueError('Private service configuration refused') from None
         self.opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
+        self._reuse_mcp_sessions = reuse_mcp_sessions
+        self._mcp_sessions: dict[str, dict[str, str]] = {}
+        self._mcp_request_id = 1
         self._search_backoff = (0.0, '')
         self._search_lock = threading.Lock()
         self.household=household
@@ -289,6 +292,20 @@ class Services:
                     + (household_tasks.tools if household_tasks is not None else [])
                     + (family_tasks.tools if family_tasks is not None else [])
                     + (mail.tools if mail is not None else []))
+
+    def close(self) -> None:
+        sessions, self._mcp_sessions = self._mcp_sessions, {}
+        for source, headers in sessions.items():
+            try:
+                self._http(ENDPOINTS[source], None, time.monotonic() + 0.5,
+                           headers=headers, method='DELETE')
+            except (OSError, ValueError):
+                pass
+
+    def _next_mcp_request_id(self) -> int:
+        request_id = self._mcp_request_id
+        self._mcp_request_id += 1
+        return request_id
 
     def _index(self, domain: str) -> Any:
         with self._archive_lock:
@@ -380,19 +397,28 @@ class Services:
             return response.status,raw,response.headers
 
     def _mcp(self, source: str, name: str, args: dict[str,Any], deadline: float, *, calendar_offset: int=0) -> Any:
-        url=ENDPOINTS[source]; session=None
+        url=ENDPOINTS[source]; session=None; retained=False
         headers={'Accept':'application/json, text/event-stream','MCP-Protocol-Version':'2025-03-26'}
         try:
-            _,raw,h=self._http(url,{'jsonrpc':'2.0','id':1,'method':'initialize',
-                'params':{'protocolVersion':'2025-03-26','capabilities':{},'clientInfo':{'name':'homecompute-finite-reader','version':'1'}}},deadline,headers=headers)
-            init=rpc_result(raw,1)
-            if init.get('protocolVersion')!='2025-03-26': raise ValueError('Service protocol')
-            session=h.get('Mcp-Session-Id')
-            if not isinstance(session,str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,200}',session): raise ValueError('Service session')
-            headers['Mcp-Session-Id']=session
-            self._http(url,{'jsonrpc':'2.0','method':'notifications/initialized'},deadline,headers=headers)
-            _,raw,_=self._http(url,{'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':name,'arguments':args}},deadline,headers=headers)
-            result=rpc_result(raw,2)
+            cached = self._mcp_sessions.get(source) if self._reuse_mcp_sessions else None
+            if cached is not None:
+                headers.update(cached)
+                session=headers['Mcp-Session-Id']; retained=True
+            else:
+                request_id=self._next_mcp_request_id() if self._reuse_mcp_sessions else 1
+                _,raw,h=self._http(url,{'jsonrpc':'2.0','id':request_id,'method':'initialize',
+                    'params':{'protocolVersion':'2025-03-26','capabilities':{},'clientInfo':{'name':'homecompute-finite-reader','version':'1'}}},deadline,headers=headers)
+                init=rpc_result(raw,request_id)
+                if init.get('protocolVersion')!='2025-03-26': raise ValueError('Service protocol')
+                session=h.get('Mcp-Session-Id')
+                if not isinstance(session,str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,200}',session): raise ValueError('Service session')
+                headers['Mcp-Session-Id']=session
+                self._http(url,{'jsonrpc':'2.0','method':'notifications/initialized'},deadline,headers=headers)
+                if self._reuse_mcp_sessions:
+                    self._mcp_sessions[source]=headers.copy(); retained=True
+            request_id=self._next_mcp_request_id() if self._reuse_mcp_sessions else 2
+            _,raw,_=self._http(url,{'jsonrpc':'2.0','id':request_id,'method':'tools/call','params':{'name':name,'arguments':args}},deadline,headers=headers)
+            result=rpc_result(raw,request_id)
             if result.get('isError') is True: raise ValueError('Service tool failure')
             contents=result.get('content')
             if not isinstance(contents,list) or len(contents)>20: raise ValueError('Service content')
@@ -421,7 +447,7 @@ class Services:
             if payload and projected in ({},[]): raise ValueError('Unsupported service projection')
             return projected
         finally:
-            if session:
+            if session and not retained:
                 try: self._http(url,None,min(deadline,time.monotonic()+0.5),headers=headers,method='DELETE')
                 except (OSError,ValueError): pass
 

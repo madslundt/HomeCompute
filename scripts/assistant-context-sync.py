@@ -159,7 +159,16 @@ def read_aula(config: dict) -> list[Snapshot]:
     profiles = selection.get("profile_ids", [])
     if not profiles:
         raise ValueError("Aula needs explicit owner profile IDs")
-    facade = openclaw_services.Services(OPENCLAW_CONFIG / "services.json")
+    facade = openclaw_services.Services(OPENCLAW_CONFIG / "services.json", reuse_mcp_sessions=True)
+    try:
+        return _read_aula_with_facade(config, facade)
+    finally:
+        facade.close()
+
+
+def _read_aula_with_facade(config: dict, facade) -> list[Snapshot]:
+    selection = config["aula"]
+    profiles = selection.get("profile_ids", [])
     discovery = facade.request("homecompute_school_discover", {}).get("data")
     children = discovery.get("children") if isinstance(discovery, dict) else None
     if (not isinstance(children, list) or not 1 <= len(children) <= 8

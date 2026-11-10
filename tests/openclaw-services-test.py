@@ -140,6 +140,26 @@ class ServicesTest(unittest.TestCase):
         self.assertTrue(result['untrusted_content']); self.assertEqual(result['source'],'tilbudstrolden')
         self.assertEqual(calls[-1].args[0].method,'DELETE')
 
+    def test_reused_mcp_session_bootstraps_once_and_closes_after_scan(self):
+        client=service.Services(self.config,ranker=self.ranker,reuse_mcp_sessions=True)
+        responses=[Response({'jsonrpc':'2.0','id':1,'result':{'protocolVersion':'2025-03-26'}},
+                            headers={'Mcp-Session-Id':'synthetic-session'}),
+                   Response(None,status=202,raw=b''),
+                   Response({'jsonrpc':'2.0','id':2,'result':{'content':[{'type':'text','text':'first'}]}}),
+                   Response({'jsonrpc':'2.0','id':3,'result':{'content':[{'type':'text','text':'second'}]}}),
+                   Response(None,status=204,raw=b'')]
+        with patch.object(client.opener,'open',side_effect=responses) as opened:
+            first=client._mcp('tilbudstrolden','search_deals',{},service.time.monotonic()+8)
+            second=client._mcp('tilbudstrolden','search_deals',{},service.time.monotonic()+8)
+            self.assertEqual(first['text'],'first'); self.assertEqual(second['text'],'second')
+            self.assertEqual(opened.call_count,4)
+            client.close()
+        calls=opened.call_args_list
+        self.assertEqual([call.args[0].method for call in calls],['POST','POST','POST','POST','DELETE'])
+        self.assertEqual(calls[2].args[0].get_header('Mcp-session-id'),'synthetic-session')
+        self.assertEqual(calls[3].args[0].get_header('Mcp-session-id'),'synthetic-session')
+        self.assertEqual(json.loads(calls[3].args[0].data)['id'],3)
+
     def test_failed_transport_and_oversized_private_errors_are_sanitized(self):
         for error in (OSError('private-token-secret'), ValueError('private-token-secret')):
             self.client._search_backoff = (0, '')

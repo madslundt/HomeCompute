@@ -19,7 +19,8 @@ sync_spec.loader.exec_module(sync_module)
 class EventContractTests(unittest.TestCase):
     def test_aula_account_feeds_require_selection_of_the_entire_current_roster(self):
         class Facade:
-            def __init__(self): self.calls = []
+            def __init__(self): self.calls = []; self.closed = False
+            def close(self): self.closed = True
             def request(self, operation, params):
                 self.calls.append((operation, params))
                 if operation == "homecompute_school_discover":
@@ -39,6 +40,7 @@ class EventContractTests(unittest.TestCase):
                     snapshots = sync_module.read_aula({"aula": {
                         "enabled": True, "profile_ids": selected, "range": "this_week"}})
                 self.assertEqual(facade.calls[1][1]["profile_ids"], ",".join(map(str, selected)))
+                self.assertTrue(facade.closed)
                 account_calls = [row for row in facade.calls if row[0] in {
                     "homecompute_school_posts", "homecompute_school_threads"}]
                 if len(selected) == 2:
@@ -58,13 +60,17 @@ class EventContractTests(unittest.TestCase):
         for children in ([], [{"id": 14}, {"id": 14}], [{"id": "14"}], [{"id": 93}]):
             with self.subTest(children=children):
                 class Facade:
+                    def __init__(self): self.closed = False
+                    def close(self): self.closed = True
                     def request(self, operation, params):
                         if operation != "homecompute_school_discover":
                             raise AssertionError("Content read before selection qualification")
                         return {"data": {"children": children}}
-                with patch.object(sync_module.openclaw_services, "Services", return_value=Facade()):
+                facade = Facade()
+                with patch.object(sync_module.openclaw_services, "Services", return_value=facade):
                     with self.assertRaises(ValueError):
                         sync_module.read_aula({"aula": {"enabled": True, "profile_ids": [14]}})
+                self.assertTrue(facade.closed)
 
     def test_envelope_is_exact_and_scope_is_not_source_data(self):
         event = sources.normalize_event("aula", "calendar:42", 1, "calendar.snapshot", "upsert",
