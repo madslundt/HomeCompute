@@ -50,6 +50,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("mcp-backends:", AUTOMATION)
         self.assertIn('name: homecompute-control-plane_mcp-clients', AUTOMATION)
         self.assertIn('name: homecompute-control-plane_mcp-backends', AUTOMATION)
+        self.assertIn("com.docker.network.bridge.name: br-hc-mcpcl", COMPOSE)
+        self.assertLessEqual(len("br-hc-mcpcl"), 15)
         self.assertIn("N8N_MCP_TOKEN_FILE", COMPOSE)
         self.assertIn("n8n_mcp_token", COMPOSE)
         self.assertIn("homecompute-capabilities.home.arpa:10.77.20.1", COMPOSE)
