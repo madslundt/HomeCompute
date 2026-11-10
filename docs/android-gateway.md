@@ -61,6 +61,13 @@ hot-patched. On the agents guest, connect the existing owner profile using
 run `scripts/connect-hermes-mcp.py` from the published guest checkout. It
 installs the new Android skill only if absent or already identical.
 
+If the connector reports NemoClaw's specific obsolete host-only credential
+boundary warning, inspect the native MCP status first. For that exact verified
+state only, `connect-mcp --repair-legacy-registration` stores a private,
+secret-free metadata backup, removes the stale registration, and adds it again
+with the dedicated owner credential. Other registration conflicts remain
+blocked for manual review.
+
 Import `automations/android-notifications/n8n-workflow.json` into the existing
 n8n instance. Create the `Android notification ingress` HTTP Header Auth
 credential using the external webhook token, bind it to the webhook node, and

@@ -22,6 +22,84 @@ SKILL = ROOT / 'deploy/hermes/skills/homecompute-household'
 ANDROID_SKILL = ROOT / 'deploy/hermes/skills/android-gateway'
 GATES = Path('/var/lib/homecompute-hermes/gates')
 PYTHON = '/opt/hermes/python-runtime/bin/python3.14'
+BACKUPS = Path.home() / '.local/state/homecompute/hermes-mcp-registration-backups'
+
+
+def status_row(status: dict) -> dict:
+    rows = status.get('bridges', [status.get('status', status)]) if isinstance(status, dict) else status
+    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
+        raise ValueError('one native MCP status required')
+    return rows[0]
+
+
+def legacy_boundary_conflict(list_row: dict, status: dict, sandbox: str) -> bool:
+    """Recognize only the verified stale host-only credential provider state."""
+    current = status_row(status)
+    env = list_row.get('env') or {}
+    provider = current.get('provider') or {}
+    warning_text = '\n'.join(str(item) for item in current.get('warnings', []))
+    return (
+        list_row.get('server') == 'homecompute'
+        and list_row.get('url') == URL
+        and env.get('names') == []
+        and (list_row.get('trustedPrivateTarget') or {}).get('state') == 'match'
+        and current.get('server') == 'homecompute'
+        and current.get('url') == URL
+        and (current.get('env') or {}).get('names') == []
+        and (current.get('env') or {}).get('ready') is False
+        and provider.get('name') == sandbox + '-mcp-homecompute'
+        and provider.get('state') == 'conflict'
+        and provider.get('present') is True
+        and provider.get('credentialReady') is False
+        and provider.get('credentialResolution', {}).get('ok') is not True
+        and (current.get('adapter') or {}).get('registered') is not True
+        and (current.get('trustedPrivateTarget') or {}).get('state') == 'match'
+        and 'credential name no longer satisfies the host-only credential boundary' in warning_text
+        and 'remove this server, then add it again with a dedicated service credential name' in warning_text
+    )
+
+
+def save_legacy_registration_backup(sandbox: str, list_row: dict, status: dict) -> str:
+    current = status_row(status)
+    provider = current.get('provider') or {}
+    backup_directory = BACKUPS
+    home = Path.home()
+    try:
+        relative = backup_directory.relative_to(home)
+    except ValueError as error:
+        raise ValueError('private nonsymlink MCP registration backup directory required') from error
+    cursor = home
+    if cursor.is_symlink():
+        raise ValueError('private nonsymlink MCP registration backup directory required')
+    for part in relative.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise ValueError('private nonsymlink MCP registration backup directory required')
+    backup_directory.mkdir(parents=True, mode=0o700, exist_ok=True)
+    info = backup_directory.stat()
+    if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ValueError('private operator-owned MCP registration backup directory required')
+    backup = backup_directory / (str(time.time_ns()) + '-homecompute.json')
+    record = {
+        'schema_version': 1,
+        'sandbox': sandbox,
+        'server': 'homecompute',
+        'url': URL,
+        'env_names': (list_row.get('env') or {}).get('names', []),
+        'provider_name': provider.get('name'),
+        'provider_state': provider.get('state'),
+        'provider_present': provider.get('present'),
+        'credential_ready': provider.get('credentialReady'),
+        'adapter_registered': (current.get('adapter') or {}).get('registered'),
+        'private_target_state': (current.get('trustedPrivateTarget') or {}).get('state'),
+        'warnings': list(current.get('warnings') or []),
+    }
+    descriptor = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, 'w') as stream:
+        json.dump(record, stream, sort_keys=True)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return str(backup)
 
 
 def network_candidate(before: dict, sandbox: str) -> dict:
@@ -103,7 +181,7 @@ def gates() -> None:
             raise ValueError('fresh household backup and network readiness required')
 
 
-def connect(sandbox: str, token: str) -> dict:
+def connect(sandbox: str, token: str, *, repair_legacy_registration: bool = False) -> dict:
     gates()
     if not 32 <= len(token) <= 4096 or any(c.isspace() for c in token) or token.startswith(('replace', 'openshell:resolve:')):
         raise ValueError('dedicated owner MCP credential required')
@@ -115,8 +193,28 @@ def connect(sandbox: str, token: str) -> dict:
         raise ValueError('ready isolated Hermes sandbox required')
     entries = json.loads(call(cli + ['mcp', 'list', '--json'], env=env))['bridges']
     existing = [row for row in entries if row.get('server') == 'homecompute']
+    repair_backup = None
     if existing:
-        if len(existing) != 1 or existing[0].get('url') != URL or existing[0].get('env', {}).get('names') != [KEY]:
+        if len(existing) != 1:
+            raise ValueError('existing MCP registration differs; preserve it for review')
+        list_row = existing[0]
+        if list_row.get('url') != URL:
+            raise ValueError('existing MCP registration differs; preserve it for review')
+        if list_row.get('env', {}).get('names') != [KEY]:
+            if not repair_legacy_registration:
+                raise ValueError('existing MCP registration differs; preserve it for review')
+            old_status = json.loads(call(cli + ['mcp', 'status', 'homecompute', '--json'], env=env))
+            if not legacy_boundary_conflict(list_row, old_status, sandbox):
+                raise ValueError('existing MCP registration is outside the reviewed legacy boundary-conflict case')
+            repair_backup = save_legacy_registration_backup(sandbox, list_row, old_status)
+            call(cli + ['mcp', 'remove', 'homecompute'], env=env)
+            after_remove = json.loads(call(cli + ['mcp', 'list', '--json'], env=env))['bridges']
+            if any(row.get('server') == 'homecompute' for row in after_remove):
+                raise ValueError('native MCP removal did not verify; preserve its backup and inspect status')
+            call(cli + ['mcp', 'add', 'homecompute', '--url', URL, '--env', KEY,
+                        '--trusted-private-host', 'homecompute-capabilities.home.arpa'],
+                 env={**env, KEY: token})
+        elif list_row.get('url') != URL or list_row.get('env', {}).get('names') != [KEY]:
             raise ValueError('existing MCP registration differs; preserve it for review')
     else:
         # The native CLI owns policy, provider, opaque handles and gateway reload.
@@ -126,10 +224,7 @@ def connect(sandbox: str, token: str) -> dict:
     token = ''
     network_setup(sandbox, env)
     status = json.loads(call(cli + ['mcp', 'status', 'homecompute', '--json'], env=env))
-    rows = status.get('bridges', [status.get('status', status)]) if isinstance(status, dict) else status
-    if len(rows) != 1:
-        raise ValueError('one native MCP status required')
-    row = rows[0]
+    row = status_row(status)
     if (row.get('url') != URL or row.get('provider', {}).get('credentialResolution', {}).get('ok') is not True
             or row.get('adapter', {}).get('registered') is not True
             or row.get('trustedPrivateTarget', {}).get('state') != 'match'):
@@ -164,8 +259,11 @@ print(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else 'absent')
     android_installed = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=android_program, env=env).strip()
     if android_installed != android_expected:
         raise ValueError('native Android skill readback differs')
-    return {'sandbox': sandbox, 'server': 'homecompute', 'credential_verified': True,
-            'skill_sha256': expected, 'android_skill_sha256': android_expected}
+    result = {'sandbox': sandbox, 'server': 'homecompute', 'credential_verified': True,
+              'skill_sha256': expected, 'android_skill_sha256': android_expected}
+    if repair_backup:
+        result['replaced_legacy_registration_backup'] = repair_backup
+    return result
 
 
 def main() -> int:
@@ -173,12 +271,15 @@ def main() -> int:
     parser.add_argument('--revision', required=True)
     parser.add_argument('--sandbox', choices=('hermes-personal', 'hermes-personal-v23'),
                         default='hermes-personal-v23')
+    parser.add_argument('--repair-legacy-registration', action='store_true',
+                        help='replace only the verified stale host-only credential conflict, keeping a private metadata backup')
     args = parser.parse_args()
     try:
         spec = importlib.util.spec_from_file_location('setup_hermes_mcp', ROOT / 'scripts/setup-hermes-mcp.py')
         setup = importlib.util.module_from_spec(spec); spec.loader.exec_module(setup)
         setup.published(args.revision)
-        print(json.dumps(connect(args.sandbox, sys.stdin.read(4097).strip())))
+        print(json.dumps(connect(args.sandbox, sys.stdin.read(4097).strip(),
+                                 repair_legacy_registration=args.repair_legacy_registration)))
         return 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         if isinstance(error, ValueError):

@@ -183,6 +183,82 @@ class ConnectionTests(unittest.TestCase):
                 with self.assertRaises(ValueError): connect.connect('hermes-personal-v23', self.token)
             self.assertFalse(any(c.args[0][2:4] in (['mcp', 'add'], ['mcp', 'remove']) for c in call.call_args_list))
 
+    def test_explicit_repair_replaces_only_exact_legacy_boundary_conflict_with_private_backup(self):
+        old_list_row = {'server': 'homecompute', 'url': connect.URL,
+                        'env': {'names': [], 'missing': [], 'ready': False},
+                        'trustedPrivateTarget': {'state': 'match'}}
+        old_status = {'server': 'homecompute', 'url': connect.URL,
+                      'env': {'names': [], 'missing': [], 'ready': False},
+                      'provider': {'name': 'hermes-personal-v23-mcp-homecompute', 'state': 'conflict',
+                                   'present': True, 'credentialReady': False,
+                                   'credentialResolution': {'ok': False}},
+                      'adapter': {'registered': None},
+                      'trustedPrivateTarget': {'state': 'match'},
+                      'warnings': ['This agent-source MCP credential name no longer satisfies the host-only credential boundary. '
+                                   'Restart and rebuild fail closed for it; remove this server, then add it again with a dedicated service credential name.']}
+        with tempfile.TemporaryDirectory() as temporary:
+            commands = []
+            def call(args, **kwargs):
+                commands.append((args, kwargs))
+                if args[2:4] == ['status', '--json']:
+                    return json.dumps({'agent': 'hermes', 'phase': 'Ready', 'hostMounts': []})
+                if args[2:4] == ['mcp', 'list']:
+                    return json.dumps({'bridges': [old_list_row] if not any(
+                        row[0][2:4] == ['mcp', 'remove'] for row in commands) else []})
+                if args[2:4] == ['mcp', 'status']:
+                    return json.dumps(old_status if not any(
+                        row[0][2:4] == ['mcp', 'add'] for row in commands) else self.status)
+                if args[2] == 'exec':
+                    program = kwargs.get('input', '')
+                    if 'android-gateway' in program:
+                        if not hasattr(self, 'repair_android_probe_count'):
+                            self.repair_android_probe_count = 0
+                        self.repair_android_probe_count += 1
+                        return 'absent' if self.repair_android_probe_count == 1 else self.android_digest
+                    return self.digest
+                return ''
+            with patch.object(connect.Path, 'home', return_value=Path(temporary)), \
+                 patch.object(connect, 'BACKUPS', Path(temporary) / '.local/state/homecompute/backups'), \
+                 patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), \
+                 patch.object(connect, 'call', side_effect=call):
+                result = connect.connect('hermes-personal-v23', self.token, repair_legacy_registration=True)
+            self.assertTrue(result['credential_verified'])
+            self.assertIn('replaced_legacy_registration_backup', result)
+            backup = Path(result['replaced_legacy_registration_backup'])
+            record = json.loads(backup.read_text())
+            self.assertEqual(record['provider_state'], 'conflict')
+            self.assertEqual(record['env_names'], [])
+            self.assertNotIn(self.token, backup.read_text())
+            self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+        remove_index = next(i for i, (args, _) in enumerate(commands) if args[2:4] == ['mcp', 'remove'])
+        add_index = next(i for i, (args, _) in enumerate(commands) if args[2:4] == ['mcp', 'add'])
+        self.assertLess(remove_index, add_index)
+        add_args, add_kwargs = commands[add_index]
+        self.assertNotIn(self.token, ' '.join(add_args))
+        self.assertEqual(add_kwargs['env'][connect.KEY], self.token)
+
+    def test_repair_flag_does_not_accept_an_unrelated_provider_warning(self):
+        old_list_row = {'server': 'homecompute', 'url': connect.URL,
+                        'env': {'names': []}, 'trustedPrivateTarget': {'state': 'match'}}
+        old_status = {'server': 'homecompute', 'url': connect.URL,
+                      'env': {'names': [], 'ready': False},
+                      'provider': {'name': 'hermes-personal-v23-mcp-homecompute', 'state': 'conflict',
+                                   'present': True, 'credentialReady': False},
+                      'adapter': {'registered': None}, 'trustedPrivateTarget': {'state': 'match'},
+                      'warnings': ['unrelated conflict']}
+        with tempfile.TemporaryDirectory() as temporary, \
+             patch.object(connect.Path, 'home', return_value=Path(temporary)), \
+             patch.object(connect, 'BACKUPS', Path(temporary) / '.local/state/homecompute/backups'), \
+             patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), \
+             patch.object(connect, 'call', side_effect=[
+                 json.dumps({'agent': 'hermes', 'phase': 'Ready'}),
+                 json.dumps({'bridges': [old_list_row]}), json.dumps(old_status)]) as call:
+            with self.assertRaises(ValueError):
+                connect.connect('hermes-personal-v23', self.token, repair_legacy_registration=True)
+            self.assertFalse(any(row.args[0][2:4] in (['mcp', 'add'], ['mcp', 'remove'])
+                                 for row in call.call_args_list))
+            self.assertFalse((Path(temporary) / '.local/state/homecompute/backups').exists())
+
     def test_gate_requires_private_fresh_owner_records(self):
         from datetime import datetime, timezone
         with tempfile.TemporaryDirectory() as temporary, patch.object(connect, 'GATES', Path(temporary)):
