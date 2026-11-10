@@ -43,7 +43,7 @@ class FlakeUpdateWorkflowTests(unittest.TestCase):
         self.env.update(HOME=str(home), GIT_CONFIG_NOSYSTEM='1',
                         GIT_CONFIG_GLOBAL=os.devnull,
                         PATH=str(binaries) + os.pathsep + os.environ['PATH'],
-                        TEST_LOCK_VALUE='updated', TEST_PR_EXISTS='0',
+                        TEST_LOCK_VALUE='updated', TEST_OPEN_PR_COUNT='0',
                         TEST_GH_CALLS=str(self.calls))
         nix = binaries / 'nix'
         nix.write_text('''#!/usr/bin/env python3
@@ -69,8 +69,9 @@ import os
 import sys
 with open(os.environ['TEST_GH_CALLS'], 'a') as stream:
     stream.write(json.dumps(sys.argv[1:]) + '\\n')
-if sys.argv[1:3] == ['pr', 'view']:
-    sys.exit(0 if os.environ['TEST_PR_EXISTS'] == '1' else 1)
+if sys.argv[1:3] == ['pr', 'list']:
+    print(os.environ['TEST_OPEN_PR_COUNT'])
+    sys.exit(0)
 assert sys.argv[1:3] == ['pr', 'create'], sys.argv
 ''')
         gh.chmod(0o755)
@@ -109,7 +110,7 @@ assert sys.argv[1:3] == ['pr', 'create'], sys.argv
         self.assertEqual(self.command('git', 'rev-parse', 'HEAD^').strip(), self.base)
         self.assertEqual(self.command('git', 'status', '--porcelain'), '')
         calls = self.gh_calls()
-        self.assertEqual([call[:2] for call in calls], [['pr', 'view'], ['pr', 'create']])
+        self.assertEqual([call[:2] for call in calls], [['pr', 'list'], ['pr', 'create']])
         self.assertIn(BRANCH, calls[1])
         self.assertIn('master', calls[1])
 
@@ -128,14 +129,32 @@ assert sys.argv[1:3] == ['pr', 'create'], sys.argv
                      '--single-branch', self.remote.as_uri(), str(fresh))
         self.checkout = fresh
         self.command('git', 'config', 'user.useConfigOnly', 'true')
-        self.env.update(TEST_LOCK_VALUE='newer', TEST_PR_EXISTS='1')
+        self.env.update(TEST_LOCK_VALUE='newer', TEST_OPEN_PR_COUNT='1')
         self.calls.unlink()
         self.run_workflow()
         self.assertEqual(self.command('git', '--git-dir', str(self.remote),
                                       'show', f'{BRANCH}:flake.lock'),
                          'newer\n')
         self.assertEqual(self.command('git', 'rev-parse', 'HEAD^').strip(), self.base)
-        self.assertEqual([call[:2] for call in self.gh_calls()], [['pr', 'view']])
+        self.assertEqual([call[:2] for call in self.gh_calls()], [['pr', 'list']])
+
+    def test_merged_update_pr_still_gets_a_replacement_proposal(self):
+        # The previous week's pull request merged and closed, so the branch
+        # exists on the remote while no open pull request references it.
+        self.run_workflow()
+        fresh = self.root / 'fresh-checkout'
+        self.command('git', 'clone', '--branch', 'master', '--depth', '1',
+                     '--single-branch', self.remote.as_uri(), str(fresh))
+        self.checkout = fresh
+        self.command('git', 'config', 'user.useConfigOnly', 'true')
+        self.env.update(TEST_LOCK_VALUE='newer', TEST_OPEN_PR_COUNT='0')
+        self.calls.unlink()
+        self.run_workflow()
+        self.assertEqual(self.command('git', '--git-dir', str(self.remote),
+                                      'show', f'{BRANCH}:flake.lock'),
+                         'newer\n')
+        self.assertEqual([call[:2] for call in self.gh_calls()],
+                         [['pr', 'list'], ['pr', 'create']])
 
 
 if __name__ == '__main__':

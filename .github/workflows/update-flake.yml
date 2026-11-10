@@ -48,7 +48,11 @@ jobs:
           # checkout fetches only master; use an explicit lease for this branch.
           git push --force-with-lease="refs/heads/$branch:$expected_revision" origin "$branch"
 
-          if ! gh pr view "$branch" --json number >/dev/null 2>&1; then
+          # Match only open pull requests: `gh pr view <branch>` also resolves a
+          # merged or closed pull request for the branch, which silently skips
+          # proposing the next update after the previous one merges.
+          open_pulls="$(gh pr list --head "$branch" --state open --json number --jq 'length')"
+          if [ "$open_pulls" = "0" ]; then
             gh pr create \
               --base master \
               --head "$branch" \
