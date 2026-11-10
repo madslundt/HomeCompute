@@ -233,6 +233,9 @@ class ConnectionTests(unittest.TestCase):
         remove_index = next(i for i, (args, _) in enumerate(commands) if args[2:4] == ['mcp', 'remove'])
         add_index = next(i for i, (args, _) in enumerate(commands) if args[2:4] == ['mcp', 'add'])
         self.assertLess(remove_index, add_index)
+        remove_args, remove_kwargs = commands[remove_index]
+        self.assertNotIn(self.token, ' '.join(remove_args))
+        self.assertEqual(remove_kwargs['env'][connect.KEY], self.token)
         add_args, add_kwargs = commands[add_index]
         self.assertNotIn(self.token, ' '.join(add_args))
         self.assertEqual(add_kwargs['env'][connect.KEY], self.token)
