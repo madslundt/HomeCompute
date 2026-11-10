@@ -2,6 +2,11 @@
 # Retain the complete OpenShell/NemoClaw runtime, identities and supervisor.
 FROM ghcr.io/nvidia/nemoclaw/hermes-sandbox@sha256:f52d55af05b63302ca8ae54ca9141b80df433a72ce273ae4aeac08c5af2cb990
 USER root
+# NemoClaw sets HERMES_RUNTIME_DIR to /run/nemoclaw for the running Hermes
+# process. Keep that shared directory root-owned, but precreate PM's exact lock
+# file for the unprivileged sandbox identity so runtime checks can open it.
+RUN test -d /run/nemoclaw \
+    && install -o sandbox -g sandbox -m 0600 /dev/null /run/nemoclaw/.install.lock
 ARG NEMOCLAW_CORPORATE_CA_B64=
 RUN if [ -n "$NEMOCLAW_CORPORATE_CA_B64" ]; then \
       printf '%s' "$NEMOCLAW_CORPORATE_CA_B64" | base64 --decode > /usr/local/share/nemoclaw/corporate-ca.pem \
@@ -115,3 +120,4 @@ RUN HOME=/sandbox node /opt/nemoclaw-hermes-config/generate-config.ts \
     && chmod 0640 /sandbox/.hermes/config.yaml /sandbox/.hermes/.env
 WORKDIR /sandbox
 USER sandbox
+RUN /opt/hermes/.venv/bin/python -c 'import os; fd=os.open("/run/nemoclaw/.install.lock", os.O_CREAT | os.O_RDWR, 0o600); os.close(fd)'

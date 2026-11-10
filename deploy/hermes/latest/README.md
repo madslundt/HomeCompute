@@ -110,3 +110,11 @@ Code rollback alone cannot undo state migrations.
 The frontend uses the release-pinned Node 26.12.1 and npm 12.0.2. Its only additional system library is checksum-pinned Debian libatomic1 14.2.0-19; package-manager repair is unnecessary. Linux upstream tests run without a preselected profile home so their own isolation fixtures control it.
 
 Required ffmpeg and ripgrep artifacts are also installed through the release's frozen PM lock. A final unprivileged `pm.check()` must report no install drift; startup warnings are not accepted as a complete artifact.
+
+NemoClaw supplies `/run/nemoclaw` as the running process's `HERMES_RUNTIME_DIR`.
+Keep that shared directory root-owned because it also contains supervisor lock
+files. The image precreates only `/run/nemoclaw/.install.lock` as
+`sandbox:sandbox` mode `0600`; this lets the Hermes package manager open its
+runtime lock without granting the sandbox write access to the directory or to
+the supervisor's files. The Docker build checks the lock can be opened as the
+unprivileged sandbox user.
