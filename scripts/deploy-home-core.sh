@@ -145,7 +145,12 @@ fi
 # Existing databases must be guarded before the updated proxy accepts traffic.
 docker exec -i homecompute-control-plane-postgres-1 \
   psql -X -v ON_ERROR_STOP=1 -U postgres -d litellm < "$release/deploy/control-plane/token-usage.sql"
-"${gateway[@]}" up -d --wait --wait-timeout 180 postgres litellm
+MCPHUB_POSTGRES_SQL_FILE="$release/deploy/control-plane/mcphub-postgres.sql" \
+  bash "$release/scripts/provision-mcphub-postgres.sh"
+"${gateway[@]}" up -d --wait --wait-timeout 180 postgres litellm mcphub
+docker exec homecompute-control-plane-mcphub-1 python3 \
+  /opt/homecompute/configure-mcphub.py \
+  --password-file /run/secrets/mcphub_admin_password
 # On first installation, LiteLLM creates its tables during the step above.
 docker exec -i homecompute-control-plane-postgres-1 \
   psql -X -v ON_ERROR_STOP=1 -U postgres -d litellm < "$release/deploy/control-plane/token-usage.sql"

@@ -20,6 +20,10 @@ services:
       - "127.0.0.1:15678:5678"
       - "192.168.30.122:15678:5678"
       - "100.110.248.102:15678:5678"
+    networks:
+      migration: {}
+      mcphub_clients:
+        ipv4_address: ${N8N_MCP_CLIENTS_IP:?Set N8N_MCP_CLIENTS_IP}
 
   aula-mcp:
     image: homecompute/aula-mcp:d9a27d84933446783c89446ba3e9d799fd47ea2c-n8n1-context-a488bbc
@@ -54,6 +58,8 @@ services:
     networks:
       migration:
         ipv4_address: 172.28.201.3
+      mcphub_backends:
+        ipv4_address: ${AULA_MCP_BACKENDS_IP:?Set AULA_MCP_BACKENDS_IP}
     cpus: 1.0
     mem_limit: 512m
     pids_limit: 128
@@ -93,6 +99,8 @@ services:
     networks:
       migration:
         ipv4_address: 172.28.201.4
+      mcphub_backends:
+        ipv4_address: ${TILBUDSTROLDEN_MCP_BACKENDS_IP:?Set TILBUDSTROLDEN_MCP_BACKENDS_IP}
     cpus: 0.5
     mem_limit: 256m
     pids_limit: 64
@@ -117,3 +125,9 @@ networks:
     ipam:
       config:
         - subnet: 172.28.201.0/24
+  mcphub_clients:
+    external: true
+    name: homecompute-mcp-clients
+  mcphub_backends:
+    external: true
+    name: homecompute-mcp-backends

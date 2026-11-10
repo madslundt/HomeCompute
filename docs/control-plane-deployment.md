@@ -144,7 +144,42 @@ explicitly runs `scripts/setup-network-inference.py --enable-plapre`.
   Its data directory is provisioned as owner 70:70, mode 0700.
 - Caddy retains `NET_BIND_SERVICE` because the official binary's file capability
   otherwise causes an exec permission error. Other capabilities are dropped.
-- Docker restart policy is `unless-stopped` for all three services.
+- Docker restart policy is `unless-stopped` for all four control-plane services.
+
+## MCPHub
+
+MCPHub is part of the same control-plane Compose project. The release wrapper
+creates a dedicated `mcphub` PostgreSQL role/database, starts the pinned
+MCPHub image, applies its bearer-auth and payload-retention policy, and then
+starts the remaining control-plane and automation services. It uses the
+existing full-cluster PostgreSQL archive; its persistent credential-encryption
+key is in the separate `secrets/mcphub.sops.yaml` document.
+
+The gateway has no published container port. n8n reaches it only through the
+private `homecompute-mcp-clients` network. Caddy reaches it through
+`homecompute-mcp-web` and publishes `https://mcp.home.arpa` through the existing
+private edge. The MCP backends use `homecompute-mcp-backends`; NixOS permits
+only MCPHub to initiate connections to Aula on TCP 7878 and TilbudsTrolden on
+TCP 8000. Both backend MCPs are unauthenticated, so do not attach other
+containers or clients to that network.
+
+The source declares only those two Streamable HTTP servers in
+`config/mcphub-settings.json`. MCPHub applies declarations with `upsert`, so
+undeclared dashboard-managed entries remain in the database. This is deliberate
+while the tool inventory is being reviewed. Do not add a shared all-tools key.
+Create per-client groups with reviewed tool selections, then issue one bearer
+key per consumer. n8n's internal endpoint is
+`http://mcphub:3000/mcp/<server-or-group>`; LAN and Tailscale clients use
+`https://mcp.home.arpa/mcp/<server-or-group>` and must trust the existing Caddy
+root certificate. Supply the bearer key through each client's secret store.
+
+The initial admin password and MCPHub secrets are encrypted in
+`secrets/mcphub.sops.yaml`. Retrieve them only in a private operator session
+with the existing SOPS identity. If the admin password is changed in MCPHub,
+update its encrypted source value because the guarded deploy lifecycle uses it
+to reapply and verify the security settings. Tool-call input/output payloads
+are disabled in activity history; the dashboard retains metadata such as
+server, tool, duration, client identity, and status.
 
 On the host:
 
@@ -166,7 +201,7 @@ NixOS. See [Git deployment](git-deployment.md) for the single-command workflow.
 
 ## Verification
 
-- Three service health checks pass; PostgreSQL migrations completed.
+- Four control-plane services are healthy; PostgreSQL migrations completed.
 - Real TLS validation from the Mac succeeds using the exported CA.
 - Health returns 200; keyless `/v1/models` and `automation-moe` chat return 200.
 - Browser preflight returns 204 with wildcard origin on supported API routes.
@@ -177,7 +212,7 @@ NixOS. See [Git deployment](git-deployment.md) for the single-command workflow.
 - LAN host ports 443, 4000, and 5432 are closed/unreachable.
 - A disposable, network-isolated PostgreSQL instance initialized from empty
   state with the same secret permissions and a non-superuser `litellm` role.
-- Container recreation preserves state and returns all three services to healthy.
+- Container recreation preserves state and returns all four control-plane services to healthy.
 - NixOS activation and the control-plane Compose assertions pass. The books
   importer now has dedicated Compose/isolation checks in repository validation.
 

@@ -28,6 +28,7 @@ services:
       CHAT_FQDN: ${CHAT_FQDN:?Set CHAT_FQDN}
       MODELS_FQDN: ${MODELS_FQDN:?Set MODELS_FQDN}
       CADDY_HTTPS_PORT: "8443"
+      MCPHUB_FQDN: ${MCPHUB_FQDN:?Set MCPHUB_FQDN}
       HOMEPAGE_HTTP_UPSTREAM: ${CONTROL_PLANE_TAILSCALE_BIND_ADDRESS:?Set the exact Tailscale IPv4 address}:80
     ports:
       - ${CONTROL_PLANE_LAN_BIND_ADDRESS:?Set the exact LAN IPv4 address}:80:8080/tcp
@@ -63,6 +64,8 @@ services:
         gw_priority: 1
       clients:
         ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
+      mcp-web:
+        ipv4_address: ${MCPHUB_CADDY_IP:?Set MCPHUB_CADDY_IP}
 
   litellm:
     image: ${LITELLM_IMAGE:?Set LITELLM_IMAGE to an immutable image digest}
@@ -135,6 +138,66 @@ services:
         ipv4_address: ${LITELLM_CLIENTS_IP:?Set LITELLM_CLIENTS_IP}
       state: {}
       automation-backup: {}
+
+  mcphub:
+    image: ${MCPHUB_IMAGE:?Set MCPHUB_IMAGE to an immutable image digest}
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
+    entrypoint: [/bin/sh, /opt/homecompute/mcphub-entrypoint.sh]
+    command: [node, dist/index.js]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PORT: "3000"
+      USE_DB: "true"
+      MCPHUB_SETTINGS_SYNC: upsert
+      MCPHUB_SETTING_PATH: /etc/mcphub/mcp_settings.json
+      TOOL_CALL_GUARD_ENABLED: "true"
+      LOG_LEVEL: warn
+      HOME: /tmp
+      TMPDIR: /tmp
+    secrets:
+      - mcphub_postgres_password
+      - mcphub_admin_password
+      - mcphub_credential_encryption_key
+    volumes:
+      - ./mcphub-entrypoint.sh:/opt/homecompute/mcphub-entrypoint.sh:ro
+      - ../../config/mcphub-settings.json:/etc/mcphub/mcp_settings.json:ro
+      - ../../scripts/configure-mcphub.py:/opt/homecompute/configure-mcphub.py:ro
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=1000,gid=1000,mode=0700
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 192
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      mcp-clients:
+        ipv4_address: ${MCPHUB_MCP_CLIENTS_IP:?Set MCPHUB_MCP_CLIENTS_IP}
+      mcp-backends:
+        ipv4_address: ${MCPHUB_BACKENDS_IP:?Set MCPHUB_BACKENDS_IP}
+      mcp-web:
+        ipv4_address: ${MCPHUB_WEB_IP:?Set MCPHUB_WEB_IP}
+      mcp-state:
+        ipv4_address: ${MCPHUB_POSTGRES_IP:?Set MCPHUB_POSTGRES_IP}
 
   automation-backup:
     profiles: [automation-backup]
@@ -396,6 +459,8 @@ services:
         max-file: "3"
     networks:
       state: {}
+      mcp-state:
+        ipv4_address: ${POSTGRES_MCPHUB_IP:?Set POSTGRES_MCPHUB_IP}
 
 networks:
   edge:
@@ -424,6 +489,38 @@ networks:
     ipam:
       config:
         - subnet: ${CONTROL_PLANE_CLIENTS_SUBNET:?Set CONTROL_PLANE_CLIENTS_SUBNET}
+  mcp-clients:
+    name: homecompute-mcp-clients
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_MCP_CLIENTS_SUBNET:?Set CONTROL_PLANE_MCP_CLIENTS_SUBNET}
+          gateway: ${CONTROL_PLANE_MCP_CLIENTS_GATEWAY:?Set CONTROL_PLANE_MCP_CLIENTS_GATEWAY}
+  mcp-web:
+    name: homecompute-mcp-web
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_MCP_WEB_SUBNET:?Set CONTROL_PLANE_MCP_WEB_SUBNET}
+  mcp-state:
+    name: homecompute-mcp-state
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_MCP_STATE_SUBNET:?Set CONTROL_PLANE_MCP_STATE_SUBNET}
+  mcp-backends:
+    name: homecompute-mcp-backends
+    driver: bridge
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.name: br-hc-mcp
+    ipam:
+      config:
+        - subnet: ${CONTROL_PLANE_MCP_BACKENDS_SUBNET:?Set CONTROL_PLANE_MCP_BACKENDS_SUBNET}
+          gateway: ${CONTROL_PLANE_MCP_BACKENDS_GATEWAY:?Set CONTROL_PLANE_MCP_BACKENDS_GATEWAY}
 
 secrets:
   compute_api_key:
@@ -436,3 +533,9 @@ secrets:
     file: ${POSTGRES_ADMIN_PASSWORD_FILE:?Set POSTGRES_ADMIN_PASSWORD_FILE}
   postgres_app_password:
     file: ${POSTGRES_APP_PASSWORD_FILE:?Set POSTGRES_APP_PASSWORD_FILE}
+  mcphub_postgres_password:
+    file: ${MCPHUB_POSTGRES_PASSWORD_FILE:?Set MCPHUB_POSTGRES_PASSWORD_FILE}
+  mcphub_admin_password:
+    file: ${MCPHUB_ADMIN_PASSWORD_FILE:?Set MCPHUB_ADMIN_PASSWORD_FILE}
+  mcphub_credential_encryption_key:
+    file: ${MCPHUB_CREDENTIAL_ENCRYPTION_KEY_FILE:?Set MCPHUB_CREDENTIAL_ENCRYPTION_KEY_FILE}

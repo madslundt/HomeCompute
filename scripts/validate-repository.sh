@@ -58,6 +58,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
+  "$REPO_ROOT/scripts/provision-mcphub-postgres.sh"
   "$REPO_ROOT/scripts/immich-db-backup.sh"
   "$REPO_ROOT/scripts/set-synology-immich-secret.sh"
   "$REPO_ROOT/scripts/import-google-photos.sh"
@@ -75,6 +76,7 @@ done
 for shell_file in \
   "$REPO_ROOT/deploy/control-plane/caddy-entrypoint.sh" \
   "$REPO_ROOT/deploy/control-plane/litellm-entrypoint.sh" \
+  "$REPO_ROOT/deploy/control-plane/mcphub-entrypoint.sh" \
   "$REPO_ROOT/deploy/control-plane/postgres-init.sh"; do
   sh -n "$shell_file"
 done
@@ -91,6 +93,7 @@ bash "$REPO_ROOT/tests/config-loader-test.sh"
 printf '[validate] Nix update workflow tests\n'
 python3 "$REPO_ROOT/tests/flake-update-workflow-test.py"
 printf '[validate] agents VM boundary tests\n'
+python3 "$REPO_ROOT/tests/mcphub-deployment-test.py"
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
 python3 "$REPO_ROOT/tests/tailscale-module-test.py"
 python3 "$REPO_ROOT/tests/nas-recovery-backup-test.py"
@@ -693,6 +696,19 @@ HVISKE_PROXY_EDGE_IP=172.28.200.5
 CONTROL_PLANE_CLIENTS_SUBNET=172.28.210.0/24
 CADDY_CLIENTS_IP=172.28.210.2
 LITELLM_CLIENTS_IP=172.28.210.3
+CONTROL_PLANE_MCP_WEB_SUBNET=172.28.214.0/24
+MCPHUB_CADDY_IP=172.28.214.2
+MCPHUB_WEB_IP=172.28.214.3
+CONTROL_PLANE_MCP_CLIENTS_SUBNET=172.28.211.0/24
+CONTROL_PLANE_MCP_CLIENTS_GATEWAY=172.28.211.1
+MCPHUB_MCP_CLIENTS_IP=172.28.211.2
+CONTROL_PLANE_MCP_BACKENDS_SUBNET=172.28.212.0/24
+CONTROL_PLANE_MCP_BACKENDS_GATEWAY=172.28.212.1
+MCPHUB_BACKENDS_IP=172.28.212.2
+CONTROL_PLANE_MCP_STATE_SUBNET=172.28.215.0/24
+POSTGRES_MCPHUB_IP=172.28.215.2
+MCPHUB_POSTGRES_IP=172.28.215.3
+MCPHUB_FQDN=mcp.home.arpa
 CONTROL_PLANE_TAILSCALE_BIND_ADDRESS=127.0.0.1
 CONTROL_PLANE_LAN_BIND_ADDRESS=127.0.0.2
 CONTROL_PLANE_TAILSCALE_HTTPS_PORT=8443
@@ -706,6 +722,7 @@ MODELS_FQDN=models.home.arpa
 CADDY_IMAGE=example.invalid/caddy@sha256:0000000000000000000000000000000000000000000000000000000000000000
 LITELLM_IMAGE=example.invalid/litellm@sha256:0000000000000000000000000000000000000000000000000000000000000000
 POSTGRES_IMAGE=example.invalid/postgres@sha256:0000000000000000000000000000000000000000000000000000000000000000
+MCPHUB_IMAGE=example.invalid/mcphub@sha256:0000000000000000000000000000000000000000000000000000000000000000
 SPEECH_PROXY_IMAGE=example.invalid/python@sha256:0000000000000000000000000000000000000000000000000000000000000000
 PLAPRE_OPENAI_TTS_IMAGE=homecompute/plapre-openai-tts:validate
 AUTOMATION_BACKUP_IMAGE=ghcr.io/ggml-org/llama.cpp:server@sha256:b74a168a10b13129ce8973582a5c699fadecde45945a8b8b004b79e34f4ff1ab
@@ -735,6 +752,9 @@ LITELLM_MASTER_KEY_FILE=$secret_file
 LITELLM_SALT_KEY_FILE=$secret_file
 POSTGRES_ADMIN_PASSWORD_FILE=$secret_file
 POSTGRES_APP_PASSWORD_FILE=$secret_file
+MCPHUB_POSTGRES_PASSWORD_FILE=$secret_file
+MCPHUB_ADMIN_PASSWORD_FILE=$secret_file
+MCPHUB_CREDENTIAL_ENCRYPTION_KEY_FILE=$secret_file
 EOF
 docker compose --env-file "$control_plane_env" \
   -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --quiet
@@ -742,19 +762,27 @@ control_plane_json="$temporary_root/control-plane.json"
 docker compose --env-file "$control_plane_env" \
   -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --format json >"$control_plane_json"
 jq -e '
-  ((.services | keys) == ["caddy", "litellm", "postgres"]) and
+  ((.services | keys) == ["caddy", "litellm", "mcphub", "postgres"]) and
   all(.services[]; (.privileged // false) == false and (.network_mode // "") != "host") and
   all(.services[]; ((.devices // []) | length) == 0) and
   ([.services[].volumes[]? | select(.type == "bind" and .read_only != true) | .target] | sort) ==
     ["/config", "/data", "/var/lib/postgresql/data"] and
   ([.services[].volumes[]? | select(.type == "bind") | .target] | sort) ==
-    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/var/lib/postgresql/data"] and
+    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/etc/mcphub/mcp_settings.json", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/opt/homecompute/mcphub-entrypoint.sh", "/opt/homecompute/configure-mcphub.py", "/var/lib/postgresql/data"] and
   (.services.caddy.ports | length == 3) and
   ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2", "127.0.0.2"]) and
   ([.services.caddy.ports[] | select(.host_ip == "127.0.0.2" and .published == "80" and .target == 8080)] | length == 1) and
   (all(.services.caddy.ports[]; .protocol == "tcp")) and
   (.services.litellm.ports == null) and
   (.services.postgres.ports == null) and
+  (.services.mcphub.ports == null) and
+  (.services.mcphub.user == "1000:1000") and
+  (.services.mcphub.read_only == true) and
+  (.services.mcphub.cap_drop | index("ALL") != null) and
+  (.services.mcphub.security_opt | index("no-new-privileges:true") != null) and
+  (.services.mcphub.environment.USE_DB == "true") and
+  (.services.mcphub.environment.MCPHUB_SETTINGS_SYNC == "upsert") and
+  (.services.mcphub.environment.TOOL_CALL_GUARD_ENABLED == "true") and
   (.services.postgres.user == "70:70") and
   (.services.postgres.cap_add == null) and
   (.services.postgres.cap_drop | index("ALL") != null) and
@@ -763,6 +791,18 @@ jq -e '
   (.networks.edge.driver_opts["com.docker.network.bridge.name"] == "br-hc-ctrl") and
   (.networks.state.internal == true) and
   (.services.caddy.networks.state == null) and
+  (.networks["mcp-web"].internal == true) and
+  (.networks["mcp-clients"].internal == true) and
+  (.networks["mcp-backends"].internal == true) and
+  (.networks["mcp-state"].internal == true) and
+  (.services.caddy.networks["mcp-web"].ipv4_address == "172.28.214.2") and
+  (.services.mcphub.networks["mcp-web"].ipv4_address == "172.28.214.3") and
+  (.services.mcphub.networks["mcp-clients"].ipv4_address == "172.28.211.2") and
+  (.services.mcphub.networks["mcp-backends"].ipv4_address == "172.28.212.2") and
+  (.services.mcphub.networks["mcp-state"].ipv4_address == "172.28.215.3") and
+  (.services.postgres.networks["mcp-state"].ipv4_address == "172.28.215.2") and
+  (.services.mcphub.networks.state == null) and
+  (.services.mcphub.networks.clients == null) and
   (.services.postgres.networks.edge == null)
 ' "$control_plane_json" >/dev/null
 control_plane_speech_json="$temporary_root/control-plane-speech.json"
@@ -972,7 +1012,12 @@ jq -e '
   (any(.services.n8n.volumes[]; .source == "/srv/state/automation/certs/homecompute-caddy-root.crt" and .target == "/etc/ssl/certs/homecompute-caddy-root.crt" and .read_only == true)) and
   (.networks.migration.internal != true) and
   (.networks.migration.enable_ipv6 == false) and
-  (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n")
+  (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n") and
+  (.services.n8n.networks.mcphub_clients.ipv4_address == "172.28.211.3") and
+  (.services["aula-mcp"].networks.mcphub_backends.ipv4_address == "172.28.212.3") and
+  (.services["tilbudstrolden-mcp"].networks.mcphub_backends.ipv4_address == "172.28.212.4") and
+  (.networks.mcphub_clients.external == true) and
+  (.networks.mcphub_backends.external == true)
 ' "$automation_json" >/dev/null
 jq -e '
   .services["aula-mcp"] |

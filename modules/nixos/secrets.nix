@@ -69,6 +69,21 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
+            "mcphub/postgres-password" = {
+              sopsFile = ../../secrets/mcphub.sops.yaml;
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
+            "mcphub/admin-password" = {
+              sopsFile = ../../secrets/mcphub.sops.yaml;
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
+            "mcphub/credential-encryption-key" = {
+              sopsFile = ../../secrets/mcphub.sops.yaml;
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
             "model-manager/username" = {
               mode = "0400";
             };

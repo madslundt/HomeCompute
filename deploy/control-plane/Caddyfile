@@ -507,6 +507,26 @@ chessmate.home.arpa {
 	}
 }
 
+{$MCPHUB_FQDN} {
+	tls internal
+	encode zstd gzip
+
+	reverse_proxy mcphub:3000 {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
 {$CHAT_FQDN} {
 	tls internal
 	encode zstd gzip
