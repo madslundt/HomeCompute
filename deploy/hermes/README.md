@@ -359,9 +359,10 @@ administration, mailbox access and infrastructure maintenance execution are
 outside this grant. Future service tools require an explicit source grant.
 
 From an exact published Git checkout on home-core, inspect and apply the narrow
-bridge installer. It accepts only the reviewed installed preimages or this
-release's output, retains private backups, stops only the adapter during the
-file/credential transaction, and restores it on installation failure:
+bridge installer. For an active prior installation, it verifies the current
+source and credential hashes against its receipt, then retains a new private
+before-image as the immediate rollback point. It stops only the adapter during
+the file/credential transaction and restores it on installation failure:
 
 ```bash
 sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA

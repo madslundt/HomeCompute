@@ -56,10 +56,10 @@ chat or shell commands.
 ## Activate MCP and n8n
 
 Publish the reviewed repository revision first. On home-core, use the guarded
-Hermes MCP lifecycle from that published release. Inspect its plan. If a
-previous Hermes MCP installation is active, run its guarded rollback first,
-then apply the new plan; the updated tool whitelist is intentionally not
-hot-patched. On the agents guest, connect the existing owner profile using
+Hermes MCP lifecycle from that published release. Inspect its plan. An active
+installation can be upgraded when the installed source and credential hashes
+match its receipt; the lifecycle retains a new private before-image for rollback
+and restarts only the adapter. On the agents guest, connect the existing owner profile using
 `setup-hermes-guest.sh connect-mcp` with the owner credential on stdin, then
 run `scripts/connect-hermes-mcp.py` from the published guest checkout. It
 installs the new Android skill only if absent or already identical.
