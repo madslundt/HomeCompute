@@ -181,7 +181,7 @@ in {
       serviceConfig.Type = "oneshot";
       script = ''
         available_kib="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
-        required_kib="$((${toString cfg.resources.memoryMiB} + 4096) * 1024))"
+        required_kib="$(( (${toString cfg.resources.memoryMiB} + 4096) * 1024 ))"
         if [ -z "$available_kib" ] || [ "$available_kib" -lt "$required_kib" ]; then
           echo "toolbox VM needs ${toString cfg.resources.memoryMiB} MiB plus 4 GiB host headroom; refusing startup" >&2
           exit 1
