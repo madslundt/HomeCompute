@@ -65,7 +65,8 @@ UNITS = ('homecompute-codex-worker-api.service', 'homecompute-codex-broker.servi
          'homecompute-openclaw-sites.service', ACCESS_CERTIFICATE_PATH, ACCESS_CERTIFICATE_SERVICE,
          ACCESS_PROXY, 'homecompute-openclaw-access.service',
          'homecompute-ha-actions.service',
-         'homecompute-codex-vm.service', 'homecompute-agents-vm.service')
+         'homecompute-codex-vm.service', 'homecompute-agents-vm.service',
+         'homecompute-toolbox-vm.service')
 ASSISTANT_UNITS = (
     'homecompute-assistant-context-sync.timer', 'homecompute-assistant-context-maintenance.timer',
     'homecompute-assistant-context-improvements.timer',
@@ -108,6 +109,7 @@ DIRECTORIES = {
     'mattermost/client-plugins': Path('/srv/state/mattermost/client-plugins'),
     'mattermost/secrets': Path('/srv/state/mattermost/secrets'),
     'agents-vm': Path('/srv/state/agents-vm'),
+    'toolbox-vm': Path('/srv/state/toolbox-vm'),
     'codex-vm': Path('/srv/state/codex-vm'),
     'codex-config': Path('/etc/homecompute/codex-vm'),
     'openclaw/config': Path('/var/lib/homecompute-openclaw/config'),
@@ -129,8 +131,10 @@ EXTRA_FILES = {'open-webui/embedding-api-key': Path('/srv/state/open-webui/embed
                'image-studio/webui-secret-key': Path('/srv/state/image-studio/webui-secret-key'),
                'chessmate/runtime.env': Path('/home/mads/projects/chessmate/config/.env')}
 N8N = Path('/srv/state/automation/n8n')
-VM_DISKS = ('agents-vm/agents.qcow2', 'codex-vm/root.qcow2', 'codex-vm/work.qcow2')
+VM_DISKS = ('agents-vm/agents.qcow2', 'codex-vm/root.qcow2', 'codex-vm/work.qcow2',
+            'toolbox-vm/root.qcow2')
 SEED_PATTERN = r'/nix/store/[0-9a-z]{32}-homecompute-agents-seed\.iso'
+TOOLBOX_SEED_PATTERN = r'/nix/store/[0-9a-z]{32}-homecompute-toolbox-seed\.iso'
 
 
 def run(arguments: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -531,7 +535,7 @@ def archive_filter(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
     # QMP sockets, transient logs and partial backups are not recoverable state.
     if info.name.endswith(('.sock', '.log', '.partial')):
         return None
-    if info.name == 'state/agents-vm/seed.iso':
+    if info.name in {'state/agents-vm/seed.iso', 'state/toolbox-vm/seed.iso'}:
         return None  # Archive the exact owning-unit seed, not an incidental file.
     if any(info.name == 'state/omi-data/' + name or info.name.startswith('state/omi-data/' + name + '/')
            for name in ('audio', 'diary')):
@@ -570,6 +574,24 @@ def agents_seed() -> Path:
     seed = seed_path(command.read_text()); info = seed.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222 or not 0 < info.st_size <= 32 * 1024**2:
         raise ValueError('immutable root-owned bounded seed ISO required')
+    return seed
+
+
+def toolbox_seed() -> Path:
+    text = run(['systemctl', 'show', 'homecompute-toolbox-vm.service', '-p', 'ExecStart', '--value'], text=True, timeout=10).stdout
+    paths = re.findall(r'\bpath=([^ ;]+)', text) if len(text) <= 32768 else []
+    if len(paths) != 1:
+        raise ValueError('toolbox owning unit command is unavailable')
+    command = Path(paths[0]); info = command.stat()
+    if (not str(command).startswith('/nix/store/') or not stat.S_ISREG(info.st_mode)
+            or info.st_uid != 0 or info.st_mode & 0o022 or info.st_size > 1024 * 1024):
+        raise ValueError('protected toolbox owning-unit startup script required')
+    matches = re.findall(r'file=(' + TOOLBOX_SEED_PATTERN + r'),if=virtio,format=raw,readonly=on', command.read_text())
+    if len(matches) != 1:
+        raise ValueError('exactly one immutable owning-unit toolbox seed is required')
+    seed = Path(matches[0]); info = seed.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o222 or not 0 < info.st_size <= 32 * 1024**2:
+        raise ValueError('immutable root-owned bounded toolbox seed ISO required')
     return seed
 
 
@@ -630,6 +652,8 @@ def prepare() -> Path:
                 directory = Path(staging)
                 seed = agents_seed(); staged_seed = directory / 'agents-seed.iso'
                 shutil.copyfile(seed, staged_seed)
+                toolbox_boot_seed = toolbox_seed(); staged_toolbox_seed = directory / 'toolbox-seed.iso'
+                shutil.copyfile(toolbox_boot_seed, staged_toolbox_seed)
                 sqlite_backup(N8N / 'database.sqlite', directory / 'n8n.sqlite')
                 config = N8N / 'config'
                 if config.is_symlink() or not config.is_file():
@@ -649,7 +673,7 @@ def prepare() -> Path:
                     raw.unlink()
                 with tarfile.open(temporary, 'x', dereference=False) as archive:
                     for path in directory.iterdir():
-                        if path != staged_seed:
+                        if path not in {staged_seed, staged_toolbox_seed}:
                             archive.add(path, arcname='databases/' + path.name, filter=archive_filter)
                     assistant_dirs, assistant_files = assistant_recovery_sources()
                     assistant_db_backups = assistant_sqlite_backups(assistant_dirs, directory)
@@ -665,19 +689,22 @@ def prepare() -> Path:
                         archive.add(backup, arcname='state/' + relative,
                                     filter=lambda info, original=source: assistant_sqlite_archive_filter(info, original))
                     archive.add(staged_seed, arcname='state/agents-vm/seed.iso')
+                    archive.add(staged_toolbox_seed, arcname='state/toolbox-vm/seed.iso')
                     for relative, source in {**EXTRA_FILES, **assistant_files}.items():
                         archive.add(source, arcname='state/' + relative, filter=archive_filter)
                     # Original media is owned by the NAS and must have its own
                     # independent backup; copying it back to that NAS is not DR.
                     manifest = {'schema_version': 1, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat(),
-                                'postgres': sorted(POSTGRES), 'sqlite': ['n8n'], 'vms': ['agents-vm', 'codex-vm'],
+                                'postgres': sorted(POSTGRES), 'sqlite': ['n8n'], 'vms': ['agents-vm', 'codex-vm', 'toolbox-vm'],
                                 'media_included': False, 'host_age_identity_included': False,
                                 'nix_store_symlinks_included': False,
                                 'assistant_context': {'directories': sorted(assistant_dirs),
                                                       'files': sorted(assistant_files),
                                                       'sqlite_databases': sorted(relative for relative, _, _ in assistant_db_backups)},
                                 'agents_seed': {'archive_path': 'state/agents-vm/seed.iso', 'source': str(seed),
-                                                'sha256': hashlib.sha256(staged_seed.read_bytes()).hexdigest()}}
+                                                'sha256': hashlib.sha256(staged_seed.read_bytes()).hexdigest()},
+                                'toolbox_seed': {'archive_path': 'state/toolbox-vm/seed.iso', 'source': str(toolbox_boot_seed),
+                                                 'sha256': hashlib.sha256(staged_toolbox_seed.read_bytes()).hexdigest()}}
                     entry = directory / 'manifest.json'
                     entry.write_text(json.dumps(manifest, sort_keys=True))
                     archive.add(entry, arcname='manifest.json')
@@ -760,8 +787,11 @@ def verify_restored(target: Path) -> dict:
     if manifest_path.is_symlink() or not manifest_path.is_file() or manifest_path.stat().st_size > 2 * 1024**2:
         raise ValueError('bounded regular recovery manifest required')
     manifest = json.loads(manifest_path.read_text())
+    legacy_vms = ['agents-vm', 'codex-vm']
+    current_vms = ['agents-vm', 'codex-vm', 'toolbox-vm']
+    manifest_vms = manifest.get('vms')
     if (manifest.get('schema_version') != 1 or manifest.get('postgres') != sorted(POSTGRES)
-            or manifest.get('vms') != ['agents-vm', 'codex-vm'] or manifest.get('sqlite') != ['n8n']):
+            or manifest_vms not in (legacy_vms, current_vms) or manifest.get('sqlite') != ['n8n']):
         raise ValueError('recovery manifest scope mismatch')
     assistant = manifest.get('assistant_context')
     if assistant is not None:
@@ -835,6 +865,14 @@ def verify_restored(target: Path) -> dict:
             or not re.fullmatch(SEED_PATTERN, metadata.get('source', ''))
             or hashlib.sha256(seed.read_bytes()).hexdigest() != metadata.get('sha256')):
         raise ValueError('restored agents boot seed is missing or does not match its manifest')
+    if manifest_vms == current_vms:
+        toolbox_seed_file = target / 'state/toolbox-vm/seed.iso'
+        toolbox_metadata = manifest.get('toolbox_seed', {})
+        if (toolbox_seed_file.is_symlink() or not toolbox_seed_file.is_file() or toolbox_seed_file.stat().st_size > 32 * 1024**2
+                or toolbox_metadata.get('archive_path') != 'state/toolbox-vm/seed.iso'
+                or not re.fullmatch(TOOLBOX_SEED_PATTERN, toolbox_metadata.get('source', ''))
+                or hashlib.sha256(toolbox_seed_file.read_bytes()).hexdigest() != toolbox_metadata.get('sha256')):
+            raise ValueError('restored toolbox boot seed is missing or does not match its manifest')
     config = json.loads((target / 'databases/n8n-config.json').read_text())
     if not isinstance(config.get('encryptionKey'), str) or not config['encryptionKey']:
         raise ValueError('n8n credential encryption configuration is absent')
@@ -856,14 +894,15 @@ def verify_restored(target: Path) -> dict:
             # import is a separate isolated restore gate, not inferred here.
             while data.read(1024 * 1024):
                 pass
-    for relative in VM_DISKS:
+    disks_to_check = VM_DISKS if manifest_vms == current_vms else VM_DISKS[:-1]
+    for relative in disks_to_check:
         disk = target / 'state' / relative
         if disk.is_symlink() or not disk.is_file():
             raise ValueError('required VM disk is missing from the recovery archive')
         run(['qemu-img', 'check', '-q', str(disk)], timeout=600)
     return {'sqlite_integrity': 'ok', 'sqlite_databases_checked': len(sqlite_files),
-            'gzip_dumps_checked': len(POSTGRES), 'qcow2_disks_checked': len(VM_DISKS),
-            'agents_seed_verified': True,
+            'gzip_dumps_checked': len(POSTGRES), 'qcow2_disks_checked': len(disks_to_check),
+            'agents_seed_verified': True, 'toolbox_seed_verified': manifest_vms == current_vms,
             'postgres_import_verified': False, 'vm_boot_verified': False, 'media_included': False}
 
 

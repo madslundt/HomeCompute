@@ -61,6 +61,12 @@
         href: https://openbot.run/app
         description: Open AI teammates · select the home-core server
 
+    - Craft Anything:
+        id: homecore-craft-anything
+        icon: mdi-hammer-wrench
+        href: https://github.com/storytold/craft-anything
+        description: Upstream project · installed in the isolated Home Core toolbox
+
     - Mattermost:
         id: homecore-mattermost
         icon: mattermost.png

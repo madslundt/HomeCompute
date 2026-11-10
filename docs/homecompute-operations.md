@@ -440,6 +440,8 @@ it from the owning unit's bounded startup script, validates the Nix-store ISO,
 and archives it as `state/agents-vm/seed.iso` with its SHA-256 in the manifest.
 It never writes a seed into the live VM directory. Restore verification requires
 that archived seed and its manifest hash; no external seed fallback is assumed.
+The same lifecycle archives the isolated Craft Anything toolbox disk and seed
+as `state/toolbox-vm/root.qcow2` and `state/toolbox-vm/seed.iso`.
 
 `scripts/setup-nas-recovery-backup.py` is the targeted lifecycle when a full
 NixOS rollout would revert unrelated pending application work. It requires a

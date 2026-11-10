@@ -92,6 +92,7 @@ printf '[validate] Nix update workflow tests\n'
 python3 "$REPO_ROOT/tests/flake-update-workflow-test.py"
 printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
+python3 "$REPO_ROOT/tests/toolbox-vm-module-test.py"
 python3 "$REPO_ROOT/tests/tailscale-module-test.py"
 python3 "$REPO_ROOT/tests/nas-recovery-backup-test.py"
 python3 "$REPO_ROOT/tests/home-core-service-recovery-test.py"
@@ -1389,9 +1390,12 @@ jq -e '
 # OpenCode is an opt-in NixOS service with a private user, loopback listener,
 # and Tailscale Serve route. Its runbook does not define a Compose workload.
 [[ ! -e "$REPO_ROOT/deploy/opencode/compose.yaml" ]]
+# Craft Anything uses a dedicated Home Core KVM guest and has no host Compose
+# project or listener.
+[[ ! -e "$REPO_ROOT/deploy/toolbox/compose.yaml" ]]
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openbot openclaw opencode piper-tts ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openbot openclaw opencode piper-tts toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

@@ -75,8 +75,8 @@ front:
 | `automation` microVM | n8n, MCP servers, browser workers, queue and workflow state | Browser workers render arbitrary web content and n8n code nodes execute JS |
 | `agents` KVM guest | NemoClaw/OpenShell plus Hermes `agent-owner`, `agent-partner`, `agent-child1`, `agent-child2`, and optional `agent-family` sandboxes | Prompt injection makes model behavior attacker-influenceable while it holds tool credentials |
 
-A fourth `toolbox` microVM is added only if that workload is ever built; it
-runs unreviewed code by design and must not sit beside agent credentials.
+A fourth `toolbox` KVM microVM is used for Craft Anything, which runs
+unreviewed project code by design. It must not sit beside agent credentials.
 
 The three Hermes sandboxes share the `agents` kernel. The boundary between
 household members is a privacy boundary, not an adversarial one, and URS-PA-018
@@ -88,7 +88,9 @@ Stage 1 is the current state: one kernel, containers only, with the controls
 above enforced by `scripts/validate-repository.sh`. Stage 2 adds the `agents`
 microVM and is a precondition for Hermes handling any real personal data or
 untrusted input. Stage 3 adds the `automation` microVM when browser workers
-appear. The 2026-09-26 household rollout starts stage 2. `home-core` remains
+appear. The 2026-09-26 household rollout starts stage 2. Craft Anything uses an
+additional isolated toolbox guest so its arbitrary project execution does not
+share the agents kernel. `home-core` remains
 NixOS and declaratively owns the VM, host-only bridge, firewall, resource
 limits, and backup inclusion. The guest uses Ubuntu 24.04 because that is the
 validated NemoClaw host path; it does not replace or weaken the NixOS host

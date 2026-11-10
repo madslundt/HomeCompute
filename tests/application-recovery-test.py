@@ -392,14 +392,17 @@ assert not (root / 'staging/assistant-sqlite-inputs').exists()
             for disk in recovery.VM_DISKS:
                 p = source / 'state' / disk; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(b'synthetic-disk')
             seed=source/'state/agents-vm/seed.iso';seed.write_bytes(b'synthetic-seed')
+            toolbox_seed=source/'state/toolbox-vm/seed.iso';toolbox_seed.write_bytes(b'synthetic-toolbox-seed')
             app=source/'state/open-webui';app.mkdir()
             with closing(sqlite3.connect(app/'webui.db')) as db:
                 db.execute('CREATE TABLE fixture(id INTEGER PRIMARY KEY)');db.commit()
             (app/'arbitrary.db').write_bytes(b'not a SQLite database')
             manifest = {'schema_version': 1, 'postgres': sorted(recovery.POSTGRES),
-                        'vms': ['agents-vm', 'codex-vm'], 'sqlite': ['n8n'],
+                        'vms': ['agents-vm', 'codex-vm', 'toolbox-vm'], 'sqlite': ['n8n'],
                         'agents_seed':{'archive_path':'state/agents-vm/seed.iso','source':'/nix/store/'+'a'*32+'-homecompute-agents-seed.iso',
-                                       'sha256':hashlib.sha256(seed.read_bytes()).hexdigest()}}
+                                       'sha256':hashlib.sha256(seed.read_bytes()).hexdigest()},
+                        'toolbox_seed':{'archive_path':'state/toolbox-vm/seed.iso','source':'/nix/store/'+'b'*32+'-homecompute-toolbox-seed.iso',
+                                        'sha256':hashlib.sha256(toolbox_seed.read_bytes()).hexdigest()}}
             (source / 'manifest.json').write_text(json.dumps(manifest))
             archive_path = root / 'archive.tar'
             with tarfile.open(archive_path, 'w') as archive:
@@ -410,12 +413,26 @@ assert not (root / 'staging/assistant-sqlite-inputs').exists()
             self.assertEqual(result['sqlite_integrity'], 'ok')
             self.assertEqual(result['sqlite_databases_checked'], 2)
             self.assertEqual(result['gzip_dumps_checked'], 4)
-            self.assertEqual(result['qcow2_disks_checked'], 3)
-            self.assertEqual(check.call_count, 3)
+            self.assertEqual(result['qcow2_disks_checked'], 4)
+            self.assertEqual(check.call_count, 4)
             self.assertFalse(result['postgres_import_verified'])
             self.assertFalse(result['vm_boot_verified'])
             self.assertFalse(result['media_included'])
             self.assertTrue(result['agents_seed_verified'])
+            self.assertTrue(result['toolbox_seed_verified'])
+
+            manifest['vms'] = ['agents-vm', 'codex-vm']
+            manifest.pop('toolbox_seed')
+            (source / 'state/toolbox-vm/root.qcow2').unlink()
+            toolbox_seed.unlink()
+            (source / 'manifest.json').write_text(json.dumps(manifest))
+            with tarfile.open(archive_path, 'w') as archive:
+                for path in source.iterdir(): archive.add(path, arcname=path.name)
+            with patch.object(recovery, 'SCRATCH', scratch), patch.object(recovery, 'run') as check:
+                result = recovery.verify(archive_path, scratch / 'legacy')
+            self.assertEqual(result['qcow2_disks_checked'], 3)
+            self.assertEqual(check.call_count, 3)
+            self.assertFalse(result['toolbox_seed_verified'])
 
     def test_seed_is_derived_only_from_exact_readonly_owning_drive(self):
         value='/nix/store/'+'a'*32+'-homecompute-agents-seed.iso'
@@ -427,6 +444,7 @@ assert not (root / 'staging/assistant-sqlite-inputs').exists()
 
     def test_incidental_live_seed_cannot_override_captured_owner_seed(self):
         self.assertIsNone(recovery.archive_filter(tarfile.TarInfo('state/agents-vm/seed.iso')))
+        self.assertIsNone(recovery.archive_filter(tarfile.TarInfo('state/toolbox-vm/seed.iso')))
 
     def test_failure_never_publishes_partial_archives(self):
         with tempfile.TemporaryDirectory() as temporary:
