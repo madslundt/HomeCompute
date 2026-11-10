@@ -7,6 +7,9 @@ import json
 import math
 import re
 import socket
+import urllib.error
+import urllib.request
+from pathlib import Path
 
 from openclaw_tasks import BROKER, Tasks, request
 
@@ -28,21 +31,89 @@ HERMES_SERVICE_TOOLS = frozenset('homecompute_' + name for name in (
 ))
 
 
+ANDROID_TOOLS = [
+    {"name": "homecompute_android_status", "description": "Check the configured Android Portal connection.", "endpoint": "/ping"},
+    {"name": "homecompute_android_screen", "description": "Read the Android accessibility tree; prefer this over screenshots.", "endpoint": "/a11y_tree"},
+    {"name": "homecompute_android_apps", "description": "List launchable Android application packages.", "endpoint": "/packages"},
+    {"name": "homecompute_android_visible_text", "description": "Read text from the current Android screen state.", "endpoint": "/state"},
+    {"name": "homecompute_android_screenshot", "description": "Capture the screen only when accessibility inspection is insufficient.", "endpoint": "/screenshot?hideOverlay=true"},
+]
+
+
+class AndroidPortal:
+    """Fixed, authenticated, read-only Mobilerun Portal client."""
+    def __init__(self):
+        path = Path('/etc/homecompute/android-gateway.json')
+        self.enabled = path.is_file()
+        self.device_id = 'android-tablet'
+        self.base_url = ''
+        self.token_file = Path('/etc/homecompute/android-portal-token')
+        if self.enabled:
+            value = json.loads(path.read_bytes())
+            if not isinstance(value, dict):
+                raise ValueError('Android Portal configuration refused')
+            if value.get('schema_version') == 1:
+                value.pop('schema_version')
+            if (not isinstance(value, dict) or set(value) != {'device_id', 'base_url', 'token_file'}
+                    or not isinstance(value['base_url'], str) or not value['base_url'].startswith('http://')
+                    or any(char in value['base_url'] for char in '?#')
+                    or not isinstance(value['device_id'], str) or not value['device_id']
+                    or not isinstance(value['token_file'], str) or not value['token_file'].startswith('/')):
+                raise ValueError('Android Portal configuration refused')
+            self.base_url = value['base_url'].rstrip('/')
+            self.device_id = value['device_id']
+            self.token_file = Path(value['token_file'])
+        self.tools = [{"name": row["name"], "description": row["description"],
+                       "inputSchema": {"type": "object", "additionalProperties": False,
+                                       "properties": {}, "required": []},
+                       "annotations": {"readOnlyHint": True, "openWorldHint": False}}
+                      for row in ANDROID_TOOLS] if self.enabled else []
+
+    def validate(self, name: str, arguments: Any) -> dict[str, Any]:
+        if not self.enabled or name not in {row['name'] for row in ANDROID_TOOLS} or arguments != {}:
+            raise ValueError('Android tool is disabled or arguments are invalid')
+        return {}
+
+    def request(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate(name, arguments)
+        endpoint = next(row['endpoint'] for row in ANDROID_TOOLS if row['name'] == name)
+        try:
+            token = self.token_file.read_text().strip()
+            if not 16 <= len(token) <= 4096 or any(char.isspace() for char in token):
+                raise ValueError('Portal credential invalid')
+            req = urllib.request.Request(self.base_url + endpoint,
+                headers={'Authorization': 'Bearer ' + token, 'Accept': 'application/json'})
+            with urllib.request.urlopen(req, timeout=8) as response:
+                raw = response.read(2_000_001)
+            if len(raw) > 2_000_000:
+                raise ValueError('Portal response exceeds limit')
+            return {'device_id': self.device_id, 'available': True, 'data': json.loads(raw)}
+        except (OSError, ValueError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            return {'device_id': self.device_id, 'available': False,
+                    'message': 'Android device is unavailable; check Portal networking and authentication.'}
+
+
 class HermesServices:
     """Owner household grant; future services and account administration stay excluded."""
 
     def __init__(self, services: Any):
         self.services = services
-        self.tools = [tool for tool in services.tools if tool['name'] in HERMES_SERVICE_TOOLS]
+        self.android = AndroidPortal()
+        self.tools = ([tool for tool in services.tools if tool['name'] in HERMES_SERVICE_TOOLS]
+                      + self.android.tools)
         self.names = frozenset(tool['name'] for tool in self.tools)
 
     def validate(self, name: str, arguments: Any) -> dict[str, Any]:
         if name not in self.names:
             raise ValueError('tool outside Hermes household grant')
+        if name.startswith('homecompute_android_'):
+            return self.android.validate(name, arguments)
         return self.services.validate(name, arguments)
 
     def request(self, name: str, arguments: Any) -> dict[str, Any]:
         self.validate(name, arguments)
+        if name.startswith('homecompute_android_'):
+            return self.android.request(name, arguments)
         return self.services.request(name, arguments)
 
 

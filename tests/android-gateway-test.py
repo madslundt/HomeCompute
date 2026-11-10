@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+spec = importlib.util.spec_from_file_location("android_notifications", ROOT / "scripts/android_notifications.py")
+notifications = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = notifications
+spec.loader.exec_module(notifications)
+
+
+class AndroidGatewayTests(unittest.TestCase):
+    def frame(self, kind="NOTIFICATION_POSTED", package="com.facebook.orca", text="Hello"):
+        return {"type": kind, "timestamp": 1780000000000, "payload": {
+            "package": package, "title": "Peter", "text": text, "key": "notif-1", "id": 7,
+            "post_time": 1780000000000}}
+
+    def test_normalizes_current_and_legacy_removed_events(self):
+        current = notifications.normalize(self.frame(), "tablet-1")
+        self.assertEqual(current["event_type"], "NOTIFICATION_POSTED")
+        self.assertEqual(current["application_package"], "com.facebook.orca")
+        legacy = {"type": "NOTIFICATION", "timestamp": 1780000000000,
+                  "payload": {"package": "com.facebook.orca", "key": "notif-1", "removed": True}}
+        self.assertEqual(notifications.normalize(legacy, "tablet-1")["event_type"], "NOTIFICATION_REMOVED")
+
+    def test_normalizes_rpc_wrapper(self):
+        event = notifications.normalize({"method": "events/device", "params": self.frame()}, "tablet-1")
+        self.assertEqual(event["device_id"], "tablet-1")
+
+    def test_allowlist_and_deduplication(self):
+        with tempfile.TemporaryDirectory() as temp:
+            listener = notifications.Listener({"device_id": "tablet-1", "allowed_packages": ["com.facebook.orca"],
+                "webhook_url": "http://127.0.0.1/hook"}, "portal-secret", "hook-secret", Path(temp) / "seen.db")
+            self.assertFalse(listener.process(self.frame(package="com.other.app")))
+            with patch("android_notifications.urllib.request.urlopen") as send:
+                send.return_value.__enter__.return_value.status = 202
+                self.assertTrue(listener.process(self.frame()))
+                self.assertFalse(listener.process(self.frame()))
+                self.assertEqual(send.call_count, 1)
+            listener.dedup.db.close()
+
+    def test_webhook_failure_does_not_poison_deduplication(self):
+        listener = notifications.Listener({"device_id": "tablet-1", "allowed_packages": ["com.facebook.orca"],
+            "webhook_url": "http://127.0.0.1/hook"}, "portal-secret", "hook-secret")
+        with patch("android_notifications.urllib.request.urlopen", side_effect=[OSError(), _response(202)]) as send:
+            with self.assertRaises(OSError):
+                listener.process(self.frame())
+            self.assertTrue(listener.process(self.frame()))
+            self.assertEqual(send.call_count, 2)
+
+    def test_missing_webhook_credential_fails_closed(self):
+        listener = notifications.Listener({"device_id": "tablet-1", "allowed_packages": ["com.facebook.orca"],
+            "webhook_url": "http://127.0.0.1/hook"}, "portal-secret", "")
+        with patch("android_notifications.urllib.request.urlopen") as send:
+            with self.assertRaises(OSError):
+                listener.process(self.frame())
+        send.assert_not_called()
+
+    def test_reconnect_backoff_grows_and_caps(self):
+        delays = [1]
+        for _ in range(8):
+            delays.append(notifications.next_backoff(delays[-1]))
+        self.assertEqual(delays, [1, 2, 4, 8, 16, 32, 60, 60, 60])
+
+    def test_persistent_deduplication_contains_only_digests(self):
+        with tempfile.TemporaryDirectory() as temp:
+            database = Path(temp) / "seen.db"
+            event = notifications.normalize(self.frame(), "tablet-1")
+            first = notifications.Deduplicator(database)
+            self.assertTrue(first.accept(event))
+            first.db.close()
+            second = notifications.Deduplicator(database)
+            self.assertFalse(second.accept(event))
+            rows = second.db.execute("SELECT digest FROM seen").fetchall()
+            self.assertTrue(rows and len(rows[0][0]) == 64)
+            self.assertNotIn("Peter", str(rows))
+            self.assertNotIn("Hello", str(rows))
+            second.db.close()
+
+    def test_android_portal_tool_surface_is_read_only_and_auth_required(self):
+        spec = importlib.util.spec_from_file_location("openclaw_capabilities", ROOT / "scripts/openclaw_capabilities.py")
+        capabilities = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = capabilities
+        spec.loader.exec_module(capabilities)
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "android-gateway.json"
+            token = Path(temp) / "portal-token"
+            config.write_text(json.dumps({"device_id": "tablet-1", "base_url": "http://127.0.0.1:8080",
+                                          "token_file": str(token)}))
+            token.write_text("0123456789abcdef0123456789abcdef")
+            portal = capabilities.AndroidPortal()
+            portal.token_file = token
+            portal.base_url = "http://127.0.0.1:8080"
+            with patch.object(capabilities, "Path", return_value=config):
+                portal = capabilities.AndroidPortal()
+            portal.token_file = token
+            with patch("openclaw_capabilities.urllib.request.urlopen") as fetch:
+                fetch.return_value.__enter__.return_value.read.return_value = b'{"status":"success"}'
+                result = portal.request("homecompute_android_status", {})
+                request = fetch.call_args.args[0]
+                self.assertEqual(request.get_header("Authorization"), "Bearer 0123456789abcdef0123456789abcdef")
+                self.assertTrue(result["available"])
+            with self.assertRaises(ValueError):
+                portal.validate("homecompute_android_tap", {"x": 1, "y": 1})
+            with patch("openclaw_capabilities.urllib.request.urlopen", side_effect=capabilities.urllib.error.URLError("offline")):
+                unavailable = portal.request("homecompute_android_status", {})
+                self.assertFalse(unavailable["available"])
+            self.assertEqual({row["name"] for row in portal.tools}, {
+                "homecompute_android_status", "homecompute_android_screen", "homecompute_android_apps",
+                "homecompute_android_visible_text", "homecompute_android_screenshot"})
+
+
+def _response(status):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *_): return False
+        def __init__(self): self.status = status
+    return Response()
+
+
+if __name__ == "__main__":
+    unittest.main()

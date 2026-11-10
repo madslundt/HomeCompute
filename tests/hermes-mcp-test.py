@@ -107,6 +107,7 @@ class ConnectionTests(unittest.TestCase):
                        'provider': {'credentialResolution': {'ok': True}}, 'adapter': {'registered': True},
                        'trustedPrivateTarget': {'state': 'match'}}
         self.digest = hashlib.sha256((connect.SKILL / 'SKILL.md').read_bytes()).hexdigest()
+        self.android_digest = hashlib.sha256((connect.ANDROID_SKILL / 'SKILL.md').read_bytes()).hexdigest()
 
     def test_failed_native_diagnostic_redacts_the_supplied_bearer(self):
         failed = subprocess.CompletedProcess([], 2, 'synthetic failure ' + self.token, 'private endpoint refused')
@@ -123,7 +124,14 @@ class ConnectionTests(unittest.TestCase):
             if args[2:4] == ['status', '--json']: return json.dumps({'agent': 'hermes', 'phase': 'Ready', 'hostMounts': []})
             if args[2:4] == ['mcp', 'list']: return json.dumps({'bridges': []})
             if args[2:4] == ['mcp', 'status']: return json.dumps(self.status)
-            if args[2] == 'exec': return self.digest
+            if args[2] == 'exec':
+                program = kwargs.get('input', '')
+                if 'android-gateway' in program:
+                    if not hasattr(self, 'android_probe_count'):
+                        self.android_probe_count = 0
+                    self.android_probe_count += 1
+                    return 'absent' if self.android_probe_count == 1 else self.android_digest
+                return self.digest
             return ''
         with patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), patch.object(connect, 'call', side_effect=call):
             result = connect.connect('hermes-personal', self.token)
@@ -165,7 +173,9 @@ class ConnectionTests(unittest.TestCase):
 class ProbeTests(unittest.TestCase):
     def test_waits_for_type_simple_listener_without_retrying_authentication(self):
         names = ('homecompute_school_discover', 'homecompute_shopping_search',
-                 'homecompute_system_read', 'homecompute_ha_propose')
+                 'homecompute_system_read', 'homecompute_ha_propose',
+                 'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
+                 'homecompute_android_visible_text', 'homecompute_android_screenshot')
         response = Mock(status=200)
         response.read.return_value = json.dumps({'result': {'tools': [{'name': name} for name in names]}}).encode()
         connection = Mock()

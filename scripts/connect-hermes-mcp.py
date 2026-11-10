@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 URL = 'https://homecompute-capabilities.home.arpa:19445/mcp'
 KEY = 'HOMECOMPUTE_HERMES_MCP_TOKEN'
 SKILL = ROOT / 'deploy/hermes/skills/homecompute-household'
+ANDROID_SKILL = ROOT / 'deploy/hermes/skills/android-gateway'
 GATES = Path('/var/lib/homecompute-hermes/gates')
 PYTHON = '/opt/hermes/python-runtime/bin/python3.14'
 
@@ -149,7 +150,22 @@ print(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else 'absent')
     installed = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=program, env=env).strip()
     if installed != expected:
         raise ValueError('native household skill readback differs')
-    return {'sandbox': sandbox, 'server': 'homecompute', 'credential_verified': True, 'skill_sha256': expected}
+    android_expected = hashlib.sha256((ANDROID_SKILL / 'SKILL.md').read_bytes()).hexdigest()
+    android_program = '''import hashlib,pathlib
+p=pathlib.Path('/sandbox/.hermes/skills/android-gateway/SKILL.md')
+assert not p.is_symlink() and not p.parent.is_symlink()
+print(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else 'absent')
+'''
+    android_current = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=android_program, env=env).strip()
+    if android_current not in {'absent', android_expected}:
+        raise ValueError('existing Android skill differs; preserve private edits')
+    if android_current == 'absent':
+        call(cli + ['skill', 'install', str(ANDROID_SKILL)], env=env)
+    android_installed = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=android_program, env=env).strip()
+    if android_installed != android_expected:
+        raise ValueError('native Android skill readback differs')
+    return {'sandbox': sandbox, 'server': 'homecompute', 'credential_verified': True,
+            'skill_sha256': expected, 'android_skill_sha256': android_expected}
 
 
 def main() -> int:

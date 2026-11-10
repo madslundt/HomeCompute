@@ -13,6 +13,7 @@ in
     ../../modules/nixos/application-config.nix
     ../../modules/nixos/agent-office.nix
     ../../modules/nixos/assistant-context.nix
+    ../../modules/nixos/android-gateway.nix
     ../../modules/nixos/hermes-dashboard.nix
     ../../modules/nixos/system.nix
     ../../modules/nixos/networking.nix
@@ -45,6 +46,10 @@ in
   networking.hostName = "home-core";
   homecompute.agentOffice.enable = true;
   homecompute.hermesDashboard.enable = true;
+  homecompute.androidGateway = {
+    enable = true;
+    portalHost = "192.168.30.34";
+  };
   homecompute.mattermost.enable = true;
   homecompute.opencode.enable = true;
   homecompute.serviceRecovery.enable = true;

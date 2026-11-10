@@ -1,0 +1,51 @@
+{
+  "name": "Android notifications (filtered ingress)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "android-notifications",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a303bc26-e2ed-4c46-8b69-e0f810eb0d1f",
+      "name": "Android notification ingress",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "5a564179-8848-4234-928c-04671ba0e3cb",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_AFTER_IMPORT",
+          "name": "Android notification ingress"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $json.body ?? $json;\nconst allowed = new Set(['com.facebook.orca']);\nif (!input || typeof input !== 'object') return [];\nif (!['NOTIFICATION_POSTED', 'NOTIFICATION_REMOVED'].includes(input.event_type)) return [];\nif (input.device_id !== 'android-tablet' || !allowed.has(input.application_package)) return [];\nif (typeof input.notification_key !== 'string' || input.notification_key.length > 512) return [];\nif (!Number.isSafeInteger(input.timestamp) || input.timestamp < 0) return [];\nif (input.sender !== null && input.sender !== undefined && typeof input.sender !== 'string') return [];\nif (input.notification_text !== null && input.notification_text !== undefined && typeof input.notification_text !== 'string') return [];\nreturn [{json: {event_type: input.event_type, device_id: input.device_id, application_package: input.application_package, sender: input.sender ?? null, notification_text: input.notification_text ?? null, timestamp: input.timestamp, notification_key: input.notification_key, metadata: input.metadata ?? {}}}];"
+      },
+      "id": "f6222293-9574-49e0-a9c7-a10a0b7df0ba",
+      "name": "Validate and normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    }
+  ],
+  "connections": {
+    "Android notification ingress": {
+      "main": [[{"node": "Validate and normalize", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "versionId": "fced4cd3-2628-4999-95dd-4883902033bc",
+  "meta": {"templateCredsSetupCompleted": false},
+  "tags": []
+}

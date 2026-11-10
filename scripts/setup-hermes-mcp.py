@@ -56,7 +56,9 @@ def published(revision: str) -> None:
     call(['git', '-C', str(ROOT), 'merge-base', '--is-ancestor', revision, 'origin/master'])
     call(['git', '-C', str(ROOT), 'diff', '--exit-code', 'HEAD', '--', *FILES,
           'scripts/setup-hermes-mcp.py', 'scripts/connect-hermes-mcp.py',
-          'deploy/hermes/skills/homecompute-household/SKILL.md'])
+          'scripts/openclaw_capabilities.py',
+          'deploy/hermes/skills/homecompute-household/SKILL.md',
+          'deploy/hermes/skills/android-gateway/SKILL.md'])
 
 
 def plan(module, revision: str) -> dict:
@@ -97,6 +99,9 @@ def probe(module) -> None:
         if not {'homecompute_school_discover', 'homecompute_shopping_search', 'homecompute_system_read',
                 'homecompute_ha_propose'} <= names:
             raise ValueError('required household services unavailable')
+        if not {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
+                'homecompute_android_visible_text', 'homecompute_android_screenshot'} <= names:
+            raise ValueError('read-only Android MCP tools unavailable')
         if names & {'homecompute_ha_execute', 'homecompute_ha_approve', 'homecompute_maintenance_run'}:
             raise ValueError('unexpected privileged Hermes tool')
     finally:
