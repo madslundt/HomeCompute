@@ -222,21 +222,21 @@ mcp_servers:
       - create_skill
       - update_skill
       - delete_skill
-  homecompute-hermes:
+  homecompute_hermes:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http
     auth_type: oauth_delegate
     description: Hermes-owner capability principal; caller supplies its role-scoped bearer
     allow_all_keys: false
     access_groups: [hermes-owner-tools]
-  homecompute-openclaw:
+  homecompute_openclaw:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http
     auth_type: oauth_delegate
     description: OpenClaw capability principal; caller supplies its role-scoped bearer
     allow_all_keys: false
     access_groups: [openclaw-agent-tools]
-  homecompute-openbot-android:
+  homecompute_openbot_android:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http
     auth_type: oauth_delegate
