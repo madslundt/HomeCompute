@@ -13,7 +13,7 @@ currently active in a production n8n instance.
 | [Isolated model benchmark](model-benchmark/README.md) | Replay cases through different OpenRouter models using real read-only Aula MCP and public Tavily search, without schedules, notifications, or production writes |
 | [Read-only personal and work mail bridges](../scripts/openclaw_mail_workflow.py) | Separate prepared n8n routes for Mads's Outlook, Kristina's Outlook, and approved work Gmail. OAuth setup and isolated principal runtimes are required before publication; no mailbox has been read by these staged routes. |
 | [Synthetic investigation scaffold](agent-investigation/n8n-workflow.json) | Inactive manual-only incident adapter; HTTP event node is disabled and uses a deliberately invalid endpoint until private ingress and dedicated hook authentication are approved |
-| [Android notifications](android-notifications/n8n-workflow.json) | Inactive authenticated ingress for package-filtered Mobilerun Portal notifications; validates normalized events without invoking an LLM |
+| [Android notifications](android-notifications/README.md) | Inactive source template for authenticated, package-filtered Mobilerun Portal notifications; the guarded home-core installer publishes it without invoking an LLM or sending messages |
 
 Scheduled embedding integrations are maintained as sanitized patch builders in
 `scripts/workflow_{calendar_semantic,school_embeddings,research_embeddings,battery_embeddings}.py`
