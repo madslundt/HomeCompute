@@ -161,9 +161,20 @@ def rollback(module) -> dict:
     receipt = json.loads((STATE / 'receipt.json').read_bytes())
     if receipt['state'] != 'applied':
         raise ValueError('active installation receipt required')
+    restore = {}
+    preserve = []
     for name, (target, _) in FILES.items():
         module.regular(target, 0)
-        if digest(target.read_bytes()) != receipt['files'][name]:
+        current = digest(target.read_bytes())
+        desired = digest((ROOT / name).read_bytes())
+        if current == receipt['files'][name]:
+            restore[name] = True
+        elif current == desired:
+            # A newer, published revision may already have installed this file.
+            # Preserve it while rolling back only the files owned by this receipt.
+            restore[name] = False
+            preserve.append(name)
+        else:
             raise ValueError('later source changes block rollback')
     if digest(module.TOKENS.read_bytes()) != receipt['tokens_sha256']:
         raise ValueError('later credential changes block rollback')
@@ -173,10 +184,13 @@ def rollback(module) -> dict:
     metadata = json.loads((backup / 'metadata.json').read_bytes())
     call(['systemctl', 'stop', ADAPTER])
     for name, target in {**{name: target for name, (target, _) in FILES.items()}, 'tokens': module.TOKENS}.items():
+        if name in restore and not restore[name]:
+            continue
         row = metadata[name]
         module.write(target, (backup / row['backup']).read_bytes(), row['uid'], row['gid'], row['mode'])
     call(['systemctl', 'start', ADAPTER])
     receipt['state'] = 'rolled-back'
+    receipt['preserved_source_files'] = preserve
     module.write(STATE / 'receipt.json', json.dumps(receipt, sort_keys=True).encode(), mode=0o600)
     return receipt
 

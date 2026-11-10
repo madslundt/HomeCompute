@@ -99,6 +99,21 @@ class SetupTests(unittest.TestCase):
         with self.assertRaises(ValueError): setup.rollback(self.module)
         self.calls.assert_not_called()
 
+    def test_rollback_preserves_a_file_already_updated_to_the_current_published_source(self):
+        plan, digest = self.reviewed(); setup.apply(self.module, plan, digest)
+        name = 'scripts/openclaw-communication.py'
+        target, _ = setup.FILES[name]
+        newer = b'newer published source'
+        target.write_bytes(newer)
+        (setup.ROOT / name).write_bytes(newer)
+        self.calls.reset_mock()
+        receipt = setup.rollback(self.module)
+        self.assertEqual(receipt['preserved_source_files'], [name])
+        self.assertEqual(target.read_bytes(), newer)
+        self.assertTrue(all(path.read_bytes() == b'old source'
+                            for file, (path, _) in setup.FILES.items() if file != name))
+        self.assertEqual([call.args[0][1] for call in self.calls.call_args_list], ['stop', 'start'])
+
 
 class ConnectionTests(unittest.TestCase):
     def setUp(self):
