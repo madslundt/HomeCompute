@@ -326,6 +326,35 @@ def network_setup(sandbox: str, env: dict) -> None:
         raise ValueError('native policy readback differs; preserve backups and inspect before retry')
 
 
+def enable_api_server_toolset(sandbox: str, env: dict) -> None:
+    """Make the managed MCP server available to Hermes API-backed sessions."""
+    program = '''import json,pathlib,subprocess,yaml
+p=pathlib.Path.home()/".hermes/config.yaml"
+assert not p.is_symlink() and not p.parent.is_symlink()
+data=yaml.safe_load(p.read_text()) or {}
+platforms=data.get("platform_toolsets")
+if not isinstance(platforms,dict):
+    raise SystemExit("Hermes platform toolset configuration is invalid")
+current=platforms.get("api_server")
+if not isinstance(current,list) or any(not isinstance(item,str) for item in current):
+    raise SystemExit("Hermes API server toolset configuration is invalid")
+target="mcp-homecompute"
+if target not in current:
+    result=subprocess.run(["hermes","config","set","platform_toolsets.api_server",
+                           json.dumps([*current,target])],capture_output=True,text=True,timeout=30)
+    if result.returncode:
+        raise SystemExit("Hermes API server MCP toolset update failed")
+updated=yaml.safe_load(p.read_text()) or {}
+if target not in updated.get("platform_toolsets",{}).get("api_server",[]):
+    raise SystemExit("Hermes API server MCP toolset readback failed")
+print("enabled")
+'''
+    cli = ['nemohermes', sandbox]
+    result = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=program, env=env).strip()
+    if result != 'enabled':
+        raise ValueError('Hermes API server MCP toolset activation did not verify')
+
+
 def call(args: list[str], **kwargs) -> str:
     result = subprocess.run(args, capture_output=True, text=True, timeout=240, **kwargs)
     if result.returncode:
@@ -407,6 +436,7 @@ def connect(sandbox: str, token: str, *, repair_legacy_registration: bool = Fals
             or row.get('adapter', {}).get('registered') is not True
             or row.get('trustedPrivateTarget', {}).get('state') != 'match'):
         raise ValueError('native MCP credential, adapter and private pin verification required')
+    enable_api_server_toolset(sandbox, env)
     # Refuse to overwrite operator-edited instructions. The native skill lifecycle
     # owns installation; the read only guard merely recognizes this exact source.
     expected = hashlib.sha256((SKILL / 'SKILL.md').read_bytes()).hexdigest()

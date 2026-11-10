@@ -382,7 +382,11 @@ requires fresh private household backup/network gates, uses native `mcp add`,
 requires verified credential resolution and matching private target pins, and
 installs the exact skill through the native skill lifecycle. Conflicting
 registrations and edited skills are preserved for review. An uncertain native
-add must be inspected through native status before retrying.
+add must be inspected through native status before retrying. It also adds the
+`mcp-homecompute` toolset to Hermes's `api_server` platform while preserving
+the existing toolsets, so API-backed Hermes sessions can invoke the connected
+MCP server by default. Read-only verification should use the actual Hermes
+agent; a successful `mcp status` or `mcp test` only proves discovery.
 
 NemoClaw's generated Hermes MCP policy assumes the system Python or the `.venv`
 path. OpenShell observes the selected 0.23 image's actual executable as

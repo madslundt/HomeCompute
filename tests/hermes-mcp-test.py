@@ -158,6 +158,8 @@ class ConnectionTests(unittest.TestCase):
             if args[2:4] == ['mcp', 'status']: return json.dumps(self.status)
             if args[2] == 'exec':
                 program = kwargs.get('input', '')
+                if 'platform_toolsets' in program:
+                    return 'enabled'
                 if 'android-gateway' in program:
                     if not hasattr(self, 'android_probe_count'):
                         self.android_probe_count = 0
@@ -174,6 +176,20 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(addition[1]['env'][connect.KEY], self.token)
         self.assertEqual(addition[1]['env']['OPENSHELL_GATEWAY'], 'nemoclaw')
         self.assertFalse(any('stop' in args or 'start' in args or 'recreate' in args for args, _ in commands))
+        self.assertTrue(any(args[2] == 'exec' and 'mcp-homecompute' in kwargs.get('input', '')
+                            for args, kwargs in commands))
+
+    def test_api_server_toolset_enablement_is_idempotent_and_non_secret(self):
+        observed = []
+        def call(args, **kwargs):
+            observed.append((args, kwargs))
+            return 'enabled\n'
+        with patch.object(connect, 'call', side_effect=call):
+            connect.enable_api_server_toolset('hermes-personal-v23', {})
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0][0][2:], ['exec', '--stdin', '--', 'python3', '-'])
+        self.assertIn('mcp-homecompute', observed[0][1]['input'])
+        self.assertNotIn(self.token, observed[0][1]['input'])
 
     def test_existing_conflicting_registration_or_unknown_probe_does_not_remove_or_replace(self):
         for url, verified in (('https://other.example/mcp', True), (connect.URL, None)):
@@ -233,6 +249,8 @@ class ConnectionTests(unittest.TestCase):
                         row[0][2:4] == ['mcp', 'add'] for row in commands) else self.status)
                 if args[2] == 'exec':
                     program = kwargs.get('input', '')
+                    if 'platform_toolsets' in program:
+                        return 'enabled'
                     if 'android-gateway' in program:
                         if not hasattr(self, 'repair_android_probe_count'):
                             self.repair_android_probe_count = 0
