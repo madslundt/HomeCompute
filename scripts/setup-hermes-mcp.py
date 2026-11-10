@@ -23,7 +23,7 @@ FILES = {
         'ec1645627758027ba8dd9ae9673445827bdecc7288ef51250bdd6a2d3cacd194'),
     'scripts/openclaw_capabilities.py': (
         Path('/opt/homecompute/openclaw-communication/scripts/openclaw_capabilities.py'),
-        'cd270c88a5adb8a901995d293f862abf29883bede90bfde285da8e29d269337e'),
+        'a9042fd34ce57f8787163921bd8a64048aea1c9dffcb890d5956b82c52d64c24'),
     'scripts/setup-native-capabilities.py': (
         Path('/opt/homecompute/native-capabilities/setup-native-capabilities.py'),
         'ccaf6a57bf6b6839f37fd8eed5d32f58d71c52049450708ee167d5346a8e1998'),
