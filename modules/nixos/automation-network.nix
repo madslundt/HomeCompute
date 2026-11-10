@@ -123,42 +123,6 @@
         iptables -w -D DOCKER-USER -i br-hc-piper -j REJECT
       done
 
-      # MCP backends have no authentication. Only MCPHub may initiate calls to
-      # the fixed Aula and TilbudsTrolden endpoints on their private bridge.
-      iptables -w -I DOCKER-USER 1 -i br-hc-mcp -j REJECT
-      for service_ip in 172.28.212.3 172.28.212.4; do
-        iptables -w -I DOCKER-USER 2 ! -i br-hc-mcp -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
-      done
-      while iptables -w -C DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS 2>/dev/null; do
-        iptables -w -D DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS
-      done
-      for service_ip in 172.28.212.3 172.28.212.4; do
-        while iptables -w -C DOCKER-USER ! -i br-hc-mcp -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT 2>/dev/null; do
-          iptables -w -D DOCKER-USER ! -i br-hc-mcp -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
-        done
-      done
-      iptables -w -N HC-MCP-BACKENDS 2>/dev/null || true
-      iptables -w -F HC-MCP-BACKENDS
-      iptables -w -A HC-MCP-BACKENDS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
-      iptables -w -A HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878 -j RETURN
-      iptables -w -A HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000 -j RETURN
-      iptables -w -A HC-MCP-BACKENDS -j REJECT
-      iptables -w -I DOCKER-USER 2 -i br-hc-mcp -j HC-MCP-BACKENDS
-      for service_ip in 172.28.212.3 172.28.212.4; do
-        iptables -w -I DOCKER-USER 2 ! -i br-hc-mcp -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
-      done
-      iptables -w -C HC-MCP-BACKENDS -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
-      iptables -w -C HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878 -j RETURN
-      iptables -w -C HC-MCP-BACKENDS -s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000 -j RETURN
-      iptables -w -C HC-MCP-BACKENDS -j REJECT
-      iptables -w -C DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS
-      for service_ip in 172.28.212.3 172.28.212.4; do
-        iptables -w -C DOCKER-USER ! -i br-hc-mcp -d "$service_ip/32" -m conntrack ! --ctstate ESTABLISHED,RELATED -j REJECT
-      done
-      while iptables -w -C DOCKER-USER -i br-hc-mcp -j REJECT 2>/dev/null; do
-        iptables -w -D DOCKER-USER -i br-hc-mcp -j REJECT
-      done
-
       # Keep bridge egress and automation ingress fail-closed while replacing
       # the live policy. Always add fresh guards: failures leave protections.
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
@@ -267,17 +231,6 @@
       if iptables -w -L HC-PIPER-EGRESS -n >/dev/null 2>&1; then
         iptables -w -F HC-PIPER-EGRESS
         iptables -w -X HC-PIPER-EGRESS
-      fi
-      iptables -w -I DOCKER-USER 1 -i br-hc-mcp -j REJECT
-      for service_ip in 172.28.212.3 172.28.212.4; do
-        iptables -w -I DOCKER-USER 2 ! -i br-hc-mcp -d "$service_ip/32" -j REJECT
-      done
-      while iptables -w -C DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS 2>/dev/null; do
-        iptables -w -D DOCKER-USER -i br-hc-mcp -j HC-MCP-BACKENDS
-      done
-      if iptables -w -L HC-MCP-BACKENDS -n >/dev/null 2>&1; then
-        iptables -w -F HC-MCP-BACKENDS
-        iptables -w -X HC-MCP-BACKENDS
       fi
       iptables -w -I DOCKER-USER 1 -i br-hc-n8n -j REJECT
       for service_ip in 172.28.201.3 172.28.201.4; do
