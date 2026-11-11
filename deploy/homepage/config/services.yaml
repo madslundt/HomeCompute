@@ -85,6 +85,12 @@
         href: https://chat.home.arpa/
         description: Chat with local AI models
 
+    - PodWave:
+        id: homecore-podwave
+        icon: mdi-podcast
+        href: https://podwave.home.arpa/
+        description: Research, write, and produce podcast episodes
+
 - Administration:
     - n8n:
         id: homecore-n8n

@@ -82,6 +82,7 @@ and other personal-agent services remain deferred.
 | Run a self-hosted OpenBot team server | [OpenBot operations](../deploy/openbot/README.md), [assessment](research/openbot-home-core-assessment-2026-11-09.md), and [ADR-030](adr/030-openbot-team-server.md) |
 | Review the parallel self-hosted AI automation manager | [Proposal](ai-automation-manager-proposal.md), [fields and operations](../automations/ai-automation-manager/README.md), and [screen concept](images/ai-automation-manager-concept.png) |
 | Run Craft Anything in an isolated Home Core guest | [Toolbox runbook](../deploy/toolbox/README.md), [ADR-017](adr/017-consolidated-application-host.md), and the [pinned upstream release](../config/craft-anything-toolbox.json) |
+| Run the private PodWave podcast studio | [PodWave runbook](../deploy/podwave/README.md), including its LAN DNS, login, provider settings, and recovery steps |
 
 The two rendered overview diagrams are also useful entry points:
 

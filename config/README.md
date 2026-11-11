@@ -14,6 +14,7 @@ they do not use them as production configuration in place.
 | `openbot-network.json` | Home Core agents-VM firewall and OpenBot guest egress policy | Current OpenBot TURN relay IPv4s, exact TURN ports, and the local LiteLLM compatibility boundary |
 | `mcp-gateway-dns.json` | Home LAN DNS | Private `mcp.home.arpa` A record for the LiteLLM MCP gateway; apply in UniFi DNS and verify from a client |
 | `ai-automation-manager-dns.json` | Home LAN DNS | Private `automations.home.arpa` A record for the AI automation manager; apply in UniFi DNS and verify from a client |
+| `podwave-dns.json` | Home LAN DNS | Private `podwave.home.arpa` A record for PodWave; apply in UniFi DNS and verify from a client |
 | `openbot-agent-roster.json` | OpenBot UI and `scripts/configure-openbot-hermes.py` | Home AI-first OpenBot roster, Hermes local route, instructions, and reasoning levels |
 | `craft-anything-toolbox.json` | Craft Anything toolbox installer | Pinned upstream version, release commit, archive digest, and Hermes source pin; no credentials |
 | `opencode.json` | `modules/nixos/opencode.nix` | Pinned OpenCode HomeCompute LiteLLM provider and project-config restriction; no credentials |

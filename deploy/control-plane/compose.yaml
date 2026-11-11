@@ -16,6 +16,9 @@ services:
       - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
+    env_file:
+      - path: /srv/state/podwave-auth/auth.env
+        required: false
     environment:
       AI_FQDN: ${AI_FQDN:?Set AI_FQDN}
       AI_LEGACY_FQDN: ${AI_LEGACY_FQDN:?Set AI_LEGACY_FQDN}
@@ -66,6 +69,7 @@ services:
         ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
       mcp-web:
         ipv4_address: ${CADDY_MCP_WEB_IP:?Set CADDY_MCP_WEB_IP}
+      podwave: {}
 
   litellm:
     image: ${LITELLM_IMAGE:?Set LITELLM_IMAGE to an immutable image digest}
@@ -464,6 +468,12 @@ networks:
       config:
         - subnet: ${CONTROL_PLANE_MCP_BACKENDS_SUBNET:?Set CONTROL_PLANE_MCP_BACKENDS_SUBNET}
           gateway: ${CONTROL_PLANE_MCP_BACKENDS_GATEWAY:?Set CONTROL_PLANE_MCP_BACKENDS_GATEWAY}
+  podwave:
+    name: homecompute-podwave
+    driver: bridge
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.host_binding_ipv4: 127.0.0.1
 
 secrets:
   compute_api_key:

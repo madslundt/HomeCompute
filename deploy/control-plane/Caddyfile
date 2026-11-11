@@ -567,6 +567,27 @@ chessmate.home.arpa {
 	}
 }
 
+podwave.home.arpa {
+	tls internal
+	encode zstd gzip
+	basic_auth {
+		podwave {$PODWAVE_AUTH_HASH}
+	}
+	reverse_proxy podwave:8080 {
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+	log {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+		}
+	}
+}
+
 {$MODELS_FQDN} {
 	tls internal
 	encode zstd gzip

@@ -115,6 +115,7 @@ rm -f -- /etc/systemd/system.control/homecompute-token-usage.service.d/90-cache-
 systemctl stop homecompute-token-usage.timer homecompute-token-usage.service >/dev/null 2>&1 || true
 rm -f -- /usr/local/bin/homecompute-token-usage
 systemctl daemon-reload
+python3 "$release/scripts/setup-podwave-auth.py"
 # Caddy's private storage keeps its public root certificate root-only. LiteLLM
 # runs as UID 101, so publish a read-only copy at a stable, world-readable path.
 install -D -m 0644 \
@@ -135,7 +136,9 @@ open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$relea
 piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/deploy/piper-tts/compose.yaml")
 stt=(docker compose --env-file /etc/homecompute/wyoming-stt.env -f "$release/deploy/wyoming-stt/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
+podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
 "${gateway[@]}" config --quiet
+"${podwave[@]}" config --quiet
 "${automation[@]}" config --quiet
 ai_automation_manager_enabled="$(sed -n 's/^AI_AUTOMATION_MANAGER_ENABLED=//p' /etc/homecompute/automation.env | tail -n 1)"
 if [[ "$ai_automation_manager_enabled" == 1 ]]; then
@@ -178,6 +181,7 @@ stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environmen
 if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" pull
 fi
+"${podwave[@]}" build --pull podwave
 edge_network=homecompute-control-plane_edge
 speech_proxies_to_restore=()
 if docker network inspect "$edge_network" >/dev/null 2>&1; then
@@ -211,6 +215,7 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
+"${podwave[@]}" up -d --wait --wait-timeout 180
 python3 "$release/scripts/setup-comfyui-access.py"
 python3 "$release/scripts/provision-opencode-litellm-key.py" --apply
 systemctl restart homecompute-opencode.service

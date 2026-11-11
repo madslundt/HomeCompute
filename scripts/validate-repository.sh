@@ -436,6 +436,7 @@ if command -v ruby >/dev/null 2>&1; then
     "$REPO_ROOT/deploy/ttlock-webhook/home-assistant-automation.yaml" \
     "$REPO_ROOT/deploy/wyoming-stt/compose.yaml" \
     "$REPO_ROOT/deploy/immich/compose.yaml" \
+    "$REPO_ROOT/deploy/podwave/compose.yaml" \
     "$REPO_ROOT/deploy/homepage/config/services.yaml" \
     "$REPO_ROOT/deploy/homepage/config/settings.yaml" \
     "$REPO_ROOT/deploy/homepage/config/widgets.yaml" \
@@ -791,6 +792,18 @@ jq -e '
   (.services.caddy.networks.state == null) and
   (.services.postgres.networks.edge == null)
 ' "$control_plane_json" >/dev/null
+
+podwave_json="$temporary_root/podwave.json"
+docker compose -f "$REPO_ROOT/deploy/podwave/compose.yaml" config --format json >"$podwave_json"
+jq -e '
+  (.services | keys == ["podwave"]) and
+  (.services.podwave.image == "homecompute/podwave:6cbc19e2df78c656d863d42ab97c78e3665f7c80") and
+  (.services.podwave.ports == null and .services.podwave.read_only == true) and
+  (.services.podwave.cap_drop == ["ALL"] and (.services.podwave.privileged // false) == false) and
+  ([.services.podwave.volumes[] | select(.target == "/data" and .source == "/srv/state/podwave" and .read_only != true)] | length == 1) and
+  ([.services.podwave.networks[]] | length == 1) and
+  (.networks.podwave.external == true and .networks.podwave.name == "homecompute-podwave")
+' "$podwave_json" >/dev/null
 control_plane_speech_json="$temporary_root/control-plane-speech.json"
 docker compose --profile speech-proxies --env-file "$control_plane_env" \
   -f "$REPO_ROOT/deploy/control-plane/compose.yaml" config --format json >"$control_plane_speech_json"
@@ -1399,7 +1412,7 @@ jq -e '
 [[ ! -e "$REPO_ROOT/deploy/toolbox/compose.yaml" ]]
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openbot openclaw opencode piper-tts toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager omnivoice open-webui openbot openclaw opencode piper-tts podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

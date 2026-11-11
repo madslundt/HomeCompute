@@ -138,6 +138,15 @@ Its state directory must be owned by 70:70; NixOS tmpfiles provisions this.
 Starting directly preserves supplementary group 989 for reading SOPS secrets;
 the official root entrypoint would discard that group when switching users.
 
+The Caddy edge also serves the separately managed PodWave application at
+`https://podwave.home.arpa/`. PodWave does not join the control-plane internal
+networks. Its dedicated bridge is shared only with Caddy, and its second bridge
+allows outbound provider requests. Caddy requires a generated Basic Auth login
+before forwarding any route; the password and hash are stored under
+`/srv/state/podwave-auth`, outside Git and outside the app container. See the
+[PodWave runbook](../podwave/README.md) for setup, DNS, provider configuration,
+backup, and recovery.
+
 ## Network and transport policy
 
 Only Caddy publishes a host port in the default profile: TCP 443 on the exact

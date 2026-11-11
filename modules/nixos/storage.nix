@@ -22,6 +22,8 @@
     "d /srv/state/control-plane/backups 0700 root root - -"
     "d /srv/state/open-webui 0750 root homecompute-state - -"
     "d /srv/state/open-webui/data 0700 1000 1000 - -"
+    "d /srv/state/podwave 0700 1000 1000 - -"
+    "d /srv/state/podwave-auth 0700 root root - -"
     "d /srv/state/opencode 0700 agent users - -"
     "d /srv/state/automation 0750 root homecompute-state - -"
     "d /srv/state/automation/n8n 0700 1000 1000 - -"

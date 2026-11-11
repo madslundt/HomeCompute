@@ -1,0 +1,41 @@
+name: homecompute-podwave
+
+services:
+  podwave:
+    image: homecompute/podwave:6cbc19e2df78c656d863d42ab97c78e3665f7c80
+    build:
+      context: .
+      dockerfile: Dockerfile
+      additional_contexts:
+        podwave: https://github.com/madslundt/PodWave.git#6cbc19e2df78c656d863d42ab97c78e3665f7c80
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PODWAVE_BIND: 0.0.0.0
+      PODWAVE_DATA: /data
+      PODWAVE_PORT: "8080"
+    volumes:
+      - /srv/state/podwave:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=0700
+    cpus: 1.0
+    mem_limit: 2g
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python, -c, "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: local
+      options: {max-size: 10m, max-file: "3"}
+    networks: [podwave]
+
+networks:
+  podwave:
+    external: true
+    name: homecompute-podwave
