@@ -171,7 +171,7 @@ def preflight(paths, *, managed_symlinks=None):
         existing = target
         while not existing.exists() and not existing.is_symlink():
             existing = existing.parent
-        safe(existing, directory=existing != target)
+        safe(existing, directory=existing != target or existing.is_dir())
 
 
 def dependency(link, target):

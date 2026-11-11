@@ -168,6 +168,13 @@ class HostMaintenanceSetupTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 setup.preflight([link], managed_symlinks={link: self.root / 'other.timer'})
 
+    def test_preflight_accepts_an_existing_state_directory(self):
+        state = self.root / 'state'
+        state.mkdir()
+        with patch.object(setup, 'safe', side_effect=lambda p, **kwargs: Path(p)) as safe:
+            setup.preflight([state])
+        safe.assert_called_once_with(state, directory=True)
+
     def test_install_backs_up_code_tracking_units_preserves_state_and_starts_only_timer(self):
         dest, state, public, units = (self.root / name for name in ('dest', 'state', 'public', 'units'))
         for path in (dest, state, public, units):
