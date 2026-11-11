@@ -1,5 +1,9 @@
 # K15 gateway deployment
 
+> Historical deployment record. The Model Manager application and token usage
+> dashboard described below were retired from the home-core release on the
+> current source. The Spark model controls are still active.
+
 Deployed 2026-09-04 on `home-core` (`192.168.30.122`, Tailscale
 `100.110.248.102`). Approved package/image maintenance on 2026-10-10 updated
 the services below; database restores and migration rollback startup were rehearsed.

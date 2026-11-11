@@ -72,10 +72,6 @@
           "tracked_tag": "3.7.0",
           "source_lane": "registry"
         },
-        "homecompute-model-manager-model-manager-1": {
-          "tracked_tag": "33ec2557a3897be54aecd0d0f54d6f7164fe6ebc",
-          "source_lane": "source_pin"
-        },
         "homecompute-open-webui-open-webui-1": {
           "tracked_tag": "0.11",
           "source_lane": "registry"

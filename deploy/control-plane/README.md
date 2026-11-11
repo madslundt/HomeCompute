@@ -59,9 +59,9 @@ API bill. This is provider spend, not electricity, hardware amortization, or a
 household charge. Codex subscription requests are also recorded at zero because
 the subscription has no per-token API bill; use request/token rate limits for
 those keys instead of dollar budgets.
-Use LiteLLM Admin at `/ui/` → Usage for spend by model and virtual key; the
-separate `/usage/` page remains a token-count dashboard with browser-local
-comparison rates.
+Use LiteLLM Admin at `/ui/` → Usage for spend by model and virtual key. The
+separately hosted token-count dashboard and refresh timer are retired; the
+metadata privacy trigger remains in place.
 
 ### Codex with a ChatGPT subscription
 
@@ -148,9 +148,9 @@ forbidden.
 
 - `edge` contains Caddy and LiteLLM. It is the sole egress-capable application
   bridge; LiteLLM is given its default route there.
-- `clients` is an isolated internal bridge shared by Caddy, LiteLLM, Open WebUI,
-  and the model manager. It carries gateway and browser traffic without an
-  outbound route. Open WebUI and the model manager publish no host ports.
+- `clients` is an isolated internal bridge shared by Caddy, LiteLLM, and Open
+  WebUI. It carries gateway and browser traffic without an outbound route.
+  Open WebUI publishes no host ports.
 - `state` contains LiteLLM and PostgreSQL, is `internal`, and uses Docker's
   isolated gateway mode. PostgreSQL has no host publication. Caddy cannot join
   this network.
@@ -386,72 +386,14 @@ container image IDs.
 
 ## TLS, keys, and state
 
-### Metadata-only token usage
+### Token usage reporting retirement
 
-The dashboard is at `https://ai.home.arpa/usage/` on the LAN and
-`https://home-core.tail479ad.ts.net:8443/usage/` over Tailscale. Homepage's
-**Token usage** link selects the appropriate address. Daily, weekly, and
-monthly charts support model and date filters, exact period tables, and
-shareable filter URLs. The page refreshes every minute and identifies stale
-snapshots. Before tracking began, dates are unknown rather than zero usage.
-
-`homecompute-token-usage.timer` publishes an aggregate-only JSON snapshot once
-per minute. The existing Caddy container serves the assets and snapshot from
-`/srv/state/control-plane/caddy-data/token-usage`, under an exact read-only
-route allowlist. The browser receives only dates, aliases, and counts, with no
-database access, credentials, raw usage rows, or client identifiers. No new
-port or application container is introduced. The Nix module owns the refresh
-unit and timer; the deployment script installs the static assets.
-
-LiteLLM records input, output, and total tokens in PostgreSQL. Prompt/response
-storage and error logging remain disabled. Apply `token-usage.sql` before
-enabling spend logs on an existing installation; `deploy-home-core.sh` does
-this automatically. A database trigger also empties message, response,
-request-body, free-form metadata, tags, and client-content fields on every
-insert/update. It retains timestamps, model identifiers, numeric usage,
-status/timing, hashed key identifiers, and one validated numeric cached-input
-count extracted from LiteLLM's usage metadata. All other metadata is removed.
-No external telemetry service is used.
-
-The dashboard reports cached input, cache reuse, and coverage separately.
-Missing cache counts (including historical requests) are unknown, not zero.
-vLLM text servers enable `--enable-prompt-tokens-details`; the database trigger
-keeps only `homecompute_cached_input_tokens` from the provider usage details.
-Zero is retained when explicitly reported. Other runtimes or older versions
-that omit these details continue to contribute usage with unknown cache status.
-
-Expand **Model pricing and comparison** to enter input, cached-input, and
-output rates per million tokens. Rates and currency are saved in local browser
-storage for the current origin; LAN and Tailscale addresses have separate
-settings. Blank cached rates use the input rate; blank input/output rates leave
-that model unpriced, and incomplete cost totals are labeled partial. Unknown
-cache usage is estimated at the uncached input rate. Cached tokens are already
-part of input, so they are not charged twice. Rates apply to the entire selected
-range and estimate equivalent token cost, not actual invoices or electricity.
-The comparison column applies each model's rates to the same selected token
-volume; additional comparison models need not have gateway usage. Changing
-currency only changes the label and does not convert entered rates.
-
-On home-core, query completed requests with:
-
-```bash
-sudo /usr/local/bin/homecompute-token-usage --period day
-sudo /usr/local/bin/homecompute-token-usage --period week --by-model
-sudo /usr/local/bin/homecompute-token-usage --period month --since 2026-10-01
-sudo /usr/local/bin/homecompute-token-usage --since 2026-10-21 --until 2026-10-22 --json
-```
-
-Reports default to the last 30 calendar days in `Europe/Copenhagen`, handling
-daylight-saving changes. Weeks start Monday. `--since` is inclusive and
-`--until` exclusive; boundary weeks/months include only the selected date
-range. Use an earlier `--since` for longer history. No usage rows are aged out
-by this configuration. Recent requests may take about a minute to flush.
-History starts when tracking is installed; earlier usage cannot be recovered.
-Only calls through LiteLLM are covered. Requests without reported token usage
-(for example some speech backends) can have zero tokens. Tokens measure usage,
-not electricity costs, and cached input is included in the backend's input
-count. Shared keyless clients remain one identity. Administration stays private;
-this does not expose LiteLLM's admin UI or PostgreSQL to the network.
+The aggregate token usage dashboard and its refresh timer are no longer hosted.
+The `/usage/` Caddy route is removed, and Homepage has no token usage link.
+LiteLLM's existing database privacy trigger remains installed: it removes
+prompt, response, request-body, and free-form metadata fields from usage rows.
+The trigger is independent of the retired dashboard and preserves the
+control-plane's content-retention policy.
 
 `ai.home.arpa` uses Caddy's internal CA. The smoke test reads that CA and uses
 normal certificate validation; it never uses `curl --insecure`. Install the
@@ -459,11 +401,11 @@ root only on approved clients. The online CA private key is in `caddy-data`, so
 compromise can mint trusted certificates; encrypt its off-host backup and
 limit client trust to devices that need this service.
 
-Caddy exposes approved `/v1/*` inference routes, `/healthz`, and the read-only
-`/usage/` dashboard. It intentionally returns 404 for the
-LiteLLM admin UI and key-management API on the AI gateway host. It also serves
-the separately named `chat.home.arpa` and `models.home.arpa` virtual hosts to
-Open WebUI and the model manager on `clients`. Hermes and its dedicated
+Caddy exposes approved `/v1/*` inference routes and `/healthz`. It intentionally
+returns 404 for the LiteLLM admin UI and key-management API on the AI gateway
+host. It also serves the separately named `chat.home.arpa` and
+`models.home.arpa` virtual hosts; the latter serves only the Spark model
+controls. Open WebUI remains on `clients`. Hermes and its dedicated
 dashboard listeners were retired on 2026-10-27. These virtual hosts use
 Caddy's internal CA. Install that CA on approved clients
 before opening those pages.
@@ -476,12 +418,9 @@ conversation history, and uploads; the state directory is provisioned by NixOS
 but still needs an encrypted off-host backup and restore procedure. The
 deployment script leaves Open WebUI stopped until both runtime key files exist.
 
-The model manager reaches the Spark only through its dedicated SSH bridge. The
-NixOS `HC-MODEL-MANAGER-SSH` policy permits the fixed container address to open
-TCP 22 to `192.168.30.126`; other outbound traffic and non-established return
-traffic are rejected. The deployment script also requires operator-provisioned
-model-manager credentials, the pinned host key, and an explicit forced-command
-readiness flag before it builds or starts the UI.
+The Model Manager application and its dedicated SSH bridge are no longer part
+of the home-core release. The Spark model controls at `models.home.arpa/control/`
+remain served by their separate lifecycle.
 The `embedding` alias now routes to Harrier 0.6B on home-core through the private
 clients network. Its OpenAI-compatible `/v1/embeddings` endpoint uses the same
 gateway admission, optional credentials, and CORS policy as the other APIs.

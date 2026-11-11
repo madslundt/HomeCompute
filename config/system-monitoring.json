@@ -129,10 +129,6 @@
           "require_health": true
         },
         {
-          "name": "homecompute-model-manager-model-manager-1",
-          "require_health": true
-        },
-        {
           "name": "homecompute-openclaw-access-proxy",
           "require_health": false
         },

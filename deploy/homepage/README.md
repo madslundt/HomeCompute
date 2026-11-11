@@ -20,7 +20,9 @@ validation.
 The local operator links derive their hostname from the URL used to open
 Homepage. `config/custom.js` supplies this behavior because a normal relative
 URL cannot replace the current URL's port. Caddy serves n8n, Hermes, the AI
-gateway, Daythread, Open WebUI, and the model manager at their HTTPS `home.arpa` names.
+gateway, Daythread, and Open WebUI at their HTTPS `home.arpa` names. Homepage
+links to LiteLLM's health endpoint; its token usage dashboard and the Model
+Manager application are no longer hosted.
 Daythread uses `https://daythread.home.arpa/` and the existing
 `omi-local-backend-1:8787` container on the private control-plane clients network.
 Its private Tailscale URL is `https://home-core.tail479ad.ts.net:18787/`.
@@ -50,12 +52,6 @@ Docker discovery and container statistics are disabled. The project receives
 no container-engine API access and joins no other application's Docker network.
 Add user-facing links explicitly to `config/services.yaml`. This keeps the
 dashboard useful without giving it control of every container on `home-core`.
-
-The **Token usage** link opens the aggregate-only dashboard at
-`https://ai.home.arpa/usage/` on the LAN. On Tailscale, `custom.js` rewrites it
-to `https://home-core.tail479ad.ts.net:8443/usage/`, using the gateway's existing
-publicly trusted certificate. It supports day/week/month views, date and model
-filters, and refreshes once per minute without storing conversation content.
 
 The **ComfyUI** card includes image-mode status and Start/Stop controls. Open
 `https://comfyui.home.arpa/control/` on the LAN, or

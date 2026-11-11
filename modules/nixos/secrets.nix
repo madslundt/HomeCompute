@@ -80,18 +80,6 @@ in
               group = "homecompute-secrets";
               mode = "0440";
             };
-            "model-manager/username" = {
-              mode = "0400";
-            };
-            "model-manager/password" = {
-              mode = "0400";
-            };
-            "model-manager/spark-ssh-key" = {
-              mode = "0400";
-            };
-            "model-manager/known-hosts" = {
-              mode = "0400";
-            };
             "android/portal-token" = {
               owner = "homecompute-openclaw";
               group = "homecompute-openclaw";

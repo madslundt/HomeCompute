@@ -21,7 +21,6 @@ they do not use them as production configuration in place.
 | `tts-qualification.json` | `tts-qualification.py` | Danish phrase set, 750 ms/RTF/listening gates, and ASR/resynthesis recovery scenarios |
 | `control-plane.env.example` | `deploy/control-plane/compose.yaml` | Immutable gateway images, explicit bindings, selected compute transport, `/srv/state`, and sops-nix runtime secret paths |
 | `open-webui.env.example` | `deploy/open-webui/compose.yaml` | Pinned Open WebUI image, persistent state path, and runtime LiteLLM/WebUI secret-file paths |
-| `model-manager.env.example` | `deploy/model-manager/compose.yaml` | Local build tag, exact public origin, fixed Spark SSH target, and external secret-file paths |
 | `homepage.env.example` | `deploy/homepage/compose.yaml` | Pinned Homepage image, explicit LAN/Tailscale bindings, and allowed hostnames |
 | `immich.env.example` | `modules/nixos/immich.nix`, `deploy/immich/compose.yaml` | Digest-pinned Immich services, configurable state/library paths, and explicit LAN/Tailscale bindings |
 | `wyoming-stt.env.example` | `deploy/wyoming-stt/compose.yaml` | Pinned CPU STT image, Danish `small-int8` settings, explicit LAN binding, and bounded resources |
@@ -37,9 +36,9 @@ Do not store tokens, API keys, private SSH keys, real environment files, or
 site-specific secrets here. Compute-node secrets belong under
 `/etc/gb10-ai/secrets`; control-plane secrets are materialized under
 `/run/secrets/control-plane` by sops-nix and never belong in an environment
-file. Open WebUI and model-manager runtime file paths are also listed in their
-environment templates, but their credentials are not declared in the current
-SOPS document; provision them outside Git before enabling either UI. The
+file. Open WebUI runtime file paths are listed in its environment template, but
+its credentials are not declared in the current SOPS document; provision them
+outside Git before enabling the UI. The
 optional compute SSH fallback key and pinned host-key file live under root-owned
 `/etc/homecompute/compute-tunnel`; only their paths and transport selection are
 configuration.

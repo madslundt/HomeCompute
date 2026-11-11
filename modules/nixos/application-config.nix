@@ -62,10 +62,6 @@ in
     mode = "0600";
     source = ../../config/open-webui.env.example;
   };
-  environment.etc."homecompute/model-manager.env" = {
-    mode = "0600";
-    source = ../../config/model-manager.env.example;
-  };
   environment.etc."homecompute/books_importer/runtime.env" = {
     mode = "0600";
     source = ../../config/books_importer.env.example;

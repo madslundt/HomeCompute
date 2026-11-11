@@ -1,5 +1,9 @@
 # DGX Spark model manager
 
+> Retired from the home-core release. Current deployments remove the old
+> container and do not install its Caddy route, secrets, or SSH bridge. The
+> Spark model controls at `models.home.arpa/control/` remain a separate service.
+
 This service provides the lifecycle surface shown in the HomeCompute console
 concept. React serves the page; FastAPI exposes a same-origin API and invokes
 the Spark adapter through one SSH connection per operation. The browser never

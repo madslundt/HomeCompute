@@ -98,12 +98,16 @@ rm -f -- /usr/local/lib/systemd/system/homecompute-gateway-certificate.service \
   /usr/local/lib/systemd/system/homecompute-token-usage.timer \
   /usr/local/lib/systemd/system/timers.target.wants/homecompute-token-usage.timer
 rm -f -- /etc/systemd/system.control/homecompute-token-usage.service.d/90-cache-pricing.conf
+systemctl stop homecompute-token-usage.timer homecompute-token-usage.service >/dev/null 2>&1 || true
+rm -f -- /usr/local/bin/homecompute-token-usage
 systemctl daemon-reload
 # Caddy's private storage keeps its public root certificate root-only. LiteLLM
 # runs as UID 101, so publish a read-only copy at a stable, world-readable path.
 install -D -m 0644 \
   /srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt \
   /etc/homecompute/control-plane/home-core-root.crt
+docker rm --force homecompute-model-manager-model-manager-1 >/dev/null 2>&1 || true
+docker network rm homecompute-model-manager_ssh >/dev/null 2>&1 || true
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 [[ -s /run/secrets/automation/inbox-webhook-env ]] || {
@@ -113,7 +117,6 @@ speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecomp
 automation=(docker compose --env-file /etc/homecompute/automation.env --env-file /run/secrets/automation/inbox-webhook-env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
-model_manager=(env "MODEL_MANAGER_RELEASE=$revision" docker compose --env-file /etc/homecompute/model-manager.env -f "$release/deploy/model-manager/compose.yaml")
 piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/deploy/piper-tts/compose.yaml")
 stt=(docker compose --env-file /etc/homecompute/wyoming-stt.env -f "$release/deploy/wyoming-stt/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
@@ -126,15 +129,6 @@ if [[ -s /run/secrets/open-webui/litellm-api-key &&
       -s /srv/state/open-webui/embedding-api-key ]]; then
   open_webui_ready=true
   "${open_webui[@]}" config --quiet
-fi
-model_manager_ready=false
-if [[ -s /run/secrets/model-manager/username &&
-      -s /run/secrets/model-manager/password &&
-      -s /run/secrets/model-manager/spark-ssh-key &&
-      -s /run/secrets/model-manager/known-hosts &&
-      $(grep -cx 'MODEL_MANAGER_SPARK_FORCED_COMMAND_READY=1' /etc/homecompute/model-manager.env || true) == 1 ]]; then
-  model_manager_ready=true
-  "${model_manager[@]}" config --quiet
 fi
 "${piper[@]}" config --quiet
 "${stt[@]}" config --quiet
@@ -153,9 +147,6 @@ stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environmen
 "${automation[@]}" build --no-cache tilbudstrolden-mcp
 if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" pull
-fi
-if [[ "$model_manager_ready" == true ]]; then
-  "${model_manager[@]}" build --no-cache model-manager
 fi
 edge_network=homecompute-control-plane_edge
 speech_proxies_to_restore=()
@@ -185,13 +176,6 @@ docker exec -i homecompute-control-plane-postgres-1 \
 # Apply an explicit deny to existing unscoped keys before starting Caddy with
 # the MCP hostname; preserve any already explicit MCP grants.
 python3 "$release/scripts/setup-litellm-mcp-default-deny.py"
-install -D -m 0755 "$release/scripts/token-usage.py" /usr/local/bin/homecompute-token-usage
-usage_directory=/srv/state/control-plane/caddy-data/token-usage
-install -d -m 0755 "$usage_directory"
-for asset in index.html styles.css dashboard.js metrics.mjs icon.svg; do
-  install -m 0644 "$release/deploy/control-plane/token-usage/$asset" "$usage_directory/$asset"
-done
-systemctl start homecompute-token-usage.service
 python3 "$release/scripts/setup-network-inference.py"
 python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
@@ -212,12 +196,6 @@ if [[ "$open_webui_ready" == true ]]; then
 else
   docker rm --force homecompute-open-webui-open-webui-1 >/dev/null 2>&1 || true
   printf 'Open WebUI credentials are not provisioned; leaving Open WebUI stopped.\n'
-fi
-if [[ "$model_manager_ready" == true ]]; then
-  "${model_manager[@]}" up -d --wait --wait-timeout 180
-else
-  docker rm --force homecompute-model-manager-model-manager-1 >/dev/null 2>&1 || true
-  printf 'Model manager secrets, pinned Spark host key, or forced-command readiness gate are missing; leaving model manager stopped.\n'
 fi
 if [[ -s /srv/state/piper-tts/models/da_DK-talesyntese-medium.onnx ]]; then
   "${piper[@]}" up -d --wait --wait-timeout 600

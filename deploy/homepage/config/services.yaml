@@ -86,29 +86,11 @@
         href: https://n8n.home.arpa/
         description: Build and manage automation workflows
 
-    - Model Manager:
-        id: homecore-model-manager
-        icon: mdi-server
-        href: https://models.home.arpa/
-        description: Load, unload, and switch local AI models
-
-    - LiteLLM Gateway:
-        id: homecore-ai-gateway
-        icon: mdi-api
-        href: https://ai.home.arpa/healthz
-        description: Check the local AI gateway health
-
-    - MCP Gateway:
+    - LiteLLM:
         id: homecore-mcp-gateway
         icon: mdi-connection
         href: https://mcp.home.arpa/ui/
-        description: Manage MCP servers, client access, and tools
-
-    - AI Token Usage:
-        id: homecore-token-usage
-        icon: mdi-chart-bar
-        href: https://ai.home.arpa/usage/
-        description: Review daily, weekly, and monthly token usage
+        description: Manage LiteLLM MCP servers, client access, and tools
 
     - Home HTTPS Certificate:
         id: homecore-https-certificate

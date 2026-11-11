@@ -10,7 +10,6 @@ function homepage(hostname, { withCard = true } = {}) {
   const links = [
     { href: 'https://models.home.arpa/control/' },
     { href: 'https://chessmate.home.arpa/play?level=2#board' },
-    { href: 'https://ai.home.arpa/usage/?days=7#daily' },
     { href: '/__homecore_service__/http/8083/books?sort=title' },
     { href: 'https://chat.home.arpa/?models=homecompute-images' },
   ];
@@ -64,14 +63,16 @@ for (const [host, origin] of [
   for (let update = 0; update < 20; update++) page.mutate();
   assert.equal(page.frames.length, 1, 'Homepage re-renders must not duplicate the controls');
   assert.equal(page.links[0].href, `${origin}/control/`);
-  assert.equal(page.links[4].href, 'https://chat.home.arpa/?models=homecompute-images');
-  assert.equal(page.links[3].href, `http://${host}:8083/books?sort=title`);
+  assert.equal(page.links[3].href, 'https://chat.home.arpa/?models=homecompute-images');
+  assert.equal(page.links[2].href, `http://${host}:8083/books?sort=title`);
   console.log(`PASS model controls origin, accessible title and single iframe on ${host}`);
 }
 
 const tailnet = homepage('home-core.tail479ad.ts.net');
 assert.equal(tailnet.links[1].href, 'https://home-core.tail479ad.ts.net:18080/play?level=2#board');
-assert.equal(tailnet.links[2].href, 'https://home-core.tail479ad.ts.net:8443/usage/?days=7#daily');
+assert.equal(tailnet.links.some(link => link.href.includes('/usage/')), false);
 assert.equal(homepage('home-core.home.arpa', { withCard: false }).frames.length, 0);
 assert.match(services, /- Spark models:\s+id: homecore-comfyui\s+icon: [^\n]+\s+href: https:\/\/models\.home\.arpa\/control\/\s+description: Text, images and video · LLM returns after 30 minutes idle/);
+assert.match(services, /- LiteLLM:\s+id: homecore-mcp-gateway\s+icon: mdi-connection\s+href: https:\/\/mcp\.home\.arpa\/ui\//);
+assert.doesNotMatch(services, /LiteLLM Gateway:|MCP Gateway:|Model Manager:|AI Token Usage:/);
 console.log('PASS service card destination, other service links and absent-card handling');
