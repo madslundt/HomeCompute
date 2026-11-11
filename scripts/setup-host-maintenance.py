@@ -33,7 +33,7 @@ NAME = 'homecompute-host-update'
 HOSTS = {'home-core', 'home-spark'}
 FILES = ('scripts/setup-host-maintenance.py', 'scripts/host_maintenance.py',
          'scripts/host_maintenance_sources.py', 'scripts/core_update_build.py',
-         'config/docker-image-tracking.json')
+         'scripts/host-update-notify.py', 'config/docker-image-tracking.json')
 
 
 def safe(path, *, directory=False, root=True):
@@ -116,10 +116,12 @@ Type=oneshot
 User=root
 Group=root
 ExecStart={python} -I {DEST}/setup-host-maintenance.py --run --host {host}
+ExecStartPost={python} -I {DEST}/host-update-notify.py --host {host} --report {PUBLIC}/report.json
 Environment=PATH=/run/current-system/sw/bin:/usr/bin:/bin
 Environment=HOME=/root
 Environment=SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/etc/homecompute/host-update-notification.env
 UnsetEnvironment=HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy SSH_AUTH_SOCK
 UMask=0077
 TimeoutStartSec=7200
