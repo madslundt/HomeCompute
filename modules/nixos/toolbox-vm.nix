@@ -25,7 +25,9 @@ let
   networkData = pkgs.writeText "toolbox-network" ''
     version: 2
     ethernets:
-      ens3:
+      toolbox:
+        match: {macaddress: "52:54:00:77:30:02"}
+        set-name: ens3
         addresses: [${guest}/30]
         routes: [{to: 0.0.0.0/0, via: ${host}}]
         nameservers: {addresses: [${host}]}
