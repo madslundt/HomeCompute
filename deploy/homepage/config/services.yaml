@@ -98,6 +98,12 @@
         href: https://ai.home.arpa/healthz
         description: Check the local AI gateway health
 
+    - MCP Gateway:
+        id: homecore-mcp-gateway
+        icon: mdi-connection
+        href: https://mcp.home.arpa/ui/
+        description: Manage MCP servers, client access, and tools
+
     - AI Token Usage:
         id: homecore-token-usage
         icon: mdi-chart-bar

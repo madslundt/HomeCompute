@@ -88,6 +88,12 @@ LiteLLM database; the release config remains the source for the server catalog.
 For setup and the client migration plan, see [ADR-033](../../docs/adr/033-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
 
+The `mcp.home.arpa` private DNS A record must point to `192.168.30.122` in the
+home LAN resolver. Use `/mcp` for MCP clients and `/ui/` for the LiteLLM Admin
+UI; `/mcp` is a protocol endpoint, so opening it in a browser without a client
+key returns an authentication challenge. The Homepage administration card
+opens the Admin UI.
+
 Speech clients use the [speech API contract](../../docs/speech-api.md).
 `whisper` serves transcription. `tts-danish` and `tts-english` are stable
 capability aliases for the selected bilingual OmniVoice service; `omnivoice`
