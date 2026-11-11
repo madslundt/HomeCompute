@@ -79,6 +79,13 @@
         href: https://chat.home.arpa/
         description: Chat with local AI models
 
+- Updates & monitoring:
+    - AI automation manager:
+        id: homecore-ai-automation-manager
+        icon: mdi-clipboard-text-clock-outline
+        href: https://automations.home.arpa/
+        description: Manage topic briefings, daily news, and system monitoring
+
 - Administration:
     - n8n:
         id: homecore-n8n

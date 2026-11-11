@@ -1,0 +1,4 @@
+services:
+  ai-automation-manager:
+    environment:
+      AI_AUTOMATION_PUBLIC_ORIGIN: https://automations.home.arpa

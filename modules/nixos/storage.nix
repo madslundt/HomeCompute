@@ -27,6 +27,7 @@
     "d /srv/state/automation/n8n 0700 1000 1000 - -"
     "d /srv/state/automation/aula-mcp 0700 1000 1000 - -"
     "d /srv/state/automation/tilbudstrolden-mcp 0700 1000 1000 - -"
+    "d /srv/state/automation/ai-automation-manager 0700 10001 10001 - -"
     "d /srv/state/piper-tts 0750 root homecompute-state - -"
     "d /srv/state/piper-tts/models 0755 root root - -"
     "d /srv/state/wyoming-stt 0750 root homecompute-state - -"

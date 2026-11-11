@@ -116,6 +116,20 @@ craft-anything.home.arpa {
 	respond "Forbidden" 403
 }
 
+automations.home.arpa {
+	tls internal
+	encode zstd gzip
+	reverse_proxy ai-automation-manager:8080 {
+		health_uri /api/health
+		health_interval 30s
+		lb_try_duration 5s
+		transport http {
+			dial_timeout 3s
+			response_header_timeout 15s
+		}
+	}
+}
+
 http://:8188 {
 	import comfyui_studio
 }
@@ -146,6 +160,10 @@ http://:8080 {
 	@craft_anything host craft-anything.home.arpa
 	handle @craft_anything {
 		redir https://craft-anything.home.arpa{uri} 308
+	}
+	@automations host automations.home.arpa
+	handle @automations {
+		redir https://automations.home.arpa{uri} 308
 	}
 	@agent_office host agents.home.arpa
 	handle @agent_office {

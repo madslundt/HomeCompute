@@ -142,6 +142,9 @@
       iptables -w -N HC-AUTOMATION 2>/dev/null || true
       iptables -w -F HC-AUTOMATION
       iptables -w -A HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      # The AI automation manager only needs the local Home Assistant Inbox webhook.
+      iptables -w -A HC-AUTOMATION -s 172.28.201.5/32 -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
+      iptables -w -A HC-AUTOMATION -s 172.28.201.5/32 -j REJECT
       iptables -w -A HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
       iptables -w -A HC-AUTOMATION -o br-hc-n8n -d 172.28.201.4/32 -p tcp --dport 8000 -j RETURN
       iptables -w -A HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
@@ -163,6 +166,8 @@
       iptables -w -I DOCKER-USER 2 -i br-hc-n8n -j HC-AUTOMATION
 
       iptables -w -C HC-AUTOMATION -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+      iptables -w -C HC-AUTOMATION -s 172.28.201.5/32 -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
+      iptables -w -C HC-AUTOMATION -s 172.28.201.5/32 -j REJECT
       iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
       iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.4/32 -p tcp --dport 8000 -j RETURN
       iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN

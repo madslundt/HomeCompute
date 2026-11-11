@@ -27,6 +27,9 @@ __pycache__/
 tmp/
 artifacts/
 .playwright-mcp/
+node_modules/
+dist/
+*.tsbuildinfo
 
 # Local agent-harness runtime state (policies intended for deployment belong in
 # reviewed configuration files, not tool-generated state directories).

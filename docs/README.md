@@ -80,6 +80,7 @@ and other personal-agent services remain deferred.
 | Extend Meeting Assistant or process Plaud recordings | [ADR-012](adr/012-reuse-meeting-assistant.md), the meeting sections in [architecture](architecture.md) and [verification](verification-strategy.md) |
 | Add the Hermes personal assistant layer | [NemoClaw placement and Hermes setup](research/nemoclaw-machine-placement.md), [Hermes verification](research/hermes-personal-assistant-verification.md), [ADR-013](adr/013-hermes-personal-agent-layer.md), and Phases I/J in the [implementation plan](implementation-plan.md) |
 | Run a self-hosted OpenBot team server | [OpenBot operations](../deploy/openbot/README.md), [assessment](research/openbot-home-core-assessment-2026-11-09.md), and [ADR-030](adr/030-openbot-team-server.md) |
+| Review the parallel self-hosted AI automation manager | [Proposal](ai-automation-manager-proposal.md), [fields and operations](../automations/ai-automation-manager/README.md), and [screen concept](images/ai-automation-manager-concept.png) |
 | Run Craft Anything in an isolated Home Core guest | [Toolbox runbook](../deploy/toolbox/README.md), [ADR-017](adr/017-consolidated-application-host.md), and the [pinned upstream release](../config/craft-anything-toolbox.json) |
 
 The two rendered overview diagrams are also useful entry points:
