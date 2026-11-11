@@ -172,7 +172,7 @@ class ConnectionTests(unittest.TestCase):
         failed = subprocess.CompletedProcess([], 2, 'synthetic failure ' + self.token, 'private endpoint refused')
         with patch.object(connect.subprocess, 'run', return_value=failed):
             with self.assertRaises(ValueError) as error:
-                connect.call(['nemohermes', 'hermes-personal-v23', 'mcp', 'add'], env={connect.KEY: self.token})
+                connect.call(['nemohermes', 'hermes-personal-v23-r2', 'mcp', 'add'], env={connect.KEY: self.token})
         self.assertNotIn(self.token, str(error.exception))
         self.assertIn('[redacted]', str(error.exception))
 
@@ -212,7 +212,7 @@ class ConnectionTests(unittest.TestCase):
             observed.append((args, kwargs))
             return 'enabled\n'
         with patch.object(connect, 'call', side_effect=call):
-            connect.enable_api_server_toolset('hermes-personal-v23', {})
+            connect.enable_api_server_toolset('hermes-personal-v23-r2', {})
         self.assertEqual(len(observed), 1)
         self.assertEqual(observed[0][0][2:], ['exec', '--stdin', '--', 'python3', '-'])
         self.assertIn('mcp-homecompute', observed[0][1]['input'])
@@ -249,7 +249,7 @@ class ConnectionTests(unittest.TestCase):
             with patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), patch.object(connect, 'call', side_effect=[
                     json.dumps({'agent': 'hermes', 'phase': 'Ready'}), json.dumps({'bridges': [state]}),
                     json.dumps(state)]) as call:
-                with self.assertRaises(ValueError): connect.connect('hermes-personal-v23', self.token)
+                with self.assertRaises(ValueError): connect.connect('hermes-personal-v23-r2', self.token)
             self.assertFalse(any(c.args[0][2:4] in (['mcp', 'add'], ['mcp', 'remove']) for c in call.call_args_list))
 
     def test_explicit_repair_replaces_only_exact_legacy_boundary_conflict_with_private_backup(self):
@@ -258,7 +258,7 @@ class ConnectionTests(unittest.TestCase):
                         'trustedPrivateTarget': {'state': 'match'}}
         old_status = {'server': 'homecompute', 'url': connect.URL,
                       'env': {'names': [], 'missing': [], 'ready': False},
-                      'provider': {'name': 'hermes-personal-v23-mcp-homecompute', 'state': 'conflict',
+                      'provider': {'name': 'hermes-personal-v23-r2-mcp-homecompute', 'state': 'conflict',
                                    'present': True, 'credentialReady': False,
                                    'credentialResolution': {'ok': False}},
                       'adapter': {'registered': None},
@@ -275,15 +275,15 @@ class ConnectionTests(unittest.TestCase):
                 if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
                     return json.dumps({'policy': {'network_policies': {}}})
                 if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
-                    rows = ([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'provider-id',
+                    rows = ([{'name': 'hermes-personal-v23-r2-mcp-homecompute', 'id': 'provider-id',
                               'resource_version': 'rv1', 'type': 'nemoclaw-mcp-v1',
                               'credential_keys': [connect.KEY]}] if provider_present else [])
                     return json.dumps(rows)
                 if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
-                    return 'hermes-personal-v23\n'
+                    return 'hermes-personal-v23-r2\n'
                 if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
                     return ('NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\n'
-                            + ('hermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+                            + ('hermes-personal-v23-r2-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
                                if provider_attached else ''))
                 if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'detach']:
                     provider_attached = False
@@ -314,7 +314,7 @@ class ConnectionTests(unittest.TestCase):
                  patch.object(connect, 'BACKUPS', Path(temporary) / '.local/state/homecompute/backups'), \
                  patch.object(connect, 'gates'), patch.object(connect, 'network_setup'), \
                  patch.object(connect, 'call', side_effect=call):
-                result = connect.connect('hermes-personal-v23', self.token, repair_legacy_registration=True)
+                result = connect.connect('hermes-personal-v23-r2', self.token, repair_legacy_registration=True)
             self.assertTrue(result['credential_verified'])
             self.assertIn('replaced_legacy_registration_backup', result)
             backup = Path(result['replaced_legacy_registration_backup'])
@@ -346,7 +346,7 @@ class ConnectionTests(unittest.TestCase):
                         'env': {'names': []}, 'trustedPrivateTarget': {'state': 'match'}}
         old_status = {'server': 'homecompute', 'url': connect.URL,
                       'env': {'names': [], 'ready': False},
-                      'provider': {'name': 'hermes-personal-v23-mcp-homecompute', 'state': 'conflict',
+                      'provider': {'name': 'hermes-personal-v23-r2-mcp-homecompute', 'state': 'conflict',
                                    'present': True, 'credentialReady': False},
                       'adapter': {'registered': None}, 'trustedPrivateTarget': {'state': 'match'},
                       'warnings': ['unrelated conflict']}
@@ -358,7 +358,7 @@ class ConnectionTests(unittest.TestCase):
                  json.dumps({'agent': 'hermes', 'phase': 'Ready'}),
                  json.dumps({'bridges': [old_list_row]}), json.dumps(old_status)]) as call:
             with self.assertRaises(ValueError):
-                connect.connect('hermes-personal-v23', self.token, repair_legacy_registration=True)
+                connect.connect('hermes-personal-v23-r2', self.token, repair_legacy_registration=True)
             self.assertFalse(any(row.args[0][2:4] in (['mcp', 'add'], ['mcp', 'remove'])
                                  for row in call.call_args_list))
             self.assertFalse((Path(temporary) / '.local/state/homecompute/backups').exists())
@@ -370,7 +370,7 @@ class ConnectionTests(unittest.TestCase):
             path = backup_dir / '123-homecompute.json'
             path.write_text(json.dumps({
                 'schema_version': 1,
-                'sandbox': 'hermes-personal-v23',
+                'sandbox': 'hermes-personal-v23-r2',
                 'server': 'homecompute',
                 'url': connect.URL,
                 'env_names': [],
@@ -382,10 +382,10 @@ class ConnectionTests(unittest.TestCase):
             path.chmod(0o600)
             with patch.object(connect.Path, 'home', return_value=Path(temporary)), \
                  patch.object(connect, 'BACKUPS', backup_dir):
-                self.assertEqual(connect.private_legacy_backup('hermes-personal-v23'), str(path))
+                self.assertEqual(connect.private_legacy_backup('hermes-personal-v23-r2'), str(path))
                 self.assertIsNone(connect.private_legacy_backup('hermes-personal'))
                 path.chmod(0o644)
-                self.assertIsNone(connect.private_legacy_backup('hermes-personal-v23'))
+                self.assertIsNone(connect.private_legacy_backup('hermes-personal-v23-r2'))
 
     def test_stale_provider_cleanup_refuses_attachment_to_another_sandbox_before_mutation(self):
         calls = []
@@ -394,19 +394,19 @@ class ConnectionTests(unittest.TestCase):
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
                 return json.dumps({'policy': {'network_policies': {}}})
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
-                return json.dumps([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
+                return json.dumps([{'name': 'hermes-personal-v23-r2-mcp-homecompute', 'id': 'id',
                                     'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
                                     'credential_keys': [connect.KEY]}])
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
-                return 'hermes-personal-v23\nhermes-personal\n'
+                return 'hermes-personal-v23-r2\nhermes-personal\n'
             if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
                 return ('NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\n'
-                        + ('hermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+                        + ('hermes-personal-v23-r2-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
                            if args[6] == 'hermes-personal' else ''))
             return ''
         with patch.object(connect, 'call', side_effect=call):
             with self.assertRaisesRegex(ValueError, 'attached outside its owner sandbox'):
-                connect.clear_stale_provider('hermes-personal-v23', {})
+                connect.clear_stale_provider('hermes-personal-v23-r2', {})
         self.assertFalse(any(args[3:5] == ['provider', 'delete'] or args[5] == 'detach'
                              for args in calls))
 
@@ -419,27 +419,27 @@ class ConnectionTests(unittest.TestCase):
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
                 return json.dumps({'policy': {'network_policies': {}}})
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
-                rows = ([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
+                rows = ([{'name': 'hermes-personal-v23-r2-mcp-homecompute', 'id': 'id',
                           'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
                           'credential_keys': [connect.KEY]}] if provider_present else [])
                 return json.dumps(rows)
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
-                return 'hermes-personal-v23\n'
+                return 'hermes-personal-v23-r2\n'
             if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
-                return 'NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\nhermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+                return 'NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\nhermes-personal-v23-r2-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
             if args[5] == 'detach':
                 raise ValueError("native openshell -g nemoclaw sandbox failed: Error:   × code: 'The system is not in a state required for the operation's\n"
                                  "  │ execution', message: \"credential_binding references provider 'hermes-\n"
-                                 "  │ personal-v23-mcp-homecompute', but that provider is not attached to the\n"
+                                 "  │ personal-v23-r2-mcp-homecompute', but that provider is not attached to the\n"
                                  "  │ sandbox\"")
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'delete']:
                 provider_present = False
                 return ''
             return ''
         with patch.object(connect, 'call', side_effect=call):
-            connect.clear_stale_provider('hermes-personal-v23', {})
+            connect.clear_stale_provider('hermes-personal-v23-r2', {})
         self.assertIn(['openshell', '-g', 'nemoclaw', 'provider', 'delete',
-                       'hermes-personal-v23-mcp-homecompute'], calls)
+                       'hermes-personal-v23-r2-mcp-homecompute'], calls)
 
     def test_stale_provider_cleanup_does_not_accept_other_detach_errors(self):
         calls = []
@@ -448,19 +448,19 @@ class ConnectionTests(unittest.TestCase):
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'policy', 'get']:
                 return json.dumps({'policy': {'network_policies': {}}})
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'provider', 'list']:
-                return json.dumps([{'name': 'hermes-personal-v23-mcp-homecompute', 'id': 'id',
+                return json.dumps([{'name': 'hermes-personal-v23-r2-mcp-homecompute', 'id': 'id',
                                     'resource_version': 'rv', 'type': 'nemoclaw-mcp-v1',
                                     'credential_keys': [connect.KEY]}])
             if args[:5] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'list']:
-                return 'hermes-personal-v23\n'
+                return 'hermes-personal-v23-r2\n'
             if args[:6] == ['openshell', '-g', 'nemoclaw', 'sandbox', 'provider', 'list']:
-                return 'NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\nhermes-personal-v23-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
+                return 'NAME TYPE CREDENTIAL_KEYS CONFIG_KEYS\nhermes-personal-v23-r2-mcp-homecompute nemoclaw-mcp-v1 1 0\n'
             if args[5] == 'detach':
                 raise ValueError('permission denied for provider detach')
             return ''
         with patch.object(connect, 'call', side_effect=call):
             with self.assertRaisesRegex(ValueError, 'permission denied'):
-                connect.clear_stale_provider('hermes-personal-v23', {})
+                connect.clear_stale_provider('hermes-personal-v23-r2', {})
         self.assertFalse(any(args[3:5] == ['provider', 'delete'] for args in calls))
 
     def test_gate_requires_private_fresh_owner_records(self):
@@ -527,16 +527,16 @@ class NetworkTests(unittest.TestCase):
                          {'path': '/opt/hermes/.venv/bin/python*'}],
             'endpoints': [{'host': 'homecompute-capabilities.home.arpa', 'port': 19445, 'path': '/mcp',
                            'protocol': 'mcp', 'enforcement': 'enforce', 'allowed_ips': ['10.77.20.1'],
-                           'credential_binding': {'provider': 'hermes-personal-v23-mcp-homecompute'},
+                           'credential_binding': {'provider': 'hermes-personal-v23-r2-mcp-homecompute'},
                            'mcp': {'max_body_bytes': 131072, 'strict_tool_names': True,
                                    'allow_all_known_mcp_methods': False},
                            'rules': [{'allow': {'method': 'initialize'}}]}]}}}
 
     def test_only_exact_real_interpreter_is_added_and_repeat_is_idempotent(self):
         before = self.policy(); raw = json.dumps(before, sort_keys=True)
-        after = connect.network_candidate(before, 'hermes-personal-v23')
+        after = connect.network_candidate(before, 'hermes-personal-v23-r2')
         self.assertEqual(json.dumps(before, sort_keys=True), raw)
-        self.assertEqual(after, connect.network_candidate(after, 'hermes-personal-v23'))
+        self.assertEqual(after, connect.network_candidate(after, 'hermes-personal-v23-r2'))
         after['network_policies']['mcp_bridge_homecompute']['binaries'].pop()
         self.assertEqual(after, before)
 
@@ -545,12 +545,12 @@ class NetworkTests(unittest.TestCase):
                            ('credential_binding', {'provider': 'openclaw'}), ('protocol', 'rest')):
             before = self.policy()
             before['network_policies']['mcp_bridge_homecompute']['endpoints'][0][key] = value
-            with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23')
+            with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23-r2')
         before = self.policy(); before['network_policies']['mcp_bridge_homecompute']['binaries'].append({'path': '/**'})
-        with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23')
+        with self.assertRaises(ValueError): connect.network_candidate(before, 'hermes-personal-v23-r2')
 
     def test_stale_provider_policy_cleanup_selects_only_exact_speech_routes(self):
-        sandbox = 'hermes-personal-v23'
+        sandbox = 'hermes-personal-v23-r2'
         network = {}
         for key, path in (('homecompute_transcription', '/v1/audio/transcriptions'),
                           ('homecompute_speech', '/v1/audio/speech')):

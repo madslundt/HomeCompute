@@ -118,3 +118,12 @@ files. The image precreates only `/run/nemoclaw/.install.lock` as
 runtime lock without granting the sandbox write access to the directory or to
 the supervisor's files. The Docker build checks the lock can be opened as the
 unprivileged sandbox user.
+
+Hermes's embedded kanban dispatcher keeps its singleton lock beside the kanban
+database by default. That made a sandbox restore collide with the running
+gateway's newly created `.hermes/kanban` directory. The pinned source overlay
+places only this runtime lock at `/tmp/hermes-kanban-dispatcher.lock`, inside the
+sandbox's writable temporary directory. The lock is absent from native-home
+archives, so a restore cannot collide with it; kanban databases, boards, and
+workspace state remain at their upstream paths. Gateways inside the same
+sandbox still share this singleton lock.

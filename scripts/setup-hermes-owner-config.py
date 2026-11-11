@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def install(destination: Path, content: str) -> None:
-    if destination.name != 'hermes-personal-v23.env' or not destination.is_absolute():
+    if destination.name != 'hermes-personal-v23-r2.env' or not destination.is_absolute():
         raise ValueError('fixed selected-owner configuration required')
     for parent in (destination.parent, *destination.parents):
         if parent.is_symlink():
@@ -39,7 +39,7 @@ def main():
     if (os.getuid() != 1000 or Path.home() != Path('/home/hermes-operator')
             or release.get('ID') != 'ubuntu' or release.get('VERSION_ID') != '24.04'):
         raise ValueError('Ubuntu 24.04 agents guest operator required')
-    destination = Path.home() / '.config/homecompute-hermes/hermes-personal-v23.env'
+    destination = Path.home() / '.config/homecompute-hermes/hermes-personal-v23-r2.env'
     install(destination, (ROOT / 'config/hermes-agent.env.example').read_text())
     print('Selected Hermes owner configuration installed; prior configuration retained')
 

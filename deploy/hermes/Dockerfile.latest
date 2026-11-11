@@ -26,6 +26,7 @@ RUN mkdir -p /tmp/hermes-latest/python-runtime \
     && tar -xzf /tmp/hermes-python.tar.gz --strip-components=1 -C /tmp/hermes-latest/python-runtime \
     && git -C /tmp/hermes-latest apply --check /tmp/homecompute-managed-integration.patch \
     && git -C /tmp/hermes-latest apply /tmp/homecompute-managed-integration.patch \
+    && python3 -c 'from pathlib import Path; p=Path("/tmp/hermes-latest/gateway/kanban_watchers.py"); s=p.read_text(); old="_lock_path = _kb.kanban_home() / \"kanban\" / \".dispatcher.lock\""; new="_lock_path = Path(\"/tmp/hermes-kanban-dispatcher.lock\")"; assert s.count(old) == 1, "pinned Hermes kanban lock path changed"; p.write_text(s.replace(old, new))' \
     && rm -rf /opt/hermes \
     && mv /tmp/hermes-latest /opt/hermes \
     && cp -a /opt/nemoclaw-hermes-plugin /opt/hermes/plugins/nemoclaw \
