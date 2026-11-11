@@ -15,18 +15,24 @@ tailnet clients. The VNC password is required to control the desktop.
 Connect through Home Core, which is the only route to the guest:
 
 ```bash
-ssh -J mads@home-core toolbox-operator@10.77.30.2
+ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_ai-services-01 \
+  -J home-core toolbox-operator@10.77.30.2
 ```
 
 From a HomeCompute checkout in the guest, install the pinned CLI and desktop
 UI. Copy these source files from the selected published release checkout:
 
 ```bash
-ssh -J mads@home-core toolbox-operator@10.77.30.2 'mkdir -p ~/HomeCompute/config ~/HomeCompute/scripts'
-scp -o ProxyJump=mads@home-core config/craft-anything-toolbox.json toolbox-operator@10.77.30.2:HomeCompute/config/
-scp -o ProxyJump=mads@home-core scripts/install-craft-anything-toolbox.sh toolbox-operator@10.77.30.2:HomeCompute/scripts/
-scp -o ProxyJump=mads@home-core scripts/install-craft-anything-desktop.sh toolbox-operator@10.77.30.2:HomeCompute/scripts/
-ssh -J mads@home-core toolbox-operator@10.77.30.2
+ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_ai-services-01 \
+  -J home-core toolbox-operator@10.77.30.2 'mkdir -p ~/HomeCompute/config ~/HomeCompute/scripts'
+scp -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_ai-services-01 -o ProxyJump=home-core \
+  config/craft-anything-toolbox.json toolbox-operator@10.77.30.2:HomeCompute/config/
+scp -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_ai-services-01 -o ProxyJump=home-core \
+  scripts/install-craft-anything-toolbox.sh toolbox-operator@10.77.30.2:HomeCompute/scripts/
+scp -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_ai-services-01 -o ProxyJump=home-core \
+  scripts/install-craft-anything-desktop.sh toolbox-operator@10.77.30.2:HomeCompute/scripts/
+ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_ai-services-01 \
+  -J home-core toolbox-operator@10.77.30.2
 sudo apt-get update
 sudo apt-get install -y curl jq
 cd ~/HomeCompute
@@ -43,7 +49,8 @@ is generated once and retained in guest state; retrieve it over the pinned SSH
 route when needed:
 
 ```bash
-ssh -J mads@home-core toolbox-operator@10.77.30.2 \
+ssh -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519_ai-services-01 \
+  -J home-core toolbox-operator@10.77.30.2 \
   'sudo cat /var/lib/craft-anything-desktop/vnc.password'
 ```
 
