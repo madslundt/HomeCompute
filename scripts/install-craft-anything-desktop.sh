@@ -74,6 +74,7 @@ EOF
 cat > /etc/systemd/system/craft-anything-desktop.service <<EOF
 [Unit]
 Description=Craft Anything desktop application
+JoinsNamespaceOf=craft-anything-display.service
 Requires=craft-anything-display.service
 After=craft-anything-display.service network-online.target
 Wants=network-online.target
@@ -81,7 +82,6 @@ Wants=network-online.target
 [Service]
 User=$operator
 Group=$operator
-JoinsNamespaceOf=craft-anything-display.service
 WorkingDirectory=$operator_home
 Environment=HOME=$operator_home
 Environment=DISPLAY=:99
@@ -103,13 +103,13 @@ EOF
 cat > /etc/systemd/system/craft-anything-vnc.service <<EOF
 [Unit]
 Description=Password-protected VNC server for Craft Anything
+JoinsNamespaceOf=craft-anything-display.service
 Requires=craft-anything-display.service
 After=craft-anything-display.service
 
 [Service]
 User=$operator
 Group=$operator
-JoinsNamespaceOf=craft-anything-display.service
 ExecStart=/usr/bin/x11vnc -display :99 -rfbauth $state_dir/vnc.pass -localhost -forever -shared -rfbport 5900 -noxdamage -repeat
 Restart=on-failure
 RestartSec=3
