@@ -22,7 +22,7 @@ def call(args, **kwargs):
 def main():
     # Called only after setup-hermes-guest.sh validates owner, secret-file mode,
     # configuration and household readiness records.
-    if NAME == 'hermes-personal-v23-r2':
+    if NAME == 'hermes-personal-v2':
         previous = json.loads(call(['nemohermes', 'hermes-personal', 'status', '--json']))
         if previous.get('agent') != 'hermes' or previous.get('phase') != 'Stopped':
             raise RuntimeError('Previous Hermes owner must be natively Stopped before bot cutover')

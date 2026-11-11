@@ -11,7 +11,7 @@
     "url": "https://files.pythonhosted.org/packages/18/02/b4bbb90f8f29e334898ff45c6d9b1fffaa6f378017052b3023a06262b5f7/setuptools-84.1.0-py3-none-any.whl",
     "sha256": "5231689c6ac8156cd155cfb98c3fd6fb252c3e7e9bd3d78b64d3c55f132624c9"
   },
-  "sandbox": "hermes-personal-v23-r2",
+  "sandbox": "hermes-personal-v2",
   "model": "automation-moe",
   "reasoning_effort": "medium",
   "max_concurrency": 1,

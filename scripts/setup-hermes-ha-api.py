@@ -14,7 +14,7 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-NAME = 'hermes-personal-v23-r2'
+NAME = 'hermes-personal-v2'
 KEY_PATH = Path.home() / '.config/homecompute-hermes/secrets/hermes-api-server-default'
 STATE = Path.home() / '.local/state/homecompute/hermes-ha-api'
 ENV = {**os.environ, 'NEMOCLAW_GATEWAY_PORT': '8080', 'OPENSHELL_GATEWAY': 'nemoclaw',

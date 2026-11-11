@@ -32,7 +32,7 @@ canonical entries. It preserves conflicting skills and verifies readback.
 Inspect the plan before retrying an interrupted run. A partial install is
 resumable when all present entries match source.
 
-Run `nemohermes hermes-personal-v23-r2 skill list`, then test each role in a
+Run `nemohermes hermes-personal-v2 skill list`, then test each role in a
 fresh authenticated owner session with a read-only request. Check skill
 discovery, the reported sources and the handling of unavailable evidence.
 Use `--rollback` with the same published revision to remove the three exact
@@ -290,7 +290,7 @@ A same-host bootstrap backup does not admit household messages.
 From the reviewed, published source checkout inside the guest:
 
 ```bash
-config=/home/hermes-operator/.config/homecompute-hermes/hermes-personal-v23-r2.env
+config=/home/hermes-operator/.config/homecompute-hermes/hermes-personal-v2.env
 ./scripts/setup-hermes-guest.sh validate --config "$config"
 ./scripts/setup-hermes-guest.sh preflight --config "$config"
 ./scripts/setup-hermes-guest.sh onboard-canary --config "$config"
@@ -496,7 +496,7 @@ payloads belong only to Hermes's intentional conversation state, not duplicate
 request-debug files. The build rejects an unexpected upstream implementation
 instead of silently skipping this privacy policy.
 
-The selected runtime name is `hermes-personal-v23-r2`. The previous
+The selected runtime name is `hermes-personal-v2`. The previous
 `hermes-personal` instance and its configuration are retained for rollback. The
 failed `hermes-personal-v23` replacement remains under NemoClaw's retained
 recovery record with its verified native-home archive. After managed deletion
@@ -524,7 +524,7 @@ before enabling the new listener. Existing gateway-held provider IDs remain
 is needed. Install startup for the new config only after its client checks pass.
 Qualification commands refuse to reconfigure the selected owner instance.
 
-For rollback, stop the new unit first, natively stop `hermes-personal-v23-r2`, and
+For rollback, stop the new unit first, natively stop `hermes-personal-v2`, and
 install/start the retained previous source's unit with `hermes-personal.env`.
 Health-check that release and the owner DM/browser path. Leave the new instance
 stopped with its state preserved; switching code does not merge conversation
@@ -665,8 +665,8 @@ The published read-only probes can be run with the operator's native CLI:
 
 ```bash
 export OPENSHELL_GATEWAY=nemoclaw NEMOCLAW_GATEWAY_PORT=8080 NEMOCLAW_NO_AUTO_AUDIT_LOGS=1
-nemohermes hermes-personal-v23-r2 exec --stdin -- /opt/hermes/.venv/bin/python - < deploy/hermes/omh/verify.py
-nemohermes hermes-personal-v23-r2 exec --stdin -- /opt/hermes/.venv/bin/python - < deploy/hermes/omh/probe_runtime.py
+nemohermes hermes-personal-v2 exec --stdin -- /opt/hermes/.venv/bin/python - < deploy/hermes/omh/verify.py
+nemohermes hermes-personal-v2 exec --stdin -- /opt/hermes/.venv/bin/python - < deploy/hermes/omh/probe_runtime.py
 ```
 
 The runtime probe calls `omh_status`, verifies the sealed packages, opens only
