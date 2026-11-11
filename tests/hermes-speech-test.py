@@ -67,6 +67,15 @@ class NativeRecoveryTest(unittest.TestCase):
 
 
 class PolicyTest(unittest.TestCase):
+    def test_speech_transaction_state_is_scoped_to_its_sandbox(self):
+        with patch.object(setup.Path, 'home', return_value=Path('/home/operator')):
+            v2 = setup.state_directory('hermes-personal-v2')
+            old = setup.state_directory('hermes-personal-v23')
+        self.assertEqual(v2, Path('/home/operator/.local/state/homecompute/hermes-speech/hermes-personal-v2'))
+        self.assertEqual(old, Path('/home/operator/.local/state/homecompute/hermes-speech/hermes-personal-v23'))
+        self.assertNotEqual(v2, old)
+        with self.assertRaises(ValueError): setup.state_directory('../hermes-personal-v2')
+
     def test_bridge_plan_accepts_selected_source_and_refuses_unknown_installed_code(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / 'adapter.py'
