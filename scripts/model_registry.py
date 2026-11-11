@@ -326,7 +326,12 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                     "      output_cost_per_token: 0",
                 ])
             else:
-                lines.append(f"      stream_timeout: {timeout}")
+                lines.extend([
+                    f"      stream_timeout: {timeout}",
+                    "    model_info:",
+                    "      input_cost_per_token: 0",
+                    "      output_cost_per_token: 0",
+                ])
     transcription_deployments = catalog.get("transcription_deployments", {})
     for alias, route in routes_doc.get("transcription_routes", {}).items():
         if route["state"] == "disabled":
@@ -347,6 +352,7 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                 "      response_format: json",
                 "    model_info:",
                 "      mode: audio_transcription",
+                "      input_cost_per_second: 0",
             ])
     tts_deployments = catalog.get("tts_deployments", {})
     for alias, route in routes_doc.get("tts_routes", {}).items():
@@ -367,8 +373,21 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                 f"      stream_timeout: {timeout}",
                 "    model_info:",
                 "      mode: audio_speech",
+                "      output_cost_per_character: 0",
             ])
     lines.extend(MEDIA.MediaRegistry.render_video(catalog, routes_doc))
+    # Codex keeps ChatGPT OAuth on the client. These routes carry the client's
+    # subscription login through LiteLLM and never require an OpenAI API key.
+    for alias, provider_model in (("gpt-*", "chatgpt/gpt-*"), ("codex-*", "chatgpt/codex-*")):
+        lines.extend([
+            f"  - model_name: {_yaml_quote(alias)}",
+            "    litellm_params:",
+            f"      model: {_yaml_quote(provider_model)}",
+            "    model_info:",
+            "      mode: responses",
+            "      input_cost_per_token: 0",
+            "      output_cost_per_token: 0",
+        ])
     return "\n".join(lines) + "\n"
 
 

@@ -355,7 +355,7 @@
       "host_role": "compute-gb10",
       "network_scope": "private_local",
       "runtime_profile": "vllm-qwen36-nvidia-nvfp4",
-      "endpoint_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
+      "endpoint_env": "COMPUTE_AUTOMATION_BASE_URL",
       "served_model_name": "automation-moe-nvidia",
       "context_tokens": 65536,
       "concurrency": 4,
