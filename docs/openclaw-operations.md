@@ -45,7 +45,12 @@ hash-bound bundle with `scripts/setup-host-maintenance.py` after installing the
 infrastructure controller. Spark needs a separate root installation; missing
 installation is reported as missing coverage until that step is complete.
 The `host-update-report` records successful updates and outstanding review or
-coverage gaps. Published numeric registry releases need independent platform
+coverage gaps. The daily service also runs `host-update-notify.py` afterwards:
+without configuration it only logs a one-line summary to the journal, and with a
+root-owned `/etc/homecompute/host-update-notification.env` containing
+`HOMECOMPUTE_HOST_UPDATE_WEBHOOK_URL=https://…` it posts a bounded summary of
+held, review, or failed rows to that HTTPS webhook; a fully current report sends
+nothing and a delivery failure fails the unit visibly. Published numeric registry releases need independent platform
 and image provenance, the same image variant, a healthy running baseline, and
 bounded recoverable data before automatic replacement. The former container
 and private data backup are retained; failed attempts roll back and remain held.

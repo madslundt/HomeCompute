@@ -33,7 +33,7 @@ class HostMaintenanceSetupTest(unittest.TestCase):
 
     def test_exact_bundle_hash_binds_all_code_and_tracking(self):
         digest = setup.bundle(self.source)[1]
-        self.assertEqual(len(setup.FILES), 5)
+        self.assertEqual(len(setup.FILES), 6)
         for name in setup.FILES:
             target = self.source / name
             before = target.read_bytes()
@@ -102,6 +102,8 @@ class HostMaintenanceSetupTest(unittest.TestCase):
         for host, python in (('home-core', '/run/current-system/sw/bin/python3'), ('home-spark', '/usr/bin/python3')):
             unit = setup.service(host)
             self.assertIn(f'ExecStart={python} -I {setup.DEST}/setup-host-maintenance.py --run --host {host}\n', unit)
+            self.assertIn(f'ExecStartPost={python} -I {setup.DEST}/host-update-notify.py --host {host} --report {setup.PUBLIC}/report.json\n', unit)
+            self.assertIn('EnvironmentFile=-/etc/homecompute/host-update-notification.env\n', unit)
             self.assertIn('Type=oneshot\n', unit)
             self.assertIn('User=root\n', unit)
             self.assertIn('TimeoutStartSec=7200\n', unit)
