@@ -106,7 +106,11 @@ install -D -m 0644 \
   /etc/homecompute/control-plane/home-core-root.crt
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
 speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")
-automation=(docker compose --env-file /etc/homecompute/automation.env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
+[[ -s /run/secrets/automation/inbox-webhook-env ]] || {
+  printf 'Missing SOPS-managed Inbox webhook env file: /run/secrets/automation/inbox-webhook-env\n' >&2
+  exit 1
+}
+automation=(docker compose --env-file /etc/homecompute/automation.env --env-file /run/secrets/automation/inbox-webhook-env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
 model_manager=(env "MODEL_MANAGER_RELEASE=$revision" docker compose --env-file /etc/homecompute/model-manager.env -f "$release/deploy/model-manager/compose.yaml")

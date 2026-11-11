@@ -49,6 +49,11 @@ in
             "books_importer/environment" = {
               mode = "0400";
             };
+            # Compose reads this dotenv document separately so the Inbox
+            # webhook ID never enters the Nix store or tracked env template.
+            "automation/inbox-webhook-env" = {
+              mode = "0400";
+            };
             "control-plane/compute-api-key" = {
               group = "homecompute-secrets";
               mode = "0440";

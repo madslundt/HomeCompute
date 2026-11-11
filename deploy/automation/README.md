@@ -20,12 +20,28 @@ HTTP and the existing n8n account login.
 `http://home-core:15678`; generated workflow and webhook links therefore use
 the LAN hostname instead of the Tailscale-specific hostname.
 
-The private `/etc/homecompute/automation.env` also supplies
-`INBOX_WEBHOOK_ID`, which Compose passes to n8n for the Home Assistant
-Notification Inbox webhook. Set it to the same value as Home Assistant's
-`notification_inbox_webhook_id` secret. Keep the value out of Git and logs;
-changing it requires recreating the n8n container through the deployment
-lifecycle.
+The encrypted `secrets/home-core.sops.yaml` supplies the private
+`automation.inbox-webhook-env` dotenv document. It must contain
+`INBOX_WEBHOOK_ID=<the same value as Home Assistant's
+notification_inbox_webhook_id secret>`. SOPS materializes it at
+`/run/secrets/automation/inbox-webhook-env`; Compose reads that protected file
+after the nonsecret `/etc/homecompute/automation.env`. Keep the webhook ID out
+of Git and logs. Changing it requires recreating the n8n container through the
+deployment lifecycle.
+
+To set it, edit the encrypted file with `sops secrets/home-core.sops.yaml` and
+add this YAML entry, replacing the placeholder with the existing Home Assistant
+secret:
+
+```yaml
+automation:
+  inbox-webhook-env: |
+    INBOX_WEBHOOK_ID=<existing webhook ID>
+```
+
+Save the encrypted file, commit and push it, then deploy the commit with the
+HomeCompute deployment script. Never add the actual value to
+`config/automation.env.example`.
 
 n8n blocks environment-variable access in workflow expressions by default in
 this deployment unless `N8N_BLOCK_ENV_ACCESS_IN_NODE` is set to `false`. The
