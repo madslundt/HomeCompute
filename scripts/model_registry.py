@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 import re
 import stat
@@ -172,6 +173,23 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
             raise RegistryError(f"routes.{alias}.state is invalid")
         if route.get("privacy") != "local_only":
             raise RegistryError(f"routes.{alias}.privacy must be local_only")
+        pricing = route.get("pricing_usd_per_million_tokens")
+        if pricing is not None:
+            pricing = obj(pricing, f"routes.{alias}.pricing_usd_per_million_tokens")
+            expected_pricing_fields = {"input", "output", "cache_read", "cache_creation"}
+            if set(pricing) != expected_pricing_fields:
+                raise RegistryError(
+                    f"routes.{alias}.pricing_usd_per_million_tokens must define "
+                    "input, output, cache_read, and cache_creation"
+                )
+            for field, rate in pricing.items():
+                if (
+                    isinstance(rate, bool)
+                    or not isinstance(rate, (int, float))
+                    or not math.isfinite(rate)
+                    or rate < 0
+                ):
+                    raise RegistryError(f"routes.{alias}.pricing_usd_per_million_tokens.{field} must be a finite non-negative number")
         required_capabilities = set(string_list(route.get("required_capabilities"), f"routes.{alias}.required_capabilities"))
         protocols = set(string_list(route.get("required_protocols"), f"routes.{alias}.required_protocols"))
         minimum_context = route.get("minimum_context_tokens")
@@ -326,12 +344,24 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                     "      output_cost_per_token: 0",
                 ])
             else:
-                lines.extend([
-                    f"      stream_timeout: {timeout}",
-                    "    model_info:",
-                    "      input_cost_per_token: 0",
-                    "      output_cost_per_token: 0",
-                ])
+                lines.append(f"      stream_timeout: {timeout}")
+                pricing = route.get("pricing_usd_per_million_tokens")
+                lines.append("    model_info:")
+                if pricing is None:
+                    lines.extend([
+                        "      input_cost_per_token: 0",
+                        "      output_cost_per_token: 0",
+                    ])
+                else:
+                    def per_token(field: str) -> str:
+                        return format(pricing[field] / 1_000_000, ".15f").rstrip("0").rstrip(".") or "0"
+
+                    lines.extend([
+                        f"      input_cost_per_token: {per_token('input')}",
+                        f"      output_cost_per_token: {per_token('output')}",
+                        f"      cache_read_input_token_cost: {per_token('cache_read')}",
+                        f"      cache_creation_input_token_cost: {per_token('cache_creation')}",
+                    ])
     transcription_deployments = catalog.get("transcription_deployments", {})
     for alias, route in routes_doc.get("transcription_routes", {}).items():
         if route["state"] == "disabled":

@@ -46,10 +46,12 @@ configuration.
 
 `model-catalog.json` and `capability-routes.json` are the source of truth for
 the LiteLLM text route section. `scripts/model_registry.py render` regenerates
-only `model_list`; `check` detects drift. Authentication, key scopes, logging,
-database, and network settings remain explicit in LiteLLM configuration and
-are not inferred from registry entries. Candidate deployments do not become
-stable capability routes automatically.
+only `model_list`; `check` detects drift. Optional route prices are recorded in
+USD per million tokens and rendered as LiteLLM per-token input, output, cache
+read, and cache creation rates. Authentication, key scopes, logging, database,
+and network settings remain explicit in LiteLLM configuration and are not
+inferred from registry entries. Candidate deployments do not become stable
+capability routes automatically.
 
 The GB10 roster remains an installation plan for text and speech artifacts;
 its validator checks immutable references and internal consistency rather than

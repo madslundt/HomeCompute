@@ -8,8 +8,10 @@ model_list:
       timeout: 600
       stream_timeout: 600
     model_info:
-      input_cost_per_token: 0
-      output_cost_per_token: 0
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.00000047
+      cache_read_input_token_cost: 0.000000016
+      cache_creation_input_token_cost: 0.0000002
   - model_name: "home"
     litellm_params:
       model: "openai/automation-qualification"
@@ -30,8 +32,10 @@ model_list:
       timeout: 600
       stream_timeout: 600
     model_info:
-      input_cost_per_token: 0
-      output_cost_per_token: 0
+      input_cost_per_token: 0.00000015
+      output_cost_per_token: 0.00000047
+      cache_read_input_token_cost: 0.000000016
+      cache_creation_input_token_cost: 0.0000002
   - model_name: "automation-moe-nvidia"
     litellm_params:
       model: "openai/automation-moe-nvidia"
