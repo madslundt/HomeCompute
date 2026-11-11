@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "zone": "home.arpa",
+  "records": [
+    {
+      "name": "craft-anything.home.arpa",
+      "type": "A",
+      "value": "192.168.30.122",
+      "ttl": 300
+    }
+  ]
+}

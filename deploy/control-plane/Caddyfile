@@ -98,6 +98,24 @@ comfyui.home.arpa {
 	import comfyui_studio
 }
 
+craft-anything.home.arpa {
+	tls internal
+	encode zstd gzip
+	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
+	handle @private {
+		# The VNC server requires its own password. Its raw listener remains
+		# loopback-only inside the guest; only Caddy can reach noVNC over the
+		# host-only toolbox bridge.
+		reverse_proxy 10.77.30.2:6080 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 10m
+			}
+		}
+	}
+	respond "Forbidden" 403
+}
+
 http://:8188 {
 	import comfyui_studio
 }
@@ -124,6 +142,10 @@ http://:8080 {
 	@comfyui host comfyui.home.arpa
 	handle @comfyui {
 		redir https://comfyui.home.arpa{uri} 308
+	}
+	@craft_anything host craft-anything.home.arpa
+	handle @craft_anything {
+		redir https://craft-anything.home.arpa{uri} 308
 	}
 	@agent_office host agents.home.arpa
 	handle @agent_office {

@@ -37,6 +37,15 @@ and Tailscale addresses as Homepage. Their dynamically resolved links therefore
 work from either approved network without an SSH tunnel. Neither application is
 published on an unspecified host interface.
 
+The **Craft Anything** card opens the native desktop running inside the isolated
+Ubuntu toolbox guest through noVNC at
+`https://craft-anything.home.arpa/vnc.html?autoconnect=1&resize=remote&path=websockify`.
+The VNC password is stored in the guest and is not embedded in Homepage. Caddy
+allows only approved LAN and tailnet clients; its guest route is separately
+limited to TCP 6080 from the Caddy edge address. The desktop does not share the
+Homepage container, Docker network, credentials, or host filesystem. See the
+[toolbox runbook](../toolbox/README.md) for setup and access.
+
 Docker discovery and container statistics are disabled. The project receives
 no container-engine API access and joins no other application's Docker network.
 Add user-facing links explicitly to `config/services.yaml`. This keeps the

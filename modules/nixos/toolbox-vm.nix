@@ -56,6 +56,7 @@ in {
       tap = lib.mkOption { type = lib.types.str; default = "tap-hc-toolbox"; };
       host = lib.mkOption { type = lib.types.str; default = "10.77.30.1"; };
       guest = lib.mkOption { type = lib.types.str; default = "10.77.30.2"; };
+      desktopProxy = lib.mkOption { type = lib.types.str; default = "172.28.200.2"; };
       upstream = lib.mkOption { type = lib.types.str; default = "enp44s0"; };
     };
   };
@@ -118,6 +119,7 @@ in {
       serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
       script = ''
         iptables -w -I FORWARD 1 -i ${bridge} -j REJECT
+        iptables -w -C FORWARD -s ${cfg.network.desktopProxy}/32 -d ${guest}/32 -p tcp --dport 6080 -j ACCEPT 2>/dev/null || iptables -w -I FORWARD 1 -s ${cfg.network.desktopProxy}/32 -d ${guest}/32 -p tcp --dport 6080 -j ACCEPT
         iptables -w -N HC-TOOLBOX-EGRESS 2>/dev/null || true
         iptables -w -F HC-TOOLBOX-EGRESS
         iptables -w -A HC-TOOLBOX-EGRESS -s ${guest}/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -133,6 +135,9 @@ in {
       '';
       preStop = ''
         iptables -w -I FORWARD 1 -i ${bridge} -j REJECT
+        while iptables -w -C FORWARD -s ${cfg.network.desktopProxy}/32 -d ${guest}/32 -p tcp --dport 6080 -j ACCEPT 2>/dev/null; do
+          iptables -w -D FORWARD -s ${cfg.network.desktopProxy}/32 -d ${guest}/32 -p tcp --dport 6080 -j ACCEPT
+        done
         while iptables -w -C FORWARD -i ${bridge} -j HC-TOOLBOX-EGRESS 2>/dev/null; do
           iptables -w -D FORWARD -i ${bridge} -j HC-TOOLBOX-EGRESS
         done

@@ -6,8 +6,9 @@ OpenBot guests. It has a separate virtual disk, operator SSH identity, host-only
 bridge, default-deny egress policy, and off-host recovery coverage.
 
 The upstream project was at early alpha v0.6.0 when this pin was reviewed. The
-Homepage card links to the upstream project; Craft Anything does not expose a
-HomeCompute web dashboard.
+Homepage card opens its native desktop app through noVNC at
+`https://craft-anything.home.arpa/`. Caddy serves it only to approved LAN and
+tailnet clients. The VNC password is required to control the desktop.
 
 ## Access and setup
 
@@ -17,27 +18,51 @@ Connect through Home Core, which is the only route to the guest:
 ssh -J mads@home-core toolbox-operator@10.77.30.2
 ```
 
-From a HomeCompute checkout in the guest, install the pinned CLI (the headless
-guest does not install the desktop UI). Copy these two source files from the
-published release checkout:
+From a HomeCompute checkout in the guest, install the pinned CLI and desktop
+UI. Copy these source files from the selected published release checkout:
 
 ```bash
 ssh -J mads@home-core toolbox-operator@10.77.30.2 'mkdir -p ~/HomeCompute/config ~/HomeCompute/scripts'
 scp -o ProxyJump=mads@home-core config/craft-anything-toolbox.json toolbox-operator@10.77.30.2:HomeCompute/config/
 scp -o ProxyJump=mads@home-core scripts/install-craft-anything-toolbox.sh toolbox-operator@10.77.30.2:HomeCompute/scripts/
+scp -o ProxyJump=mads@home-core scripts/install-craft-anything-desktop.sh toolbox-operator@10.77.30.2:HomeCompute/scripts/
 ssh -J mads@home-core toolbox-operator@10.77.30.2
 sudo apt-get update
 sudo apt-get install -y curl jq
 cd ~/HomeCompute
 sudo ./scripts/install-craft-anything-toolbox.sh
+# This installs the declared desktop packages and configures its systemd units.
+sudo ./scripts/install-craft-anything-desktop.sh
 craft-anything-cli doctor
 craft-anything-cli mcp
+systemctl status craft-anything-desktop.service craft-anything-websockify.service
+```
+
+Use the Homepage **Craft Anything** card to open the desktop. Its VNC password
+is generated once and retained in guest state; retrieve it over the pinned SSH
+route when needed:
+
+```bash
+ssh -J mads@home-core toolbox-operator@10.77.30.2 \
+  'sudo cat /var/lib/craft-anything-desktop/vnc.password'
+```
+
+The desktop project directory is `~/Documents`. The password protects VNC
+control; Caddy serves the browser bridge only over private HTTPS and the guest
+VNC listener remains loopback-only. Do not expose port 6080 or 5900 on a public
+interface. To rotate the VNC password, stop its unit, remove the two generated
+password files, and rerun the installer to create a replacement:
+
+```bash
+sudo systemctl stop craft-anything-vnc.service
+sudo rm /var/lib/craft-anything-desktop/vnc.password /var/lib/craft-anything-desktop/vnc.pass
+sudo ./scripts/install-craft-anything-desktop.sh
 ```
 
 Use the Craft Anything clean-room project defaults. Keep projects synthetic or
 public, review approval prompts, and do not add Home Assistant actions, private
 household files, SSH agent forwarding, Docker access, or credentials. The guest
-has public TCP 80/443 only; it has no route to LAN, Tailscale, Home Assistant,
+has public TCP 80/443 egress only; it has no route to LAN, Tailscale, Home Assistant,
 the private compute network, or the host's application state.
 
 Hermes remains separately managed in the agents guest. Do not copy the toolbox
@@ -53,6 +78,17 @@ The host owns the guest through `homecompute-toolbox-vm.service`. The NixOS
 module pins the Ubuntu cloud image, allocates 4 vCPU, 8 GiB RAM, and a 100 GiB
 grow-only qcow2 disk. Cloud-init installs only the reviewed operator SSH key.
 State lives at `/srv/state/toolbox-vm`.
+
+Only the control-plane Caddy edge (`172.28.200.2`) may initiate TCP 6080 to the
+guest. That exact destination and source are allowed by the NixOS toolbox
+firewall; other new inbound connections remain denied. Caddy's
+`craft-anything.home.arpa` route is limited to approved LAN and tailnet source
+ranges and forwards WebSocket traffic to the guest's noVNC listener. The
+private DNS record is declared in
+[`config/craft-anything-dns.json`](../../config/craft-anything-dns.json); apply
+it to the existing UniFi private DNS and verify it with
+`python3 scripts/verify-craft-anything-dns.py --check` from each client network.
+Do not create public DNS, a port forward, or Tailscale Funnel.
 
 The NAS application recovery archive stops the guest, archives its disk and
 immutable boot seed, and records the seed hash in the manifest. Verify the

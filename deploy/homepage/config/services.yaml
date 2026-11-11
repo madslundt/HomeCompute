@@ -64,8 +64,8 @@
     - Craft Anything:
         id: homecore-craft-anything
         icon: mdi-hammer-wrench
-        href: https://github.com/storytold/craft-anything
-        description: Upstream project · installed in the isolated Home Core toolbox
+        href: https://craft-anything.home.arpa/vnc.html?autoconnect=1&resize=remote&path=websockify
+        description: Desktop UI · isolated Home Core toolbox · VNC password required
 
     - Mattermost:
         id: homecore-mattermost
