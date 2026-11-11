@@ -63,7 +63,30 @@ fi
 git -C "$release" checkout --detach "$revision"
 [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]]
 (cd /var/lib/homecompute && nixos-rebuild build --flake "$release#home-core")
-nixos-rebuild switch --flake "$release#home-core"
+if ! nixos-rebuild switch --flake "$release#home-core"; then
+  # A scheduled application-state backup may defer with TEMPFAIL (75) while
+  # protected HTTP writers are active. NixOS has still switched successfully
+  # in that case, but switch-to-configuration reports the deferred unit as a
+  # failed start and returns nonzero. Continue only if the active generation is
+  # exactly the build from this release, that one backup is in its safe
+  # auto-retry state with no process running, and systemd reports no failed
+  # units. Keep its retry enabled; never reset or bypass the backup guard.
+  expected_system=$(readlink -f /var/lib/homecompute/result)
+  active_system=$(readlink -f /run/current-system)
+  backup_active=$(systemctl show homecompute-nas-recovery-backup.service -p ActiveState --value)
+  backup_substate=$(systemctl show homecompute-nas-recovery-backup.service -p SubState --value)
+  backup_status=$(systemctl show homecompute-nas-recovery-backup.service -p ExecMainStatus --value)
+  backup_pid=$(systemctl show homecompute-nas-recovery-backup.service -p MainPID --value)
+  failed_units=$(systemctl --failed --plain --no-legend --no-pager | awk 'NF {print $1}')
+  if [[ -n "$expected_system" && "$active_system" == "$expected_system" &&
+        "$backup_active" == activating && "$backup_substate" == auto-restart &&
+        "$backup_status" == 75 && "$backup_pid" == 0 && -z "$failed_units" ]]; then
+    printf 'NixOS generation is active. NAS recovery backup deferred on active writers; its scheduled retry remains enabled.\n' >&2
+  else
+    printf 'NixOS switch failed outside the exact safe NAS backup deferral state; refusing to continue.\n' >&2
+    exit 1
+  fi
+fi
 # The temporary live probe override is superseded by this release's Nix unit.
 rm -f -- /etc/systemd/system.control/homecompute-platform-health.service.d/90-public-gateway.conf \
   /etc/systemd/system.control/homecompute-compute-ssh-tunnel.service.d/90-spark-stt.conf \

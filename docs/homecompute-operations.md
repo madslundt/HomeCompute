@@ -127,6 +127,11 @@ To deploy a historical revision, provide the complete 40-character SHA:
 The tool sends the existing core release script to `home-core`. That script
 keeps its immutable release checkout, lock, build-before-switch, Compose
 validation, health checks, and deployed revision tracking.
+If NixOS reports only `homecompute-nas-recovery-backup.service` as the deferred
+exit-75 busy-writer retry, the wrapper continues only after confirming that the
+active system generation matches the built release, the unit has no running
+process, and systemd reports no failed units. The backup retry remains enabled.
+Other NixOS switch failures still stop the deployment.
 
 On Spark, `deploy-home-spark.sh` keeps small Git checkouts in
 `/srv/homecompute/releases/<sha>`, with `/srv/homecompute/current` and

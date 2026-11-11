@@ -93,6 +93,7 @@ python3 "$REPO_ROOT/tests/flake-update-workflow-test.py"
 printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
 python3 "$REPO_ROOT/tests/toolbox-vm-module-test.py"
+python3 "$REPO_ROOT/tests/deploy-home-core-backup-deferral-test.py"
 python3 "$REPO_ROOT/tests/tailscale-module-test.py"
 python3 "$REPO_ROOT/tests/nas-recovery-backup-test.py"
 python3 "$REPO_ROOT/tests/home-core-service-recovery-test.py"
