@@ -38,9 +38,6 @@ chown "$operator:$operator" "$operator_home/.config" "$operator_home/Documents"
 
 state_dir=/var/lib/craft-anything-desktop
 install -d -o root -g "$operator" -m 0750 "$state_dir"
-# systemd's private /tmp namespace needs the X server socket directory to exist
-# before it can apply ReadWritePaths to the virtual display service.
-install -d -m 1777 /tmp/.X11-unix
 if [[ ! -s "$state_dir/vnc.password" ]]; then
   password="$(python3 -c 'import secrets,string; a=string.ascii_letters+string.digits; print("".join(secrets.choice(a) for _ in range(8)))')"
   # VNC's legacy challenge-response protocol accepts at most eight characters.
@@ -68,7 +65,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=$operator_home/.local/share/craft-anything /tmp/.X11-unix
+ReadWritePaths=$operator_home/.local/share/craft-anything
 
 [Install]
 WantedBy=multi-user.target
