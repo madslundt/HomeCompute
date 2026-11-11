@@ -81,28 +81,28 @@ class PolicyTest(unittest.TestCase):
         self.before = {'network_policies': {'other': {'preserve': True},
             'mcp_bridge_homecompute': {'endpoints': [{'host': 'homecompute-capabilities.home.arpa',
                 'port': 19445, 'allowed_ips': ['10.77.20.1'],
-                'credential_binding': {'provider': 'hermes-personal-v23-mcp-homecompute'}}]}}}
+                'credential_binding': {'provider': 'hermes-personal-v23-r2-mcp-homecompute'}}]}}}
 
     def test_two_exact_audio_paths_reuse_only_the_owner_credential(self):
         original = copy.deepcopy(self.before)
-        after = setup.policy_candidate(self.before, 'hermes-personal-v23')
+        after = setup.policy_candidate(self.before, 'hermes-personal-v23-r2')
         self.assertEqual(self.before, original)
         self.assertEqual(after['network_policies']['other'], original['network_policies']['other'])
-        self.assertEqual(setup.policy_candidate(after, 'hermes-personal-v23'), after)
+        self.assertEqual(setup.policy_candidate(after, 'hermes-personal-v23-r2'), after)
         for key, path in [('homecompute_speech', '/v1/audio/speech'),
                           ('homecompute_transcription', '/v1/audio/transcriptions')]:
             grant = after['network_policies'][key]
             self.assertEqual(grant['binaries'], [{'path': '/opt/hermes/python-runtime/bin/python3.14'}])
             endpoint = grant['endpoints'][0]
             self.assertEqual(endpoint['rules'], [{'allow': {'method': 'POST', 'path': path}}])
-            self.assertEqual(endpoint['credential_binding'], {'provider': 'hermes-personal-v23-mcp-homecompute'})
+            self.assertEqual(endpoint['credential_binding'], {'provider': 'hermes-personal-v23-r2-mcp-homecompute'})
 
     def test_foreign_endpoint_or_existing_broad_grant_is_preserved_and_refused(self):
         self.before['network_policies']['mcp_bridge_homecompute']['endpoints'][0]['allowed_ips'] = ['1.2.3.4']
-        with self.assertRaises(ValueError): setup.policy_candidate(self.before, 'hermes-personal-v23')
+        with self.assertRaises(ValueError): setup.policy_candidate(self.before, 'hermes-personal-v23-r2')
         self.setUp()
         self.before['network_policies']['homecompute_speech'] = {'arbitrary': 'grant'}
-        with self.assertRaises(ValueError): setup.policy_candidate(self.before, 'hermes-personal-v23')
+        with self.assertRaises(ValueError): setup.policy_candidate(self.before, 'hermes-personal-v23-r2')
 
 
 class ConfigTest(unittest.TestCase):
@@ -207,7 +207,7 @@ class RecoveryTest(unittest.TestCase):
         probe = Mock(side_effect=[False, True])
         launch = Mock(return_value=Mock(poll=Mock(return_value=None)))
         self.assertTrue(recovery.ensure_forward(probe, run=run, launch=launch))
-        self.assertEqual(run.call_args.args[0], ['nemohermes', 'hermes-personal-v23', 'recover'])
+        self.assertEqual(run.call_args.args[0], ['nemohermes', 'hermes-personal-v23-r2', 'recover'])
         run.reset_mock()
         self.assertFalse(recovery.ensure_forward(lambda: True, run=run)); run.assert_not_called()
         with self.assertRaises(RuntimeError):

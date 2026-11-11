@@ -296,7 +296,7 @@ def network_candidate(before: dict, sandbox: str) -> dict:
 
 
 def network_setup(sandbox: str, env: dict) -> None:
-    if sandbox != 'hermes-personal-v23':
+    if sandbox != 'hermes-personal-v23-r2':
         return
     observed = call(['nemohermes', sandbox, 'exec', '--', 'python3', '-c',
                      'import os; print(os.readlink("/proc/self/exe"))'], env=env).strip()
@@ -477,8 +477,8 @@ print(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else 'absent')
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', required=True)
-    parser.add_argument('--sandbox', choices=('hermes-personal', 'hermes-personal-v23'),
-                        default='hermes-personal-v23')
+    parser.add_argument('--sandbox', choices=('hermes-personal', 'hermes-personal-v23-r2'),
+                        default='hermes-personal-v23-r2')
     parser.add_argument('--repair-legacy-registration', action='store_true',
                         help='replace only the verified stale host-only credential conflict, keeping a private metadata backup')
     args = parser.parse_args()

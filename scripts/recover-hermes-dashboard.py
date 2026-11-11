@@ -44,7 +44,7 @@ def launch_forward():
         os.chmod(path, 0o600)
         return subprocess.Popen(['openshell', '--gateway', 'nemoclaw', '--gateway-endpoint',
             'https://127.0.0.1:8080', '--workspace', 'default', 'forward', 'service',
-            'hermes-personal-v23', '--target-port', '18796', '--target-host', '127.0.0.1',
+            'hermes-personal-v23-r2', '--target-port', '18796', '--target-host', '127.0.0.1',
             '--local', '127.0.0.1:18796'], stdin=subprocess.DEVNULL, stdout=log, stderr=log)
 
 
@@ -57,7 +57,7 @@ def launch_ha_api_forward():
         os.chmod(path, 0o600)
         return subprocess.Popen(['openshell', '--gateway', 'nemoclaw', '--gateway-endpoint',
             'https://127.0.0.1:8080', '--workspace', 'default', 'forward', 'service',
-            'hermes-personal-v23', '--target-port', '8642', '--target-host', '127.0.0.1',
+            'hermes-personal-v23-r2', '--target-port', '8642', '--target-host', '127.0.0.1',
             '--local', '127.0.0.1:18642'], stdin=subprocess.DEVNULL, stdout=log, stderr=log)
 
 
@@ -78,7 +78,7 @@ def ensure_forward(probe=protected_api, api_probe=protected_ha_api, run=subproce
     if not probe():
         env = {**os.environ, 'NEMOCLAW_GATEWAY_PORT': '8080', 'OPENSHELL_GATEWAY': 'nemoclaw',
                'NEMOCLAW_NO_AUTO_AUDIT_LOGS': '1'}
-        result = run(['nemohermes', 'hermes-personal-v23', 'recover'], env=env,
+        result = run(['nemohermes', 'hermes-personal-v23-r2', 'recover'], env=env,
                      capture_output=True, timeout=120)
         if result.returncode:
             raise RuntimeError('native authenticated dashboard forward remains unavailable')

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "sandbox": "hermes-personal-v23",
+  "sandbox": "hermes-personal-v23-r2",
   "base_url": "https://homecompute-capabilities.home.arpa:19445/v1",
   "transcription_model": "whisper",
   "voices": {
