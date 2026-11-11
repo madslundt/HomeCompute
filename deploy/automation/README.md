@@ -20,6 +20,13 @@ HTTP and the existing n8n account login.
 `http://home-core:15678`; generated workflow and webhook links therefore use
 the LAN hostname instead of the Tailscale-specific hostname.
 
+The private `/etc/homecompute/automation.env` also supplies
+`INBOX_WEBHOOK_ID`, which Compose passes to n8n for the Home Assistant
+Notification Inbox webhook. Set it to the same value as Home Assistant's
+`notification_inbox_webhook_id` secret. Keep the value out of Git and logs;
+changing it requires recreating the n8n container through the deployment
+lifecycle.
+
 `modules/nixos/automation-network.nix` installs egress controls before Docker
 starts: internet TCP 443 and HAOS TCP 7878 are allowed; other private-network
 destinations are rejected. Home Assistant's name is mapped explicitly in
