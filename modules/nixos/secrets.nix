@@ -52,6 +52,8 @@ in
             # Compose reads this dotenv document separately so the Inbox
             # webhook ID never enters the Nix store or tracked env template.
             "automation/inbox-webhook-env" = {
+              sopsFile = ../../secrets/notification-inbox.sops.yaml;
+              key = "automation/inbox-webhook-env";
               mode = "0400";
             };
             "control-plane/compute-api-key" = {

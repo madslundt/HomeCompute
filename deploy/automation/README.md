@@ -20,7 +20,7 @@ HTTP and the existing n8n account login.
 `http://home-core:15678`; generated workflow and webhook links therefore use
 the LAN hostname instead of the Tailscale-specific hostname.
 
-The encrypted `secrets/home-core.sops.yaml` supplies the private
+The encrypted `secrets/notification-inbox.sops.yaml` supplies the private
 `automation.inbox-webhook-env` dotenv document. It must contain
 `INBOX_WEBHOOK_ID=<the same value as Home Assistant's
 notification_inbox_webhook_id secret>`. SOPS materializes it at
@@ -29,9 +29,9 @@ after the nonsecret `/etc/homecompute/automation.env`. Keep the webhook ID out
 of Git and logs. Changing it requires recreating the n8n container through the
 deployment lifecycle.
 
-To set it, edit the encrypted file with `sops secrets/home-core.sops.yaml` and
-add this YAML entry, replacing the placeholder with the existing Home Assistant
-secret:
+Encrypt a new `secrets/notification-inbox.sops.yaml` with the SOPS public
+recipient rule. It contains this YAML entry, replacing the placeholder with the
+existing Home Assistant secret:
 
 ```yaml
 automation:
@@ -39,7 +39,7 @@ automation:
     INBOX_WEBHOOK_ID=<existing webhook ID>
 ```
 
-Save the encrypted file, commit and push it, then deploy the commit with the
+Commit and push only the encrypted file, then deploy the commit with the
 HomeCompute deployment script. Never add the actual value to
 `config/automation.env.example`.
 
