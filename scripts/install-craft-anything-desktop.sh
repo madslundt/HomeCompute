@@ -22,7 +22,7 @@ for command in jq curl apt-get; do
   command -v "$command" >/dev/null || { echo "required command is missing: $command" >&2; exit 1; }
 done
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb x11vnc novnc websockify libxcursor1
+DEBIAN_FRONTEND=noninteractive apt-get install -y xvfb x11vnc novnc websockify libxcursor1 libxkbcommon-x11-0
 for command in sha256sum systemctl x11vnc Xvfb websockify; do
   command -v "$command" >/dev/null || { echo "required command is missing: $command" >&2; exit 1; }
 done
