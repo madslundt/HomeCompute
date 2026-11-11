@@ -65,12 +65,15 @@ def main() -> None:
     password = secrets.token_urlsafe(32)
     image = control_plane_value("CADDY_IMAGE")
     result = subprocess.run(
-        ["docker", "run", "--rm", image, "hash-password", "--plaintext", password],
-        check=True,
+        ["docker", "run", "--rm", "-i", image, "caddy", "hash-password"],
+        input=password + "\n",
+        check=False,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    if result.returncode != 0:
+        raise SystemExit("Caddy password hashing failed; no credentials were written.")
     password_hash = result.stdout.strip()
     if not password_hash.startswith("$2a$") and not password_hash.startswith("$2b$"):
         raise SystemExit("Caddy returned an unexpected password hash; no credentials were written.")
