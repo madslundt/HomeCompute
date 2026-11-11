@@ -14,6 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 REMOTE = '/sandbox/.local/share/homecompute/speech'
 
 
+def state_directory(sandbox):
+    if not isinstance(sandbox, str) or not sandbox.startswith('hermes-') or any(
+            not (char.islower() or char.isdigit() or char == '-') for char in sandbox):
+        raise ValueError('valid Hermes sandbox identity required')
+    return Path.home() / '.local/state/homecompute/hermes-speech' / sandbox
+
+
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, ROOT / path)
     module = importlib.util.module_from_spec(spec)
@@ -85,7 +92,7 @@ def main():
     if not args.apply:
         print(json.dumps({'revision': args.revision, 'applied': False, 'languages': ['da', 'en'],
                           'network_changed': before != after, 'local_only': True})); return
-    directory = Path.home() / '.local/state/homecompute/hermes-speech'
+    directory = state_directory(pin['sandbox'])
     if any(p.is_symlink() for p in (directory, *directory.parents)):
         raise ValueError('real private state directory required')
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)

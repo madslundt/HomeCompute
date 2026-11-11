@@ -553,6 +553,8 @@ sudo -n python3 scripts/install-hermes-dashboard-relay.py --revision FULL_SHA \
   --apply --expected-sha256 REVIEWED_PLAN_SHA256
 ```
 
+Speech install and rollback receipts are private and scoped to their sandbox under `~/.local/state/homecompute/hermes-speech/`, so a retained prior sandbox cannot collide with a replacement's rollback preimage.
+
 The guarded add-on installer requires fresh household backup/network gates and
 the selected Ready image. It uses native exec stdin and the official offline
 installer in an independent `/sandbox/.local/share/omh/venv`; it does not modify
