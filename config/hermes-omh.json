@@ -23,5 +23,5 @@
     "sha256": "bb2fc37fcbc43c7ac8790a37e7d6bb1d8ce35bb1d6738fd8b45956efb444b2e1"
   },
   "installer_sha256": "9dbe8fea01860af639b87dd4288f3c4df6739971db572935c7ffdbca98d8013b",
-  "runtime_image_id": "sha256:f15b60053b28b681efe555f89a6d170c7f7cd51036ed570b9951908c19f85311"
+  "runtime_image_id": "sha256:7bfb994f8c32a3722219ab7ab93c43d7d799a871c88c6c59b321f0c4acc22aa7"
 }
