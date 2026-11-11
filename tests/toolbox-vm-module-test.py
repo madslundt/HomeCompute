@@ -58,6 +58,8 @@ class ToolboxVmModuleTest(unittest.TestCase):
         self.assertIn("10.77.30.2:6080", DESKTOP_INSTALLER)
         self.assertIn("libxcursor1 libxkbcommon-x11-0", DESKTOP_INSTALLER)
         self.assertNotIn("ReadWritePaths=$operator_home/.local/share/craft-anything /tmp/.X11-unix", DESKTOP_INSTALLER)
+        self.assertIn("Description=Craft Anything desktop application\nJoinsNamespaceOf=craft-anything-display.service", DESKTOP_INSTALLER)
+        self.assertIn("Description=Password-protected VNC server for Craft Anything\nJoinsNamespaceOf=craft-anything-display.service", DESKTOP_INSTALLER)
         self.assertEqual(DESKTOP_INSTALLER.count("JoinsNamespaceOf=craft-anything-display.service"), 2)
         self.assertEqual(PINS["craft_anything"]["version"], "0.6.0")
         self.assertRegex(PINS["craft_anything"]["sha256"], r"^[0-9a-f]{64}$")
