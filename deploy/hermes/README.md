@@ -532,6 +532,8 @@ histories. The retained old application state is the rollback state, while the
 encrypted whole-VM Synology archive is the disaster-recovery boundary.
 ## Pinned OMH and dashboard lifecycle
 
+`config/hermes-omh.json` pins the exact currently qualified sandbox image; after a sandbox rebuild, update that image ID from the built runtime before applying the guarded add-on or speech installers.
+
 `config/hermes-omh.json` selects OMH 4.0.6 at commit
 `8e9263c14c34834b203135409b49c89831878501`. Build its pure Python wheel with
 `python3 scripts/build-hermes-omh.py --cache /absolute/private/cache` (mode 0700).
