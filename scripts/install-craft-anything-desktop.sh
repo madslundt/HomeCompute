@@ -38,6 +38,9 @@ chown "$operator:$operator" "$operator_home/.config" "$operator_home/Documents"
 
 state_dir=/var/lib/craft-anything-desktop
 install -d -o root -g "$operator" -m 0750 "$state_dir"
+# systemd's private /tmp namespace needs the X server socket directory to exist
+# before it can apply ReadWritePaths to the virtual display service.
+install -d -m 1777 /tmp/.X11-unix
 if [[ ! -s "$state_dir/vnc.password" ]]; then
   password="$(python3 -c 'import secrets,string; a=string.ascii_letters+string.digits; print("".join(secrets.choice(a) for _ in range(8)))')"
   # VNC's legacy challenge-response protocol accepts at most eight characters.
@@ -81,6 +84,7 @@ Wants=network-online.target
 [Service]
 User=$operator
 Group=$operator
+JoinsNamespaceOf=craft-anything-display.service
 WorkingDirectory=$operator_home
 Environment=HOME=$operator_home
 Environment=DISPLAY=:99
@@ -108,6 +112,7 @@ After=craft-anything-display.service
 [Service]
 User=$operator
 Group=$operator
+JoinsNamespaceOf=craft-anything-display.service
 ExecStart=/usr/bin/x11vnc -display :99 -rfbauth $state_dir/vnc.pass -localhost -forever -shared -rfbport 5900 -noxdamage -repeat
 Restart=on-failure
 RestartSec=3
