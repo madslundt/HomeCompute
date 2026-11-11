@@ -21,6 +21,8 @@ class ToolboxVmModuleTest(unittest.TestCase):
         self.assertIn("nasRecoveryBackup.includeApplicationState", MODULE)
         self.assertIn("10.77.30.2", MODULE)
         self.assertIn("br-hc-toolbox", MODULE)
+        self.assertIn('match: {macaddress: "52:54:00:77:30:02"}', MODULE)
+        self.assertIn("set-name: ens3", MODULE)
         self.assertIn("4 GiB RAM", MODULE)
 
     def test_guest_isolated_and_egress_bounded(self):
