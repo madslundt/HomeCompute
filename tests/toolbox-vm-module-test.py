@@ -56,6 +56,7 @@ class ToolboxVmModuleTest(unittest.TestCase):
         self.assertIn("reverse_proxy 10.77.30.2:6080", CADDY)
         self.assertIn("-rfbauth", DESKTOP_INSTALLER)
         self.assertIn("10.77.30.2:6080", DESKTOP_INSTALLER)
+        self.assertIn("libxcursor1 libxkbcommon-x11-0", DESKTOP_INSTALLER)
         self.assertNotIn("ReadWritePaths=$operator_home/.local/share/craft-anything /tmp/.X11-unix", DESKTOP_INSTALLER)
         self.assertEqual(DESKTOP_INSTALLER.count("JoinsNamespaceOf=craft-anything-display.service"), 2)
         self.assertEqual(PINS["craft_anything"]["version"], "0.6.0")
