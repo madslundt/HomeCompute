@@ -11,11 +11,15 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 import re
 import stat
+import time
+import uuid
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -59,12 +63,18 @@ def summary_counts(summary):
     return {key: value for key, value in sorted(summary.items())
             if isinstance(key, str) and len(key) <= 64 and isinstance(value, int)}
 
-def post(url, payload):
-    body = json.dumps(payload, sort_keys=True).encode()
-    request = Request(url, data=body, method='POST',
-                      headers={'Content-Type': 'application/json',
-                               'User-Agent': 'homecompute-host-update-notify/1'})
-    with urlopen(request, timeout=15) as response:
+def post(url, body, secret=''):
+    headers = {'Content-Type': 'application/json',
+               'User-Agent': 'homecompute-host-update-notify/1'}
+    if secret:
+        timestamp = str(int(time.time()))
+        delivery_id = uuid.uuid4().hex
+        signed = ('%s.%s.' % (timestamp, delivery_id)).encode() + body
+        headers.update({'x-openbot-timestamp': timestamp,
+                        'x-openbot-delivery-id': delivery_id,
+                        'x-openbot-signature': 'sha256='
+                        + hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()})
+    with urlopen(Request(url, data=body, method='POST', headers=headers), timeout=15) as response:
         if not 200 <= response.status < 300:
             raise ValueError('webhook refused the report receipt: %d' % response.status)
 
@@ -87,12 +97,18 @@ def main(argv=None):
     if not url:
         print('host update attention: %s %s' % (args.host, json.dumps(summary, sort_keys=True)))
         return 0
-    payload = {'type': 'homecompute.host-update', 'host': args.host,
-               'generated_at': report['generated_at'], 'summary': summary,
-               'attention': rows, 'delivery_at': datetime.now(timezone.utc)
-               .isoformat(timespec='seconds').replace('+00:00', 'Z')}
+    payload = {'type': 'homecompute.host-update', 'occurredAt': report['generated_at'],
+               'data': {'host': args.host, 'generated_at': report['generated_at'],
+                        'summary': summary, 'attention': rows,
+                        'delivery_at': datetime.now(timezone.utc)
+                        .isoformat(timespec='seconds').replace('+00:00', 'Z')}}
+    body = json.dumps(payload, sort_keys=True).encode()
+    if len(body) > 60000:
+        payload['data']['attention'] = rows[:20]
+        payload['data']['truncated'] = True
+        body = json.dumps(payload, sort_keys=True).encode()
     try:
-        post(url, payload)
+        post(url, body, os.environ.get('HOMECOMPUTE_HOST_UPDATE_WEBHOOK_SECRET', ''))
     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
         print('host update notification delivery failed: %r' % (error,), flush=True)
         return 1

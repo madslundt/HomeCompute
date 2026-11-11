@@ -48,7 +48,9 @@ The `host-update-report` records successful updates and outstanding review or
 coverage gaps. The daily service also runs `host-update-notify.py` afterwards:
 without configuration it only logs a one-line summary to the journal, and with a
 root-owned `/etc/homecompute/host-update-notification.env` containing
-`HOMECOMPUTE_HOST_UPDATE_WEBHOOK_URL=https://…` it posts a bounded summary of
+`HOMECOMPUTE_HOST_UPDATE_WEBHOOK_URL=https://…` (plus the optional
+`HOMECOMPUTE_HOST_UPDATE_WEBHOOK_SECRET=…` for receivers that verify
+HMAC-signed deliveries) it posts a bounded summary of
 held, review, or failed rows to that HTTPS webhook; a fully current report sends
 nothing and a delivery failure fails the unit visibly. Published numeric registry releases need independent platform
 and image provenance, the same image variant, a healthy running baseline, and

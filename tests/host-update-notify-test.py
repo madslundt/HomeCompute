@@ -89,10 +89,31 @@ class HostUpdateNotifyTest(unittest.TestCase):
         self.assertEqual(request.full_url, 'https://events.invalid/hc')
         payload = json.loads(request.data)
         self.assertEqual(payload['type'], 'homecompute.host-update')
-        self.assertEqual(payload['host'], 'home-spark')
-        self.assertEqual(payload['summary'], {'approval_required': 1, 'current': 1, 'failed': 1})
-        self.assertEqual({row['component'] for row in payload['attention']},
+        self.assertEqual(payload['data']['host'], 'home-spark')
+        self.assertEqual(payload['data']['summary'], {'approval_required': 1, 'current': 1, 'failed': 1})
+        self.assertEqual({row['component'] for row in payload['data']['attention']},
                          {'nvidia-driver', 'immich'})
+
+    def test_configured_secret_signs_the_delivery(self):
+        import hashlib
+        import hmac
+        self.write(report(items=[item('nvidia-driver', 'approval_required')]))
+        response = Mock()
+        response.__enter__ = lambda stream: stream
+        response.__exit__ = Mock(return_value=False)
+        response.status = 202
+        opened = Mock(return_value=response)
+        with patch.object(notify, 'urlopen', opened):
+            code, _ = self.run_main(['--host', 'home-core', '--report', str(self.path)],
+                                    {'HOMECOMPUTE_HOST_UPDATE_WEBHOOK_URL': 'https://events.invalid/hc',
+                                     'HOMECOMPUTE_HOST_UPDATE_WEBHOOK_SECRET': 's3cret'})
+        self.assertEqual(code, 0)
+        request = opened.call_args.args[0]
+        headers = {name.lower(): value for name, value in request.headers.items()}
+        signed = ('%s.%s.' % (headers['x-openbot-timestamp'],
+                              headers['x-openbot-delivery-id'])).encode() + request.data
+        self.assertEqual(headers['x-openbot-signature'], 'sha256='
+                         + hmac.new(b's3cret', signed, hashlib.sha256).hexdigest())
 
     def test_refused_status_is_a_visible_failure(self):
         self.write(report(items=[item('docker-immich', 'blocked', reason='operator_reconciliation_required')]))
