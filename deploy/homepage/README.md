@@ -52,6 +52,9 @@ Docker discovery and container statistics are disabled. The project receives
 no container-engine API access and joins no other application's Docker network.
 Add user-facing links explicitly to `config/services.yaml`. This keeps the
 dashboard useful without giving it control of every container on `home-core`.
+The **AI automation manager** card links to `https://automations.home.arpa/`;
+its private DNS A record points to the Home Core LAN address and is tracked in
+`config/ai-automation-manager-dns.json` for application in UniFi DNS.
 
 The **ComfyUI** card includes image-mode status and Start/Stop controls. Open
 `https://comfyui.home.arpa/control/` on the LAN, or

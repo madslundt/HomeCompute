@@ -131,6 +131,9 @@ EXTRA_FILES = {'open-webui/embedding-api-key': Path('/srv/state/open-webui/embed
                'image-studio/webui-secret-key': Path('/srv/state/image-studio/webui-secret-key'),
                'chessmate/runtime.env': Path('/home/mads/projects/chessmate/config/.env')}
 N8N = Path('/srv/state/automation/n8n')
+AI_AUTOMATION_MANAGER = Path('/srv/state/automation/ai-automation-manager')
+AI_AUTOMATION_MANAGER_DATABASE = AI_AUTOMATION_MANAGER / 'automations.sqlite3'
+AI_AUTOMATION_MANAGER_CONTAINER = 'homecompute-ai-automation-manager-ai-automation-manager-1'
 VM_DISKS = ('agents-vm/agents.qcow2', 'codex-vm/root.qcow2', 'codex-vm/work.qcow2',
             'toolbox-vm/root.qcow2')
 SEED_PATTERN = r'/nix/store/[0-9a-z]{32}-homecompute-agents-seed\.iso'
@@ -526,6 +529,26 @@ def quiesced():
                 stopped.append(('container', container))
                 save_resume(stopped)
                 run(['docker', 'stop', '--time', '60', container], timeout=90)
+        # The manager is optional and owns its SQLite database directly on the
+        # host. Only include it when durable state exists, and stop its writer
+        # before taking the consistent SQLite Online Backup copy.
+        manager_state_exists = AI_AUTOMATION_MANAGER.exists() or AI_AUTOMATION_MANAGER.is_symlink()
+        if manager_state_exists:
+            if AI_AUTOMATION_MANAGER.is_symlink() or not AI_AUTOMATION_MANAGER.is_dir():
+                raise ValueError('AI automation manager recovery source is absent or symlinked')
+            if AI_AUTOMATION_MANAGER_DATABASE.is_symlink():
+                raise ValueError('AI automation manager database is symlinked')
+            if AI_AUTOMATION_MANAGER_DATABASE.exists():
+                if not AI_AUTOMATION_MANAGER_DATABASE.is_file():
+                    raise ValueError('AI automation manager database is not a regular file')
+                result = run(['docker', 'inspect', AI_AUTOMATION_MANAGER_CONTAINER,
+                              '--format', '{{.State.Running}}'], text=True).stdout.strip()
+                if result not in {'true', 'false'}:
+                    raise ValueError('AI automation manager container running state is unavailable')
+                if result == 'true':
+                    stopped.append(('container', AI_AUTOMATION_MANAGER_CONTAINER))
+                    save_resume(stopped)
+                    run(['docker', 'stop', '--time', '60', AI_AUTOMATION_MANAGER_CONTAINER], timeout=90)
         yield
     finally:
         resume(stopped)
@@ -623,6 +646,20 @@ def space_required() -> int:
     # A consistent SQLite copy exists once in private staging and once in the
     # final uncompressed tar while the archive is being written.
     total += sum(source.stat().st_size for _, source in assistant_sqlite_sources(assistant_dirs))
+    if AI_AUTOMATION_MANAGER.exists() or AI_AUTOMATION_MANAGER.is_symlink():
+        if AI_AUTOMATION_MANAGER.is_symlink() or not AI_AUTOMATION_MANAGER.is_dir():
+            raise ValueError('AI automation manager recovery source is absent or symlinked')
+        for suffix in ('', '-wal', '-shm', '-journal'):
+            source = Path(str(AI_AUTOMATION_MANAGER_DATABASE) + suffix)
+            if source.is_symlink():
+                raise ValueError('AI automation manager SQLite source is symlinked')
+            if source.exists():
+                if not source.is_file():
+                    raise ValueError('AI automation manager SQLite source is not a regular file')
+                total += source.stat().st_size
+    # The manager's consistent SQLite copy is staged and then added to the tar.
+    if AI_AUTOMATION_MANAGER_DATABASE.is_file():
+        total += AI_AUTOMATION_MANAGER_DATABASE.stat().st_size
     return total + MIN_FREE_BYTES
 
 
@@ -655,6 +692,9 @@ def prepare() -> Path:
                 toolbox_boot_seed = toolbox_seed(); staged_toolbox_seed = directory / 'toolbox-seed.iso'
                 shutil.copyfile(toolbox_boot_seed, staged_toolbox_seed)
                 sqlite_backup(N8N / 'database.sqlite', directory / 'n8n.sqlite')
+                manager_database_included = AI_AUTOMATION_MANAGER_DATABASE.is_file()
+                if manager_database_included:
+                    sqlite_backup(AI_AUTOMATION_MANAGER_DATABASE, directory / 'ai-automation-manager.sqlite')
                 config = N8N / 'config'
                 if config.is_symlink() or not config.is_file():
                     raise ValueError('n8n encryption configuration is unavailable')
@@ -695,7 +735,9 @@ def prepare() -> Path:
                     # Original media is owned by the NAS and must have its own
                     # independent backup; copying it back to that NAS is not DR.
                     manifest = {'schema_version': 1, 'created_at': dt.datetime.now(dt.timezone.utc).isoformat(),
-                                'postgres': sorted(POSTGRES), 'sqlite': ['n8n'], 'vms': ['agents-vm', 'codex-vm', 'toolbox-vm'],
+                                'postgres': sorted(POSTGRES),
+                                'sqlite': ['n8n'] + (['ai-automation-manager'] if manager_database_included else []),
+                                'vms': ['agents-vm', 'codex-vm', 'toolbox-vm'],
                                 'media_included': False, 'host_age_identity_included': False,
                                 'nix_store_symlinks_included': False,
                                 'assistant_context': {'directories': sorted(assistant_dirs),
@@ -790,8 +832,10 @@ def verify_restored(target: Path) -> dict:
     legacy_vms = ['agents-vm', 'codex-vm']
     current_vms = ['agents-vm', 'codex-vm', 'toolbox-vm']
     manifest_vms = manifest.get('vms')
+    supported_sqlite_scopes = (['n8n'], ['n8n', 'ai-automation-manager'])
+    manifest_sqlite = manifest.get('sqlite')
     if (manifest.get('schema_version') != 1 or manifest.get('postgres') != sorted(POSTGRES)
-            or manifest_vms not in (legacy_vms, current_vms) or manifest.get('sqlite') != ['n8n']):
+            or manifest_vms not in (legacy_vms, current_vms) or manifest_sqlite not in supported_sqlite_scopes):
         raise ValueError('recovery manifest scope mismatch')
     assistant = manifest.get('assistant_context')
     if assistant is not None:
@@ -878,6 +922,8 @@ def verify_restored(target: Path) -> dict:
         raise ValueError('n8n credential encryption configuration is absent')
     database = target / 'databases/n8n.sqlite'
     sqlite_files = [database, *sorted((target / 'state').rglob('*.sqlite3')), *sorted((target / 'state').rglob('*.sqlite'))]
+    if 'ai-automation-manager' in manifest_sqlite:
+        sqlite_files.append(target / 'databases/ai-automation-manager.sqlite')
     for candidate in sorted((target / 'state').rglob('*.db')):
         if candidate.is_symlink() or not candidate.is_file(): raise ValueError('restored database file is unsafe')
         with candidate.open('rb') as stream:

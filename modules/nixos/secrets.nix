@@ -54,7 +54,26 @@ in
             "automation/inbox-webhook-env" = {
               sopsFile = ../../secrets/notification-inbox.sops.yaml;
               key = "automation/inbox-webhook-env";
-              mode = "0400";
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
+            "automation/ai-automation-workflow-token" = {
+              sopsFile = ../../secrets/ai-automation-manager.sops.yaml;
+              key = "automation/ai-automation-workflow-token";
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
+            "automation/ai-automation-username" = {
+              sopsFile = ../../secrets/ai-automation-manager.sops.yaml;
+              key = "automation/ai-automation-username";
+              group = "homecompute-secrets";
+              mode = "0440";
+            };
+            "automation/ai-automation-password" = {
+              sopsFile = ../../secrets/ai-automation-manager.sops.yaml;
+              key = "automation/ai-automation-password";
+              group = "homecompute-secrets";
+              mode = "0440";
             };
             "control-plane/compute-api-key" = {
               group = "homecompute-secrets";

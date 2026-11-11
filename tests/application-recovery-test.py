@@ -421,6 +421,21 @@ assert not (root / 'staging/assistant-sqlite-inputs').exists()
             self.assertTrue(result['agents_seed_verified'])
             self.assertTrue(result['toolbox_seed_verified'])
 
+            manager_database = databases / 'ai-automation-manager.sqlite'
+            with closing(sqlite3.connect(manager_database)) as db:
+                db.execute('CREATE TABLE automations(id TEXT PRIMARY KEY)')
+                db.execute("INSERT INTO automations VALUES('synthetic-manager-item')")
+            manifest['sqlite'] = ['n8n', 'ai-automation-manager']
+            (source / 'manifest.json').write_text(json.dumps(manifest))
+            with tarfile.open(archive_path, 'w') as archive:
+                for path in source.iterdir(): archive.add(path, arcname=path.name)
+            with patch.object(recovery, 'SCRATCH', scratch), patch.object(recovery, 'run') as check:
+                result = recovery.verify(archive_path, scratch / 'manager')
+            self.assertEqual(result['sqlite_integrity'], 'ok')
+            self.assertEqual(result['sqlite_databases_checked'], 3)
+            manager_database.unlink()
+            manifest['sqlite'] = ['n8n']
+
             manifest['vms'] = ['agents-vm', 'codex-vm']
             manifest.pop('toolbox_seed')
             (source / 'state/toolbox-vm/root.qcow2').unlink()
@@ -568,6 +583,20 @@ assert not (root / 'staging/assistant-sqlite-inputs').exists()
             with patch.object(recovery,'DIRECTORIES',{'omi-data':omi}),patch.object(recovery,'N8N',n8n),patch.object(recovery,'EXTRA_FILES',{}), \
                     patch.object(recovery,'MIN_FREE_BYTES',0):
                 self.assertEqual(recovery.space_required(),1024**3+3)
+
+    def test_ai_automation_manager_database_and_sidecars_are_in_recovery_space_estimate(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);omi=root/'omi';omi.mkdir();n8n=root/'n8n';n8n.mkdir()
+            manager=root/'manager';manager.mkdir()
+            (manager/'automations.sqlite3').write_bytes(b'database')
+            (manager/'automations.sqlite3-wal').write_bytes(b'wal')
+            with patch.object(recovery,'DIRECTORIES',{'omi-data':omi}),patch.object(recovery,'N8N',n8n), \
+                    patch.object(recovery,'AI_AUTOMATION_MANAGER',manager), \
+                    patch.object(recovery,'AI_AUTOMATION_MANAGER_DATABASE',manager/'automations.sqlite3'), \
+                    patch.object(recovery,'EXTRA_FILES',{}),patch.object(recovery,'MIN_FREE_BYTES',0):
+                # Existing n8n size is counted once; the manager source plus
+                # staging/archive copies are budgeted before preparing a backup.
+                self.assertEqual(recovery.space_required(),1024**3+8+3+8)
 
     def test_new_local_applications_have_fixed_writer_and_archive_coverage(self):
         self.assertEqual(recovery.POSTGRES['chessmate'],'chessmate-db-1')

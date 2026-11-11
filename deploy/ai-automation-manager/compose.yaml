@@ -1,0 +1,73 @@
+name: homecompute-ai-automation-manager
+
+services:
+  ai-automation-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: homecompute-ai-automation-manager:${AI_AUTOMATION_MANAGER_RELEASE:?Set the source release SHA}
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    group_add:
+      - ${CONTROL_PLANE_SECRET_GID:?Set CONTROL_PLANE_SECRET_GID with init}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      AI_AUTOMATION_DATA_ROOT: /data
+      AI_AUTOMATION_INBOX_ENV_FILE: /run/secrets/inbox_webhook_env
+      AI_AUTOMATION_WORKFLOW_TOKEN_FILE: /run/secrets/workflow_token
+      AI_AUTOMATION_USERNAME_FILE: /run/secrets/site_username
+      AI_AUTOMATION_PASSWORD_FILE: /run/secrets/site_password
+      AI_AUTOMATION_PUBLIC_ORIGIN: ${AI_AUTOMATION_PUBLIC_ORIGIN:?Set the exact HTTPS site origin}
+      AI_AUTOMATION_TRUSTED_PROXY_IP: ${CADDY_CLIENTS_IP:?Set the Caddy clients-network address}
+    secrets:
+      - inbox_webhook_env
+      - workflow_token
+      - site_username
+      - site_password
+    volumes:
+      - ${AI_AUTOMATION_STATE_ROOT:?Set the durable site state path}:/data
+    expose:
+      - "8080"
+    extra_hosts:
+      - homeassistant.local:192.168.30.30
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,uid=10001,gid=10001,mode=0700
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 20s
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 64
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      clients: {}
+      migration:
+        ipv4_address: 172.28.201.5
+
+networks:
+  clients:
+    external: true
+    name: homecompute-control-plane_clients
+  migration:
+    name: homecompute-automation_migration
+    external: true
+
+secrets:
+  inbox_webhook_env:
+    file: ${AI_AUTOMATION_INBOX_ENV_SECRET:?Set the SOPS-managed Inbox webhook environment file}
+  workflow_token:
+    file: ${AI_AUTOMATION_WORKFLOW_TOKEN_SECRET:?Set the workflow API token file}
+  site_username:
+    file: ${AI_AUTOMATION_USERNAME_SECRET:?Set the site username file}
+  site_password:
+    file: ${AI_AUTOMATION_PASSWORD_SECRET:?Set the site password file}

@@ -115,6 +115,7 @@ speech_gateway=(docker compose --profile speech-proxies --env-file /etc/homecomp
   exit 1
 }
 automation=(docker compose --env-file /etc/homecompute/automation.env --env-file /run/secrets/automation/inbox-webhook-env -f "$release/deploy/automation/compose.yaml" -f "$release/deploy/automation/production.yaml")
+ai_automation_manager=(docker compose --env-file /etc/homecompute/automation.env --env-file /etc/homecompute/control-plane.env -f "$release/deploy/ai-automation-manager/compose.yaml" -f "$release/deploy/ai-automation-manager/production.yaml")
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
 piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/deploy/piper-tts/compose.yaml")
@@ -122,6 +123,21 @@ stt=(docker compose --env-file /etc/homecompute/wyoming-stt.env -f "$release/dep
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
 "${gateway[@]}" config --quiet
 "${automation[@]}" config --quiet
+ai_automation_manager_enabled="$(sed -n 's/^AI_AUTOMATION_MANAGER_ENABLED=//p' /etc/homecompute/automation.env | tail -n 1)"
+if [[ "$ai_automation_manager_enabled" == 1 ]]; then
+  export AI_AUTOMATION_MANAGER_RELEASE="$revision"
+  for manager_secret in \
+    /run/secrets/automation/inbox-webhook-env \
+    /run/secrets/automation/ai-automation-workflow-token \
+    /run/secrets/automation/ai-automation-username \
+    /run/secrets/automation/ai-automation-password; do
+    [[ -s "$manager_secret" ]] || {
+      printf 'AI automation manager is enabled but its external secret is missing: %s\n' "$manager_secret" >&2
+      exit 1
+    }
+  done
+  "${ai_automation_manager[@]}" config --quiet
+fi
 "${homepage[@]}" config --quiet
 open_webui_ready=false
 if [[ -s /run/secrets/open-webui/litellm-api-key &&
@@ -191,6 +207,10 @@ if [[ ${#speech_proxies_to_restore[@]} -gt 0 ]]; then
   "${speech_gateway[@]}" up -d --wait --wait-timeout 180 "${speech_proxies_to_restore[@]}"
 fi
 "${automation[@]}" up -d --wait --wait-timeout 180
+if [[ "$ai_automation_manager_enabled" == 1 ]]; then
+  "${ai_automation_manager[@]}" build --no-cache
+  "${ai_automation_manager[@]}" up -d --wait --wait-timeout 180
+fi
 if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" up -d --wait --wait-timeout 180
 else
