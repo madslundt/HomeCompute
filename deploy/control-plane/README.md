@@ -52,6 +52,33 @@ synthetic refused, non-responsive, error, and streaming upstreams before
 promoting the generated config. Model generation does not create, broaden, or
 revoke any virtual key.
 
+The generated model list assigns explicit zero upstream cost to local text,
+embedding, transcription, speech, and video models. LiteLLM's Usage view can
+therefore account for every request without mistaking local inference for an
+API bill. This is provider spend, not electricity, hardware amortization, or a
+household charge. Codex subscription requests are also recorded at zero because
+the subscription has no per-token API bill; use request/token rate limits for
+those keys instead of dollar budgets.
+Use LiteLLM Admin at `/ui/` → Usage for spend by model and virtual key; the
+separate `/usage/` page remains a token-count dashboard with browser-local
+comparison rates.
+
+### Codex with a ChatGPT subscription
+
+The generated model list includes LiteLLM's `gpt-*` and `codex-*` subscription
+routes. Each Codex client signs in with its own ChatGPT account and keeps its
+OAuth session locally; the proxy stores no OpenAI API key or ChatGPT login.
+Create a dedicated LiteLLM virtual key restricted to those two model patterns,
+then configure Codex with the `litellm_subscription` Responses provider and
+that key in `~/.codex/.env`. The client-side setup and verification steps are
+in the [LiteLLM Codex subscription guide](https://docs.litellm.ai/docs/tutorials/openai_codex_byok).
+
+There is no automatic paid API fallback. A ChatGPT subscription limit can stop
+requests; do not add an API-backed fallback without an explicit separate
+decision and credential. Do not grant this key household or action MCP access
+unless the caller should disclose those tool results to the selected model.
+Use a separate, narrowly scoped key for each client.
+
 ## Central MCP gateway
 
 LiteLLM also owns the private MCP gateway on `https://mcp.home.arpa/mcp`. Keep
@@ -259,10 +286,12 @@ for `automation-moe`, `home-fast`, Plapre, and Hviske. It forwards the
 the listener is not exposed on the LAN. The Qwen3.8-27B endpoint remains
 stopped.
 
-The gateway has local backends only. `auto` is initially another served name
-for the single resident workhorse, not a prompt classifier. The gateway never
-holds a cloud-provider credential or performs cloud fallback; an approved
-caller must select any separate cloud path before assembling private context.
+The inference catalog uses local backends plus the explicit Codex ChatGPT
+subscription routes described above. `auto` is initially another served name
+for the single resident workhorse, not a prompt classifier. The proxy holds no
+cloud API credential and does not perform paid API fallback. Codex keeps its
+ChatGPT OAuth session on the client; use a dedicated model-scoped key and make
+any private-data disclosure to the selected subscription model explicit.
 
 ### On-demand automation standby
 

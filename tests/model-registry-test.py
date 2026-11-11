@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -261,6 +262,17 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual("9g", runtime["kv_cache_memory_bytes"])
         self.assertEqual("candidate", ROUTES["routes"]["automation-qualification"]["state"])
 
+    def test_nvidia_candidate_uses_the_exclusive_automation_listener(self) -> None:
+        deployment = CATALOG["deployments"]["automation-spark-nvidia-candidate"]
+        self.assertEqual("automation-moe-nvidia", deployment["served_model_name"])
+        self.assertEqual("COMPUTE_AUTOMATION_BASE_URL", deployment["endpoint_env"])
+        self.assertEqual("candidate", deployment["availability"])
+        self.assertEqual("operator-on-demand", deployment["lifecycle"])
+        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
+        block = rendered.split('model_name: "automation-moe-nvidia"', 1)[1].split('  - model_name:', 1)[0]
+        self.assertIn('api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"', block)
+        self.assertNotIn("COMPUTE_AUTOMATION_CANDIDATE_BASE_URL", block)
+
     def test_candidate_route_selects_candidate_deployments_without_changing_other_routes(self) -> None:
         routes = copy.deepcopy(ROUTES)
         REGISTRY.select_candidate_deployment(
@@ -376,6 +388,33 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertRegex(rendered, r'(?s)model_name: "home".*?timeout: 20')
         self.assertRegex(rendered, r'(?s)model_name: "home".*?stream_timeout: 20')
         self.assertIn("COMPUTE_API_KEY", rendered)
+
+    def test_local_model_aliases_have_explicit_zero_upstream_cost(self) -> None:
+        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
+        blocks = re.findall(r'(?ms)^  - model_name: "([^"]+)"\n(.*?)(?=^  - model_name:|\Z)', rendered)
+        for alias, block in blocks:
+            with self.subTest(alias=alias):
+                if alias in {"gpt-*", "codex-*"}:
+                    self.assertIn("input_cost_per_token: 0", block)
+                    self.assertIn("output_cost_per_token: 0", block)
+                elif "mode: audio_transcription" in block:
+                    self.assertIn("input_cost_per_second: 0", block)
+                elif "mode: audio_speech" in block:
+                    self.assertIn("output_cost_per_character: 0", block)
+                elif "mode: video_generation" in block:
+                    self.assertIn("output_cost_per_second: 0", block)
+                else:
+                    self.assertIn("input_cost_per_token: 0", block)
+                    self.assertIn("output_cost_per_token: 0", block)
+
+    def test_codex_chatgpt_subscription_routes_do_not_need_proxy_credentials(self) -> None:
+        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
+        gpt = rendered.split('model_name: "gpt-*"', 1)[1].split('  - model_name:', 1)[0]
+        codex = rendered.split('model_name: "codex-*"', 1)[1]
+        for block, provider in ((gpt, '"chatgpt/gpt-*"'), (codex, '"chatgpt/codex-*"')):
+            self.assertIn(f"model: {provider}", block)
+            self.assertIn("mode: responses", block)
+            self.assertNotIn("api_key", block)
 
     def test_generated_model_section_preserves_security_settings(self) -> None:
         original = (ROOT / "deploy/control-plane/litellm-config.yaml").read_text(encoding="utf-8")
