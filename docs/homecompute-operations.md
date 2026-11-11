@@ -259,6 +259,15 @@ bounded private metadata and publish booleans; they never expose snapshot IDs,
 credentials or application content. A backup deferred because writers are busy
 is retried automatically after 30 minutes. Freshness remains unready until a
 completed encrypted snapshot exists within the required window.
+The home-core release wrapper can continue after a NixOS switch reports a
+failure only for the exact active NAS-backup deferral: the selected generation
+is active, the backup timer remains active, and the backup service is in its
+exit-75 automatic retry state with no process. If platform health also failed,
+the wrapper additionally requires a fresh, root-owned metrics file showing
+NAS backup freshness as the only failed readiness signal. The health unit stays
+failed and readiness stays false until a fresh archive exists; the wrapper does
+not clear the failed state, cancel the retry, or claim the platform is healthy.
+Any other failed unit or readiness signal still stops deployment.
 Readiness accepts a scheduled targeted installation or its retired receipt after
 canonical NixOS reconciliation. Retirement still requires authorization, active
 schedules, successful services and fresh backup/check receipts.

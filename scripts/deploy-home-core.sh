@@ -77,11 +77,25 @@ if ! nixos-rebuild switch --flake "$release#home-core"; then
   backup_substate=$(systemctl show homecompute-nas-recovery-backup.service -p SubState --value)
   backup_status=$(systemctl show homecompute-nas-recovery-backup.service -p ExecMainStatus --value)
   backup_pid=$(systemctl show homecompute-nas-recovery-backup.service -p MainPID --value)
+  backup_timer_active=$(systemctl is-active homecompute-nas-recovery-backup.timer || true)
   failed_units=$(systemctl --failed --plain --no-legend --no-pager | awk 'NF {print $1}')
+  health_status=$(systemctl show homecompute-platform-health.service -p ExecMainStatus --value)
+  health_only_backup_failure=false
+  if [[ "$failed_units" == homecompute-platform-health.service && "$health_status" == 1 ]] &&
+     python3 "$release/scripts/platform-health-backup-deferral.py" \
+       /var/lib/homecompute-health/homecompute-health.prom; then
+    health_only_backup_failure=true
+  fi
   if [[ -n "$expected_system" && "$active_system" == "$expected_system" &&
         "$backup_active" == activating && "$backup_substate" == auto-restart &&
-        "$backup_status" == 75 && "$backup_pid" == 0 && -z "$failed_units" ]]; then
-    printf 'NixOS generation is active. NAS recovery backup deferred on active writers; its scheduled retry remains enabled.\n' >&2
+        "$backup_status" == 75 && "$backup_pid" == 0 &&
+        "$backup_timer_active" == active &&
+        ( -z "$failed_units" || "$health_only_backup_failure" == true ) ]]; then
+    if [[ "$health_only_backup_failure" == true ]]; then
+      printf 'NixOS generation is active. NAS backup readiness is the sole failed health signal; its scheduled retry remains enabled. Continuing without a fresh backup.\n' >&2
+    else
+      printf 'NixOS generation is active. NAS recovery backup deferred on active writers; its scheduled retry remains enabled.\n' >&2
+    fi
   else
     printf 'NixOS switch failed outside the exact safe NAS backup deferral state; refusing to continue.\n' >&2
     exit 1

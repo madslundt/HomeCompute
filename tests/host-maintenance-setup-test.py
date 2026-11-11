@@ -158,6 +158,16 @@ class HostMaintenanceSetupTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             setup.dependency(link, self.root / 'right.timer')
 
+    def test_preflight_accepts_only_the_existing_managed_timer_link(self):
+        target = self.root / 'managed.timer'
+        target.write_text('')
+        link = self.root / 'timer-link'
+        link.symlink_to(target)
+        with patch.object(setup, 'safe', side_effect=lambda p, **kwargs: Path(p)):
+            setup.preflight([link], managed_symlinks={link: target})
+            with self.assertRaises(ValueError):
+                setup.preflight([link], managed_symlinks={link: self.root / 'other.timer'})
+
     def test_install_backs_up_code_tracking_units_preserves_state_and_starts_only_timer(self):
         dest, state, public, units = (self.root / name for name in ('dest', 'state', 'public', 'units'))
         for path in (dest, state, public, units):
@@ -170,6 +180,10 @@ class HostMaintenanceSetupTest(unittest.TestCase):
         report.write_text('{"generation":42}')
         old_unit = units / (setup.NAME + '.service')
         old_unit.write_text('previous reviewed unit')
+        timer_path = units / (setup.NAME + '.timer')
+        link = units / 'timers.target.wants' / timer_path.name
+        link.parent.mkdir()
+        link.symlink_to(timer_path)
         commands = []
         def command(argv, **kwargs):
             commands.append(argv)
@@ -191,6 +205,8 @@ class HostMaintenanceSetupTest(unittest.TestCase):
         self.assertEqual((backup / old_unit.name).read_text(), 'previous reviewed unit')
         self.assertEqual(result['updates_run'], 0)
         self.assertTrue(any(c[1:] == ['restart', setup.NAME + '.timer'] for c in commands))
+        verify = next(c for c in commands if c[:2] == ['systemd-analyze', 'verify'])
+        self.assertIn('--recursive-errors=no', verify)
         self.assertFalse(any('start' in c or ('restart' in c and c[-1].endswith('.service')) for c in commands))
 
 

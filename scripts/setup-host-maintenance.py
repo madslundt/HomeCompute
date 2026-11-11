@@ -158,8 +158,16 @@ def require_host(host):
         raise ValueError('root on the selected compute host required')
 
 
-def preflight(paths):
+def preflight(paths, *, managed_symlinks=None):
+    managed_symlinks = managed_symlinks or {}
     for target in paths:
+        target = Path(target)
+        if target in managed_symlinks:
+            # The exact timer dependency is validated separately from its
+            # symlink-safe path preflight. Do not reject our own existing link
+            # merely because safe() correctly refuses arbitrary symlinks.
+            dependency(target, managed_symlinks[target])
+            continue
         existing = target
         while not existing.exists() and not existing.is_symlink():
             existing = existing.parent
@@ -201,7 +209,7 @@ def install(source, expected, host):
     service_path, timer_path = units / (NAME + '.service'), units / (NAME + '.timer')
     link = units / 'timers.target.wants' / timer_path.name
     preflight([*(DEST / Path(name).name for name in files), service_path, timer_path,
-               PUBLIC / 'report.json', STATE])
+               link, PUBLIC / 'report.json', STATE], managed_symlinks={link: timer_path})
     dependency(link, timer_path)
     active = subprocess.run(['systemctl', 'is-active', '--quiet', service_path.name], check=False)
     if active.returncode == 0:
@@ -238,7 +246,10 @@ def stage(files, actual, host, units, service_path, timer_path, link):
         initial = {'schema_version': 1, 'host': host, 'generated_at': datetime.now(timezone.utc).isoformat(),
                    'items': [], 'summary': {'blocked': 1}}
         write(report, (json.dumps(initial, sort_keys=True) + '\n').encode())
-    subprocess.run(['systemd-analyze', 'verify', str(service_path), str(timer_path)], check=True, capture_output=True)
+    # Verify the changed units without letting unrelated site units (which are
+    # outside this installer's ownership) block the guarded update.
+    subprocess.run(['systemd-analyze', 'verify', '--recursive-errors=no',
+                    str(service_path), str(timer_path)], check=True, capture_output=True)
     subprocess.run(['systemctl', 'daemon-reload'], check=True, capture_output=True)
     subprocess.run(['systemctl', 'restart', timer_path.name], check=True, capture_output=True)
     return {'installed': True, 'host': host, 'bundle_sha256': actual, 'timer': timer_path.name,
