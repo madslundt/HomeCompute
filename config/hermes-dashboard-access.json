@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "sandbox": "hermes-personal-v23-r2",
+  "sandbox": "hermes-personal-v2",
   "local_hostname": "agents.home.arpa",
   "tailnet_hostname": "home-core.tail479ad.ts.net",
   "tailnet_port": 18796
