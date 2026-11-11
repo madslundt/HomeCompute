@@ -56,6 +56,8 @@ class ToolboxVmModuleTest(unittest.TestCase):
         self.assertIn("reverse_proxy 10.77.30.2:6080", CADDY)
         self.assertIn("-rfbauth", DESKTOP_INSTALLER)
         self.assertIn("10.77.30.2:6080", DESKTOP_INSTALLER)
+        self.assertIn("install -d -m 1777 /tmp/.X11-unix", DESKTOP_INSTALLER)
+        self.assertEqual(DESKTOP_INSTALLER.count("JoinsNamespaceOf=craft-anything-display.service"), 2)
         self.assertEqual(PINS["craft_anything"]["version"], "0.6.0")
         self.assertRegex(PINS["craft_anything"]["sha256"], r"^[0-9a-f]{64}$")
         self.assertRegex(PINS["craft_anything"]["appimage_sha256"], r"^[0-9a-f]{64}$")
