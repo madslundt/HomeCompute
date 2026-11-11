@@ -27,6 +27,14 @@ Notification Inbox webhook. Set it to the same value as Home Assistant's
 changing it requires recreating the n8n container through the deployment
 lifecycle.
 
+n8n blocks environment-variable access in workflow expressions by default in
+this deployment unless `N8N_BLOCK_ENV_ACCESS_IN_NODE` is set to `false`. The
+Inbox workflows use `$env.INBOX_WEBHOOK_ID` for the webhook URL. This setting
+makes every variable passed into the n8n container readable to workflow
+expressions and Code nodes, so keep sensitive API credentials in n8n's
+credential store and pass only the required Inbox ID and nonsecret runtime
+settings into the container.
+
 `modules/nixos/automation-network.nix` installs egress controls before Docker
 starts: internet TCP 443 and HAOS TCP 7878 are allowed; other private-network
 destinations are rejected. Home Assistant's name is mapped explicitly in

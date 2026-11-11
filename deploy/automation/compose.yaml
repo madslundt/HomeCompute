@@ -20,6 +20,7 @@ services:
       N8N_EDITOR_BASE_URL: http://localhost:15678
       N8N_SECURE_COOKIE: "false"
       N8N_LOG_LEVEL: warn
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       INBOX_WEBHOOK_ID: ${INBOX_WEBHOOK_ID:?Set INBOX_WEBHOOK_ID}
     volumes:
       - ${N8N_STATE_ROOT:?Set N8N_STATE_ROOT}:/home/node/.n8n
