@@ -384,6 +384,14 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertRegex(rendered, r'(?s)model_name: "automation-moe".*?timeout: 600')
         self.assertIn("COMPUTE_API_KEY", rendered)
 
+    def test_automation_moe_rates_render_as_litellm_per_token_costs(self) -> None:
+        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
+        block = rendered.split('model_name: "automation-moe"', 1)[1].split('  - model_name:', 1)[0]
+        self.assertIn("input_cost_per_token: 0.00000015", block)
+        self.assertIn("output_cost_per_token: 0.00000047", block)
+        self.assertIn("cache_read_input_token_cost: 0.000000016", block)
+        self.assertIn("cache_creation_input_token_cost: 0.0000002", block)
+
     def test_chatgpt_subscription_aliases_are_explicit_and_use_gateway_credentials(self) -> None:
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
         self.assertNotIn('model_name: "gpt-*"', rendered)

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "route_version": "2026-10-28-assist-route-repair",
+  "route_version": "2026-11-12-automation-moe-costs",
   "timeout_profiles": {
     "automation": {
       "seconds": 600
@@ -82,6 +82,12 @@
       "state": "candidate",
       "qualification_capability": "automation",
       "privacy": "local_only",
+      "pricing_usd_per_million_tokens": {
+        "input": 0.15,
+        "output": 0.47,
+        "cache_read": 0.016,
+        "cache_creation": 0.20
+      },
       "required_capabilities": [
         "chat",
         "tools"
