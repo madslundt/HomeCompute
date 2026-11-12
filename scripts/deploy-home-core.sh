@@ -121,6 +121,7 @@ python3 "$release/scripts/setup-podwave-auth.py"
 install -D -m 0644 \
   /srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt \
   /etc/homecompute/control-plane/home-core-root.crt
+install -d -o 101 -g 101 -m 0700 /srv/state/control-plane/chatgpt-auth
 docker rm --force homecompute-model-manager-model-manager-1 >/dev/null 2>&1 || true
 docker network rm homecompute-model-manager_ssh >/dev/null 2>&1 || true
 gateway=(docker compose --env-file /etc/homecompute/control-plane.env -f "$release/deploy/control-plane/compose.yaml")

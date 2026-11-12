@@ -160,7 +160,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-017](adr/017-consolidated-application-host.md) | `home-core` also hosts automations and personal agents; container isolation replaces the separate application host |
 | [ADR-018](adr/018-multiple-developer-harnesses.md) | Codex, Pi, and OMP are supported behind the same restricted developer account boundary |
 | [ADR-019](adr/019-single-gb10-model-roster.md) | Final GX10 roster: Qwen3.8-27B workhorse, exclusive Flash-Next cold swap, and four speech models |
-| [ADR-020](adr/020-workflow-first-local-inference.md) | Workflow-first rollout: local-only home-core routing, Aula first, explicit local Codex trials, and deferred features |
+| [ADR-020](adr/020-workflow-first-local-inference.md) | Workflow-first rollout: local routing by default, Aula first, explicit local Codex trials, and deferred features |
 | [ADR-021](adr/021-final-speech-stack-and-routing.md) | Final 2+2 speech roster, language routing, isolated runtimes, licenses, and qualification gates |
 | [ADR-022](adr/022-optional-home-core-inference.md) | Optional lightweight home-core inference, gated on qualification and routed only through LiteLLM |
 | [ADR-023](adr/023-n8n-automation-moe.md) | Opt-in Qwen3.6 MoE lane for Danish n8n tools; single-resident cold swap and no default Flash-Next |
@@ -175,6 +175,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-032](adr/032-bounded-android-ui-mcp.md) | Bounded Android UI controls through MCP; explicit user intent, no SMS or automatic message sending |
 | [ADR-033](adr/033-litellm-mcp-gateway.md) | Reuse LiteLLM as the central MCP gateway with explicit per-key tool grants and isolated backend networking |
 | [ADR-034](adr/034-craft-anything-toolbox.md) | Dedicated Home Core toolbox guest for Craft Anything, separate from OpenBot and Hermes Owner |
+| [ADR-035](adr/035-gateway-owned-chatgpt-subscription.md) | Explicit ChatGPT subscription routes through one gateway-owned OAuth identity with per-key model scopes |
 
 ## Research and model evidence
 

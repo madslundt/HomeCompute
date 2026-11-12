@@ -442,7 +442,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation-moe", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "tts-danish", "tts-english", "embedding", "video", "gpt-*", "codex-*"}, names)
+        self.assertEqual({"automation-moe", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "tts-danish", "tts-english", "embedding", "video", "chatgpt-sol-latest", "chatgpt-terra-latest", "chatgpt-luna-latest"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 
@@ -465,6 +465,15 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
         self.assertIn("disable_error_logs: true", text)
         self.assertIn("master_key: os.environ/LITELLM_MASTER_KEY", text)
         self.assertIn("database_url: os.environ/DATABASE_URL", text)
+
+    def test_chatgpt_oauth_state_is_private_durable_and_writable_only_in_litellm(self) -> None:
+        compose = (ROOT / "deploy/control-plane/compose.yaml").read_text(encoding="utf-8")
+        storage = (ROOT / "modules/nixos/storage.nix").read_text(encoding="utf-8")
+        deploy = (ROOT / "scripts/deploy-home-core.sh").read_text(encoding="utf-8")
+        self.assertIn("CHATGPT_TOKEN_DIR: /run/homecompute/chatgpt", compose)
+        self.assertIn("${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/chatgpt-auth:/run/homecompute/chatgpt:rw", compose)
+        self.assertIn('"d /srv/state/control-plane/chatgpt-auth 0700 101 101 - -"', storage)
+        self.assertIn("install -d -o 101 -g 101 -m 0700 /srv/state/control-plane/chatgpt-auth", deploy)
 
     def test_checked_in_rollback_files_retain_known_routing_states(self) -> None:
         rollback = ROLLBACK.read_text(encoding="utf-8")

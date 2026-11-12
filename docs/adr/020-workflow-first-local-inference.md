@@ -91,11 +91,14 @@ fallback path if latency or future memory pressure makes it unsuitable.
 
 ## Status
 
-Accepted. The disabled `model-router-policy.json` prototype referenced below
+Accepted. Its local-only gateway rule has the explicit, caller-selected
+ChatGPT subscription exception defined in [ADR-035](035-gateway-owned-chatgpt-subscription.md).
+The disabled `model-router-policy.json` prototype referenced below
 was retired by ADR-024 because its model and alias inventory duplicated the
 canonical capability registry. The deterministic capability mapping in
 ADR-024 supersedes the prototype routing mechanism; this ADR's consumer and
-local-first constraints remain in force.
+local-first constraints remain in force. Local workflows do not fall back to
+ChatGPT automatically.
 
 ## Evidence
 

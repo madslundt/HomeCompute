@@ -57,28 +57,51 @@ The generated model list assigns explicit zero upstream cost to local text,
 embedding, transcription, speech, and video models. LiteLLM's Usage view can
 therefore account for every request without mistaking local inference for an
 API bill. This is provider spend, not electricity, hardware amortization, or a
-household charge. Codex subscription requests are also recorded at zero because
-the subscription has no per-token API bill; use request/token rate limits for
-those keys instead of dollar budgets.
+household charge.
 Use LiteLLM Admin at `/ui/` → Usage for spend by model and virtual key. The
 separately hosted token-count dashboard and refresh timer are retired; the
 metadata privacy trigger remains in place.
 
-### Codex with a ChatGPT subscription
+### ChatGPT subscription routes
 
-The generated model list includes LiteLLM's `gpt-*` and `codex-*` subscription
-routes. Each Codex client signs in with its own ChatGPT account and keeps its
-OAuth session locally; the proxy stores no OpenAI API key or ChatGPT login.
-Create a dedicated LiteLLM virtual key restricted to those two model patterns,
-then configure Codex with the `litellm_subscription` Responses provider and
-that key in `~/.codex/.env`. The client-side setup and verification steps are
-in the [LiteLLM Codex subscription guide](https://docs.litellm.ai/docs/tutorials/openai_codex_byok).
+The model list exposes `chatgpt-sol-latest`, `chatgpt-terra-latest`, and
+`chatgpt-luna-latest`. They currently route to `chatgpt/gpt-6.1-sol`,
+`chatgpt/gpt-6.1-terra`, and `chatgpt/gpt-6-luna`. These are HomeCompute aliases;
+review the tracked model registry when updating their upstream targets.
+LiteLLM's ChatGPT provider needs a gateway-owned subscription login. One OAuth
+account is shared by every virtual key allowed to call these aliases; LiteLLM
+does not select a different ChatGPT account per key.
 
-There is no automatic paid API fallback. A ChatGPT subscription limit can stop
-requests; do not add an API-backed fallback without an explicit separate
-decision and credential. Do not grant this key household or action MCP access
-unless the caller should disclose those tool results to the selected model.
-Use a separate, narrowly scoped key for each client.
+Do not use **Models & Endpoints → LLM Credentials → Add Credential** for this
+login. That form saves provider credential values; the ChatGPT subscription
+login is a device-flow OAuth file. After deploying the Compose mount and
+directory, sign in from an interactive shell on `home-core`:
+
+```bash
+sudo docker exec -it --user 101:101 homecompute-control-plane-litellm-1 \
+  python3 -c 'from litellm.llms.chatgpt.authenticator import Authenticator; Authenticator().get_access_token()'
+```
+
+Complete the displayed device-code flow in your browser. Do not paste the code
+or tokens into chat, shell history, or Git. LiteLLM writes the refreshable
+credential to `/srv/state/control-plane/chatgpt-auth/auth.json`, mounted at
+`/run/homecompute/chatgpt` and owned by container UID 101. The file must remain
+writable because LiteLLM rotates refresh tokens in place. After sign-in, restart
+LiteLLM so the configured deployments initialize with the credential:
+
+```bash
+sudo docker compose --env-file /etc/homecompute/control-plane.env \
+  -f /srv/homecompute/current/deploy/control-plane/compose.yaml restart litellm
+```
+
+Verify only file metadata and a successful synthetic request; never print the
+JSON contents. Keep the directory private and include it in the protected
+backup/restore plan for `/srv/state/control-plane`.
+
+Give each client a separate virtual key restricted to only the aliases it needs,
+with no MCP grants unless separately approved. Subscription requests have no
+per-token API charge in LiteLLM; use request/token rate limits instead of a
+dollar budget. There is no automatic API-key fallback.
 
 ## Central MCP gateway
 

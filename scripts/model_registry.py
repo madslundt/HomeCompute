@@ -406,9 +406,14 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                 "      output_cost_per_character: 0",
             ])
     lines.extend(MEDIA.MediaRegistry.render_video(catalog, routes_doc))
-    # Codex keeps ChatGPT OAuth on the client. These routes carry the client's
-    # subscription login through LiteLLM and never require an OpenAI API key.
-    for alias, provider_model in (("gpt-*", "chatgpt/gpt-*"), ("codex-*", "chatgpt/codex-*")):
+    # These explicit aliases use the gateway-owned ChatGPT subscription login.
+    # Keep the public names stable; review the upstream targets when the
+    # supported ChatGPT model families change.
+    for alias, provider_model in (
+        ("chatgpt-sol-latest", "chatgpt/gpt-6.1-sol"),
+        ("chatgpt-terra-latest", "chatgpt/gpt-6.1-terra"),
+        ("chatgpt-luna-latest", "chatgpt/gpt-6-luna"),
+    ):
         lines.extend([
             f"  - model_name: {_yaml_quote(alias)}",
             "    litellm_params:",
