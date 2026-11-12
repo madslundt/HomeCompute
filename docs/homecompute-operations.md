@@ -355,6 +355,9 @@ application-consistent recovery archive before Restic transfer. It stops the
 declared writers and VMs, uses PostgreSQL dumps and SQLite's transactional backup
 API, archives durable application files and both VM disk sets, and resumes only
 previously active resources even if preparation fails.
+The optional AI Automation Manager is stopped only when its state database is
+present; its exact container identity is separately admitted by the private
+resume journal.
 Resumption reclaims gateway addresses first, then the WebUI client address,
 before remaining dynamic clients and dependent units. This avoids dynamic
 clients occupying a stopped gateway's fixed address; resources absent from
