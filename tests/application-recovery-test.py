@@ -243,6 +243,12 @@ assert not (root / 'staging/assistant-sqlite-inputs').exists()
         with patch.object(recovery, 'run') as run, self.assertRaises(ValueError): recovery.resume()
         run.assert_not_called()
 
+    def test_resume_allows_the_optional_ai_automation_manager_container(self):
+        resource = ('container', recovery.AI_AUTOMATION_MANAGER_CONTAINER)
+        with patch.object(recovery, 'run') as run:
+            recovery.resume([resource])
+        run.assert_called_once_with(['docker', 'start', recovery.AI_AUTOMATION_MANAGER_CONTAINER], timeout=180)
+
     def test_resume_reclaims_gateway_ips_and_webui_before_dynamic_clients(self):
         resources=[('unit','homecompute-codex-broker.service'),
                    ('container','homecompute-control-plane-caddy-1'),

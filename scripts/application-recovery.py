@@ -251,7 +251,11 @@ def resume(stopped: list[tuple[str, str]] | None = None) -> None:
                 or info.st_mode & 0o077 or info.st_size > 16384):
             raise ValueError('private bounded resume journal required')
         stopped = json.loads(RESUME_FILE.read_bytes())
-    allowed = {('unit', name) for name in (*UNITS, *ASSISTANT_UNITS)} | {('container', name) for name in CONTAINERS}
+    # The AI Automation Manager is an optional stateful writer and is stopped
+    # only when its own database exists, outside the general container set.
+    allowed = ({('unit', name) for name in (*UNITS, *ASSISTANT_UNITS)}
+               | {('container', name) for name in CONTAINERS}
+               | {('container', AI_AUTOMATION_MANAGER_CONTAINER)})
     if (not isinstance(stopped, list) or len(stopped) > len(allowed)
             or any(not isinstance(row, (list, tuple)) or len(row) != 2 or tuple(row) not in allowed for row in stopped)):
         raise ValueError('resume journal contains an unreviewed resource')
