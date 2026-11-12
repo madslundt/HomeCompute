@@ -8,6 +8,18 @@
   "default_model": "automation-moe",
   "default_reasoning_effort": "xhigh",
   "skill_learning": "ask-first",
+  "chatgpt_subscription_provider": {
+    "provider_id": "homecompute-chatgpt",
+    "display_name": "HomeCompute ChatGPT subscription",
+    "base_url": "https://mcp.home.arpa/v1",
+    "api_key_path": "/home/hermes-operator/.config/homecompute-openbot/secrets/chatgpt-models-key",
+    "models": [
+      {"id": "chatgpt-sol-latest", "display_name": "ChatGPT Sol (latest)"},
+      {"id": "chatgpt-terra-latest", "display_name": "ChatGPT Terra (latest)"},
+      {"id": "chatgpt-luna-latest", "display_name": "ChatGPT Luna (latest)"}
+    ],
+    "api_key_scope": "these three ChatGPT aliases only; MCP access denied"
+  },
   "hermes_provider": {
     "runtime": "Hermes CLI managed by OpenBot inside homecompute-openbot",
     "inference_provider": "custom",
@@ -61,8 +73,8 @@
       },
       "purpose": "Public research and evidence-based comparisons",
       "model": {
-        "provider": "ChatGPT",
-        "model": "GPT-6.1-Sol",
+        "provider": "HomeCompute ChatGPT subscription",
+        "model": "chatgpt-sol-latest",
         "reasoning_effort": "high"
       },
       "backup_models": [

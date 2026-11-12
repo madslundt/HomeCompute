@@ -91,6 +91,7 @@ bash "$REPO_ROOT/tests/config-loader-test.sh"
 printf '[validate] Nix update workflow tests\n'
 python3 "$REPO_ROOT/tests/flake-update-workflow-test.py"
 python3 "$REPO_ROOT/tests/openbot-agent-roster-test.py"
+python3 "$REPO_ROOT/tests/provision-openbot-chatgpt-key-test.py"
 printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
 python3 "$REPO_ROOT/tests/toolbox-vm-module-test.py"
