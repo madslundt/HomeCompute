@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -18,6 +19,25 @@ GUEST = 'hermes-operator@10.77.20.2'
 MODELS = ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest']
 OWNER = 'openbot-chatgpt-models'
 DESTINATION = '/home/hermes-operator/.config/homecompute-openbot/secrets/chatgpt-models-key'
+GUEST_RECEIVER = r'''import os,pathlib,stat,sys
+p=pathlib.Path('/home/hermes-operator/.config/homecompute-openbot/secrets/chatgpt-models-key')
+raw=sys.stdin.buffer.read(4097)
+assert 4 <= len(raw) <= 4096 and raw.endswith(b'\n') and raw.count(b'\n') == 1
+key=raw[:-1]
+assert key.startswith(b'sk-') and not any(chr(c).isspace() for c in key)
+assert not any(part.is_symlink() for part in (p,*p.parents))
+p.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+info=p.parent.stat()
+assert stat.S_ISDIR(info.st_mode) and info.st_uid == os.getuid() and stat.S_IMODE(info.st_mode) == 0o700
+fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+try:
+ os.write(fd,key+b'\n');os.fsync(fd)
+finally:os.close(fd)
+info=p.lstat()
+assert stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1 and stat.S_IMODE(info.st_mode) == 0o600
+assert p.read_bytes() == key+b'\n'
+print('key-installed')
+'''
 
 LITELLM_SCRIPT = r'''import json, urllib.parse, urllib.request
 master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
@@ -86,14 +106,7 @@ def run() -> None:
         raise RuntimeError('LiteLLM returned a key with an unexpected scope')
     key = value['key']
 
-    receiver = (
-        'set -eu; install -d -m 0700 ~/.config/homecompute-openbot/secrets; '
-        f'test ! -e {DESTINATION} && test ! -L {DESTINATION}; '
-        f'umask 077; cat > {DESTINATION}; chmod 0600 {DESTINATION}; '
-        f'test -f {DESTINATION} && test ! -L {DESTINATION} && '
-        f'test "$(stat -c %a {DESTINATION})" = 600 && '
-        f'test "$(wc -l < {DESTINATION})" = 1 && echo key-installed'
-    )
+    receiver = 'python3 -c ' + shlex.quote(GUEST_RECEIVER)
     guest = subprocess.run(
         ['ssh', '-J', 'home-core', '-o', 'BatchMode=yes', '-o',
          'StrictHostKeyChecking=yes', '-i', str(GUEST_KEY), GUEST, receiver],

@@ -72,6 +72,11 @@ class ProvisionOpenBotChatGPTKeyTest(unittest.TestCase):
         self.assertNotIn(secret, ' '.join(calls[4][0]))
         self.assertEqual(calls[5][1]['input'], secret + '\n')
         self.assertNotIn(secret, str(calls[5][0]))
+        receiver = calls[5][0][-1]
+        self.assertIn('O_EXCL', receiver)
+        self.assertIn('O_NOFOLLOW', receiver)
+        self.assertIn('stat.S_IMODE(info.st_mode) == 0o700', receiver)
+        self.assertNotIn(secret, receiver)
         self.assertNotIn(secret, mocked_print.call_args.args[0])
 
 
