@@ -53,11 +53,13 @@ synthetic refused, non-responsive, error, and streaming upstreams before
 promoting the generated config. Model generation does not create, broaden, or
 revoke any virtual key.
 
-The generated model list assigns explicit zero upstream cost to local text,
-embedding, transcription, speech, and video models. LiteLLM's Usage view can
-therefore account for every request without mistaking local inference for an
-API bill. This is provider spend, not electricity, hardware amortization, or a
-household charge.
+The generated model list assigns explicit zero cost to local models unless a
+route has a configured rate card. `automation-moe` uses the owner-supplied rates
+in `config/capability-routes.json`: $0.15/M input, $0.47/M output, $0.016/M
+cache reads, and $0.20/M cache creation (5-minute cache). The cache-read rates
+shown for general and 5-minute reads are both $0.016/M; LiteLLM uses its single
+cache-read rate field for both. Usage reports this configured attribution; it
+is not a measure of electricity, hardware amortization, or actual provider spend.
 Use LiteLLM Admin at `/ui/` → Usage for spend by model and virtual key. The
 separately hosted token-count dashboard and refresh timer are retired; the
 metadata privacy trigger remains in place.
