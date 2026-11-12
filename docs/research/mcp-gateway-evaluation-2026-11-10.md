@@ -4,13 +4,19 @@
 
 **Scope:** One self-hosted MCP access point for HomeCompute clients on `home-core`
 
-**Status:** Candidate recommendation; no software or live configuration changed
+**Status:** Future alternative evaluation; no software or live configuration changed
 
 ## Recommendation
 
-Pilot MCPHub on `home-core` as the MCP control plane. Keep its upstream list and
-client policy in reviewed repository configuration, with secrets and bearer
-keys provisioned externally. Expose one private Streamable HTTP origin and use
+Continue with the accepted LiteLLM gateway decision in [ADR-033](../adr/033-litellm-mcp-gateway.md)
+for the current release. MCPHub is a candidate for a separately reviewed future
+pilot if LiteLLM no longer meets the required controls. Any switch requires a
+new issue and ADR, source-managed configuration, client qualification, and a
+guarded migration plan; this evaluation does not supersede ADR-033.
+
+For that future evaluation, MCPHub's upstream list and client policy should
+remain in reviewed repository configuration, with secrets and bearer keys
+provisioned externally. Expose one private Streamable HTTP origin and use
 separate named routes and revocable credentials per consumer. Do not start by
 placing every MCP server inside the gateway container.
 

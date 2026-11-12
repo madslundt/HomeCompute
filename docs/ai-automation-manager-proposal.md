@@ -1,12 +1,12 @@
-# Notion AI automations replacement proposal
+# Notion AI automations cutover proposal
 
 ## Goal
 
-Replace the Notion database UI and the active **Notion AI automations** workflow
-with a private HomeCompute site and a separately staged n8n workflow. Keep the
-existing Notion workflow available until the replacement passes qualification.
-This proposal does not authorize a live n8n publication, deployment, or migration
-of personal Notion records.
+Complete the migration from the Notion database UI and active **Notion AI
+automations** workflow to the already deployed HomeCompute site and a separately
+staged n8n workflow. Keep the existing Notion workflow available until the
+replacement passes qualification. This proposal does not authorize a live n8n
+publication or migration of personal Notion records.
 
 ## Existing behavior observed
 
