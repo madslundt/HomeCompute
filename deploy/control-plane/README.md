@@ -38,15 +38,16 @@ python3 scripts/model_registry.py render
 
 The renderer changes only the `model_list` block. Key scopes, authentication,
 privacy/logging, database configuration, retries, and transport remain explicit
-and reviewed. The `automation`, `automation-moe` and `home` aliases currently
-route to the running local Flash-Next backend. On 2026-10-28, `home` was repaired
-to stop targeting the retired `home-fast` endpoint. The artifact remains marked
-candidate because its full quality qualification is incomplete. Disabled aliases backed by stopped models
+and reviewed. `automation-moe` is the only exposed text alias. The former
+`automation`, `home`, `automation-moe-nvidia`, and `automation-qualification`
+aliases selected candidate or qualification listeners; they are omitted from the
+gateway model list. The artifact remains marked candidate because its full
+quality qualification is incomplete. Disabled aliases backed by stopped models
 are omitted. The cold CPU automation standby remains an operator-run
 maintenance action.
 
-Home and automation have per-deployment request budgets of 20 and 600 seconds.
-Those values are initial budgets, not final p95/p99-based SLOs. Verify timeout
+`automation-moe` has a per-deployment request budget of 600 seconds. This value
+is an initial budget, not a final p95/p99-based SLO. Verify timeout
 behavior against the image pinned in `config/control-plane.env.example` with
 synthetic refused, non-responsive, error, and streaming upstreams before
 promoting the generated config. Model generation does not create, broaden, or

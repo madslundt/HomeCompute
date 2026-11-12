@@ -80,8 +80,8 @@ either path and remains off by default.
 `nvidia/Qwen3.6-35B-A3B-NVFP4` revision separately from the Unsloth cache and
 uses the isolated vLLM 0.28.0 ARM64 image. Its GB10 recipe enables Marlin,
 FlashInfer, FP8 KV, and three-token MTP. It runs on the same exclusive port
-8005 and serves both `automation-moe-nvidia` and `automation-moe`. The home-core
-gateway routes `automation` and `automation-moe` to this server.
+8005 and serves only `automation-moe`. Current source exposes only that
+LiteLLM text alias; dated route notes below preserve the earlier configuration.
 
 The script records whether `automation-primary` (qualified Unsloth) or
 `text-primary` (Qwen3.8) was running before activation. Startup or baseline

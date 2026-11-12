@@ -98,13 +98,15 @@ OpenBot keeps its database, credentials, keyring, workspaces, and logs together
 in the guest data directory. Do not copy only part of it. The agents-VM disk is
 included in the encrypted Home Core application-state backup and has a prior
 restore drill. Confirm a fresh completed NAS backup before an image update or
-before adding household workspaces or provider sign-ins. On 2026-11-09, the
-backup lifecycle reported retired and its last recorded snapshot was
-2026-10-28; resolve and verify that lifecycle before updating the image. To
-recover, restore the whole agents VM using its runbook,
-then run the service status command above. Code rollback does not restore
-OpenBot data. Keep the prior Home Core release and guest image pinned until the
-next off-host backup completes.
+before adding household workspaces or provider sign-ins. The 2026-11-10
+read-only check found the scheduled backup timer active, a completed archive
+receipt from 2026-11-09 22:26 UTC, and a later backup attempt deferred with
+exit 75 at 2026-11-10 09:43 CET. The completed receipt remains inside Home
+Compute's 36-hour readiness window; inspect the current receipt and timer again
+before a future data or image change. To recover, restore the whole agents VM
+using its runbook, then run the service status command above. Code rollback
+does not restore OpenBot data. Keep the prior Home Core release and guest image
+pinned until the next off-host backup completes.
 
 The source-managed Hermes CLI inside OpenBot uses its own `/data/.hermes`
 configuration. To reconcile its local Home AI route after deployment, run:

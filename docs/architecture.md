@@ -67,17 +67,14 @@ deployment order live in `config/capability-routes.json`. The deterministic
 renderer owns only LiteLLM's `model_list` block. It does not derive key access,
 firewall rules, runtime lifecycle, or fallback behavior from model metadata.
 
-**CURRENT:** n8n production remains on Qwen3.6 through `automation-moe`.
-**CANDIDATE:** the source registry contains one isolated
-`automation-qualification` route. It selects the Blazux/NVIDIA quality baseline
-or dime UltraFast performance challenger for cold-swap A/B runs; ordinary
-aliases still point to the current Qwen3.6 deployment. Candidate authorization
-remains separately scoped. Qwen3.8-27B remains a smaller cold fallback without
-preassigned consumer routing.
-**TARGET (pending qualification):** one resident text model may back the
-semantic roles, but each alias retains independent privacy, tool, timeout, and
-reasoning policy. The generated registry has not been applied to the live
-gateway. ADR-024 records the routing separation; ADR-025 records the candidate
+**CURRENT:** `automation-moe` is the single exposed LiteLLM text alias.
+**CANDIDATE:** the source registry selects the Blazux/NVIDIA quality baseline
+or dime UltraFast performance challenger for cold-swap A/B runs; candidate
+served names remain on the isolated compute listener. Qwen3.8-27B remains a
+smaller cold fallback without preassigned consumer routing.
+**TARGET (pending qualification):** retain one stable text client alias while
+the reviewed registry selects its backend. The generated registry has not been
+applied to the live gateway. ADR-024 records the routing separation; ADR-025 records the candidate
 gates.
 
 ## 1. System context

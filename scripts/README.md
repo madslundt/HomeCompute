@@ -92,9 +92,9 @@ sudo ./scripts/setup-compute-flash-next.sh switch-profile --profile ultrafast
 ```
 
 Both profiles bind the same private qualification listener and expose the
-stable internal `automation-qualification` name. Select the candidate
-deployment in the control-plane registry for the A/B run; never change
-production semantic aliases as part of profile qualification.
+internal `automation-qualification` served name. Select the candidate
+deployment on the `automation-moe` route in the control-plane registry for the
+A/B run; candidate served names are not exposed as LiteLLM aliases.
 
 `install` builds and prepares the pinned source/artifact and leaves running
 models untouched. Candidate activation is a separate exclusive smoke/benchmark
@@ -127,10 +127,10 @@ sudo ./scripts/setup-compute-automation-nvidia.sh smoke
 `install` only pulls and stages. The initial `activate` command records which
 text server was running, stops it, and starts NVIDIA on the exclusive automation
 listener. Startup or smoke failure restores that source. NVIDIA serves both
-`automation-moe-nvidia` and the stable `automation-moe` model name, so existing
-gateway clients continue working during the cold swap. Its containers use a
-persistent restart policy. The generated gateway route maps `automation` and
-`automation-moe` to the NVIDIA deployment. If rolling back after that gateway
+the stable `automation-moe` model name, so gateway clients continue working
+during the cold swap. Its containers use a
+persistent restart policy. The current generated gateway route maps only
+`automation-moe` to the selected deployment. If rolling back after that gateway
 configuration is live, restore the previous gateway mapping before running
 `deactivate`; otherwise requests would still target the NVIDIA model name.
 The 2026-09-29 production cutover removed the old Unsloth containers and the

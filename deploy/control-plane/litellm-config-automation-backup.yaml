@@ -8,22 +8,18 @@ model_list:
     litellm_params:
       <<: *local_model
       model: openai/coding
-  - model_name: automation
+  - model_name: automation-moe
     litellm_params:
       model: openai/automation-backup
       api_base: http://automation-backup:8080/v1
       api_key: os.environ/COMPUTE_API_KEY
       order: 1
-  - model_name: automation
-    litellm_params:
-      <<: *local_model
-      model: openai/automation
-      order: 2
   - model_name: automation-moe
     litellm_params:
-      model: openai/automation-moe
-      api_base: os.environ/COMPUTE_AUTOMATION_BASE_URL
+      model: openai/automation-qualification
+      api_base: os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL
       api_key: os.environ/COMPUTE_API_KEY
+      order: 2
   # Synthetic Hermes qualification lane. This deliberately reuses the live
   # automation backend while keeping a separately revocable client key and
   # stable alias; it is not permission to reuse the n8n client identity.

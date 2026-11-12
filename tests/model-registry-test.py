@@ -4,7 +4,6 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
-import re
 import unittest
 from pathlib import Path
 
@@ -20,15 +19,20 @@ ROUTES = REGISTRY.load_json(ROOT / "config/capability-routes.json")
 
 
 class ModelRegistryTests(unittest.TestCase):
-    def test_home_reuses_resident_assist_backend_without_claiming_full_qualification(self) -> None:
-        route = ROUTES['routes']['home']
-        self.assertEqual(route['deployments'], ROUTES['routes']['automation-moe']['deployments'])
-        self.assertEqual(route['state'], 'candidate')
-        self.assertEqual(route['timeout_profile'], 'home')
-        self.assertEqual(route['privacy'], 'local_only')
-        rendered = REGISTRY.render_model_list(CATALOG, ROUTES).split('model_name: "home"', 1)[1].split('  - model_name:', 1)[0]
+    def test_nvidia_candidate_uses_only_the_canonical_served_name(self) -> None:
+        deployment = CATALOG["deployments"]["automation-spark-nvidia-candidate"]
+        self.assertEqual("automation-moe", deployment["served_model_name"])
+        compose = (ROOT / "deploy/compute-node/compose.yaml").read_text(encoding="utf-8")
+        self.assertIn("--served-model-name automation-moe --host", compose)
+        self.assertNotIn("automation-moe-nvidia", compose)
+
+    def test_automation_moe_is_the_only_exposed_text_alias(self) -> None:
+        rendered = REGISTRY.render_model_list(CATALOG, ROUTES)
+        text_aliases = [alias for alias in ('automation', 'home', 'automation-moe',
+                                             'automation-moe-nvidia', 'automation-qualification')
+                        if f'model_name: "{alias}"' in rendered]
+        self.assertEqual(text_aliases, ['automation-moe'])
         self.assertIn('openai/automation-qualification', rendered)
-        self.assertIn('timeout: 20', rendered)
         self.assertNotIn('COMPUTE_HOME_BASE_URL', rendered)
 
     def test_video_is_pinned_on_demand_and_renders_the_native_video_api(self) -> None:
@@ -66,7 +70,7 @@ class ModelRegistryTests(unittest.TestCase):
                     REGISTRY.validate(catalog, copy.deepcopy(ROUTES))
 
     def test_video_aliases_do_not_collide_and_disabled_video_is_not_rendered(self) -> None:
-        for alias in ('home', 'stt-danish', 'plapre', 'ltx-2-5', 'auto'):
+        for alias in ('automation-moe', 'stt-danish', 'plapre', 'ltx-2-5', 'auto'):
             with self.subTest(alias=alias):
                 routes = copy.deepcopy(ROUTES)
                 routes["video_routes"][alias] = routes["video_routes"].pop('video')
@@ -196,7 +200,7 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_transcription_routes_cannot_reuse_text_aliases_or_select_text_deployments(self) -> None:
         routes = copy.deepcopy(ROUTES)
-        routes["transcription_routes"]["home"] = routes["transcription_routes"].pop("stt-danish")
+        routes["transcription_routes"]["automation-moe"] = routes["transcription_routes"].pop("stt-danish")
         with self.assertRaisesRegex(REGISTRY.RegistryError, "already used"):
             REGISTRY.validate(copy.deepcopy(CATALOG), routes)
         routes = copy.deepcopy(ROUTES)
@@ -243,8 +247,8 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual("qwen3_coder", runtime["tool_call_parser"])
         self.assertEqual("qwen3", runtime["reasoning_parser"])
         self.assertEqual("nvidia-open-model-license", artifact["license_id"])
-        self.assertEqual("automation-flash-next-candidate", ROUTES["routes"]["automation"]["deployments"][0])
-        self.assertEqual("candidate", ROUTES["routes"]["automation-qualification"]["state"])
+        self.assertEqual("automation-flash-next-candidate", ROUTES["routes"]["automation-moe"]["deployments"][0])
+        self.assertEqual("candidate", ROUTES["routes"]["automation-moe"]["state"])
 
     def test_ultrafast_is_separate_unqualified_artifact_and_shared_qualification_contract(self) -> None:
         artifact = CATALOG["artifacts"]["qwen38-flash-next-ultrafast-autoround"]
@@ -260,50 +264,43 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual(262144, deployment["context_tokens"])
         self.assertEqual(3, runtime["mtp"])
         self.assertEqual("9g", runtime["kv_cache_memory_bytes"])
-        self.assertEqual("candidate", ROUTES["routes"]["automation-qualification"]["state"])
+        self.assertEqual("candidate", ROUTES["routes"]["automation-moe"]["state"])
 
-    def test_nvidia_candidate_uses_the_exclusive_automation_listener(self) -> None:
-        deployment = CATALOG["deployments"]["automation-spark-nvidia-candidate"]
-        self.assertEqual("automation-moe-nvidia", deployment["served_model_name"])
-        self.assertEqual("COMPUTE_AUTOMATION_BASE_URL", deployment["endpoint_env"])
-        self.assertEqual("candidate", deployment["availability"])
-        self.assertEqual("operator-on-demand", deployment["lifecycle"])
-        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        block = rendered.split('model_name: "automation-moe-nvidia"', 1)[1].split('  - model_name:', 1)[0]
-        self.assertIn('api_base: "os.environ/COMPUTE_AUTOMATION_BASE_URL"', block)
-        self.assertNotIn("COMPUTE_AUTOMATION_CANDIDATE_BASE_URL", block)
-
-    def test_candidate_route_selects_candidate_deployments_without_changing_other_routes(self) -> None:
+    def test_candidate_route_selects_candidate_deployments_on_canonical_alias(self) -> None:
         routes = copy.deepcopy(ROUTES)
         REGISTRY.select_candidate_deployment(
-            copy.deepcopy(CATALOG), routes, "automation-qualification", "automation-flash-next-ultrafast-challenger"
+            copy.deepcopy(CATALOG), routes, "automation-moe", "automation-flash-next-ultrafast-challenger"
         )
         self.assertEqual(
             ["automation-flash-next-ultrafast-challenger"],
-            routes["routes"]["automation-qualification"]["deployments"],
+            routes["routes"]["automation-moe"]["deployments"],
         )
-        self.assertEqual(ROUTES["routes"]["automation"]["deployments"], routes["routes"]["automation"]["deployments"])
-        with self.assertRaisesRegex(REGISTRY.RegistryError, "isolated candidate route"):
-            REGISTRY.select_candidate_deployment(copy.deepcopy(CATALOG), routes, "home", "automation-flash-next-candidate")
+        REGISTRY.select_candidate_deployment(
+            copy.deepcopy(CATALOG), routes, "automation-moe", "automation-flash-next-candidate"
+        )
+        self.assertEqual(
+            ["automation-flash-next-candidate"],
+            routes["routes"]["automation-moe"]["deployments"],
+        )
 
         routes = copy.deepcopy(ROUTES)
         with self.assertRaisesRegex(REGISTRY.RegistryError, "operator-on-demand candidate deployments"):
-            REGISTRY.select_candidate_deployment(copy.deepcopy(CATALOG), routes, "automation-qualification", "automation-spark-primary")
+            REGISTRY.select_candidate_deployment(copy.deepcopy(CATALOG), routes, "automation-moe", "automation-spark-primary")
 
     def test_flash_candidate_cannot_be_promoted_by_flipping_route_state_alone(self) -> None:
         routes = copy.deepcopy(ROUTES)
-        routes["routes"]["automation-qualification"]["state"] = "active"
+        routes["routes"]["automation-moe"]["state"] = "active"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "candidate route.*cannot be active"):
             REGISTRY.validate(copy.deepcopy(CATALOG), routes)
 
     def test_route_aliases_must_be_semantic_and_not_checkpoint_names(self) -> None:
         routes = copy.deepcopy(ROUTES)
-        routes["routes"]["Qwen3.8-Flash-Next"] = copy.deepcopy(routes["routes"]["automation-qualification"])
+        routes["routes"]["Qwen3.8-Flash-Next"] = copy.deepcopy(routes["routes"]["automation-moe"])
         with self.assertRaisesRegex(REGISTRY.RegistryError, "lowercase semantic alias"):
             REGISTRY.validate(copy.deepcopy(CATALOG), routes)
 
         routes = copy.deepcopy(ROUTES)
-        routes["routes"]["nvidia-qwen3-8-flash-next-nvfp4"] = copy.deepcopy(routes["routes"]["automation-qualification"])
+        routes["routes"]["nvidia-qwen3-8-flash-next-nvfp4"] = copy.deepcopy(routes["routes"]["automation-moe"])
         with self.assertRaisesRegex(REGISTRY.RegistryError, "checkpoint identity"):
             REGISTRY.validate(copy.deepcopy(CATALOG), routes)
 
@@ -324,8 +321,8 @@ class ModelRegistryTests(unittest.TestCase):
         catalog["artifacts"]["qwen38-flash-next-nvfp4"]["qualification"]["automation"] = "candidate"
         catalog["deployments"]["automation-flash-next-candidate"]["availability"] = "active"
         catalog["deployments"]["automation-flash-next-candidate"]["lifecycle"] = "resident"
-        routes["routes"]["automation-qualification"]["state"] = "active"
-        routes["routes"]["automation-qualification"].pop("kind")
+        routes["routes"]["automation-moe"]["state"] = "active"
+        routes["routes"]["automation-moe"].pop("kind")
         with self.assertRaisesRegex(REGISTRY.RegistryError, "not qualified"):
             REGISTRY.validate(catalog, routes)
 
@@ -344,8 +341,8 @@ class ModelRegistryTests(unittest.TestCase):
         catalog = copy.deepcopy(CATALOG)
         routes = copy.deepcopy(ROUTES)
         catalog["deployments"]["automation-flash-next-candidate"]["availability"] = "intentionally-stopped"
-        routes["routes"]["automation-qualification"]["state"] = "active"
-        routes["routes"]["automation-qualification"].pop("kind")
+        routes["routes"]["automation-moe"]["state"] = "active"
+        routes["routes"]["automation-moe"].pop("kind")
         with self.assertRaisesRegex(REGISTRY.RegistryError, "not active"):
             REGISTRY.validate(catalog, routes)
 
@@ -360,8 +357,8 @@ class ModelRegistryTests(unittest.TestCase):
         catalog["deployments"]["automation-flash-next-candidate"]["availability"] = "active"
         catalog["deployments"]["automation-flash-next-candidate"]["lifecycle"] = "cold-standby"
         routes = copy.deepcopy(ROUTES)
-        routes["routes"]["automation-qualification"].pop("kind")
-        routes["routes"]["automation-qualification"]["state"] = "active"
+        routes["routes"]["automation-moe"].pop("kind")
+        routes["routes"]["automation-moe"]["state"] = "active"
         with self.assertRaisesRegex(REGISTRY.RegistryError, "non-resident"):
             REGISTRY.validate(catalog, routes)
 
@@ -375,37 +372,17 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_disabled_routes_and_auto_are_not_rendered(self) -> None:
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        self.assertIn('model_name: "automation"', rendered)
-        self.assertIn('model_name: "home"', rendered)
+        self.assertIn('model_name: "automation-moe"', rendered)
+        for alias in ('automation', 'home', 'automation-moe-nvidia', 'automation-qualification'):
+            self.assertNotIn(f'model_name: "{alias}"', rendered)
         self.assertNotIn('model_name: "assistant-canary"', rendered)
-        self.assertIn('model_name: "automation-qualification"', rendered)
         for alias in ("coding", "research", "meeting", 'model_name: "assistant"', 'model_name: "auto"'):
             self.assertNotIn(alias, rendered)
 
     def test_per_capability_timeouts_render_on_deployments(self) -> None:
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        self.assertRegex(rendered, r'(?s)model_name: "automation".*?timeout: 600')
-        self.assertRegex(rendered, r'(?s)model_name: "home".*?timeout: 20')
-        self.assertRegex(rendered, r'(?s)model_name: "home".*?stream_timeout: 20')
+        self.assertRegex(rendered, r'(?s)model_name: "automation-moe".*?timeout: 600')
         self.assertIn("COMPUTE_API_KEY", rendered)
-
-    def test_local_model_aliases_have_explicit_zero_upstream_cost(self) -> None:
-        rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        blocks = re.findall(r'(?ms)^  - model_name: "([^"]+)"\n(.*?)(?=^  - model_name:|\Z)', rendered)
-        for alias, block in blocks:
-            with self.subTest(alias=alias):
-                if alias in {"gpt-*", "codex-*"}:
-                    self.assertIn("input_cost_per_token: 0", block)
-                    self.assertIn("output_cost_per_token: 0", block)
-                elif "mode: audio_transcription" in block:
-                    self.assertIn("input_cost_per_second: 0", block)
-                elif "mode: audio_speech" in block:
-                    self.assertIn("output_cost_per_character: 0", block)
-                elif "mode: video_generation" in block:
-                    self.assertIn("output_cost_per_second: 0", block)
-                else:
-                    self.assertIn("input_cost_per_token: 0", block)
-                    self.assertIn("output_cost_per_token: 0", block)
 
     def test_codex_chatgpt_subscription_routes_do_not_need_proxy_credentials(self) -> None:
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))

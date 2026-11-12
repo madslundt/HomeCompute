@@ -9,7 +9,8 @@ import subprocess
 
 
 KEY_FILE = Path('/srv/state/control-plane/caddy-data/network-inference-key')
-TEXT_MODELS = ['automation', 'home', 'automation-moe']
+TEXT_MODELS = ['automation-moe']
+LEGACY_TEXT_MODELS = {'automation', 'home'}
 STT_MODELS = [*TEXT_MODELS, 'stt-danish']
 MODELS = [*STT_MODELS, 'whisper-turbo']
 TTS_MODELS = [*MODELS, 'plapre']
@@ -42,6 +43,39 @@ def model_scope(models: object) -> set[str]:
     return set(models)
 
 
+def canonicalize_text_scope(models: list[str]) -> list[str]:
+    """Replace retired text aliases with the one canonical client alias."""
+    model_scope(models)
+    if not (LEGACY_TEXT_MODELS & set(models)):
+        return models
+    result = []
+    inserted = False
+    for model in models:
+        if model in LEGACY_TEXT_MODELS or model == 'automation-moe':
+            if not inserted:
+                result.append('automation-moe')
+                inserted = True
+        else:
+            result.append(model)
+    return result
+
+
+def update_existing_key(key: str, models: list[str]) -> None:
+    code = '''
+import json, urllib.request
+master = open('/run/secrets/litellm_master_key').read().strip()
+body = {'key': %s, 'models': %s}
+req = urllib.request.Request('http://127.0.0.1:4000/key/update',
+    data=json.dumps(body).encode(),
+    headers={'Authorization': 'Bearer ' + master, 'Content-Type': 'application/json'})
+urllib.request.urlopen(req, timeout=30).close()
+''' % (repr(key), repr(models))
+    result = subprocess.run(['docker', 'exec', '-i', CONTAINER, 'python3', '-'],
+                            input=code, capture_output=True, text=True)
+    if result.returncode:
+        raise SystemExit('Network inference credential migration failed.')
+
+
 def omnivoice_scope(models):
     scope = model_scope(models)
     allowed = set(MODELS) | {'plapre', 'omnivoice', 'embedding', 'video', 'whisper', 'tts-danish', 'tts-english'}
@@ -72,6 +106,14 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
         data = inspect_existing_key(key)
         if data['expires'] is not None or data['user_id'] != 'network-inference':
             raise SystemExit('Existing network credential has an unexpected scope, owner, or expiry.')
+        canonical_models = canonicalize_text_scope(data['models'])
+        if canonical_models != data['models']:
+            update_existing_key(key, canonical_models)
+            data = inspect_existing_key(key)
+            if (data['expires'] is not None or data['user_id'] != 'network-inference' or
+                    model_scope(data['models']) != set(canonical_models)):
+                raise SystemExit('Canonical text-alias migration did not apply the reviewed scope, owner, and expiry.')
+            print('Migrated network inference credential to automation-moe for text inference.')
         scope = model_scope(data['models'])
         speech_aliases = scope & {'tts-danish', 'tts-english'}
         scope -= speech_aliases
@@ -114,19 +156,7 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
         if target is not None and has_video and 'video' not in target:
             target = [*target, 'video']
         if target is not None:
-            code = '''
-import json, urllib.request
-master = open('/run/secrets/litellm_master_key').read().strip()
-body = {'key': %s, 'models': %s}
-req = urllib.request.Request('http://127.0.0.1:4000/key/update',
-    data=json.dumps(body).encode(),
-    headers={'Authorization': 'Bearer ' + master, 'Content-Type': 'application/json'})
-urllib.request.urlopen(req, timeout=30).close()
-''' % (repr(key), repr(target))
-            result = subprocess.run(['docker', 'exec', '-i', CONTAINER, 'python3', '-'],
-                                    input=code, capture_output=True, text=True)
-            if result.returncode:
-                raise SystemExit('Network inference credential migration failed.')
+            update_existing_key(key, target)
             updated = inspect_existing_key(key)
             if updated['expires'] is not None or updated['user_id'] != 'network-inference' or \
                     model_scope(updated['models']) != set(target):

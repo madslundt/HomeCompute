@@ -10,7 +10,7 @@ import {
 
 import { productionContext } from '../model-benchmark/aula-real-mcp-evaluation.workflow';
 
-const LOCAL_MODEL_ALIAS = 'automation';
+const LOCAL_MODEL_ALIAS = 'automation-moe';
 const LOCAL_RETRY_LIMIT = 2;
 const LOCAL_TIMEOUT_MS = 360_000;
 
@@ -112,7 +112,7 @@ const output = result.output ?? result.text ?? '';
 return [{ json: {
   case_id: $('Require local-only live shadow mode').first().json.case_id,
   text: typeof output === 'string' ? output : JSON.stringify(output),
-  model: 'automation',
+  model: 'automation-moe',
   provider: 'homecompute/local-only',
   mode: 'live-shadow',
   tool_trace: result.intermediateSteps ?? [],
@@ -245,7 +245,7 @@ const output = result.output ?? result.text ?? '';
 return [{ json: {
   case_id: $('Prepare captured Aula replay').first().json.case_id,
   text: typeof output === 'string' ? output : JSON.stringify(output),
-  model: 'automation',
+  model: 'automation-moe',
   provider: 'homecompute/local-only',
   mode: 'captured-replay',
   tool_trace: [],

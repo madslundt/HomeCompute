@@ -83,8 +83,8 @@ much access.
   Issue a gateway certificate for `ai.home.arpa`, automate renewal, protect the
   CA signing key offline, and test expiry alerts and rotation.
 - The public inference routes accept requests without credentials after network
-  admission. Caddy supplies a restricted non-admin virtual key for `automation`,
-  `home`, `automation-moe`, `stt-danish`, and `whisper-turbo`; candidate Plapre
+  admission. Caddy supplies a restricted non-admin virtual key for
+  `automation-moe`, `stt-danish`, and `whisper-turbo`; candidate Plapre
   requires an explicit key-scope migration. Existing explicit credentials keep their scopes.
   Unrecognized, expired, or revoked credentials fall back to these same public
   network models. Revocation removes additional key permissions; it cannot

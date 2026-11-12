@@ -38,7 +38,7 @@ class AulaLocalWorkflowTest(unittest.TestCase):
             self.assertNotIn(node_type, self.source)
 
     def test_model_is_fixed_to_local_automation_credential(self) -> None:
-        self.assertIn("const LOCAL_MODEL_ALIAS = 'automation'", self.source)
+        self.assertIn("const LOCAL_MODEL_ALIAS = 'automation-moe'", self.source)
         self.assertEqual(
             self.source.count("newCredential('HomeCompute local automation only')"), 2
         )
@@ -75,7 +75,7 @@ class AulaLocalWorkflowTest(unittest.TestCase):
     def test_scheduled_retry_policy_is_local_only_and_bounded(self) -> None:
         policy = json.loads(POLICY.read_text())
         self.assertEqual(policy["inference_policy"], "local-only")
-        self.assertEqual(policy["model_alias"], "automation")
+        self.assertEqual(policy["model_alias"], "automation-moe")
         self.assertEqual(policy["request"]["max_retries"], 2)
         self.assertEqual(policy["scheduled_run"]["retry_delays_minutes"], [15, 30, 60])
         self.assertEqual(policy["scheduled_run"]["failure_alert_after_minutes"], 120)

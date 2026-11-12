@@ -107,7 +107,7 @@ class HomeCoreAutomationBackupTest(unittest.TestCase):
         self.assertRegex(
             maintenance,
             r"(?s)model: openai/automation-backup.*?order: 1.*?"
-            r"model: openai/automation\s+order: 2",
+            r"model: openai/automation-qualification\s+.*?order: 2",
         )
         litellm = self.document["services"]["litellm"]
         config_mount = next(

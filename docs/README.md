@@ -174,6 +174,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-031](adr/031-opencode-home-core-web-service.md) | Private OpenCode web service on Home Core, isolated agent account and project/state paths, tailnet-only access |
 | [ADR-032](adr/032-bounded-android-ui-mcp.md) | Bounded Android UI controls through MCP; explicit user intent, no SMS or automatic message sending |
 | [ADR-033](adr/033-litellm-mcp-gateway.md) | Reuse LiteLLM as the central MCP gateway with explicit per-key tool grants and isolated backend networking |
+| [ADR-034](adr/034-craft-anything-toolbox.md) | Dedicated Home Core toolbox guest for Craft Anything, separate from OpenBot and Hermes Owner |
 
 ## Research and model evidence
 

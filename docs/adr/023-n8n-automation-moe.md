@@ -83,3 +83,10 @@ and gateway route are healthy. Existing production workflows remain unchanged.
 - `docs/research/n8n-danish-moe-recommendation-2026-09-26.md`
 - `deploy/compute-node/compose.yaml`
 - `scripts/setup-compute-automation-moe.sh`
+
+## Later alias retirement
+
+On 2026-11-11, the unused `automation-moe-nvidia` served alias was removed from
+the NVIDIA candidate's source configuration. Qualification now uses its
+isolated listener with the stable `automation-moe` served name; the separate
+LiteLLM alias is not retained.

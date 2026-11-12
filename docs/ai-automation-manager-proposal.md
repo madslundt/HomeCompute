@@ -1,78 +1,101 @@
-# AI automation manager — parallel replacement
-
-**State:** implementation candidate, not deployed. The current Notion database
-and `Notion AI automations` workflow remain active and unchanged.
-
-Issue: [HomeCompute #134](https://github.com/madslundt/HomeCompute/issues/134)
+# Notion AI automations cutover proposal
 
 ## Goal
 
-Create a self-hosted site where Mads can create, edit, remove, and review
-recurring automations. n8n remains the schedule and execution engine; Home
-Assistant Inbox remains the delivery channel and source for recipient choices.
-The new application has its own SQLite store and must not read or mutate the
-existing Notion database. It supports a later, deliberate transition.
+Complete the migration from the Notion database UI and active **Notion AI
+automations** workflow to the already deployed HomeCompute site and a separately
+staged n8n workflow. Keep the existing Notion workflow available until the
+replacement passes qualification. This proposal does not authorize a live n8n
+publication or migration of personal Notion records.
 
-## Operating profiles
+## Existing behavior observed
 
-The model supports the three requested use cases without separate hardcoded
-products:
+The active n8n workflow has 29 nodes. It runs at
+07:00 and 21:00 in Europe/Copenhagen. It selects Ready items for the current
+weekday, filters by Morning/Evening and skips an item already run on the current
+Copenhagen date. It considers up to 10 database rows, prioritizing the oldest
+AI last run. For each selected item, it loads the item's Markdown context,
+retrieves same-item research, runs the local `automation-moe` model with the
+Tavily search tool, replaces the context, records the run date and a summary,
+and resolves only when non-empty success criteria are clearly satisfied.
+One existing task has a special Home Assistant Inbox branch; that branch does
+not establish the general recipient or message contract for other items.
 
-| Example | Suggested settings |
-| --- | --- |
-| Ongoing topic | Changes since last run; resolve at success criteria or manually archive; choose daily or hourly only when needed |
-| Short-term follow-up | Fresh briefing or changes; explicit success criteria; resolve after verified completion |
-| Daily news | Fresh briefing; morning/evening slot; send every run or only if notable changes |
-| System monitoring | Current-status check; hourly or selected time slot; notify only when action is needed |
+## Record model
 
-The task description specifies scope and reading level. Run summaries use
-headings, concise prose, bullets, clear status and dates, and source links when
-research is involved.
+| Existing Notion field | Proposed site field | Notes |
+| --- | --- | --- |
+| Name | Name | Required title |
+| AI prompt | Task description | Required instructions for the task |
+| Page Markdown | Current context | Markdown replaced with each run result |
+| Success criteria | Success criteria | Optional text; required before Resolved |
+| Status | Status | Draft, Ready, Resolved, Archived |
+| Days to run | Days to run | Monday through Sunday, one or more |
+| Time to run | Time to run | Morning (07:00) or Evening (21:00) |
+| AI last run | Last run | Timestamp in Europe/Copenhagen |
+| Project | Project | Editable text/select label, replacing the Notion relation |
+| Tag | Tag | Editable text/select label, replacing the Notion relation |
+| Created / Created by / Updated | Audit metadata | Created/updated times are system-managed; creator comes from the signed-in site identity |
+| Notion comments | Run history | Timestamp, outcome, and change summary; no prompt/response content in operational logs |
+| — | Recipients | Required selection of one or more current Home Assistant people |
 
-## Architecture
+The current-context text and run-history entries are household data. They stay
+in durable application state, outside Git. Archive remains distinct from
+permanent deletion; deletion behavior and whether history is purged need to be
+specified in the implementation issue.
 
-```mermaid
-flowchart LR
-  Browser[Private browser] -->|HTTPS| Caddy[Caddy internal TLS]
-  Caddy --> Site[AI automation manager]
-  Site --> DB[(SQLite on durable host storage)]
-  Site -->|Read recipient directory / validate IDs| HA[Home Assistant Inbox webhook]
-  N8N[n8n scheduled workflow] -->|Claim and save run| Site
-  N8N -->|Local model and research| AI[automation-moe + Tavily]
-  N8N -->|Idempotent notification| HA
-```
+## Proposed boundaries
 
-Site and n8n communicate on the isolated automation Docker bridge. The manager
-has a fixed address and an explicit egress rule for only Home Assistant port 80.
-It receives no wildcard host port; Caddy publishes the private HTTPS route. The
-existing `/run/secrets/automation/inbox-webhook-env` credential remains external
-to Git. Site login secrets and a distinct workflow bearer token are also external.
+- A private site provides create, read, update, archive, and delete operations.
+  Browser writes use authenticated same-origin requests with CSRF protection.
+- A small backend owns the records and run history in durable local storage.
+  The browser never talks to Home Assistant or n8n with service credentials.
+- The recipient picker obtains only person entity IDs and display names from
+  Home Assistant. The backend discards every unrelated entity field. A selected
+  recipient that is absent from the latest Home Assistant response blocks
+  delivery.
+- n8n retains the two existing schedule times and the bounded local model and
+  research integrations. A staged copy replaces Notion read/write nodes with
+  authenticated site API calls; it remains unpublished until qualified.
+- Run summaries are sent through the existing Home Assistant Inbox integration.
+  The existing Sweet deals workflow shows an `action: ingest` payload with
+  `title`, `body`, `category`, `source`, `recipients`, `priority`,
+  `send_push`, and `external_id`. Before generalizing it, confirm that the
+  receiver accepts arbitrary selected person recipients and a task/result
+  category, and define idempotency and retry behavior.
+- Home Assistant remains the delivery authority. This site cannot choose an
+  arbitrary HA action or service.
 
-## Data and reliability
+## Security and operational gates
 
-- The site stores all editable fields, HA recipient IDs, timestamps, and run
-  history. It returns only minimal user names/IDs from Home Assistant.
-- Status values remain Draft, Ready, Resolved, and Archived. Only Ready items
-  are scheduled. Manual archive is available regardless of success criteria.
-- 07:00/21:00 local slots remain compatible with current behavior. Hourly runs
-  happen at minute 00, only on selected weekdays. Hour keys include the offset
-  to handle DST fall-back.
-- The workflow stores the complete replacement context and a concise summary.
-  Delivery uses the run UUID as the Home Assistant Inbox `external_id`. Pending
-  delivery retries do not repeat research.
-- Notification choices suppress delivery after the run when the output has no
-  changes or no action needed. The run and updated context still remain visible
-  in the site.
-- No seed records or Notion export are included. Synthetic records are used for
-  acceptance only.
+- Site ingress stays within the existing approved LAN/tailnet boundary. The
+  site has separate authentication and does not share n8n's login.
+- HA credentials, webhook IDs, site credentials, and real item contents remain
+  outside Git. The backend returns only the person-picker fields and never logs
+  prompts, context, criteria, results, or HA state payloads.
+- Persisted records require an application-consistent backup and restore test.
+  A source release rollback must preserve the database and must not silently
+  roll back user records.
+- Qualification covers CRUD, recurrence, same-day deduplication, stale
+  recipients, delivery receipts, retry uncertainty, success-criteria handling,
+  backup/restore, and rollback. The original Notion workflow stays active until
+  an explicit cutover decision.
 
-## Rollout boundary
+## Open decisions for implementation
 
-The new Compose service is opt-in and the deployment template keeps it disabled
-by default. The current Notion setup must remain active until the site, schedule
-workflow, Inbox recipient picker, backup/restore, and notification presentation
-have been reviewed with synthetic records and accepted. Migration and cutover
-require a separate explicit plan.
+1. Confirm whether existing Notion automation items and their current Markdown
+   contexts should be migrated. No item rows were read or copied for this
+   proposal.
+2. Confirm the Home Assistant Inbox receiver's supported recipient identity
+   and category contract before building the delivery adapter.
+3. Decide whether a manual “run now” action is in the first release or only the
+   existing scheduled runs are supported.
+4. Define permanent deletion: purge the item and run history, or retain a
+   recoverable tombstone.
 
-See the [application and operations guide](../automations/ai-automation-manager/README.md)
-for field definitions and setup details.
+## Repository process
+
+`CONTRIBUTING.md` requires a GitHub issue before a large architecture change or
+new runtime. An issue was attempted through the connected GitHub integration,
+but the API returned 403 (`Resource not accessible by integration`). No site,
+workflow copy, deployment, or live Notion migration was created in this change.

@@ -51,7 +51,7 @@ before you continue.
 5. Install and verify supported DGX OS on `home-spark`.
 6. Deploy and smoke-test the first pinned text tuple on loopback.
 7. Connect the private link and restrict compute access to `home-core`.
-8. Install the gateway and expose semantic aliases at `https://ai.home.arpa`.
+8. Install the gateway and expose the canonical text alias at `https://ai.home.arpa`.
 9. Benchmark models by use case and promote only passing tuples.
 10. Migrate automations and other consumers one at a time with rollback.
 11. Optionally pilot one isolated Hermes sandbox as its own Compose project on
@@ -68,10 +68,8 @@ model behind an alias after the replacement passes the same tests.
 
 | Alias or route | Use case | Current or target state |
 | --- | --- | --- |
-| `automation-moe` | Existing n8n consumer contract | CURRENT: Unsloth Qwen3.6-35B-A3B, pinned production revision |
-| `automation-qualification` | Isolated qualification only | CANDIDATE: Blazux/NVIDIA quality baseline or dime-online UltraFast challenger, selected by operator |
-| `automation` | Long-term semantic consumer alias | TARGET: route only after qualification and explicit approval |
-| `assistant`, `coding`, `research`, `home`, `meeting` | Semantic capability contracts | TARGET may share one text artifact while retaining separate policy |
+| `automation-moe` | All text inference consumers | CURRENT: one canonical client alias; backend selected from the reviewed deployment registry |
+| Compute served names | Isolated model qualification | CANDIDATE: direct loopback/private listener only; not exposed as LiteLLM aliases |
 | STT | Danish speech recognition | Hviske v5.3 on Spark |
 | TTS | Danish speech synthesis | Plapre Nano v2 on Spark |
 | Whisper | Optional multilingual STT | Deferred; evaluate on `home-core` if needed |

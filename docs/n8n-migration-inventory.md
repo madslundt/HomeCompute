@@ -7,10 +7,11 @@ alias. On 2026-09-30 its backend was switched to the owner-directed Qwen3.8
 Flash-Next quality trial. The n8n nodes and credential continue using the
 alias; Flash-Next quality qualification remains incomplete.
 
-**CANDIDATES:** the isolated `automation-qualification` LiteLLM route selects
-one operator-on-demand profile at a time: Blazux/NVIDIA NVFP4 is the
-quality-first Flash-Next baseline; dime UltraFast is the AutoRound performance
-challenger. Neither is a production route or production-qualified.
+**CANDIDATES:** qualification selects one operator-on-demand profile at a time
+in the model registry, while candidate checks use the isolated compute
+listener directly. Candidate served names are not LiteLLM client aliases.
+Blazux/NVIDIA NVFP4 is the quality-first Flash-Next baseline; dime UltraFast is
+the AutoRound performance challenger. Neither is production-qualified.
 
 **TARGET:** keep model identity in the LiteLLM deployment mapping so consumers
 can remain on a stable alias as the backend changes. Qwen3.6 remains cached for
