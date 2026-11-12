@@ -117,9 +117,12 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
   'python3 ~/.local/share/homecompute-openbot/current/configure-openbot-hermes.py'
 ```
 
-This configures inference only. It does not import the separate
-`hermes-personal-v23` owner's memories, skills or HomeCompute tools into
-OpenBot.
+The helper also disables Hermes' passive startup update check. Git 2.43 in the
+OpenBot image can otherwise lazy-fetch the partial Hermes checkout during its
+ACP startup probe, which exceeds OpenBot's 10-second provider check. Explicit
+`hermes update --check` and `hermes update` commands remain available. This does
+not import the separate `hermes-personal-v23` owner's memories, skills or
+HomeCompute tools into OpenBot.
 
 OpenBot is licensed under PolyForm Noncommercial 1.0.0. This deployment is for
 personal, noncommercial use. Commercial use requires a separate license.
