@@ -77,6 +77,22 @@ class GatewayCertificateTests(unittest.TestCase):
 
 
 class NetworkCredentialTests(unittest.TestCase):
+    def test_legacy_text_aliases_collapse_to_canonical_alias_and_keep_other_scopes(self):
+        old_models = ['automation', 'home', 'stt-danish', 'whisper-turbo', 'omnivoice', 'embedding', 'video', 'whisper']
+        new_models = ['automation-moe', 'stt-danish', 'whisper-turbo', 'omnivoice', 'embedding', 'video', 'whisper']
+        old = {'models': old_models, 'expires': None, 'user_id': 'network-inference'}
+        new = {**old, 'models': new_models}
+        with self.video_credential([old, new, new]) as (_, internal):
+            NETWORK.provision()
+            self.assertEqual(internal.call_count, 1)
+            self.assertIn(repr(new_models), internal.call_args.kwargs['input'])
+
+    def test_text_scope_canonicalization_is_idempotent_and_preserves_order(self):
+        self.assertEqual(NETWORK.canonicalize_text_scope(['automation', 'home', 'automation-moe', 'stt-danish']),
+                         ['automation-moe', 'stt-danish'])
+        self.assertEqual(NETWORK.canonicalize_text_scope(['automation-moe', 'stt-danish']),
+                         ['automation-moe', 'stt-danish'])
+
     def test_speech_aliases_preserve_other_scopes_and_are_idempotent(self):
         base = [*NETWORK.OMNIVOICE_MODELS, 'embedding', 'video', 'whisper']
         old = {'models': base, 'expires': None, 'user_id': 'network-inference'}
@@ -426,17 +442,15 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation", "home", "automation-moe", "automation-moe-nvidia", "automation-qualification", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "tts-danish", "tts-english", "embedding", "video", "gpt-*", "codex-*"}, names)
+        self.assertEqual({"automation-moe", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "tts-danish", "tts-english", "embedding", "video", "gpt-*", "codex-*"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 
     def test_deployment_mappings_and_timeouts_are_capability_scoped(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
-        self.assertRegex(text, r'(?s)model_name: "automation".*?openai/automation-qualification.*?timeout: 600')
         self.assertRegex(text, r'(?s)model_name: "automation-moe".*?openai/automation-qualification.*?timeout: 600')
-        self.assertRegex(text, r'(?s)model_name: "automation-qualification".*?openai/automation-qualification.*?timeout: 600')
-        self.assertRegex(text, r'(?s)model_name: "home".*?openai/automation-qualification.*?timeout: 20')
-        self.assertRegex(text, r'(?s)model_name: "home".*?stream_timeout: 20')
+        for retired in ("automation", "home", "automation-moe-nvidia", "automation-qualification"):
+            self.assertNotIn(f'model_name: "{retired}"', text)
         self.assertNotIn('model_name: "assistant-canary"', text)
         self.assertNotIn("automation-backup", text)
         self.assertIn("request_timeout: 600", text)
@@ -458,7 +472,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
         self.assertIn("model_name: automation-moe", rollback)
         self.assertIn("model_name: assistant-canary", rollback)
         self.assertRegex(maintenance, r"(?s)model: openai/automation-backup.*?order: 1")
-        self.assertRegex(maintenance, r"(?s)model: openai/automation\s+order: 2")
+        self.assertRegex(maintenance, r"(?s)model: openai/automation-qualification\s+.*?order: 2")
 
     def test_gateway_has_no_cloud_provider_configuration(self) -> None:
         text = "\n".join(

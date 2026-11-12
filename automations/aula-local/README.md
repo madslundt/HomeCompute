@@ -11,7 +11,7 @@ or independently edit that prompt during the provider cutover.
 
 ## Safety contract
 
-- Inference is pinned to the semantic model alias `automation`; requests cannot
+- Inference is pinned to the canonical text model alias `automation-moe`; requests cannot
   select a model or provider.
 - The only credential reference is `HomeCompute local automation only`. Create
   that as an n8n OpenAI credential whose base URL is the qualified local

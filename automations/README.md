@@ -8,7 +8,7 @@ currently active in a production n8n instance.
 | --- | --- |
 | [HomeCompute AI automation manager](ai-automation-manager/README.md) | Parallel, disabled-by-default self-hosted replacement candidate for the Notion AI automation database and workflow; local site, independent data store, Home Assistant delivery and hourly cadence |
 | [Battery and HomeCompute systems review](battery-and-system-review/README.md) | Active workflow sends a weekly battery review and Sunday audit of Home Assistant, available host telemetry, automation availability, updates, and current primary-source ideas |
-| [Aula local-only qualification](aula-local/README.md) | Replay captured Aula inputs and shadow the read-only Aula workflow against the fixed local `automation` alias before an operator-owned cutover |
+| [Aula local-only qualification](aula-local/README.md) | Replay captured Aula inputs and shadow the read-only Aula workflow against the fixed local `automation-moe` alias before an operator-owned cutover |
 | [Weekly HomeCompute software update review](update-check/README.md) | Watch model/runtime/NixOS sources and pinned production MCP commits; pair with GitHub Dependabot pull requests for repository-managed images and packages |
 | [Weekly family holiday bargains](travel/n8n-workflow.ts) | Monday 09:00 Copenhagen search for family packages with checked totals, optional all-inclusive prices and sunny 25°C weather; forecasts or labelled five-year seasonal averages qualify offers before delivery to Mattermost Travel |
 | [Isolated model benchmark](model-benchmark/README.md) | Replay cases through different OpenRouter models using real read-only Aula MCP and public Tavily search, without schedules, notifications, or production writes |

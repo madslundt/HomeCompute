@@ -175,7 +175,7 @@ with open("/run/secrets/litellm_master_key", encoding="utf-8") as handle:
 request = urllib.request.Request(
     "http://127.0.0.1:4000/v1/chat/completions",
     data=json.dumps({
-        "model": "automation",
+        "model": "automation-moe",
         "messages": [
             {"role": "system", "content": "Svar kort på dansk. Tænk ikke højt."},
             {"role": "user", "content": "Svar kun med ordet KLAR."},
@@ -190,7 +190,7 @@ with urllib.request.urlopen(request, timeout=300) as response:
 
 content = document["choices"][0]["message"]["content"]
 if "KLAR" not in content.upper():
-    print("Stable automation alias returned an unexpected response", file=sys.stderr)
+    print("Stable automation-moe alias returned an unexpected response", file=sys.stderr)
     raise SystemExit(1)
 
 tool = {
@@ -210,7 +210,7 @@ for choice in ("required", "auto"):
     request = urllib.request.Request(
         "http://127.0.0.1:4000/v1/chat/completions",
         data=json.dumps({
-            "model": "automation",
+            "model": "automation-moe",
             "messages": [
                 {"role": "system", "content": "Use the supplied function to answer. Do not answer directly."},
                 {"role": "user", "content": "Read the temperature in the kitchen."},
@@ -231,9 +231,9 @@ for choice in ("required", "auto"):
         if call["function"]["name"] != "get_temperature" or not args.get("room"):
             raise ValueError("unexpected function call")
     except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
-        print(f"Stable automation alias failed tool_choice={choice}: {error}", file=sys.stderr)
+        print(f"Stable automation-moe alias failed tool_choice={choice}: {error}", file=sys.stderr)
         raise SystemExit(1)
-print("Stable automation alias reached the home-core standby")
+print("Stable automation-moe alias reached the home-core standby")
 PY
 }
 
@@ -252,20 +252,20 @@ maintenance_start() {
   docker image inspect "$IMAGE" >/dev/null 2>&1 || die "Pinned image is missing; run prepare first"
   compose up -d --no-build --wait --wait-timeout 1200 automation-backup
   smoke
-  log "Switching the stable automation alias to home-core; active gateway requests may be interrupted"
+  log "Switching the stable automation-moe alias to home-core; active gateway requests may be interrupted"
   if ! switch_gateway "$BACKUP_LITELLM_CONFIG" || ! gateway_smoke; then
     log "Maintenance route failed; attempting to restore the normal Spark route"
     switch_gateway "$NORMAL_LITELLM_CONFIG" || true
     compose stop automation-backup || true
     die "Could not activate and verify the maintenance route"
   fi
-  log "Standby is warm and the stable automation alias now prefers home-core"
+  log "Standby is warm and the stable automation-moe alias now prefers home-core"
 }
 
 maintenance_stop() {
   require_root
   validate
-  log "Restoring the stable automation alias to prefer home-spark"
+  log "Restoring the stable automation-moe alias to prefer home-spark"
   switch_gateway "$NORMAL_LITELLM_CONFIG"
   compose stop automation-backup
   log "Normal routing restored; standby stopped and its model/image remain cached"

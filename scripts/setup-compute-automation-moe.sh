@@ -243,7 +243,7 @@ activate_candidate() {
     restore_primary
     die "automation-moe smoke failed; primary model restored"
   fi
-  log "automation-moe is active as an explicit qualification lane; the ordinary automation alias is unchanged"
+  log "automation-moe is active as an explicit qualification lane; the gateway route is unchanged"
 }
 
 deactivate_candidate() {

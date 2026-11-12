@@ -2,7 +2,7 @@
   "schema_version": 1,
   "workflow": "aula",
   "inference_policy": "local-only",
-  "model_alias": "automation",
+  "model_alias": "automation-moe",
   "request": {
     "max_retries": 2,
     "timeout_ms": 360000

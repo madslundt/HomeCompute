@@ -15,7 +15,8 @@ they do not use them as production configuration in place.
 | `mcp-gateway-dns.json` | Home LAN DNS | Private `mcp.home.arpa` A record for the LiteLLM MCP gateway; apply in UniFi DNS and verify from a client |
 | `ai-automation-manager-dns.json` | Home LAN DNS | Private `automations.home.arpa` A record for the AI automation manager; apply in UniFi DNS and verify from a client |
 | `podwave-dns.json` | Home LAN DNS | Private `podwave.home.arpa` A record for PodWave; apply in UniFi DNS and verify from a client |
-| `openbot-agent-roster.json` | OpenBot UI and `scripts/configure-openbot-hermes.py` | Home AI-first OpenBot roster, Hermes local route, instructions, and reasoning levels |
+| `openbot-agent-roster.json` | OpenBot UI and `scripts/configure-openbot-hermes.py` | OpenBot agent identities, local provider/model, role skill assignments, instructions, and least-privilege UI settings |
+| `openbot-agent-skills/*.md` | OpenBot agents | Source-controlled role instructions to install through the OpenBot Skills editor |
 | `craft-anything-toolbox.json` | Craft Anything toolbox installer | Pinned upstream version, release commit, archive digest, and Hermes source pin; no credentials |
 | `opencode.json` | `modules/nixos/opencode.nix` | Pinned OpenCode HomeCompute LiteLLM provider and project-config restriction; no credentials |
 | `gb10-model-roster.json` | `gb10_model_roster.py` and GB10 installation planning | Hardware-scoped model and modality staging inventory; generic structural validation only |

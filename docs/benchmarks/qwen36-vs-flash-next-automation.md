@@ -142,7 +142,7 @@ deployment on the isolated route, render/deploy the LiteLLM candidate config,
 and cold-swap the matching local profile. For example:
 
 ```sh
-python3 scripts/model_registry.py select-candidate --alias automation-qualification --deployment automation-flash-next-candidate
+python3 scripts/model_registry.py select-candidate --alias automation-moe --deployment automation-flash-next-candidate
 python3 scripts/model_registry.py render
 sudo ./scripts/setup-compute-flash-next.sh activate-canary --profile quality
 export HOMECOMPUTE_BENCHMARK_ALLOWED_ORIGINS=http://10.77.10.10:18300
@@ -150,7 +150,7 @@ export COMPUTE_AUTOMATION_CANDIDATE_BASE_URL=http://10.77.10.10:18300/v1
 python3 benchmarks/harness.py run --plan benchmarks/plans/flash-next-profile-ab.json --release benchmarks/manifests/flash-next-profile-ab.example.json --candidate flash-quality-blazux-nvidia
 sudo ./scripts/setup-compute-flash-next.sh deactivate-canary
 
-python3 scripts/model_registry.py select-candidate --alias automation-qualification --deployment automation-flash-next-ultrafast-challenger
+python3 scripts/model_registry.py select-candidate --alias automation-moe --deployment automation-flash-next-ultrafast-challenger
 python3 scripts/model_registry.py render
 sudo ./scripts/setup-compute-flash-next.sh activate-canary --profile ultrafast
 python3 benchmarks/harness.py run --plan benchmarks/plans/flash-next-profile-ab.json --release benchmarks/manifests/flash-next-profile-ab.example.json --candidate flash-ultrafast-dime-autoround

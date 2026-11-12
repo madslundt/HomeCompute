@@ -10,8 +10,8 @@ expiry. Verify connectivity at
 `https://home-core.tail479ad.ts.net:8443/v1/models`.
 
 Use `https://ai.home.arpa/v1` without an API key from approved LAN or Tailscale
-clients. The gateway supplies an internal credential limited to `automation`,
-`home`, `automation-moe`, `stt-danish`, and `whisper-turbo`; `embedding` is added
+clients. The gateway supplies an internal credential limited to
+`automation-moe`, `stt-danish`, and `whisper-turbo`; `embedding` is added
 with `sudo python3 scripts/setup-network-inference.py --enable-embedding`. Plapre is added to
 that scope only after the explicit `--enable-plapre` migration. Explicit LiteLLM keys remain optional and retain
 their own model scopes when valid. Empty, placeholder, expired, or unrecognized

@@ -469,7 +469,9 @@ revision `8b82f0b7abe3d1150a7827d298c75e86267636ae`, and FP8 PLE table revision
 `50511b0a41aa1d34b8beb7e5d4bb06a0b650dc14`. It is not production-qualified.
 Its quantized target differs from NVIDIA NVFP4, so MTP target verification does
 not prove parity with the Blazux quality baseline. Both profiles use only the
-isolated `automation-qualification` route for A/B work; production routes stay
+isolated `automation-qualification` backend name for A/B work; the stable
+`automation-moe` LiteLLM route selects its deployment, keeping candidate names
+off the client-facing model list. Production route exposure stays
 unchanged.
 
 **TARGET (pending):** one resident general text model across semantic routes;
@@ -493,4 +495,5 @@ the configured context is 131072 and KV cache is FP8. This differs from the
 Unsloth `739af1e…` revision named as current production in the handoff and
 model catalog. The discrepancy must be reconciled before a Qwen3.6 baseline
 can be called representative of production. The candidate was not installed,
-started, or routed.
+started, or routed. The extra NVIDIA served name is retired in the current
+source; the existing live container remains unverified until redeployed.
