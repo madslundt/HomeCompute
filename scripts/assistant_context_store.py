@@ -348,6 +348,21 @@ class ContextStore:
                             db.execute('COMMIT')
                             return {'event_id': existing[0], 'source': source, 'object_id': object_id,
                                     'revision': revision, 'status': 'stale'}
+                        payload_json = (json.dumps(canonical['payload'], ensure_ascii=False, sort_keys=True,
+                                                   separators=(',', ':'), allow_nan=False)
+                                        if canonical['operation'] == 'upsert' else None)
+                        superseded = db.execute(
+                            'SELECT event_id,revision FROM context_events WHERE principal_scope=? AND data_domain=? '
+                            'AND visibility=? AND source=? AND object_id=? AND revision>? AND status=? '
+                            'AND event_type=? AND operation=? AND occurred_at=? AND source_ref=? AND payload_json IS ?',
+                            (principal, domain, visibility, source, object_id, revision, 'accepted',
+                             canonical['event_type'], canonical['operation'], canonical['occurred_at'],
+                             canonical['source_ref'], payload_json),
+                        ).fetchone()
+                        if superseded:
+                            db.execute('COMMIT')
+                            return {'event_id': superseded[0], 'source': source, 'object_id': object_id,
+                                    'revision': superseded[1], 'status': 'superseded'}
                         raise ValueError('Conflicting content for an existing source revision')
                     db.execute('COMMIT')
                     return {'event_id': existing[0], 'source': source, 'object_id': object_id,

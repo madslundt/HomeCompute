@@ -78,6 +78,17 @@ class ContextStoreTests(unittest.TestCase):
         self.assertEqual(stale['status'], 'stale')
         self.assertEqual(self.store.get(OWNER, 'daythread', 'entry-1')['revision'], 3)
 
+    def test_conflicting_old_replay_is_acknowledged_only_when_later_content_matches(self) -> None:
+        self.store.ingest(OWNER, event(1, payload={'text': 'original'}))
+        later = event(2, payload={'text': 'corrected'})
+        self.store.ingest(OWNER, later)
+        stale_replay = {**later, 'revision': 1}
+        receipt = self.store.ingest(OWNER, stale_replay)
+        self.assertEqual(receipt['status'], 'superseded')
+        self.assertEqual(self.store.get(OWNER, 'daythread', 'entry-1')['revision'], 2)
+        with self.assertRaisesRegex(ValueError, 'Conflicting content'):
+            self.store.ingest(OWNER, {**stale_replay, 'payload': {'text': 'unrecognized content'}})
+
     def test_delete_scrubs_online_content_and_stale_replay_cannot_resurrect(self) -> None:
         secret_fixture = 'synthetic-delete-me-7c193'
         self.store.ingest(OWNER, event(4, payload={'text': secret_fixture}))

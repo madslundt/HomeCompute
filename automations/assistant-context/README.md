@@ -24,6 +24,14 @@ state are local restart state, not provider deletion guarantees. A source must
 report a complete scan for the exact same coverage key before an absent object
 can produce a delete event.
 
+Revisions are monotonic per source object across coverage keys. A rotating
+window reuses the existing revision when the object content is unchanged; a
+change or deletion uses a revision above every coverage already recorded for
+that object. When replay encounters an older revision whose exact event content
+has already been accepted at a later revision, the API acknowledges it as
+superseded. A different-content conflict remains an error and blocks the
+outbox for operator review.
+
 ## Private configuration
 
 Provision `/var/lib/homecompute-assistant/context-sync.json` and

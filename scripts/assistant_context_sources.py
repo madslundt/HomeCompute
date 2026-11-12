@@ -611,6 +611,9 @@ class RevisionLedger:
                     prior = self.db.execute("SELECT revision,fingerprint,current FROM source_objects "
                         "WHERE source=? AND coverage=? AND object_id=?",
                         (snapshot.source, snapshot.coverage_key, obj.object_id)).fetchone()
+                latest = self.db.execute("SELECT revision,fingerprint,current FROM source_objects "
+                    "WHERE source=? AND object_id=? ORDER BY revision DESC LIMIT 1",
+                    (snapshot.source, obj.object_id)).fetchone()
                 if snapshot.source == "daythread" and prior and prior[1] == fingerprint and prior[2] == 0:
                     counts["unchanged"] += 1  # A resolver tombstone blocks replay of the same version.
                     continue
@@ -623,7 +626,17 @@ class RevisionLedger:
                              obj.event_type, obj.occurred_at, obj.source_ref))
                     counts["unchanged"] += 1
                     continue
-                revision = (prior[0] + 1) if prior else 1
+                if (snapshot.source != "daythread" and prior is None and latest
+                        and latest[2] == 1 and latest[1] == fingerprint):
+                    # Coverage windows can rotate while the upstream object is
+                    # unchanged. Record the new coverage without emitting a
+                    # second source revision for identical content.
+                    self.db.execute("INSERT INTO source_objects VALUES(?,?,?,?,?,?,?,?,1)",
+                        (snapshot.source, snapshot.coverage_key, obj.object_id, latest[0], fingerprint,
+                         obj.event_type, obj.occurred_at, obj.source_ref))
+                    counts["unchanged"] += 1
+                    continue
+                revision = max((row[0] for row in (prior, latest) if row), default=0) + 1
                 event = normalize_event(snapshot.source, obj.object_id, revision, obj.event_type, "upsert",
                                         obj.occurred_at, obj.source_ref, obj.payload)
                 self.db.execute("INSERT INTO source_outbox(event_json) VALUES(?)",
@@ -647,26 +660,32 @@ class RevisionLedger:
                     for coverage, revision, event_type, source_ref, current in prior_rows:
                         if not current:
                             continue
-                        event = normalize_event(snapshot.source, object_id, revision + 1, event_type, "delete",
+                        latest = self.db.execute("SELECT COALESCE(MAX(revision),0) FROM source_objects "
+                            "WHERE source=? AND object_id=?", (snapshot.source, object_id)).fetchone()[0]
+                        next_revision = latest + 1
+                        event = normalize_event(snapshot.source, object_id, next_revision, event_type, "delete",
                                                 snapshot.observed_at, source_ref, {})
                         self.db.execute("INSERT INTO source_outbox(event_json) VALUES(?)",
                             (json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")),))
                         self.db.execute("UPDATE source_objects SET revision=?,occurred_at=?,current=0 "
                             "WHERE source=? AND coverage=? AND object_id=?",
-                            (revision + 1, event["occurred_at"], snapshot.source, coverage, object_id))
+                            (next_revision, event["occurred_at"], snapshot.source, coverage, object_id))
                         counts["deleted"] += 1
             if snapshot.complete:
                 rows = self.db.execute("SELECT object_id,revision,event_type,source_ref,current FROM source_objects "
                     "WHERE source=? AND coverage=?", (snapshot.source, snapshot.coverage_key)).fetchall()
                 for object_id, revision, event_type, source_ref, current in rows:
                     if current and object_id not in seen:
-                        event = normalize_event(snapshot.source, object_id, revision + 1, event_type, "delete",
+                        latest = self.db.execute("SELECT COALESCE(MAX(revision),0) FROM source_objects "
+                            "WHERE source=? AND object_id=?", (snapshot.source, object_id)).fetchone()[0]
+                        next_revision = latest + 1
+                        event = normalize_event(snapshot.source, object_id, next_revision, event_type, "delete",
                             snapshot.observed_at, source_ref, {})
                         self.db.execute("INSERT INTO source_outbox(event_json) VALUES(?)",
                             (json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")),))
                         self.db.execute("UPDATE source_objects SET revision=?,fingerprint='',occurred_at=?,current=0 "
                             "WHERE source=? AND coverage=? AND object_id=?",
-                            (revision + 1, event["occurred_at"], snapshot.source, snapshot.coverage_key, object_id))
+                            (next_revision, event["occurred_at"], snapshot.source, snapshot.coverage_key, object_id))
                         counts["deleted"] += 1
             if snapshot.cursor is not None:
                 self.db.execute("INSERT INTO source_cursors VALUES(?,?,?,?) ON CONFLICT(source,coverage) "
