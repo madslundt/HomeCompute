@@ -36,6 +36,20 @@ and assigned deliberately to agents. No cloud fallback is added to the local
 route. The owner is responsible for deciding which prompts and files may reach
 each cloud provider and for creating agents and teams in the application.
 
+### Model alias access amendment (2026-11-12)
+
+The owner may select the configured ChatGPT subscription routes through LiteLLM
+for OpenBot agents. Keep a separate non-expiring key for this provider, limited
+to `chatgpt-sol-latest`, `chatgpt-terra-latest`, and `chatgpt-luna-latest`, with
+MCP access denied. The existing `automation-moe` key and provider remain
+separate. Configure the OpenBot custom provider at
+`https://mcp.home.arpa/v1`; the three aliases become available to the owner,
+while agent assignment remains deliberate. The initial assignment is Researcher
+to `chatgpt-sol-latest`; Terra and Luna remain selectable without changing other
+agents. LiteLLM retains the ChatGPT OAuth material; OpenBot receives only its
+scoped virtual key. The existing public/cleared-data rule for cloud agents still
+applies.
+
 Use OpenBot's hosted account, Signal, and TURN services. Do not deploy its
 self-hosted Cloudflare account stack or publish ports from Home Core. Account
 sign-in and cloud-provider authentication are owner actions.

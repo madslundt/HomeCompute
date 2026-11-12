@@ -47,6 +47,26 @@ class OpenBotAgentRosterTests(unittest.TestCase):
             'local_scripts': False, 'automatic_routines': False
         })
 
+    def test_chatgpt_subscription_provider_is_scoped_to_three_litellm_aliases(self):
+        provider = self.roster['chatgpt_subscription_provider']
+        self.assertEqual(provider['provider_id'], 'homecompute-chatgpt')
+        self.assertEqual(provider['base_url'], 'https://mcp.home.arpa/v1')
+        self.assertEqual(
+            [model['id'] for model in provider['models']],
+            ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest'],
+        )
+        self.assertEqual(provider['api_key_scope'], 'these three ChatGPT aliases only; MCP access denied')
+
+    def test_researcher_uses_litellm_sol_and_keeps_its_local_backup(self):
+        researcher = self.agents['researcher']
+        self.assertEqual(researcher['model'], {
+            'provider': 'HomeCompute ChatGPT subscription',
+            'model': 'chatgpt-sol-latest',
+            'reasoning_effort': 'high',
+        })
+        self.assertEqual(researcher['backup_models'][0]['provider'], 'Hermes')
+        self.assertEqual(researcher['backup_models'][0]['model'], 'automation-moe')
+
 
 if __name__ == '__main__':
     unittest.main()
