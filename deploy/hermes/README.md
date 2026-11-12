@@ -200,7 +200,38 @@ until the dashboard and normal stop/start lifecycle pass.
 
 Hermes is being reintroduced alongside OpenClaw in the isolated Ubuntu agents
 VM. The owner uses the dedicated Mattermost bot `hermes-agent`; the existing
-n8n `hermes` identity is independent. Additional profiles are deferred.
+n8n `hermes` identity is independent. Three owner-only ChatGPT model profiles
+are available in Hermes profile selection; they do not receive separate
+messaging gateway instances.
+
+The source roster `config/hermes-chatgpt-profiles.json` pins each profile to one
+ChatGPT LiteLLM alias. Publish and validate the selected release, then create
+the three model-only LiteLLM keys from a clean published workstation checkout:
+
+```sh
+python3 scripts/provision-hermes-chatgpt-keys.py
+```
+
+The keys are separate from the Hermes MCP credential and deny MCP access. The
+provisioner delivers them only to the operator-owned agents VM secret directory.
+From a clean published agents guest checkout, review the profile plan and its
+SHA-256, then apply that exact plan:
+
+```sh
+python3 scripts/setup-hermes-chatgpt-profiles.py --revision FULL_SHA
+python3 scripts/setup-hermes-chatgpt-profiles.py --revision FULL_SHA --apply \
+  --expected-plan-sha256 REVIEWED_PLAN_SHA256
+```
+
+Each profile clones the owner's tools, MCP configuration, skills and curated
+memory snapshot. Sessions and future memory are independent. Prompts and owner
+context returned by tools may be sent to OpenAI through the ChatGPT subscription.
+Profiles are for the same owner and do not isolate household principals. The
+installer uses Hermes's native profile lifecycle and starts no messaging
+gateways. Choose a profile in Hermes for each new conversation. To retire a
+profile, first stop using it and revoke its individual LiteLLM key; preserve its
+profile state for manual review rather than deleting sessions or memory.
+
 See [the dated runtime evidence](../../docs/hermes-runtime-validation-2026-11-06.md)
 for applied revisions, measured checks and remaining qualification gaps.
 

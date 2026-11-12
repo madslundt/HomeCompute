@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "sandbox": "hermes-personal-v2",
+  "endpoint": "http://ai.home.arpa:18080/v1",
+  "owner_profile": "default",
+  "profiles": [
+    {"name": "chatgpt-sol", "display_name": "ChatGPT Sol", "model": "chatgpt-sol-latest"},
+    {"name": "chatgpt-terra", "display_name": "ChatGPT Terra", "model": "chatgpt-terra-latest"},
+    {"name": "chatgpt-luna", "display_name": "ChatGPT Luna", "model": "chatgpt-luna-latest"}
+  ]
+}
