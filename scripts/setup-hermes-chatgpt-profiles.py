@@ -42,7 +42,10 @@ for item in expected['profiles']:
           and config.get('platform_toolsets')==owner.get('platform_toolsets'),
   'key':len(matches)==1 and matches[0].startswith('sk-') and not any(c.isspace() for c in matches[0]),
  }
- state='managed' if all(checks.values()) else 'conflict'
+ repairable_marker=(marker.get('schema_version')==1 and marker.get('name')=='HOMECOMPUTE_CHATGPT_API_KEY'
+                    and marker.get('model')==item['model'] and marker.get('endpoint')==expected['endpoint'])
+ other_checks=all(value for key,value in checks.items() if key!='marker')
+ state='managed' if all(checks.values()) else 'repairable' if not checks['marker'] and repairable_marker and other_checks else 'conflict'
  result[name]={'state':state,'checks':checks,
                'config_sha256':hashlib.sha256(config_path.read_bytes()).hexdigest(),
                'env_sha256':hashlib.sha256(env_path.read_bytes()).hexdigest(),
@@ -70,10 +73,10 @@ for item in spec['profiles']:
  temp=path.with_name('.config.yaml.homecompute-tmp')
  with temp.open('xb') as f:os.chmod(temp,0o600);f.write(data);f.flush();os.fsync(f.fileno())
  os.replace(temp,path)
- envpath=p/'.env';env=envpath.read_text();name='HOMECOMPUTE_CHATGPT_API_KEY'
- lines=env.splitlines();matches=[i for i,line in enumerate(lines) if line.startswith(name+'=')]
+ envpath=p/'.env';env=envpath.read_text();env_name='HOMECOMPUTE_CHATGPT_API_KEY'
+ lines=env.splitlines();matches=[i for i,line in enumerate(lines) if line.startswith(env_name+'=')]
  if len(matches)>1:raise ValueError('duplicate profile key environment variable')
- line=name+'='+spec['keys'][item['name']]
+ line=env_name+'='+spec['keys'][item['name']]
  if matches:lines[matches[0]]=line
  else:lines.append(line)
  content=('\n'.join(lines)+'\n').encode();temp=envpath.with_name('.env.homecompute-tmp')
@@ -113,7 +116,7 @@ def reconcile(call, cli: list[str], desired: dict, keys: dict[str, str], operati
     before = inspect()
     for item in desired['profiles']:
         state = before[item['name']]['state']
-        if state not in ('absent', 'managed'):
+        if state not in ('absent', 'managed', 'repairable'):
             raise ValueError(f"existing profile {item['name']} differs; preserve it for review")
     if operation == 'plan':
         return before
@@ -127,8 +130,9 @@ def reconcile(call, cli: list[str], desired: dict, keys: dict[str, str], operati
         name=item['name'];state=inspect()[name]['state']
         if state == 'managed':
             continue
-        call(cli + ['exec', '--', '/opt/hermes/.venv/bin/hermes', 'profile', 'create',
-                    name, '--clone', '--description', item['display_name'] + ' owner profile'])
+        if state == 'absent':
+            call(cli + ['exec', '--', '/opt/hermes/.venv/bin/hermes', 'profile', 'create',
+                        name, '--clone', '--description', item['display_name'] + ' owner profile'])
         payload={'endpoint':desired['endpoint'],'profiles':[item],'keys':{name:keys[name]}}
         call(cli + ['exec', '--stdin', '--', PYTHON, '-c', PATCH], json.dumps(payload).encode())
         if inspect()[name]['state'] != 'managed':

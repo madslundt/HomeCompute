@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Exercise guarded Hermes ChatGPT profile reconciliation."""
 import json
+import os
 from pathlib import Path
 import runpy
+import subprocess
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +74,47 @@ class HermesChatGPTProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'differs'):
             SETUP['reconcile'](fake, CLI, DESIRED, {}, 'apply', 'a' * 64, 'c' * 40)
         self.assertFalse(any(row[0][2:4] == ['exec', '--'] for row in fake.operations))
+
+    def test_patch_writes_profile_name_and_readback_verifies_clone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / '.hermes'
+            profile = root / 'profiles' / 'chatgpt-sol'
+            profile.mkdir(parents=True)
+            owner = {'mcp_servers': ['homecompute'], 'memory': {'enabled': True},
+                     'toolsets': ['default'], 'platform_toolsets': ['homeassistant']}
+            (root / 'config.yaml').write_text(json.dumps(owner))
+            (profile / 'config.yaml').write_text(json.dumps({
+                **owner, 'model': {'default': 'automation-moe', 'provider': 'custom'}}))
+            (profile / '.env').write_text('OWNER_CONTEXT=retained\n')
+            stub = Path(directory) / 'yaml.py'
+            stub.write_text('import json\ndef safe_load(value): return json.loads(value)\ndef safe_dump(value, sort_keys=False): return json.dumps(value)\n')
+            environment = {**os.environ, 'PYTHONPATH': str(directory)}
+            patch = SETUP['PATCH'].replace("pathlib.Path('/sandbox/.hermes')", f'pathlib.Path({str(root)!r})')
+            payload = {'endpoint': DESIRED['endpoint'], 'profiles': [DESIRED['profiles'][0]],
+                       'keys': {'chatgpt-sol': 'sk-synthetic-sol'}}
+            subprocess.run([sys.executable, '-c', patch], input=json.dumps(payload), text=True,
+                           capture_output=True, check=True, env=environment)
+            marker = json.loads((profile / '.homecompute-chatgpt-profile.json').read_text())
+            self.assertEqual(marker['name'], 'chatgpt-sol')
+            self.assertIn('OWNER_CONTEXT=retained', (profile / '.env').read_text())
+            inspect = SETUP['INSPECT'].replace("pathlib.Path('/sandbox/.hermes')", f'pathlib.Path({str(root)!r})')
+            result = subprocess.run([sys.executable, '-c', inspect], input=json.dumps(DESIRED), text=True,
+                                    capture_output=True, check=True, env=environment)
+            state = json.loads(result.stdout)['chatgpt-sol']
+            self.assertEqual(state['state'], 'managed')
+            self.assertTrue(all(state['checks'].values()))
+
+    def test_repairable_partial_profile_is_updated_without_recreating_it(self):
+        fake = FakeHermes()
+        fake.states['chatgpt-sol'] = 'repairable'
+        before = SETUP['reconcile'](fake, CLI, DESIRED, {}, 'plan')
+        digest = SETUP['plan_digest']('d' * 40, DESIRED, before)
+        result = SETUP['reconcile'](fake, CLI, DESIRED,
+                                   {item['name']: 'sk-test' for item in DESIRED['profiles']},
+                                   'apply', digest, 'd' * 40)
+        creates = [row for row in fake.operations if row[0][2:4] == ['exec', '--']]
+        self.assertEqual([row[0][7] for row in creates], ['chatgpt-terra', 'chatgpt-luna'])
+        self.assertEqual(result['chatgpt-sol']['state'], 'managed')
 
 
 if __name__ == '__main__':
