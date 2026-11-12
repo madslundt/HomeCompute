@@ -23,6 +23,7 @@ class ProvisionOpenBotChatGPTKeyTest(unittest.TestCase):
     def test_receipt_requires_exact_models_expiry_and_mcp_deny(self) -> None:
         valid = {
             'key': 'sk-private-test-fixture',
+            'key_alias': 'openbot-chatgpt-models-2',
             'models': ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest'],
             'user_id': 'openbot-chatgpt-models',
             'expires': None,
@@ -34,6 +35,7 @@ class ProvisionOpenBotChatGPTKeyTest(unittest.TestCase):
             ('expires', '2030-01-01'),
             ('mcp_servers', ['aula-read']),
             ('user_id', 'openbot-agent'),
+            ('key_alias', 'other-client'),
         ):
             with self.subTest(field=field):
                 self.assertFalse(MODULE.valid_receipt({**valid, field: value}))
@@ -54,6 +56,7 @@ class ProvisionOpenBotChatGPTKeyTest(unittest.TestCase):
             if args[:2] == ['ssh', 'home-core'] and 'docker exec' in args[-1]:
                 return subprocess.CompletedProcess(args, 0, json.dumps({
                     'key': secret,
+                    'key_alias': 'openbot-chatgpt-models-2',
                     'models': MODULE.MODELS,
                     'user_id': MODULE.OWNER,
                     'expires': None,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -42,22 +43,55 @@ print('key-installed')
 LITELLM_SCRIPT = r'''import json, urllib.parse, urllib.request
 master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
 models = ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest']
-body = {'models': models, 'key_alias': 'openbot-chatgpt-models',
+base = 'http://127.0.0.1:4000'
+headers = {'Authorization': 'Bearer ' + master, 'Content-Type': 'application/json'}
+def request(path, body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(base + path, data=data, headers=headers)
+    with urllib.request.urlopen(req, timeout=30) as response: return json.load(response)
+listed = request('/key/list')
+aliases = set()
+for digest in listed.get('keys', []):
+    info = request('/key/info?' + urllib.parse.urlencode({'key': digest})).get('info', {})
+    if info.get('key_alias'): aliases.add(info['key_alias'])
+alias = 'openbot-chatgpt-models'
+suffix = 2
+while alias in aliases:
+    alias = 'openbot-chatgpt-models-' + str(suffix); suffix += 1
+body = {'models': models, 'key_alias': alias,
         'user_id': 'openbot-chatgpt-models', 'duration': None,
         'object_permission': {'mcp_servers': ['no-mcp-servers']},
         'metadata': {'purpose': 'OpenBot ChatGPT aliases only; no MCP access'}}
-request = urllib.request.Request('http://127.0.0.1:4000/key/generate',
-    data=json.dumps(body).encode(),
-    headers={'Authorization': 'Bearer ' + master, 'Content-Type': 'application/json'})
-result = json.load(urllib.request.urlopen(request, timeout=30))
+result = request('/key/generate', body)
 key = result.get('key')
-query = urllib.parse.urlencode({'key': key})
-check = urllib.request.Request('http://127.0.0.1:4000/key/info?' + query,
-    headers={'Authorization': 'Bearer ' + master})
-info = json.load(urllib.request.urlopen(check, timeout=30)).get('info', {})
-print(json.dumps({'key': key, 'models': info.get('models'),
+info = request('/key/info?' + urllib.parse.urlencode({'key': key})).get('info', {})
+permissions = info.get('object_permission') or {}
+receipt = {'key': key, 'key_alias': info.get('key_alias'), 'models': info.get('models'),
                   'user_id': info.get('user_id'), 'expires': info.get('expires'),
-                  'mcp_servers': info.get('mcp_servers')}))
+                  'mcp_servers': permissions.get('mcp_servers')}
+if (receipt['models'] != models or receipt['user_id'] != 'openbot-chatgpt-models'
+    or receipt['expires'] is not None or receipt['mcp_servers'] != ['no-mcp-servers']):
+    request('/key/delete', {'keys': [key]})
+    raise ValueError('generated key scope did not verify')
+print(json.dumps(receipt))
+'''
+
+REVOKE_SCRIPT = r'''import json,sys,urllib.request
+key=sys.stdin.read().strip();assert key.startswith('sk-') and not any(c.isspace() for c in key)
+master=open('/run/secrets/litellm_master_key',encoding='utf-8').read().strip()
+req=urllib.request.Request('http://127.0.0.1:4000/key/delete',data=json.dumps({'keys':[key]}).encode(),
+ headers={'Authorization':'Bearer '+master,'Content-Type':'application/json'})
+with urllib.request.urlopen(req,timeout=30) as response:response.read()
+print('revoked')
+'''
+
+REMOVE_GUEST = r'''import os,pathlib,sys
+p=pathlib.Path('/home/hermes-operator/.config/homecompute-openbot/secrets/chatgpt-models-key')
+key=sys.stdin.buffer.read(4097);assert key.endswith(b'\n') and key.count(b'\n')==1
+if not p.exists():print('absent');raise SystemExit(0)
+assert p.is_file() and not p.is_symlink() and p.stat().st_uid==os.getuid()
+assert p.stat().st_mode&0o077==0 and p.read_bytes()==key
+p.unlink();print('removed')
 '''
 
 
@@ -65,9 +99,11 @@ def valid_receipt(value: object) -> bool:
     if not isinstance(value, dict):
         return False
     key = value.get('key')
+    alias = value.get('key_alias')
     return (
         isinstance(key, str) and key.startswith('sk-') and not any(ch.isspace() for ch in key)
         and value.get('models') == MODELS and value.get('user_id') == OWNER
+        and isinstance(alias, str) and re.fullmatch(r'openbot-chatgpt-models(?:-(?:[2-9]|[1-9][0-9]+))?', alias)
         and value.get('expires') is None and value.get('mcp_servers') == ['no-mcp-servers']
     )
 
@@ -113,7 +149,18 @@ def run() -> None:
         input=key + '\n', text=True, capture_output=True, timeout=30, check=False,
     )
     if guest.returncode or guest.stdout.strip() != 'key-installed':
-        raise RuntimeError('Guest key installation failed; inspect protected guest state')
+        remove = subprocess.run(
+            ['ssh', '-J', 'home-core', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+             '-i', str(GUEST_KEY), GUEST, 'python3 -c ' + shlex.quote(REMOVE_GUEST)],
+            input=key + '\n', text=True, capture_output=True, timeout=30, check=False)
+        revoked = subprocess.run(
+            ['ssh', 'home-core', 'sudo', '-n', 'docker', 'exec', '-i',
+             'homecompute-control-plane-litellm-1', 'python3', '-'],
+            input=REVOKE_SCRIPT, text=True, capture_output=True, timeout=30, check=False)
+        if (remove.returncode or remove.stdout.strip() not in ('removed', 'absent')
+                or revoked.returncode or revoked.stdout.strip() != 'revoked'):
+            raise RuntimeError('Delivery failed and credential rollback is unverified; inspect protected state')
+        raise RuntimeError('Guest key installation failed; generated key was removed and revoked')
     print('Created and installed a non-expiring LiteLLM key for the three ChatGPT aliases, with MCP access denied.')
 
 
