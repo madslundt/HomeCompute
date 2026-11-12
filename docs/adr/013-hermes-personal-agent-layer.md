@@ -23,6 +23,20 @@ ADR-017 places those sandboxes in a dedicated KVM guest managed by the NixOS
 `home-core` host. Use the NemoClaw Hermes integration and route inference
 through the existing `ai.home.arpa`/LiteLLM path to GB10 vLLM.
 
+### Owner ChatGPT model profiles (2026-11-12)
+
+The owner may use three additional Hermes profiles, `chatgpt-sol`,
+`chatgpt-terra`, and `chatgpt-luna`, through the existing LiteLLM gateway.
+Each profile is created from the owner's `default` profile so it receives the
+same owner tool and MCP configuration, skills, and curated memory snapshot. Its
+sessions and future memory remain profile-local. Each profile is fixed to one
+ChatGPT subscription alias and uses a separate model-only LiteLLM key with MCP
+denied; owner tools continue to use the existing separate Hermes MCP credential.
+These profiles are assistants for the same owner, not boundaries between
+household members. Their prompts and owner context returned by tools may be sent
+to OpenAI through the ChatGPT subscription. Do not start a messaging gateway for
+these profiles.
+
 Hermes memory remains per-sandbox working context. A separate canonical event
 service enforces principal, data-domain, and visibility scope as refined by
 ADR-015; n8n/application services retain ingestion,
@@ -40,8 +54,10 @@ contention, and failure recovery.
 - Run all Hermes sandboxes and their state on GB10: rejected for production
   because it changes the accepted appliance boundary and competes with 64K
   inference sessions, speech, meetings, Home Assistant, and Codex.
-- Use one multi-profile Hermes process: rejected for private email/banking
-  because profile routing is not a sufficient security boundary.
+- Use one multi-profile Hermes process across different principals: rejected
+  for private email/banking because profile routing is not a sufficient security
+  boundary. The owner-only profiles above share one owner's authority and do not
+  replace per-person sandbox boundaries.
 - Deploy another LiteLLM/vLLM stack with NemoClaw: rejected because NemoClaw can
   consume the existing OpenAI-compatible endpoint and duplicate gateways would
   split policy, credentials, telemetry, and rollback.

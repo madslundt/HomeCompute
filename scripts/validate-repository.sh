@@ -164,6 +164,7 @@ python3 "$REPO_ROOT/tests/hermes-systemd-boot-test.py"
 python3 "$REPO_ROOT/tests/hermes-system-boot-install-test.py"
 python3 "$REPO_ROOT/tests/hermes-mcp-test.py"
 python3 "$REPO_ROOT/tests/hermes-specialists-test.py"
+python3 "$REPO_ROOT/tests/hermes-chatgpt-profiles-test.py"
 node "$REPO_ROOT/tests/hermes-browser-client.test.mjs"
 printf '[validate] OpenClaw task broker and plugin tests\n'
 python3 "$REPO_ROOT/tests/openclaw-worker-test.py"

@@ -25,6 +25,8 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `configure-openbot-hermes.py` | Hermes CLI embedded in `homecompute-openbot` | Reconcile its custom local Home AI route without rewriting credential-bearing providers |
 | `provision-openbot-litellm-key.py` | OpenBot custom local-model provider | Creates and installs a key scoped only to `automation-moe`; never prints the key |
 | `provision-openbot-chatgpt-key.py` | OpenBot ChatGPT subscription provider through LiteLLM | Creates and installs a key scoped to the three `chatgpt-*-latest` aliases with MCP denied; never prints the key |
+| `provision-hermes-chatgpt-keys.py` | Three owner Hermes ChatGPT profiles | Creates separate one-alias LiteLLM keys with MCP denied and installs them in the agents VM secret directory |
+| `setup-hermes-chatgpt-profiles.py` | Native profiles in the owner Hermes sandbox | Plan/apply with the selected qualified image, fresh household gates and reviewed plan SHA; starts no gateways |
 | `provision-opencode-litellm-key.py` | Home Core OpenCode service | Creates or verifies a private key scoped only to `automation-moe`; never prints the key |
 | `recover-hermes-env-ownership.py` | Guarded config/.env metadata repair for the retained Hermes UID transition incident | Private full-sandbox backup, exact sandbox/image identity, stopped gateway/container, reviewed plan SHA |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
