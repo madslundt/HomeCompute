@@ -108,7 +108,10 @@ class GatewayCorsTests(unittest.TestCase):
                 with urllib.request.urlopen(request, context=tls_context(), timeout=15) as response:
                     self.assertEqual(response.status, 200)
                     self.assertEqual({item['id'] for item in json.load(response)['data']},
-                                     {'automation-moe', 'stt-danish', 'whisper-turbo', 'plapre', 'embedding', 'video'})
+                                     {
+                                         'automation-moe', 'embedding', 'stt-danish', 'whisper-turbo',
+                                         'whisper', 'omnivoice', 'tts-danish', 'tts-english', 'video',
+                                     })
         request = urllib.request.Request(BASE + '/v1/chat/completions', headers={
             'Origin': 'http://localhost:8080', 'Content-Type': 'application/json', 'Authorization': 'Bearer ',
         }, data=json.dumps({
