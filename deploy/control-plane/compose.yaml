@@ -94,6 +94,7 @@ services:
       COMPUTE_STT_DANISH_BASE_URL: ${COMPUTE_STT_DANISH_BASE_URL:-http://172.28.200.1:18003/v1}
       OMNIVOICE_TTS_BASE_URL: ${OMNIVOICE_TTS_BASE_URL:-http://omnivoice-openai-tts:8004/v1}
       COMPUTE_HOME_BASE_URL: ${COMPUTE_HOME_BASE_URL:?Set COMPUTE_HOME_BASE_URL}
+      CHATGPT_TOKEN_DIR: /run/homecompute/chatgpt
       LITELLM_CONFIG: /etc/litellm/config.yaml
       LITELLM_MIGRATION_DIR: /app/migrations
       PRISMA_BINARY_CACHE_DIR: /app/cache/prisma-python/binaries
@@ -115,6 +116,7 @@ services:
       - ${LITELLM_CONFIG_FILE:-./litellm-config.yaml}:/etc/litellm/config.yaml:ro
       - ./litellm-entrypoint.sh:/opt/homecompute/litellm-entrypoint.sh:ro
       - /etc/homecompute/control-plane/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
+      - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/chatgpt-auth:/run/homecompute/chatgpt:rw
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=101,gid=101,mode=1770
       - /app/cache:rw,noexec,nosuid,nodev,size=256m,uid=101,gid=101,mode=0770

@@ -63,6 +63,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("/etc/homecompute/control-plane/home-core-root.crt", DEPLOY)
         self.assertIn("N8N_MCP_TOKEN", (ROOT / "deploy/control-plane/litellm-entrypoint.sh").read_text())
         self.assertIn("SSL_CERT_FILE", (ROOT / "deploy/control-plane/litellm-entrypoint.sh").read_text())
+        self.assertIn("CHATGPT_TOKEN_DIR: /run/homecompute/chatgpt", COMPOSE)
+        self.assertIn("chatgpt-auth:/run/homecompute/chatgpt:rw", COMPOSE)
 
     def test_private_front_door_and_backend_firewall_are_present(self) -> None:
         self.assertIn("{$MCP_FQDN}", CADDY)

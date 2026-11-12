@@ -384,11 +384,16 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertRegex(rendered, r'(?s)model_name: "automation-moe".*?timeout: 600')
         self.assertIn("COMPUTE_API_KEY", rendered)
 
-    def test_codex_chatgpt_subscription_routes_do_not_need_proxy_credentials(self) -> None:
+    def test_chatgpt_subscription_aliases_are_explicit_and_use_gateway_credentials(self) -> None:
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        gpt = rendered.split('model_name: "gpt-*"', 1)[1].split('  - model_name:', 1)[0]
-        codex = rendered.split('model_name: "codex-*"', 1)[1]
-        for block, provider in ((gpt, '"chatgpt/gpt-*"'), (codex, '"chatgpt/codex-*"')):
+        self.assertNotIn('model_name: "gpt-*"', rendered)
+        self.assertNotIn('model_name: "codex-*"', rendered)
+        for alias, provider in (
+            ("chatgpt-sol-latest", '"chatgpt/gpt-6.1-sol"'),
+            ("chatgpt-terra-latest", '"chatgpt/gpt-6.1-terra"'),
+            ("chatgpt-luna-latest", '"chatgpt/gpt-6-luna"'),
+        ):
+            block = rendered.split(f'model_name: "{alias}"', 1)[1].split('  - model_name:', 1)[0]
             self.assertIn(f"model: {provider}", block)
             self.assertIn("mode: responses", block)
             self.assertNotIn("api_key", block)

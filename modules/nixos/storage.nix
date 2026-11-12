@@ -18,6 +18,7 @@
     "d /srv/state/control-plane 0750 root homecompute-state - -"
     "d /srv/state/control-plane/caddy-data 0750 root homecompute-state - -"
     "d /srv/state/control-plane/caddy-config 0750 root homecompute-state - -"
+    "d /srv/state/control-plane/chatgpt-auth 0700 101 101 - -"
     "d /srv/state/control-plane/postgres-data 0700 70 70 - -"
     "d /srv/state/control-plane/backups 0700 root root - -"
     "d /srv/state/open-webui 0750 root homecompute-state - -"
