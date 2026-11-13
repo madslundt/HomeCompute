@@ -218,6 +218,8 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${podwave[@]}" up -d --wait --wait-timeout 180
+podwave_container="$("${podwave[@]}" ps -q podwave)"
+python3 "$release/scripts/setup-podwave-server-settings.py" --container "$podwave_container"
 python3 "$release/scripts/setup-comfyui-access.py"
 python3 "$release/scripts/provision-opencode-litellm-key.py" --apply
 systemctl restart homecompute-opencode.service

@@ -21,6 +21,14 @@ model `automation-moe`. The URL resolves to Caddy only inside the PodWave bridge
 the gateway adds its restricted network inference credential. Do not put the
 LiteLLM master or network inference key in PodWave settings.
 
+For HomeCompute TTS, select the OpenAI-compatible provider on the same base URL,
+model `omnivoice`, voice A `danish-default`, and voice B `english-default`. The
+gateway key is scoped for these aliases. The release migrates only the old
+`OmniVoice` model and placeholder household voice to these supported values;
+other user-selected provider settings are preserved. The LLM connection probe
+allows 128 output tokens so local reasoning models can finish their reasoning
+before returning the short test response.
+
 The app's server configuration and generated episode files live below
 `/srv/state/podwave`; NixOS provisions the directory for the container's
 non-root UID. This path is covered by the host's `/srv/state` application backup.

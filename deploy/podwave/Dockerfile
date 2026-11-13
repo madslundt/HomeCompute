@@ -12,6 +12,9 @@ WORKDIR /app
 COPY --from=podwave /pyproject.toml /uv.lock /.python-version ./
 COPY --from=podwave /server/ ./server/
 COPY --from=podwave /public/ ./public/
+COPY patch-upstream.py /tmp/patch-upstream.py
+RUN python3 /tmp/patch-upstream.py /app/server/podwave.py \
+    && rm /tmp/patch-upstream.py
 COPY --chmod=0555 podwave-entrypoint.sh /usr/local/bin/podwave-entrypoint
 
 RUN groupadd --gid 1000 python \
