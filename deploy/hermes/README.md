@@ -373,6 +373,17 @@ inputs. Oh My Hermes is deferred until the core service is stable.
 See the [dated live verification](../../docs/hermes-mcp-validation-2026-11-06.md)
 for applied revisions, actual client checks and remaining platform differences.
 
+The owner has since selected LiteLLM's `all-harness-mcps` group for harness
+clients. The existing Hermes agent registration remains on its verified direct
+HomeCompute bridge until a gateway client is configured and verified. In a
+LiteLLM-capable Hermes Desktop client, use the dedicated `hermes-desktop-mcp`
+key on `https://mcp.home.arpa/mcp`, plus the `homecompute_hermes` role bearer
+under `x-mcp-homecompute_hermes-authorization`. The Home Core release grants
+that key the full catalog group. Add other `homecompute_*` role headers only
+when that harness is intentionally authorized for those principals. Keep the
+current direct owner registration until the gateway lists the expected tools
+and passes read-only calls; the group grant alone does not migrate client state.
+
 Hermes uses the existing private HTTPS HomeCompute bridge, rather than direct
 credentials for Aula, Tilbudstrolden or Home Assistant. The `hermes-owner` bearer
 is distinct from OpenClaw's credential and the retired `hermes` bearer, which
@@ -381,13 +392,18 @@ only to the exact MCP endpoint. The source-owned
 [household skill](skills/homecompute-household/SKILL.md) explains the tools.
 
 The finite grant includes read-only Aula discovery, calendar, weekly letters,
-posts and threads; Tilbudstrolden searches/stores/offers; public research;
+posts and threads, plus `school_attachment_read` and `school_post_attachment_read`
+for downloading and extracting supported text from selected message or post
+attachments; Tilbudstrolden searches/stores/offers; public research;
 existing shopping-list, discount-watch, stock, calendar and task tools; bounded
 system metadata; and Home Assistant light/climate/cover proposals. Household
 writes retain their revision, request-ID and explicit-owner-intent checks.
 Home Assistant execution still requires separate human approval. Account/site
 administration, mailbox access and infrastructure maintenance execution are
 outside this grant. Future service tools require an explicit source grant.
+Attachment content is returned only for an explicitly selected message or
+post, is treated as untrusted source data, and is not added to the school search
+archive. Long text is paged in bounded chunks.
 
 From an exact published Git checkout on home-core, inspect and apply the narrow
 bridge installer. For an active prior installation, it verifies the current

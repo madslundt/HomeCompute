@@ -189,8 +189,8 @@ def metadata(task: dict[str, Any]) -> dict[str, Any]:
 
 
 def bounded_result(value: dict[str, Any]) -> dict[str, Any]:
-    result = {"content": [{"type": "text", "text": json.dumps(value, allow_nan=False)}], "isError": False}
-    if len(json.dumps(result).encode()) > MAX_RESPONSE_BYTES - 1024:
+    result = {"content": [{"type": "text", "text": json.dumps(value, allow_nan=False, ensure_ascii=False)}], "isError": False}
+    if len(json.dumps(result, ensure_ascii=False).encode()) > MAX_RESPONSE_BYTES - 1024:
         raise ValueError("tool response exceeds metadata budget")
     return result
 

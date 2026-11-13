@@ -1,0 +1,499 @@
+diff --git a/packages/mcp-server/src/attachment-text.test.ts b/packages/mcp-server/src/attachment-text.test.ts
+new file mode 100644
+index 0000000..0b8405e
+--- /dev/null
++++ b/packages/mcp-server/src/attachment-text.test.ts
+@@ -0,0 +1,45 @@
++import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
++import { delimiter, join } from 'node:path';
++import { tmpdir } from 'node:os';
++import { afterEach, expect, test } from 'bun:test';
++import { extractAttachmentText } from './attachment-text.ts';
++
++const directories: string[] = [];
++const originalPath = process.env.PATH;
++
++afterEach(async () => {
++  if (originalPath === undefined) delete process.env.PATH;
++  else process.env.PATH = originalPath;
++  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
++});
++
++test('extracts legacy Word, Excel and PowerPoint through the allow-listed converters', async () => {
++  const root = await mkdtemp(join(tmpdir(), 'aula-legacy-office-'));
++  directories.push(root);
++  const bin = join(root, 'bin');
++  const files = join(root, 'files');
++  await mkdir(bin);
++  await mkdir(files);
++  for (const [command, output] of Object.entries({
++    catdoc: 'Legacy Word text',
++    xls2csv: 'Legacy,Spreadsheet',
++    catppt: 'Legacy PowerPoint text',
++  })) {
++    const executable = join(bin, command);
++    await writeFile(executable, `#!/bin/sh\nprintf '%s\\n' '${output}'\n`);
++    await chmod(executable, 0o755);
++  }
++  process.env.PATH = `${bin}${delimiter}${originalPath ?? ''}`;
++  const fixtures = [
++    ['plan.doc', 'Legacy Word text'],
++    ['budget.xls', 'Legacy,Spreadsheet'],
++    ['slides.ppt', 'Legacy PowerPoint text'],
++  ] as const;
++  for (const [filename, expected] of fixtures) {
++    const path = join(files, filename);
++    await writeFile(path, 'synthetic fixture');
++    const result = await extractAttachmentText(path);
++    expect(result.format).toBe(filename.split('.').at(-1));
++    expect(result.text).toBe(expected);
++  }
++});
+diff --git a/packages/mcp-server/src/attachment-text.ts b/packages/mcp-server/src/attachment-text.ts
+new file mode 100644
+index 0000000..a0a9164
+--- /dev/null
++++ b/packages/mcp-server/src/attachment-text.ts
+@@ -0,0 +1,156 @@
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++import { inflateRawSync } from 'node:zlib';
++import { readFile } from 'node:fs/promises';
++import { basename, extname } from 'node:path';
++
++const MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
++const execFileAsync = promisify(execFile);
++const ZIP_EOCD = 0x06054b50;
++const ZIP_CENTRAL = 0x02014b50;
++const ZIP_LOCAL = 0x04034b50;
++
++function cleanText(value: string): string {
++  return value.replace(/\u0000/g, '').replace(/\r\n?/g, '\n').trim();
++}
++
++function decodeXml(value: string): string {
++  return value
++    .replace(/&lt;/g, '<')
++    .replace(/&gt;/g, '>')
++    .replace(/&quot;/g, '"')
++    .replace(/&apos;/g, "'")
++    .replace(/&amp;/g, '&')
++    .replace(/&#(\d+);/g, (_match, decimal: string) => String.fromCodePoint(Number(decimal)))
++    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)));
++}
++
++function xmlText(xml: string): string {
++  return cleanText(decodeXml(xml
++    .replace(/<\/(?:w:p|a:p|text:p|text:h|p|h)\s*>/g, '\n')
++    .replace(/<w:tab\b[^>]*\/>/g, '\t')
++    .replace(/<w:br\b[^>]*\/>/g, '\n')
++    .replace(/<[^>]+>/g, ' ')
++    .replace(/[\t ]+/g, ' ')
++    .replace(/ *\n */g, '\n')));
++}
++
++function zipEntries(buffer: Buffer): Map<string, Buffer> {
++  const start = Math.max(0, buffer.length - 65_557);
++  let eocd = -1;
++  for (let i = buffer.length - 22; i >= start; i -= 1) {
++    if (buffer.readUInt32LE(i) === ZIP_EOCD) { eocd = i; break; }
++  }
++  if (eocd < 0) throw new Error('Invalid office archive');
++  const entryCount = buffer.readUInt16LE(eocd + 10);
++  const centralOffset = buffer.readUInt32LE(eocd + 16);
++  const result = new Map<string, Buffer>();
++  let offset = centralOffset;
++  let expanded = 0;
++  let actualExpanded = 0;
++  for (let i = 0; i < entryCount; i += 1) {
++    if (offset + 46 > buffer.length || buffer.readUInt32LE(offset) !== ZIP_CENTRAL) throw new Error('Invalid office archive');
++    const method = buffer.readUInt16LE(offset + 10);
++    const compressedSize = buffer.readUInt32LE(offset + 20);
++    const uncompressedSize = buffer.readUInt32LE(offset + 24);
++    const nameLength = buffer.readUInt16LE(offset + 28);
++    const extraLength = buffer.readUInt16LE(offset + 30);
++    const commentLength = buffer.readUInt16LE(offset + 32);
++    const localOffset = buffer.readUInt32LE(offset + 42);
++    const name = buffer.toString('utf8', offset + 46, offset + 46 + nameLength);
++    offset += 46 + nameLength + extraLength + commentLength;
++    if (!name || name.startsWith('/') || name.split('/').includes('..')) continue;
++    if (!/(?:word\/|xl\/|ppt\/|content\.xml$)/.test(name)) continue;
++    expanded += uncompressedSize;
++    if (expanded > MAX_UNCOMPRESSED_BYTES) throw new Error('Office document expands beyond the extraction limit');
++    if (localOffset + 30 > buffer.length || buffer.readUInt32LE(localOffset) !== ZIP_LOCAL) throw new Error('Invalid office archive');
++    const localNameLength = buffer.readUInt16LE(localOffset + 26);
++    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
++    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
++    const dataEnd = dataStart + compressedSize;
++    if (dataEnd > buffer.length) throw new Error('Invalid office archive');
++    const compressed = buffer.subarray(dataStart, dataEnd);
++    const data = method === 0 ? compressed : method === 8 ? inflateRawSync(compressed, { maxOutputLength: MAX_UNCOMPRESSED_BYTES }) : null;
++    if (!data) throw new Error('Unsupported office compression');
++    actualExpanded += data.byteLength;
++    if (actualExpanded > MAX_UNCOMPRESSED_BYTES) throw new Error('Office document expands beyond the extraction limit');
++    result.set(name, data);
++  }
++  return result;
++}
++
++function officeText(filename: string, entries: Map<string, Buffer>): string {
++  const extension = extname(filename).toLowerCase();
++  const xml = (name: string) => entries.get(name)?.toString('utf8') ?? '';
++  if (['.docx', '.docm', '.dotx'].includes(extension)) {
++    const files = [...entries.keys()].filter((name) => /^word\/(?:document|header\d+|footer\d+|footnotes|endnotes)\.xml$/.test(name)).sort();
++    return cleanText(files.map((name) => xmlText(xml(name))).filter(Boolean).join('\n\n'));
++  }
++  if (['.pptx', '.pptm', '.ppsx'].includes(extension)) {
++    const files = [...entries.keys()].filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
++      .sort((a, b) => Number(a.match(/slide(\d+)/)?.[1]) - Number(b.match(/slide(\d+)/)?.[1]));
++    return cleanText(files.map((name) => xmlText(xml(name))).filter(Boolean).join('\n\n'));
++  }
++  if (['.xlsx', '.xlsm', '.xltx'].includes(extension)) {
++    const shared = [...xml('xl/sharedStrings.xml').matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)]
++      .map((match) => xmlText(match[1]));
++    const files = [...entries.keys()].filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name))
++      .sort((a, b) => Number(a.match(/sheet(\d+)/)?.[1]) - Number(b.match(/sheet(\d+)/)?.[1]));
++    return cleanText(files.map((name) => {
++      const sheet = xml(name);
++      const rows = [...sheet.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)].map((row) => {
++        const cells = [...row[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)].map((cell) => {
++          const index = cell[2].match(/<v>(\d+)<\/v>/)?.[1];
++          const inline = cell[2].match(/<is\b[^>]*>([\s\S]*?)<\/is>/)?.[1];
++          const value = cell[2].match(/<v>([\s\S]*?)<\/v>/)?.[1];
++          return cell[1].includes('t="s"') && index !== undefined ? shared[Number(index)] ?? ''
++            : inline ? xmlText(inline) : value ? decodeXml(value) : '';
++        });
++        return cells.filter(Boolean).join('\t');
++      });
++      return rows.filter(Boolean).join('\n');
++    }).filter(Boolean).join('\n\n'));
++  }
++  if (['.odt', '.ods', '.odp'].includes(extension)) return xmlText(xml('content.xml'));
++  throw new Error('Unsupported office format');
++}
++
++export async function extractAttachmentText(path: string): Promise<{ text: string; format: string }> {
++  const filename = basename(path);
++  const extension = extname(filename).toLowerCase();
++  const bytes = await readFile(path);
++  let text: string;
++  const legacyExtractor: Record<string, string> = {
++    '.doc': 'catdoc', '.dot': 'catdoc',
++    '.xls': 'xls2csv', '.xlt': 'xls2csv',
++    '.ppt': 'catppt', '.pps': 'catppt', '.pot': 'catppt',
++  };
++  const legacyCommand = legacyExtractor[extension];
++  if (legacyCommand) {
++    const result = await execFileAsync(legacyCommand, [path], {
++      timeout: 30_000, maxBuffer: MAX_UNCOMPRESSED_BYTES,
++    });
++    text = result.stdout;
++  } else if (['.docx', '.docm', '.dotx', '.xlsx', '.xlsm', '.xltx', '.pptx', '.pptm', '.ppsx', '.odt', '.ods', '.odp'].includes(extension)) {
++    text = officeText(filename, zipEntries(bytes));
++  } else if (['.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp', '.gif', '.webp'].includes(extension)) {
++    const result = await execFileAsync('tesseract', [path, 'stdout', '-l', 'dan+eng', '--psm', '3'], {
++      timeout: 30_000, maxBuffer: 2 * 1024 * 1024,
++    });
++    text = result.stdout;
++  } else if (['.txt', '.text', '.csv', '.tsv', '.md', '.markdown', '.json', '.yaml', '.yml', '.log', '.ics', '.svg', '.xml', '.html', '.htm', '.rtf'].includes(extension)) {
++    text = bytes.toString('utf8');
++    if (extension === '.html' || extension === '.htm') text = xmlText(text.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, ' ').replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, ' '));
++    if (extension === '.rtf') text = text.replace(/\\'[0-9a-f]{2}/gi, ' ').replace(/\\[a-z]+-?\d* ?/gi, ' ').replace(/[{}]/g, ' ');
++  } else if (extension === '.pdf') {
++    const { PDFParse } = (await import('pdf-parse')) as unknown as {
++      PDFParse: new (opts: { data: Buffer }) => { getText(): Promise<{ text: string }>; destroy?(): Promise<void> };
++    };
++    const parser = new PDFParse({ data: bytes });
++    try { text = (await parser.getText()).text; }
++    finally { if (parser.destroy) await parser.destroy(); }
++  } else {
++    throw new Error(`Unsupported attachment format: ${extension || 'unknown'}`);
++  }
++  return { text: cleanText(text), format: extension.slice(1) || 'unknown' };
++}
+diff --git a/packages/mcp-server/src/discover.test.ts b/packages/mcp-server/src/discover.test.ts
+index e09e3cd..7d79406 100644
+--- a/packages/mcp-server/src/discover.test.ts
++++ b/packages/mcp-server/src/discover.test.ts
+@@ -182,11 +182,14 @@ describe('buildDiscoverManifest', () => {
+       delete process.env.AULA_MCP_WRITE;
+       const off = await buildDiscoverManifest(fakeContext());
+       expect(off.capabilities.messages?.tools).not.toContain('aula_messages_mark_read');
++      expect(off.capabilities.messages?.tools).toContain('aula_messages_get_attachment');
++      expect(off.capabilities.messages?.tools).toContain('aula_utils_extract_attachment_text');
+       expect(off.capabilities.messages?.notes).toContain('AULA_MCP_WRITE=1');
+ 
+       process.env.AULA_MCP_WRITE = '1';
+       const on = await buildDiscoverManifest(fakeContext());
+       expect(on.capabilities.messages?.tools).toContain('aula_messages_mark_read');
++      expect(on.capabilities.messages?.tools).toContain('aula_messages_get_attachment');
+       // With writes on the note stops explaining the gate and starts warning
+       // about the one thing that cannot be undone.
+       expect(on.capabilities.messages?.notes).toContain('irreversible');
+diff --git a/packages/mcp-server/src/discover.ts b/packages/mcp-server/src/discover.ts
+index 1a550ea..9a83957 100644
+--- a/packages/mcp-server/src/discover.ts
++++ b/packages/mcp-server/src/discover.ts
+@@ -252,10 +252,10 @@ function buildCapabilities(
+       summary: writeEnabled
+         ? 'Aula messaging threads, and marking a thread read. Sensitive threads ' +
+           'require MitID step-up.'
+-        : 'Aula messaging threads. Sensitive threads require MitID step-up.',
++        : 'Aula messaging threads and attachment reading. Sensitive threads require MitID step-up.',
+       tools: writeEnabled
+-        ? ['aula_messages_list_threads', 'aula_messages_get_thread', 'aula_messages_mark_read']
+-        : ['aula_messages_list_threads', 'aula_messages_get_thread'],
++        ? ['aula_messages_list_threads', 'aula_messages_get_thread', 'aula_messages_get_attachment', 'aula_utils_extract_attachment_text', 'aula_messages_mark_read']
++        : ['aula_messages_list_threads', 'aula_messages_get_thread', 'aula_messages_get_attachment', 'aula_utils_extract_attachment_text'],
+       ...(writeEnabled
+         ? {
+             notes:
+@@ -275,8 +275,8 @@ function buildCapabilities(
+     posts: {
+       summary:
+         'Class-level news / posts feed (teacher updates), across school and club. ' +
+-        'Attachments can be downloaded, and PDFs read as text.',
+-      tools: ['aula_posts_list', 'aula_posts_get_attachment', 'aula_utils_extract_pdf_text'],
++        'Attachments can be downloaded and read as text or OCR (PDF, legacy/modern Office, OpenDocument, text, and common images).',
++      tools: ['aula_posts_list', 'aula_posts_get_attachment', 'aula_utils_extract_attachment_text'],
+       notes:
+         'Omit profileIds on aula_posts_list — the default covers every institution ' +
+         'the family belongs to, and is the only way club posts appear.',
+diff --git a/packages/mcp-server/src/server.test.ts b/packages/mcp-server/src/server.test.ts
+index 4336d1b..49607f8 100644
+--- a/packages/mcp-server/src/server.test.ts
++++ b/packages/mcp-server/src/server.test.ts
+@@ -79,6 +79,12 @@ const THREADS: Record<number, Array<{ attachments?: FakeAttachment[] }>> = {
+   ],
+ };
+ 
++const POSTS = [
++  { id: 314, attachments: [{ file: { name: 'Sommerfest program.pdf', url: 'https://cdn.test/post-attachment' } }] },
++  { id: 42, attachments: [{ file: { name: 'Bålhytten på Ærø - lørdag.pdf', url: 'https://cdn.test/dansk' } }] },
++  { id: 43, attachments: [{ file: { name: '../Bålhytten/ø\u0000.pdf', url: 'https://cdn.test/dansk' } }] },
++];
++
+ interface FakeOptions {
+   /** Thread id to its messages, for aula_messages_get_attachment. */
+   threads?: Record<number, Array<{ attachments?: FakeAttachment[] }>>;
+@@ -134,6 +140,15 @@ function fakeContext(opts: FakeOptions = {}): AulaContext {
+     async getMessagesForThread(threadId: number) {
+       return { subject: 'Sommerfest', messages: opts.threads?.[threadId] ?? [] };
+     },
++    async getPosts() {
++      return { posts: POSTS };
++    },
++    async rawRequest() {
++      return [
++        { institutionProfile: { id: 9001, role: 'guardian' } },
++        { institutionProfile: { id: 1001, role: 'child' } },
++      ];
++    },
+   };
+   return {
+     record: {
+@@ -326,6 +341,7 @@ describe('MCP server: tools/list', () => {
+     expect(names).toContain('aula_messages_list_threads');
+     expect(names).toContain('aula_messages_get_thread');
+     expect(names).toContain('aula_messages_get_attachment');
++    expect(names).toContain('aula_utils_extract_attachment_text');
+     expect(names).toContain('aula_notifications_list');
+     expect(names).toContain('aula_posts_list');
+     expect(names).toContain('aula_posts_get_attachment');
+@@ -730,17 +746,14 @@ describe('MCP server: tools/call(aula_messages_get_attachment)', () => {
+     expect(out.bytes).toBe(ATTACHMENT_MAX_BYTES);
+   });
+ 
+-  // The posts tool differs only in how it arrives at a URL, so these two
+-  // assert the shared helper behaves identically from the other call site.
+   test('aula_posts_get_attachment writes with its own post- prefix', async () => {
+     stubFetch(() => new Response('%PDF-1.7 nyhed'));
+     const out = await harness.call(29, 'aula_posts_get_attachment', {
+       postId: 314,
+-      url: 'https://cdn.test/post-attachment',
+-      filename: 'Sommerfest program.pdf',
++      attachmentIndex: 0,
+     });
+     expect(out.ok).toBe(true);
+-    expect(out.path).toBe(join(dir, 'post-314-Sommerfest program.pdf'));
++    expect(out.path).toBe(join(dir, 'post-314-0-Sommerfest program.pdf'));
+     expect(out.bytes).toBe(14);
+     // The posts tool has no mediaType to pass, so the key stays off.
+     expect('mediaType' in out).toBe(false);
+@@ -754,11 +767,10 @@ describe('MCP server: tools/call(aula_messages_get_attachment)', () => {
+     stubFetch(() => new Response('%PDF-1.7'));
+     const out = await harness.call(31, 'aula_posts_get_attachment', {
+       postId: 42,
+-      url: 'https://cdn.test/dansk',
+-      filename: 'Bålhytten på Ærø - lørdag.pdf',
++      attachmentIndex: 0,
+     });
+     expect(out.ok).toBe(true);
+-    expect(out.path).toBe(join(dir, 'post-42-Bålhytten på Ærø - lørdag.pdf'));
++    expect(out.path).toBe(join(dir, 'post-42-0-Bålhytten på Ærø - lørdag.pdf'));
+     expect(dirname(out.path as string)).toBe(dir);
+   });
+ 
+@@ -766,11 +778,10 @@ describe('MCP server: tools/call(aula_messages_get_attachment)', () => {
+     // Widening the class to \p{L} must not widen what escapes the directory.
+     stubFetch(() => new Response('x'));
+     const out = await harness.call(32, 'aula_posts_get_attachment', {
+-      postId: 42,
+-      url: 'https://cdn.test/dansk',
+-      filename: '../Bålhytten/ø\u0000.pdf',
++      postId: 43,
++      attachmentIndex: 0,
+     });
+-    expect(out.path).toBe(join(dir, 'post-42-.._Bålhytten_ø_.pdf'));
++    expect(out.path).toBe(join(dir, 'post-43-0-.._Bålhytten_ø_.pdf'));
+     expect(dirname(out.path as string)).toBe(dir);
+   });
+ 
+@@ -778,8 +789,7 @@ describe('MCP server: tools/call(aula_messages_get_attachment)', () => {
+     stubFetch(() => new Response('gone', { status: 404 }));
+     const out = await harness.call(30, 'aula_posts_get_attachment', {
+       postId: 314,
+-      url: 'https://cdn.test/post-attachment',
+-      filename: 'Sommerfest program.pdf',
++      attachmentIndex: 0,
+     });
+     expect(out.error).toBe('download_failed');
+     expect(out.httpStatus).toBe(404);
+diff --git a/packages/mcp-server/src/tools.ts b/packages/mcp-server/src/tools.ts
+index cc5f61b..bbb0239 100644
+--- a/packages/mcp-server/src/tools.ts
++++ b/packages/mcp-server/src/tools.ts
+@@ -3,9 +3,9 @@
+  * Inputs are validated by Zod 4 schemas registered with McpServer.
+  */
+ 
+-import { mkdir, readFile, writeFile } from 'node:fs/promises';
++import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+ import { tmpdir } from 'node:os';
+-import { join } from 'node:path';
++import { basename, join, resolve, sep } from 'node:path';
+ import type { AulaPost } from '@aula-mcp/aula-client';
+ import {
+   AulaStepUpRequiredError,
+@@ -20,9 +20,19 @@ import { z } from 'zod';
+ import type { AulaContext } from './aula-context.ts';
+ import { resolveCalendarRange } from './calendar-range.ts';
+ import { buildDiscoverManifest } from './discover.ts';
++import { extractAttachmentText } from './attachment-text.ts';
+ 
+ const ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+ 
++async function downloadedAttachmentPath(path: string): Promise<string> {
++  const root = await realpath(process.env.AULA_MCP_ATTACHMENTS_DIR ?? join(tmpdir(), 'aula-attachments'));
++  const actual = await realpath(resolve(path));
++  if (actual !== root && !actual.startsWith(root + sep)) throw new Error('Attachment path is outside the download directory');
++  const file = await stat(actual);
++  if (!file.isFile() || file.size > ATTACHMENT_MAX_BYTES) throw new Error('Attachment is unavailable or exceeds the download limit');
++  return actual;
++}
++
+ /**
+  * Download a CloudFront presigned attachment to a local file and return a
+  * result payload. Shared by aula_messages_get_attachment and
+@@ -1065,25 +1075,33 @@ export function registerTools(server: McpServer, context: AulaContext): void {
+     {
+       title: 'Download a post attachment to local disk',
+       description:
+-        'Download an attachment from a news feed post and write it to a local ' +
+-        'temporary file, returning the path. Pass `url` and `name` exactly as ' +
+-        'they appear in the attachments array from `aula_posts_list` — the ' +
+-        'CloudFront signature is part of the URL, so altering a single ' +
+-        'character produces a MalformedSignature 403.',
++        'Download an attachment from an Aula news feed post and write it to a ' +
++        'local temporary file. The server resolves the post and signed URL from ' +
++        'Aula itself; callers never provide an arbitrary URL.',
+       inputSchema: {
+         postId: z.number().int().describe('The post the attachment belongs to (names the file).'),
+-        url: z.string().url().describe('The exact presigned URL from the posts feed.'),
+-        filename: z.string().describe("e.g. 'Kostplan_juni_2026.pdf'"),
++        attachmentIndex: z.number().int().min(0),
+       },
+     },
+     async (args) => {
+-      return jsonContent(
+-        await downloadAttachmentToDisk({
+-          url: args.url,
+-          filename: args.filename,
+-          prefix: `post-${args.postId}`,
+-        }),
+-      );
++      const client = await context.getClient();
++      await context.getGuardianUserId();
++      const profileIds = await resolveFamilyProfileIds(client);
++      const result = await client.getPosts({ limit: 50, index: 0, institutionProfileIds: profileIds });
++      const post = (result?.posts ?? []).find((item) => item.id === args.postId);
++      const attachments = post?.attachments ?? [];
++      const attachment = attachments[args.attachmentIndex];
++      const file = attachment?.file ?? attachment?.media?.file;
++      if (!file?.url) {
++        return jsonContent({ error: 'attachment_not_found', postId: args.postId,
++          attachmentIndex: args.attachmentIndex, totalAttachments: attachments.length });
++      }
++      return jsonContent(await downloadAttachmentToDisk({
++        url: file.url,
++        filename: file.name ?? `attachment-${args.attachmentIndex}.bin`,
++        prefix: `post-${args.postId}-${args.attachmentIndex}`,
++        ...(file.mediaType ? { mediaType: file.mediaType } : {}),
++      }));
+     },
+   );
+ 
+@@ -1117,7 +1135,8 @@ export function registerTools(server: McpServer, context: AulaContext): void {
+             destroy?(): Promise<void>;
+           };
+         };
+-        parser = new PDFParse({ data: await readFile(args.path) });
++        const path = await downloadedAttachmentPath(args.path);
++        parser = new PDFParse({ data: await readFile(path) });
+         const result = await parser.getText();
+         return jsonContent({
+           ok: true,
+@@ -1137,4 +1156,43 @@ export function registerTools(server: McpServer, context: AulaContext): void {
+       }
+     },
+   );
++
++  server.registerTool(
++    'aula_utils_extract_attachment_text',
++    {
++      title: 'Extract text from a downloaded Aula attachment',
++      description:
++        'Extract a bounded text page from a downloaded PDF, legacy or modern Office/OpenDocument document, or text attachment. ' +
++        'PNG, JPEG, TIFF, BMP, GIF and WebP images are read with bounded Danish/English OCR. ' +
++        'The path must be one returned by an Aula attachment download tool. Repeat with nextOffset until null.',
++      inputSchema: {
++        path: z.string().describe('Absolute path returned by an Aula attachment download tool.'),
++        offset: z.number().int().min(0).max(100_000_000).default(0),
++        limit: z.number().int().min(1000).max(12000).default(12000),
++      },
++    },
++    async (args) => {
++      try {
++        const actual = await downloadedAttachmentPath(args.path);
++        const extracted = await extractAttachmentText(actual);
++        const text = extracted.text;
++        const end = Math.min(text.length, args.offset + args.limit);
++        return jsonContent({
++          ok: true,
++          filename: basename(actual),
++          format: extracted.format,
++          text: text.slice(args.offset, end),
++          offset: args.offset,
++          totalCharacters: text.length,
++          nextOffset: end < text.length ? end : null,
++        });
++      } catch (error) {
++        return jsonContent({
++          ok: false,
++          error: 'failed_to_read_attachment',
++          message: error instanceof Error ? error.message : String(error),
++        });
++      }
++    },
++  );
+ }

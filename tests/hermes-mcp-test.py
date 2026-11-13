@@ -483,7 +483,9 @@ class ConnectionTests(unittest.TestCase):
 
 class ProbeTests(unittest.TestCase):
     def test_probe_checks_household_and_android_only_principals(self):
-        household = ('homecompute_school_discover', 'homecompute_shopping_search',
+        household = ('homecompute_school_discover', 'homecompute_school_attachment_read',
+                     'homecompute_school_post_attachment_read',
+                     'homecompute_shopping_search',
                      'homecompute_system_read', 'homecompute_ha_propose',
                      'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
                      'homecompute_android_visible_text', 'homecompute_android_screenshot',

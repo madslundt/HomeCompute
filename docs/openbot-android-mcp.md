@@ -41,17 +41,19 @@ to the LiteLLM gateway:
 
 - Name: `homecompute`
 - URL: `https://mcp.home.arpa/mcp`
-- Header: `x-litellm-api-key: Bearer <OpenBot Android virtual key>`
+- Header: `x-litellm-api-key: Bearer <OpenBot MCP virtual key>`
 - Header: `x-mcp-homecompute_openbot_android-authorization: Bearer <openbot-android credential>`
 
 Retrieve the credential only through the guarded private export path and enter
-it into OpenBot's secure header field. The virtual key must have only the
-`openbot-android-bounded-ui` access group; do not include Aula, n8n-owner,
-Hermes, or OpenClaw capability groups. Use **Test connection** before saving;
-the result must list exactly the ten tools above and no task, Home Assistant, or
-maintenance tools. The server setting is shared across OpenBot agents. The
-OpenBot MCP principal itself remains Android-only even if its clients request
-other tool names. The OpenBot container resolves `mcp.home.arpa` to
+it into OpenBot's secure header field. The shared OpenBot virtual key now uses
+the `all-harness-mcps` group, per the owner decision to expose the full LiteLLM
+catalog to all OpenBot agents. The Android backend principal remains separately
+authenticated and restricted to the ten tools above, even though the shared
+gateway key can discover other MCP aliases. Add the other role-scoped bearer
+headers described in the [OpenBot runbook](../deploy/openbot/README.md). Use
+**Test connection** before saving; check the full catalog and verify the
+Android alias has exactly the ten tools above. The server setting is shared
+across OpenBot agents. The OpenBot container resolves `mcp.home.arpa` to
 `10.77.20.1`; verify TLS and the gateway's root CA before saving the setting.
 
 Verify at least one read-only status call from an OpenBot Hermes agent before

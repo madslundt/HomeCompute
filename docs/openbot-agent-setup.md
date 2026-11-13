@@ -194,9 +194,15 @@ Marketplace skills: the 2026-11-10 UI showed no skills in its **Verified** filte
 Server-level skill learning is now set to **Ask first** to prevent silent skill
 revisions.
 
-The private HomeCompute MCP is absent from the OpenBot server MCP list. No
-agent or channel routines were found. Server-level connected apps include GitHub
-and Context7; per-agent access and effective tool reach remain unverified. All
+The target shared OpenBot MCP list uses LiteLLM's `all-harness-mcps` group. It
+includes the full configured catalog, including n8n workflow administration,
+the owner capability relay and bounded Android UI actions. All OpenBot agents
+can discover the shared connection. Apply the documented key provisioning,
+role-scoped bearer headers and OpenBot settings after deploying the reviewed
+source before treating these tools as live. No agent or channel routines were
+found.
+Server-level connected apps include GitHub and Context7; per-agent access and
+effective tool reach remain unverified. All
 seven profiles were reconciled to **Ask first**, with Computer Use and Local
 scripts off. They still show **All files**: Ask first requires approval before
 OpenBot tool use but is not filesystem confinement. The four regular agents

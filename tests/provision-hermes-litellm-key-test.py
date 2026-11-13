@@ -30,7 +30,8 @@ class ProvisionHermesLiteLLMKeyTest(unittest.TestCase):
                 return subprocess.CompletedProcess(
                     args, 0,
                     json.dumps({"key": secret, "models": ["automation-moe"],
-                                "user_id": "hermes-agent", "expires": None}), ""
+                                "user_id": "hermes-agent", "expires": None,
+                                "mcp_access_groups": ["all-harness-mcps"]}), ""
                 )
             return subprocess.CompletedProcess(args, 0, "key-installed\n", "")
 
@@ -41,6 +42,7 @@ class ProvisionHermesLiteLLMKeyTest(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertIn("key/generate", calls[0][1]["input"])
         self.assertIn("automation-moe", calls[0][1]["input"])
+        self.assertIn("all-harness-mcps", calls[0][1]["input"])
         self.assertNotIn(secret, " ".join(calls[0][0]))
         self.assertEqual(calls[1][1]["input"], secret + "\n")
         self.assertNotIn(secret, str(calls[1][0]))
@@ -54,7 +56,8 @@ class ProvisionHermesLiteLLMKeyTest(unittest.TestCase):
             return subprocess.CompletedProcess(
                 args, 0,
                 json.dumps({"key": "sk-private-test-fixture", "models": ["automation-moe", "home"],
-                            "user_id": "hermes-agent", "expires": None}), ""
+                            "user_id": "hermes-agent", "expires": None,
+                            "mcp_access_groups": ["all-harness-mcps"]}), ""
             )
 
         with patch.object(MODULE.subprocess, "run", side_effect=fake_run):

@@ -1,6 +1,6 @@
 # ADR-033: Use LiteLLM as the central MCP gateway
 
-Status: Accepted; implementation and rollout pending the normal reviewed release.
+Status: Superseded by [ADR-036](036-share-lite-llm-mcp-catalog-across-harnesses.md). The gateway and default-deny foundation remain accepted.
 
 Date: 2026-11-10
 
@@ -47,6 +47,10 @@ MCP clients are not rewritten by this source change. n8n's direct backend path
 remains as a compatibility lane until its saved credentials and workflows are
 migrated to LiteLLM; the gateway is not the exclusive ingress until that
 cutover is complete.
+
+The pending `hermes-desktop-mcp` key grant was an interim owner-only exception.
+ADR-036 supersedes that grant model. Aula writes/raw API calls remain disabled;
+Android UI actions remain limited to their reviewed tool list.
 
 ## Consequences
 

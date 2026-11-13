@@ -15,6 +15,16 @@ its unchanged `assistant-canary` route. Broker tools remain denied and
 no household data or publishing credentials are enabled. The
 [standalone evidence](openclaw-runtime-validation.json) is separate evidence.
 
+**Temporary operator pause (2026-11-12):** The native OpenClaw sandbox and its
+dedicated browser containers were stopped while retaining their state. The
+guest supervisor, shutdown hook, and dashboard proxy are disabled so the
+sandbox stays stopped across a guest reboot. Hermes, OpenBot, their browser
+containers, and the separate Home Core access/communication services remain
+running. This is a temporary live pause; the guest-side systemd enablement and
+Docker container state are not yet reconciled into an automated source-owned
+pause lifecycle. Verify the current guest state before resuming or removing
+OpenClaw.
+
 On 2026-10-10, the operator approved recovery and automatic restart. The agents
 VM now has 24 GiB; OpenClaw and Hermes each have an 8 GiB hard memory limit,
 and Chromium has 4 GiB. These containers have no additional swap allowance.

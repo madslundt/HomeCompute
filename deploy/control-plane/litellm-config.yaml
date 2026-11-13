@@ -157,7 +157,7 @@ mcp_servers:
     transport: http
     description: Public library documentation lookup from Context7
     allow_all_keys: false
-    access_groups: [docs-public]
+    access_groups: [docs-public, all-harness-mcps]
   n8n:
     url: http://n8n:5678/mcp-server/http
     transport: http
@@ -165,7 +165,7 @@ mcp_servers:
     auth_value: os.environ/N8N_MCP_TOKEN
     description: Owner-only n8n instance MCP; tool names restricted to the reviewed live catalog
     allow_all_keys: false
-    access_groups: [n8n-owner]
+    access_groups: [n8n-owner, all-harness-mcps]
     allowed_tools:
       - search_workflows
       - execute_workflow
@@ -228,21 +228,21 @@ mcp_servers:
     auth_type: oauth_delegate
     description: Hermes-owner capability principal; caller supplies its role-scoped bearer
     allow_all_keys: false
-    access_groups: [hermes-owner-tools]
+    access_groups: [hermes-owner-tools, all-harness-mcps]
   homecompute_openclaw:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http
     auth_type: oauth_delegate
     description: OpenClaw capability principal; caller supplies its role-scoped bearer
     allow_all_keys: false
-    access_groups: [openclaw-agent-tools]
+    access_groups: [openclaw-agent-tools, all-harness-mcps]
   homecompute_openbot_android:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http
     auth_type: oauth_delegate
     description: Android bounded UI principal; caller supplies its role-scoped bearer
     allow_all_keys: false
-    access_groups: [openbot-android-bounded-ui]
+    access_groups: [openbot-android-bounded-ui, all-harness-mcps]
     allowed_tools:
       - homecompute_android_status
       - homecompute_android_screen
@@ -259,10 +259,10 @@ mcp_servers:
     transport: http
     description: Read-only Aula calendar and school information
     allow_all_keys: false
-    access_groups: [aula-read]
+    access_groups: [aula-read, all-harness-mcps]
   tilbudstrolden:
     url: http://tilbudstrolden-mcp:8000/mcp
     transport: http
     description: Read-only Danish retail offer search
     allow_all_keys: false
-    access_groups: [offers-read]
+    access_groups: [offers-read, all-harness-mcps]

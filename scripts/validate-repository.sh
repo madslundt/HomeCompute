@@ -1382,7 +1382,7 @@ docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
   -f "$REPO_ROOT/deploy/openbot/compose.yaml" config --format json >"$openbot_json"
 jq -e '
   (.services | keys == ["openbot"]) and
-  (.services.openbot.image == "ghcr.io/nightly-labs/openbot@sha256:049c2c16130f9577c5f84ee942045ee211c78f337414cda0d2aaf4e801fb4913") and
+  (.services.openbot.image == "ghcr.io/nightly-labs/openbot:latest") and
   (.services.openbot.platform == "linux/amd64") and
   (.services.openbot.cap_drop == ["ALL"] and .services.openbot.cap_add == ["SYS_CHROOT"]) and
   (.services.openbot.security_opt | index("no-new-privileges:true") != null) and
@@ -1394,6 +1394,12 @@ jq -e '
   (.services.openbot.shm_size == "1073741824" and .services.openbot.stop_grace_period == "1m0s") and
   (.services.openbot.mem_limit == "8589934592" and .services.openbot.pids_limit == 2048)
 ' "$openbot_json" >/dev/null
+grep -Fqx 'ExecStartPre=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml pull' \
+  "$REPO_ROOT/deploy/openbot/homecompute-openbot.service"
+grep -Fqx 'readonly IMAGE_REF=ghcr.io/nightly-labs/openbot:latest' \
+  "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
+grep -Fq 'latest_image_id=' \
+  "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
 
 # Adding a project here is the point at which its isolation gets reviewed.
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the

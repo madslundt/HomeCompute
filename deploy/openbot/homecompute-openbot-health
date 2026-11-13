@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 readonly CONTAINER=homecompute-openbot
-readonly IMAGE_DIGEST=sha256:049c2c16130f9577c5f84ee942045ee211c78f337414cda0d2aaf4e801fb4913
+readonly IMAGE_REF=ghcr.io/nightly-labs/openbot:latest
 
 running=false
 for ((attempt = 0; attempt < 30; attempt++)); do
@@ -13,5 +13,8 @@ done
 [[ "$running" == true ]] || { echo 'OpenBot container is not running' >&2; exit 1; }
 ports="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$CONTAINER")"
 [[ "$ports" == null || "$ports" == '{}' ]] || { echo 'OpenBot must not publish host ports' >&2; exit 1; }
-digests="$(docker image inspect --format '{{json .RepoDigests}}' "ghcr.io/nightly-labs/openbot@$IMAGE_DIGEST")"
-[[ "$digests" == *"@$IMAGE_DIGEST"* ]] || { echo 'OpenBot image digest does not match the reviewed pin' >&2; exit 1; }
+configured_image="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER")"
+[[ "$configured_image" == "$IMAGE_REF" ]] || { echo 'OpenBot container is not configured from the latest tag' >&2; exit 1; }
+running_image_id="$(docker inspect --format '{{.Image}}' "$CONTAINER")"
+latest_image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")"
+[[ "$running_image_id" == "$latest_image_id" ]] || { echo 'Running OpenBot image differs from the pulled latest tag' >&2; exit 1; }
