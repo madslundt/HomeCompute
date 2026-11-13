@@ -23,8 +23,9 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-hermes-guest.sh` | Household `hermes-personal` agent inside the isolated Ubuntu agents guest | `validate`, `preflight`, `install`, `onboard-canary`, `recreate`, `connect-mcp`, `connect-mattermost`, `connect-browser`, `install-startup`, `health` |
 | `setup-openbot-guest.sh` | Pinned OpenBot team server in the agents VM | Published-revision-guarded `install`, interactive `login`, redacted `status` |
 | `configure-openbot-hermes.py` | Hermes CLI embedded in `homecompute-openbot` | Reconcile its custom local Home AI route without rewriting credential-bearing providers |
-| `provision-openbot-litellm-key.py` | OpenBot custom local-model provider | Creates and installs a key scoped only to `automation-moe`; never prints the key |
-| `provision-opencode-litellm-key.py` | Home Core OpenCode service | Creates or verifies a private key scoped only to `automation-moe`; never prints the key |
+| `provision-openbot-litellm-key.py` | OpenBot local-model provider and MCP client | Creates and installs a key scoped to `automation-moe` and `all-harness-mcps`; never prints the key |
+| `setup-litellm-harness-mcp-access.py` | Home Core deployment | Idempotently grants the full LiteLLM catalog to the known Hermes, OpenBot, and OpenCode harness keys while preserving service-key deny sentinels |
+| `provision-opencode-litellm-key.py` | Home Core OpenCode service | Creates or verifies a private key scoped to `automation-moe` and `all-harness-mcps`; never prints the key |
 | `recover-hermes-env-ownership.py` | Guarded config/.env metadata repair for the retained Hermes UID transition incident | Private full-sandbox backup, exact sandbox/image identity, stopped gateway/container, reviewed plan SHA |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |
 | `model-cache-integrity.py` | Invoked by compute setup and vLLM entrypoint | Accepted-cache manifest create/verify |

@@ -23,6 +23,30 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("url: http://n8n:5678/mcp-server/http", CONFIG)
         self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 3)
         self.assertIn("url: http://aula-mcp:7878/mcp", CONFIG)
+        aula = CONFIG.split("  aula:", 1)[1].split("  tilbudstrolden:", 1)[0]
+        self.assertNotIn("allowed_tools:", aula)
+        self.assertNotIn("disallowed_tools:", aula)
+        aula_patch = (ROOT / "deploy/automation/aula-n8n.patch").read_text()
+        attachment_patch = (ROOT / "deploy/automation/aula-attachment-extract.patch").read_text()
+        for tool in ("aula_messages_get_attachment", "aula_posts_get_attachment", "aula_utils_extract_pdf_text"):
+            self.assertIn(tool, aula_patch)
+        self.assertIn("aula_utils_extract_attachment_text", attachment_patch)
+        self.assertIn("'catdoc'", attachment_patch)
+        self.assertIn("'xls2csv'", attachment_patch)
+        self.assertIn("'catppt'", attachment_patch)
+        self.assertIn("catdoc=1:0.95-6~deb12u1", (ROOT / "deploy/automation/aula.Dockerfile").read_text())
+        self.assertIn("setup-litellm-harness-mcp-access.py", DEPLOY)
+        harness_access = (ROOT / "scripts/setup-litellm-harness-mcp-access.py").read_text()
+        for alias in ("hermes-desktop-mcp", "hermes-agent", "openbot-agent", "opencode-home-core"):
+            self.assertIn(alias, harness_access)
+        self.assertIn("mcp_access_groups", harness_access)
+        self.assertIn("'all-harness-mcps'", harness_access)
+        self.assertIn("'no-mcp-servers'", harness_access)
+        self.assertNotIn("print(master", harness_access)
+        for group in ("docs-public", "n8n-owner", "hermes-owner-tools",
+                      "openclaw-agent-tools", "openbot-android-bounded-ui",
+                      "aula-read", "offers-read"):
+            self.assertIn(f"access_groups: [{group}, all-harness-mcps]", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
         self.assertEqual(len(server_names), 7)
@@ -32,13 +56,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
 
     def test_server_registration_is_never_public_and_uses_named_access_groups(self) -> None:
         self.assertIn("allow_all_keys: false", CONFIG)
-        self.assertIn("access_groups: [aula-read]", CONFIG)
-        self.assertIn("access_groups: [offers-read]", CONFIG)
-        self.assertIn("access_groups: [docs-public]", CONFIG)
-        self.assertIn("access_groups: [n8n-owner]", CONFIG)
-        self.assertIn("access_groups: [hermes-owner-tools]", CONFIG)
-        self.assertIn("access_groups: [openclaw-agent-tools]", CONFIG)
-        self.assertIn("access_groups: [openbot-android-bounded-ui]", CONFIG)
+        self.assertEqual(CONFIG.count("all-harness-mcps]"), 7)
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)

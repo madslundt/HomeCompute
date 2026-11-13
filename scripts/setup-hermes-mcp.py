@@ -128,7 +128,9 @@ def probe(module) -> None:
     tokens = json.loads(module.TOKENS.read_bytes())
     tools = tools_for(tokens['hermes-owner'])
     names = {row['name'] for row in tools}
-    if not {'homecompute_school_discover', 'homecompute_shopping_search', 'homecompute_system_read',
+    if not {'homecompute_school_discover', 'homecompute_school_attachment_read',
+            'homecompute_school_post_attachment_read',
+            'homecompute_shopping_search', 'homecompute_system_read',
             'homecompute_ha_propose'} <= names:
         raise ValueError('required household services unavailable')
     android_read = {'homecompute_android_status', 'homecompute_android_screen', 'homecompute_android_apps',
@@ -257,6 +259,8 @@ def main() -> int:
     actions.add_argument('--export-credential', action='store_true', help='private pipe to the guest connector only')
     actions.add_argument('--export-openbot-android-credential', action='store_true',
                          help='private pipe to OpenBot MCP settings only')
+    actions.add_argument('--export-openclaw-credential', action='store_true',
+                         help='private pipe to OpenClaw LiteLLM MCP settings only')
     parser.add_argument('--expected-plan-sha256')
     args = parser.parse_args()
     try:
@@ -272,6 +276,10 @@ def main() -> int:
             if args.export_openbot_android_credential:
                 module.regular(module.TOKENS, module.pwd.getpwnam('homecompute-openclaw').pw_uid, 0o600)
                 sys.stdout.write(json.loads(module.TOKENS.read_bytes())['openbot-android'])
+                return 0
+            if args.export_openclaw_credential:
+                module.regular(module.TOKENS, module.pwd.getpwnam('homecompute-openclaw').pw_uid, 0o600)
+                sys.stdout.write(json.loads(module.TOKENS.read_bytes())['openclaw'])
                 return 0
             if args.rollback:
                 result = rollback(module)

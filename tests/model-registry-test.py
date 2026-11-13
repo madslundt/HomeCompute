@@ -384,14 +384,11 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertRegex(rendered, r'(?s)model_name: "automation-moe".*?timeout: 600')
         self.assertIn("COMPUTE_API_KEY", rendered)
 
-    def test_codex_chatgpt_subscription_routes_do_not_need_proxy_credentials(self) -> None:
+    def test_chatgpt_subscription_routes_are_not_rendered(self) -> None:
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        gpt = rendered.split('model_name: "gpt-*"', 1)[1].split('  - model_name:', 1)[0]
-        codex = rendered.split('model_name: "codex-*"', 1)[1]
-        for block, provider in ((gpt, '"chatgpt/gpt-*"'), (codex, '"chatgpt/codex-*"')):
-            self.assertIn(f"model: {provider}", block)
-            self.assertIn("mode: responses", block)
-            self.assertNotIn("api_key", block)
+        self.assertNotIn('model_name: "gpt-*"', rendered)
+        self.assertNotIn('model_name: "codex-*"', rendered)
+        self.assertNotIn('model: "chatgpt/', rendered)
 
     def test_generated_model_section_preserves_security_settings(self) -> None:
         original = (ROOT / "deploy/control-plane/litellm-config.yaml").read_text(encoding="utf-8")

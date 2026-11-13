@@ -22,8 +22,8 @@ LITELLM_SCRIPT = r'''import json, urllib.parse, urllib.request
 master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
 body = {'models': ['automation-moe'], 'key_alias': 'hermes-agent',
         'user_id': 'hermes-agent', 'duration': None,
-        'object_permission': {'mcp_servers': ['no-mcp-servers']},
-        'metadata': {'purpose': 'Hermes household agent; automation-moe only'}}
+        'object_permission': {'mcp_access_groups': ['all-harness-mcps']},
+        'metadata': {'purpose': 'Hermes harness; automation-moe and full LiteLLM MCP catalog'}}
 request = urllib.request.Request('http://127.0.0.1:4000/key/generate',
     data=json.dumps(body).encode(),
     headers={'Authorization': 'Bearer ' + master, 'Content-Type': 'application/json'})
@@ -33,8 +33,13 @@ query = urllib.parse.urlencode({'key': key})
 check = urllib.request.Request('http://127.0.0.1:4000/key/info?' + query,
     headers={'Authorization': 'Bearer ' + master})
 info = json.load(urllib.request.urlopen(check, timeout=30)).get('info', {})
+permission = info.get('object_permission') or {}
+groups = permission.get('mcp_access_groups') if isinstance(permission, dict) else None
+if groups != ['all-harness-mcps']:
+    raise RuntimeError('Hermes LiteLLM key MCP scope did not verify')
 print(json.dumps({'key': key, 'models': info.get('models'),
-                  'user_id': info.get('user_id'), 'expires': info.get('expires')}))
+                  'user_id': info.get('user_id'), 'expires': info.get('expires'),
+                  'mcp_access_groups': groups}))
 '''
 
 
@@ -52,7 +57,8 @@ def run() -> None:
     key = value.get("key")
     if (not isinstance(key, str) or not key.startswith("sk-") or any(ch.isspace() for ch in key)
             or value.get("models") != [MODEL] or value.get("user_id") != OWNER
-            or value.get("expires") is not None):
+            or value.get("expires") is not None
+            or value.get("mcp_access_groups") != ["all-harness-mcps"]):
         raise RuntimeError("LiteLLM returned a key with an unexpected scope")
 
     receiver = (
@@ -70,7 +76,7 @@ def run() -> None:
     )
     if guest.returncode or guest.stdout.strip() != "key-installed":
         raise RuntimeError("Guest key installation failed; inspect protected guest state")
-    print("Created a non-expiring LiteLLM key scoped only to automation-moe and installed it in the guest.")
+    print("Created and installed a non-expiring Hermes key scoped to automation-moe and the full LiteLLM MCP catalog.")
 
 
 if __name__ == "__main__":

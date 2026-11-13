@@ -17,7 +17,7 @@ from openclaw_tasks import BROKER, Tasks, request
 HERMES_SERVICE_TOOLS = frozenset('homecompute_' + name for name in (
     'web_search', 'research_search', 'shopping_search', 'shopping_stores', 'shopping_offers',
     'school_discover', 'school_calendar', 'school_weekly_letter', 'school_posts',
-    'school_threads', 'school_thread', 'school_search',
+    'school_threads', 'school_thread', 'school_attachment_read', 'school_post_attachment_read', 'school_search',
     'shopping_list', 'shopping_add', 'shopping_update', 'shopping_complete', 'shopping_remove',
     'discounts_read', 'discount_watch', 'discount_unwatch',
     'storage_list', 'storage_add', 'storage_update', 'storage_remove', 'storage_adjust',

@@ -15,7 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
 from broker import Ledger, serve
-from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS, call_tool
+from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS, bounded_result, call_tool
 
 PROJECT = {"repository": "example/synthetic", "base_sha": "a" * 40,
            "base_branch": "main", "classification": "cloud_allowed",
@@ -30,6 +30,12 @@ class NoPublisher:
 
 
 class McpTests(unittest.TestCase):
+    def test_bounded_tool_result_keeps_large_unicode_attachment_text_without_ascii_expansion(self):
+        text = 'ø' * 50000
+        result = bounded_result({'text': text})
+        self.assertEqual(json.loads(result['content'][0]['text'])['text'], text)
+        self.assertLessEqual(len(json.dumps(result, ensure_ascii=False).encode()), MAX_RESPONSE_BYTES - 1024)
+
     def test_action_metadata_lists_are_bounded_and_never_contain_approval_or_evidence(self):
         from types import SimpleNamespace
         private = {'id': '0aa529dc-8933-4116-852e-7871f01cbe07', 'state': 'pending',

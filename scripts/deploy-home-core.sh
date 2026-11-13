@@ -210,6 +210,7 @@ docker exec -i homecompute-control-plane-postgres-1 \
 # Apply an explicit deny to existing unscoped keys before starting Caddy with
 # the MCP hostname; preserve any already explicit MCP grants.
 python3 "$release/scripts/setup-litellm-mcp-default-deny.py"
+python3 "$release/scripts/setup-litellm-harness-mcp-access.py"
 python3 "$release/scripts/setup-network-inference.py"
 python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.

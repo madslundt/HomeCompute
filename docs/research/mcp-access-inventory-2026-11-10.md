@@ -62,12 +62,14 @@ to a named access group, with `allow_all_keys: false`. The gateway evaluation
 records that existing n8n clients remain on direct backend paths until migrated;
 the gateway is therefore not yet the sole ingress. See
 [`docs/research/mcp-gateway-evaluation-2026-11-10.md`](mcp-gateway-evaluation-2026-11-10.md),
-[`docs/adr/033-litellm-mcp-gateway.md`](../adr/033-litellm-mcp-gateway.md), and
+[`docs/adr/035-share-lite-llm-mcp-catalog-across-harnesses.md`](../adr/035-share-lite-llm-mcp-catalog-across-harnesses.md), and
 [`deploy/control-plane/litellm-config.yaml`](../../deploy/control-plane/litellm-config.yaml).
-The source change alone does not migrate saved OpenBot, Hermes, OpenClaw, Codex,
-or n8n client state. The HomeCompute relay aliases preserve their distinct
-principal credentials, but their fixed-source ingress update still needs the
-guarded lifecycle and the client settings still need migration.
+The owner has selected the shared `all-harness-mcps` group for every harness
+key, while model-only service keys remain denied. The source change alone does
+not migrate saved OpenBot, Hermes, OpenClaw, Codex, or n8n client state. The
+HomeCompute relay aliases preserve their distinct principal credentials, but
+their fixed-source ingress update still needs the guarded lifecycle and the
+client settings still need migration.
 
 ## Live checks still needed
 
@@ -81,8 +83,9 @@ record sanitized results for:
    HAOS endpoint remains; determine which workflows actually use the direct
    Aula/TilbudsTrolden paths.
 3. OpenBot: current server MCP list and tool inventory. Its shared server-level
-   settings affect every agent; verify the ten Android tools before granting
-   that role alias, and do not give it Aula, Hermes-owner, or n8n-owner access.
+   settings affect every agent. Verify all seven aliases after assigning
+   `all-harness-mcps`; verify the Android alias still exposes only its ten
+   reviewed tools and that each delegated relay has the intended role bearer.
 4. Hermes: current native MCP list/policy and discovered tools. The November 6
    evidence verifies the HomeCompute bridge at that time but does not enumerate
    unrelated user-configured cloud servers.

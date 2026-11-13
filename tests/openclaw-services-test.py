@@ -49,7 +49,7 @@ class ServicesTest(unittest.TestCase):
         self.addCleanup(self.path_patch.stop); self.addCleanup(self.tmp.cleanup)
 
     def test_inventory_and_exact_arguments(self):
-        self.assertEqual(len(self.client.tools), 12)
+        self.assertEqual(len(self.client.tools), 14)
         for t in self.client.tools:
             self.assertTrue(t['annotations']['readOnlyHint'])
             self.assertFalse(t['inputSchema']['additionalProperties'])
@@ -360,6 +360,52 @@ class ServicesTest(unittest.TestCase):
             with self.subTest(fixture=fixture): self.assertEqual(service.project(fixture),fixture)
         self.assertEqual(service.project({'content':{'html':'safe'},'attachments':[{'url':'https://example.com/private'}],
                                          'username':'PRIVATE','tokenExpiresAt':'PRIVATE'}),{'content':{'html':'safe'}})
+
+    def test_school_attachment_read_pages_extracted_text_without_exposing_backend_path(self):
+        with patch.object(self.client, '_mcp', side_effect=[
+            {'ok':True,'path':'/tmp/aula-attachments/123-0-plan.pdf','filename':'plan.pdf',
+             'bytes':1234,'mediaType':'application/pdf'},
+            {'ok':True,'text':'ø'*12000,'format':'pdf','offset':0,'totalCharacters':20000,'nextOffset':12000},
+        ]) as mcp:
+            result=self.client.request('homecompute_school_attachment_read',
+                                       {'thread_id':'123','attachment_index':'0'})
+        self.assertEqual(result['data']['text'],'ø'*12000)
+        self.assertEqual(result['data']['nextOffset'],12000)
+        self.assertEqual(result['data']['filename'],'plan.pdf')
+        self.assertNotIn('/tmp/aula-attachments',json.dumps(result))
+        self.assertEqual(mcp.call_args_list[0].args[:3],
+                         ('aula','aula_messages_get_attachment',{'threadId':123,'attachmentIndex':0}))
+        self.assertEqual(mcp.call_args_list[1].args[:3],
+                         ('aula','aula_utils_extract_attachment_text',
+                          {'path':'/tmp/aula-attachments/123-0-plan.pdf','offset':0,'limit':12000}))
+        with self.assertRaises(ValueError):
+            self.client.validate('homecompute_school_attachment_read',
+                                 {'thread_id':'123','attachment_index':'-1'})
+
+    def test_school_post_attachment_read_uses_selected_post_and_hides_backend_path(self):
+        with patch.object(self.client, '_mcp', side_effect=[
+            {'ok':True,'path':'/tmp/aula-attachments/post-45-plan.docx','filename':'plan.docx',
+             'bytes':456,'mediaType':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},
+            {'ok':True,'text':'Handleplan indhold','format':'docx','offset':0,'totalCharacters':18,'nextOffset':None},
+        ]) as mcp:
+            result=self.client.request('homecompute_school_post_attachment_read',
+                {'post_id':'45','attachment_index':'0'})
+        self.assertEqual(result['data']['text'],'Handleplan indhold')
+        self.assertNotIn('/tmp/aula-attachments',json.dumps(result))
+        self.assertEqual(mcp.call_args_list[0].args[:3],
+            ('aula','aula_posts_get_attachment',{'postId':45,'attachmentIndex':0}))
+        self.assertEqual(mcp.call_args_list[1].args[:3],('aula','aula_utils_extract_attachment_text',
+            {'path':'/tmp/aula-attachments/post-45-plan.docx','offset':0,'limit':12000}))
+
+    def test_thread_attachment_summary_exposes_names_but_never_signed_urls(self):
+        source={'messages':[{'attachments':[{'file':{'name':'Handleplan.pdf',
+            'url':'https://files.example.test/private?signature=secret'}},
+            {'media':{'file':{'name':'Billede.jpg','url':'https://files.example.test/secret'}}}]}]}
+        result=service.project(service.summarize_attachments(source,'messages'))
+        self.assertEqual(result['messages'][0]['attachmentCount'],2)
+        self.assertEqual(result['messages'][0]['attachmentNames'],['Handleplan.pdf','Billede.jpg'])
+        self.assertNotIn('signature',json.dumps(result))
+        self.assertNotIn('files.example.test',json.dumps(result))
 
     def test_projection_global_budget_preserves_partial_evidence(self):
         raw={'posts':[{'title':'Synthetic '+str(i),'content':'é'*2000,'author':{'name':'Synthetic'}} for i in range(20)]}

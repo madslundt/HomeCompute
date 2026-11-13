@@ -192,13 +192,26 @@ Gemini's function-schema subset. The patch also keeps discovery metadata and
 upstream tests aligned with the registered names. Aula 1.6.2 includes fixes
 for MitID broker redirects, Danish Keychain records, Aula API v24 retries, and
 attachments delivered through `media.file`, plus Min Uddannelse homework text.
-Reapply and review both patches whenever the upstream commit changes; the image
-build fails if either patch no longer applies cleanly.
+Reapply and review all three patches whenever the upstream commit changes; the
+image build fails if a patch no longer applies cleanly. The attachment patch
+adds bounded text extraction for PDF, legacy and modern Office/OpenDocument, common text
+formats and OCR for PNG/JPEG/TIFF/BMP/GIF/WebP images. OCR runs in Danish and English
+with a 30-second timeout. Extraction is limited to files inside Aula's
+temporary download directory, and paginates long text so the bridge response
+budget does not truncate a document.
 
-The previous deployed image was built on 2026-09-20 from upstream commit
-`af49805ae9c6d7c9026f6e559f2e01ca209c9e46`. Rebuild and recreate Aula from
-the reviewed current pin during this deployment. Its existing persistent
-state and MitID login remain in place.
+The LiteLLM `aula` MCP catalog has no server-level `allowed_tools` filter.
+Hermes uses the HomeCompute bridge, whose message and post attachment tools
+download and extract selected attachments without passing Aula's signed URL or
+backend temporary path to the model. Long extracted text is returned in
+12,000-character pages. The MCP attachment downloader still rejects files over
+50 MiB; Aula's `/tmp` remains a 128 MiB tmpfs.
+
+The image observed on home-core on 2026-11-12 uses the reviewed upstream commit
+`d9a27d84933446783c89446ba3e9d799fd47ea2c` with the compatibility and profile
+context patches, but it does not yet include the attachment extraction patch.
+The next approved Home Core deployment rebuilds and recreates Aula from source;
+its existing persistent state and MitID login remain in place.
 
 Access is limited to home-core: host processes use
 `http://127.0.0.1:17878/mcp`; n8n uses `http://aula-mcp:7878/mcp` with

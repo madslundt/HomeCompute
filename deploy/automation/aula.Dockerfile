@@ -9,15 +9,20 @@ RUN git init . && git remote add origin https://github.com/Casperjuel/aula-mcp.g
     && git checkout --detach FETCH_HEAD && rm -rf .git
 COPY aula-n8n.patch /tmp/aula-n8n.patch
 COPY aula-profile-context.patch /tmp/aula-profile-context.patch
+COPY aula-attachment-extract.patch /tmp/aula-attachment-extract.patch
 RUN git apply --unidiff-zero --check /tmp/aula-profile-context.patch \
     && git apply --unidiff-zero /tmp/aula-profile-context.patch \
     && git apply --unidiff-zero --check /tmp/aula-n8n.patch \
     && git apply --unidiff-zero /tmp/aula-n8n.patch
+RUN git apply --unidiff-zero --check /tmp/aula-attachment-extract.patch \
+    && git apply --unidiff-zero /tmp/aula-attachment-extract.patch
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate \
     && pnpm install --frozen-lockfile
 
 FROM node:24-bookworm-slim@sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+RUN apt-get update && apt-get install -y --no-install-recommends catdoc=1:0.95-6~deb12u1 tesseract-ocr tesseract-ocr-dan \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /app /app
 USER 1000:1000

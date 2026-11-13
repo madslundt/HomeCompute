@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Create or verify OpenCode's narrowly scoped Home Core LiteLLM key.
+"""Create or verify OpenCode's Home Core model and MCP LiteLLM key.
 
-Run as root on home-core after LiteLLM is healthy. The key is scoped only to
-automation-moe, written to private persistent state, and never printed.
+Run as root on home-core after LiteLLM is healthy. The key is scoped to
+automation-moe and all-harness-mcps, written to private persistent state, and
+never printed.
 Without --apply this command only validates an existing key or reports that
 one still needs provisioning.
 """
@@ -71,8 +72,10 @@ def api(path: str, payload: dict[str, Any], *, query: bool = False,
 
 def validate_key(key: str, runner: Callable[..., Any]) -> None:
     info = api('/key/info', {'key': key}, query=True, runner=runner).get('info', {})
+    permission = info.get('object_permission') or {}
+    groups = permission.get('mcp_access_groups') if isinstance(permission, dict) else None
     if (info.get('models') != [MODEL] or info.get('user_id') != OWNER
-            or info.get('expires') is not None):
+            or info.get('expires') is not None or groups != ['all-harness-mcps']):
         raise Refused('opencode-key-scope-refused')
 
 
@@ -130,8 +133,8 @@ def provision(*, apply: bool, runner: Callable[..., Any] = subprocess.run) -> di
         'key_alias': OWNER,
         'user_id': OWNER,
         'duration': None,
-        'metadata': {'purpose': 'OpenCode coding workspace; automation-moe only'},
-        'object_permission': {'mcp_servers': ['no-mcp-servers']},
+        'metadata': {'purpose': 'OpenCode harness; automation-moe and full LiteLLM MCP catalog'},
+        'object_permission': {'mcp_access_groups': ['all-harness-mcps']},
     }, runner=runner)
     key = data.get('key')
     if (not isinstance(key, str) or not key.startswith('sk-') or re.search(r'\s', key)
@@ -142,7 +145,7 @@ def provision(*, apply: bool, runner: Callable[..., Any] = subprocess.run) -> di
     write_key(key)
     if not read_key(runner):
         raise Refused('opencode-key-installation-refused')
-    return {'key_exists': True, 'scope': [MODEL], 'applied': True}
+    return {'key_exists': True, 'scope': [MODEL], 'mcp_access_group': 'all-harness-mcps', 'applied': True}
 
 
 def main() -> int:

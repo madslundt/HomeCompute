@@ -442,7 +442,7 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
     def test_only_active_capabilities_and_isolated_migration_lanes_are_rendered(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")
         names = set(re.findall(r'^\s*- model_name:\s*"?([^"\s]+)', text, re.MULTILINE))
-        self.assertEqual({"automation-moe", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "tts-danish", "tts-english", "embedding", "video", "gpt-*", "codex-*"}, names)
+        self.assertEqual({"automation-moe", "stt-danish", "whisper-turbo", "whisper", "omnivoice", "tts-danish", "tts-english", "embedding", "video"}, names)
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
             self.assertNotIn(f"model_name: {unavailable}", text)
 

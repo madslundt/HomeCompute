@@ -5,7 +5,7 @@ OpenBot is installed as a single pinned container in the Ubuntu agents VM on
 OpenBot image publishes no ports and has no bundled web client; after sign-in,
 use the desktop/iPhone app or `https://openbot.run/app`.
 
-The upstream `v0.66.0` Linux/amd64 image is pinned by manifest digest in
+The upstream `v0.69.0` Linux/amd64 image is pinned by manifest-list digest in
 `compose.yaml`. Its upstream seccomp profile is tracked here and was checked
 against SHA-256 `665289e6a1c41045f55166d0b01993c929f71df78e3a3b264f3252bb8e0b3d9e`.
 The guest installer verifies the Ubuntu 24.04 `docker-compose-v2` package
@@ -54,7 +54,7 @@ python3 scripts/provision-openbot-litellm-key.py
 ```
 
 It creates a non-expiring key restricted to local-only `automation-moe` and
-stores it in the guest at
+the `all-harness-mcps` gateway group, and stores it in the guest at
 `~/.config/homecompute-openbot/secrets/litellm-api-key` with mode `0600`.
 In OpenBot's server Provider settings, add the custom OpenAI-compatible endpoint
 `http://ai.home.arpa:18080/v1`, model `automation-moe`, and that key. To copy
@@ -75,6 +75,54 @@ recommended OpenBot roles and data boundaries are documented in
 the UI because OpenBot has no supported declarative agent-roster import.
 HomeCompute does not sign into a cloud account or choose cloud providers on the
 owner's behalf.
+
+## Shared LiteLLM MCP connections
+
+OpenBot's MCP list is shared with every agent on its server. The owner has
+chosen to expose the full LiteLLM catalog to all OpenBot agents. The
+`openbot-mcp` key is restricted to `automation-moe` and the
+`all-harness-mcps` group. This includes n8n workflow administration and the
+bounded Android UI tools as well as Aula, offers, and public documentation.
+Each HomeCompute relay still requires its own role-scoped bearer header.
+
+After deployment, `setup-litellm-harness-mcp-access.py` assigns the existing
+OpenBot key the full catalog group. It remains restricted to `automation-moe`
+for model requests. Copy it directly from the operator terminal into OpenBot's
+secure connection header field:
+
+```bash
+ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
+  hermes-operator@10.77.20.2 \
+  'cat ~/.config/homecompute-openbot/secrets/litellm-api-key'
+```
+
+In OpenBot's `home-core` server settings, add a **Streamable HTTP** connection:
+
+- Name: `homecompute`
+- URL: `https://mcp.home.arpa/mcp`
+- Header: `x-litellm-api-key: Bearer <OpenBot MCP key>`
+
+Add these role-specific headers using the guarded export commands in
+`scripts/setup-hermes-mcp.py` (run on Home Core from the deployed full SHA):
+
+```sh
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --export-credential
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --export-openclaw-credential
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --export-openbot-android-credential
+```
+
+Copy each command's output directly into its matching OpenBot secure header
+field. Do not paste these values into Codex, chat, issue text, shell history, or
+logs.
+
+- `x-mcp-homecompute_hermes-authorization: Bearer <Hermes owner credential>`
+- `x-mcp-homecompute_openclaw-authorization: Bearer <OpenClaw credential>`
+- `x-mcp-homecompute_openbot_android-authorization: Bearer <OpenBot Android credential>`
+
+Do not reuse one role's bearer as another role. Test before saving; the list
+should include all seven configured aliases. This connection is available to every
+OpenBot agent, so protect the key and delegated bearers as full household and
+workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog access.
 
 ## Operations and recovery
 
