@@ -227,7 +227,8 @@
     },
     {
       "id": "visual-designer",
-      "lifecycle": "planned",
+      "server_id": "agent-886c29ae-8219-41fd-b515-dc3446ee477a",
+      "lifecycle": "active",
       "name": "UI / Visual Designer",
       "avatar": {
         "style": "plush",

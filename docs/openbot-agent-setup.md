@@ -156,12 +156,6 @@ prompt returned correctly through the Extra high local route.
 The following assignment table is a historical 2026-11-10 snapshot, not the
 current target roster:
 
-The source target now splits the existing Designer role into UX Designer and
-UI / Visual Designer. This is a desired-state change only: the live OpenBot
-profile still has the historical Designer name until it is reconciled through
-the UI. The UX Designer keeps the existing stable ID and history; the planned
-UI / Visual Designer has no server ID until created.
-
 On 2026-11-13, `setup-openbot-guest.sh status` found the `latest` container
 running OpenBot 0.69.0 with no published ports. A Brave UI readback found the
 existing Designer on local `automation-moe` / Extra high with **Full access**,
@@ -169,8 +163,22 @@ Computer Use and Local scripts enabled, and **All files** selected. It had no
 saved memories, no assigned skills, and no configured routines; it did have
 19 KB in Files and one table, which must be preserved. This differs from the
 roster's Ask first policy with Computer Use and Local scripts off. Record this
-as pre-change evidence; update the profile to the source settings only after a
-fresh application backup is confirmed.
+as pre-change evidence.
+
+The owner directed the role update to proceed without a fresh backup. The
+2026-11-13 UI reconciliation renamed the existing profile to **UX Designer**
+on its existing server ID and set it to Ask first, with Computer Use and Local
+scripts off. Its model and 19 KB Files plus one table were preserved. OpenBot
+created **UI / Visual Designer** with server ID
+`agent-886c29ae-8219-41fd-b515-dc3446ee477a`; it uses local
+`automation-moe` / Extra high, Ask first, Computer Use and Local scripts off.
+Its UI showed no saved memories, no assigned skills, and no routines; it did
+show 18 KB in Files and one table, which were left untouched. Both profiles
+still show **All files**, and role skills remain source-only because no
+supported declarative installer was verified. At reconciliation time, NAS
+backup readiness was false: the last completed archive receipt was from
+2026-11-09 22:26 UTC and the backup service was retrying. Treat the OpenBot
+data backup as outstanding.
 
 On 2026-11-10, the guest status command reported `home-core` online on OpenBot
 **0.66.0**. The first database audit found five agents; Designer and QA were

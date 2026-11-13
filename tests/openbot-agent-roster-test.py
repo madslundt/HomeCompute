@@ -54,9 +54,13 @@ class OpenBotAgentRosterTests(unittest.TestCase):
         self.assertEqual(ux['server_id'], 'agent-ba10d7e7-d092-4aeb-80bb-b9bda3f0d463')
         self.assertEqual(ux['skills'], ['interface-design'])
         self.assertEqual(visual['name'], 'UI / Visual Designer')
-        self.assertEqual(visual['lifecycle'], 'planned')
-        self.assertNotIn('server_id', visual)
+        self.assertEqual(visual['lifecycle'], 'active')
+        self.assertEqual(visual['server_id'], 'agent-886c29ae-8219-41fd-b515-dc3446ee477a')
         self.assertEqual(visual['skills'], ['visual-design'])
+        self.assertEqual(visual['permissions'], {
+            'access': 'ask-first', 'computer_use': False,
+            'local_scripts': False, 'automatic_routines': False
+        })
 
     def test_chatgpt_subscription_provider_is_scoped_to_three_litellm_aliases(self):
         provider = self.roster['chatgpt_subscription_provider']
