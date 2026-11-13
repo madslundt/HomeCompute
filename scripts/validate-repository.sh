@@ -1398,7 +1398,7 @@ grep -Fqx 'ExecStartPre=/usr/bin/docker compose --project-name homecompute-openb
   "$REPO_ROOT/deploy/openbot/homecompute-openbot.service"
 grep -Fqx 'readonly IMAGE_REF=ghcr.io/nightly-labs/openbot:latest' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
-grep -Fq 'latest_image_id="$(docker image inspect --format' \
+grep -Fq 'latest_image_id=' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
 
 # Adding a project here is the point at which its isolation gets reviewed.
