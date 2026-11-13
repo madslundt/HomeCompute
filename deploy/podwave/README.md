@@ -7,14 +7,14 @@ is available only through the existing private LAN/Tailscale Caddy listeners;
 there is no public port or Tailscale Funnel.
 
 The app image is built from the PodWave source pinned to commit
-`fcd23dcbebf6bce5d48f68b3b79ce7e3ea469fad`. Its uv/Python base is pinned by
-digest in the tracked Dockerfile. The service has no host port, no Docker socket,
-no capabilities, a read-only root filesystem, and a dedicated bridge shared
-only with Caddy. Caddy publishes the `ai.home.arpa` alias only on that bridge, so
-server-side provider traffic reaches the internal AI route without using the
-host's LAN or Tailscale listener. PodWave trusts the mounted HomeCompute root CA
-alongside the image's public roots. Its separate default bridge provides
-outbound provider access.
+`3347732a3371c7450f017ac29ec6295f93970918` (version 1.5.0). Its uv/Python base
+is pinned by digest in the tracked Dockerfile. The service has no host port, no
+Docker socket, no capabilities, a read-only root filesystem, and a dedicated
+bridge shared only with Caddy. Caddy publishes the `ai.home.arpa` alias only on
+that bridge, so server-side provider traffic reaches the internal AI route
+without using the host's LAN or Tailscale listener. PodWave trusts the mounted
+HomeCompute root CA alongside the image's public roots. Its separate default
+bridge provides outbound provider access.
 
 For the built-in HomeCompute gateway, use `https://ai.home.arpa:8443/v1` and
 model `automation-moe`. The URL resolves to Caddy only inside the PodWave bridge;
