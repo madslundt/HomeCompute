@@ -90,6 +90,8 @@ printf '[validate] configuration-loader tests\n'
 bash "$REPO_ROOT/tests/config-loader-test.sh"
 printf '[validate] Nix update workflow tests\n'
 python3 "$REPO_ROOT/tests/flake-update-workflow-test.py"
+python3 "$REPO_ROOT/tests/openbot-agent-roster-test.py"
+python3 "$REPO_ROOT/tests/provision-openbot-chatgpt-key-test.py"
 printf '[validate] agents VM boundary tests\n'
 python3 "$REPO_ROOT/tests/agents-vm-module-test.py"
 python3 "$REPO_ROOT/tests/toolbox-vm-module-test.py"
@@ -162,6 +164,7 @@ python3 "$REPO_ROOT/tests/hermes-systemd-boot-test.py"
 python3 "$REPO_ROOT/tests/hermes-system-boot-install-test.py"
 python3 "$REPO_ROOT/tests/hermes-mcp-test.py"
 python3 "$REPO_ROOT/tests/hermes-specialists-test.py"
+python3 "$REPO_ROOT/tests/hermes-chatgpt-profiles-test.py"
 node "$REPO_ROOT/tests/hermes-browser-client.test.mjs"
 printf '[validate] OpenClaw task broker and plugin tests\n'
 python3 "$REPO_ROOT/tests/openclaw-worker-test.py"
@@ -765,9 +768,9 @@ jq -e '
   all(.services[]; (.privileged // false) == false and (.network_mode // "") != "host") and
   all(.services[]; ((.devices // []) | length) == 0) and
   ([.services[].volumes[]? | select(.type == "bind" and .read_only != true) | .target] | sort) ==
-    ["/config", "/data", "/var/lib/postgresql/data"] and
+    ["/config", "/data", "/run/homecompute/chatgpt", "/var/lib/postgresql/data"] and
   ([.services[].volumes[]? | select(.type == "bind") | .target] | sort) ==
-    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/run/homecompute/home-core-root.crt", "/var/lib/postgresql/data"] and
+    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/run/homecompute/chatgpt", "/run/homecompute/home-core-root.crt", "/var/lib/postgresql/data"] and
   (.services.caddy.ports | length == 3) and
   ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2", "127.0.0.2"]) and
   ([.services.caddy.ports[] | select(.host_ip == "127.0.0.2" and .published == "80" and .target == 8080)] | length == 1) and
@@ -798,7 +801,7 @@ podwave_json="$temporary_root/podwave.json"
 docker compose -f "$REPO_ROOT/deploy/podwave/compose.yaml" config --format json >"$podwave_json"
 jq -e '
   (.services | keys == ["podwave"]) and
-  (.services.podwave.image == "homecompute/podwave:6cbc19e2df78c656d863d42ab97c78e3665f7c80") and
+  (.services.podwave.image == "homecompute/podwave:60a9826e0c9aad6597eb1425966950e9aba1469b") and
   (.services.podwave.ports == null and .services.podwave.read_only == true) and
   (.services.podwave.cap_drop == ["ALL"] and (.services.podwave.privileged // false) == false) and
   ([.services.podwave.volumes[] | select(.target == "/data" and .source == "/srv/state/podwave" and .read_only != true)] | length == 1) and

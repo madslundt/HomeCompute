@@ -1,4 +1,4 @@
-# ADR-035: Share the LiteLLM MCP catalog across harnesses
+# ADR-036: Share the LiteLLM MCP catalog across harnesses
 
 ## Status
 

@@ -9,8 +9,8 @@ The service name and state path describe the stable role, not the future GB10
 address. A future primary STT service can therefore be added without renaming
 or relocating this fallback.
 
-The checked-in image is upstream version `3.7.0`, pinned to its multi-platform
-OCI digest as resolved on 2026-09-10. See the upstream
+The checked-in image is upstream version `3.8.1`, pinned to its multi-platform
+OCI digest as resolved on 2026-11-12. See the upstream
 [Wyoming Faster Whisper documentation](https://github.com/OHF-Voice/wyoming-faster-whisper)
 and [official image tags](https://hub.docker.com/r/rhasspy/wyoming-whisper/tags).
 

@@ -62,7 +62,7 @@ to a named access group, with `allow_all_keys: false`. The gateway evaluation
 records that existing n8n clients remain on direct backend paths until migrated;
 the gateway is therefore not yet the sole ingress. See
 [`docs/research/mcp-gateway-evaluation-2026-11-10.md`](mcp-gateway-evaluation-2026-11-10.md),
-[`docs/adr/035-share-lite-llm-mcp-catalog-across-harnesses.md`](../adr/035-share-lite-llm-mcp-catalog-across-harnesses.md), and
+[`docs/adr/036-share-lite-llm-mcp-catalog-across-harnesses.md`](../adr/036-share-lite-llm-mcp-catalog-across-harnesses.md), and
 [`deploy/control-plane/litellm-config.yaml`](../../deploy/control-plane/litellm-config.yaml).
 The owner has selected the shared `all-harness-mcps` group for every harness
 key, while model-only service keys remain denied. The source change alone does

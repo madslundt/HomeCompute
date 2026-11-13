@@ -5,9 +5,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import stat
 import subprocess
 import sys
+import tempfile
+from pathlib import Path
 
 
 CONTAINER_DEFAULT = "homecompute-openbot"
@@ -24,6 +28,11 @@ MODEL_SETTINGS = {
     "model.base_url": PROVIDER["base_url"],
     "model.api_mode": "chat_completions",
     "agent.reasoning_effort": "xhigh",
+    # Git 2.43 in the OpenBot image does not support Hermes' GIT_NO_LAZY_FETCH
+    # guard. Its passive startup update check can therefore fetch a large
+    # missing ancestry range and block ACP startup. Explicit update commands
+    # remain available when passive checks are disabled.
+    "updates.check": "false",
 }
 
 
@@ -46,6 +55,68 @@ def has_secret_fields(value: object) -> bool:
     return False
 
 
+def disable_passive_update_checks(config_path: Path) -> None:
+    """Disable only Hermes' passive update check, preserving the rest of config.yaml."""
+    if config_path.is_symlink() or not config_path.is_file():
+        raise RuntimeError("OpenBot Hermes config.yaml is missing or is not a regular file")
+
+    original = config_path.read_text(encoding="utf-8")
+    lines = original.splitlines(keepends=True)
+    section_starts = [i for i, line in enumerate(lines) if re.fullmatch(r"updates:\s*(?:#.*)?\r?\n?", line)]
+    if len(section_starts) > 1:
+        raise RuntimeError("Hermes config.yaml has multiple top-level updates sections")
+
+    if section_starts:
+        start = section_starts[0]
+        end = next(
+            (i for i in range(start + 1, len(lines))
+             if re.match(r"^[A-Za-z0-9_-]+:\s*(?:#.*)?(?:\r?\n)?$", lines[i])),
+            len(lines),
+        )
+        checks = [i for i in range(start + 1, end) if re.match(r"^  check:\s*", lines[i])]
+        if len(checks) > 1:
+            raise RuntimeError("Hermes config.yaml has multiple updates.check settings")
+        if checks:
+            i = checks[0]
+            replacement, count = re.subn(
+                r"^(  check:\s*)(?:true|false)(\s*(?:#.*)?\r?\n?)$",
+                r"\g<1>false\g<2>",
+                lines[i],
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            if count != 1:
+                raise RuntimeError("Hermes updates.check is not a simple YAML boolean")
+            lines[i] = replacement
+        else:
+            newline = "\r\n" if lines[start].endswith("\r\n") else "\n"
+            lines.insert(start + 1, f"  check: false{newline}")
+    else:
+        newline = "\r\n" if "\r\n" in original else "\n"
+        if lines and not lines[-1].endswith(("\n", "\r")):
+            lines[-1] += newline
+        lines.extend((f"updates:{newline}", f"  check: false{newline}"))
+
+    updated = "".join(lines)
+    if updated == original:
+        return
+
+    mode = stat.S_IMODE(config_path.stat().st_mode)
+    fd, temp_name = tempfile.mkstemp(prefix=".config.yaml.", dir=config_path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as temp_file:
+            temp_file.write(updated)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.chmod(temp_name, mode)
+        os.replace(temp_name, config_path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--container", default=CONTAINER_DEFAULT)
@@ -57,6 +128,17 @@ def main() -> int:
         state = run("docker", "inspect", "--format", "{{.State.Running}}", args.container)
         if state != "true":
             raise RuntimeError(f"Docker container {args.container} is not running")
+
+        data_root = run(
+            "docker", "inspect", "--format",
+            '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}',
+            args.container,
+        )
+        expected_data_root = Path.home() / ".local/share/homecompute-openbot/data"
+        if not data_root or Path(data_root).resolve() != expected_data_root.resolve():
+            raise RuntimeError("OpenBot /data mount does not match the managed data directory")
+        disable_passive_update_checks(Path(data_root) / ".hermes/config.yaml")
+
         run("docker", "exec", args.container, HERMES, "--version")
 
         raw = run("docker", "exec", args.container, HERMES, "config", "get", "custom_providers", "--json")

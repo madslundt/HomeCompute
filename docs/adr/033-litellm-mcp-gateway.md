@@ -1,6 +1,6 @@
 # ADR-033: Use LiteLLM as the central MCP gateway
 
-Status: Superseded by [ADR-035](035-share-lite-llm-mcp-catalog-across-harnesses.md). The gateway and default-deny foundation remain accepted.
+Status: Superseded by [ADR-036](036-share-lite-llm-mcp-catalog-across-harnesses.md). The gateway and default-deny foundation remain accepted.
 
 Date: 2026-11-10
 
@@ -49,7 +49,7 @@ migrated to LiteLLM; the gateway is not the exclusive ingress until that
 cutover is complete.
 
 The pending `hermes-desktop-mcp` key grant was an interim owner-only exception.
-ADR-035 supersedes that grant model. Aula writes/raw API calls remain disabled;
+ADR-036 supersedes that grant model. Aula writes/raw API calls remain disabled;
 Android UI actions remain limited to their reviewed tool list.
 
 ## Consequences

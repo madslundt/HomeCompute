@@ -406,6 +406,23 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                 "      output_cost_per_character: 0",
             ])
     lines.extend(MEDIA.MediaRegistry.render_video(catalog, routes_doc))
+    # These explicit aliases use the gateway-owned ChatGPT subscription login.
+    # Keep the public names stable; review the upstream targets when the
+    # supported ChatGPT model families change.
+    for alias, provider_model in (
+        ("chatgpt-sol-latest", "chatgpt/gpt-6.1-sol"),
+        ("chatgpt-terra-latest", "chatgpt/gpt-6.1-terra"),
+        ("chatgpt-luna-latest", "chatgpt/gpt-6-luna"),
+    ):
+        lines.extend([
+            f"  - model_name: {_yaml_quote(alias)}",
+            "    litellm_params:",
+            f"      model: {_yaml_quote(provider_model)}",
+            "    model_info:",
+            "      mode: responses",
+            "      input_cost_per_token: 0",
+            "      output_cost_per_token: 0",
+        ])
     return "\n".join(lines) + "\n"
 
 

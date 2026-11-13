@@ -149,13 +149,17 @@ explicitly runs `scripts/setup-network-inference.py --enable-plapre`.
 - sops-nix materializes five gateway secrets under `/run/secrets/control-plane`,
   root-owned, group `homecompute-secrets` (989), mode 0440.
 - Production environment: `/etc/homecompute/control-plane.env`, root-owned 0600.
-- Durable data: `/srv/state/control-plane/{caddy-data,caddy-config,postgres-data}`.
+- Durable data: `/srv/state/control-plane/{caddy-data,caddy-config,postgres-data,chatgpt-auth}`.
 - LiteLLM trusts Home Core's private Caddy CA for the relay endpoint. The deploy
   script copies the public `root.crt` from Caddy's root-only storage to
   `/etc/homecompute/control-plane/home-core-root.crt` with mode 0644; Compose
   mounts that copy read-only into LiteLLM, which runs as UID 101.
 - PostgreSQL starts as UID/GID 70 and retains supplementary secret group 989.
   Its data directory is provisioned as owner 70:70, mode 0700.
+- The single gateway-owned ChatGPT subscription credential is stored outside Git
+  at `/srv/state/control-plane/chatgpt-auth/auth.json`. LiteLLM runs as UID 101,
+  receives only that directory as a writable bind mount, and refreshes the token
+  in place. Keep the directory mode 0700 and include it in protected backups.
 - Caddy retains `NET_BIND_SERVICE` because the official binary's file capability
   otherwise causes an exec permission error. Other capabilities are dropped.
 - Docker restart policy is `unless-stopped` for all three services.

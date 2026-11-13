@@ -21,10 +21,13 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-home-core-stt.sh` | Pinned Wyoming Faster Whisper fallback on CPU-only `home-core` | `prepare`, `up`, `down`, `status` |
 | `setup-home-core-automation-backup.sh` | On-demand Qwen3.6 Q4 CPU standby for planned Spark swaps | `prepare`, `maintenance-start`, `smoke`, `maintenance-stop`, `status` |
 | `setup-hermes-guest.sh` | Household `hermes-personal` agent inside the isolated Ubuntu agents guest | `validate`, `preflight`, `install`, `onboard-canary`, `recreate`, `connect-mcp`, `connect-mattermost`, `connect-browser`, `install-startup`, `health` |
-| `setup-openbot-guest.sh` | Pinned OpenBot team server in the agents VM | Published-revision-guarded `install`, interactive `login`, redacted `status` |
+| `setup-openbot-guest.sh` | OpenBot team server in the agents VM | Published-revision-guarded `install`, interactive `login`, redacted `status` |
 | `configure-openbot-hermes.py` | Hermes CLI embedded in `homecompute-openbot` | Reconcile its custom local Home AI route without rewriting credential-bearing providers |
 | `provision-openbot-litellm-key.py` | OpenBot local-model provider and MCP client | Creates and installs a key scoped to `automation-moe` and `all-harness-mcps`; never prints the key |
 | `setup-litellm-harness-mcp-access.py` | Home Core deployment | Idempotently grants the full LiteLLM catalog to the known Hermes, OpenBot, and OpenCode harness keys while preserving service-key deny sentinels |
+| `provision-openbot-chatgpt-key.py` | OpenBot ChatGPT subscription provider through LiteLLM | Creates and installs a key scoped to the three `chatgpt-*-latest` aliases with MCP denied; never prints the key |
+| `provision-hermes-chatgpt-keys.py` | Three owner Hermes ChatGPT profiles | Creates separate one-alias LiteLLM keys with MCP denied and installs them in the agents VM secret directory |
+| `setup-hermes-chatgpt-profiles.py` | Native profiles in the owner Hermes sandbox | Plan/apply with the selected qualified image, fresh household gates and reviewed plan SHA; starts no gateways |
 | `provision-opencode-litellm-key.py` | Home Core OpenCode service | Creates or verifies a private key scoped to `automation-moe` and `all-harness-mcps`; never prints the key |
 | `recover-hermes-env-ownership.py` | Guarded config/.env metadata repair for the retained Hermes UID transition incident | Private full-sandbox backup, exact sandbox/image identity, stopped gateway/container, reviewed plan SHA |
 | `configure-compute-firewall.sh` | Invoked by compute setup and systemd | Exact persistent `DOCKER-USER` policy |

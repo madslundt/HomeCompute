@@ -68,6 +68,38 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
   'cat ~/.config/homecompute-openbot/secrets/litellm-api-key'
 ```
 
+### ChatGPT subscription aliases
+
+The owner-selected OpenBot Researcher model uses LiteLLM's ChatGPT subscription
+alias. Terra and Luna remain available in the same provider for deliberate
+assignment to another agent. This provider has a separate model-only LiteLLM key;
+it does not grant MCP access or replace the local `automation-moe` provider.
+
+After publishing this source, create and install the key from a clean checkout
+of the exact `origin/master` revision:
+
+```bash
+python3 scripts/provision-openbot-chatgpt-key.py
+```
+
+The script creates a non-expiring key restricted to
+`chatgpt-sol-latest`, `chatgpt-terra-latest`, and `chatgpt-luna-latest`, with
+MCP explicitly denied. It stores the secret at
+`~/.config/homecompute-openbot/secrets/chatgpt-models-key` in the agents VM.
+
+In OpenBot → home-core → Settings → Providers → Custom provider, add:
+
+- Provider ID: `homecompute-chatgpt`
+- Display name: `HomeCompute ChatGPT subscription`
+- Base URL: `https://mcp.home.arpa/v1`
+- API key: the value in `chatgpt-models-key`
+- Models: the three aliases above, using their matching ChatGPT Sol/Terra/Luna labels
+
+Assign Researcher to `chatgpt-sol-latest` / High. Keep its local
+`automation-moe` backup and ask-first backup policy. Terra and Luna are
+selectable; this change does not rebind other agents. Do not put the key in chat,
+logs, source, or a command argument.
+
 Connect a cloud provider from Provider settings using the account or API key
 you choose. Assign it only to agents intended to send data to that provider;
 cloud providers receive the prompts and files sent to their agents. The
@@ -166,9 +198,12 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
   'python3 ~/.local/share/homecompute-openbot/current/configure-openbot-hermes.py'
 ```
 
-This configures inference only. It does not import the separate
-`hermes-personal-v23` owner's memories, skills or HomeCompute tools into
-OpenBot.
+The helper also disables Hermes' passive startup update check. Git 2.43 in the
+OpenBot image can otherwise lazy-fetch the partial Hermes checkout during its
+ACP startup probe, which exceeds OpenBot's 10-second provider check. Explicit
+`hermes update --check` and `hermes update` commands remain available. This does
+not import the separate `hermes-personal-v23` owner's memories, skills or
+HomeCompute tools into OpenBot.
 
 OpenBot is licensed under PolyForm Noncommercial 1.0.0. This deployment is for
 personal, noncommercial use. Commercial use requires a separate license.

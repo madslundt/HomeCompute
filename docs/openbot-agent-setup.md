@@ -17,16 +17,23 @@ roster import was verified. Apply and reconcile the manifest through
 - Omit a provider API key for this LAN endpoint. The Caddy gateway injects its
   restricted network-inference key. Keep TLS verification enabled and ensure
   the OpenBot runtime trusts Home Core's private Caddy CA.
-- New Home AI agents use **Home AI (local)** / `automation-moe` at **Medium**.
-- The OpenBot effort selector only offers Low, Medium, and High. The live
-  `automation-moe` route accepts Low, Medium, and `xhigh`; sending High fails
-  with `Unexpected reasoning effort high`. Use Medium for local agents until
-  OpenBot can select `xhigh` directly or a reviewed compatibility layer is
-  implemented. The model's default when effort is omitted is `xhigh`.
+- Every local `automation-moe` assignment uses OpenBot's **Hermes** provider
+  with the `custom` / `automation-moe` model and **Extra high** effort. The
+  Hermes provider exposes Extra high and maps it to the local route's `xhigh`;
+  the standard Custom provider only exposes Low, Medium, and High. The local
+  endpoint defaults to `xhigh` when effort is omitted and rejects High. The
+  Engineer's synthetic route check returned the expected response at Extra
+  high. The UI confirms each profile assignment; it does not independently
+  prove the request payload received by the inference server.
 - **Researcher** is the designated ChatGPT specialist (`GPT-6.1-Sol`, High)
   for complex or broad public research. Keep private household, personal, and
   work material out of its prompts unless the owner explicitly authorizes that
   specific disclosure.
+- **Lead Engineer** is the ChatGPT `GPT-6-Luna` / High technical planner and
+  reviewer for public or explicitly cleared work. It may critique local plans
+  and patches, but receives no private project or household inputs by default.
+  The live agent was created in OpenBot on 2026-11-12 and its server ID is
+  recorded in `config/openbot-agent-roster.json`.
 - The server-level skill learning policy is **Ask first**. Agent backup models
   also ask before switching when a limit is reached before a response starts;
   OpenBot may continue an in-progress turn on the first ordered backup after a
@@ -36,15 +43,16 @@ roster import was verified. Apply and reconcile the manifest through
 
 ## Role selection
 
-The OpenBot roster has seven roles: **Atlas** coordinates general work,
-**Builder** handles HomeCompute and code, **Home Planner** handles household
-projects, maintenance and energy, **Researcher** handles complex public research,
-**Designer** shapes product experiences, **QA** performs independent acceptance
-review, and **Hermes (OpenBot Pilot)** remains the existing embedded Hermes trial.
+The OpenBot roster has eight roles: **Atlas** coordinates work, **Lead
+Engineer** handles technical direction and review, **Engineer** implements and
+debugs, **Home Planner** handles household projects, maintenance and energy,
+**Researcher** handles public research, **Designer** shapes product experiences,
+**QA** performs independent acceptance review, and **Hermes (OpenBot Pilot)**
+remains the existing embedded Hermes trial.
 
 Use the existing separate **Hermes owner** agent for day-to-day Aula, household
 and Home Assistant questions. It runs in `hermes-personal-v23` with the local
-`automation-moe` model at Medium, the `day-plan` and `homecompute-household`
+`automation-moe` model at xhigh, the `day-plan` and `homecompute-household`
 skills, and its own `hermes-owner` HomeCompute MCP credential. Its verified
 tool surface includes Aula reads, calendar and task tools, Home Assistant status
 and bounded proposals; Home Assistant execution still uses its separate review
@@ -65,8 +73,9 @@ data, tools and histories.
 Route personal history, Aula, Calendar, Daythread follow-through, live Home
 Assistant reads and reminders to
 the private Hermes owner lane. Use Home Planner only with approved extracts or
-public information. Atlas scopes engineering work; Builder handles one
-assigned implementation at a time. This includes HomeCompute, Daythread and
+public information. Atlas scopes work; Lead Engineer shapes technical plans;
+Engineer handles one assigned implementation at a time. This includes
+HomeCompute, Daythread and
 ChessMate code only after the execution boundary is qualified. Researcher gets
 public questions and cleared material only. Keep employer and commercial
 project work in an approved alternative while OpenBot's noncommercial license
@@ -98,6 +107,24 @@ future deliberate assignment.
 
 ## Access policy
 
+The 2026-11-12 Brave UI readback initially found Builder and Researcher on
+**Full access** with Computer Use and Local scripts on. Builder was renamed
+**Engineer** with its existing server ID retained; it is now **Ask first**,
+with Computer Use and Local scripts off. It now uses the Hermes provider at
+Extra high. Researcher remains on GPT-6.1-Sol / High and is now **Ask first**,
+with Computer Use and Local scripts off and profile instructions limiting it
+to public or explicitly cleared information. Lead Engineer is on GPT-6-Luna /
+High with **Workspace only** access, Computer Use and Local scripts off, and
+public/cleared-only instructions. OpenBot's Workspace only description still
+allows reads and network access, so effective isolation is not established by
+that setting. Do not send private material to Researcher or Lead Engineer. A
+cloud model receives prompts and files sent to its agent.
+
+Atlas, Home Planner, Designer, and QA were also assigned the OpenBot Hermes
+provider with local `automation-moe` / Extra high. The Hermes provider uses the
+configured local Home AI endpoint. Researcher and Lead Engineer remain the two
+cloud model assignments.
+
 The 2026-11-10 database/UI audit found broad access on the original five
 agents. In a subsequent UI reconciliation, all seven agents were set to
 **Ask first**, with Computer Use and Local scripts disabled. The profile pages
@@ -106,16 +133,23 @@ use, but still grants full computer access from the workspace and shared
 folder; the profiles also show **All files**. It is an approval mode, not a
 filesystem isolation boundary.
 
-The four regular engineering agents use OpenCode on the Linux server. OpenBot's
-documented Workspace only enforcement is not supported for OpenCode on Linux;
-its provider-specific access control fails closed on hosts without confinement
-support. Keep all OpenBot tasks to public or synthetic material until an
-isolated, tested execution boundary is available. Use native Codex or another
-approved isolated developer lane for private project files. A role prompt or
-separate workspace folder does not enforce isolation. See the [upstream
+If an agent uses the OpenCode provider on the Linux server, OpenBot's documented
+Workspace only enforcement is not supported there; its provider-specific
+access control fails closed on hosts without confinement support. A role prompt
+or separate workspace folder does not enforce isolation. See the [upstream
 access-mode limitation](https://github.com/nightly-labs/openbot/issues/715).
 
 ## Current live evidence
+
+On 2026-11-12, Brave showed OpenBot connected to `home-core`. Researcher uses
+ChatGPT / `GPT-6.1-Sol` / High, and Lead Engineer uses ChatGPT / `GPT-6-Luna` /
+High. Atlas, Engineer, Home Planner, Designer, QA, and Hermes (OpenBot Pilot)
+use the Hermes provider with custom `automation-moe` at Extra high. These are
+UI assignments, not independent request-log evidence. A synthetic Engineer
+prompt returned correctly through the Extra high local route.
+
+The following assignment table is a historical 2026-11-10 snapshot, not the
+current target roster:
 
 On 2026-11-10, the guest status command reported `home-core` online on OpenBot
 **0.66.0**. The first database audit found five agents; Designer and QA were

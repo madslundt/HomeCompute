@@ -53,14 +53,57 @@ synthetic refused, non-responsive, error, and streaming upstreams before
 promoting the generated config. Model generation does not create, broaden, or
 revoke any virtual key.
 
-The generated model list assigns explicit zero upstream cost to local text,
-embedding, transcription, speech, and video models. LiteLLM's Usage view can
-therefore account for every request without mistaking local inference for an
-API bill. This is provider spend, not electricity, hardware amortization, or a
-household charge.
+The generated model list assigns explicit zero cost to local models unless a
+route has a configured rate card. `automation-moe` uses the owner-supplied rates
+in `config/capability-routes.json`: $0.15/M input, $0.47/M output, $0.016/M
+cache reads, and $0.20/M cache creation (5-minute cache). The cache-read rates
+shown for general and 5-minute reads are both $0.016/M; LiteLLM uses its single
+cache-read rate field for both. Usage reports this configured attribution; it
+is not a measure of electricity, hardware amortization, or actual provider spend.
 Use LiteLLM Admin at `/ui/` → Usage for spend by model and virtual key. The
 separately hosted token-count dashboard and refresh timer are retired; the
 metadata privacy trigger remains in place.
+
+### ChatGPT subscription routes
+
+The model list exposes `chatgpt-sol-latest`, `chatgpt-terra-latest`, and
+`chatgpt-luna-latest`. They currently route to `chatgpt/gpt-6.1-sol`,
+`chatgpt/gpt-6.1-terra`, and `chatgpt/gpt-6-luna`. These are HomeCompute aliases;
+review the tracked model registry when updating their upstream targets.
+LiteLLM's ChatGPT provider needs a gateway-owned subscription login. One OAuth
+account is shared by every virtual key allowed to call these aliases; LiteLLM
+does not select a different ChatGPT account per key.
+
+Do not use **Models & Endpoints → LLM Credentials → Add Credential** for this
+login. That form saves provider credential values; the ChatGPT subscription
+login is a device-flow OAuth file. After deploying the Compose mount and
+directory, sign in from an interactive shell on `home-core`:
+
+```bash
+sudo docker exec -it --user 101:101 homecompute-control-plane-litellm-1 \
+  python3 -c 'from litellm.llms.chatgpt.authenticator import Authenticator; Authenticator().get_access_token()'
+```
+
+Complete the displayed device-code flow in your browser. Do not paste the code
+or tokens into chat, shell history, or Git. LiteLLM writes the refreshable
+credential to `/srv/state/control-plane/chatgpt-auth/auth.json`, mounted at
+`/run/homecompute/chatgpt` and owned by container UID 101. The file must remain
+writable because LiteLLM rotates refresh tokens in place. After sign-in, restart
+LiteLLM so the configured deployments initialize with the credential:
+
+```bash
+sudo docker compose --env-file /etc/homecompute/control-plane.env \
+  -f /srv/homecompute/current/deploy/control-plane/compose.yaml restart litellm
+```
+
+Verify only file metadata and a successful synthetic request; never print the
+JSON contents. Keep the directory private and include it in the protected
+backup/restore plan for `/srv/state/control-plane`.
+
+Give each client a separate virtual key restricted to only the aliases it needs,
+with no MCP grants unless separately approved. Subscription requests have no
+per-token API charge in LiteLLM; use request/token rate limits instead of a
+dollar budget. There is no automatic API-key fallback.
 
 ## Central MCP gateway
 
@@ -83,28 +126,24 @@ LiteLLM's Admin UI manages MCP access on this private host. The deployment marks
 existing unscoped virtual keys `no-mcp-servers` before Caddy exposes the route;
 programmatically generated service keys use the same deny sentinel. Give each
 harness a separate virtual key and assign `all-harness-mcps` only to harnesses
-that are intended to access the full catalog. Keep model-only service keys
-denied. Servers are configured with
+intended to access the full catalog. Keep model-only service keys denied.
+Servers are configured with
 `allow_all_keys: false`; `n8n-owner` grants the reviewed instance catalog,
 while `docs-public` grants only Context7. Each HomeCompute relay alias has a
 distinct access group, and its client must present that principal's existing
-bearer. OpenBot connections are server-wide, so use a dedicated virtual key
-for the MCP catalog. The `openbot-mcp` key is restricted to the local
-`automation-moe` model and the `all-harness-mcps` group, which grants every MCP
-server configured in this catalog. The Android alias remains explicitly
-allowlisted to
-five read tools and five bounded UI interaction tools; the full catalog group
-does not change that tool allowlist. For all
-other keys, select No MCP Servers unless that harness is intended to receive
-the full catalog. The UI stores virtual
-keys and grants in the existing LiteLLM database; the release config remains
-the source for the server catalog.
-The release also idempotently assigns `all-harness-mcps` to the known
-`hermes-desktop-mcp`, `hermes-agent`, `openbot-agent`, and `opencode-home-core`
-keys when present. Provision future harness keys with the same group. This
-access includes the owner and workflow tools in LiteLLM's catalog.
-`AULA_MCP_WRITE=0` and `AULA_MCP_RAW=0` still keep Aula writes and arbitrary raw
-API calls disabled.
+bearer. OpenBot connections are server-wide, so its dedicated key grants the
+full catalog to all OpenBot agents. The `openbot-agent` key remains restricted
+to `automation-moe` for model requests and receives the `all-harness-mcps`
+group for MCP access. The Android alias remains allowlisted to five read tools
+and five bounded UI interaction tools; the full catalog group does not change
+that tool allowlist. For other keys, select No MCP Servers unless the harness
+is intended to receive the full catalog. The UI stores virtual keys and grants
+in the LiteLLM database; release config remains the source for the server catalog.
+The release idempotently grants the group to the known `hermes-desktop-mcp`,
+`hermes-agent`, `openbot-agent`, and `opencode-home-core` keys while preserving
+service-key deny sentinels. This includes household and workflow tools.
+`AULA_MCP_WRITE=0` and `AULA_MCP_RAW=0` keep Aula writes and arbitrary raw API
+calls disabled.
 For setup and the client migration plan, see [ADR-033](../../docs/adr/033-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
 

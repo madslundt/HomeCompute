@@ -210,6 +210,32 @@ class ReconciliationTests(unittest.TestCase):
             self.assertEqual(len({event["revision"] for event in sent}), 2)
             ledger.close()
 
+    def test_changed_object_in_new_coverage_window_uses_global_revision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = sources.RevisionLedger(str(Path(directory) / "revision.db"))
+            sent = []
+            first = sources.aula_snapshot([{"id": "event-1", "title": "Class"}],
+                observed_at="2026-11-06T09:00:00Z", coverage_key="week:2026-W45",
+                complete=False, family="calendar")
+            same_content = sources.aula_snapshot([{"id": "event-1", "title": "Class"}],
+                observed_at="2026-11-13T09:00:00Z", coverage_key="week:2026-W46",
+                complete=False, family="calendar")
+            changed = sources.aula_snapshot([{"id": "event-1", "title": "Updated class"}],
+                observed_at="2026-11-13T10:00:00Z", coverage_key="week:2026-W46",
+                complete=False, family="calendar")
+            deleted = sources.aula_snapshot([], observed_at="2026-11-13T11:00:00Z",
+                coverage_key="week:2026-W46", complete=True, family="calendar")
+            ledger.apply(first, sent.append)
+            self.assertEqual(ledger.apply(same_content, sent.append),
+                             {"upserted": 0, "unchanged": 1, "deleted": 0})
+            ledger.apply(changed, sent.append)
+            ledger.apply(deleted, sent.append)
+            self.assertEqual([event["revision"] for event in sent], [1, 2, 3])
+            self.assertEqual([event["payload"].get("title") for event in sent],
+                             ["Class", "Updated class", None])
+            self.assertEqual(sent[-1]["operation"], "delete")
+            ledger.close()
+
     def test_uncertain_ingest_receipt_replays_identical_event_before_advancing_revision(self):
         with tempfile.TemporaryDirectory() as directory:
             ledger = sources.RevisionLedger(str(Path(directory) / "revision.db"))
