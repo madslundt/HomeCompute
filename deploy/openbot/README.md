@@ -5,8 +5,9 @@ OpenBot is installed as a single pinned container in the Ubuntu agents VM on
 OpenBot image publishes no ports and has no bundled web client; after sign-in,
 use the desktop/iPhone app or `https://openbot.run/app`.
 
-The upstream `v0.69.0` Linux/amd64 image is pinned by manifest-list digest in
-`compose.yaml`. Its upstream seccomp profile is tracked here and was checked
+The container tracks OpenBot's mutable `latest` image tag. The systemd unit
+pulls it before each service start, and the health check verifies that the
+running container uses the pulled image. Its upstream seccomp profile is tracked here and was checked
 against SHA-256 `665289e6a1c41045f55166d0b01993c929f71df78e3a3b264f3252bb8e0b3d9e`.
 The guest installer verifies the Ubuntu 24.04 `docker-compose-v2` package
 version and `.deb` SHA-256 from `config/openbot-install.json` before installing
