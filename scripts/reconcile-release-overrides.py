@@ -22,6 +22,7 @@ TARGETS = {
     'homecompute-automation-n8n-1': ('config/automation.env.example', 'N8N_IMAGE'),
     'homecompute-homepage-homepage-1': ('config/homepage.env.example', 'HOMEPAGE_IMAGE'),
     'homecompute-mattermost-mattermost-1': ('config/mattermost.env.example', 'MATTERMOST_IMAGE'),
+    'home-core-piper-tts': ('config/piper-tts.env.example', 'PIPER_IMAGE'),
 }
 
 
