@@ -10,6 +10,10 @@ observed immutable digests. A completed maintenance transition later moved
 Homepage from 2.7.0 to 2.8.0 at
 `sha256:019d8f063a7299e7c1c51ee4a70b692291809af3244894fbec2c2ac7d1f71b18`;
 the live container is healthy at that digest, and the source pin now records it.
+Piper was updated through the bounded Docker-maintenance lifecycle to 2.5.3 at
+`sha256:0f4598a8f8a984275f67c066d7cd96d26ef2601947d0372b8f32c82ae18fb7cd`;
+its active marker remains until the immutable `PIPER_IMAGE` source pin is
+published and the guarded reconciliation below archives the guard.
 Mattermost was then pinned at 11.11.3; its selected source pin is now 11.11.4 at
 `sha256:80314a833cfc8113bc0be508113cf7a8d91ad1a394a7a74866ac728b29d84762`.
 The private Docker-maintenance receipt `6adcae0da0de4e5889975e0f0bf86c55`
@@ -22,8 +26,8 @@ Spark's running 9 GiB KV-cache setting is already captured in the published
 registry, roster, setup validator and tests; keep its local patch as evidence
 until its older source checkout is safely updated.
 
-`scripts/reconcile-release-overrides.py` is an operator-only lifecycle for these
-three services. It requires a clean, root-owned exact release on `origin/master`
+`scripts/reconcile-release-overrides.py` is an operator-only lifecycle for
+Piper, n8n, Homepage and Mattermost. It requires a clean, root-owned exact release on `origin/master`
 at `/srv/homecompute/releases/FULL_SHA` and runs only as root on home-core.
 It has no agent or network-facing entry point. The default only reads and plans:
 

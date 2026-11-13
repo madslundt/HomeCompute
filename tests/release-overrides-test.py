@@ -56,8 +56,8 @@ class ReconciliationTests(unittest.TestCase):
         self.marker('a' * 32, 'sha256:' + 'a' * 64, 'sha256:' + '0' * 64)
         self.marker('b' * 32, current, 'sha256:' + 'a' * 64)
 
-    def marker(self, identity, image, old, container='homecompute-automation-n8n-1'):
-        candidate = 'example.invalid/n8n:1.2.3@' + image
+    def marker(self, identity, image, old, container='homecompute-automation-n8n-1', candidate=None):
+        candidate = candidate or 'example.invalid/n8n:1.2.3@' + image
         row = {'id': identity, 'host': 'home-core', 'status': 'complete', 'container': container,
                'candidate': candidate, 'candidate_image': image, 'old': {'Image': old}}
         (self.docker / (identity + '.json')).write_text(json.dumps(row))
@@ -84,6 +84,24 @@ class ReconciliationTests(unittest.TestCase):
             self.assertFalse((self.docker / (name + '.active')).exists())
         self.assertEqual(len(list(Path(result['receipt']).parent.rglob('*.active'))), 2)
         self.assertEqual(self.apply(self.plan()['plan_sha256'])['archived'], 0)
+
+    def test_healthy_piper_update_reconciles_its_immutable_source_pin(self):
+        name = 'home-core-piper-tts'
+        prior = self.rows[name]['Image']
+        image = 'sha256:' + '5' * 64
+        candidate = 'docker.io/rhasspy/wyoming-piper:2.5.3@' + image
+        (self.source / 'config/piper-tts.env.example').write_text('PIPER_IMAGE=' + candidate + '\n')
+        self.images[candidate] = {'Id': image}
+        self.rows[name]['Image'] = image
+        self.rows[name]['Config']['Image'] = candidate
+        self.marker('c' * 32, image, prior, name, candidate)
+
+        reviewed = self.plan()
+        self.assertEqual(reviewed['containers'][name]['source_image'], candidate)
+        result = self.apply(reviewed['plan_sha256'])
+        self.assertEqual(result['archived'], 4)
+        self.assertFalse((self.docker / ('c' * 32 + '.active')).exists())
+        self.assertTrue((self.docker / ('c' * 32 + '.json')).exists())
 
     def test_stale_review_preserves_guards(self):
         plan = self.plan()
