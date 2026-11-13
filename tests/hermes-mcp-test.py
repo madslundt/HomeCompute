@@ -97,6 +97,15 @@ class SetupTests(unittest.TestCase):
             plan = setup.plan(self.module, 'a' * 40)
         self.assertEqual(plan['files'][name]['before'], setup.digest(legacy))
 
+    def test_receipt_verified_android_mcp_preimages_are_accepted(self):
+        expected = {
+            'scripts/openclaw_capabilities.py': 'fd60bb7cd50333804dd7d3611387a37a7de939605d2ad1bf2f85f676d47b633a',
+            'deploy/codex-worker/mcp_adapter.py': '1f6916ffb67e8bc3994388df41cef6298093126b93490f69aa1cabadccfc4ad0',
+        }
+        for name, digest in expected.items():
+            with self.subTest(name=name):
+                self.assertIn(digest, setup.COMPATIBLE_PREIMAGES.get(name, set()))
+
     def test_applied_installation_can_be_upgraded_with_receipt_and_credentials_preserved(self):
         plan, digest = self.reviewed()
         setup.apply(self.module, plan, digest)

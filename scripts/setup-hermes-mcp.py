@@ -38,6 +38,15 @@ COMPATIBLE_PREIMAGES = {
     'scripts/setup-native-capabilities.py': {
         'f71e3c34d954fdc686d22bda8bc9b678d4b96d1ea455e3560ca574fd595b4159',
     },
+    # Exact adapter sources recorded in the applied receipt for published
+    # revision 67ae681be1a3491d115f996e86b6f84a5c431fa1. Accept them only as
+    # preimages so the guarded upgrade can replace them with the selected source.
+    'scripts/openclaw_capabilities.py': {
+        'fd60bb7cd50333804dd7d3611387a37a7de939605d2ad1bf2f85f676d47b633a',
+    },
+    'deploy/codex-worker/mcp_adapter.py': {
+        '1f6916ffb67e8bc3994388df41cef6298093126b93490f69aa1cabadccfc4ad0',
+    },
 }
 
 
