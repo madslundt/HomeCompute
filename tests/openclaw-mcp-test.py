@@ -30,6 +30,47 @@ class NoPublisher:
 
 
 class McpTests(unittest.TestCase):
+    def test_android_screenshot_uses_bounded_image_content_instead_of_json_text(self):
+        from types import SimpleNamespace
+        import base64
+
+        png = b"\x89PNG\r\n\x1a\n" + (b"synthetic-pixel-data" * 20000)
+        encoded = base64.b64encode(png).decode("ascii")
+        tool = {"name": "homecompute_android_screenshot",
+                "inputSchema": {"type": "object", "properties": {}, "required": []}}
+        service = SimpleNamespace(tools=[tool], validate=lambda _name, args: args,
+            request=lambda _name, _args: {"device_id": "android-tablet", "available": True,
+                "data": {"status": "success", "result": encoded}})
+        ledger = SimpleNamespace(services=service, read_only_only=True)
+
+        result = call_tool({"name": tool["name"], "arguments": {}}, ledger)
+
+        self.assertFalse(result["isError"])
+        self.assertEqual(result["content"], [{"type": "image", "data": encoded, "mimeType": "image/png"}])
+        self.assertGreater(len(json.dumps(result).encode()), MAX_RESPONSE_BYTES)
+
+    def test_android_screenshot_rejects_oversized_and_non_png_payloads(self):
+        from types import SimpleNamespace
+        import base64
+        from mcp_adapter import MAX_ANDROID_SCREENSHOT_BYTES
+
+        tool = {"name": "homecompute_android_screenshot",
+                "inputSchema": {"type": "object", "properties": {}, "required": []}}
+        for payload in (b"\x89PNG\r\n\x1a\n" + (b"x" * MAX_ANDROID_SCREENSHOT_BYTES),
+                        b"not a png"):
+            with self.subTest(payload_size=len(payload)):
+                encoded = base64.b64encode(payload).decode("ascii")
+                service = SimpleNamespace(tools=[tool], validate=lambda _name, args: args,
+                    request=lambda _name, _args: {"device_id": "android-tablet", "available": True,
+                        "data": {"status": "success", "result": encoded}})
+                ledger = SimpleNamespace(services=service, read_only_only=True)
+
+                result = call_tool({"name": tool["name"], "arguments": {}}, ledger)
+
+                self.assertTrue(result["isError"])
+                self.assertEqual(result["content"][0]["text"],
+                    "Service read unavailable; retry later or ask the operator to check the integration.")
+
     def test_bounded_tool_result_keeps_large_unicode_attachment_text_without_ascii_expansion(self):
         text = 'ø' * 50000
         result = bounded_result({'text': text})

@@ -6,6 +6,8 @@ Transport: MCP 2025-06-18 Streamable HTTP, JSON responses, no receive stream.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import math
 import re
@@ -14,6 +16,8 @@ from policy import validate_proposal
 
 MAX_BODY_BYTES = 131072
 MAX_RESPONSE_BYTES = 262144
+MAX_ANDROID_SCREENSHOT_BYTES = 1_500_000
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 VERSIONS = {"2025-03-26", "2025-06-18"}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", re.I)
 PROJECT = r"[a-z0-9][a-z0-9-]{0,63}"
@@ -195,6 +199,25 @@ def bounded_result(value: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def android_screenshot_result(value: dict[str, Any]) -> dict[str, Any]:
+    """Return Portal PNGs as bounded MCP image content, not oversized JSON text."""
+    if not isinstance(value, dict) or value.get("available") is not True:
+        return bounded_result(value)
+    portal = value.get("data")
+    if not isinstance(portal, dict) or portal.get("status") != "success":
+        return bounded_result(value)
+    encoded = portal.get("result")
+    if not isinstance(encoded, str) or len(encoded) > ((MAX_ANDROID_SCREENSHOT_BYTES + 2) // 3) * 4:
+        raise ValueError("Android screenshot payload is invalid or too large")
+    try:
+        image = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        raise ValueError("Android screenshot payload is invalid") from None
+    if len(image) > MAX_ANDROID_SCREENSHOT_BYTES or not image.startswith(PNG_SIGNATURE):
+        raise ValueError("Android screenshot payload is invalid or too large")
+    return {"content": [{"type": "image", "data": encoded, "mimeType": "image/png"}], "isError": False}
+
+
 def action_metadata(row: dict[str, Any]) -> dict[str, Any]:
     return {key: (value[:2048] if isinstance(value, str) else value)
             for key, value in row.items() if key in ACTION_PUBLIC
@@ -247,7 +270,10 @@ def call_tool(params: dict[str, Any], ledger: Tasks) -> dict[str, Any]:
         arguments = validate_arguments(params.get("arguments", {}), tool["inputSchema"])
     try:
         if service_tool:
-            return bounded_result(services.request(tool["name"], arguments))
+            value = services.request(tool["name"], arguments)
+            if tool["name"] == "homecompute_android_screenshot":
+                return android_screenshot_result(value)
+            return bounded_result(value)
         elif tool['name'] == 'homecompute_operations_search':
             return bounded_result(ledger.operations_search.search(arguments))
         elif tool["name"].startswith("homecompute_maintenance_"):

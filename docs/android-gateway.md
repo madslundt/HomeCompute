@@ -103,6 +103,9 @@ when the device or credential cannot be reached. Screenshots can contain
 private conversation content; prefer accessibility reads. Messenger UI
 layouts, notification previews, and message visibility depend on app settings
 and are not a reliable substitute for an official personal-messages API.
+Successful Portal PNG captures are returned as MCP image content with a
+1.5 MB decoded-size limit. They use a screenshot-specific image response path,
+separate from the smaller JSON-text budget for ordinary tool results.
 
 ## Tablet completion checklist
 
