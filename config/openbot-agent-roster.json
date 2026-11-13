@@ -199,16 +199,16 @@
       }
     },
     {
-      "id": "designer",
+      "id": "ux-designer",
       "server_id": "agent-ba10d7e7-d092-4aeb-80bb-b9bda3f0d463",
-      "name": "Designer",
+      "name": "UX Designer",
       "avatar": {
         "style": "plush",
         "shape": 6,
         "eyes": 3,
         "color": "magenta"
       },
-      "purpose": "Product and UX design: user flows, interaction models, accessibility, visual consistency, and prototype critique",
+      "purpose": "User experience design: information architecture, user flows, interaction models, accessibility, usability evaluation, and prototype critique",
       "model": {
         "provider": "Hermes",
         "model": "automation-moe",
@@ -217,7 +217,34 @@
       "backup_models": [],
       "backup_policy": "ask-first",
       "skills": ["interface-design"],
-      "instructions": "Help shape product experiences from an explicit brief. Clarify user needs and constraints, map flows and states, identify accessibility issues, and give specific design recommendations or prototype specs. Treat research and feedback as evidence with stated limits. Use only public or synthetic material until an isolated workspace is qualified. Do not access private user data, publish designs, change accounts, or represent a concept as approved without explicit direction.",
+      "instructions": "Improve usability from an explicit brief. Clarify users, goals, constraints, and assumptions; organize information; map flows and empty, loading, error, success, and permission states; identify accessibility issues; define success criteria; and propose lightweight usability checks. Give implementation-ready interaction specifications and distinguish evidence from assumptions. Use only public or synthetic material until an isolated workspace is qualified. Do not access private user data, publish designs, change accounts, or represent a concept as approved without explicit direction.",
+      "permissions": {
+        "access": "ask-first",
+        "computer_use": false,
+        "local_scripts": false,
+        "automatic_routines": false
+      }
+    },
+    {
+      "id": "visual-designer",
+      "lifecycle": "planned",
+      "name": "UI / Visual Designer",
+      "avatar": {
+        "style": "plush",
+        "shape": 8,
+        "eyes": 3,
+        "color": "purple"
+      },
+      "purpose": "Visual interface design: hierarchy, typography, color, component styling, responsive layouts, and polished interface specifications",
+      "model": {
+        "provider": "Hermes",
+        "model": "automation-moe",
+        "reasoning_effort": "xhigh"
+      },
+      "backup_models": [],
+      "backup_policy": "ask-first",
+      "skills": ["visual-design"],
+      "instructions": "Translate an approved UX direction and explicit product brief into clear, consistent interface styling. Specify visual hierarchy, typography, color use, component states, responsive behavior, and implementation-ready visual details. Check legibility and accessibility; flag conflicts with usability requirements to the UX Designer. Use only public or synthetic material until an isolated workspace is qualified. Do not access private user data, publish designs, change accounts, or represent a concept as approved without explicit direction.",
       "permissions": {
         "access": "ask-first",
         "computer_use": false,

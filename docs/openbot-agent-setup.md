@@ -43,12 +43,15 @@ roster import was verified. Apply and reconcile the manifest through
 
 ## Role selection
 
-The OpenBot roster has eight roles: **Atlas** coordinates work, **Lead
+The OpenBot roster has nine roles: **Atlas** coordinates work, **Lead
 Engineer** handles technical direction and review, **Engineer** implements and
 debugs, **Home Planner** handles household projects, maintenance and energy,
-**Researcher** handles public research, **Designer** shapes product experiences,
-**QA** performs independent acceptance review, and **Hermes (OpenBot Pilot)**
-remains the existing embedded Hermes trial.
+**Researcher** handles public research, **UX Designer** shapes usable flows,
+information structure, accessibility, and usability checks, **UI / Visual
+Designer** develops interface hierarchy, typography, color, component styling,
+and responsive visual specifications, **QA** performs independent acceptance
+review, and **Hermes (OpenBot Pilot)** remains the existing embedded Hermes
+trial.
 
 Use the existing separate **Hermes owner** agent for day-to-day Aula, household
 and Home Assistant questions. It runs in `hermes-personal-v23` with the local
@@ -83,17 +86,19 @@ and access boundary do not fit those projects. Do not create an OpenBot agent
 for every repository; use task-specific context and the owning repository's
 guidance.
 
-For independent product work, Atlas already covers product coordination:
-intake, scope, decisions, task routing and acceptance. **Designer** handles
-user flows, interaction design, accessibility and prototype critique; **QA**
-handles independent acceptance review, edge cases and reproducible bug reports.
+For independent product work, Atlas covers product coordination: intake, scope,
+decisions, task routing and acceptance. **UX Designer** handles user needs,
+information architecture, flows, interaction design, accessibility, usability
+checks, and prototype critique. **UI / Visual Designer** turns an approved UX
+direction into polished and implementation-ready interface styling. QA handles
+independent acceptance review, edge cases and reproducible bug reports.
 Researcher can provide public market and competitor research; keep private user
-research in an approved isolated lane. Both agents were created in OpenBot on
-2026-11-10 at the owner's direction. They use the local Home AI route and add
-no provider, tool, schedule or action integration. Their stable server IDs are
-recorded in the roster. Their profiles now use Ask first, with Computer Use and
-Local scripts disabled; keep their tasks to public or synthetic material until
-isolation is qualified.
+research in an approved isolated lane. The UX Designer entry retains the
+existing Designer server ID. UI / Visual Designer is a planned addition with no
+server ID yet; create it through the supported OpenBot UI and record its ID
+before treating it as active. Both roles use the local Home AI route and add no
+provider, tool, schedule or action integration. Keep their tasks to public or
+synthetic material until isolation is qualified.
 
 OpenBot's Hermes provider runs its own Hermes CLI inside the
 `homecompute-openbot` container. The CLI observed there is v0.22.7. Configure
@@ -150,6 +155,22 @@ prompt returned correctly through the Extra high local route.
 
 The following assignment table is a historical 2026-11-10 snapshot, not the
 current target roster:
+
+The source target now splits the existing Designer role into UX Designer and
+UI / Visual Designer. This is a desired-state change only: the live OpenBot
+profile still has the historical Designer name until it is reconciled through
+the UI. The UX Designer keeps the existing stable ID and history; the planned
+UI / Visual Designer has no server ID until created.
+
+On 2026-11-13, `setup-openbot-guest.sh status` found the `latest` container
+running OpenBot 0.69.0 with no published ports. A Brave UI readback found the
+existing Designer on local `automation-moe` / Extra high with **Full access**,
+Computer Use and Local scripts enabled, and **All files** selected. It had no
+saved memories, no assigned skills, and no configured routines; it did have
+19 KB in Files and one table, which must be preserved. This differs from the
+roster's Ask first policy with Computer Use and Local scripts off. Record this
+as pre-change evidence; update the profile to the source settings only after a
+fresh application backup is confirmed.
 
 On 2026-11-10, the guest status command reported `home-core` online on OpenBot
 **0.66.0**. The first database audit found five agents; Designer and QA were
