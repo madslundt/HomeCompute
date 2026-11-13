@@ -801,7 +801,7 @@ podwave_json="$temporary_root/podwave.json"
 docker compose -f "$REPO_ROOT/deploy/podwave/compose.yaml" config --format json >"$podwave_json"
 jq -e '
   (.services | keys == ["podwave"]) and
-  (.services.podwave.image == "homecompute/podwave:60a9826e0c9aad6597eb1425966950e9aba1469b") and
+  (.services.podwave.image == "homecompute/podwave:fcd23dcbebf6bce5d48f68b3b79ce7e3ea469fad") and
   (.services.podwave.ports == null and .services.podwave.read_only == true) and
   (.services.podwave.cap_drop == ["ALL"] and (.services.podwave.privileged // false) == false) and
   ([.services.podwave.volumes[] | select(.target == "/data" and .source == "/srv/state/podwave" and .read_only != true)] | length == 1) and

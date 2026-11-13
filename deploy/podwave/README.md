@@ -7,7 +7,7 @@ is available only through the existing private LAN/Tailscale Caddy listeners;
 there is no public port or Tailscale Funnel.
 
 The app image is built from the PodWave source pinned to commit
-`60a9826e0c9aad6597eb1425966950e9aba1469b`. Its uv/Python base is pinned by
+`fcd23dcbebf6bce5d48f68b3b79ce7e3ea469fad`. Its uv/Python base is pinned by
 digest in the tracked Dockerfile. The service has no host port, no Docker socket,
 no capabilities, a read-only root filesystem, and a dedicated bridge shared
 only with Caddy. Its separate default bridge provides outbound provider access.
