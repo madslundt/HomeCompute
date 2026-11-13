@@ -50,8 +50,9 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
             self.assertIn(f"access_groups: [{group}, all-harness-mcps]", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
         self.assertIn("url: https://mcp.dinero.dk", CONFIG)
+        self.assertIn("url: http://banknorwegian-mcp:8090/mcp", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
-        self.assertEqual(len(server_names), 8)
+        self.assertEqual(len(server_names), 9)
         self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
         self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
         self.assertIn("auth_value: os.environ/N8N_MCP_TOKEN", CONFIG)
@@ -65,6 +66,9 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("auth_type: oauth2", dinero)
         self.assertIn("oauth2_flow: authorization_code", dinero)
         self.assertIn("issuer: https://dinero.oauth.connect.visma.com", dinero)
+        bank = CONFIG.split("  banknorwegian:", 1)[1]
+        self.assertIn("access_groups: [banknorwegian-read]", bank)
+        self.assertNotIn("all-harness-mcps", bank)
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)
@@ -99,6 +103,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("172.28.200.3/32", (ROOT / "scripts/setup-native-capabilities.py").read_text())
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878", NETWORK)
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000", NETWORK)
+        self.assertIn("-s 172.28.212.2/32 -d 172.28.212.5/32 -p tcp --dport 8090", NETWORK)
+        self.assertIn("-o br-hc-n8n -d 172.28.201.5/32 -p tcp --dport 8090", NETWORK)
         self.assertIn("-j REJECT", NETWORK)
 
     def test_existing_unscoped_keys_are_denied_before_caddy_starts(self) -> None:

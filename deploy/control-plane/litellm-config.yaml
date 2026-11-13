@@ -279,3 +279,9 @@ mcp_servers:
     description: Dinero accounting (beta); owner-consented Visma Connect sign-in, can post transactions
     allow_all_keys: false
     access_groups: [dinero-owner]
+  banknorwegian:
+    url: http://banknorwegian-mcp:8090/mcp
+    transport: http
+    description: Read-only Bank Norwegian Open Banking accounts, balances, and transactions under one explicit 90-day PSD2 consent; payment initiation is not exposed
+    allow_all_keys: false
+    access_groups: [banknorwegian-read]

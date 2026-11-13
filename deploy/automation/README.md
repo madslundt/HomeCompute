@@ -376,6 +376,61 @@ Stop Aula before making a consistent encrypted backup or restoring the
 directory. Never put token bundles or CLI output containing personal data in
 Git. Off-host backups remain deferred under the existing owner decision.
 
+## Bank Norwegian MCP
+
+`banknorwegian-mcp` is a repository-owned, stdlib-only Python MCP server for the
+Bank Norwegian Berlin Group PSD2 Open Banking API
+([developer.banknorwegian.com](https://developer.banknorwegian.com/)). It is
+read-only by design: accounts, balances, and transactions for one explicitly
+consented PSU, plus the consent lifecycle tools. Payment initiation endpoints
+are not implemented and the LiteLLM `banknorwegian-read` access group grants no
+write path.
+
+### Register the app and configure
+
+1. Register an AISP application in the Bank Norwegian developer portal. Note
+   the client ID and secret and register the redirect URI
+   `http://home-core:17880/callback` (LAN callback; pasting the redirected URL
+   into `banknorwegian_auth_complete` also works, e.g. if the portal requires
+   HTTPS and no public listener exists).
+2. Set the nonsecret `BN_*` values and the state root in
+   `/etc/homecompute/automation.env` (see `config/automation.env.example`). Put
+   `BN_CLIENT_SECRET` only in that root-only host file, never in Git.
+3. Save the Buypass PSD2 root CAs the distro trust store lacks to
+   `/srv/state/automation/banknorwegian-mcp/psd2-roots.pem` (`BN_CA_FILE`).
+4. `sandbox` is the default (`BN_SANDBOX=true`): sandbox data is fictitious,
+   signature and certificate validation are skipped, no eIDAS certificates are
+   needed. Production needs `BN_SANDBOX=false` plus an eIDAS QWAC client
+   certificate (`BN_QWAC_CERT_FILE`/`BN_QWAC_KEY_FILE`, mutual TLS) and a QCSeal
+   signing key (`BN_QCESEAL_KEY_FILE`/`BN_QCESEAL_CERT_FILE`, STET request
+   signing) promoted from the portal; the server signs automatically when they
+   are present. Promoting the app in the portal is the account-owning step.
+
+### First consent
+
+OpenLiteLLM keys granted the `banknorwegian-read` group call
+`banknorwegian_status`, then `banknorwegian_auth_start`, which returns the
+authorization URL. The PSU opens it, signs in with BankID, and approves the
+global accounts consent (valid until `BN_CONSENT_DAYS`, PSD2 maximum 90 days,
+refresh-token lifetime equal to the consent). The LAN callback completes the
+exchange automatically; otherwise pass the final redirected URL to
+`banknorwegian_auth_complete`. Tokens refresh silently afterwards;
+`banknorwegian_consent_revoke` deletes the consent and the local tokens.
+
+### Wiring
+
+The container listens on 8090 (`/mcp`, `/healthz`, `/callback`), is published
+on `127.0.0.1:17880` and home-core's LAN address `192.168.30.122:17880` (the
+LAN publication exists only so a phone/laptop browser can complete the BankID
+redirect), and is reachable from LiteLLM only at `172.28.212.5` on
+`mcp-backends`; the egress policy admits only LiteLLM to port 8090 and the
+service reaches the bank only via the migration network's HTTPS-only egress.
+State is `/srv/state/automation/banknorwegian-mcp/state.json`, mode 0600,
+containing the consent and tokens: treat it as a credential store and include
+it in owner backups; delete it to force re-authentication. Register the server
+once in the LiteLLM Admin UI catalog path of `litellm-config.yaml` (already
+present) and assign the `banknorwegian-read` group to the keys that need it.
+
 ## Local automation model
 
 n8n reaches the HomeCompute gateway at `https://ai.home.arpa/v1`. Production

@@ -115,6 +115,58 @@ services:
         max-size: 10m
         max-file: "3"
 
+  banknorwegian-mcp:
+    image: homecompute/banknorwegian-mcp:1.0.0
+    pull_policy: never
+    build:
+      context: .
+      dockerfile: banknorwegian.Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      TZ: Europe/Copenhagen
+      BN_STATE_FILE: /data/state.json
+      BN_SANDBOX: "${BN_SANDBOX:-true}"
+      BN_CLIENT_ID: "${BN_CLIENT_ID:?Set BN_CLIENT_ID on the host}"
+      BN_CLIENT_SECRET: "${BN_CLIENT_SECRET:?Set BN_CLIENT_SECRET on the host; never in Git}"
+      BN_REDIRECT_URI: "${BN_REDIRECT_URI:-http://home-core:17880/callback}"
+      BN_REGION: "${BN_REGION:-NO}"
+      BN_PSU_ID: "${BN_PSU_ID:-homecompute-owner}"
+      # Bank Norwegian serves the Buypass PSD2 root CAs that distros do not ship.
+      BN_CA_FILE: "${BN_CA_FILE:-/data/psd2-roots.pem}"
+      BANKNORWEGIAN_MCP_HOST: 0.0.0.0
+      BANKNORWEGIAN_MCP_PORT: "8090"
+    volumes:
+      - "${BANKNORWEGIAN_MCP_STATE_ROOT:?Set BANKNORWEGIAN_MCP_STATE_ROOT}:/data"
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m,uid=1000,gid=1000,mode=1770
+    ports:
+      - "127.0.0.1:17880:8090"
+      - "192.168.30.122:17880:8090"
+    networks:
+      migration:
+        ipv4_address: 172.28.201.5
+      mcp-backends:
+        ipv4_address: "${BANKNORWEGIAN_MCP_BACKENDS_IP:?Set BANKNORWEGIAN_MCP_BACKENDS_IP}"
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8090/healthz',timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+
 networks:
   migration:
     internal: false

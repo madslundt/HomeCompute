@@ -179,6 +179,7 @@ stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environmen
 "${stt[@]}" pull stt
 "${automation[@]}" build --no-cache aula-mcp
 "${automation[@]}" build --no-cache tilbudstrolden-mcp
+"${automation[@]}" build --no-cache banknorwegian-mcp
 if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" pull
 fi
