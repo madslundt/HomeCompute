@@ -42,6 +42,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("mcp_access_groups", harness_access)
         self.assertIn("'all-harness-mcps'", harness_access)
         self.assertIn("'no-mcp-servers'", harness_access)
+        self.assertIn("changed['mcp_servers'] = remaining", harness_access)
         self.assertNotIn("print(master", harness_access)
         for group in ("docs-public", "n8n-owner", "hermes-owner-tools",
                       "openclaw-agent-tools", "openbot-android-bounded-ui",
