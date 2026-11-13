@@ -162,6 +162,15 @@ profile still has the historical Designer name until it is reconciled through
 the UI. The UX Designer keeps the existing stable ID and history; the planned
 UI / Visual Designer has no server ID until created.
 
+On 2026-11-13, `setup-openbot-guest.sh status` found the `latest` container
+running OpenBot 0.69.0 with no published ports. A Brave UI readback found the
+existing Designer on local `automation-moe` / Extra high with **Full access**,
+Computer Use and Local scripts enabled, and **All files** selected. It had no
+saved memories, no assigned skills, and no configured routines. This differs
+from the roster's Ask first policy with Computer Use and Local scripts off.
+Record this as pre-change evidence; update the profile to the source settings
+only after a fresh application backup is confirmed.
+
 On 2026-11-10, the guest status command reported `home-core` online on OpenBot
 **0.66.0**. The first database audit found five agents; Designer and QA were
 subsequently added in the UI, bringing the roster to seven. A
