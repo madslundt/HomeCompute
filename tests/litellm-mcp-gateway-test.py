@@ -49,8 +49,9 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
                       "aula-read", "offers-read"):
             self.assertIn(f"access_groups: [{group}, all-harness-mcps]", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
+        self.assertIn("url: https://mcp.dinero.dk", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
-        self.assertEqual(len(server_names), 7)
+        self.assertEqual(len(server_names), 8)
         self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
         self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
         self.assertIn("auth_value: os.environ/N8N_MCP_TOKEN", CONFIG)
@@ -58,6 +59,12 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
     def test_server_registration_is_never_public_and_uses_named_access_groups(self) -> None:
         self.assertIn("allow_all_keys: false", CONFIG)
         self.assertEqual(CONFIG.count("all-harness-mcps]"), 7)
+        dinero = CONFIG.split("  dinero:", 1)[1]
+        self.assertIn("access_groups: [dinero-owner]", dinero)
+        self.assertNotIn("all-harness-mcps", dinero)
+        self.assertIn("auth_type: oauth2", dinero)
+        self.assertIn("oauth2_flow: authorization_code", dinero)
+        self.assertIn("issuer: https://dinero.oauth.connect.visma.com", dinero)
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)

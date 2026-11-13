@@ -266,3 +266,16 @@ mcp_servers:
     description: Read-only Danish retail offer search
     allow_all_keys: false
     access_groups: [offers-read, all-harness-mcps]
+  dinero:
+    url: https://mcp.dinero.dk
+    transport: http
+    auth_type: oauth2
+    oauth2_flow: authorization_code
+    issuer: https://dinero.oauth.connect.visma.com
+    authorization_url: https://dinero.oauth.connect.visma.com/connect/authorize
+    token_url: https://dinero.oauth.connect.visma.com/connect/token
+    registration_url: https://dinero.oauth.connect.visma.com/connect/register
+    scopes: ["dinero_mcp:invoke_tools", "offline_access"]
+    description: Dinero accounting (beta); owner-consented Visma Connect sign-in, can post transactions
+    allow_all_keys: false
+    access_groups: [dinero-owner]

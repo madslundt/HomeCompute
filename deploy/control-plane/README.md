@@ -109,8 +109,9 @@ dollar budget. There is no automatic API-key fallback.
 
 LiteLLM also owns the private MCP gateway on `https://mcp.home.arpa/mcp`. Keep
 server definitions in `litellm-config.yaml`. The catalog contains the local
-read-only Aula and TilbudsTrolden services, public Context7 documentation, and
-the n8n instance MCP with its reviewed 55-tool catalog. It also has three
+read-only Aula and TilbudsTrolden services, public Context7 documentation, the
+n8n instance MCP with its reviewed 55-tool catalog, and the hosted Dinero
+accounting MCP (beta). It also has three
 aliases for the private HomeCompute capability relay: Hermes owner, OpenClaw
 agent, and Android UI access. Those aliases keep the existing per-principal bearer credentials;
 clients send them as server-specific `x-mcp-<server-alias>-authorization`
@@ -144,6 +145,12 @@ The release idempotently grants the group to the known `hermes-desktop-mcp`,
 service-key deny sentinels. This includes household and workflow tools.
 `AULA_MCP_WRITE=0` and `AULA_MCP_RAW=0` keep Aula writes and arbitrary raw API
 calls disabled.
+Dinero is deliberately outside `all-harness-mcps`: it can post transactions.
+Grant `dinero-owner` only to owner-operated keys. Its upstream uses
+interactive OAuth (authorization code with PKCE and dynamic client
+registration at the Visma Connect issuer), so LiteLLM stores an
+owner-consented token per caller and the first caller for a granted key
+completes one browser sign-in before `tools/list` succeeds.
 For setup and the client migration plan, see [ADR-033](../../docs/adr/033-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
 
