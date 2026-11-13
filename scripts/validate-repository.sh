@@ -103,6 +103,7 @@ python3 "$REPO_ROOT/tests/platform-health-test.py"
 python3 "$REPO_ROOT/tests/platform-observability-setup-test.py"
 python3 "$REPO_ROOT/tests/release-overrides-test.py"
 python3 "$REPO_ROOT/tests/podwave-deployment-test.py"
+python3 "$REPO_ROOT/tests/podwave-network-test.py"
 python3 "$REPO_ROOT/tests/openclaw-machine-snapshot-test.py"
 python3 "$REPO_ROOT/tests/n8n-observations-test.py"
 python3 "$REPO_ROOT/tests/nas-backup-credentials-test.py"
@@ -792,6 +793,7 @@ jq -e '
   (.services.caddy.cap_add == ["NET_BIND_SERVICE"]) and
   (.networks.edge.ipam.config[0].gateway == "172.28.200.1") and
   (.networks.edge.driver_opts["com.docker.network.bridge.name"] == "br-hc-ctrl") and
+  ((.services.caddy.networks.podwave.aliases // []) | index("ai.home.arpa") != null) and
   (.networks.state.internal == true) and
   (.services.caddy.networks.state == null) and
   (.services.postgres.networks.edge == null)
@@ -805,6 +807,7 @@ jq -e '
   (.services.podwave.ports == null and .services.podwave.read_only == true) and
   (.services.podwave.cap_drop == ["ALL"] and (.services.podwave.privileged // false) == false) and
   ([.services.podwave.volumes[] | select(.target == "/data" and .source == "/srv/state/podwave" and .read_only != true)] | length == 1) and
+  ([.services.podwave.volumes[] | select(.target == "/run/homecompute/home-core-root.crt" and .source == "/etc/homecompute/control-plane/home-core-root.crt" and .read_only == true)] | length == 1) and
   ([.services.podwave.networks[]] | length == 1) and
   (.networks.podwave.external == true and .networks.podwave.name == "homecompute-podwave")
 ' "$podwave_json" >/dev/null

@@ -12,6 +12,7 @@ WORKDIR /app
 COPY --from=podwave /pyproject.toml /uv.lock /.python-version ./
 COPY --from=podwave /server/ ./server/
 COPY --from=podwave /public/ ./public/
+COPY --chmod=0555 podwave-entrypoint.sh /usr/local/bin/podwave-entrypoint
 
 RUN groupadd --gid 1000 python \
     && useradd --uid 1000 --gid 1000 --no-create-home --home-dir /nonexistent \
@@ -24,4 +25,5 @@ VOLUME /data
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
     CMD ["/app/.venv/bin/python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).status==200 else 1)"]
+ENTRYPOINT ["/usr/local/bin/podwave-entrypoint"]
 CMD ["/app/.venv/bin/python", "/app/server/podwave.py"]

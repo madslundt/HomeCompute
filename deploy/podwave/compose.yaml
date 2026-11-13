@@ -19,6 +19,7 @@ services:
       PODWAVE_PORT: "8080"
     volumes:
       - /srv/state/podwave:/data
+      - /etc/homecompute/control-plane/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=0700
     cpus: 1.0

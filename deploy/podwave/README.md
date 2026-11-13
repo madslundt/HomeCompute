@@ -10,7 +10,16 @@ The app image is built from the PodWave source pinned to commit
 `fcd23dcbebf6bce5d48f68b3b79ce7e3ea469fad`. Its uv/Python base is pinned by
 digest in the tracked Dockerfile. The service has no host port, no Docker socket,
 no capabilities, a read-only root filesystem, and a dedicated bridge shared
-only with Caddy. Its separate default bridge provides outbound provider access.
+only with Caddy. Caddy publishes the `ai.home.arpa` alias only on that bridge, so
+server-side provider traffic reaches the internal AI route without using the
+host's LAN or Tailscale listener. PodWave trusts the mounted HomeCompute root CA
+alongside the image's public roots. Its separate default bridge provides
+outbound provider access.
+
+For the built-in HomeCompute gateway, use `https://ai.home.arpa:8443/v1` and
+model `automation-moe`. The URL resolves to Caddy only inside the PodWave bridge;
+the gateway adds its restricted network inference credential. Do not put the
+LiteLLM master or network inference key in PodWave settings.
 
 The app's server configuration and generated episode files live below
 `/srv/state/podwave`; NixOS provisions the directory for the container's

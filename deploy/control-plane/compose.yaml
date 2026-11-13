@@ -69,7 +69,8 @@ services:
         ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
       mcp-web:
         ipv4_address: ${CADDY_MCP_WEB_IP:?Set CADDY_MCP_WEB_IP}
-      podwave: {}
+      podwave:
+        aliases: [ai.home.arpa]
 
   litellm:
     image: ${LITELLM_IMAGE:?Set LITELLM_IMAGE to an immutable image digest}
