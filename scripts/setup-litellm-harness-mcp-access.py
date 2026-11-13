@@ -52,10 +52,9 @@ for alias in sorted(targets):
     changed['mcp_access_groups'] = sorted(set(groups) | {'all-harness-mcps'})
     if 'no-mcp-servers' in servers:
         remaining = [server for server in servers if server != 'no-mcp-servers']
-        if remaining:
-            changed['mcp_servers'] = remaining
-        else:
-            changed.pop('mcp_servers', None)
+        # LiteLLM merges object_permission updates; omission does not clear a
+        # stored sentinel. Persist [] explicitly so the access group can grant.
+        changed['mcp_servers'] = remaining
     if changed != permission:
         request('/key/update', {'key': key_id, 'object_permission': changed})
     info = request('/key/info?' + urllib.parse.urlencode({'key': key_id})).get('info', {})
