@@ -47,6 +47,17 @@ class OpenBotAgentRosterTests(unittest.TestCase):
             'local_scripts': False, 'automatic_routines': False
         })
 
+    def test_designer_role_is_split_and_existing_identity_is_preserved(self):
+        ux = self.agents['ux-designer']
+        visual = self.agents['visual-designer']
+        self.assertEqual(ux['name'], 'UX Designer')
+        self.assertEqual(ux['server_id'], 'agent-ba10d7e7-d092-4aeb-80bb-b9bda3f0d463')
+        self.assertEqual(ux['skills'], ['interface-design'])
+        self.assertEqual(visual['name'], 'UI / Visual Designer')
+        self.assertEqual(visual['lifecycle'], 'planned')
+        self.assertNotIn('server_id', visual)
+        self.assertEqual(visual['skills'], ['visual-design'])
+
     def test_chatgpt_subscription_provider_is_scoped_to_three_litellm_aliases(self):
         provider = self.roster['chatgpt_subscription_provider']
         self.assertEqual(provider['provider_id'], 'homecompute-chatgpt')
