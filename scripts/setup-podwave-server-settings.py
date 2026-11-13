@@ -40,7 +40,7 @@ def migrate_updates(config: dict) -> dict[str, str]:
 
 def docker_exec(container: str, code: str) -> str:
     result = subprocess.run(
-        ["docker", "exec", "-i", container, "/app/.venv/bin/python", "-c", code],
+        ["docker", "exec", container, "/app/.venv/bin/python", "-c", code],
         capture_output=True,
         text=True,
         timeout=30,

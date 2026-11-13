@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,15 @@ SPEC.loader.exec_module(SETTINGS)
 
 
 class PodWaveServerSettingsTests(unittest.TestCase):
+    def test_docker_exec_does_not_consume_the_deployment_script_stdin(self) -> None:
+        with patch.object(SETTINGS.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = "ok"
+            self.assertEqual(SETTINGS.docker_exec("abcdef123456", "print('ok')"), "ok")
+            argv = run.call_args.args[0]
+            self.assertEqual(argv[:3], ["docker", "exec", "abcdef123456"])
+            self.assertNotIn("-i", argv)
+
     def test_known_invalid_home_ai_voice_and_model_are_migrated(self) -> None:
         config = {"tts": {"prov": "openai", "base": SETTINGS.HOME_AI_BASE,
                           "model": "OmniVoice", "voiceA": SETTINGS.LEGACY_TTS_VOICE, "voiceB": ""}}
