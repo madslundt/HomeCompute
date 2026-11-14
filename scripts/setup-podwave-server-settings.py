@@ -19,11 +19,8 @@ print(json.dumps(config, separators=(",", ":")))
 '''
 
 
-def migrate_updates(config: dict) -> dict[str, str]:
-    """Return only safe migrations for the known Home AI TTS settings."""
-    tts = config.get("tts")
-    if not isinstance(tts, dict):
-        return {}
+def profile_updates(tts: dict) -> dict[str, str]:
+    """Return safe migrations for one known Home AI TTS profile."""
     if tts.get("prov") != "openai" or str(tts.get("base", "")).rstrip("/") != HOME_AI_BASE:
         return {}
 
@@ -36,6 +33,35 @@ def migrate_updates(config: dict) -> dict[str, str]:
     if not str(tts.get("voiceB", "")).strip() and (updates.get("model", model) == "omnivoice"):
         updates["voiceB"] = "english-default"
     return updates
+
+
+def migrate_updates(config: dict) -> dict:
+    """Build a config update for either PodWave's legacy or profile-list schema."""
+    tts = config.get("tts")
+    if isinstance(tts, dict):
+        updates = profile_updates(tts)
+        return {"tts": updates} if updates else {}
+
+    profiles = config.get("ttss")
+    if not isinstance(profiles, list):
+        return {}
+    updated_profiles = []
+    changed_fields: set[str] = set()
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        updates = profile_updates(profile)
+        changed_fields.update(updates)
+        updated_profiles.append({**profile, **updates})
+    if not changed_fields:
+        return {}
+
+    # Config responses are masked: omitting keys lets PodWave retain the saved
+    # secrets by profile ID when it accepts the complete updated profile list.
+    result = {"ttss": updated_profiles}
+    if isinstance(config.get("defaultTts"), str):
+        result["defaultTts"] = config["defaultTts"]
+    return result
 
 
 def docker_exec(container: str, code: str) -> str:
@@ -57,11 +83,11 @@ def reconcile(container: str, runner=docker_exec) -> dict:
         config = json.loads(raw)
     except (ValueError, TypeError) as exc:
         raise RuntimeError("PodWave returned an invalid settings response") from exc
-    updates = migrate_updates(config)
-    if not updates:
+    update = migrate_updates(config)
+    if not update:
         return {"changed": False, "fields": []}
 
-    body = json.dumps({"tts": updates}, separators=(",", ":"))
+    body = json.dumps(update, separators=(",", ":"))
     update_script = f'''import json, urllib.request
 body = {body!r}.encode()
 request = urllib.request.Request("http://127.0.0.1:8080/api/config", data=body,
@@ -71,10 +97,24 @@ with urllib.request.urlopen(request, timeout=10) as response:
 '''
     runner(container, update_script)
     verified = json.loads(runner(container, REMOTE_CONFIG_SCRIPT))
-    verified_tts = verified.get("tts", {})
-    if any(verified_tts.get(field) != value for field, value in updates.items()):
+    if "tts" in update:
+        verified_tts = verified.get("tts", {})
+        expected = update["tts"]
+        retained = all(verified_tts.get(field) == value for field, value in expected.items())
+        fields = expected
+    else:
+        profiles_by_id = {p.get("id"): p for p in verified.get("ttss", []) if isinstance(p, dict)}
+        expected_profiles = {p["id"]: p for p in update["ttss"] if isinstance(p.get("id"), str)}
+        fields = {field for pid, p in expected_profiles.items()
+                  for field in ("model", "voiceA", "voiceB")
+                  if p.get(field) != next((old.get(field) for old in config.get("ttss", [])
+                                           if isinstance(old, dict) and old.get("id") == pid), None)}
+        retained = all(profiles_by_id.get(pid, {}).get(field) == p.get(field)
+                       for pid, p in expected_profiles.items() for field in ("model", "voiceA", "voiceB")
+                       if field in p)
+    if not retained:
         raise RuntimeError("PodWave did not retain the migrated TTS settings")
-    return {"changed": True, "fields": sorted(updates)}
+    return {"changed": True, "fields": sorted(fields)}
 
 
 def main() -> int:

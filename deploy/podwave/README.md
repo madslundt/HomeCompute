@@ -7,7 +7,7 @@ is available only through the existing private LAN/Tailscale Caddy listeners;
 there is no public port or Tailscale Funnel.
 
 The app image is built from the PodWave source pinned to commit
-`3347732a3371c7450f017ac29ec6295f93970918` (version 1.5.0). Its uv/Python base
+`e8341a746a13a452437d941c772d049450deab19` (version 1.6.0). Its uv/Python base
 is pinned by digest in the tracked Dockerfile. The service has no host port, no
 Docker socket, no capabilities, a read-only root filesystem, and a dedicated
 bridge shared only with Caddy. Caddy publishes the `ai.home.arpa` alias only on
@@ -28,6 +28,10 @@ gateway key is scoped for these aliases. The release migrates only the old
 other user-selected provider settings are preserved. The LLM connection probe
 allows 128 output tokens so local reasoning models can finish their reasoning
 before returning the short test response.
+
+PodWave 1.6 supports multiple named LLM and TTS profiles. Its built-in migration
+preserves the existing single LLM and TTS profiles, including their model URLs,
+models, voices, and stored credentials.
 
 The app's server configuration and generated episode files live below
 `/srv/state/podwave`; NixOS provisions the directory for the container's

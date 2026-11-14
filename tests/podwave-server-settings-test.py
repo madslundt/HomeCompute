@@ -29,8 +29,21 @@ class PodWaveServerSettingsTests(unittest.TestCase):
     def test_known_invalid_home_ai_voice_and_model_are_migrated(self) -> None:
         config = {"tts": {"prov": "openai", "base": SETTINGS.HOME_AI_BASE,
                           "model": "OmniVoice", "voiceA": SETTINGS.LEGACY_TTS_VOICE, "voiceB": ""}}
-        self.assertEqual(SETTINGS.migrate_updates(config), {
-            "model": "omnivoice", "voiceA": "danish-default", "voiceB": "english-default"})
+        self.assertEqual(SETTINGS.migrate_updates(config), {"tts": {
+            "model": "omnivoice", "voiceA": "danish-default", "voiceB": "english-default"}})
+
+    def test_profile_schema_migrates_only_matching_profile_and_preserves_defaults(self) -> None:
+        profiles = [
+            {"id": "home-ai", "name": "Home AI", "prov": "openai", "base": SETTINGS.HOME_AI_BASE,
+             "model": "OmniVoice", "voiceA": SETTINGS.LEGACY_TTS_VOICE, "voiceB": ""},
+            {"id": "other", "name": "Other", "prov": "openai", "base": "https://other.example/v1",
+             "model": "custom", "voiceA": "custom-a", "voiceB": "custom-b"},
+        ]
+        config = {"ttss": profiles, "defaultTts": "other"}
+        self.assertEqual(SETTINGS.migrate_updates(config), {"ttss": [
+            {**profiles[0], "model": "omnivoice", "voiceA": "danish-default", "voiceB": "english-default"},
+            profiles[1],
+        ], "defaultTts": "other"})
 
     def test_custom_provider_and_custom_voice_choices_are_preserved(self) -> None:
         config = {"tts": {"prov": "openai", "base": SETTINGS.HOME_AI_BASE,
