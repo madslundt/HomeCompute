@@ -16,6 +16,8 @@ from pathlib import Path
 
 CONTAINER_DEFAULT = "homecompute-openbot"
 HERMES = "/data/.local/bin/hermes"
+COMPRESSION_KEY = "compression.threshold_tokens"
+COMPRESSION_THRESHOLD_TOKENS = 150_000
 PROVIDER = {
     "name": "Home AI (local)",
     "base_url": "http://ai.home.arpa:18080/v1",
@@ -117,9 +119,21 @@ def disable_passive_update_checks(config_path: Path) -> None:
             pass
 
 
+def reconcile_compression(container: str) -> None:
+    cli = ("docker", "exec", container, HERMES, "config")
+    current = json.loads(run(*cli, "get", COMPRESSION_KEY, "--json"))
+    if current != COMPRESSION_THRESHOLD_TOKENS:
+        run(*cli, "set", COMPRESSION_KEY, str(COMPRESSION_THRESHOLD_TOKENS))
+        current = json.loads(run(*cli, "get", COMPRESSION_KEY, "--json"))
+    if current != COMPRESSION_THRESHOLD_TOKENS:
+        raise RuntimeError(f"Hermes did not retain the expected value for {COMPRESSION_KEY}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--container", default=CONTAINER_DEFAULT)
+    parser.add_argument("--compression-only", action="store_true",
+                        help="Reconcile only the embedded Hermes compression threshold.")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.container):
         parser.error("container must be a simple Docker container name")
@@ -137,6 +151,11 @@ def main() -> int:
         expected_data_root = Path.home() / ".local/share/homecompute-openbot/data"
         if not data_root or Path(data_root).resolve() != expected_data_root.resolve():
             raise RuntimeError("OpenBot /data mount does not match the managed data directory")
+        if args.compression_only:
+            reconcile_compression(args.container)
+            print(f"OpenBot Hermes compression threshold: {COMPRESSION_THRESHOLD_TOKENS} tokens.")
+            return 0
+
         disable_passive_update_checks(Path(data_root) / ".hermes/config.yaml")
 
         run("docker", "exec", args.container, HERMES, "--version")
@@ -172,6 +191,8 @@ def main() -> int:
             actual = run("docker", "exec", args.container, HERMES, "config", "get", key)
             if actual != expected:
                 raise RuntimeError(f"Hermes did not retain the expected value for {key}")
+
+        reconcile_compression(args.container)
     except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, RuntimeError) as exc:
         print(f"configure-openbot-hermes: {exc}", file=sys.stderr)
         return 1

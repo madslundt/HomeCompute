@@ -198,6 +198,24 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
   'python3 ~/.local/share/homecompute-openbot/current/configure-openbot-hermes.py'
 ```
 
+The embedded Hermes runtime starts summarizing history at 150,000 tokens or
+its model-specific trigger, whichever is lower. This setting is shared by
+agents that use OpenBot's embedded Hermes. It gives the local summarizer
+smaller histories to process under OpenBot's five-minute inactivity limit.
+
+To apply only the compression setting to an existing guest, use a clean
+checkout of the current published `origin/master` revision:
+
+```bash
+./scripts/setup-openbot-guest.sh configure-compression
+```
+
+This invokes the released settings helper without reinstalling the guest or
+changing its provider bindings. New Hermes ACP sessions load the cap when
+they initialize. If existing sessions need it immediately, wait until the
+server is idle and run `sudo -n systemctl reload homecompute-openbot.service`
+in the guest to restart the running container and reopen its sessions.
+
 The helper also disables Hermes' passive startup update check. Git 2.43 in the
 OpenBot image can otherwise lazy-fetch the partial Hermes checkout during its
 ACP startup probe, which exceeds OpenBot's 10-second provider check. Explicit

@@ -23,7 +23,7 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|login|status
+Usage: setup-openbot-guest.sh install|login|status|configure-compression
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
@@ -31,6 +31,7 @@ install  Install or reconcile the pinned service in the agents VM. The current
          This does not sign in to OpenBot or configure a provider.
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
+configure-compression  Apply only the Hermes threshold from current published master.
 EOF
 }
 
@@ -38,17 +39,35 @@ ssh_guest() {
   ssh -J home-core -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i "$KEY_FILE" "$GUEST" "$@"
 }
 
-require_published_release() {
+require_clean_master_checkout() {
   [[ -f "$KEY_FILE" && ! -L "$KEY_FILE" ]] || { echo "Missing dedicated guest SSH identity: $KEY_FILE" >&2; return 1; }
-  local revision published deployed porcelain
+  local revision published porcelain
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   published="$(git -C "$REPO_ROOT" rev-parse origin/master)"
   porcelain="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)"
   [[ "$revision" =~ ^[0-9a-f]{40}$ && "$revision" == "$published" && -z "$porcelain" ]] || {
     echo 'Use a clean checkout of the exact published origin/master revision.' >&2; return 1;
   }
+}
+
+require_published_release() {
+  require_clean_master_checkout
+  local revision deployed
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   deployed="$(ssh home-core 'sudo -n cat /var/lib/homecompute/deployed-revision')"
   [[ "$deployed" == "$revision" ]] || { echo 'Home Core must be deployed from this exact published revision first.' >&2; return 1; }
+}
+
+configure_compression() {
+  require_clean_master_checkout
+  local revision published
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  published="$(git -C "$REPO_ROOT" ls-remote --exit-code origin refs/heads/master)"
+  [[ "${published%%$'\t'*}" == "$revision" ]] || {
+    echo 'Fetch origin/master and check out its current published revision first.' >&2; return 1;
+  }
+  git -C "$REPO_ROOT" show "$revision:scripts/configure-openbot-hermes.py" |
+    ssh_guest python3 - --compression-only
 }
 
 status() {
@@ -225,6 +244,7 @@ main() {
     install) install_openbot ;;
     login) login ;;
     status) status ;;
+    configure-compression) configure_compression ;;
     -h|--help|help) usage ;;
     *) usage >&2; return 2 ;;
   esac
