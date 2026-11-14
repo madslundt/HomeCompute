@@ -63,10 +63,12 @@ tools="$(jq -cn \
   --argjson flock "$(present flock)" --argjson awk "$(present awk)" \
   --argjson sha256sum "$(present sha256sum)" --argjson realpath "$(present realpath)" \
   --argjson cmp "$(present cmp)" \
+  --argjson install "$(present install)" --argjson stat "$(present stat)" \
+  --argjson tar "$(present tar)" --argjson date "$(present date)" \
   --argjson compose "$(docker compose version >/dev/null 2>&1 && echo true || echo false)" \
   --argjson sudo "$(present sudo)" \
   --argjson docker_access "$docker_access" --argjson sudo_nopasswd "$(sudo -n true >/dev/null 2>&1 && echo true || echo false)" \
-  '{git:$git,docker:$docker,jq:$jq,curl:$curl,python3:$python3,"nvidia-smi":$nvidia_smi,"nvidia-ctk":$nvidia_ctk,"nvidia-container-cli":$nvidia_container_cli,nix:$nix,"nixos-rebuild":$nixos_rebuild,flock:$flock,awk:$awk,sha256sum:$sha256sum,realpath:$realpath,cmp:$cmp,sudo:$sudo,"docker-compose-plugin":$compose,"docker-access":$docker_access,"sudo-nopasswd":$sudo_nopasswd}')"
+  '{git:$git,docker:$docker,jq:$jq,curl:$curl,python3:$python3,"nvidia-smi":$nvidia_smi,"nvidia-ctk":$nvidia_ctk,"nvidia-container-cli":$nvidia_container_cli,nix:$nix,"nixos-rebuild":$nixos_rebuild,flock:$flock,awk:$awk,sha256sum:$sha256sum,realpath:$realpath,cmp:$cmp,install:$install,stat:$stat,tar:$tar,date:$date,sudo:$sudo,"docker-compose-plugin":$compose,"docker-access":$docker_access,"sudo-nopasswd":$sudo_nopasswd}')"
 jq -cn --arg host "$host" --arg os "$os_name" --arg kernel "$(uname -r)" \
   --arg revision "$revision" --arg current_target "$current_target" --arg gpu "$gpu" \
   --arg platform_updates "$platform_updates" --argjson containers "$containers" \
@@ -218,14 +220,30 @@ def desired_revision(args: argparse.Namespace, runner: Callable[..., subprocess.
 
 
 def deploy_host(host: str, revision: str, *, sudo_nopasswd: bool = True,
-                runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner) -> str:
+                runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner,
+                entrypoint: str | None = None) -> str:
     valid_sha(revision)
-    script = "deploy-home-core.sh" if host == "home-core" else "deploy-home-spark.sh"
-    command = f"sudo -n bash -s -- {revision}"
+    script = entrypoint or ("deploy-home-core.sh" if host == "home-core" else "deploy-home-spark.sh")
+    helper_revision: str | None = None
     fetch = runner(["git", "-C", str(ROOT), "fetch", "--no-tags", "origin", revision], timeout=120)
     if fetch.returncode:
         raise OperatorError(f"cannot fetch deployment revision {revision}: {fetch.stderr.strip()}")
     content = runner(["git", "-C", str(ROOT), "show", f"{revision}:scripts/{script}"], timeout=20)
+    if content.returncode and script == "deploy-podwave.sh":
+        # A historical PodWave source revision can predate the isolated
+        # lifecycle. Use its current published, reviewed helper to roll back
+        # that workload while the helper checks out the requested app revision.
+        fetch_helper = runner(["git", "-C", str(ROOT), "fetch", "--no-tags", "origin", "master"], timeout=120)
+        if fetch_helper.returncode:
+            raise OperatorError(f"cannot fetch the current PodWave deployment helper: {fetch_helper.stderr.strip()}")
+        helper_sha = runner(["git", "-C", str(ROOT), "rev-parse", "FETCH_HEAD"], timeout=20)
+        helper_revision = helper_sha.stdout.strip()
+        if helper_sha.returncode or not SHA_RE.fullmatch(helper_revision):
+            raise OperatorError("current PodWave deployment helper revision is invalid")
+        content = runner(["git", "-C", str(ROOT), "show", f"{helper_revision}:scripts/{script}"], timeout=20)
+        if content.returncode:
+            raise OperatorError(f"{helper_revision} has no {script} deployment entry point")
+        print(f"Using published PodWave deployment helper {helper_revision} for the selected application revision")
     if content.returncode:
         # The Spark application installer predates its repository release wrapper;
         # retain rollback support for revisions from before that wrapper existed.
@@ -233,6 +251,8 @@ def deploy_host(host: str, revision: str, *, sudo_nopasswd: bool = True,
             raise OperatorError(f"{revision} has no {script} deployment entry point")
         content = subprocess.CompletedProcess([], 0, (ROOT / "scripts" / script).read_text(), "")
     payload = content.stdout
+    command_arguments = revision if helper_revision is None else f"{revision} {helper_revision}"
+    command = f"sudo -n bash -s -- {command_arguments}"
     try:
         if sudo_nopasswd or runner is not default_runner:
             result = runner(ssh_argv(host, command), input_text=payload, timeout=7200)
@@ -240,7 +260,7 @@ def deploy_host(host: str, revision: str, *, sudo_nopasswd: bool = True,
             if not sys.stdin.isatty():
                 raise OperatorError(f"{host}: interactive sudo is required; run deployment from a terminal")
             encoded = base64.b64encode(payload.encode()).decode("ascii")
-            interactive_command = f"sudo bash -c 'printf %s {encoded} | base64 -d | bash -s -- {revision}'"
+            interactive_command = f"sudo bash -c 'printf %s {encoded} | base64 -d | bash -s -- {command_arguments}'"
             argv = ssh_argv(host, interactive_command, batch_mode=False)
             argv.insert(-2, "-tt")
             result = subprocess.run(argv, timeout=7200, check=False)
@@ -279,6 +299,9 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
     models = sub.add_parser("models"); models.add_argument("--json", action="store_true")
     deploy = sub.add_parser("deploy"); deploy.add_argument("host", choices=(*HOSTS, "all"))
     deploy.add_argument("--revision", type=valid_sha); deploy.add_argument("--from", dest="from_remote", choices=("origin/master",))
+    podwave_deploy = sub.add_parser("deploy-podwave")
+    podwave_deploy.add_argument("--revision", type=valid_sha)
+    podwave_deploy.add_argument("--from", dest="from_remote", choices=("origin/master",))
     diff = sub.add_parser("diff"); diff.add_argument("host", choices=HOSTS); diff.add_argument("--revision", type=valid_sha)
     args = parser.parse_args(argv)
     try:
@@ -314,6 +337,20 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
                 print(f"  {host}: {outcome}")
             if args.host == "all":
                 print("Cross-host smoke check: not configured; verify gateway routes with homecompute doctor")
+            return 0
+        if args.command == "deploy-podwave":
+            revision = desired_revision(args, runner)
+            print(f"Deploying PodWave from {revision} to home-core")
+            item = remote_status("home-core", runner)
+            required = ("docker", "docker-compose-plugin", "sudo", "git", "python3", "flock", "jq", "install", "stat", "tar", "date", "sha256sum")
+            missing = [tool for tool in required if not item.get("required_tools", {}).get(tool, False)]
+            if missing:
+                raise OperatorError(f"home-core: PodWave deployment preflight missing required tools/access: {', '.join(missing)}")
+            result = deploy_host("home-core", revision,
+                                 sudo_nopasswd=item.get("required_tools", {}).get("sudo-nopasswd", False),
+                                 runner=runner, entrypoint="deploy-podwave.sh")
+            lines = [line for line in result.splitlines() if line.strip()]
+            print(f"  home-core: {lines[-1] if lines else 'command returned success'}")
             return 0
         if args.command == "diff":
             rev = args.revision or desired_revision(argparse.Namespace(revision=None, from_remote=None), runner)

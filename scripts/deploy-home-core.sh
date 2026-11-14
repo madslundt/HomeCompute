@@ -138,6 +138,7 @@ piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/dep
 stt=(docker compose --env-file /etc/homecompute/wyoming-stt.env -f "$release/deploy/wyoming-stt/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
 podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
+source "$release/scripts/lib/podwave-backup.sh"
 "${gateway[@]}" config --quiet
 "${podwave[@]}" config --quiet
 "${automation[@]}" config --quiet
@@ -218,6 +219,10 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
+podwave_backup="$(backup_podwave_state "$revision" "${podwave[@]}")"
+if [[ -n "$podwave_backup" ]]; then
+  printf 'PodWave state backup: %s\n' "$podwave_backup"
+fi
 "${podwave[@]}" up -d --wait --wait-timeout 180
 podwave_container="$("${podwave[@]}" ps -q podwave)"
 python3 "$release/scripts/setup-podwave-server-settings.py" --container "$podwave_container"
@@ -297,5 +302,21 @@ if [[ -L /srv/homecompute/current ]]; then
 fi
 ln -sfn "$release" /srv/homecompute/current
 printf '%s\n' "$revision" > /var/lib/homecompute/deployed-revision
+podwave_previous=""
+if [[ -L /srv/homecompute/podwave-current ]]; then
+  podwave_previous="$(readlink /srv/homecompute/podwave-current)"
+fi
+if [[ -n "$podwave_previous" && "$podwave_previous" != "$release" ]]; then
+  podwave_previous_link="/srv/homecompute/.podwave-previous-$revision"
+  ln -sfn "$podwave_previous" "$podwave_previous_link"
+  mv -Tf "$podwave_previous_link" /srv/homecompute/podwave-previous
+fi
+podwave_current_link="/srv/homecompute/.podwave-current-$revision"
+ln -sfn "$release" "$podwave_current_link"
+mv -Tf "$podwave_current_link" /srv/homecompute/podwave-current
+podwave_marker_tmp="/var/lib/homecompute/.podwave-deployed-revision-$revision"
+printf '%s\n' "$revision" > "$podwave_marker_tmp"
+chmod 0644 "$podwave_marker_tmp"
+mv -f "$podwave_marker_tmp" /var/lib/homecompute/podwave-deployed-revision
 printf 'Healthy deployment: %s\n' "$revision"
 printf 'Books importer is managed separately; this deployment does not reconcile it.\n'

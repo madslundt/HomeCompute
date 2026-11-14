@@ -115,6 +115,77 @@ class HomeComputeCliTests(unittest.TestCase):
         self.assertEqual(len(deploy_calls), 1)
         self.assertIn("home-spark", deploy_calls[0])
 
+    def test_podwave_deploy_sends_selected_release_script_and_checks_tools(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+
+        calls = []
+        payload_script = "#!/usr/bin/env bash\n# selected PodWave release script\n"
+        def runner(argv, **kwargs):
+            calls.append((argv, kwargs))
+            if argv[:3] == ["git", "-C", str(hc.ROOT)]:
+                if "show" in argv:
+                    self.assertEqual(argv[-1], "a" * 40 + ":scripts/deploy-podwave.sh")
+                    return subprocess.CompletedProcess(argv, 0, payload_script, "")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if argv[-1] == "bash -s":
+                payload = {"schema_version": 1, "host": "home-core", "containers": [], "failed_units": [],
+                           "required_tools": {name: True for name in (
+                               "docker", "docker-compose-plugin", "sudo", "git", "python3", "flock", "jq", "install", "stat", "tar", "date", "sha256sum", "sudo-nopasswd")}}
+                return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+            self.assertEqual(argv[-1], "sudo -n bash -s -- " + "a" * 40)
+            self.assertEqual(kwargs["input_text"], payload_script)
+            return subprocess.CompletedProcess(argv, 0, "Healthy PodWave deployment: " + "a" * 40, "")
+
+        output = StringIO()
+        with redirect_stdout(output):
+            rc = hc.main(["deploy-podwave", "--revision", "a" * 40], runner)
+        self.assertEqual(rc, 0)
+        self.assertIn("Deploying PodWave from " + "a" * 40, output.getvalue())
+        self.assertTrue(any("bash -s -- " in argv[-1] for argv, _ in calls))
+
+    def test_podwave_deploy_stops_at_preflight_when_tool_is_missing(self):
+        from contextlib import redirect_stderr
+        from io import StringIO
+
+        def runner(argv, **kwargs):
+            payload = {"schema_version": 1, "host": "home-core", "containers": [], "failed_units": [],
+                       "required_tools": {"docker": True, "docker-compose-plugin": True, "sudo": True}}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+
+        error = StringIO()
+        with redirect_stderr(error):
+            rc = hc.main(["deploy-podwave", "--revision", "b" * 40], runner)
+        self.assertEqual(rc, 2)
+        self.assertIn("PodWave deployment preflight missing required tools/access", error.getvalue())
+
+    def test_historical_podwave_revision_uses_current_published_helper(self):
+        sha = "c" * 40
+        helper_sha = "d" * 40
+        calls = []
+        def runner(argv, **kwargs):
+            calls.append(argv)
+            if argv[:3] == ["git", "-C", str(hc.ROOT)]:
+                if "show" in argv and argv[-1] == sha + ":scripts/deploy-podwave.sh":
+                    return subprocess.CompletedProcess(argv, 128, "", "path not present")
+                if "rev-parse" in argv:
+                    return subprocess.CompletedProcess(argv, 0, helper_sha + "\n", "")
+                if "show" in argv:
+                    self.assertEqual(argv[-1], helper_sha + ":scripts/deploy-podwave.sh")
+                    return subprocess.CompletedProcess(argv, 0, "#!/bin/sh\n", "")
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            self.assertEqual(argv[-1], "sudo -n bash -s -- " + sha + " " + helper_sha)
+            return subprocess.CompletedProcess(argv, 0, "Healthy PodWave deployment: " + sha, "")
+
+        from contextlib import redirect_stdout
+        from io import StringIO
+        output = StringIO()
+        with redirect_stdout(output):
+            result = hc.deploy_host("home-core", sha, runner=runner, entrypoint="deploy-podwave.sh")
+        self.assertIn("Healthy PodWave deployment", result)
+        self.assertIn("Using published PodWave deployment helper " + helper_sha, output.getvalue())
+        self.assertIn(["git", "-C", str(hc.ROOT), "fetch", "--no-tags", "origin", "master"], calls)
+
     def test_json_status_has_stable_top_level_shape(self):
         calls = []
         def runner(argv, **kwargs):

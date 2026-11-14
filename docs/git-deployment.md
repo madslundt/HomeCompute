@@ -47,6 +47,15 @@ A successful deployment updates `/srv/homecompute/current` and
 available through `/srv/homecompute/previous`. Docker restarts the containers on
 boot; there is no automatic Git pull or unattended image updater.
 
+The full home-core release also advances `/srv/homecompute/podwave-current`
+and `/var/lib/homecompute/podwave-deployed-revision` only after the PodWave
+service and the remaining workloads succeed. For an application-only PodWave
+rollout with its shared gateway already provisioned, use
+`./scripts/homecompute deploy-podwave --revision FULL_COMMIT_SHA`. That guarded
+path uses the same immutable release checkout and host deployment lock, checks
+the running image and authenticated URL, and leaves the host-wide release
+marker untouched.
+
 To redeploy a prior compatible release, run the script with that release's
 commit. Configuration rollback cannot undo database migrations. For changes
 that migrate data, retain an application-consistent backup and follow the

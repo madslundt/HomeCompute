@@ -58,13 +58,46 @@ storage. Do not use real provider keys in shell arguments or commit them.
 Normal updates go through the reviewed HomeCompute release on `origin/master`.
 The guarded `scripts/deploy-home-core.sh` lifecycle builds the image, applies
 the control-plane network and authenticated Caddy route, then starts PodWave
-and waits for its health check. The same project file is used to inspect or
-stop the workload:
+and waits for its health check. If an unrelated full-stack prerequisite blocks
+that rollout, the PodWave-only lifecycle can update this already-provisioned
+workload without changing the full host release marker:
 
 ```bash
-sudo docker compose -f /srv/homecompute/current/deploy/podwave/compose.yaml ps
-sudo docker compose -f /srv/homecompute/current/deploy/podwave/compose.yaml logs --tail 100
-sudo docker compose -f /srv/homecompute/current/deploy/podwave/compose.yaml down
+./scripts/homecompute deploy-podwave --revision FULL_HOME_COMPUTE_COMMIT_SHA
+```
+
+It requires the existing Caddy route, PodWave network, CA, and state directory.
+Before replacing the container it stops PodWave briefly and makes a
+root-only, checksummed archive of `/srv/state/podwave` at
+`/srv/state/control-plane/backups/podwave/`. The full app state is about 15 MB
+on the current host. It checks the authenticated HTTPS URL, then records the
+deployed source at
+`/srv/homecompute/podwave-current` and its HomeCompute revision in
+`/var/lib/homecompute/podwave-deployed-revision`. A full host deployment updates
+these markers after all workloads succeed. `podwave-previous` retains the
+previous application release for inspection. The pre-upgrade archive is local
+to home-core and contains the app configuration and generated files; keep any
+separate off-host backup policy in place.
+
+To roll back a PodWave config migration, verify the archive, restore it while
+PodWave is stopped, then deploy the previous full HomeCompute revision. The
+workstation CLI uses the latest published PodWave deploy helper when that older
+revision predates the isolated lifecycle:
+
+```bash
+ssh home-core 'sudo sha256sum --check /srv/state/control-plane/backups/podwave/ARCHIVE.tar.gz.sha256'
+ssh home-core 'sudo docker compose -f /srv/homecompute/podwave-current/deploy/podwave/compose.yaml stop podwave'
+ssh home-core 'sudo tar --numeric-owner --xattrs --acls --extract --gzip --file /srv/state/control-plane/backups/podwave/ARCHIVE.tar.gz -C /srv/state'
+ssh home-core 'basename "$(readlink -f /srv/homecompute/podwave-previous)"'
+./scripts/homecompute deploy-podwave --revision PREVIOUS_HOME_COMPUTE_COMMIT_SHA
+```
+
+Use the PodWave release pointer to inspect or stop the workload:
+
+```bash
+sudo docker compose -f /srv/homecompute/podwave-current/deploy/podwave/compose.yaml ps
+sudo docker compose -f /srv/homecompute/podwave-current/deploy/podwave/compose.yaml logs --tail 100
+sudo docker compose -f /srv/homecompute/podwave-current/deploy/podwave/compose.yaml down
 ```
 
 Before restoring `/srv/state/podwave`, stop the project, restore ownership to
