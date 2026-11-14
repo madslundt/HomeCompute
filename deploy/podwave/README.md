@@ -7,7 +7,7 @@ is available only through the existing private LAN/Tailscale Caddy listeners;
 there is no public port or Tailscale Funnel.
 
 The app image is built from the PodWave source pinned to commit
-`e8341a746a13a452437d941c772d049450deab19` (version 1.6.0). Its uv/Python base
+`4ba246c5e1d4b55959bbc3a14648bf688be12dcb` (version 1.7.0). Its uv/Python base
 is pinned by digest in the tracked Dockerfile. The service has no host port, no
 Docker socket, no capabilities, a read-only root filesystem, and a dedicated
 bridge shared only with Caddy. Caddy publishes the `ai.home.arpa` alias only on
