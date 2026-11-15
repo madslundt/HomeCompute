@@ -16,7 +16,7 @@ let
       RequiresMountsFor = mount;
       ConditionPathExists = "${state}/backup-authorized";
     };
-    path = [ pkgs.restic pkgs.util-linux pkgs.docker pkgs.openssh pkgs.gzip ];
+    path = [ pkgs.restic pkgs.util-linux pkgs.docker pkgs.openssh pkgs.gzip pkgs.bash ];
     environment = {
       HOME = state;
       DOCKER_HOST = "unix:///var/run/docker.sock";
