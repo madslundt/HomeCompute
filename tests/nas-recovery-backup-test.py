@@ -18,74 +18,62 @@ spec = importlib.util.spec_from_file_location("nas_backup", ROOT / "scripts/nas-
 backup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backup)
 CONFIG = {"address": "192.168.30.236", "share": "homecompute-backups",
-          "credentialsFile": "/run/secrets/nas-backup/credentials"}
+          "credentialsFile": "/run/secrets/nas-backup/credentials",
+          "hermesSshKeyFile": "/run/secrets/hermes-backup/ssh-key",
+          "hermesKnownHostsFile": "/etc/homecompute/hermes-backup_known_hosts",
+          "immichDbBackupScript": "/nix/store/abc123-immich-db-backup/scripts/immich-db-backup.sh",
+          "immichComposeFile": "/nix/store/abc123-compose.yaml"}
 
 
 class NASBackupTest(unittest.TestCase):
-    def test_stopping_scheduled_backup_allows_preparer_to_resume_sources(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary); preparer = root / 'application-recovery.py'
-            ready = root / 'ready'; resumed = root / 'resumed'
-            preparer.write_text(
-                'import os, signal, time\nfrom pathlib import Path\n'
-                'def stop(*_):\n'
-                f' Path({str(resumed)!r}).write_text("sources resumed")\n'
-                ' raise SystemExit(1)\n'
-                'signal.signal(signal.SIGTERM, stop)\n'
-                f'Path({str(ready)!r}).write_text(str(os.getpid()))\n'
-                'time.sleep(30)\nraise SystemExit(1)\n')
-            preparer.chmod(0o644)
-            code = ('import importlib.util, sys; from pathlib import Path; '
-                    's=importlib.util.spec_from_file_location("nas",sys.argv[1]); '
-                    'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
-                    'm.backup=lambda: sys.exit(99); '
-                    'm.scheduled(Path(sys.argv[2]))')
-            parent = subprocess.Popen([sys.executable, '-I', '-c', code,
-                                       str(ROOT / 'scripts/nas-recovery-backup.py'), str(preparer)])
-            try:
-                deadline = time.monotonic() + 5
-                while not ready.exists() and time.monotonic() < deadline: time.sleep(0.02)
-                self.assertTrue(ready.exists(), 'preparer did not start')
-                parent.send_signal(signal.SIGTERM)
-                self.assertEqual(parent.wait(timeout=5), 1)
-                self.assertEqual(resumed.read_text(), 'sources resumed')
-            finally:
-                if parent.poll() is None: parent.kill(); parent.wait()
-                if ready.exists() and not resumed.exists():
-                    try: os.kill(int(ready.read_text()), signal.SIGKILL)
-                    except ProcessLookupError: pass
+    def test_scheduled_backup_transfers_only_selected_state(self):
+        with patch.object(backup, "backup") as transfer:
+            backup.scheduled(CONFIG)
+            transfer.assert_called_once_with(CONFIG)
 
-    def test_scheduled_backup_only_transfers_after_successful_preparation(self):
+    def test_backup_transfers_exactly_immich_media_database_and_hermes_state(self):
         with tempfile.TemporaryDirectory() as temporary:
-            preparer = Path(temporary) / 'application-recovery.py'
-            preparer.write_text('synthetic protected preparer')
-            preparer.chmod(0o644)
-            for status in (0, 1, 75, -15):
-                with self.subTest(status=status), patch.object(backup.os, 'geteuid', return_value=preparer.stat().st_uid), \
-                        patch.object(backup.subprocess, 'Popen') as run, \
-                        patch.object(backup, 'backup') as transfer:
-                    run.return_value.wait.return_value = status
-                    if status:
-                        with self.assertRaises(SystemExit) as result: backup.scheduled(preparer)
-                        self.assertEqual(result.exception.code, status if status > 0 else 1)
-                        transfer.assert_not_called()
-                    else:
-                        backup.scheduled(preparer)
-                        transfer.assert_called_once_with()
-                    self.assertEqual(run.call_args.args[0][-2:], [str(preparer), 'prepare'])
-                    self.assertEqual(run.call_args.args[0][1], '-I')
-
-    def test_untrusted_scheduled_preparer_is_refused_before_execution(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            preparer = Path(temporary) / 'application-recovery.py'
-            preparer.write_text('untrusted')
-            preparer.chmod(0o666)
-            with patch.object(backup.subprocess, 'Popen') as run, self.assertRaises(ValueError):
-                backup.scheduled(preparer)
-            run.assert_not_called()
+            directory = Path(temporary)
+            dumps = directory / "db-backups"
+            dumps.mkdir()
+            helper = directory / "immich-db-backup.sh"
+            helper.write_text("#!/bin/sh\nexit 0\n")
+            helper.chmod(0o500)
+            archive = directory / "hermes-native-home.tar.gz"
+            archive.write_bytes(b"synthetic verified archive")
+            summary = json.dumps({"message_type": "summary", "snapshot_id": "a" * 64})
+            with patch.object(backup, "SOURCE", Path(temporary)), \
+                    patch.object(backup, "HERMES_ARCHIVE", archive), \
+                    patch.object(backup, "IMMICH_DATABASE_DUMPS", dumps), \
+                    patch.object(backup, "root_directory"), \
+                    patch.object(backup, "immich_library_mount"), \
+                    patch.object(backup, "validate_immich_dumps", return_value=1), \
+                    patch.object(backup, "export_hermes", return_value={"databases": 1}), \
+                    patch.object(backup.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), \
+                    patch.object(backup, "restic", return_value=summary) as restic, \
+                    patch.object(backup, "prune_retention") as prune, \
+                    patch.object(backup, "record") as record:
+                backup.backup({**CONFIG, "immichDbBackupScript": str(helper)})
+            args = restic.call_args.args[0]
+            self.assertEqual(args[:5], ["backup", "--json", "--tag", "homecompute-selected-state",
+                                       str(archive)])
+            self.assertEqual(args[5:], [str(backup.IMMICH_LIBRARY), str(dumps)])
+            prune.assert_called_once_with()
+            self.assertEqual(record.call_args.args[0], "last-backup.json")
+            self.assertEqual(set(record.call_args.args[1]["scope"]), {
+                "Immich media library", "Immich database dumps", "Hermes native-home state"})
+            self.assertFalse(archive.exists())
 
     def test_dedicated_share_validates(self):
         self.assertEqual(backup.configuration(CONFIG), CONFIG)
+
+    def test_selected_helper_paths_are_strict(self):
+        for field, path in [("hermesSshKeyFile", "/run/../bad"),
+                            ("hermesKnownHostsFile", "relative"),
+                            ("immichDbBackupScript", "/tmp/immich-db-backup.sh"),
+                            ("immichComposeFile", "/tmp/compose.yaml")]:
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                backup.configuration({**CONFIG, field: path})
 
     def test_media_traversal_and_injected_targets_refused(self):
         for share in ["immich-library", "photos", "uploads", "video", "../backup", "x/y", "x\nfoo", "x;foo"]:
@@ -179,17 +167,14 @@ class NASBackupTest(unittest.TestCase):
                 backup.main()
             loader.assert_not_called()
 
-    def test_restore_requires_exact_snapshot_name_and_new_scratch_target(self):
+    def test_restore_requires_exact_snapshot_and_new_scratch_target(self):
         with tempfile.TemporaryDirectory() as temporary, patch.object(backup, "root_directory"), \
                 patch.object(backup, "RESTORE_ROOT", Path(temporary)), patch.object(backup, "restic") as restic:
-            for snapshot, archive, target in [
-                ('latest', 'homecompute-applications-20261028T120000.000000Z.tar', Path(temporary) / 'new'),
-                ('a' * 64, '../other.tar', Path(temporary) / 'new'),
-                ('a' * 64, 'homecompute-applications-20261028T120000.000000Z.tar', Path('/srv/state/immich')),
-                ('a' * 64, 'homecompute-applications-20261028T120000.000000Z.tar', Path(temporary)),
-            ]:
-                with self.subTest(snapshot=snapshot, archive=archive), self.assertRaises(ValueError):
-                    backup.restore_application(snapshot, archive, target)
+            for snapshot, target in [('latest', Path(temporary) / 'new'),
+                                     ('a' * 64, Path('/srv/state/immich')),
+                                     ('a' * 64, Path(temporary))]:
+                with self.subTest(snapshot=snapshot), self.assertRaises(ValueError):
+                    backup.restore_selected(snapshot, target)
             restic.assert_not_called()
 
     @unittest.skipUnless(os.geteuid() == 0 and shutil.which("restic"), "real root/Restic integration")

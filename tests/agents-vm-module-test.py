@@ -23,7 +23,7 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn("resources.diskGiB = 200;", HOST)
         self.assertIn("network.allowedInternetTcpPorts = [ 80 443 ];", HOST)
         self.assertIn("network.maintenanceEgress = false;", HOST)
-        self.assertIn("includeApplicationState = true;", HOST)
+        self.assertIn("homecompute.nasRecoveryBackup = {\n    enable = true;", HOST)
 
     def test_image_is_immutable_and_checksum_pinned(self) -> None:
         self.assertRegex(MODULE, r"release-[0-9]{8}/ubuntu-24\.04-server-cloudimg-amd64\.img")
@@ -41,10 +41,10 @@ class AgentsVmModuleTest(unittest.TestCase):
 
     def test_activation_requires_backup_and_operator_key(self) -> None:
         self.assertIn("config.homecompute.backups.enable", MODULE)
-        self.assertIn("config.homecompute.nasRecoveryBackup.includeApplicationState", MODULE)
+        self.assertIn("config.homecompute.nasRecoveryBackup.enable", MODULE)
         self.assertIn('cfg.dataClassification == "synthetic-only" || cfg.restoreVerified', MODULE)
-        self.assertIn("config.homecompute.agentsVm.localBootstrapBackup.riskAccepted", MODULE)
-        self.assertIn('path == "/srv/state" || path == statePath', MODULE)
+        self.assertNotIn("localBootstrapBackup.riskAccepted", MODULE)
+        self.assertNotIn('path == "/srv/state" || path == statePath', MODULE)
         self.assertIn('statePath = "/srv/state/agents-vm"', MODULE)
         self.assertIn("cfg.sshAuthorizedKeys != [ ]", MODULE)
 
@@ -126,7 +126,7 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertIn('source = "/srv/state/agents-vm";', BACKUP_MODULE)
         self.assertIn("initialize = true;", BACKUP_MODULE)
         self.assertNotIn("localBootstrapBackup = {", HOST)
-        self.assertIn("includeApplicationState = true;", HOST)
+        self.assertIn("homecompute.nasRecoveryBackup = {\n    enable = true;", HOST)
 
     def test_backup_quiesces_and_conditionally_restarts_vm(self) -> None:
         marker = "/run/homecompute/agents-vm-backup-was-active"

@@ -314,9 +314,11 @@ at the configured secret path, mode 0600. Never put tokens into argv or Git.
 Every mutation requires external mode-0600 readiness records for
 `off-host-backup` and `agents-network`, each with schema_version 1, status
 `ready`, scope `hermes-household`, observed_at in UTC, and an evidence reference.
-The backup record must reference a fresh encrypted Synology restore including
-archive integrity checks, PostgreSQL imports and isolated agents VM boot proof.
-A same-host bootstrap backup does not admit household messages.
+The backup record must reference a fresh selected-scope Restic restore: Hermes
+native-home state plus the Immich media library and PostgreSQL dump. This restore
+verifies the Hermes archive and SQLite databases; a separate Immich scratch
+import verifies PostgreSQL recovery. VM disks and reinstallable runtime artifacts
+are not part of the backup or its readiness evidence.
 
 From the reviewed, published source checkout inside the guest:
 
@@ -354,10 +356,10 @@ the configured evidence directory.
 It requires an explicit authenticated synthetic inference response even when
 the vendor CLI intentionally suppresses inference probes in ordinary status.
 
-NemoClaw 0.0.141 has no per-sandbox `snapshot` command. Recovery uses the
-owner-approved encrypted Synology application archive, including the whole
-agents VM, with the repository's isolated restore verification. Retain the
-prior release and archive; code rollback does not undo data changes. The old
+NemoClaw 0.0.141 has no per-sandbox `snapshot` command. The scheduled backup
+uses the tracked native-home exporter to preserve Hermes agent state and SQLite
+databases without backing up the guest disk or runtime images. Retain the prior
+release and selected-state archive; code rollback does not undo data changes. The old
 `HERMES_RESTORE_TARGET` config field remains accepted for compatibility but
 exposes no restore action.
 
@@ -504,8 +506,8 @@ python3 scripts/setup-openclaw-browser.py --principal hermes \
 
 The installer refuses existing browser containers. Inspect their identity and
 retained profile before any replacement. Keep the generated `private` directory
-and browser profile volume outside Git and include them in the guest backup.
-The worker's stable `/devtools/browser/homecompute` endpoint resolves the local
+and browser profile volume outside Git; they are not part of the selected Hermes
+agent-state backup. The worker's stable `/devtools/browser/homecompute` endpoint resolves the local
 Chromium ID on each connection, so a browser restart does not stale the URL.
 
 During this clean installation, failed synthetic requests produced diagnostic
@@ -550,7 +552,8 @@ recovery record with its verified native-home archive. After managed deletion
 and exact recovery-record retirement, restore only reviewed user data to the
 new instance with NemoClaw's validated upload command. Do not transfer
 `.hermes/config.yaml`, `.hermes/.env`, credential state, or runtime lock files.
-Keep the complete encrypted agents-VM archive as the disaster-recovery boundary.
+The scheduled Hermes export preserves native-home agent data and excludes
+rebuildable images, VM disks, generated configuration, logs, caches, and secrets.
 The temporary no-backup recreation option is not a routine household upgrade
 or recovery policy.
 
@@ -575,8 +578,9 @@ For rollback, stop the new unit first, natively stop `hermes-personal-v2`, and
 install/start the retained previous source's unit with `hermes-personal.env`.
 Health-check that release and the owner DM/browser path. Leave the new instance
 stopped with its state preserved; switching code does not merge conversation
-histories. The retained old application state is the rollback state, while the
-encrypted whole-VM Synology archive is the disaster-recovery boundary.
+histories. The retained old application state is the rollback state. The selected encrypted
+backup covers Immich and Hermes data only; the backup and media shares currently
+reside on one Synology volume and do not protect against Synology or site loss.
 ## Pinned OMH and dashboard lifecycle
 
 `config/hermes-omh.json` pins the exact currently qualified sandbox image; after a sandbox rebuild, update that image ID from the built runtime before applying the guarded add-on or speech installers.

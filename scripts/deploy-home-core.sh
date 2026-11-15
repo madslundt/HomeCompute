@@ -64,8 +64,8 @@ git -C "$release" checkout --detach "$revision"
 [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]]
 (cd /var/lib/homecompute && nixos-rebuild build --flake "$release#home-core")
 if ! nixos-rebuild switch --flake "$release#home-core"; then
-  # A scheduled application-state backup may defer with TEMPFAIL (75) while
-  # protected HTTP writers are active. NixOS has still switched successfully
+  # A scheduled selected-state backup may defer with TEMPFAIL (75) while a
+  # Hermes session is active. NixOS has still switched successfully
   # in that case, but switch-to-configuration reports the deferred unit as a
   # failed start and returns nonzero. Continue only if the active generation is
   # exactly the build from this release, that one backup is in its safe
@@ -94,7 +94,7 @@ if ! nixos-rebuild switch --flake "$release#home-core"; then
     if [[ "$health_only_backup_failure" == true ]]; then
       printf 'NixOS generation is active. NAS backup readiness is the sole failed health signal; its scheduled retry remains enabled. Continuing without a fresh backup.\n' >&2
     else
-      printf 'NixOS generation is active. NAS recovery backup deferred on active writers; its scheduled retry remains enabled.\n' >&2
+    printf 'NixOS generation is active. Selected-state backup deferred on an active Hermes session; its scheduled retry remains enabled.\n' >&2
     fi
   else
     printf 'NixOS switch failed outside the exact safe NAS backup deferral state; refusing to continue.\n' >&2

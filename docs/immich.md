@@ -7,10 +7,10 @@ NixOS state and environment configuration, the reusable Restic source and
 destination model, and operator tooling for database dumps, Google Takeout
 imports, and isolated Restic restores. Immich is running on `home-core` and its
 database password is provisioned in SOPS. Its media library now uses the
-Synology SMB share; PostgreSQL remains on local NVMe. Google Takeout import and
-Hetzner backups remain gated until the import and Storage Box credentials are
-ready. A Hetzner repository has not been initialized, and no restore drill or
-Google Takeout import has been performed.
+Synology SMB share; PostgreSQL remains on local NVMe. Google Takeout import and Hetzner backups remain gated until the import and
+Storage Box credentials are ready. The selected encrypted NAS backup covers
+Immich media and database dumps plus Hermes native-home state; the first real
+snapshot and isolated restore drill are still pending.
 
 Immich v3.2.4 is pinned by its Linux x86_64 image digests in
 [`config/immich.env.example`](../config/immich.env.example). The database image
@@ -64,8 +64,10 @@ or the Nix store. After deployment, access
 `/mnt/immich-nas` to trigger the mount and verify it with `findmnt` and a small
 test file. The existing library was copied to the share and checked with
 rsync's checksum comparison before cutover. The Immich database stays on local
-SSD. Keep the local copy until the NAS-backed service has been verified and
-the first off-site Hetzner backup and restore test are complete.
+SSD. Keep the local copy until the NAS-backed service is verified and a selected
+Immich-and-Hermes Restic snapshot has passed an isolated restore drill. This
+backup share is on the same Synology volume as the media library, so it does not
+cover Synology or site loss.
 
 The web/API service listens at `http://192.168.30.122:2283` on the LAN and
 `http://100.110.248.102:2283` on Tailscale. Loopback is also bound for local
@@ -289,11 +291,8 @@ Result and operator:
 
 ## Architecture extensions
 
-Add another application through `homecompute.backups.sources.<name>` with its
-own paths, preparation command, schedule, and retention, then name one or more
-configured destinations. This is the intended extension point for a later
-Home Assistant native backup staged on home-core, n8n, or another Restic
-destination. Do not put Hetzner credentials in the application project.
-
-The source/destination split also permits a second cloud destination later.
-No second provider or Home Assistant backup is configured by this change.
+The selected NAS job has a fixed source list: Immich media, Immich SQL dumps,
+and Hermes native-home agent state. Do not add unrelated services, VM disks,
+container storage, model files, or generated runtime credentials to this backup.
+Hetzner remains a separate, disabled Immich-only destination until its own
+credentials and restore drill are ready.

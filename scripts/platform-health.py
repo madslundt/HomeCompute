@@ -165,6 +165,9 @@ def nas_readiness(now: datetime | None = None) -> dict[str, bool]:
             age = (current - timestamp).total_seconds()
             evidence = (isinstance(receipt.get('snapshot'), str)
                         and re.fullmatch('[0-9a-f]{64}', receipt['snapshot']) is not None
+                        and receipt.get('scope') == [
+                            'Immich media library', 'Immich database dumps', 'Hermes native-home state'
+                        ]
                         if operation == 'backup' else receipt.get('passed') is True)
             timer = units[f'homecompute-nas-recovery-{operation}.timer']
             service = units[f'homecompute-nas-recovery-{operation}.service']

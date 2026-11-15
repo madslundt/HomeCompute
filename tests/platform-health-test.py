@@ -35,7 +35,8 @@ class PlatformHealthTest(unittest.TestCase):
                 path = state / name
                 path.write_text(json.dumps(value)); path.chmod(0o600)
             record('deployment.json', {'state': 'scheduled'})
-            record('last-backup.json', {'time': now.isoformat(), 'snapshot': 'a' * 64})
+            scope = ['Immich media library', 'Immich database dumps', 'Hermes native-home state']
+            record('last-backup.json', {'time': now.isoformat(), 'snapshot': 'a' * 64, 'scope': scope})
             record('last-check.json', {'time': now.isoformat(), 'passed': True})
             permit = state / 'backup-authorized'; permit.write_text('authorized'); permit.chmod(0o600)
             def units(*, failed=False, enabled=True):
@@ -53,12 +54,17 @@ class PlatformHealthTest(unittest.TestCase):
                 # does not withdraw authorization or bypass freshness checks.
                 record('deployment.json', {'state': 'retired'})
                 self.assertEqual(health.nas_readiness(now), {'nas_backup_ready': True, 'nas_check_ready': True})
-                record('last-backup.json', {'time': (now - timedelta(hours=37)).isoformat(), 'snapshot': 'a' * 64})
+                record('last-backup.json', {'time': now.isoformat(), 'snapshot': 'a' * 64,
+                                            'scope': '/srv/backups/agent-recovery'})
+                self.assertFalse(health.nas_readiness(now)['nas_backup_ready'])
+                record('last-backup.json', {'time': (now - timedelta(hours=37)).isoformat(),
+                                            'snapshot': 'a' * 64, 'scope': scope})
                 self.assertFalse(health.nas_readiness(now)['nas_backup_ready'])
                 self.assertTrue(health.nas_readiness(now)['nas_check_ready'])
-                record('last-backup.json', {'time': (now + timedelta(minutes=3)).isoformat(), 'snapshot': 'a' * 64})
+                record('last-backup.json', {'time': (now + timedelta(minutes=3)).isoformat(),
+                                            'snapshot': 'a' * 64, 'scope': scope})
                 self.assertFalse(health.nas_readiness(now)['nas_backup_ready'])
-                record('last-backup.json', {'time': now.isoformat(), 'snapshot': 'a' * 64})
+                record('last-backup.json', {'time': now.isoformat(), 'snapshot': 'a' * 64, 'scope': scope})
                 call.return_value = subprocess.CompletedProcess([], 0, units(failed=True), '')
                 self.assertFalse(any(health.nas_readiness(now).values()))
                 call.return_value = subprocess.CompletedProcess([], 0, units(enabled=False), '')

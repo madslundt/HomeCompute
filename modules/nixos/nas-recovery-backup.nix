@@ -4,6 +4,11 @@ let
   mount = "/mnt/homecompute-backups";
   state = "/var/lib/homecompute/nas-recovery-backup";
   runner = "${pkgs.python3}/bin/python3 ${../../scripts/nas-recovery-backup.py}";
+  backupCli = pkgs.writeShellScriptBin "homecompute-nas-recovery" ''
+    exec ${pkgs.python3}/bin/python3 ${../../scripts/nas-recovery-backup.py} "$@"
+  '';
+  immichDatabaseBackup = builtins.toString ../../scripts/immich-db-backup.sh;
+  immichCompose = builtins.toString ../../deploy/immich/compose.yaml;
   service = command: {
     requires = [ "network-online.target" ];
     after = [ "network-online.target" ];
@@ -11,32 +16,28 @@ let
       RequiresMountsFor = mount;
       ConditionPathExists = "${state}/backup-authorized";
     };
-    path = [ pkgs.restic pkgs.util-linux pkgs.docker pkgs.systemd ];
+    path = [ pkgs.restic pkgs.util-linux pkgs.docker pkgs.openssh pkgs.gzip ];
     environment = {
       HOME = state;
       DOCKER_HOST = "unix:///var/run/docker.sock";
       DOCKER_CONFIG = "${state}/docker";
       PYTHONDONTWRITEBYTECODE = "1";
+      IMMICH_COMPOSE_FILE = immichCompose;
     };
     serviceConfig = {
       Type = "oneshot";
       User = "root";
       UMask = "0077";
       UnsetEnvironment = [ "DOCKER_CONTEXT" "HTTP_PROXY" "HTTPS_PROXY" "ALL_PROXY" "http_proxy" "https_proxy" "all_proxy" "SSH_AUTH_SOCK" ];
-      ExecStartPre = lib.optionals (command == "backup" && cfg.includeApplicationState) [
+      ExecStartPre = lib.optionals (command == "backup") [
         "${runner} validate"
       ];
-      ExecStart = if command == "backup" && cfg.includeApplicationState then
-        "${runner} scheduled --prepare-script ${../../scripts/application-recovery.py}"
+      ExecStart = if command == "backup" then
+        "${runner} scheduled"
         else "${runner} ${command}";
-      # RestartForceExitStatus applies to the main process, not ExecStartPre.
-      # Keep TEMPFAIL unsuccessful: oneshot success statuses never restart.
       Restart = "no";
-      RestartForceExitStatus = lib.optional (command == "backup" && cfg.includeApplicationState) 75;
+      RestartForceExitStatus = lib.optional (command == "backup") 75;
       RestartSec = "30min";
-      ExecStopPost = lib.optionals (command == "backup" && cfg.includeApplicationState) [
-        "${pkgs.python3}/bin/python3 ${../../scripts/application-recovery.py} resume"
-      ];
       TimeoutStartSec = "2h";
       TimeoutStopSec = "10min";
       KillMode = "mixed";
@@ -45,27 +46,30 @@ let
       IOSchedulingClass = "idle";
       Nice = 10;
       NoNewPrivileges = true;
-      # Root must read private application/VM directories owned by their
-      # service UIDs; grant read/search, never write/ownership overrides.
-      CapabilityBoundingSet = lib.optional (command == "backup" && cfg.includeApplicationState) "CAP_DAC_READ_SEARCH";
-      AmbientCapabilities = lib.optional (command == "backup" && cfg.includeApplicationState) "CAP_DAC_READ_SEARCH";
+      # Read private Immich and Hermes state without granting source writes.
+      CapabilityBoundingSet = lib.optional (command == "backup") "CAP_DAC_READ_SEARCH";
+      AmbientCapabilities = lib.optional (command == "backup") "CAP_DAC_READ_SEARCH";
       PrivateTmp = true;
       ProtectSystem = "strict";
-      ProtectHome = if command == "backup" && cfg.includeApplicationState then "tmpfs" else "yes";
-      BindReadOnlyPaths = lib.optionals (command == "backup" && cfg.includeApplicationState) [
-        "/home/mads/projects/chessmate/config/certificates"
-        "/home/mads/projects/chessmate/config/.env"
+      ProtectHome = "yes";
+      BindReadOnlyPaths = lib.optionals (command == "backup") [
+        "/run/secrets/hermes-backup/ssh-key"
+        "/run/secrets/immich/database-password"
+        "/etc/homecompute/immich.env"
+        "/etc/homecompute/hermes-backup_known_hosts"
       ];
       ProtectKernelTunables = true;
       ProtectKernelModules = true;
       ProtectControlGroups = true;
-      ReadWritePaths = [ mount state "/srv/backups/agent-recovery" "/var/lib/homecompute/deploy.lock" "/run/homecompute" ];
-      RestrictAddressFamilies = [ "AF_UNIX" ];
+      ReadOnlyPaths = lib.optionals (command == "backup") [ "/mnt/immich-nas" ];
+      ReadWritePaths = [ mount state "/srv/backups/homecompute-selected-state"
+        "/srv/state/immich/db-backups" ];
+      RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" ];
     };
   };
 in {
   options.homecompute.nasRecoveryBackup = {
-    enable = lib.mkEnableOption "encrypted completed agent recovery archives on a separate NAS share";
+    enable = lib.mkEnableOption "encrypted selected Immich and Hermes state backups on a separate NAS share";
     address = lib.mkOption { type = lib.types.str; default = "192.168.30.236"; };
     share = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
     credentialsFile = lib.mkOption {
@@ -73,20 +77,9 @@ in {
       default = null;
       description = "Root-only mount.cifs credential file for the dedicated backup account.";
     };
-    includeApplicationState = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Prepare a consistent recovery archive of gateway, n8n, Mattermost,
-        Immich and Chessmate databases, local OpenWebUI/Omi/book state,
-        trusted agent state and both VMs before transfer.
-        This briefly stops applications and VMs; active private browsers defer
-        the job. Original NAS media and the host age identity remain separate.
-      '';
-    };
   };
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ pkgs.qemu_kvm pkgs.cifs-utils ];
+    environment.systemPackages = [ pkgs.cifs-utils backupCli ];
     assertions = [
       { assertion = cfg.share != null && cfg.credentialsFile != null;
         message = "NAS recovery backups need a separate known share and root-only account credential."; }
@@ -96,10 +89,15 @@ in {
     ];
     environment.etc."homecompute/nas-recovery-backup.json".text = builtins.toJSON {
       inherit (cfg) address share credentialsFile;
+      hermesSshKeyFile = "/run/secrets/hermes-backup/ssh-key";
+      hermesKnownHostsFile = "/etc/homecompute/hermes-backup_known_hosts";
+      immichDbBackupScript = immichDatabaseBackup;
+      immichComposeFile = immichCompose;
     };
+    environment.etc."homecompute/hermes-backup_known_hosts".source = ../../config/hermes-backup-known-hosts;
     systemd.tmpfiles.rules = [
       "d ${state} 0700 root root - -"
-      "d /srv/backups/agent-recovery 0700 root root - -"
+      "d /srv/backups/homecompute-selected-state 0700 root root - -"
       "d /srv/restore-tests 0700 root root - -"
       "d /var/lib/homecompute 0750 root root - -"
       "f /var/lib/homecompute/deploy.lock 0600 root root - -"
@@ -114,6 +112,8 @@ in {
         "x-systemd.mount-timeout=15s" ];
     };
     systemd.services.homecompute-nas-recovery-backup = service "backup";
+    systemd.services.homecompute-nas-recovery-initialize = service "init";
+    systemd.services.homecompute-nas-recovery-proof = service "proof";
     systemd.services.homecompute-nas-recovery-check = service "check";
     systemd.timers.homecompute-nas-recovery-backup = {
       wantedBy = [ "timers.target" ];

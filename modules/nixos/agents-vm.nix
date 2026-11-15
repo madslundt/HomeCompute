@@ -238,32 +238,9 @@ in
       }
       {
         assertion =
-          (
-            config.homecompute.backups.enable
-            || (
-              config.homecompute.nasRecoveryBackup.enable
-              && config.homecompute.nasRecoveryBackup.includeApplicationState
-            )
-          )
-          && (cfg.dataClassification == "synthetic-only" || cfg.restoreVerified)
-          || (
-            cfg.dataClassification == "synthetic-only"
-            && config.homecompute.agentsVm.localBootstrapBackup.enable
-            && config.homecompute.agentsVm.localBootstrapBackup.riskAccepted
-          );
-        message = "household data requires an off-host application-state backup and a fresh restore proof; local bootstrap permits synthetic-only pilots";
-      }
-      {
-        assertion =
-          (config.homecompute.nasRecoveryBackup.enable
-            && config.homecompute.nasRecoveryBackup.includeApplicationState)
-          || lib.any (
-            path: path == "/srv/state" || path == statePath
-          ) (if config.homecompute.backups.enable then
-            lib.concatMap (source: source.paths) (builtins.attrValues config.homecompute.backups.sources)
-          else
-            config.homecompute.backups.paths);
-        message = "an enabled off-host backup source must include /srv/state or the NAS application-state archive must be enabled";
+          (config.homecompute.backups.enable || config.homecompute.nasRecoveryBackup.enable)
+          && (cfg.dataClassification == "synthetic-only" || cfg.restoreVerified);
+        message = "agents VM requires an enabled off-host backup and a restore proof for household data";
       }
       {
         assertion = lib.hasPrefix "https://cloud-images.ubuntu.com/" cfg.image.url;

@@ -129,6 +129,10 @@ in
             "restic/password" = {
               mode = "0400";
             };
+          } // lib.optionalAttrs config.homecompute.nasRecoveryBackup.enable {
+            "hermes-backup/ssh-key" = {
+              mode = "0400";
+            };
           } // lib.optionalAttrs config.homecompute.backups.enable {
             "restic/hetzner/password" = {
               mode = "0400";

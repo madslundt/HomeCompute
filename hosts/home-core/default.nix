@@ -82,7 +82,6 @@ in
     enable = true;
     share = "homecompute-backups";
     credentialsFile = "/etc/homecompute/nas-recovery-backup.credentials";
-    includeApplicationState = true;
   };
 
   # Preserve the installed DHCP connection while bootstrapping over LAN SSH.
