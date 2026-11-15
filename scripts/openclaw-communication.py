@@ -97,7 +97,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
     if assistant_context is not None and (mcp_tokens is None or 'hermes-owner' not in mcp_tokens):
         raise ValueError('assistant context requires the independent owner Hermes MCP principal')
     if mcp_tokens is not None:
-        if (not {"openclaw"} <= set(mcp_tokens) <= {"openclaw", "hermes", "hermes-owner", "openbot-android"} or tasks is None
+        allowed_actors = {"openclaw", "hermes", "hermes-owner", "openbot-android", "openbot-maintenance"}
+        if (not {"openclaw"} <= set(mcp_tokens) <= allowed_actors or tasks is None
                 or len(set(mcp_tokens.values())) != len(mcp_tokens)
                 or any(not isinstance(value, str) or len(value) < 32 or "\r" in value or "\n" in value
                        or value.startswith(("replace", "openshell:resolve:"))
@@ -107,7 +108,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
         # The retired `hermes` bearer stays denied. Reintroduction requires an
         # independently issued owner credential through the source-owned installer.
         mcp_tokens = {actor: value for actor, value in mcp_tokens.items() if actor != 'hermes'}
-        from openclaw_capabilities import Capabilities, HomeAssistant, HermesServices, Maintenance, AndroidOnlyServices
+        from openclaw_capabilities import (Capabilities, HomeAssistant, HermesServices, Maintenance,
+                                           AndroidOnlyServices, OpenBotMaintenanceRead, OpenBotMaintenance)
         hermes_services = HermesServices(services) if services is not None else None
         if assistant_context is not None:
             from assistant_context_tools import ContextServices
@@ -120,6 +122,12 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
             if actor == 'openbot-android':
                 capabilities[actor] = Capabilities(
                     tasks, services=AndroidOnlyServices(), read_only_only=True)
+            elif actor == 'openbot-maintenance':
+                if not Path('/run/homecompute-infrastructure-maintenance/agent.sock').exists():
+                    raise ValueError('OpenBot maintenance requires the trusted controller socket')
+                capabilities[actor] = Capabilities(
+                    tasks, infrastructure=OpenBotMaintenanceRead(infrastructure),
+                    maintenance=OpenBotMaintenance(), read_only_only=True)
             else:
                 capabilities[actor] = Capabilities(tasks, infrastructure, store.settings["actions"],
                     HomeAssistant('hermes' if actor == 'hermes-owner' else actor)

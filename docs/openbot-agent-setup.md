@@ -239,6 +239,16 @@ previously showed automation enabled even though no routines were configured;
 that flag was not reconciled in this pass. Workspace enforcement, memberships,
 provider account scope and runtime isolation remain unverified.
 
+Infrastructure maintenance is deliberately separate from that shared team
+server. The source adds a `home-core-operator` OpenBot instance with isolated
+data and network policy, a maintenance-only relay principal, and a LiteLLM key
+that cannot access the general catalog. Its one operator agent uses
+`config/openbot-agent-skills/infrastructure-operator.md`. Do not add the
+maintenance MCP connection or either credential to `home-core`; the team
+server's shared MCP connections would make them available to every team agent.
+This is source-defined desired state until the isolated server, credentials,
+and denial checks are applied and verified through their documented lifecycle.
+
 The current source pins the 0.66.0 Linux/amd64 image. The guest remains healthy
 and the service status is read-only. The scheduled NAS backup timer was active;
 its last completed archive receipt was 2026-11-09 22:26 UTC, within the

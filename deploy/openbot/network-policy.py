@@ -12,6 +12,9 @@ CONFIG = Path('/etc/homecompute-openbot/network.json')
 CHAIN = 'HC-OPENBOT-EGRESS'
 SUBNET = ipaddress.ip_network('172.30.192.0/24')
 CONTAINER = ipaddress.ip_address('172.30.192.2')
+OPERATOR_CHAIN = 'HC-OPENBOT-OPS-EGRESS'
+OPERATOR_SUBNET = ipaddress.ip_network('172.30.194.0/24')
+OPERATOR_CONTAINER = ipaddress.ip_address('172.30.194.2')
 HOST = ipaddress.ip_address('10.77.20.1')
 LOCAL_MODEL_PORT = 18080
 ANDROID_MCP_PORT = 19445
@@ -30,6 +33,9 @@ def load_turn_addresses() -> list[ipaddress.IPv4Address]:
         raise ValueError('unsupported OpenBot network configuration')
     if value.get('docker_subnet') != str(SUBNET) or value.get('container_address') != str(CONTAINER):
         raise ValueError('OpenBot Docker network does not match the reviewed policy')
+    if (value.get('operator_docker_subnet') != str(OPERATOR_SUBNET)
+            or value.get('operator_container_address') != str(OPERATOR_CONTAINER)):
+        raise ValueError('OpenBot operator Docker network does not match the reviewed policy')
     endpoint = value.get('local_model_endpoint', {})
     if endpoint != {'address': str(HOST), 'port': LOCAL_MODEL_PORT}:
         raise ValueError('OpenBot local model endpoint does not match the reviewed boundary')
@@ -64,37 +70,45 @@ def iptables(*arguments: str, check: bool = True) -> subprocess.CompletedProcess
 
 
 def remove() -> None:
-    while iptables('-C', 'DOCKER-USER', '-s', str(SUBNET), '-j', CHAIN, check=False).returncode == 0:
-        iptables('-D', 'DOCKER-USER', '-s', str(SUBNET), '-j', CHAIN)
-    if iptables('-L', CHAIN, check=False).returncode == 0:
-        iptables('-F', CHAIN)
-        iptables('-X', CHAIN)
+    for subnet, chain in ((SUBNET, CHAIN), (OPERATOR_SUBNET, OPERATOR_CHAIN)):
+        while iptables('-C', 'DOCKER-USER', '-s', str(subnet), '-j', chain, check=False).returncode == 0:
+            iptables('-D', 'DOCKER-USER', '-s', str(subnet), '-j', chain)
+        if iptables('-L', chain, check=False).returncode == 0:
+            iptables('-F', chain)
+            iptables('-X', chain)
+
+
+def apply_one(subnet: ipaddress.IPv4Network, container: ipaddress.IPv4Address, chain: str,
+              addresses: list[ipaddress.IPv4Address], *, allow_android: bool) -> None:
+    iptables('-N', chain, check=False)
+    iptables('-F', chain)
+    iptables('-A', chain, '!', '-s', f'{container}/32', '-j', 'REJECT')
+    iptables('-A', chain, '-m', 'conntrack', '--ctstate', 'ESTABLISHED,RELATED', '-j', 'ACCEPT')
+    iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'udp', '--dport', '53', '-j', 'ACCEPT')
+    iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', '53', '-j', 'ACCEPT')
+    iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(LOCAL_MODEL_PORT), '-j', 'ACCEPT')
+    if allow_android:
+        iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(ANDROID_MCP_PORT), '-j', 'ACCEPT')
+    iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(MCP_GATEWAY_PORT), '-j', 'ACCEPT')
+    for address in addresses:
+        for port in ('3478', '49152:65535'):
+            iptables('-A', chain, '-d', f'{address}/32', '-p', 'udp', '--dport', port, '-j', 'ACCEPT')
+        iptables('-A', chain, '-d', f'{address}/32', '-p', 'tcp', '-m', 'multiport',
+                 '--dports', '3478,5349', '-j', 'ACCEPT')
+    for subnet in BLOCKED:
+        iptables('-A', chain, '-d', subnet, '-j', 'REJECT')
+    iptables('-A', chain, '-p', 'tcp', '-m', 'multiport', '--dports', '80,443', '-j', 'ACCEPT')
+    iptables('-A', chain, '-j', 'REJECT')
+    if iptables('-C', 'DOCKER-USER', '-s', str(subnet), '-j', chain, check=False).returncode != 0:
+        iptables('-I', 'DOCKER-USER', '1', '-s', str(subnet), '-j', chain)
 
 
 def apply() -> None:
     if iptables('-L', 'DOCKER-USER', check=False).returncode != 0:
         raise RuntimeError('Docker DOCKER-USER chain is unavailable')
     addresses = load_turn_addresses()
-    iptables('-N', CHAIN, check=False)
-    iptables('-F', CHAIN)
-    iptables('-A', CHAIN, '!', '-s', f'{CONTAINER}/32', '-j', 'REJECT')
-    iptables('-A', CHAIN, '-m', 'conntrack', '--ctstate', 'ESTABLISHED,RELATED', '-j', 'ACCEPT')
-    iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'udp', '--dport', '53', '-j', 'ACCEPT')
-    iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', '53', '-j', 'ACCEPT')
-    iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(LOCAL_MODEL_PORT), '-j', 'ACCEPT')
-    iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(ANDROID_MCP_PORT), '-j', 'ACCEPT')
-    iptables('-A', CHAIN, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(MCP_GATEWAY_PORT), '-j', 'ACCEPT')
-    for address in addresses:
-        for port in ('3478', '49152:65535'):
-            iptables('-A', CHAIN, '-d', f'{address}/32', '-p', 'udp', '--dport', port, '-j', 'ACCEPT')
-        iptables('-A', CHAIN, '-d', f'{address}/32', '-p', 'tcp', '-m', 'multiport',
-                 '--dports', '3478,5349', '-j', 'ACCEPT')
-    for subnet in BLOCKED:
-        iptables('-A', CHAIN, '-d', subnet, '-j', 'REJECT')
-    iptables('-A', CHAIN, '-p', 'tcp', '-m', 'multiport', '--dports', '80,443', '-j', 'ACCEPT')
-    iptables('-A', CHAIN, '-j', 'REJECT')
-    if iptables('-C', 'DOCKER-USER', '-s', str(SUBNET), '-j', CHAIN, check=False).returncode != 0:
-        iptables('-I', 'DOCKER-USER', '1', '-s', str(SUBNET), '-j', CHAIN)
+    apply_one(SUBNET, CONTAINER, CHAIN, addresses, allow_android=True)
+    apply_one(OPERATOR_SUBNET, OPERATOR_CONTAINER, OPERATOR_CHAIN, addresses, allow_android=False)
 
 
 def main() -> int:

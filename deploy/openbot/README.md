@@ -1,9 +1,10 @@
 # OpenBot on the agents VM
 
-OpenBot is installed as a single pinned container in the Ubuntu agents VM on
-`home-core`. It uses OpenBot's hosted account, Signal, and TURN services. The
-OpenBot image publishes no ports and has no bundled web client; after sign-in,
-use the desktop/iPhone app or `https://openbot.run/app`.
+OpenBot runs in the Ubuntu agents VM on `home-core`. The existing team server
+and the isolated `home-core-operator` server use separate containers, Docker
+bridges, and `/data` directories. Both use OpenBot's hosted account, Signal,
+and TURN services. Their images publish no ports and have no bundled web client;
+after sign-in, use the desktop/iPhone app or `https://openbot.run/app`.
 
 The container tracks OpenBot's mutable `latest` image tag. The systemd unit
 pulls it before each service start, and the health check verifies that the
@@ -45,6 +46,26 @@ The login command asks for the account email and one-time code in the local
 terminal. It stores the server session only in OpenBot's `/data` keyring. Then
 sign in to the desktop/iPhone app or `openbot.run/app` with the same account and
 select the `home-core` server.
+
+The same service unit also owns an isolated `homecompute-openbot-operator`
+container with its own persistent `operator-data` directory. It is a separate
+OpenBot server, not another agent on the shared team server. Its Docker network
+has its own egress chain and permits only the same reviewed model, MCP, public
+HTTPS, DNS, and TURN destinations. The operator container has a 1 CPU / 2 GiB
+limit. Verify a fresh completed agents-VM backup and guest capacity before
+installing this source revision. Sign the server into the owner account using
+the interactive terminal command, then select **home-core-operator** in the
+client:
+
+```bash
+./scripts/setup-openbot-guest.sh login-operator
+```
+
+Create exactly one agent on that server and assign it the
+`config/openbot-agent-skills/infrastructure-operator.md` instructions. Keep its
+computer-use, local-scripts, routines, and other MCP connections disabled. The
+HomeCompute server connection is intentionally configured separately below;
+do not add it to the existing `home-core` team server.
 
 ## Models and teams
 
@@ -156,6 +177,61 @@ Do not reuse one role's bearer as another role. Test before saving; the list
 should include all seven configured aliases. This connection is available to every
 OpenBot agent, so protect the key and delegated bearers as full household and
 workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog access.
+
+### Isolated infrastructure maintenance server
+
+The maintenance MCP alias is excluded from `all-harness-mcps` and the existing
+OpenBot team key. It belongs only on the separate `home-core-operator` server.
+After deploying a reviewed Home Core release, prepare and review the native
+relay admission plan, then apply it with the explicit maintenance flag:
+
+```bash
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --apply \
+  --expected-plan-sha256 PLAN_SHA256 --admit-openbot-maintenance
+```
+
+Provision a separate LiteLLM key restricted to `automation-moe` and the
+`homecompute_openbot_maintenance` server, then retrieve that key in the
+operator's terminal for the isolated server's provider and secure MCP settings:
+
+```bash
+python3 scripts/provision-openbot-maintenance-key.py
+ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
+  hermes-operator@10.77.20.2 \
+  'cat ~/.config/homecompute-openbot-operator/secrets/litellm-api-key'
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA \
+  --export-openbot-maintenance-credential
+```
+
+In **home-core-operator** Provider settings, add a custom OpenAI-compatible
+provider using `https://mcp.home.arpa/v1`, model `automation-moe`, and this
+dedicated key. The same key is required for the isolated maintenance MCP alias.
+On **home-core-operator** only, add a Streamable HTTP connection at
+`https://mcp.home.arpa/mcp` with the LiteLLM API key and the header
+`x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`.
+The allowed inventory is limited to `homecompute_systems`,
+`homecompute_system_read`, and the five `homecompute_maintenance_*` tools. The
+principal can read host reports and prepare, inspect, list, and request a
+controller-prepared plan. Routine verified changes use the controller's
+existing standing authorization; major, unknown, downgrade, fix, and uncertain
+plans remain blocked pending exact root approval. The principal cannot target
+Home Assistant, deploy HomeCompute source releases, or manage models.
+
+The HomeCompute and LiteLLM credentials are each server-wide within
+home-core-operator. Keep one operator agent on that instance. Confirm the
+regular `home-core` server cannot list the maintenance alias or call the
+maintenance principal before enabling routine use.
+
+To withdraw access, remove the MCP connection from the isolated server, revoke
+the dedicated LiteLLM key, and remove the relay bearer through the guarded
+source installer on Home Core:
+
+```bash
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --apply \
+  --expected-plan-sha256 PLAN_SHA256 --revoke-openbot-maintenance
+```
 
 ## Operations and recovery
 

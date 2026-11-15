@@ -50,6 +50,8 @@ Codex app connectors, or unreviewed external MCP services.
   through that provider; provider assignment remains a separate client policy.
 - Gateway catalog availability and key grants alone do not prove that a backend
   is healthy or that an agent has the required role-scoped relay bearer.
+- The isolated OpenBot infrastructure operator is a separate server and
+  principal, outside `all-harness-mcps`; see [ADR-037](037-openbot-infrastructure-maintenance.md).
 
 ## Rollout
 

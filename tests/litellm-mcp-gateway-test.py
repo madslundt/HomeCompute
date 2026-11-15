@@ -48,6 +48,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
                       "openclaw-agent-tools", "openbot-android-bounded-ui",
                       "aula-read", "offers-read"):
             self.assertIn(f"access_groups: [{group}, all-harness-mcps]", CONFIG)
+        self.assertIn("access_groups: [openbot-maintenance]", CONFIG)
+        self.assertIn("homecompute_openbot_maintenance", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
         self.assertIn("url: https://mcp.dinero.dk", CONFIG)
         self.assertIn("url: http://banknorwegian-mcp:8090/mcp", CONFIG)
@@ -69,6 +71,9 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         bank = CONFIG.split("  banknorwegian:", 1)[1]
         self.assertIn("access_groups: [banknorwegian-read]", bank)
         self.assertNotIn("all-harness-mcps", bank)
+        maintenance = CONFIG[CONFIG.index("  homecompute_openbot_maintenance:"):CONFIG.index("  aula:")]
+        self.assertNotIn("all-harness-mcps", maintenance)
+        self.assertEqual(len(re.findall(r"(?m)^      - homecompute_maintenance_[a-z]+$", maintenance)), 5)
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)
