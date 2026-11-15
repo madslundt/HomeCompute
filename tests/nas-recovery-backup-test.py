@@ -66,6 +66,9 @@ class NASBackupTest(unittest.TestCase):
 
     def test_dedicated_share_validates(self):
         self.assertEqual(backup.configuration(CONFIG), CONFIG)
+        source_path = "/nix/store/qyz0igh4lr0557h61p9kfialsc98svd7-source/deploy/immich/compose.yaml"
+        self.assertEqual(backup.configuration({**CONFIG, "immichComposeFile": source_path})[
+            "immichComposeFile"], source_path)
 
     def test_selected_helper_paths_are_strict(self):
         for field, path in [("hermesSshKeyFile", "/run/../bad"),

@@ -62,7 +62,7 @@ def configuration(value: dict) -> dict:
         raise ValueError("immichDbBackupScript must name the tracked Nix-store helper")
     compose = value["immichComposeFile"]
     if (not isinstance(compose, str) or not compose.startswith("/nix/store/")
-            or not re.fullmatch(r"/nix/store/[A-Za-z0-9+._?=-]+-compose\.yaml", compose)):
+            or not re.fullmatch(r"/nix/store/[A-Za-z0-9+._?=-]+(?:/deploy/immich/compose\.yaml|-compose\.yaml)", compose)):
         raise ValueError("immichComposeFile must name the tracked Nix-store Compose file")
     return {"address": address, "share": share, "credentialsFile": credential,
             "hermesSshKeyFile": ssh_key, "hermesKnownHostsFile": known_hosts,
