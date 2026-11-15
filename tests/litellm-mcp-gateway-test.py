@@ -21,7 +21,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertRegex(CONFIG, r"(?ms)^mcp_servers:\s*\n\s+context7:")
         self.assertIn("url: https://mcp.context7.com/mcp", CONFIG)
         self.assertIn("url: http://n8n:5678/mcp-server/http", CONFIG)
-        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 3)
+        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 4)
         self.assertIn("url: http://aula-mcp:7878/mcp", CONFIG)
         aula = CONFIG.split("  aula:", 1)[1].split("  tilbudstrolden:", 1)[0]
         self.assertNotIn("allowed_tools:", aula)
@@ -54,7 +54,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("url: https://mcp.dinero.dk", CONFIG)
         self.assertIn("url: http://banknorwegian-mcp:8090/mcp", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
-        self.assertEqual(len(server_names), 9)
+        self.assertEqual(len(server_names), 10)
         self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
         self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
         self.assertIn("auth_value: os.environ/N8N_MCP_TOKEN", CONFIG)
