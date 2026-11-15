@@ -45,6 +45,16 @@ fi
 for required_file in /var/lib/sops-nix/key.txt /srv/state/automation/n8n/database.sqlite /srv/state/automation/n8n/config; do
   [[ -s "$required_file" ]] || { printf 'Restore required file first: %s\n' "$required_file" >&2; exit 1; }
 done
+# Compose config is checked after the NixOS switch below. Fail before any host
+# mutation when the full production stack's required Bank Norwegian settings
+# are missing, rather than switching NixOS and then stopping partway through.
+for required_setting in BN_CLIENT_ID BN_CLIENT_SECRET BANKNORWEGIAN_MCP_STATE_ROOT BANKNORWEGIAN_MCP_BACKENDS_IP; do
+  if ! grep -Eq "^${required_setting}=.+$" /etc/homecompute/automation.env; then
+    printf 'Missing required Bank Norwegian setting %s in /etc/homecompute/automation.env; refusing before deployment.\n' \
+      "$required_setting" >&2
+    exit 1
+  fi
+done
 release="/srv/homecompute/releases/$revision"
 if [[ ! -d "$release" ]]; then
   git clone https://github.com/madslundt/HomeCompute.git "$release"

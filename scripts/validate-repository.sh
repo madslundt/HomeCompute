@@ -924,7 +924,9 @@ rg -F 'HC-COMPUTE-TUNNEL -s 172.28.200.5/32 -d 172.28.200.1/32 -p tcp --dport 18
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 printf '[validate] Application project isolation (ADR-017)\n'
 automation_json="$temporary_root/automation-compose.json"
-INBOX_WEBHOOK_ID=validation-only docker compose \
+INBOX_WEBHOOK_ID=validation-only BN_CLIENT_ID=validation-only \
+  BN_CLIENT_SECRET=validation-only BANKNORWEGIAN_MCP_STATE_ROOT=/tmp/banknorwegian-validation \
+  BANKNORWEGIAN_MCP_BACKENDS_IP=172.28.212.5 docker compose \
   --env-file "$REPO_ROOT/config/automation.env.example" \
   -f "$REPO_ROOT/deploy/automation/compose.yaml" config --format json >"$automation_json"
 jq -e '
@@ -1015,7 +1017,9 @@ rg -F 'FROM python:3.15.0-slim-bookworm@sha256:' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
 rg -F 'pip install --no-compile --require-hashes -r requirements.lock' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
-INBOX_WEBHOOK_ID=validation-only docker compose \
+INBOX_WEBHOOK_ID=validation-only BN_CLIENT_ID=validation-only \
+  BN_CLIENT_SECRET=validation-only BANKNORWEGIAN_MCP_STATE_ROOT=/tmp/banknorwegian-validation \
+  BANKNORWEGIAN_MCP_BACKENDS_IP=172.28.212.5 docker compose \
   --env-file "$REPO_ROOT/config/automation.env.example" \
   -f "$REPO_ROOT/deploy/automation/compose.yaml" \
   -f "$REPO_ROOT/deploy/automation/production.yaml" config --format json >"$automation_json"
