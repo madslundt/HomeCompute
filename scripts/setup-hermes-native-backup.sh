@@ -27,7 +27,7 @@ for source in export-hermes-state.sh hermes-native-home-snapshot.py; do
   install -m "$mode" -- "$SCRIPT_DIR/$source" "$target"
 done
 
-read -r key_type key_data key_comment <"$public_key_file"
+IFS=' ' read -r key_type key_data key_comment <"$public_key_file"
 [[ $key_type == ssh-ed25519 && $key_data =~ ^[A-Za-z0-9+/]+=*$ && $key_comment == homecompute-hermes-state-backup ]] || {
   echo 'The tracked Hermes backup public key is malformed.' >&2
   exit 1
