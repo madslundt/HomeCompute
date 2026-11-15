@@ -80,7 +80,9 @@ class PlatformHealthTest(unittest.TestCase):
         core = next(system for system in registry['systems'] if system['id'] == 'home-core')
         containers = {row['name'] for row in core['containers']}
         self.assertTrue({'homecompute-immich-immich-server-1', 'homecompute-mattermost-mattermost-1',
-                         'home-core-embeddings', 'home-core-moss-tts', 'home-core-piper-tts'} <= containers)
+                         'home-core-embeddings'} <= containers)
+        self.assertTrue({'home-core-moss-tts', 'home-core-piper-tts',
+                         'home-core-wyoming-stt'}.isdisjoint(containers))
         units = {row['name'] for row in core['units']}
         self.assertTrue({'ttlock-funnel.service', 'homecompute-compute-ssh-tunnel.service',
                          'homecompute-codex-vm.service', 'homecompute-service-recovery.service'} <= units)

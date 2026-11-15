@@ -69,14 +69,6 @@
           "require_health": true
         },
         {
-          "name": "home-core-piper-tts",
-          "require_health": true
-        },
-        {
-          "name": "home-core-wyoming-stt",
-          "require_health": true
-        },
-        {
           "name": "homecompute-omnivoice-omnivoice-wyoming-1",
           "require_health": true
         },
@@ -90,10 +82,6 @@
         },
         {
           "name": "homecompute-ttlock-webhook-gateway-1",
-          "require_health": true
-        },
-        {
-          "name": "home-core-moss-tts",
           "require_health": true
         },
         {

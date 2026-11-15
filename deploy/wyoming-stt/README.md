@@ -17,9 +17,9 @@ and [official image tags](https://hub.docker.com/r/rhasspy/wyoming-whisper/tags)
 ## Deploy
 
 The general home-core deployment installs the NixOS directory, environment,
-and firewall policy, validates and pulls the digest-pinned image, but leaves
-STT stopped until its model has been prepared. From the deployed release on
-`home-core`, run:
+and firewall policy. The CPU fallback is operated on demand. From a published
+release on `home-core`, prepare the image and model if needed and start it for
+recovery:
 
 ```bash
 sudo bash scripts/setup-home-core-stt.sh prepare
@@ -37,6 +37,10 @@ network egress. No audio or transcript is written to the model directory.
 This repository does not authorize an unattended live-host deployment. Publish
 and deploy a reviewed commit using the documented Git deployment workflow,
 then run the explicit preparation and start commands above.
+
+After restoring Whisper on Spark and switching Assist back, run
+`sudo bash scripts/setup-home-core-stt.sh down` to reclaim RAM. The Compose
+project is removed and the prepared model cache remains on disk.
 
 ## Verify
 
@@ -65,9 +69,8 @@ not as Danish accuracy qualification.
 
 To upgrade the runtime, change `WYOMING_STT_IMAGE` to a reviewed version plus
 immutable registry digest, validate the repository, publish the commit, and
-deploy that exact commit. Re-run `prepare` if the configured model changes;
-otherwise the persistent cache is reused. Then run `up` and repeat the Wyoming
-and Danish speech checks.
+deploy that exact commit. Run `prepare` to fetch the pinned image and verify
+the model cache. Then run `up` and repeat the Wyoming and Danish speech checks.
 
 Roll back by deploying the prior known-good commit using
 `scripts/deploy-home-core.sh FULL_COMMIT_SHA`. Its image digest and settings are
