@@ -2,12 +2,12 @@
 
 PodWave is deployed on `home-core` as an isolated Compose project and served at
 `https://podwave.home.arpa/`. Caddy terminates TLS with the existing private
-HomeCompute CA and requires HTTP Basic Auth before forwarding traffic. The site
-is available only through the existing private LAN/Tailscale Caddy listeners;
-there is no public port or Tailscale Funnel.
+HomeCompute CA. Anyone who can reach the existing private LAN/Tailscale Caddy
+listeners can open the studio, manage episodes and jobs, and change provider
+settings without a login. The app publishes no host port.
 
 The app image is built from the PodWave source pinned to commit
-`6b21d344fd51aab682ab33b3486c9f0312431827` (version 1.7.0). Its uv/Python base
+`3c54c9f04b58b48f9b44fe4ca5f9ac7cf634c50d` (version 1.9.0). Its uv/Python base
 is pinned by digest in the tracked Dockerfile. The service has no host port, no
 Docker socket, no capabilities, a read-only root filesystem, and a dedicated
 bridge shared only with Caddy. Caddy publishes the `ai.home.arpa` alias only on
@@ -36,12 +36,9 @@ models, voices, and stored credentials.
 The app's server configuration and generated episode files live below
 `/srv/state/podwave`; NixOS provisions the directory for the container's
 non-root UID. This path is covered by the host's `/srv/state` application backup.
-The Caddy login hash and recovery password live in the separately protected
-`/srv/state/podwave-auth` directory and are also covered by that backup. On the
-first deployment, the release creates a random login. Retrieve it on home-core
-with `sudo cat /srv/state/podwave-auth/password.txt`; the username is `podwave`.
-Keep the password in the household password manager. Do not copy it into Git or
-the app's provider settings.
+Older full releases used Basic Auth. Keep any existing root-only
+`/srv/state/podwave-auth` files available if rolling the whole host back to one
+of those releases.
 
 The authoritative local DNS input is [`config/podwave-dns.json`](../../config/podwave-dns.json).
 Install its `podwave.home.arpa` A record (`192.168.30.122`, TTL 300) in the
@@ -49,7 +46,7 @@ home LAN resolver. Clients on the tailnet must use the existing `home.arpa`
 split DNS resolver. Trust the HomeCompute CA on clients as documented in the
 [Homepage runbook](../homepage/README.md).
 
-After opening the URL and signing in, configure server-side LLM and TTS
+After opening the URL, configure server-side LLM and TTS
 providers in PodWave's Settings page. Their API keys are stored in the app's
 `/srv/state/podwave/config.json` with mode `0600`; the app masks keys in API
 responses. Browser-only provider settings remain in that browser's local
@@ -57,27 +54,31 @@ storage. Do not use real provider keys in shell arguments or commit them.
 
 Normal updates go through the reviewed HomeCompute release on `origin/master`.
 The guarded `scripts/deploy-home-core.sh` lifecycle builds the image, applies
-the control-plane network and authenticated Caddy route, then starts PodWave
-and waits for its health check. If an unrelated full-stack prerequisite blocks
-that rollout, the PodWave-only lifecycle can update this already-provisioned
-workload without changing the full host release marker:
+the control-plane network and Caddy route, then starts PodWave and waits for
+its health check. Use the PodWave-only lifecycle to update the already
+provisioned workload on its own:
 
 ```bash
 ./scripts/homecompute deploy-podwave --revision FULL_HOME_COMPUTE_COMMIT_SHA
 ```
 
 It requires the existing Caddy route, PodWave network, CA, and state directory.
-Before replacing the container it stops PodWave briefly and makes a
+When removing the legacy login, it checks the running Caddy configuration
+against the selected release, validates the change, and recreates only Caddy
+from that release. If other edge changes are pending, use the full rollout.
+
+Before replacing the app container it stops PodWave briefly and makes a
 root-only, checksummed archive of `/srv/state/podwave` at
 `/srv/state/control-plane/backups/podwave/`. The full app state is about 15 MB
-on the current host. It checks the authenticated HTTPS URL, then records the
-deployed source at
-`/srv/homecompute/podwave-current` and its HomeCompute revision in
+on the current host. It checks the studio and health API over HTTPS without
+credentials, then records the deployed source at `/srv/homecompute/podwave-current`
+and its HomeCompute revision in
 `/var/lib/homecompute/podwave-deployed-revision`. A full host deployment updates
 these markers after all workloads succeed. `podwave-previous` retains the
 previous application release for inspection. The pre-upgrade archive is local
 to home-core and contains the app configuration and generated files; keep any
-separate off-host backup policy in place.
+separate off-host backup policy in place. An operator can explicitly skip the
+pre-upgrade archive for one invocation with `--skip-backup`.
 
 To roll back a PodWave config migration, verify the archive, restore it while
 PodWave is stopped, then deploy the previous full HomeCompute revision. The
@@ -101,14 +102,4 @@ sudo docker compose -f /srv/homecompute/podwave-current/deploy/podwave/compose.y
 ```
 
 Before restoring `/srv/state/podwave`, stop the project, restore ownership to
-UID/GID 1000, then redeploy the reviewed HomeCompute release. Restore
-`/srv/state/podwave-auth` with mode `0700` and its files with mode `0600` to keep
-the login stable. To rotate a lost or exposed password, run
-`sudo python3 /srv/homecompute/current/scripts/setup-podwave-auth.py --rotate`
-on home-core, read the new password from the path above, then recreate Caddy:
-
-```bash
-sudo docker compose --env-file /etc/homecompute/control-plane.env \
-  -f /srv/homecompute/current/deploy/control-plane/compose.yaml \
-  up -d --force-recreate caddy
-```
+UID/GID 1000, then redeploy the reviewed HomeCompute release.

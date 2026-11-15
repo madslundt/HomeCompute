@@ -124,20 +124,18 @@ To deploy a historical revision, provide the complete 40-character SHA:
 ./scripts/homecompute deploy home-spark --revision FULL_SHA
 ```
 
-When a full home-core rollout is blocked by an unrelated workload prerequisite,
 PodWave can be deployed independently after its shared Caddy route and network
-are already provisioned:
+are provisioned:
 
 ```bash
 ./scripts/homecompute deploy-podwave --revision FULL_SHA
 ```
 
-This updates only PodWave and records its own release pointer and revision. It
-does not update the host-wide deployment marker; use `status`, `services`,
-`doctor`, and `drift` to keep the host's remaining release state visible.
-PodWave's authenticated URL check runs before its marker advances. See the
-[PodWave runbook](../deploy/podwave/README.md) for its release pointer and
-rollback constraints.
+The isolated lifecycle records a PodWave-specific release pointer and revision
+after an HTTPS check without credentials. Removing legacy login also recreates
+the shared Caddy container after validating the scoped configuration change.
+Use `status`, `services`, `doctor`, and `drift` to check the host-wide release.
+See the [PodWave runbook](../deploy/podwave/README.md) for rollback details.
 
 The tool sends the existing core release script to `home-core`. That script
 keeps its immutable release checkout, lock, build-before-switch, Compose

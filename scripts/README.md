@@ -383,10 +383,10 @@ and prepared Piper projects. See [Git deployment](../docs/git-deployment.md)
 for prerequisites and rollback limits. The books importer remains staged.
 
 `homecompute deploy-podwave --revision FULL_COMMIT_SHA` sends the selected
-published release's `deploy-podwave.sh` to home-core. It updates only the
-already-provisioned PodWave project, verifies its authenticated HTTPS route, and
-records a separate PodWave release pointer without advancing the host-wide
-deployment marker. See the [PodWave runbook](../deploy/podwave/README.md).
+published release's `deploy-podwave.sh` to home-core. It updates the
+already-provisioned PodWave project and reconciles Caddy when removing legacy
+login. It verifies HTTPS without credentials before recording the PodWave
+release pointer. See the [PodWave runbook](../deploy/podwave/README.md).
 
 ## OpenClaw private conversation
 

@@ -180,9 +180,8 @@ the official root entrypoint would discard that group when switching users.
 The Caddy edge also serves the separately managed PodWave application at
 `https://podwave.home.arpa/`. PodWave does not join the control-plane internal
 networks. Its dedicated bridge is shared only with Caddy, and its second bridge
-allows outbound provider requests. Caddy requires a generated Basic Auth login
-before forwarding any route; the password and hash are stored under
-`/srv/state/podwave-auth`, outside Git and outside the app container. See the
+allows outbound provider requests. The site is available without a login on
+the private LAN and household tailnet. See the
 [PodWave runbook](../podwave/README.md) for setup, DNS, provider configuration,
 backup, and recovery.
 

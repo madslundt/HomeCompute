@@ -33,6 +33,18 @@ class PodWaveDeployLifecycleTests(unittest.TestCase):
         self.assertNotIn('nixos-rebuild', script)
         self.assertNotIn('deploy/automation/', script)
 
+    def test_isolated_edge_change_validates_before_switch_and_restores_on_failure(self):
+        script = (ROOT / "scripts/deploy-podwave.sh").read_text()
+        validation = script.index('caddy validate --config - --adapter caddyfile')
+        update = script.index('"${caddy[@]}" up -d --no-deps')
+        rollback = script.index('"${previous_caddy[@]}" up -d --no-deps')
+        marker = script.index('mv -f "$marker_tmp" /var/lib/homecompute/podwave-deployed-revision')
+        self.assertIn("com.docker.compose.config-hash", script)
+        self.assertLess(validation, update)
+        self.assertLess(update, rollback)
+        self.assertLess(rollback, marker)
+        self.assertIn('if not legacy_auth or error.code != 401:', script)
+
     def test_full_release_advances_podwave_marker_only_at_success(self):
         script = (ROOT / "scripts/deploy-home-core.sh").read_text()
         final_marker = script.index("printf 'Healthy deployment: %s\\n' \"$revision\"")

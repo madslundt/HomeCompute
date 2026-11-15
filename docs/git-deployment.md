@@ -52,9 +52,10 @@ and `/var/lib/homecompute/podwave-deployed-revision` only after the PodWave
 service and the remaining workloads succeed. For an application-only PodWave
 rollout with its shared gateway already provisioned, use
 `./scripts/homecompute deploy-podwave --revision FULL_COMMIT_SHA`. That guarded
-path uses the same immutable release checkout and host deployment lock, checks
-the running image and authenticated URL, and leaves the host-wide release
-marker untouched.
+path uses the same immutable release checkout and host deployment lock. It
+checks the running image and verifies the HTTPS route without credentials before
+advancing the PodWave-specific marker. When removing the legacy login it also
+recreates Caddy, after verifying the other edge configuration matches.
 
 To redeploy a prior compatible release, run the script with that release's
 commit. Configuration rollback cannot undo database migrations. For changes

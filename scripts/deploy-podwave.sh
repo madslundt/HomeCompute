@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 # Application-only PodWave release. Invoke from the workstation CLI over SSH.
 set -Eeuo pipefail
+skip_backup=false
+if [[ "${1:-}" == --skip-backup ]]; then
+  skip_backup=true
+  shift
+fi
 revision="${1:-}"
 helper_revision="${2:-$revision}"
 [[ ( $# == 1 || $# == 2 ) && "$revision" =~ ^[0-9a-f]{40}$ && "$helper_revision" =~ ^[0-9a-f]{40}$ ]] || {
-  printf 'Usage: sudo bash deploy-podwave.sh FULL_COMMIT_SHA\n' >&2
+  printf 'Usage: sudo bash deploy-podwave.sh [--skip-backup] FULL_COMMIT_SHA\n' >&2
   exit 2
 }
 [[ $EUID == 0 && $(hostname) == home-core ]] || {
@@ -71,7 +76,41 @@ caddy_container="$(docker ps --filter label=com.docker.compose.project=homecompu
 install -D -m 0644 \
   /srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt \
   /etc/homecompute/control-plane/home-core-root.crt
-python3 "$release/scripts/setup-podwave-auth.py"
+# Old application releases remain usable for rollback with either edge mode.
+legacy_auth=false
+caddy_update=false
+if [[ -f "$release/scripts/setup-podwave-auth.py" ]]; then
+  legacy_auth=true
+else
+  caddy_file="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$caddy_container")"
+  caddy_dir="${caddy_file%/*}"
+  [[ "$caddy_file" =~ ^/srv/homecompute/releases/[0-9a-f]{40}/deploy/control-plane/Caddyfile$ &&
+     -f "$caddy_dir/compose.yaml" ]] || {
+    printf 'Caddy is not running from an immutable HomeCompute release.\n' >&2; exit 1;
+  }
+  if grep -Fq '/srv/state/podwave-auth/auth.env' "$caddy_dir/compose.yaml"; then
+    next_caddy_dir="$release/deploy/control-plane"
+    # The isolated lifecycle may remove only the PodWave login from the edge.
+    if ! cmp -s <(sed '/^podwave\.home\.arpa {$/,/^}$/d' "$caddy_file") \
+                 <(sed '/^podwave\.home\.arpa {$/,/^}$/d' "$next_caddy_dir/Caddyfile") ||
+       ! cmp -s <(sed '/^    env_file:$/ { N; /\n      - path: \/srv\/state\/podwave-auth\/auth\.env$/ { N; d; }; }' "$caddy_dir/compose.yaml") \
+                 "$next_caddy_dir/compose.yaml" ||
+       ! cmp -s "$caddy_dir/caddy-entrypoint.sh" "$next_caddy_dir/caddy-entrypoint.sh"; then
+      printf 'The selected Caddy release has other changes. Use the full home-core deployment.\n' >&2; exit 1
+    fi
+    previous_caddy=(docker compose --env-file /etc/homecompute/control-plane.env -f "$caddy_dir/compose.yaml")
+    caddy=(docker compose --env-file /etc/homecompute/control-plane.env -f "$next_caddy_dir/compose.yaml")
+    running_hash="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$caddy_container")"
+    expected_hash="$("${previous_caddy[@]}" config --hash caddy)"
+    [[ -n "$running_hash" && "$expected_hash" == "caddy $running_hash" ]] || {
+      printf 'Running Caddy configuration differs from its release. Reconcile it before updating the edge.\n' >&2; exit 1;
+    }
+    "${caddy[@]}" config --quiet
+    docker exec -i "$caddy_container" /bin/sh /opt/homecompute/caddy-entrypoint.sh \
+      caddy validate --config - --adapter caddyfile < "$next_caddy_dir/Caddyfile"
+    caddy_update=true
+  fi
+fi
 
 podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
 source "$helper_release/scripts/lib/podwave-backup.sh"
@@ -102,10 +141,16 @@ elif [[ -L /srv/homecompute/current ]]; then
   fi
 fi
 "${podwave[@]}" build --pull podwave
-backup_path="$(backup_podwave_state "$revision" "${podwave[@]}")"
-[[ -n "$backup_path" ]] || {
-  printf 'PodWave state backup was not created; use the full deployment for first setup.\n' >&2; exit 1;
-}
+backup_path=""
+if [[ "$skip_backup" == true ]]; then
+  printf 'Skipped PodWave state backup at operator request.\n'
+else
+  backup_path="$(backup_podwave_state "$revision" "${podwave[@]}")"
+  [[ -n "$backup_path" ]] || {
+    printf 'PodWave state backup was not created; use the full deployment for first setup.\n' >&2; exit 1;
+  }
+  printf 'PodWave state backup: %s\n' "$backup_path"
+fi
 
 "${podwave[@]}" up -d --wait --wait-timeout 180
 podwave_container="$("${podwave[@]}" ps -q podwave)"
@@ -116,26 +161,54 @@ podwave_container="$("${podwave[@]}" ps -q podwave)"
 [[ $(docker inspect --format '{{.State.Health.Status}}' "$podwave_container") == healthy ]] || {
   printf 'PodWave did not become healthy.\n' >&2; exit 1;
 }
-python3 "$release/scripts/setup-podwave-server-settings.py" --container "$podwave_container"
+if [[ -f "$release/scripts/setup-podwave-server-settings.py" ]]; then
+  python3 "$release/scripts/setup-podwave-server-settings.py" --container "$podwave_container"
+fi
 
-# Verify the same authenticated HTTPS route used by clients without putting
-# the generated password in argv or logging it.
-python3 - <<'PY'
+probe_podwave() {
+  python3 - "$legacy_auth" <<'PYTHON'
 import base64
 import ssl
+import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
-password = Path('/srv/state/podwave-auth/password.txt').read_text().strip()
-request = urllib.request.Request('https://podwave.home.arpa/api/health')
-request.add_header('Authorization', 'Basic ' + base64.b64encode(f'podwave:{password}'.encode()).decode())
 context = ssl.create_default_context(cafile='/etc/homecompute/control-plane/home-core-root.crt')
-with urllib.request.urlopen(request, context=context, timeout=15) as response:
-    if response.status != 200:
-        raise SystemExit(f'PodWave authenticated URL check returned HTTP {response.status}')
-    response.read()
-print('Authenticated PodWave URL check: HTTP 200')
-PY
+legacy_auth = sys.argv[1] == 'true'
+for url in ('https://podwave.home.arpa/', 'https://podwave.home.arpa/api/health'):
+    request = urllib.request.Request(url)
+    try:
+        response = urllib.request.urlopen(request, context=context, timeout=15)
+    except urllib.error.HTTPError as error:
+        if not legacy_auth or error.code != 401:
+            raise
+        password = Path('/srv/state/podwave-auth/password.txt').read_text().strip()
+        token = base64.b64encode(f'podwave:{password}'.encode()).decode()
+        request.add_header('Authorization', 'Basic ' + token)
+        response = urllib.request.urlopen(request, context=context, timeout=15)
+    with response:
+        if response.status != 200 or response.geturl() != url:
+            raise SystemExit('PodWave HTTPS check did not return HTTP 200 at the requested URL')
+        if not legacy_auth and response.headers.get('WWW-Authenticate'):
+            raise SystemExit('PodWave HTTPS response still advertises authentication')
+print('PodWave studio and health API passed HTTPS checks.')
+PYTHON
+}
+
+if [[ "$caddy_update" == true ]]; then
+  if ! "${caddy[@]}" up -d --no-deps --wait --wait-timeout 90 caddy || ! probe_podwave; then
+    "${previous_caddy[@]}" up -d --no-deps --wait --wait-timeout 90 caddy ||
+      printf 'Caddy rollback failed; inspect the shared edge before retrying.\n' >&2
+    printf 'PodWave edge update failed.\n' >&2
+    if [[ -n "$backup_path" ]]; then
+      printf 'PodWave state backup: %s\n' "$backup_path" >&2
+    fi
+    exit 1
+  fi
+else
+  probe_podwave
+fi
 
 if [[ -n "$previous" && "$previous" != "$release" ]]; then
   previous_link="/srv/homecompute/.podwave-previous-$revision"
@@ -150,5 +223,4 @@ printf '%s\n' "$revision" > "$marker_tmp"
 chmod 0644 "$marker_tmp"
 mv -f "$marker_tmp" /var/lib/homecompute/podwave-deployed-revision
 printf 'Healthy PodWave deployment: %s (upstream image %s)\n' "$revision" "${image_ref#*:}"
-printf 'PodWave state backup: %s\n' "$backup_path"
 printf 'The full home-core release marker was not changed.\n'

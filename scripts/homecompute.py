@@ -221,7 +221,7 @@ def desired_revision(args: argparse.Namespace, runner: Callable[..., subprocess.
 
 def deploy_host(host: str, revision: str, *, sudo_nopasswd: bool = True,
                 runner: Callable[..., subprocess.CompletedProcess[str]] = default_runner,
-                entrypoint: str | None = None) -> str:
+                entrypoint: str | None = None, skip_podwave_backup: bool = False) -> str:
     valid_sha(revision)
     script = entrypoint or ("deploy-home-core.sh" if host == "home-core" else "deploy-home-spark.sh")
     helper_revision: str | None = None
@@ -252,6 +252,8 @@ def deploy_host(host: str, revision: str, *, sudo_nopasswd: bool = True,
         content = subprocess.CompletedProcess([], 0, (ROOT / "scripts" / script).read_text(), "")
     payload = content.stdout
     command_arguments = revision if helper_revision is None else f"{revision} {helper_revision}"
+    if skip_podwave_backup:
+        command_arguments = f"--skip-backup {command_arguments}"
     command = f"sudo -n bash -s -- {command_arguments}"
     try:
         if sudo_nopasswd or runner is not default_runner:
@@ -301,6 +303,7 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
     deploy.add_argument("--revision", type=valid_sha); deploy.add_argument("--from", dest="from_remote", choices=("origin/master",))
     podwave_deploy = sub.add_parser("deploy-podwave")
     podwave_deploy.add_argument("--revision", type=valid_sha)
+    podwave_deploy.add_argument("--skip-backup", action="store_true", help="skip the pre-upgrade PodWave state archive")
     podwave_deploy.add_argument("--from", dest="from_remote", choices=("origin/master",))
     diff = sub.add_parser("diff"); diff.add_argument("host", choices=HOSTS); diff.add_argument("--revision", type=valid_sha)
     args = parser.parse_args(argv)
@@ -348,7 +351,7 @@ def main(argv: list[str] | None = None, runner: Callable[..., subprocess.Complet
                 raise OperatorError(f"home-core: PodWave deployment preflight missing required tools/access: {', '.join(missing)}")
             result = deploy_host("home-core", revision,
                                  sudo_nopasswd=item.get("required_tools", {}).get("sudo-nopasswd", False),
-                                 runner=runner, entrypoint="deploy-podwave.sh")
+                                 runner=runner, entrypoint="deploy-podwave.sh", skip_podwave_backup=args.skip_backup)
             lines = [line for line in result.splitlines() if line.strip()]
             print(f"  home-core: {lines[-1] if lines else 'command returned success'}")
             return 0

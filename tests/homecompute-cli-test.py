@@ -133,15 +133,17 @@ class HomeComputeCliTests(unittest.TestCase):
                            "required_tools": {name: True for name in (
                                "docker", "docker-compose-plugin", "sudo", "git", "python3", "flock", "jq", "install", "stat", "tar", "date", "sha256sum", "sudo-nopasswd")}}
                 return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
-            self.assertEqual(argv[-1], "sudo -n bash -s -- " + "a" * 40)
+            self.assertEqual(argv[-1], "sudo -n bash -s -- " + expected_option + "a" * 40)
             self.assertEqual(kwargs["input_text"], payload_script)
             return subprocess.CompletedProcess(argv, 0, "Healthy PodWave deployment: " + "a" * 40, "")
 
-        output = StringIO()
-        with redirect_stdout(output):
-            rc = hc.main(["deploy-podwave", "--revision", "a" * 40], runner)
-        self.assertEqual(rc, 0)
-        self.assertIn("Deploying PodWave from " + "a" * 40, output.getvalue())
+        for options, expected_option in (([], ""), (["--skip-backup"], "--skip-backup ")):
+            with self.subTest(options=options):
+                output = StringIO()
+                with redirect_stdout(output):
+                    rc = hc.main(["deploy-podwave", "--revision", "a" * 40, *options], runner)
+                self.assertEqual(rc, 0)
+                self.assertIn("Deploying PodWave from " + "a" * 40, output.getvalue())
         self.assertTrue(any("bash -s -- " in argv[-1] for argv, _ in calls))
 
     def test_podwave_deploy_stops_at_preflight_when_tool_is_missing(self):

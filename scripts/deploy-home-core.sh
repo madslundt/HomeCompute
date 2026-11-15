@@ -115,7 +115,6 @@ rm -f -- /etc/systemd/system.control/homecompute-token-usage.service.d/90-cache-
 systemctl stop homecompute-token-usage.timer homecompute-token-usage.service >/dev/null 2>&1 || true
 rm -f -- /usr/local/bin/homecompute-token-usage
 systemctl daemon-reload
-python3 "$release/scripts/setup-podwave-auth.py"
 # Caddy's private storage keeps its public root certificate root-only. LiteLLM
 # runs as UID 101, so publish a read-only copy at a stable, world-readable path.
 install -D -m 0644 \
