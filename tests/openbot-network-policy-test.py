@@ -34,7 +34,8 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
 
         def iptables(*arguments, check=True):
             calls.append(arguments)
-            return subprocess.CompletedProcess(arguments, 0)
+            status = 1 if arguments[0] == '-C' else 0
+            return subprocess.CompletedProcess(arguments, status)
 
         with patch.object(policy, "iptables", side_effect=iptables):
             policy.apply()
