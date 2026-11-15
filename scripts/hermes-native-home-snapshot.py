@@ -33,7 +33,8 @@ def excluded(relative: Path) -> bool:
     lowered = name.lower()
     sqlite_sidecar = any(lowered.endswith(suffix) for suffix in ("-wal", "-shm", "-journal"))
     runtime_file = (lowered.startswith(".env") or lowered.startswith("auth.json")
-                    or lowered.startswith("config.yaml") or lowered.endswith((".lock", ".pid", ".tmp", ".log"))
+                    or lowered.startswith("config.yaml")
+                    or lowered.endswith((".lock", ".pid", ".tmp", ".log", ".sock"))
                     or "_cache" in lowered or lowered in {"ticker_heartbeat", "ticker_last_success"})
     return (sqlite_sidecar or runtime_file or any(part in EXCLUDED_DIRS for part in relative.parts)
             or name in EXCLUDED_NAMES)
@@ -87,7 +88,17 @@ def snapshot() -> Path:
                 relative = relative_parent / name
                 if excluded(relative):
                     continue
-                info = source.lstat()
+                link_info = source.lstat()
+                actual = source
+                if stat.S_ISLNK(link_info.st_mode):
+                    actual = source.resolve(strict=True)
+                    try:
+                        target_relative = actual.relative_to(SOURCE.resolve())
+                    except ValueError:
+                        raise ValueError("Hermes state symlink escapes the native home") from None
+                    if excluded(target_relative):
+                        continue
+                info = actual.stat()
                 if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                     raise ValueError("Hermes native home contains a linked or special file")
                 total += info.st_size
@@ -95,11 +106,11 @@ def snapshot() -> Path:
                     raise ValueError("Hermes native home exceeds the 20 GiB snapshot limit")
                 destination = output_parent / name
                 if source.suffix.lower() in {".db", ".sqlite", ".sqlite3"}:
-                    sqlite_copy(source, destination)
+                    sqlite_copy(actual, destination)
                 else:
                     before = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
-                    shutil.copyfile(source, destination)
-                    after_info = source.lstat()
+                    shutil.copyfile(actual, destination)
+                    after_info = actual.stat()
                     after = (after_info.st_dev, after_info.st_ino, after_info.st_size,
                              after_info.st_mtime_ns, after_info.st_ctime_ns)
                     if before != after:

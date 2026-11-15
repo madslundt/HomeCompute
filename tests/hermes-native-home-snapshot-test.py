@@ -61,11 +61,19 @@ class HermesNativeHomeSnapshotTest(unittest.TestCase):
         profile.mkdir(parents=True)
         (profile / ".env").write_text("SYNTHETIC_PROFILE_TOKEN=not-a-secret\n")
         (profile / "SOUL.md").write_text("synthetic profile\n")
-        database = sqlite3.connect(self.source / "state.db")
+        runtime = self.source / "runtime"
+        runtime.mkdir()
+        database = sqlite3.connect(runtime / "state.db")
         database.execute("CREATE TABLE sessions (id TEXT PRIMARY KEY)")
         database.execute("INSERT INTO sessions VALUES ('synthetic-session')")
         database.commit()
         database.close()
+        (self.source / "state.db").symlink_to("runtime/state.db")
+        (runtime / "gateway_state.json").write_text('{"gateway":"synthetic"}\n')
+        (self.source / "gateway_state.json").symlink_to("runtime/gateway_state.json")
+        (runtime / "control").mkdir()
+        (runtime / "control" / "gateway.sock").touch()
+        (runtime / "gateway.loop-tick.123.sock").touch()
         (self.source / "state.db-wal").write_text("synthetic stale WAL sidecar\n")
 
         result = snapshot.snapshot()
@@ -80,7 +88,10 @@ class HermesNativeHomeSnapshotTest(unittest.TestCase):
             self.assertIn("native-home/.hermes/bot_relay/roster.json", names)
             self.assertIn("native-home/.hermes/profiles/test/SOUL.md", names)
             self.assertIn("native-home/.hermes/state.db", names)
+            self.assertIn("native-home/.hermes/runtime/state.db", names)
+            self.assertIn("native-home/.hermes/gateway_state.json", names)
             self.assertNotIn("native-home/.hermes/state.db-wal", names)
+            self.assertFalse(any(name.endswith(".sock") for name in names))
             self.assertNotIn("native-home/.hermes/config.yaml", names)
             self.assertNotIn("native-home/.hermes/auth.json", names)
             self.assertNotIn("native-home/.hermes/.env.bak-20261111", names)
@@ -97,7 +108,7 @@ class HermesNativeHomeSnapshotTest(unittest.TestCase):
             self.assertEqual(database.execute("PRAGMA quick_check").fetchone(), ("ok",))
             self.assertEqual(database.execute("SELECT id FROM sessions").fetchone(), ("synthetic-session",))
         with patch.object(backup, "STATE", Path(self.temporary.name)):
-            self.assertEqual(backup.verify_hermes_archive(result)["databases"], 1)
+            self.assertEqual(backup.verify_hermes_archive(result)["databases"], 2)
             restored = Path(self.temporary.name) / "scratch-restore"
             restored.mkdir(mode=0o700)
             backup.extract_hermes_archive(result, restored)
@@ -105,7 +116,7 @@ class HermesNativeHomeSnapshotTest(unittest.TestCase):
             (restored / "hermes-native-home/.hermes/MEMORY.md").read_text(), "synthetic memory\n"
         )
 
-    def test_snapshot_refuses_symlinks(self):
+    def test_snapshot_refuses_symlinks_outside_native_home(self):
         (self.source / "MEMORY.md").symlink_to("/etc/passwd")
         with self.assertRaisesRegex(ValueError, "link"):
             snapshot.snapshot()
