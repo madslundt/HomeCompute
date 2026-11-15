@@ -14,7 +14,8 @@ Wyoming does not authenticate clients, so the host `DOCKER-USER` policy permits
 only Home Assistant at `192.168.30.30` to reach the LAN publication. A loopback
 publication is retained for host smoke tests.
 
-Prepare and start the service on `home-core` from a published release:
+MOSS/Piper is an on-demand CPU fallback for OmniVoice. For recovery, prepare
+and start it on `home-core` from a published release:
 
 ```bash
 sudo bash scripts/setup-home-core-piper.sh prepare
@@ -25,6 +26,10 @@ sudo bash scripts/setup-home-core-piper.sh status
 In Home Assistant, add or reload the **Wyoming Protocol** integration using host
 `192.168.30.122` and port `10200`. Then select `da_DK-moss-nano` in the Danish
 Assist pipeline. No second endpoint is required for fallback.
+
+After restoring OmniVoice and switching Assist back, run
+`sudo bash scripts/setup-home-core-piper.sh down` to reclaim RAM. The Compose
+project is removed and the prepared models and images remain available.
 
 ## Recovery after a boot-time network failure
 
@@ -58,6 +63,5 @@ rollback nor recovery replaces model images, databases, credentials, or media.
 
 MOSS loads its Wyoming wrapper from a read-only bind mount in the selected
 release, so privacy fixes apply without rebuilding model artifacts. Synthesis
-logs contain no input text or exception payloads. The existing Home Assistant
-endpoint remains available. The application [speech API](../../docs/speech-api.md)
+logs contain no input text or exception payloads. The fallback endpoint is available while its Compose project is running. The application [speech API](../../docs/speech-api.md)
 uses the separately owned OmniVoice service.

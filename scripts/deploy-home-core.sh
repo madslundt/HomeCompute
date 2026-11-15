@@ -134,8 +134,6 @@ automation=(docker compose --env-file /etc/homecompute/automation.env --env-file
 ai_automation_manager=(docker compose --env-file /etc/homecompute/automation.env --env-file /etc/homecompute/control-plane.env -f "$release/deploy/ai-automation-manager/compose.yaml" -f "$release/deploy/ai-automation-manager/production.yaml")
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
-piper=(docker compose --env-file /etc/homecompute/piper-tts.env -f "$release/deploy/piper-tts/compose.yaml")
-stt=(docker compose --env-file /etc/homecompute/wyoming-stt.env -f "$release/deploy/wyoming-stt/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
 podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
 "${gateway[@]}" config --quiet
@@ -164,19 +162,13 @@ if [[ -s /run/secrets/open-webui/litellm-api-key &&
   open_webui_ready=true
   "${open_webui[@]}" config --quiet
 fi
-"${piper[@]}" config --quiet
-"${stt[@]}" config --quiet
 install -d -m 0755 /srv/state/control-plane/caddy-config/model-controls
 install -m 0644 "$release/deploy/comfyui-control/index.html" /srv/state/control-plane/caddy-config/model-controls/index.html
 install -d -m 0755 /srv/state/control-plane/caddy-config/video-api
 install -m 0644 "$release/deploy/control-plane/video-api.Caddyfile" /srv/state/control-plane/caddy-config/video-api/Caddyfile
-stt_model="$("${stt[@]}" config --format json | jq -er '.services.stt.environment.WYO_WHISPER_MODEL')"
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
 "${homepage[@]}" pull
-"${piper[@]}" pull piper
-"${piper[@]}" build moss
-"${stt[@]}" pull stt
 "${automation[@]}" build --no-cache aula-mcp
 "${automation[@]}" build --no-cache tilbudstrolden-mcp
 if [[ "$open_webui_ready" == true ]]; then
@@ -240,17 +232,7 @@ else
   docker rm --force homecompute-open-webui-open-webui-1 >/dev/null 2>&1 || true
   printf 'Open WebUI credentials are not provisioned; leaving Open WebUI stopped.\n'
 fi
-if [[ -s /srv/state/piper-tts/models/da_DK-talesyntese-medium.onnx ]]; then
-  "${piper[@]}" up -d --wait --wait-timeout 600
-else
-  printf 'Piper voice is not prepared; leaving Danish TTS stopped.\n'
-fi
-if [[ -f /srv/state/wyoming-stt/models/.homecompute-ready-model ]] &&
-  [[ $(</srv/state/wyoming-stt/models/.homecompute-ready-model) == "$stt_model" ]]; then
-  "${stt[@]}" up -d --wait --wait-timeout 300 stt
-else
-  printf 'Faster Whisper model is not prepared; leaving Danish STT stopped.\n'
-fi
+# CPU speech fallbacks are managed on demand by their setup scripts.
 if [[ -f /etc/homecompute/immich.env ]]; then
   immich_library_path="$(sed -n 's/^IMMICH_LIBRARY_PATH=//p' /etc/homecompute/immich.env)"
   immich_library_mount_source="$(sed -n 's/^IMMICH_LIBRARY_MOUNT_SOURCE=//p' /etc/homecompute/immich.env)"
