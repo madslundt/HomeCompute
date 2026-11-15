@@ -416,7 +416,9 @@ sudo python3 "$recovery_tool" backup --revision FULL_SHA \
 
 The operator bundle must be a reviewed published release. The installed NAS
 hash comes from its existing private deployment receipt, including after
-canonical retirement. This command does not reinstall or replace NAS units.
+canonical retirement. The helper validates with the active NixOS-owned backup
+unit's exact `ExecStartPre`, so retirement does not validate against stale NAS
+configuration. This command does not reinstall or replace NAS units.
 It cancels only an idle exit-75 retry; an actual running backup/check is refused.
 The hold reuses the speech-boundary drain's exact LiteLLM client/main-HTTP
 scope, with separate chain `HC-RECOVERY-DRAIN`. It affects only new connections;
