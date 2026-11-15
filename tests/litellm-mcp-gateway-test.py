@@ -102,7 +102,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("chatgpt-auth:/run/homecompute/chatgpt:rw", COMPOSE)
 
     def test_private_front_door_and_backend_firewall_are_present(self) -> None:
-        self.assertIn("{$MCP_FQDN}", CADDY)
+        self.assertIn("{$LLM_FQDN}", CADDY)
+        self.assertIn("{$MCP_LEGACY_FQDN}", CADDY)
         self.assertIn("import litellm_proxy", CADDY)
         self.assertIn("HC-MCP-BACKENDS", NETWORK)
         self.assertIn("172.28.200.3/32", (ROOT / "scripts/setup-native-capabilities.py").read_text())

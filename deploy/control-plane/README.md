@@ -107,7 +107,7 @@ dollar budget. There is no automatic API-key fallback.
 
 ## Central MCP gateway
 
-LiteLLM also owns the private MCP gateway on `https://mcp.home.arpa/mcp`. Keep
+LiteLLM also owns the private MCP gateway on `https://llm.home.arpa/mcp`. Keep
 server definitions in `litellm-config.yaml`. The catalog contains the local
 read-only Aula and TilbudsTrolden services, public Context7 documentation, the
 n8n instance MCP with its reviewed 55-tool catalog, and the hosted Dinero
@@ -157,10 +157,11 @@ completes one browser sign-in before `tools/list` succeeds.
 For setup and the client migration plan, see [ADR-033](../../docs/adr/033-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
 
-The `mcp.home.arpa` private DNS A record must point to `192.168.30.122` in the
-home LAN resolver. Use `/mcp` for MCP clients and `/ui/` for the LiteLLM Admin
-UI; `/mcp` is a protocol endpoint, so opening it in a browser without a client
-key returns an authentication challenge. The Homepage administration card
+The `llm.home.arpa` private DNS A record must point to `192.168.30.122` in the
+home LAN resolver. Caddy also retains `mcp.home.arpa` as a compatibility alias
+while existing clients are migrated. Use `/mcp` for MCP clients and `/ui/` for
+the LiteLLM Admin UI; `/mcp` is a protocol endpoint, so opening it in a browser
+without a client key returns an authentication challenge. The Homepage administration card
 opens the Admin UI.
 
 Speech clients use the [speech API contract](../../docs/speech-api.md).
@@ -220,6 +221,12 @@ allows all origins without cookies and handles OPTIONS on the API base and
 exposed model-listing/inference paths, including bare checks and trailing
 slashes. It includes private-network approval for clients that request it.
 Actual request methods remain restricted; management routes remain unexposed.
+The keyless network key is intentionally local-only, so `/v1/models` at
+`ai.home.arpa` does not list the `chatgpt-*-latest` subscription aliases. To use
+those aliases, point the client at `https://llm.home.arpa/v1` and provide a
+LiteLLM virtual key explicitly scoped to the desired ChatGPT aliases. The
+`llm.home.arpa` host also serves `/mcp` and the LiteLLM operator UI; its
+`/v1/models` response is filtered by that key's model scope.
 
 The opt-in Daythread long-recording Whisper path uses the separate
 `/recording-stt/v1/audio/transcriptions` route. Caddy accepts it only from the

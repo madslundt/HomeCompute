@@ -432,6 +432,10 @@ class NetworkCredentialTests(unittest.TestCase):
 
 
 class LocalOnlyControlPlaneTests(unittest.TestCase):
+    def test_keyless_network_scope_does_not_expose_chatgpt_subscription_aliases(self) -> None:
+        self.assertEqual(NETWORK.MODELS, ["automation-moe", "stt-danish", "whisper-turbo"])
+        self.assertTrue(all(not name.startswith("chatgpt-") for name in NETWORK.MODELS))
+
     def test_litellm_config_is_generated_from_canonical_routes(self) -> None:
         catalog = REGISTRY.load_json(ROOT / "config/model-catalog.json")
         routes = REGISTRY.load_json(ROOT / "config/capability-routes.json")

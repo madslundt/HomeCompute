@@ -11,7 +11,7 @@
   "chatgpt_subscription_provider": {
     "provider_id": "homecompute-chatgpt",
     "display_name": "HomeCompute ChatGPT subscription",
-    "base_url": "https://mcp.home.arpa/v1",
+    "base_url": "https://llm.home.arpa/v1",
     "api_key_path": "/home/hermes-operator/.config/homecompute-openbot/secrets/chatgpt-models-key",
     "models": [
       {"id": "chatgpt-sol-latest", "display_name": "ChatGPT Sol (latest)"},

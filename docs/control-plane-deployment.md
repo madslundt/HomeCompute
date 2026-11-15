@@ -23,7 +23,7 @@ the services below; database restores and migration rollback startup were rehear
 
 The deployed host remains on LiteLLM 1.104.2 until the reviewed MCP gateway
 release is merged and deployed. The source change targets the upstream 1.108.4
-LTS image and adds the private `mcp.home.arpa` gateway; this document's table is
+LTS image and adds the private `llm.home.arpa` gateway; this document's table is
 the currently deployed baseline, not proof that the proposal is live.
 
 Immutable image digests are recorded in `config/control-plane.env.example`.

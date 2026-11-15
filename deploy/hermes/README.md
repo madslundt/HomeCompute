@@ -377,7 +377,7 @@ The owner has since selected LiteLLM's `all-harness-mcps` group for harness
 clients. The existing Hermes agent registration remains on its verified direct
 HomeCompute bridge until a gateway client is configured and verified. In a
 LiteLLM-capable Hermes Desktop client, use the dedicated `hermes-desktop-mcp`
-key on `https://mcp.home.arpa/mcp`, plus the `homecompute_hermes` role bearer
+key on `https://llm.home.arpa/mcp`, plus the `homecompute_hermes` role bearer
 under `x-mcp-homecompute_hermes-authorization`. The Home Core release grants
 that key the full catalog group. Add other `homecompute_*` role headers only
 when that harness is intentionally authorized for those principals. Keep the

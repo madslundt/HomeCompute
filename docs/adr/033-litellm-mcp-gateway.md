@@ -23,7 +23,7 @@ migrated and verified.
 Use the existing LiteLLM Proxy MCP Gateway on `home-core`. Pin the reviewed
 LiteLLM image in `config/control-plane.env.example`, register the MCP catalog in
 `deploy/control-plane/litellm-config.yaml`, and serve it at the private
-`https://mcp.home.arpa/mcp` endpoint through Caddy. The LiteLLM Admin UI remains
+`https://llm.home.arpa/mcp` endpoint through Caddy. The LiteLLM Admin UI remains
 available on that private hostname for server, key, team, and tool grants.
 
 Each server alias belongs to its own access group: `aula-read`, `offers-read`,
@@ -62,7 +62,7 @@ Android UI actions remain limited to their reviewed tool list.
   use separate LiteLLM keys and pass the authenticated gateway checks.
 - Upgrading LiteLLM must preserve existing virtual keys and pass the documented
   PostgreSQL backup and migration checks.
-- Caddy's `mcp.home.arpa` route is private and authenticated by LiteLLM. Its
+- Caddy's `llm.home.arpa` route is private and authenticated by LiteLLM. Its
   certificate uses the existing Home Core local CA.
 - If independent MCP availability, storage, or release cadence becomes a
   requirement, reconsider a dedicated gateway such as MCPHub in a new ADR.
