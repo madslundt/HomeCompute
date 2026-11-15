@@ -104,10 +104,10 @@
         description: Build and manage automation workflows
 
     - LiteLLM:
-        id: homecore-mcp-gateway
-        icon: mdi-connection
-        href: https://mcp.home.arpa/ui/
-        description: Manage LiteLLM MCP servers, client access, and tools
+        id: homecore-litellm
+        icon: mdi-brain
+        href: https://llm.home.arpa/ui/
+        description: Manage LiteLLM models, MCP servers, client access, and tools
 
     - Home HTTPS Certificate:
         id: homecore-https-certificate

@@ -43,7 +43,7 @@ for OpenBot agents. Keep a separate non-expiring key for this provider, limited
 to `chatgpt-sol-latest`, `chatgpt-terra-latest`, and `chatgpt-luna-latest`, with
 MCP access denied. The existing `automation-moe` key and provider remain
 separate. Configure the OpenBot custom provider at
-`https://mcp.home.arpa/v1`; the three aliases become available to the owner,
+`https://llm.home.arpa/v1`; the three aliases become available to the owner,
 while agent assignment remains deliberate. The initial assignment is Researcher
 to `chatgpt-sol-latest`; Terra and Luna remain selectable without changing other
 agents. LiteLLM retains the ChatGPT OAuth material; OpenBot receives only its

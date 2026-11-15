@@ -18,7 +18,7 @@ published ports. Its only persistent mount is its private `/data` directory;
 all capabilities are dropped except `SYS_CHROOT`, which Chromium's sandbox
 needs inside the container. `no-new-privileges` remains enabled. The agents-VM Docker bridge egress policy
 allows public TCP 80/443, the LiteLLM compatibility endpoint at
-`ai.home.arpa:18080`, the private LiteLLM gateway at `mcp.home.arpa:443`, and
+`ai.home.arpa:18080`, the private LiteLLM gateway at `llm.home.arpa:443`, and
 the documented TURN ports for the two currently resolved OpenBot relays. The
 gateway hostname resolves to the host-only bridge; egress allows only TCP 443
 to that address for MCP. The Android relay remains separately pinned to TCP
@@ -112,7 +112,7 @@ In OpenBot → home-core → Settings → Providers → Custom provider, add:
 
 - Provider ID: `homecompute-chatgpt`
 - Display name: `HomeCompute ChatGPT subscription`
-- Base URL: `https://mcp.home.arpa/v1`
+- Base URL: `https://llm.home.arpa/v1`
 - API key: the value in `chatgpt-models-key`
 - Models: the three aliases above, using their matching ChatGPT Sol/Terra/Luna labels
 
@@ -153,7 +153,7 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
 In OpenBot's `home-core` server settings, add a **Streamable HTTP** connection:
 
 - Name: `homecompute`
-- URL: `https://mcp.home.arpa/mcp`
+- URL: `https://llm.home.arpa/mcp`
 - Header: `x-litellm-api-key: Bearer <OpenBot MCP key>`
 
 Add these role-specific headers using the guarded export commands in

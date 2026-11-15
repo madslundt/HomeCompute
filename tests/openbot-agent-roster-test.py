@@ -65,7 +65,7 @@ class OpenBotAgentRosterTests(unittest.TestCase):
     def test_chatgpt_subscription_provider_is_scoped_to_three_litellm_aliases(self):
         provider = self.roster['chatgpt_subscription_provider']
         self.assertEqual(provider['provider_id'], 'homecompute-chatgpt')
-        self.assertEqual(provider['base_url'], 'https://mcp.home.arpa/v1')
+        self.assertEqual(provider['base_url'], 'https://llm.home.arpa/v1')
         self.assertEqual(
             [model['id'] for model in provider['models']],
             ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest'],

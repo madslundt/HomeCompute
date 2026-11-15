@@ -73,6 +73,6 @@ assert.equal(tailnet.links[1].href, 'https://home-core.tail479ad.ts.net:18080/pl
 assert.equal(tailnet.links.some(link => link.href.includes('/usage/')), false);
 assert.equal(homepage('home-core.home.arpa', { withCard: false }).frames.length, 0);
 assert.match(services, /- Spark models:\s+id: homecore-comfyui\s+icon: [^\n]+\s+href: https:\/\/models\.home\.arpa\/control\/\s+description: Text, images and video · LLM returns after 30 minutes idle/);
-assert.match(services, /- LiteLLM:\s+id: homecore-mcp-gateway\s+icon: mdi-connection\s+href: https:\/\/mcp\.home\.arpa\/ui\//);
+assert.match(services, /- LiteLLM:\s+id: homecore-litellm\s+icon: mdi-brain\s+href: https:\/\/llm\.home\.arpa\/ui\//);
 assert.doesNotMatch(services, /LiteLLM Gateway:|MCP Gateway:|Model Manager:|AI Token Usage:/);
 console.log('PASS service card destination, other service links and absent-card handling');

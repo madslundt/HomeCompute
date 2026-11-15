@@ -4,7 +4,7 @@ OpenBot reaches the tablet through LiteLLM's private MCP gateway, which forwards
 to the Home Core native HTTPS relay under the `openbot-android` principal. That
 principal receives an independent bearer from the native secret store and
 exposes five read-only Portal calls and five bounded UI interaction calls. The
-OpenBot pins `mcp.home.arpa` to the Home Core host-only bridge and allows only
+OpenBot pins `llm.home.arpa` to the Home Core host-only bridge and allows only
 TCP 443 to that address for the gateway. The Android relay remains separately
 pinned to TCP 19445.
 
@@ -40,7 +40,7 @@ In OpenBot's `home-core` server settings, add one **Streamable HTTP** connection
 to the LiteLLM gateway:
 
 - Name: `homecompute`
-- URL: `https://mcp.home.arpa/mcp`
+- URL: `https://llm.home.arpa/mcp`
 - Header: `x-litellm-api-key: Bearer <OpenBot MCP virtual key>`
 - Header: `x-mcp-homecompute_openbot_android-authorization: Bearer <openbot-android credential>`
 
@@ -53,7 +53,7 @@ gateway key can discover other MCP aliases. Add the other role-scoped bearer
 headers described in the [OpenBot runbook](../deploy/openbot/README.md). Use
 **Test connection** before saving; check the full catalog and verify the
 Android alias has exactly the ten tools above. The server setting is shared
-across OpenBot agents. The OpenBot container resolves `mcp.home.arpa` to
+across OpenBot agents. The OpenBot container resolves `llm.home.arpa` to
 `10.77.20.1`; verify TLS and the gateway's root CA before saving the setting.
 
 Verify at least one read-only status call from an OpenBot Hermes agent before

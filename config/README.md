@@ -12,7 +12,7 @@ they do not use them as production configuration in place.
 | `model-catalog.json` | `scripts/model_registry.py` and the LiteLLM renderer | Immutable text artifacts, supported runtime profiles, deployment identities, endpoint environment names, lifecycle, and qualification evidence |
 | `capability-routes.json` | `scripts/model_registry.py` and the LiteLLM renderer | Stable capabilities, deployment mapping, local-only policy, context requirements, and named timeout profiles |
 | `openbot-network.json` | Home Core agents-VM firewall and OpenBot guest egress policy | Current OpenBot TURN relay IPv4s, exact TURN ports, and the local LiteLLM compatibility boundary |
-| `mcp-gateway-dns.json` | Home LAN DNS | Private `mcp.home.arpa` A record for the LiteLLM MCP gateway; apply in UniFi DNS and verify from a client |
+| `mcp-gateway-dns.json` | Home LAN DNS | Private `llm.home.arpa` A record for the LiteLLM gateway; apply in UniFi DNS and verify from a client |
 | `ai-automation-manager-dns.json` | Home LAN DNS | Private `automations.home.arpa` A record for the AI automation manager; apply in UniFi DNS and verify from a client |
 | `podwave-dns.json` | Home LAN DNS | Private `podwave.home.arpa` A record for PodWave; apply in UniFi DNS and verify from a client |
 | `openbot-agent-roster.json` | OpenBot UI and `scripts/configure-openbot-hermes.py` | OpenBot agent identities, local and ChatGPT subscription provider/model assignments, role skill assignments, instructions, and least-privilege UI settings |
