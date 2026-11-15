@@ -42,7 +42,10 @@ class AgentsVmModuleTest(unittest.TestCase):
     def test_activation_requires_backup_and_operator_key(self) -> None:
         self.assertIn("config.homecompute.backups.enable", MODULE)
         self.assertIn("config.homecompute.nasRecoveryBackup.enable", MODULE)
-        self.assertIn("pkgs.gzip pkgs.bash", (ROOT / "modules/nixos/nas-recovery-backup.nix").read_text(encoding="utf-8"))
+        self.assertIn(
+            "pkgs.gzip pkgs.bash pkgs.python3",
+            (ROOT / "modules/nixos/nas-recovery-backup.nix").read_text(encoding="utf-8"),
+        )
         self.assertIn('cfg.dataClassification == "synthetic-only" || cfg.restoreVerified', MODULE)
         self.assertNotIn("localBootstrapBackup.riskAccepted", MODULE)
         self.assertNotIn('path == "/srv/state" || path == statePath', MODULE)
