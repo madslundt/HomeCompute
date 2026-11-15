@@ -5,6 +5,8 @@ let
   host = "10.77.60.1";
   guest = "10.77.60.2";
   interface = "enp44s0";
+  caddyBridge = "br-hc-ctrl";
+  caddyAddress = "172.28.200.2";
   mac = "52:54:00:77:60:02";
   state = "/srv/state/nod-vm";
   account = "homecompute-nod-vm";
@@ -144,7 +146,7 @@ in {
     };
 
     systemd.services.homecompute-nod-egress = {
-      description = "Restrict Nod guest forwarding to public HTTP and HTTPS";
+      description = "Restrict Nod guest forwarding and admit the Caddy web edge";
       requires = [ "homecompute-nod-network.service" ];
       after = [ "homecompute-nod-network.service" "firewall.service" "docker.service" ];
       partOf = [ unit "firewall.service" ];
@@ -165,6 +167,8 @@ in {
         iptables -w -A HC-NOD-EGRESS -s ${guest}/32 -o ${interface} -p tcp -m multiport --dports 80,443 -j ACCEPT
         iptables -w -A HC-NOD-EGRESS -j REJECT
         iptables -w -I FORWARD 1 -i ${bridge} -j HC-NOD-EGRESS
+        iptables -w -I FORWARD 1 -i ${caddyBridge} -s ${caddyAddress}/32 -o ${bridge} -d ${guest}/32 -p tcp --dport 4310 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+        iptables -w -I FORWARD 1 -i ${bridge} -s ${guest}/32 -o ${caddyBridge} -d ${caddyAddress}/32 -p tcp --sport 4310 -m conntrack --ctstate ESTABLISHED -j ACCEPT
         iptables -w -I FORWARD 1 -i ${interface} -o ${bridge} -d ${guest}/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
         iptables -w -t nat -A POSTROUTING -s ${guest}/32 -o ${interface} -j MASQUERADE
         ip6tables -w -I FORWARD 1 -i ${bridge} -j REJECT
@@ -172,6 +176,8 @@ in {
       '';
       postStop = ''
         iptables -w -D FORWARD -i ${bridge} -j HC-NOD-EGRESS || true
+        iptables -w -D FORWARD -i ${caddyBridge} -s ${caddyAddress}/32 -o ${bridge} -d ${guest}/32 -p tcp --dport 4310 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT || true
+        iptables -w -D FORWARD -i ${bridge} -s ${guest}/32 -o ${caddyBridge} -d ${caddyAddress}/32 -p tcp --sport 4310 -m conntrack --ctstate ESTABLISHED -j ACCEPT || true
         iptables -w -D FORWARD -i ${interface} -o ${bridge} -d ${guest}/32 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT || true
         iptables -w -t nat -D POSTROUTING -s ${guest}/32 -o ${interface} -j MASQUERADE || true
         iptables -w -F HC-NOD-EGRESS || true
@@ -217,6 +223,7 @@ in {
 
     systemd.services.homecompute-nod-vm = {
       description = "Dedicated Linux guest for the Nod server";
+      wantedBy = [ "multi-user.target" ];
       requires = [
         "homecompute-nod-network.service" "homecompute-nod-egress.service"
         "homecompute-nod-dns.service" "homecompute-nod-model-edge.service"
@@ -224,6 +231,8 @@ in {
       after = [
         "homecompute-nod-network.service" "homecompute-nod-egress.service"
         "homecompute-nod-dns.service" "homecompute-nod-model-edge.service"
+        "homecompute-agents-vm.service" "homecompute-codex-vm.service"
+        "homecompute-toolbox-vm.service"
       ];
       path = [ pkgs.qemu_kvm pkgs.socat pkgs.gawk ];
       preStart = ''
@@ -268,6 +277,8 @@ in {
         DeviceAllow = [ "/dev/kvm rw" "/dev/net/tun rw" ];
         NoNewPrivileges = true;
         TimeoutStopSec = "2min";
+        Restart = "always";
+        RestartSec = "30s";
       };
     };
   };

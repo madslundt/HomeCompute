@@ -3,8 +3,8 @@ set -Eeuo pipefail
 umask 077
 
 action="${1:-}"
-if [[ $# != 1 || ! "$action" =~ ^(install|status|verify|stop)$ ]]; then
-  printf 'Usage: sudo bash scripts/setup-nod-guest.sh install|status|verify|stop\n' >&2
+if [[ $# != 1 || ! "$action" =~ ^(install|reconfigure|status|verify|stop)$ ]]; then
+  printf 'Usage: sudo bash scripts/setup-nod-guest.sh install|reconfigure|status|verify|stop\n' >&2
   exit 2
 fi
 if [[ $EUID != 0 || $(hostname) != homecompute-nod ]]; then
@@ -45,13 +45,19 @@ fi
 [[ -z $(git -C "$upstream" status --porcelain --untracked-files=no) ]]
 unset NOD_ENV_FILE NOD_BIND_ADDRESS NOD_PUBLIC_URL NOD_IMAGE_TAG PORT
 unset LLM_PROVIDER LLM_MODEL OPENAI_COMPATIBLE_BASE_URL OPENAI_COMPATIBLE_API_KEY
-export PORT=4310 NOD_BIND_ADDRESS=127.0.0.1 NOD_PUBLIC_URL=http://localhost:4310
+export PORT=4310 NOD_BIND_ADDRESS=10.77.60.2 NOD_PUBLIC_URL=https://nod.home.arpa
 
 case "$action" in
   install)
     COMPOSE_PROJECT_NAME=homecompute-nod sh "$project/setup.sh"
     "${compose[@]}" config --quiet
     "${compose[@]}" up -d --build --wait --wait-timeout 300
+    ;;
+  reconfigure)
+    exec 9>"$state/deploy.lock"
+    flock -n 9
+    "${compose[@]}" config --quiet
+    "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
     ;;
   status)
     "${compose[@]}" ps
@@ -68,8 +74,8 @@ assert.equal((await fetch(`${base}/models`)).status, 401);
 assert.equal((await fetch(new URL('/healthz', base), { headers })).status, 404);
 console.log('Nod server container verified TLS, restricted model discovery and unauthenticated denial.');
 JS
-    [[ $(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 http://127.0.0.1:4310/) == 200 ]]
-    printf 'Nod web app answered on guest loopback.\n'
+    [[ $(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 --header "Host: nod.home.arpa" http://10.77.60.2:4310/) == 200 ]]
+    printf 'Nod web app answered on its private guest address.\n'
     ;;
   stop)
     "${compose[@]}" stop

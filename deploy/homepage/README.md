@@ -48,6 +48,10 @@ limited to TCP 6080 from the Caddy edge address. The desktop does not share the
 Homepage container, Docker network, credentials, or host filesystem. See the
 [toolbox runbook](../toolbox/README.md) for setup and access.
 
+The **Nod** card opens `https://nod.home.arpa/` over the LAN or Tailscale
+split DNS. Nod uses its own owner token. See the [Nod runbook](../nod/README.md)
+for device access and integrations.
+
 Docker discovery and container statistics are disabled. The project receives
 no container-engine API access and joins no other application's Docker network.
 Add user-facing links explicitly to `config/services.yaml`. This keeps the

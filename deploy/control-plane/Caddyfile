@@ -116,6 +116,19 @@ craft-anything.home.arpa {
 	respond "Forbidden" 403
 }
 
+nod.home.arpa {
+	tls internal
+	@private remote_ip 192.168.10.0/24 100.64.0.0/10
+	handle @private {
+		reverse_proxy 10.77.60.2:4310 {
+			transport http {
+				dial_timeout 3s
+			}
+		}
+	}
+	respond "Forbidden" 403
+}
+
 automations.home.arpa {
 	tls internal
 	encode zstd gzip
@@ -160,6 +173,10 @@ http://:8080 {
 	@craft_anything host craft-anything.home.arpa
 	handle @craft_anything {
 		redir https://craft-anything.home.arpa{uri} 308
+	}
+	@nod host nod.home.arpa
+	handle @nod {
+		redir https://nod.home.arpa{uri} 308
 	}
 	@automations host automations.home.arpa
 	handle @automations {
