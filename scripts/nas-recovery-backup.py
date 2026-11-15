@@ -95,6 +95,10 @@ def root_directory(path: Path, create: bool = False) -> None:
         raise ValueError(f"real root-only directory required: {path}")
 
 
+def private_directory(path: Path, create: bool = False) -> None:
+    root_directory(path, create=create)
+
+
 def load_configuration(path: Path) -> dict:
     # NixOS /etc entries point into the immutable store; validate their target.
     info = path.stat()

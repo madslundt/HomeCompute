@@ -110,6 +110,34 @@ class NASBackupTest(unittest.TestCase):
             backup.require_mount(CONFIG)
             custody.assert_called_once_with(Path(CONFIG["credentialsFile"]))
 
+    def test_private_directory_uses_root_only_directory_guard(self):
+        path = Path("/srv/backups/homecompute-selected-state")
+        with patch.object(backup, "root_directory") as guard:
+            backup.private_directory(path, create=True)
+            guard.assert_called_once_with(path, create=True)
+
+    def test_export_hermes_creates_temporary_archive_and_promotes_verified_result(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            archive = directory / "hermes-native-home.tar.gz"
+            checked = {"scope": "Hermes native-home state", "databases": 1}
+
+            def exporter(_command, *, stdout, stderr, timeout, check):
+                stdout.write(b"verified archive")
+                return subprocess.CompletedProcess([], 0)
+
+            with patch.object(backup, "SOURCE", directory), \
+                    patch.object(backup, "HERMES_ARCHIVE", archive), \
+                    patch.object(backup, "private_file"), \
+                    patch.object(backup, "pinned_known_hosts"), \
+                    patch.object(backup, "root_directory") as directory_guard, \
+                    patch.object(backup, "verify_hermes_archive", return_value=checked), \
+                    patch.object(backup.subprocess, "run", side_effect=exporter):
+                self.assertEqual(backup.export_hermes(CONFIG), checked)
+            directory_guard.assert_called_once_with(directory, create=True)
+            self.assertEqual(archive.read_bytes(), b"verified archive")
+            self.assertFalse((directory / ".hermes-native-home.tar.gz.partial").exists())
+
     def test_exact_ordered_systemd_automount_and_cifs_stack_is_admitted(self):
         target=str(backup.MOUNT)
         entries=[{'target':target,'source':'systemd-1','fstype':'autofs'},
