@@ -7,7 +7,7 @@ listeners can open the studio, manage episodes and jobs, and change provider
 settings without a login. The app publishes no host port.
 
 The app image is built from the PodWave source pinned to commit
-`e0f0addb29efc5e6532a50ac8fb5dd5d686141d4` (version 1.10.0). Its uv/Python base
+`99a28768e20dd2a797a7497a7255fd7cfe14572e` (version 1.11.0). Its uv/Python base
 is pinned by digest in the tracked Dockerfile. The service has no host port, no
 Docker socket, no capabilities, a read-only root filesystem, and a dedicated
 bridge shared only with Caddy. Caddy publishes the `ai.home.arpa` alias only on
