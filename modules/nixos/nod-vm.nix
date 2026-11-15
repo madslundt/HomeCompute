@@ -66,6 +66,18 @@ let
       }
     }
 
+    (n8n_backend) {
+      reverse_proxy https://192.168.30.122 {
+        header_up Host n8n.home.arpa
+        transport http {
+          tls_server_name n8n.home.arpa
+          tls_trust_pool file /run/credentials/homecompute-nod-model-edge.service/upstream-ca
+          dial_timeout 4s
+          response_header_timeout 30s
+        }
+      }
+    }
+
     https://ai.home.arpa:8444 {
       bind ${host}
       tls internal
@@ -89,12 +101,45 @@ let
       }
       respond 401
     }
+
+    https://n8n.home.arpa {
+      bind ${host}
+      tls internal
+      @guest remote_ip ${guest}
+      handle @guest {
+        @discovery {
+          method GET
+          path /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/mcp-server/http /.well-known/oauth-authorization-server
+        }
+        @grant {
+          method POST
+          path /mcp-oauth/register /mcp-oauth/token
+        }
+        @mcp {
+          method GET POST DELETE
+          path /mcp-server/http
+        }
+        route {
+          handle @discovery {
+            import n8n_backend
+          }
+          handle @grant {
+            import n8n_backend
+          }
+          handle @mcp {
+            import n8n_backend
+          }
+          respond 404
+        }
+      }
+      respond 403
+    }
   '';
   corefile = pkgs.writeText "nod-Corefile" ''
     .:53 {
       bind ${host}
       hosts {
-        ${host} ai.home.arpa
+        ${host} ai.home.arpa n8n.home.arpa
         fallthrough
       }
       forward . /etc/resolv.conf
@@ -122,7 +167,7 @@ in {
     networking.networkmanager.unmanaged = [ "interface-name:${bridge}" "interface-name:${tap}" ];
     networking.firewall.interfaces.${bridge} = {
       allowedUDPPorts = [ 53 ];
-      allowedTCPPorts = [ 53 8444 ];
+      allowedTCPPorts = [ 53 443 8444 ];
     };
 
     systemd.services.homecompute-nod-network = {
@@ -204,7 +249,7 @@ in {
     };
 
     systemd.services.homecompute-nod-model-edge = {
-      description = "Chat-only TLS gateway for the Nod guest";
+      description = "Model and n8n MCP TLS gateway for the Nod guest";
       requires = [ "homecompute-nod-network.service" ];
       after = [ "homecompute-nod-network.service" ];
       partOf = [ unit ];
@@ -213,6 +258,8 @@ in {
         # The upstream Caddy data directory is owner-only. Bind just the public
         # certificate into the service's private filesystem namespace.
         DynamicUser = true;
+        AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
+        CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
         StateDirectory = "homecompute-nod-edge";
         LoadCredential = "upstream-ca:/srv/state/control-plane/caddy-data/caddy/pki/authorities/local/root.crt";
         InaccessiblePaths = [ "/srv/state" ];

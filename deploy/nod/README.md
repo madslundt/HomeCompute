@@ -72,12 +72,17 @@ same owner's `NOD_AUTH_TOKEN` from the guest's private
   accounts and actions the app authorizes. Some managed connectors process
   requests through n8n's connection service and Composio.
   [Connect apps](https://nod.n8n.io/docs/connect/apps/)
-- **n8n.** Use **Apps → n8n → Connect** with OAuth on a reachable test instance
-  with instance-level MCP enabled. Grant workflow reads first. If testing draft
-  creation, use a manual workflow and synthetic data. The Nod guest's network
-  policy currently blocks private n8n, so connecting a HomeCompute instance
-  needs an explicit route and an independently scoped n8n credential.
-  [Nod n8n connection](https://nod.n8n.io/docs/connect/mcp-api-cli/#n8n)
+- **n8n.** In Nod, choose **Apps → n8n → Connect** and enter
+  `https://n8n.home.arpa`. Continue through n8n's OAuth consent and grant only
+  **Read workflows** for initial use. Nod's guest DNS resolves that hostname
+  to its own bridge. The bridge permits MCP transport and the OAuth discovery,
+  registration, and token endpoints. The browser opens the consent screen at
+  the existing n8n HTTPS edge and returns to
+  `https://nod.home.arpa/api/apps/callback`. Verify the scopes under n8n
+  **Settings → Instance-level MCP → Connected clients**. Try listing workflows
+  before granting execution or editing. Revoke Nod's grant from the same page
+  to disconnect the client.
+  [Nod n8n connection](https://nod.n8n.io/docs/connect/mcp-api-cli/#n8n) · [n8n MCP permissions](https://docs.n8n.io/connect/connect-to-n8n-mcp-server/#using-oauth2)
 
 Verify the Homepage link, HTTPS and the owner login with a trusted LAN client
 and a phone on cellular with Tailscale. The unauthenticated Nod API should

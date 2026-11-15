@@ -73,6 +73,15 @@ assert.deepEqual((await models.json()).data.map(({id}) => id), ['automation-moe'
 assert.equal((await fetch(`${base}/models`)).status, 401);
 assert.equal((await fetch(new URL('/healthz', base), { headers })).status, 404);
 console.log('Nod server container verified TLS, restricted model discovery and unauthenticated denial.');
+const n8n = 'https://n8n.home.arpa';
+const discovery = await fetch(`${n8n}/.well-known/oauth-protected-resource/mcp-server/http`);
+assert.equal(discovery.status, 200);
+const metadata = await discovery.json();
+assert.equal(metadata.resource, `${n8n}/mcp-server/http`);
+assert.ok(metadata.scopes_supported.includes('workflow:read'));
+assert.equal((await fetch(`${n8n}/mcp-server/http`)).status, 401);
+assert.equal((await fetch(`${n8n}/rest/settings`)).status, 404);
+console.log('Nod server verified private n8n OAuth discovery, MCP authentication and editor isolation.');
 JS
     [[ $(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 --header "Host: nod.home.arpa" http://10.77.60.2:4310/) == 200 ]]
     printf 'Nod web app answered on its private guest address.\n'
