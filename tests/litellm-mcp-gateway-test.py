@@ -21,7 +21,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertRegex(CONFIG, r"(?ms)^mcp_servers:\s*\n\s+context7:")
         self.assertIn("url: https://mcp.context7.com/mcp", CONFIG)
         self.assertIn("url: http://n8n:5678/mcp-server/http", CONFIG)
-        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 3)
+        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 4)
         self.assertIn("url: http://aula-mcp:7878/mcp", CONFIG)
         aula = CONFIG.split("  aula:", 1)[1].split("  tilbudstrolden:", 1)[0]
         self.assertNotIn("allowed_tools:", aula)
@@ -48,11 +48,13 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
                       "openclaw-agent-tools", "openbot-android-bounded-ui",
                       "aula-read", "offers-read"):
             self.assertIn(f"access_groups: [{group}, all-harness-mcps]", CONFIG)
+        self.assertIn("access_groups: [openbot-maintenance]", CONFIG)
+        self.assertIn("homecompute_openbot_maintenance", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
         self.assertIn("url: https://mcp.dinero.dk", CONFIG)
         self.assertIn("url: http://banknorwegian-mcp:8090/mcp", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
-        self.assertEqual(len(server_names), 9)
+        self.assertEqual(len(server_names), 10)
         self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
         self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
         self.assertIn("auth_value: os.environ/N8N_MCP_TOKEN", CONFIG)
@@ -69,6 +71,9 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         bank = CONFIG.split("  banknorwegian:", 1)[1]
         self.assertIn("access_groups: [banknorwegian-read]", bank)
         self.assertNotIn("all-harness-mcps", bank)
+        maintenance = CONFIG[CONFIG.index("  homecompute_openbot_maintenance:"):CONFIG.index("  aula:")]
+        self.assertNotIn("all-harness-mcps", maintenance)
+        self.assertEqual(len(re.findall(r"(?m)^      - homecompute_maintenance_[a-z]+$", maintenance)), 5)
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)

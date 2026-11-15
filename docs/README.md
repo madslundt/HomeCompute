@@ -177,6 +177,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-034](adr/034-craft-anything-toolbox.md) | Dedicated Home Core toolbox guest for Craft Anything, separate from OpenBot and Hermes Owner |
 | [ADR-035](adr/035-gateway-owned-chatgpt-subscription.md) | Explicit ChatGPT subscription routes through one gateway-owned OAuth identity with per-key model scopes |
 | [ADR-036](adr/036-share-lite-llm-mcp-catalog-across-harnesses.md) | Share the full configured LiteLLM MCP catalog with enrolled harnesses using separate client keys |
+| [ADR-037](adr/037-openbot-infrastructure-maintenance.md) | Isolate OpenBot infrastructure maintenance behind a dedicated server and scoped plan tools |
 
 ## Research and model evidence
 

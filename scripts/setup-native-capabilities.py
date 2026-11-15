@@ -247,7 +247,11 @@ def certificate() -> bool:
     return True
 
 
-def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = False) -> bool:
+def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = False,
+                  admit_openbot_maintenance: bool = False,
+                  revoke_openbot_maintenance: bool = False) -> bool:
+    if admit_openbot_maintenance and revoke_openbot_maintenance:
+        raise ValueError('OpenBot maintenance admission and revocation conflict')
     user = pwd.getpwnam('homecompute-openclaw')
     if TOKENS.exists() or TOKENS.is_symlink():
         regular(TOKENS, user.pw_uid, 0o600)
@@ -255,7 +259,7 @@ def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = F
             raise ValueError('native credential file exceeds budget')
         value = json.loads(TOKENS.read_bytes())
         if (not isinstance(value, dict) or not {'openclaw'} <= set(value) <=
-                {'openclaw', 'hermes', 'hermes-owner', 'openbot-android'}
+                {'openclaw', 'hermes', 'hermes-owner', 'openbot-android', 'openbot-maintenance'}
                 or any(not isinstance(token, str) or len(token) < 32 or '\n' in token or '\r' in token
                        or token.startswith(('replace', 'openshell:resolve:')) for token in value.values())
                 or len(set(value.values())) != len(value)):
@@ -273,6 +277,10 @@ def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = F
         value['hermes-owner'] = secrets.token_urlsafe(48)
     if admit_openbot_android and 'openbot-android' not in value:
         value['openbot-android'] = secrets.token_urlsafe(48)
+    if admit_openbot_maintenance and 'openbot-maintenance' not in value:
+        value['openbot-maintenance'] = secrets.token_urlsafe(48)
+    if revoke_openbot_maintenance:
+        value.pop('openbot-maintenance', None)
     if value == before:
         return False
     write(TOKENS, json.dumps(value).encode(), user.pw_uid, user.pw_gid, 0o600)

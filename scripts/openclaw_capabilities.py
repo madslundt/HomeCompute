@@ -207,6 +207,27 @@ class AndroidOnlyServices:
         return self.android.request(name, arguments)
 
 
+class OpenBotMaintenanceRead:
+    """Infrastructure metadata for the isolated OpenBot maintenance principal."""
+
+    def __init__(self, reader: Any):
+        if reader is None:
+            raise ValueError('OpenBot maintenance requires infrastructure observations')
+        self.reader = reader
+        self.registry = {'systems': [row for row in reader.registry['systems']
+                                    if row.get('id') in {'home-core', 'home-spark'}]}
+        if {row['id'] for row in self.registry['systems']} != {'home-core', 'home-spark'}:
+            raise ValueError('OpenBot maintenance requires both compute hosts in the read policy')
+
+    def read(self, system_id: str) -> Any:
+        if system_id not in {'home-core', 'home-spark'}:
+            raise ValueError('system outside OpenBot maintenance read scope')
+        return self.reader.read(system_id)
+
+    def compact(self, report: Any) -> Any:
+        return self.reader.compact(report)
+
+
 class HomeAssistant:
     """Fixed local IPC, authenticated Unix peer and trusted adapter-assigned actor."""
     def __init__(self, actor: str):
@@ -329,6 +350,71 @@ class Maintenance:
         finally:
             connection.close()
             stream.close()
+
+
+class OpenBotMaintenance(Maintenance):
+    """Narrow plan adapter for one isolated OpenBot infrastructure operator."""
+
+    CORE_COMPONENTS = frozenset({
+        'nixos', 'homepage', 'n8n', 'caddy', 'litellm', 'postgres', 'open-webui',
+        'immich', 'piper', 'stt', 'aula-mcp', 'tilbudstrolden-mcp',
+    })
+
+    @classmethod
+    def allowed_component(cls, target: str, component: str) -> bool:
+        if target == 'home-core':
+            return component in cls.CORE_COMPONENTS or bool(
+                re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
+        if target == 'home-spark':
+            return component == 'packages' or bool(
+                re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
+        return False
+
+    @staticmethod
+    def plan_target(result: dict[str, Any]) -> str | None:
+        plan = result.get('plan') if isinstance(result, dict) else None
+        policy = plan.get('policy') if isinstance(plan, dict) else None
+        return policy.get('target') if isinstance(policy, dict) else None
+
+    @staticmethod
+    def update_plan(result: dict[str, Any]) -> bool:
+        plan = result.get('plan') if isinstance(result, dict) else None
+        policy = plan.get('policy') if isinstance(plan, dict) else None
+        return isinstance(policy, dict) and policy.get('operation') == 'update'
+
+    def request(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if operation == 'prepare':
+            target, component = arguments.get('target'), arguments.get('component')
+            if not isinstance(target, str) or not isinstance(component, str) or not self.allowed_component(target, component):
+                raise ValueError('maintenance selection outside OpenBot operator policy')
+        if operation == 'list':
+            result = super().request(operation, arguments)
+            result['plans'] = [row for row in result.get('plans', [])
+                               if (self.plan_target({'plan': row}) in {'home-core', 'home-spark'}
+                                   and self.update_plan({'plan': row}))]
+            return result
+        if operation == 'status':
+            result = super().request(operation, arguments)
+            if (self.plan_target(result) not in {'home-core', 'home-spark'}
+                    or not self.update_plan(result)):
+                raise ValueError('maintenance plan outside OpenBot operator scope')
+            return result
+        if operation == 'run':
+            status = super().request('status', arguments)
+            if (self.plan_target(status) not in {'home-core', 'home-spark'}
+                    or not self.update_plan(status)):
+                raise ValueError('maintenance plan outside OpenBot operator scope')
+            return super().request(operation, arguments)
+        if operation == 'preparation':
+            result = super().request(operation, arguments)
+            preparation = result.get('preparation', {})
+            target = preparation.get('target') if isinstance(preparation, dict) else None
+            if target is not None and target not in {'home-core', 'home-spark'}:
+                raise ValueError('maintenance preparation outside OpenBot operator scope')
+            return result
+        if operation not in {'preparation', 'list', 'status', 'prepare', 'run'}:
+            raise ValueError('maintenance operation unavailable to OpenBot operator')
+        return super().request(operation, arguments)
 
 
 class Capabilities:

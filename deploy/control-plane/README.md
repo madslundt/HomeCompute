@@ -132,8 +132,11 @@ Servers are configured with
 `allow_all_keys: false`; `n8n-owner` grants the reviewed instance catalog,
 while `docs-public` grants only Context7. Each HomeCompute relay alias has a
 distinct access group, and its client must present that principal's existing
-bearer. OpenBot connections are server-wide, so its dedicated key grants the
-full catalog to all OpenBot agents. The `openbot-agent` key remains restricted
+bearer. OpenBot connections are server-wide, so its team server's dedicated key
+grants the full catalog to all agents on that server. The isolated
+`home-core-operator` server uses a separate key and only the
+`homecompute_openbot_maintenance` server; that alias is not in
+`all-harness-mcps`. The `openbot-agent` key remains restricted
 to `automation-moe` for model requests and receives the `all-harness-mcps`
 group for MCP access. The Android alias remains allowlisted to five read tools
 and five bounded UI interaction tools; the full catalog group does not change

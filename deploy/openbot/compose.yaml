@@ -33,6 +33,38 @@ services:
     networks:
       openbot:
         ipv4_address: 172.30.192.2
+  openbot_operator:
+    container_name: homecompute-openbot-operator
+    image: ghcr.io/nightly-labs/openbot:latest
+    platform: linux/amd64
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
+    extra_hosts:
+      - mcp.home.arpa:10.77.20.1
+    restart: "no"
+    security_opt:
+      - seccomp=/home/hermes-operator/.local/share/homecompute-openbot/current/seccomp.json
+      - no-new-privileges:true
+    shm_size: 512m
+    stop_grace_period: 60s
+    cpus: 1.0
+    mem_limit: 2g
+    pids_limit: 512
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_CHROOT
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    volumes:
+      - /home/hermes-operator/.local/share/homecompute-openbot/operator-data:/data
+      - /etc/homecompute-openbot/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
+    networks:
+      openbot_operator:
+        ipv4_address: 172.30.194.2
 
 networks:
   openbot:
@@ -43,3 +75,11 @@ networks:
       config:
         - subnet: 172.30.192.0/24
           gateway: 172.30.192.1
+  openbot_operator:
+    name: homecompute-openbot-operator
+    driver: bridge
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.30.194.0/24
+          gateway: 172.30.194.1

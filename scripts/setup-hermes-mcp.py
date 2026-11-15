@@ -162,9 +162,18 @@ def probe(module) -> None:
     if any(row.get('name') in {'homecompute_android_send_sms', 'homecompute_android_send_message'}
            for row in openbot_tools):
         raise ValueError('automatic Android messaging is outside the admitted grant')
+    if 'openbot-maintenance' in tokens:
+        maintenance_tools = tools_for(tokens['openbot-maintenance'])
+        names = {row.get('name') for row in maintenance_tools}
+        expected = {'homecompute_maintenance_prepare', 'homecompute_maintenance_preparation',
+                    'homecompute_maintenance_list', 'homecompute_maintenance_status',
+                    'homecompute_maintenance_run', 'homecompute_systems', 'homecompute_system_read'}
+        if names != expected:
+            raise ValueError('OpenBot maintenance principal must expose only host reads and bounded maintenance tools')
 
 
-def apply(module, reviewed: dict, expected: str) -> dict:
+def apply(module, reviewed: dict, expected: str, *, admit_openbot_maintenance: bool = False,
+          revoke_openbot_maintenance: bool = False) -> dict:
     if digest(json.dumps(reviewed, sort_keys=True).encode()) != expected:
         raise ValueError('reviewed plan changed')
     module.directory(STATE, 0o700)
@@ -178,7 +187,8 @@ def apply(module, reviewed: dict, expected: str) -> dict:
             if any(row['before'] != receipt['files'].get(name)
                    for name, row in reviewed['files'].items()):
                 raise ValueError('installed source differs from the active receipt')
-            if all(row['before'] == row['after'] for row in reviewed['files'].values()):
+            if (all(row['before'] == row['after'] for row in reviewed['files'].values())
+                    and not admit_openbot_maintenance and not revoke_openbot_maintenance):
                 probe(module)
                 return receipt
     state = adapter_state()
@@ -203,7 +213,13 @@ def apply(module, reviewed: dict, expected: str) -> dict:
         for name, (target, _) in FILES.items():
             row = metadata[name]
             module.write(target, (ROOT / name).read_bytes(), row['uid'], row['gid'], row['mode'])
-        module.native_tokens(admit_hermes=True, admit_openbot_android=True)
+        module.native_tokens(admit_hermes=True, admit_openbot_android=True,
+                             admit_openbot_maintenance=admit_openbot_maintenance,
+                             revoke_openbot_maintenance=revoke_openbot_maintenance)
+        tokens = json.loads(module.TOKENS.read_bytes())
+        if (admit_openbot_maintenance and 'openbot-maintenance' not in tokens
+                or revoke_openbot_maintenance and 'openbot-maintenance' in tokens):
+            raise ValueError('OpenBot maintenance credential transition did not verify')
         call(['systemctl', 'start', ADAPTER])
         probe(module)
         receipt = {'state': 'applied', 'revision': reviewed['revision'], 'plan_sha256': expected,
@@ -270,6 +286,12 @@ def main() -> int:
                          help='private pipe to OpenBot MCP settings only')
     actions.add_argument('--export-openclaw-credential', action='store_true',
                          help='private pipe to OpenClaw LiteLLM MCP settings only')
+    actions.add_argument('--export-openbot-maintenance-credential', action='store_true',
+                         help='private pipe to the isolated OpenBot operator server only')
+    parser.add_argument('--admit-openbot-maintenance', action='store_true',
+                        help='add the maintenance-only principal; configure only on the isolated operator server')
+    parser.add_argument('--revoke-openbot-maintenance', action='store_true',
+                        help='remove the isolated OpenBot maintenance principal during an applied source update')
     parser.add_argument('--expected-plan-sha256')
     args = parser.parse_args()
     try:
@@ -290,11 +312,21 @@ def main() -> int:
                 module.regular(module.TOKENS, module.pwd.getpwnam('homecompute-openclaw').pw_uid, 0o600)
                 sys.stdout.write(json.loads(module.TOKENS.read_bytes())['openclaw'])
                 return 0
+            if args.export_openbot_maintenance_credential:
+                module.regular(module.TOKENS, module.pwd.getpwnam('homecompute-openclaw').pw_uid, 0o600)
+                sys.stdout.write(json.loads(module.TOKENS.read_bytes())['openbot-maintenance'])
+                return 0
+            if (args.admit_openbot_maintenance or args.revoke_openbot_maintenance) and not args.apply:
+                raise ValueError('OpenBot maintenance admission or revocation requires --apply')
+            if args.admit_openbot_maintenance and args.revoke_openbot_maintenance:
+                raise ValueError('OpenBot maintenance admission and revocation conflict')
             if args.rollback:
                 result = rollback(module)
             else:
                 reviewed = plan(module, args.revision)
-                result = (apply(module, reviewed, args.expected_plan_sha256) if args.apply else
+                result = (apply(module, reviewed, args.expected_plan_sha256,
+                                admit_openbot_maintenance=args.admit_openbot_maintenance,
+                                revoke_openbot_maintenance=args.revoke_openbot_maintenance) if args.apply else
                           {**reviewed, 'plan_sha256': digest(json.dumps(reviewed, sort_keys=True).encode())})
             print(json.dumps(result, sort_keys=True))
             return 0

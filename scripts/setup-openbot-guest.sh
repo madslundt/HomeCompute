@@ -23,7 +23,7 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|login|status|configure-compression
+Usage: setup-openbot-guest.sh install|login|login-operator|status|configure-compression
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
@@ -32,6 +32,7 @@ install  Install or reconcile the pinned service in the agents VM. The current
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
+login-operator  Sign the isolated operator server into the same owner account.
 EOF
 }
 
@@ -71,13 +72,13 @@ configure_compression() {
 }
 
 status() {
-  ssh_guest 'sudo -n systemctl is-active homecompute-openbot-firewall.service homecompute-openbot.service || true; sudo -n docker inspect --format "{{.State.Status}} {{.Config.Image}} ports={{json .HostConfig.PortBindings}}" homecompute-openbot 2>/dev/null || true; sudo -n docker exec homecompute-openbot openbot version 2>/dev/null || true'
+  ssh_guest 'sudo -n systemctl is-active homecompute-openbot-firewall.service homecompute-openbot.service || true; for c in homecompute-openbot homecompute-openbot-operator; do sudo -n docker inspect --format "{{.Name}} {{.State.Status}} {{.Config.Image}} ports={{json .HostConfig.PortBindings}}" "$c" 2>/dev/null || true; sudo -n docker exec "$c" openbot version 2>/dev/null || true; done'
 }
 
-login() {
+login_server() {
   require_published_release
   ssh -tt -J home-core -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i "$KEY_FILE" \
-    "$GUEST" 'sudo -n docker exec -it homecompute-openbot openbot login --name home-core'
+    "$GUEST" "sudo -n docker exec -it $1 openbot login --name $2"
 }
 
 install_openbot() {
@@ -149,6 +150,20 @@ if test -e "$current" || test -L "$current"; then
   test ! -L "$base/data" && test "$(stat -c %a "$base/data")" = 700 && test "$(stat -c %u "$base/data")" = 1000 || {
     echo 'Existing OpenBot data directory has unexpected ownership or permissions' >&2; exit 1;
   }
+  if test -e "$base/operator-data" || test -L "$base/operator-data"; then
+    test ! -L "$base/operator-data" && test -d "$base/operator-data" \
+      && test "$(stat -c %a "$base/operator-data")" = 700 \
+      && test "$(stat -c %u "$base/operator-data")" = 1000 || {
+      echo 'Existing OpenBot operator data directory has unexpected ownership or permissions' >&2; exit 1;
+    }
+  fi
+  if docker inspect homecompute-openbot-operator >/dev/null 2>&1; then
+    project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' homecompute-openbot-operator)"
+    service="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' homecompute-openbot-operator)"
+    [[ "$project" == homecompute-openbot && "$service" == openbot_operator ]] || {
+      echo 'Existing operator container name is not owned by the OpenBot Compose project' >&2; exit 1;
+    }
+  fi
 else
   for path in "$base/compose.yaml" "$base/seccomp.json" \
       /etc/homecompute-openbot/network.json \
@@ -163,6 +178,10 @@ else
   done
   if docker inspect homecompute-openbot >/dev/null 2>&1; then
     echo 'Container name already exists; preserve and inspect it' >&2
+    exit 1
+  fi
+  if docker inspect homecompute-openbot-operator >/dev/null 2>&1 || test -e "$base/operator-data" || test -L "$base/operator-data"; then
+    echo 'Unmanaged OpenBot operator state already exists; preserve and inspect it' >&2
     exit 1
   fi
 fi
@@ -226,6 +245,12 @@ fi
 test ! -L "$base/data"
 test "$(stat -c %a "$base/data")" = 700
 test "$(stat -c %u "$base/data")" = 1000
+if test ! -e "$base/operator-data" && test ! -L "$base/operator-data"; then
+  install -d -o hermes-operator -g hermes-operator -m 0700 "$base/operator-data"
+fi
+test ! -L "$base/operator-data"
+test "$(stat -c %a "$base/operator-data")" = 700
+test "$(stat -c %u "$base/operator-data")" = 1000
 ln -sfnT "$release" "$base/current"
 sudo -n systemctl daemon-reload
 sudo -n systemctl enable homecompute-openbot-firewall.service
@@ -242,7 +267,8 @@ main() {
   [[ $# == 1 ]] || { usage >&2; return 2; }
   case "$1" in
     install) install_openbot ;;
-    login) login ;;
+    login) login_server homecompute-openbot home-core ;;
+    login-operator) login_server homecompute-openbot-operator home-core-operator ;;
     status) status ;;
     configure-compression) configure_compression ;;
     -h|--help|help) usage ;;

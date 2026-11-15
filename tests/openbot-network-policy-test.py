@@ -34,7 +34,8 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
 
         def iptables(*arguments, check=True):
             calls.append(arguments)
-            return subprocess.CompletedProcess(arguments, 0)
+            status = 1 if arguments[0] == '-C' else 0
+            return subprocess.CompletedProcess(arguments, status)
 
         with patch.object(policy, "iptables", side_effect=iptables):
             policy.apply()
@@ -42,12 +43,16 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
         expected = ('-A', policy.CHAIN, '-d', '10.77.20.1/32', '-p', 'tcp',
                     '--dport', '19445', '-j', 'ACCEPT')
         self.assertIn(expected, calls)
-        self.assertFalse(any('--dport' in call and call[call.index('--dport') + 1] == '19445'
-                             and call != expected for call in calls))
+        self.assertEqual(sum('--dport' in call and call[call.index('--dport') + 1] == '19445'
+                             for call in calls), 1)
         gateway = ('-A', policy.CHAIN, '-d', '10.77.20.1/32', '-p', 'tcp',
                    '--dport', '443', '-j', 'ACCEPT')
         self.assertIn(gateway, calls)
-        self.assertEqual(sum(call == gateway for call in calls), 1)
+        self.assertEqual(sum('--dport' in call and call[call.index('--dport') + 1] == '443'
+                             for call in calls), 2)
+        self.assertTrue(any(call[:2] == ('-I', 'DOCKER-USER') and
+                            call[call.index('-s') + 1] == str(policy.OPERATOR_SUBNET)
+                            and call[-1] == policy.OPERATOR_CHAIN for call in calls))
 
     def test_rejects_unreviewed_android_mcp_destination(self):
         value = json.loads(self.config.read_text())

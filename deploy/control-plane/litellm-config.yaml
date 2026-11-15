@@ -254,6 +254,21 @@ mcp_servers:
       - homecompute_android_swipe
       - homecompute_android_type_text
       - homecompute_android_navigation_key
+  homecompute_openbot_maintenance:
+    url: https://homecompute-capabilities.home.arpa:19445/mcp
+    transport: http
+    auth_type: oauth_delegate
+    description: Maintenance-only principal for the isolated OpenBot operator server
+    allow_all_keys: false
+    access_groups: [openbot-maintenance]
+    allowed_tools:
+      - homecompute_systems
+      - homecompute_system_read
+      - homecompute_maintenance_prepare
+      - homecompute_maintenance_preparation
+      - homecompute_maintenance_list
+      - homecompute_maintenance_status
+      - homecompute_maintenance_run
   aula:
     url: http://aula-mcp:7878/mcp
     transport: http

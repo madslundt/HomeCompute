@@ -924,7 +924,9 @@ rg -F 'HC-COMPUTE-TUNNEL -s 172.28.200.5/32 -d 172.28.200.1/32 -p tcp --dport 18
   "$REPO_ROOT/modules/nixos/compute-ssh-tunnel.nix" >/dev/null
 printf '[validate] Application project isolation (ADR-017)\n'
 automation_json="$temporary_root/automation-compose.json"
-INBOX_WEBHOOK_ID=validation-only docker compose \
+INBOX_WEBHOOK_ID=validation-only BN_CLIENT_ID=validation-only \
+  BN_CLIENT_SECRET=validation-only BANKNORWEGIAN_MCP_STATE_ROOT=/tmp/banknorwegian-validation \
+  BANKNORWEGIAN_MCP_BACKENDS_IP=172.28.212.5 docker compose \
   --env-file "$REPO_ROOT/config/automation.env.example" \
   -f "$REPO_ROOT/deploy/automation/compose.yaml" config --format json >"$automation_json"
 jq -e '
@@ -1015,7 +1017,9 @@ rg -F 'FROM python:3.15.0-slim-bookworm@sha256:' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
 rg -F 'pip install --no-compile --require-hashes -r requirements.lock' \
   "$REPO_ROOT/deploy/ttlock-webhook/Dockerfile" >/dev/null
-INBOX_WEBHOOK_ID=validation-only docker compose \
+INBOX_WEBHOOK_ID=validation-only BN_CLIENT_ID=validation-only \
+  BN_CLIENT_SECRET=validation-only BANKNORWEGIAN_MCP_STATE_ROOT=/tmp/banknorwegian-validation \
+  BANKNORWEGIAN_MCP_BACKENDS_IP=172.28.212.5 docker compose \
   --env-file "$REPO_ROOT/config/automation.env.example" \
   -f "$REPO_ROOT/deploy/automation/compose.yaml" \
   -f "$REPO_ROOT/deploy/automation/production.yaml" config --format json >"$automation_json"
@@ -1390,7 +1394,7 @@ openbot_json="$temporary_root/openbot.json"
 docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
   -f "$REPO_ROOT/deploy/openbot/compose.yaml" config --format json >"$openbot_json"
 jq -e '
-  (.services | keys == ["openbot"]) and
+  (.services | keys == ["openbot", "openbot_operator"]) and
   (.services.openbot.image == "ghcr.io/nightly-labs/openbot:latest") and
   (.services.openbot.platform == "linux/amd64") and
   (.services.openbot.cap_drop == ["ALL"] and .services.openbot.cap_add == ["SYS_CHROOT"]) and
@@ -1401,7 +1405,19 @@ jq -e '
   (.services.openbot.volumes | length == 2 and any(.[]; .target == "/data" and .read_only != true) and
    any(.[]; .source == "/etc/homecompute-openbot/home-core-root.crt" and .target == "/run/homecompute/home-core-root.crt" and .read_only == true)) and
   (.services.openbot.shm_size == "1073741824" and .services.openbot.stop_grace_period == "1m0s") and
-  (.services.openbot.mem_limit == "8589934592" and .services.openbot.pids_limit == 2048)
+  (.services.openbot.mem_limit == "8589934592" and .services.openbot.pids_limit == 2048) and
+  (.services.openbot_operator.image == "ghcr.io/nightly-labs/openbot:latest") and
+  (.services.openbot_operator.platform == "linux/amd64") and
+  (.services.openbot_operator.cap_drop == ["ALL"] and .services.openbot_operator.cap_add == ["SYS_CHROOT"]) and
+  (.services.openbot_operator.security_opt | index("no-new-privileges:true") != null) and
+  (.services.openbot_operator.ports == null and .services.openbot_operator.network_mode != "host") and
+  (.services.openbot_operator.environment.NODE_EXTRA_CA_CERTS == "/run/homecompute/home-core-root.crt") and
+  (.services.openbot_operator.extra_hosts | any(. == "mcp.home.arpa=10.77.20.1")) and
+  (.services.openbot_operator.volumes | length == 2 and any(.[]; .target == "/data" and .read_only != true) and
+   any(.[]; .source == "/etc/homecompute-openbot/home-core-root.crt" and .target == "/run/homecompute/home-core-root.crt" and .read_only == true)) and
+  (.services.openbot_operator.networks | keys == ["openbot_operator"]) and
+  (.services.openbot_operator.networks.openbot_operator.ipv4_address == "172.30.194.2") and
+  (.services.openbot_operator.mem_limit == "2147483648" and .services.openbot_operator.pids_limit == 512)
 ' "$openbot_json" >/dev/null
 grep -Fqx 'ExecStartPre=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml pull' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot.service"

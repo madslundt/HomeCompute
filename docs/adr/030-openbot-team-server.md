@@ -81,6 +81,9 @@ cloud provider from receiving assigned agent prompts or files.
 
 Accepted for the pinned Home Core deployment; remote client connectivity and
 model routing remain subject to live verification after owner sign-in.
+The second, isolated infrastructure-operator server is specified by
+[ADR-037](037-openbot-infrastructure-maintenance.md); it does not change this
+team server's tool grants.
 
 ## Evidence
 
