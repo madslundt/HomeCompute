@@ -20,9 +20,16 @@ BACKUP_SPEC = importlib.util.spec_from_file_location(
 )
 backup = importlib.util.module_from_spec(BACKUP_SPEC)
 BACKUP_SPEC.loader.exec_module(backup)
+EXPORTER = (ROOT / "scripts/export-hermes-state.sh").read_text()
 
 
 class HermesNativeHomeSnapshotTest(unittest.TestCase):
+    def test_export_downloads_transient_archive_from_sandbox_workspace(self):
+        self.assertIn("readonly SANDBOX_ARCHIVE=/sandbox/.homecompute-hermes-native-home.tar.gz", EXPORTER)
+        self.assertIn('HERMES_SNAPSHOT_OUTPUT="$SANDBOX_ARCHIVE" python3 -', EXPORTER)
+        self.assertIn('download "$SANDBOX_ARCHIVE"', EXPORTER)
+        self.assertIn('rm -f "$SANDBOX_ARCHIVE"', EXPORTER)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)

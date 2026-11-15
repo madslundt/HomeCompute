@@ -11,6 +11,7 @@ readonly CLI=/home/hermes-operator/.local/bin/nemohermes
 readonly OWNER=hermes-personal-v2
 readonly MAX_BYTES=$((20 * 1024 * 1024 * 1024))
 readonly SNAPSHOT_SCRIPT="$HOME/.local/share/homecompute-hermes-backup/hermes-native-home-snapshot.py"
+readonly SANDBOX_ARCHIVE=/sandbox/.homecompute-hermes-native-home.tar.gz
 
 [[ $(id -un) == hermes-operator ]] || { echo 'Hermes export must run as hermes-operator.' >&2; exit 1; }
 [[ -z ${SSH_ORIGINAL_COMMAND:-} ]] || { echo 'Remote commands are not accepted.' >&2; exit 1; }
@@ -41,20 +42,21 @@ jq -e '.phase == "Ready"' <<<"$owner_state" >/dev/null || {
 temporary="$(mktemp -d "$HOME/.local/state/homecompute-hermes-export.XXXXXX")"
 cleanup() {
   local result=$?
-  "$CLI" "$OWNER" exec --timeout 30 -- rm -f /tmp/homecompute-hermes-native-home.tar.gz >/dev/null 2>&1 || true
+  "$CLI" "$OWNER" exec --timeout 30 -- rm -f "$SANDBOX_ARCHIVE" >/dev/null 2>&1 || true
   rm -rf -- "$temporary"
   exit "$result"
 }
 trap cleanup EXIT HUP INT TERM
 
-"$CLI" "$OWNER" exec --timeout 900 --stdin -- python3 - <"$SNAPSHOT_SCRIPT" >/dev/null
+"$CLI" "$OWNER" exec --timeout 900 --stdin -- env HERMES_SNAPSHOT_OUTPUT="$SANDBOX_ARCHIVE" python3 - \
+  <"$SNAPSHOT_SCRIPT" >/dev/null
 list_json="$($CLI list --json 2>/dev/null)"
 if jq -e --arg name "$OWNER" 'any(.sandboxes[]; .name == $name and (.activeSessionCount // 0) > 0)' \
   <<<"$list_json" >/dev/null; then
   echo 'A Hermes session started during the export; refusing to emit this snapshot.' >&2
   exit 75
 fi
-"$CLI" "$OWNER" download /tmp/homecompute-hermes-native-home.tar.gz \
+"$CLI" "$OWNER" download "$SANDBOX_ARCHIVE" \
   "$temporary/hermes-native-home.tar.gz" >/dev/null
 [[ -f $temporary/hermes-native-home.tar.gz && ! -L $temporary/hermes-native-home.tar.gz ]] || {
   echo 'Hermes native-home archive is absent or unsafe.' >&2
