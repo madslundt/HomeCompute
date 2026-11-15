@@ -55,6 +55,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-compute-modalities.sh"
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
+  "$REPO_ROOT/scripts/setup-nod-guest.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"

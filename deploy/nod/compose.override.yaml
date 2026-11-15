@@ -1,0 +1,12 @@
+services:
+  server:
+    environment:
+      LLM_PROVIDER: compatible
+      LLM_MODEL: automation-moe
+      OPENAI_COMPATIBLE_BASE_URL: https://ai.home.arpa:8444/v1
+      OPENAI_COMPATIBLE_API_KEY: ${OPENAI_COMPATIBLE_API_KEY:?Provision the Nod model key}
+      NODE_EXTRA_CA_CERTS: /run/homecompute/nod-gateway-ca.crt
+      NOD_BIND_ADDRESS: 127.0.0.1
+      NOD_PUBLIC_URL: http://localhost:4310
+    volumes:
+      - /var/lib/homecompute-nod/gateway-ca.crt:/run/homecompute/nod-gateway-ca.crt:ro

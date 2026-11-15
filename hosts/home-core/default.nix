@@ -31,6 +31,7 @@ in
     ../../modules/nixos/agents-vm.nix
     ../../modules/nixos/agents-vm-backup.nix
     ../../modules/nixos/toolbox-vm.nix
+    ../../modules/nixos/nod-vm.nix
     ../../modules/nixos/docker.nix
     ../../modules/nixos/ssh.nix
     ../../modules/nixos/tailscale.nix
@@ -53,6 +54,8 @@ in
   homecompute.mattermost.enable = true;
   homecompute.opencode.enable = true;
   homecompute.serviceRecovery.enable = true;
+  homecompute.nodVm.enable = true;
+
   homecompute.toolboxVm = {
     enable = true;
     sshKeys = [
