@@ -67,6 +67,11 @@
         href: https://openbot.run/app
         description: Open AI teammates · select the home-core server
 
+    - Nod:
+        id: homecore-nod
+        icon: mdi-robot-outline
+        href: https://nod.home.arpa/
+        description: Personal assistant
     - Craft Anything:
         id: homecore-craft-anything
         icon: mdi-hammer-wrench
