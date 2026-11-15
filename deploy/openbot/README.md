@@ -198,7 +198,7 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
   'python3 ~/.local/share/homecompute-openbot/current/configure-openbot-hermes.py'
 ```
 
-The embedded Hermes runtime starts summarizing history at 150,000 tokens or
+The embedded Hermes runtime starts summarizing history at 128,000 tokens or
 its model-specific trigger, whichever is lower. This setting is shared by
 agents that use OpenBot's embedded Hermes. It gives the local summarizer
 smaller histories to process under OpenBot's five-minute inactivity limit.

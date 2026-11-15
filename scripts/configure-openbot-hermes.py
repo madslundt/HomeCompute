@@ -17,7 +17,7 @@ from pathlib import Path
 CONTAINER_DEFAULT = "homecompute-openbot"
 HERMES = "/data/.local/bin/hermes"
 COMPRESSION_KEY = "compression.threshold_tokens"
-COMPRESSION_THRESHOLD_TOKENS = 150_000
+COMPRESSION_THRESHOLD_TOKENS = 128_000
 PROVIDER = {
     "name": "Home AI (local)",
     "base_url": "http://ai.home.arpa:18080/v1",
