@@ -308,6 +308,7 @@ def backup(config: dict) -> None:
     validate_immich_dumps(IMMICH_DATABASE_DUMPS)
     hermes = export_hermes(config)
     output = restic(["backup", "--json", "--tag", "homecompute-selected-state",
+                     "--exclude", f"{IMMICH_LIBRARY}/#recycle",
                      str(HERMES_ARCHIVE), str(IMMICH_LIBRARY), str(IMMICH_DATABASE_DUMPS)])
     summary = next((json.loads(line) for line in output.splitlines()
                     if json.loads(line).get("message_type") == "summary"), None)

@@ -55,9 +55,11 @@ class NASBackupTest(unittest.TestCase):
                     patch.object(backup, "record") as record:
                 backup.backup({**CONFIG, "immichDbBackupScript": str(helper)})
             args = restic.call_args.args[0]
-            self.assertEqual(args[:5], ["backup", "--json", "--tag", "homecompute-selected-state",
-                                       str(archive)])
-            self.assertEqual(args[5:], [str(backup.IMMICH_LIBRARY), str(dumps)])
+            self.assertEqual(args, [
+                "backup", "--json", "--tag", "homecompute-selected-state",
+                "--exclude", f"{backup.IMMICH_LIBRARY}/#recycle",
+                str(archive), str(backup.IMMICH_LIBRARY), str(dumps),
+            ])
             prune.assert_called_once_with()
             self.assertEqual(record.call_args.args[0], "last-backup.json")
             self.assertEqual(set(record.call_args.args[1]["scope"]), {
