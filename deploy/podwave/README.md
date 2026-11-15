@@ -7,7 +7,7 @@ listeners can open the studio, manage episodes and jobs, and change provider
 settings without a login. The app publishes no host port.
 
 The app image is built from the PodWave source pinned to commit
-`99a28768e20dd2a797a7497a7255fd7cfe14572e` (version 1.11.0). Its uv/Python base
+`ee4037c022a4660199402e11a3b8490f691621cc` (version 1.12.0). Its uv/Python base
 is pinned by digest in the tracked Dockerfile. The service has no host port, no
 Docker socket, no capabilities, a read-only root filesystem, and a dedicated
 bridge shared only with Caddy. Caddy publishes the `ai.home.arpa` alias only on
@@ -38,6 +38,10 @@ news searches. Automatic episodes are disabled by default. When enabled, the
 server scores unseen items with the configured LLM and queues qualifying episodes
 automatically; there is no approval inbox. Interest searches require a Tavily key,
 while feed-only schedules do not. Scheduling runs only while the server is up.
+
+PodWave 1.12 adds manually queued multi-episode series and ongoing series for
+each automation show. The migration adds series and episode-number fields to the
+existing SQLite database without replacing episodes or provider settings.
 
 The app's server configuration and generated episode files live below
 `/srv/state/podwave`; NixOS provisions the directory for the container's
