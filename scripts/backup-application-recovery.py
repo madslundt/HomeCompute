@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import shlex
 import socket
 import subprocess
 import sys
@@ -69,6 +70,30 @@ def state(nas) -> dict:
     return fields
 
 
+def validate_active_backup(nas, record: dict) -> None:
+    """Use the validator configured on the live systemd backup unit.
+
+    The targeted NAS bundle is retired after NixOS takes ownership of its
+    units. Its old validator can reject the newer NixOS-owned config even
+    though the active service's own ExecStartPre accepts it.
+    """
+    raw = nas.run(['systemctl', 'show', UNIT, '-p', 'ExecStartPre', '--value']).stdout.strip()
+    match = re.fullmatch(
+        r'\{\s*path=(?P<path>[^;]+?)\s*;\s*argv\[\]=(?P<argv>[^;]+?)\s*;'
+        r'\s*ignore_errors=no\s*;.*\}', raw, re.DOTALL)
+    if not match:
+        raise ValueError('active NAS backup preflight command is unavailable or ambiguous')
+    command = shlex.split(match.group('argv'))
+    executable = match.group('path').strip()
+    if (len(command) != 3 or command[0] != executable
+            or not command[0].startswith('/nix/store/')
+            or not command[1].startswith('/nix/store/')
+            or not Path(command[1]).name.endswith('-nas-recovery-backup.py')
+            or command[2] != 'validate'):
+        raise ValueError('active NAS backup preflight is not the NixOS-owned validator')
+    nas.run(command, env=nas.environment(record['qemu_bin']))
+
+
 def wait_phase(nas, started: float, deadline: float, *, until_cold: bool) -> dict | None:
     while time.monotonic() < deadline:
         current = state(nas)
@@ -110,8 +135,7 @@ def backup(source: Path, revision: str, expected: str, installed_hash: str,
     nas.run = partial(nas.run, env=environment)
     drain.run = partial(drain.run, environment=environment)
     nas.safe(nas.STATE / 'backup-authorized')  # Existing approved installation only; no new authorization.
-    nas.run([nas.PYTHON, '-I', str(Path(record['version']) / 'scripts/nas-recovery-backup.py'), 'validate'],
-            env=nas.environment(record['qemu_bin']))
+    validate_active_backup(nas, record)
     with nas.locked(nas.STATE / 'lifecycle.lock'):
         current = state(nas)
         deferred = ('activating', 'auto-restart', '75')

@@ -33,6 +33,12 @@ class BackupCoordinationTest(unittest.TestCase):
             finally: events.append('admission-released')
         def run(args, **kwargs):
             if args[:2] == ['systemctl', 'show']:
+                if args[-3:] == ['-p', 'ExecStartPre', '--value']:
+                    return subprocess.CompletedProcess(
+                        args, 0,
+                        '{ path=/nix/store/python/bin/python3 ; '
+                        'argv[]=/nix/store/python/bin/python3 /nix/store/abc-nas-recovery-backup.py validate ; '
+                        'ignore_errors=no ; start_time=[n/a] ; status=0/0 }', '')
                 fields = status or {'LoadState':'loaded','ActiveState':'inactive','SubState':'dead','ExecMainStatus':'0'}
                 return subprocess.CompletedProcess(args, 0, '\n'.join(k+'='+v for k,v in fields.items()), '')
             if args[:2] == ['systemctl', 'stop']:
@@ -71,6 +77,32 @@ class BackupCoordinationTest(unittest.TestCase):
         self.assertEqual(self.events, ['lock','backend-idle-checked','admission-held','drained',
                                        'backend-idle-checked','guarded-backup','wait-cold',
                                        'admission-released','wait-NAS-completion'])
+
+    def test_retired_bundle_uses_the_active_nixos_validator(self):
+        commands = []
+        output = ('{ path=/nix/store/python/bin/python3 ; '
+                  'argv[]=/nix/store/python/bin/python3 /nix/store/abc-nas-recovery-backup.py validate ; '
+                  'ignore_errors=no ; status=0/0 }')
+        def run(args, **kwargs):
+            commands.append((args, kwargs))
+            return subprocess.CompletedProcess(args, 0, output, '')
+        nas = SimpleNamespace(run=run, environment=lambda qemu: {'PATH':qemu})
+        helper.validate_active_backup(nas, {'qemu_bin':'/reviewed/qemu'})
+        self.assertEqual(commands[0][0], ['systemctl','show',helper.UNIT,'-p','ExecStartPre','--value'])
+        self.assertEqual(commands[1][0], ['/nix/store/python/bin/python3',
+                                          '/nix/store/abc-nas-recovery-backup.py','validate'])
+        self.assertEqual(commands[1][1]['env'], {'PATH':'/reviewed/qemu'})
+
+    def test_non_nixos_or_ambiguous_preflight_is_refused(self):
+        outputs = ('',
+                   '{ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 /tmp/nas-recovery-backup.py validate ; ignore_errors=no ; }',
+                   '{ path=/nix/store/python/bin/python3 ; argv[]=/nix/store/python/bin/python3 /nix/store/a-nas-recovery-backup.py scheduled ; ignore_errors=no ; }')
+        for output in outputs:
+            nas = SimpleNamespace(
+                run=lambda args, **kwargs: subprocess.CompletedProcess(args, 0, output, ''),
+                environment=lambda qemu: {})
+            with self.subTest(output=output), self.assertRaisesRegex(ValueError, 'preflight'):
+                helper.validate_active_backup(nas, {'qemu_bin':'/reviewed/qemu'})
 
     def test_active_inference_aborts_without_stopping_applications_or_starting_backup(self):
         with self.assertRaisesRegex(ValueError, 'active inference'):self.exercise(drain_failure=True)
