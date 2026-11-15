@@ -2,12 +2,12 @@ name: homecompute-podwave
 
 services:
   podwave:
-    image: homecompute/podwave:3c54c9f04b58b48f9b44fe4ca5f9ac7cf634c50d
+    image: homecompute/podwave:e0f0addb29efc5e6532a50ac8fb5dd5d686141d4
     build:
       context: .
       dockerfile: Dockerfile
       additional_contexts:
-        podwave: https://github.com/madslundt/PodWave.git#3c54c9f04b58b48f9b44fe4ca5f9ac7cf634c50d
+        podwave: https://github.com/madslundt/PodWave.git#e0f0addb29efc5e6532a50ac8fb5dd5d686141d4
     restart: unless-stopped
     init: true
     read_only: true
