@@ -68,7 +68,7 @@ assert.equal((await fetch(`${base}/models`)).status, 401);
 assert.equal((await fetch(new URL('/healthz', base), { headers })).status, 404);
 console.log('Nod server container verified TLS, restricted model discovery and unauthenticated denial.');
 JS
-    [[ $(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 http://127.0.0.1:4310/) == 200 ]]
+    [[ $(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 http://localhost:4310/) == 200 ]]
     printf 'Nod web app answered on guest loopback.\n'
     ;;
   stop)
