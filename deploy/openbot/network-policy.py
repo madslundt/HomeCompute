@@ -95,8 +95,8 @@ def apply_one(subnet: ipaddress.IPv4Network, container: ipaddress.IPv4Address, c
             iptables('-A', chain, '-d', f'{address}/32', '-p', 'udp', '--dport', port, '-j', 'ACCEPT')
         iptables('-A', chain, '-d', f'{address}/32', '-p', 'tcp', '-m', 'multiport',
                  '--dports', '3478,5349', '-j', 'ACCEPT')
-    for subnet in BLOCKED:
-        iptables('-A', chain, '-d', subnet, '-j', 'REJECT')
+    for blocked_subnet in BLOCKED:
+        iptables('-A', chain, '-d', blocked_subnet, '-j', 'REJECT')
     iptables('-A', chain, '-p', 'tcp', '-m', 'multiport', '--dports', '80,443', '-j', 'ACCEPT')
     iptables('-A', chain, '-j', 'REJECT')
     if iptables('-C', 'DOCKER-USER', '-s', str(subnet), '-j', chain, check=False).returncode != 0:
