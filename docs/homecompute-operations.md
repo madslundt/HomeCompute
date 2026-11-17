@@ -371,6 +371,15 @@ sudo systemctl start homecompute-nas-recovery-backup.service
 sudo systemctl start homecompute-nas-recovery-check.service
 ```
 
+The selected backup module retains the Immich database helper and Compose file
+through a Nix store reference. For the deployed `bf3431d5` generation, use
+`scripts/recover-selected-backup-inputs.sh` from the published recovery checkout
+to materialize the exact store source and retain it with a GC root. The command
+checks the existing configuration and both file contents. Start the existing
+backup unit and verify a fresh receipt. After deploying the corrected NixOS
+module and checking that its configuration references the new input package,
+remove only `/var/lib/homecompute/selected-backup-source`.
+
 For a selected-snapshot restore drill, first check free space for the media
 library, then use a new direct child of the scratch root:
 

@@ -7,8 +7,12 @@ let
   backupCli = pkgs.writeShellScriptBin "homecompute-nas-recovery" ''
     exec ${pkgs.python3}/bin/python3 ${../../scripts/nas-recovery-backup.py} "$@"
   '';
-  immichDatabaseBackup = builtins.toString ../../scripts/immich-db-backup.sh;
-  immichCompose = builtins.toString ../../deploy/immich/compose.yaml;
+  immichBackupInputs = pkgs.runCommand "homecompute-immich-backup-inputs" { } ''
+    install -Dm555 ${../../scripts/immich-db-backup.sh} "$out/scripts/immich-db-backup.sh"
+    install -Dm444 ${../../deploy/immich/compose.yaml} "$out/deploy/immich/compose.yaml"
+  '';
+  immichDatabaseBackup = "${immichBackupInputs}/scripts/immich-db-backup.sh";
+  immichCompose = "${immichBackupInputs}/deploy/immich/compose.yaml";
   service = command: {
     requires = [ "network-online.target" ];
     after = [ "network-online.target" ];
