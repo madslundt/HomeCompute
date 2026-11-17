@@ -164,6 +164,11 @@ should include all seven configured aliases. This connection is available to eve
 OpenBot agent, so protect the key and delegated bearers as full household and
 workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog access.
 
+Verify tool discovery in an OpenBot agent using Codex after a guest rollout.
+The OpenBot connection test can succeed even when embedded Codex cannot
+verify the gateway certificate. The container supplies the mounted Home Core
+root to Node and Codex via `NODE_EXTRA_CA_CERTS` and `CODEX_CA_CERTIFICATE`.
+
 ## Operations and recovery
 
 `homecompute-openbot.service` owns startup, restart, and graceful stop. It starts
