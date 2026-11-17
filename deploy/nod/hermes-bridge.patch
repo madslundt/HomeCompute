@@ -1,0 +1,20 @@
+diff --git a/src/server/app.ts b/src/server/app.ts
+index 905935c..78d7ba8 100644
+--- a/src/server/app.ts
++++ b/src/server/app.ts
+@@ -42,6 +42,7 @@ import {
+ } from './thread.ts';
+ import { isMessageReaction } from '../shared/emoji.ts';
+ import { accessKey, registerLocalAccess } from './access.ts';
++import { registerHermesBridge } from './homecompute-hermes.ts';
+ import { logFailure, withFailureLog, type FailureLogSink } from './failure-log.ts';
+ import { fileBytes } from '../shared/files.ts';
+ import { BrowserActionError, type Computer } from '../ports/computer.ts';
+@@ -261,6 +262,7 @@ export async function createApp(dependencies: AppDependencies = {}) {
+           bearer: authToken !== undefined,
+         },
+   );
++  if (!desktopAccess && authToken) registerHermesBridge(app, () => publicConfiguration().llmReady);
+   if (desktopAccess && dependencies.admission) registerWorkAdmission(app, dependencies.admission);
+   app.setErrorHandler((error, request, reply) => {
+     const known =

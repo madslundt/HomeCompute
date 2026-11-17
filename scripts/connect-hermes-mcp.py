@@ -273,17 +273,18 @@ def clear_stale_provider(sandbox: str, env: dict) -> dict:
     return speech_entries
 
 
-def network_candidate(before: dict, sandbox: str) -> dict:
+def network_candidate(before: dict, sandbox: str, *, server: str = 'homecompute',
+                      path: str = '/mcp') -> dict:
     """Add the release-pinned real interpreter to only the existing MCP route."""
     after = copy.deepcopy(before)
-    entry = after['network_policies']['mcp_bridge_homecompute']
+    entry = after['network_policies']['mcp_bridge_' + server]
     endpoints = entry['endpoints']
     if len(endpoints) != 1:
         raise ValueError('one exact generated MCP endpoint required')
     endpoint = endpoints[0]
-    expected = {'host': 'homecompute-capabilities.home.arpa', 'port': 19445, 'path': '/mcp',
+    expected = {'host': 'homecompute-capabilities.home.arpa', 'port': 19445, 'path': path,
                 'protocol': 'mcp', 'enforcement': 'enforce', 'allowed_ips': ['10.77.20.1'],
-                'credential_binding': {'provider': sandbox + '-mcp-homecompute'},
+                'credential_binding': {'provider': sandbox + '-mcp-' + server},
                 'mcp': {'max_body_bytes': 131072, 'strict_tool_names': True, 'allow_all_known_mcp_methods': False}}
     if any(endpoint.get(key) != value for key, value in expected.items()):
         raise ValueError('generated MCP route differs from the trusted endpoint')
@@ -295,7 +296,8 @@ def network_candidate(before: dict, sandbox: str) -> dict:
     return after
 
 
-def network_setup(sandbox: str, env: dict) -> None:
+def network_setup(sandbox: str, env: dict, *, server: str = 'homecompute',
+                  path: str = '/mcp') -> None:
     if sandbox != 'hermes-personal-v2':
         return
     observed = call(['nemohermes', sandbox, 'exec', '--', 'python3', '-c',
@@ -305,7 +307,7 @@ def network_setup(sandbox: str, env: dict) -> None:
     cli = ['openshell', '-g', 'nemoclaw', 'policy']
     arguments = ['get', sandbox, '--base', '-o', 'json']
     before = json.loads(call(cli + arguments, env=env))['policy']
-    after = network_candidate(before, sandbox)
+    after = network_candidate(before, sandbox, server=server, path=path)
     if before == after:
         return
     root = Path.home() / '.local/state/homecompute/hermes-mcp-policy'
@@ -326,7 +328,8 @@ def network_setup(sandbox: str, env: dict) -> None:
         raise ValueError('native policy readback differs; preserve backups and inspect before retry')
 
 
-def enable_api_server_toolset(sandbox: str, env: dict) -> None:
+def enable_api_server_toolset(sandbox: str, env: dict, *, server: str = 'homecompute',
+                              enabled: bool = True) -> None:
     """Make the managed MCP server available to Hermes API-backed sessions."""
     program = '''import json,pathlib,subprocess,yaml
 p=pathlib.Path.home()/".hermes/config.yaml"
@@ -338,17 +341,20 @@ if not isinstance(platforms,dict):
 current=platforms.get("api_server")
 if not isinstance(current,list) or any(not isinstance(item,str) for item in current):
     raise SystemExit("Hermes API server toolset configuration is invalid")
-target="mcp-homecompute"
-if target not in current:
+target=TOOLSET_NAME
+enabled=TOOLSET_ENABLED
+desired=[*current,target] if enabled and target not in current else (
+    [name for name in current if name!=target] if not enabled else current)
+if desired != current:
     result=subprocess.run(["hermes","config","set","platform_toolsets.api_server",
-                           json.dumps([*current,target])],capture_output=True,text=True,timeout=30)
+                           json.dumps(desired)],capture_output=True,text=True,timeout=30)
     if result.returncode:
         raise SystemExit("Hermes API server MCP toolset update failed")
 updated=yaml.safe_load(p.read_text()) or {}
-if target not in updated.get("platform_toolsets",{}).get("api_server",[]):
+if updated.get("platform_toolsets",{}).get("api_server") != desired:
     raise SystemExit("Hermes API server MCP toolset readback failed")
 print("enabled")
-'''
+'''.replace('TOOLSET_NAME', repr('mcp-' + server)).replace('TOOLSET_ENABLED', repr(enabled))
     cli = ['nemohermes', sandbox]
     result = call(cli + ['exec', '--stdin', '--', 'python3', '-'], input=program, env=env).strip()
     if result != 'enabled':

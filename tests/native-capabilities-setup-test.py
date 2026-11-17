@@ -138,6 +138,16 @@ class RelaySetupTest(unittest.TestCase):
         for value in ('0.0.0.0', '/conversation', '/observations', '/approve', 'handle_path', '{$'):
             self.assertNotIn(value, config)
 
+    def test_nod_has_a_dedicated_agents_guest_route(self):
+        config = setup.caddyfile()
+        matcher = config.split('@hermes_nod {', 1)[1].split('handle @hermes_nod', 1)[0]
+        self.assertIn('remote_ip 10.77.20.2\n', matcher)
+        self.assertNotIn('172.28.200.3', matcher)
+        self.assertIn('method POST', matcher)
+        self.assertIn('expression {http.request.orig_uri} == "/mcp/hermes-nod"', matcher)
+        self.assertIn('reverse_proxy 10.77.60.2:4310', config)
+        self.assertNotIn('/mcp/hermes-nod', setup.caddyfile(nod=False))
+
     def test_container_has_exact_image_and_no_broader_host_access(self):
         command = setup.container_command()
         for value in ('--pull=never', '--network=host', '--user', '1000:1000', '--read-only', '--cap-drop=ALL',
