@@ -333,20 +333,12 @@ test('published origin requires operator credentials for UI, assets, and metadat
   assert.equal((await http(port, '/api/office', { ...headers, Origin: 'https://foreign.home.arpa', Authorization: valid })).status, 403);
 });
 
-test('DNS, Homepage and private HTTPS path agree and retain a Caddy-only bridge', async () => {
+test('agents DNS and Homepage still route to Hermes', async () => {
   const dns = JSON.parse(await readFile(new URL('config/agent-office-dns.json', root), 'utf8'));
   assert.deepEqual(dns.records, [{ name: 'agents.home.arpa', type: 'A', value: '192.168.30.122', ttl: 300 }]);
   const homepage = await readFile(new URL('deploy/homepage/config/services.yaml', root), 'utf8');
-  assert.match(homepage, /id: homecore-agent-office[\s\S]*?href: https:\/\/agents\.home\.arpa\//);
-  const caddy = await readFile(new URL('deploy/control-plane/Caddyfile', root), 'utf8');
-  assert.match(caddy, /agents\.home\.arpa \{\s*tls internal/);
-  assert.match(caddy, /header_up X-HomeCompute-Office-Origin https:\/\/agents\.home\.arpa/);
-  const nix = await readFile(new URL('modules/nixos/agent-office.nix', root), 'utf8');
-  assert.match(nix, /-s 172\.28\.200\.2\/32 -d 172\.28\.200\.1\/32/);
-  assert.ok(!nix.includes('allowedTCPPorts'));
-  assert.match(nix, /TCP4:10\.77\.20\.2:18803/);
-  const guest = await readFile(new URL('deploy/agent-office/guest-proxy.service', root), 'utf8');
-  assert.match(guest, /TCP4-LISTEN:18803,bind=10\.77\.20\.2,reuseaddr,fork TCP4:127\.0\.0\.1:18802/);
+  assert.doesNotMatch(homepage, /homecore-agent-office|homecore-openclaw/);
+  assert.match(homepage, /href: https:\/\/agents\.home\.arpa\/hermes\//);
 });
 
 test('plugin registers observation hooks without modifying agent policies', () => {

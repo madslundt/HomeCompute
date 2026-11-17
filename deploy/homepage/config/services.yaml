@@ -31,12 +31,6 @@
         description: Find books and request downloads
 
 - AI assistants:
-    - Agent office:
-        id: homecore-agent-office
-        icon: mdi-account-group-outline
-        href: https://agents.home.arpa/
-        description: See agent activity in the pixel office · operator sign-in
-
     - AI automation manager:
         id: homecore-ai-automation-manager
         icon: mdi-clipboard-text-clock-outline
@@ -48,12 +42,6 @@
         icon: mdi-image-edit-outline
         href: https://models.home.arpa/control/
         description: Text, images and video · LLM returns after 30 minutes idle
-
-    - OpenClaw:
-        id: homecore-openclaw
-        icon: mdi-robot-outline
-        href: https://192.168.30.122/
-        description: Native dashboard · agents, sessions and settings
 
     - Hermes:
         id: homecore-hermes

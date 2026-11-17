@@ -1,5 +1,58 @@
 # OpenClaw agent office
 
+## Retirement
+
+Homepage and Caddy have retired the Agent Office and native OpenClaw
+dashboards. The private `agents.home.arpa` DNS record still serves Hermes at
+`/hermes/`. From an approved client network, the hostname root returns 404.
+The agents VM and the shared assistant services stay in use.
+
+Apply the reviewed Home Core release through the
+[normal lifecycle](../../docs/homecompute-operations.md). If unrelated
+configuration blocks a full release, run the scoped installer as root from a
+clean, published release at `/srv/homecompute/releases/FULL_SHA`:
+
+```bash
+python3 scripts/retire-agent-dashboard-hosting.py --revision FULL_SHA
+python3 scripts/retire-agent-dashboard-hosting.py --revision FULL_SHA \
+  --apply-plan-sha256 REVIEWED_PLAN_SHA256
+```
+
+The plan identifies the running mounts, file hashes, units, and Tailscale
+route. Applying it preserves other Caddy routes and Homepage cards and restarts
+only those two containers when their files change. It stops and masks the four
+dashboard units so the older Home Core generation cannot restart them on
+reboot. The original configs and any superseded systemd control files are
+saved under `/var/lib/homecompute-agent-office/retirement-*`. The scoped
+operation changes the two bind-mounted files in place and retains the deployed
+release marker. The next full release reconciles those configs and the retired
+firewall rule to the canonical source.
+
+After the Home Core change, disable the legacy forwards in the agents VM as
+`hermes-operator`:
+
+```bash
+systemctl --user disable --now homecompute-agent-office-forward.service
+sudo systemctl disable --now homecompute-agent-office-proxy.service
+sudo systemctl disable --now homecompute-openclaw-dashboard-proxy.service
+```
+
+Verify those units are inactive and that guest ports 18791, 18802, 18803, and
+18891 have no listeners. Verify the two Homepage cards are absent, Agent Office
+returns 404, the IP dashboard and Tailscale port 18791 are closed, and the
+Hermes dashboard still reaches its native sign-in. Keep the guest unit files,
+sandbox state, plugin bundle and DNS record for recovery.
+
+For scoped rollback, compare the currently mounted file hashes and systemd
+masks with the receipt. Restore the saved file preimages in place, restore any
+saved control unit files after removing only the four managed masks, then run
+`systemctl daemon-reload`. Start only the units recorded as active and restart
+Caddy and Homepage. Re-enable only the guest units that were enabled before the
+retirement. For full-release rollback, restore the previous compatible release
+after reconciling the scoped masks.
+
+## Archived preview and deployment reference
+
 A local, read-only illustrated robot laboratory for the team declared in
 [`config/openclaw-team.json`](../../config/openclaw-team.json). Agent names come
 from that source; instructions, messages, channel IDs, tool arguments/results,

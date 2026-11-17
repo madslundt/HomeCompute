@@ -45,7 +45,6 @@ in
   ];
 
   networking.hostName = "home-core";
-  homecompute.agentOffice.enable = true;
   homecompute.hermesDashboard.enable = true;
   homecompute.androidGateway = {
     enable = true;
@@ -97,12 +96,6 @@ in
   # The dedicated Telegram delivery relay accepts only the existing n8n
   # container on its private bridge. Restore this exact rule at boot/reload.
   networking.firewall.extraCommands = lib.mkAfter ''
-    iptables -w -C INPUT -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
-      -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
-      -m comment --comment hc-openclaw-dashboard -j ACCEPT 2>/dev/null || \
-    iptables -w -I INPUT 1 -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
-      -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
-      -m comment --comment hc-openclaw-dashboard -j ACCEPT
     iptables -w -C INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
       -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
       -m comment --comment hc-openclaw-communication-supervised -j ACCEPT 2>/dev/null || \
@@ -111,13 +104,6 @@ in
         -m comment --comment hc-openclaw-communication-supervised -j ACCEPT
   '';
   networking.firewall.extraStopCommands = lib.mkAfter ''
-    while iptables -w -C INPUT -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
-      -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
-      -m comment --comment hc-openclaw-dashboard -j ACCEPT 2>/dev/null; do
-      iptables -w -D INPUT -i br-hc-ctrl -s 172.28.200.2/32 -d 172.28.200.1/32 \
-        -p tcp --dport 18792 -m conntrack --ctstate NEW,ESTABLISHED \
-        -m comment --comment hc-openclaw-dashboard -j ACCEPT
-    done
     while iptables -w -C INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
       -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
       -m comment --comment hc-openclaw-communication-supervised -j ACCEPT 2>/dev/null; do
@@ -126,39 +112,6 @@ in
         -m comment --comment hc-openclaw-communication-supervised -j ACCEPT
     done
   '';
-
-  # The LAN HTTPS edge reaches the guest's private dashboard proxy only
-  # through this bridge listener. Native authentication and pairing remain on.
-  systemd.services.homecompute-openclaw-dashboard-proxy = {
-    description = "Control-plane bridge proxy for the native OpenClaw dashboard";
-    wantedBy = [ "multi-user.target" ];
-    wants = [ "network-online.target" "docker.service" "homecompute-agents-vm.service" ];
-    after = [ "network-online.target" "docker.service" "homecompute-agents-vm.service" ];
-    unitConfig.StartLimitIntervalSec = 0;
-    serviceConfig = {
-      ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:18792,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18891";
-      Restart = "on-failure";
-      RestartSec = "5s";
-      NoNewPrivileges = true;
-      ProtectSystem = "strict";
-      ProtectHome = true;
-      PrivateTmp = true;
-      CapabilityBoundingSet = "";
-    };
-  };
-
-  systemd.services.homecompute-openclaw-dashboard-serve = {
-    description = "Private Tailscale HTTPS access to the native OpenClaw dashboard";
-    wantedBy = [ "multi-user.target" ];
-    wants = [ "tailscaled.service" "homecompute-agents-vm.service" ];
-    after = [ "tailscaled.service" "homecompute-agents-vm.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = "${pkgs.tailscale}/bin/tailscale serve --bg --yes --https=18791 http://10.77.20.2:18891";
-      ExecStop = "${pkgs.tailscale}/bin/tailscale serve --https=18791 off";
-    };
-  };
 
   # This installed host has a 1 GiB ESP. Keep room for future kernels.
   boot.loader.systemd-boot.configurationLimit = lib.mkForce 5;

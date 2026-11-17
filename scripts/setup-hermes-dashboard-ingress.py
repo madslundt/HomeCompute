@@ -28,7 +28,7 @@ SERVE_HOST = 'home-core.tail479ad.ts.net'
 LEGACY_OFFICE = 'agents.home.arpa {\n\ttls internal\n\tencode zstd gzip\n\t@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10\n\thandle @private {\n\t\t# The observer still validates Origin and requires its own password.\n\t\t# Its native listener and both relay hops remain on private interfaces.\n\t\treverse_proxy 172.28.200.1:18802 {\n\t\t\theader_up Host 127.0.0.1:18802\n\t\t\theader_up X-HomeCompute-Office-Origin https://agents.home.arpa\n\t\t\ttransport http {\n\t\t\t\tdial_timeout 3s\n\t\t\t\tresponse_header_timeout 10s\n\t\t\t}\n\t\t}\n\t}\n\trespond "Forbidden" 403\n}\n'
 PRELOAD_REDIRECT = (
     "\t\t# Vite's lazy preloads use root-relative hashed script/style URLs.\n"
-    "\t\t# Return only those chunks to Hermes; Office keeps its own assets/API.\n"
+    "\t\t# Return only those chunks to Hermes.\n"
     "\t\t@hermesPreload path_regexp hermes_preload ^/assets/[A-Za-z0-9_-]+-[A-Za-z0-9_-]{8}\\.(js|css)$\n"
     "\t\tredir @hermesPreload /hermes{uri} 308\n"
 )

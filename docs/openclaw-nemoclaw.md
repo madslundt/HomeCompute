@@ -367,6 +367,10 @@ acceptance. Keep household data and autonomous actions disabled.
 
 ### Access, stop and rollback
 
+The hosted dashboard routes below describe the prior deployment. The
+[dashboard retirement procedure](../deploy/agent-office/README.md#retirement)
+removes the Homepage card, LAN route, Tailscale listener, and guest proxy.
+
 The Homepage OpenClaw card opens the native dashboard at
 `https://192.168.30.122/` on the home LAN. Caddy uses the existing HomeCompute
 HTTPS CA and preserves Host, Origin and client forwarding headers. Remote
