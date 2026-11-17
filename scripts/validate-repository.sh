@@ -1388,7 +1388,7 @@ docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
   -f "$REPO_ROOT/deploy/openbot/compose.yaml" config --format json >"$openbot_json"
 jq -e '
   (.services | keys == ["openbot"]) and
-  (.services.openbot.image == "ghcr.io/nightly-labs/openbot:latest") and
+  (.services.openbot.image == "ghcr.io/nightly-labs/openbot@sha256:ed12869034791a3c9de905d3d164185512c4dba191780d38a7c7a9099eab6a2d") and
   (.services.openbot.platform == "linux/amd64") and
   (.services.openbot.cap_drop == ["ALL"] and .services.openbot.cap_add == ["SYS_CHROOT"]) and
   (.services.openbot.security_opt | index("no-new-privileges:true") != null) and
@@ -1402,9 +1402,9 @@ jq -e '
 ' "$openbot_json" >/dev/null
 grep -Fqx 'ExecStartPre=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml pull' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot.service"
-grep -Fqx 'readonly IMAGE_REF=ghcr.io/nightly-labs/openbot:latest' \
+grep -Fqx 'readonly IMAGE_REF=ghcr.io/nightly-labs/openbot@sha256:ed12869034791a3c9de905d3d164185512c4dba191780d38a7c7a9099eab6a2d' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
-grep -Fq 'latest_image_id=' \
+grep -Fq 'release_image_id=' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
 
 # Adding a project here is the point at which its isolation gets reviewed.

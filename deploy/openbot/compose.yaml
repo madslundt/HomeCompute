@@ -1,7 +1,7 @@
 services:
   openbot:
     container_name: homecompute-openbot
-    image: ghcr.io/nightly-labs/openbot:latest
+    image: ghcr.io/nightly-labs/openbot@sha256:ed12869034791a3c9de905d3d164185512c4dba191780d38a7c7a9099eab6a2d
     platform: linux/amd64
     environment:
       NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt

@@ -5,9 +5,9 @@ OpenBot is installed as a single pinned container in the Ubuntu agents VM on
 OpenBot image publishes no ports and has no bundled web client; after sign-in,
 use the desktop/iPhone app or `https://openbot.run/app`.
 
-The container tracks OpenBot's mutable `latest` image tag. The systemd unit
-pulls it before each service start, and the health check verifies that the
-running container uses the pulled image. Its upstream seccomp profile is tracked here and was checked
+This maintenance release pins the existing OpenBot 0.71.0 image by digest.
+The systemd unit pulls that digest and the health check verifies the running
+image. Its upstream seccomp profile is tracked here and was checked
 against SHA-256 `665289e6a1c41045f55166d0b01993c929f71df78e3a3b264f3252bb8e0b3d9e`.
 The guest installer verifies the Ubuntu 24.04 `docker-compose-v2` package
 version and `.deb` SHA-256 from `config/openbot-install.json` before installing
@@ -40,6 +40,13 @@ After publishing the source revision and deploying it to Home Core:
 ./scripts/setup-openbot-guest.sh status
 ./scripts/setup-openbot-guest.sh login
 ```
+
+To apply or roll back a guest release without switching Home Core, check out
+the clean, published full SHA and run
+`./scripts/setup-openbot-guest.sh install --revision FULL_SHA`. The installer
+compares the release with the deployed Home Core revision and accepts only
+OpenBot Compose, installer, health, validation and runbook changes. Keep a
+published rollback revision that uses the same image digest.
 
 The login command asks for the account email and one-time code in the local
 terminal. It stores the server session only in OpenBot's `/data` keyring. Then

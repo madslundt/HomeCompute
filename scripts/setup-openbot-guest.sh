@@ -4,8 +4,9 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+readonly SCRIPT_DIR REPO_ROOT
 readonly GUEST="hermes-operator@10.77.20.2"
 readonly KEY_FILE="${OPENBOT_GUEST_SSH_KEY:-$HOME/.ssh/id_ed25519_ai-services-01}"
 readonly REMOTE_BASE="/home/hermes-operator/.local/share/homecompute-openbot"
@@ -23,11 +24,13 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|login|status
+Usage: setup-openbot-guest.sh install [--revision FULL_SHA] | login | status
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
          deployed revision. Managed upgrades preserve /data and refuse drift.
+         An explicit published revision can reconcile OpenBot-only changes
+         based on the version already deployed to Home Core.
          This does not sign in to OpenBot or configure a provider.
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
@@ -51,6 +54,27 @@ require_published_release() {
   [[ "$deployed" == "$revision" ]] || { echo 'Home Core must be deployed from this exact published revision first.' >&2; return 1; }
 }
 
+require_guest_release() {
+  local revision="$1" deployed
+  [[ -f "$KEY_FILE" && ! -L "$KEY_FILE" ]] || { echo "Missing dedicated guest SSH identity: $KEY_FILE" >&2; return 1; }
+  [[ "$revision" =~ ^[0-9a-f]{40}$ &&
+     "$(git -C "$REPO_ROOT" rev-parse HEAD)" == "$revision" &&
+     -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" ]] || {
+    echo 'Use a clean checkout of the exact requested release SHA.' >&2; return 1;
+  }
+  git -C "$REPO_ROOT" fetch --no-tags origin "$revision" || return 1
+  deployed="$(ssh home-core 'sudo -n cat /var/lib/homecompute/deployed-revision')" || return 1
+  if [[ ! "$deployed" =~ ^[0-9a-f]{40}$ ]] ||
+    ! git -C "$REPO_ROOT" merge-base --is-ancestor "$deployed" "$revision" ||
+    ! git -C "$REPO_ROOT" diff --quiet "$deployed" "$revision" -- . \
+      ':(exclude)deploy/openbot/README.md' ':(exclude)deploy/openbot/compose.yaml' \
+      ':(exclude)deploy/openbot/homecompute-openbot-health' \
+      ':(exclude)scripts/setup-openbot-guest.sh' ':(exclude)scripts/validate-repository.sh'; then
+    echo 'The selected release must descend from the deployed Home Core revision and contain only OpenBot Compose changes and their installer, health check, validation, or runbook.' >&2
+    return 1
+  fi
+}
+
 status() {
   ssh_guest 'sudo -n systemctl is-active homecompute-openbot-firewall.service homecompute-openbot.service || true; sudo -n docker inspect --format "{{.State.Status}} {{.Config.Image}} ports={{json .HostConfig.PortBindings}}" homecompute-openbot 2>/dev/null || true; sudo -n docker exec homecompute-openbot openbot version 2>/dev/null || true'
 }
@@ -62,7 +86,13 @@ login() {
 }
 
 install_openbot() {
-  require_published_release
+  if [[ $# == 0 ]]; then
+    require_published_release
+  elif [[ $# == 2 && "$1" == --revision ]]; then
+    require_guest_release "$2"
+  else
+    usage >&2; return 2
+  fi
   local revision stage release compose_package compose_version compose_cli_version compose_sha256 compose_architecture
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   compose_package="$(jq -er '.docker_compose.apt_package' "$REPO_ROOT/config/openbot-install.json")"
@@ -220,9 +250,13 @@ REMOTE_INSTALL
 }
 
 main() {
+  if [[ "${1:-}" == install ]]; then
+    shift
+    install_openbot "$@"
+    return
+  fi
   [[ $# == 1 ]] || { usage >&2; return 2; }
   case "$1" in
-    install) install_openbot ;;
     login) login ;;
     status) status ;;
     -h|--help|help) usage ;;
