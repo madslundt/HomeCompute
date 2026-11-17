@@ -1,0 +1,185 @@
+diff --git a/src/ports/agent.ts b/src/ports/agent.ts
+index f3437c1..1b9a73e 100644
+--- a/src/ports/agent.ts
++++ b/src/ports/agent.ts
+@@ -87,0 +88 @@ export interface RuntimeContext {
++  delegatedByHermes?: boolean;
+diff --git a/src/runtime/index.ts b/src/runtime/index.ts
+index 2beb342..64fa075 100644
+--- a/src/runtime/index.ts
++++ b/src/runtime/index.ts
+@@ -174,0 +175,30 @@ function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
++const hermesTools = new Set([
++  'apps',
++  'manage_apps',
++  'browser',
++  'browser_session',
++  'sign_in',
++  'ask_user',
++  'send_message',
++]);
++
++export function allowsHermesTool(name: string, params?: unknown) {
++  if (!hermesTools.has(name) && !name.startsWith('mcp__')) return false;
++  if (!params || typeof params !== 'object') return true;
++  const input = params as Record<string, unknown>;
++  if (name === 'manage_apps') return input.action === 'list';
++  if (name === 'browser_session') return input.action === 'use';
++  if (name === 'browser')
++    return !['download', 'upload', 'share_screenshot'].includes(String(input.action));
++  if (name === 'send_message') {
++    return (
++      input.intent === 'final' &&
++      input.presentation === undefined &&
++      input.replyToMessageId === undefined &&
++      typeof input.text === 'string' &&
++      input.text.trim().length > 0
++    );
++  }
++  return true;
++}
++
+@@ -666 +696,6 @@ export function createAgentRuntime(dependencies: {
+-      if (dependencies.prepareMemory && !overBudget() && !context.spendingLimitReached) {
++      if (
++        !context.delegatedByHermes &&
++        dependencies.prepareMemory &&
++        !overBudget() &&
++        !context.spendingLimitReached
++      ) {
+@@ -682 +717,3 @@ export function createAgentRuntime(dependencies: {
+-      const rootWorkspace = dependencies.workspace.open(context);
++      const rootWorkspace = dependencies.workspace.open(
++        context.delegatedByHermes ? { ...context, threadId: sessionId } : context,
++      );
+@@ -735,0 +773 @@ export function createAgentRuntime(dependencies: {
++          .filter((tool) => !context.delegatedByHermes || allowsHermesTool(tool.name))
+@@ -769,0 +808,2 @@ export function createAgentRuntime(dependencies: {
++                if (context.delegatedByHermes && !allowsHermesTool(name, params))
++                  throw new Error('This action is unavailable to delegated Hermes tasks.');
+@@ -1060,0 +1101 @@ export function createAgentRuntime(dependencies: {
++        ...(context.delegatedByHermes ? { restricted: true } : {}),
+diff --git a/src/server/access.ts b/src/server/access.ts
+index 9199b31..8595fb7 100644
+--- a/src/server/access.ts
++++ b/src/server/access.ts
+@@ -89 +89,5 @@ export function registerLocalAccess(
+-    if (!hosts.has(request.headers.host || ''))
++    const bridge =
++      request.method === 'POST' &&
++      request.url === '/mcp/hermes-nod' &&
++      request.headers.host === 'homecompute-capabilities.home.arpa';
++    if (!bridge && !hosts.has(request.headers.host || ''))
+diff --git a/src/server/app.ts b/src/server/app.ts
+index 905935c..78d7ba8 100644
+--- a/src/server/app.ts
++++ b/src/server/app.ts
+@@ -44,0 +45 @@ import { accessKey, registerLocalAccess } from './access.ts';
++import { registerHermesBridge } from './homecompute-hermes.ts';
+@@ -263,0 +265 @@ export async function createApp(dependencies: AppDependencies = {}) {
++  if (!desktopAccess && authToken) registerHermesBridge(app, () => publicConfiguration().llmReady);
+diff --git a/src/server/thread.ts b/src/server/thread.ts
+index 24c2acf..04dbd0b 100644
+--- a/src/server/thread.ts
++++ b/src/server/thread.ts
+@@ -59,0 +60 @@ import { inlineAppResult, noMailCheck, type MailCheck } from './integration-resu
++import { hasWorkspaceFiles } from './integration-files.ts';
+@@ -1510 +1511,5 @@ async function loadMessage(messageId: string | null) {
+-async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
++async function loadTurnContext(
++  turn: any,
++  dependencies: ThreadDependencies,
++  delegatedByHermes = false,
++) {
+@@ -1525 +1530 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+-    loadMessage(sourceMessageId),
++    loadMessage(delegatedByHermes ? null : sourceMessageId),
+@@ -1536,0 +1542 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
++       AND (NOT $7::boolean OR u.session_id=$6)
+@@ -1541 +1547,9 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+-      [ownerId, threadId, sourceMessageId, turn.id, Boolean(turn.background), turn.session_id],
++      [
++        ownerId,
++        threadId,
++        sourceMessageId,
++        turn.id,
++        Boolean(turn.background),
++        turn.session_id,
++        delegatedByHermes,
++      ],
+@@ -1553,3 +1567,3 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+-    dependencies.accountProfile?.().catch(() => undefined),
+-    dependencies.memoryContext?.().catch(() => ''),
+-    dependencies.learnedSkills?.().catch(() => undefined),
++    delegatedByHermes ? undefined : dependencies.accountProfile?.().catch(() => undefined),
++    delegatedByHermes ? undefined : dependencies.memoryContext?.().catch(() => ''),
++    delegatedByHermes ? undefined : dependencies.learnedSkills?.().catch(() => undefined),
+@@ -1571 +1585 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+-    !turn.background && sourceMessageId && dependencies.recall
++    !delegatedByHermes && !turn.background && sourceMessageId && dependencies.recall
+@@ -1588,2 +1602,4 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+-      notificationRule: preference?.notification_rule ?? defaultPreferences.notificationRule,
+-      rules: preference?.rules ?? defaultPreferences.rules,
++      notificationRule: delegatedByHermes
++        ? undefined
++        : (preference?.notification_rule ?? defaultPreferences.notificationRule),
++      rules: delegatedByHermes ? undefined : (preference?.rules ?? defaultPreferences.rules),
+@@ -1613 +1629 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+-      ...(dependencies.localFiles ? { localFiles: true } : {}),
++      ...(!delegatedByHermes && dependencies.localFiles ? { localFiles: true } : {}),
+@@ -1706,0 +1723 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
++  let delegatedByHermes = false;
+@@ -1723 +1740,4 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-    const plain = !attachments.length && !presentation && !replyFileReferences(source).length;
++    const references = replyFileReferences(source);
++    if (delegatedByHermes && (references.length || attachments.length || presentation))
++      throw new Error('Delegated Hermes results must be plain text.');
++    const plain = !attachments.length && !presentation && !references.length;
+@@ -1733 +1752,0 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-        const references = replyFileReferences(text);
+@@ -1791 +1810,10 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-    const taskContext = await dependencies.taskContext?.(ref);
++    delegatedByHermes = Boolean(
++      (
++        await pool.query(
++          `SELECT 1 FROM turns WHERE owner_id=$1 AND thread_id=$2 AND session_id=$3
++       AND source='event' AND starts_with(source_id,'homecompute-hermes:') LIMIT 1`,
++          [ownerId, threadId, turn.session_id],
++        )
++      ).rowCount,
++    );
++    const taskContext = delegatedByHermes ? undefined : await dependencies.taskContext?.(ref);
+@@ -1793,2 +1821,3 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-    const tasks = await dependencies.taskLedger?.(threadId);
+-    const workspacePath = join(dataRoot, 'workspaces', threadId);
++    const tasks = delegatedByHermes ? undefined : await dependencies.taskLedger?.(threadId);
++    const workspaceId = delegatedByHermes ? turn.session_id : threadId;
++    const workspacePath = join(dataRoot, 'workspaces', workspaceId);
+@@ -1807 +1836 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-        await dependencies.writeArtifact(threadId, name, bytes, operation);
++        await dependencies.writeArtifact(workspaceId, name, bytes, operation);
+@@ -1839,2 +1868,4 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-    const loaded = await loadTurnContext(turn, dependencies);
+-    const proactivity = await dependencies.proactivity?.(ref, signal);
++    const loaded = await loadTurnContext(turn, dependencies, delegatedByHermes);
++    const proactivity = delegatedByHermes
++      ? undefined
++      : await dependencies.proactivity?.(ref, signal);
+@@ -1843 +1874 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-    let ownerMessage = turn.source === 'user';
++    let ownerMessage = !delegatedByHermes && turn.source === 'user';
+@@ -1989,0 +2021 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
++      delegatedByHermes,
+@@ -2084,0 +2117,9 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
++        if (
++          delegatedByHermes &&
++          (action === 'CONNECTED_CLI' ||
++            action.startsWith('LOCAL_FILES_') ||
++            hasWorkspaceFiles(args))
++        )
++          throw new Error(
++            'Workspace files and command line integrations are unavailable to delegated Hermes tasks.',
++          );
+@@ -2122 +2163 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-        turn.background && !taskContext
++        delegatedByHermes || (turn.background && !taskContext)

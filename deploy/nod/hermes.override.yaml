@@ -1,0 +1,10 @@
+services:
+  server:
+    env_file:
+      - /var/lib/homecompute-nod/hermes-bridge/token.env
+    volumes:
+      - /var/lib/homecompute-nod/hermes-bridge/src/server/app.ts:/app/src/server/app.ts:ro
+      - /var/lib/homecompute-nod/hermes-bridge/src/server/homecompute-hermes.ts:/app/src/server/homecompute-hermes.ts:ro
+      - /var/lib/homecompute-nod/hermes-bridge/src/server/access.ts:/app/src/server/access.ts:ro
+      - /var/lib/homecompute-nod/hermes-bridge/src/server/thread.ts:/app/src/server/thread.ts:ro
+      - /var/lib/homecompute-nod/hermes-bridge/src/runtime/index.ts:/app/src/runtime/index.ts:ro

@@ -370,6 +370,9 @@ inputs. Oh My Hermes is deferred until the core service is stable.
 
 ## Household MCP access
 
+For private delegation to an existing Nod instance, use the separate
+[Hermes owner bridge](../nod/README.md#hermes-owner-bridge).
+
 See the [dated live verification](../../docs/hermes-mcp-validation-2026-11-06.md)
 for applied revisions, actual client checks and remaining platform differences.
 

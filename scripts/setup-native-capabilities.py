@@ -92,7 +92,26 @@ def write(path: Path, data: bytes, owner: int | None = None, group: int = 0, mod
         Path(temporary).unlink(missing_ok=True)
 
 
-def caddyfile() -> str:
+def caddyfile(*, nod: bool = True) -> str:
+    nod_route = '''    @hermes_nod {
+        remote_ip 10.77.20.2
+        method POST
+        path /mcp/hermes-nod
+        expression {http.request.orig_uri} == "/mcp/hermes-nod"
+    }
+    handle @hermes_nod {
+        request_body {
+            max_size 16KB
+        }
+        reverse_proxy 10.77.60.2:4310 {
+            header_up Host homecompute-capabilities.home.arpa
+            transport http {
+                dial_timeout 3s
+                response_header_timeout 12s
+            }
+        }
+    }
+''' if nod else ''
     return f'''{{
     admin off
     auto_https off
@@ -123,7 +142,7 @@ https://{HOST}:19445 {{
             }}
         }}
     }}
-    @embeddings {{
+{nod_route}    @embeddings {{
         remote_ip 10.77.20.2
         method POST
         path /v1/embeddings
@@ -321,7 +340,7 @@ def run() -> int:
 def check(verify_tls: bool = True) -> None:
     guard()
     regular(INSTALL / 'Caddyfile', ROOT_UID, 0o644)
-    if (INSTALL / 'Caddyfile').read_text() != caddyfile():
+    if (INSTALL / 'Caddyfile').read_text() not in {caddyfile(), caddyfile(nod=False)}:
         raise ValueError('fixed relay configuration required')
     regular(TLS / 'server.crt', TLS_UID, 0o400); regular(TLS / 'server.key', TLS_UID, 0o400)
     if verify_tls:

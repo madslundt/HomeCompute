@@ -98,3 +98,96 @@ configuration together in recovery. Follow the upstream
 [backup and restore procedure](https://nod.n8n.io/docs/deploy/server-operations/)
 and qualify a restore before using the service for durable personal data.
 Revoke the dedicated model key when retiring the guest.
+
+## Hermes owner bridge
+
+The optional bridge adds two MCP tools to the private Hermes owner sandbox.
+`nod_submit` starts one Nod background run in its own session. It uses that
+Nod instance's existing connections and saved logins. `nod_status` returns
+status and up to 4,000 characters of text from that session. It returns
+`owner_action_required` when the run is waiting. Open Nod to handle approvals
+and sign-in there, then poll the same request ID. Nod retains the tasks and
+their results in its existing database. Files and richer responses stay in
+Nod. By design, Telegram remains available for owner chat.
+
+The bridge uses Nod's v0.7.6 background-event path so delegated text does not
+become a direct owner instruction in Nod's Trust checker. Nod's standing rules
+still apply. Review those rules before allowing Hermes to submit real tasks.
+Delegated turns and owner-approved continuations see only the delegated
+session's transcript. They use a separate workspace, a restricted runtime
+and a tool allowlist for existing app connections and browser sign-in. Owner
+chat search, memory, learned skills, local files and shell access are excluded.
+The credential grants task submission and access to results from this bridge.
+Keep it in the Nod guest and the owner sandbox's OpenShell credential store.
+The native relay accepts only the agents guest, the exact POST path and a
+bounded body. Nod checks the relay hostname separately from its normal web
+interface. OpenShell binds the credential to `/mcp/hermes-nod` and the
+`nod` MCP registration. The shared LiteLLM catalog does not declare this tool.
+
+Use the same reviewed published HomeCompute revision for all three steps.
+Keep the current Nod volume backup and the prior Home Core relay release for
+rollback. The owner connector checks the existing Hermes backup and network
+readiness records before registration.
+
+1. On the Nod guest, stage the `deploy/nod` directory and
+   `scripts/setup-nod-guest.sh` from the selected release as for the current
+   Nod installer. Provision a separate credential once in the guest:
+
+   ```bash
+   sudo install -d -m 0700 /var/lib/homecompute-nod/hermes-bridge
+   sudo bash -c '
+     umask 077
+     set -o noclobber
+     printf "HOMECOMPUTE_NOD_BRIDGE_TOKEN=nod_%s\n" \
+       "$(openssl rand -base64 32 | tr "+/" "-_" | tr -d "=\n")" \
+       > /var/lib/homecompute-nod/hermes-bridge/token.env
+   '
+   sudo bash scripts/setup-nod-guest.sh enable-hermes
+   sudo bash scripts/setup-nod-guest.sh verify
+   ```
+
+   This recreates only the web container with read-only source mounts.
+   The original image, PostgreSQL and Nod volumes are retained. Subsequent
+   Nod installer and reconfigure runs use the applied bridge until disabled.
+   If the mounted files drift, compare against the selected release before
+   enabling again.
+
+2. On Home Core, verify the installed native relay and source before applying.
+   The Nod route is additive to the existing native relay. With the relay
+   installer from the selected release, stage, check and restart only that
+   service. If health fails, restage and restart with the prior release.
+
+   ```bash
+   sudo python3 scripts/setup-native-capabilities.py install
+   sudo python3 scripts/setup-native-capabilities.py check
+   sudo systemctl restart homecompute-native-mcp-relay.service
+   sudo systemctl is-active homecompute-native-mcp-relay.service
+   ```
+
+3. From the operator workstation, pipe the dedicated credential to the agents
+   guest. Substitute the verified checkout path and full SHA. The connector
+   matches the observed active `hermes-personal-v2` sandbox. It checks the
+   native endpoint and adds only `mcp-nod` to the API toolsets.
+
+   ```bash
+   ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 nod-operator@10.77.60.2 \
+     'sudo -n cut -d= -f2 /var/lib/homecompute-nod/hermes-bridge/token.env' |
+   ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 hermes-operator@10.77.20.2 \
+     'PATH="$HOME/.local/bin:$PATH" python3 CHECKOUT/scripts/connect-hermes-nod.py --revision FULL_SHA'
+   ```
+
+Verify native discovery with
+`nemohermes hermes-personal-v2 mcp status nod --json --tools` and check that it
+lists exactly `nod_submit` and `nod_status`. From the private Hermes owner UI,
+ask it to submit “Return the exact text NOD-BRIDGE-OK, without using any app or
+website” and report the returned result. It should submit once, poll the
+same request ID, and return `NOD-BRIDGE-OK`. Repeat with an owner-selected
+read-only operation against one saved connection for authenticated app
+verification. Keep results in the owner UI. Verify the HomeCompute services,
+doctor and drift checks after rollout.
+
+For rollback, run `connect-hermes-nod.py --revision FULL_SHA --remove` in the
+agents guest, then `setup-nod-guest.sh disable-hermes` in the Nod guest, and
+restore the prior native relay installer and restart the relay. Remove the
+external `token.env` once the bridge is revoked. Any work already accepted
+stays in Nod and can be inspected or stopped there with Nod's own controls.

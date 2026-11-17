@@ -3,8 +3,8 @@ set -Eeuo pipefail
 umask 077
 
 action="${1:-}"
-if [[ $# != 1 || ! "$action" =~ ^(install|reconfigure|status|verify|stop)$ ]]; then
-  printf 'Usage: sudo bash scripts/setup-nod-guest.sh install|reconfigure|status|verify|stop\n' >&2
+if [[ $# != 1 || ! "$action" =~ ^(install|reconfigure|status|verify|stop|enable-hermes|disable-hermes)$ ]]; then
+  printf 'Usage: sudo bash scripts/setup-nod-guest.sh install|reconfigure|status|verify|stop|enable-hermes|disable-hermes\n' >&2
   exit 2
 fi
 if [[ $EUID != 0 || $(hostname) != homecompute-nod ]]; then
@@ -17,9 +17,11 @@ upstream=/opt/homecompute-nod
 state=/var/lib/homecompute-nod
 project="$upstream/deployment/self-host"
 revision=e697ec36504826bb3151907f457e4498fb95cedc
+bridge="$state/hermes-bridge"
+base_override="$release/deploy/nod/compose.override.yaml"
 compose=(docker compose --project-name homecompute-nod
   --env-file "$project/.env" --env-file "$state/model.env"
-  -f "$project/compose.yaml" -f "$release/deploy/nod/compose.override.yaml")
+  -f "$project/compose.yaml" -f "$base_override")
 
 if [[ $action == install ]]; then
   install -d -m 0700 "$state"
@@ -47,6 +49,19 @@ unset NOD_ENV_FILE NOD_BIND_ADDRESS NOD_PUBLIC_URL NOD_IMAGE_TAG PORT
 unset LLM_PROVIDER LLM_MODEL OPENAI_COMPATIBLE_BASE_URL OPENAI_COMPATIBLE_API_KEY
 export PORT=4310 NOD_BIND_ADDRESS=10.77.60.2 NOD_PUBLIC_URL=https://nod.home.arpa
 
+if [[ $action == enable-hermes || $action == disable-hermes ]]; then
+  exec 9>"$state/deploy.lock"
+  flock -n 9
+  [[ -d "$bridge" && ! -L "$bridge" && $(stat -c '%a:%u' "$bridge") == 700:0 ]]
+fi
+
+if [[ $action == enable-hermes || ( $action != disable-hermes && -f "$bridge/enabled" ) ]]; then
+  [[ -f "$bridge/token.env" && ! -L "$bridge/token.env" && $(stat -c '%a:%u' "$bridge/token.env") == 600:0 ]]
+  [[ $(wc -c < "$bridge/token.env") -eq 77 ]]
+  LC_ALL=C grep -qxE 'HOMECOMPUTE_NOD_BRIDGE_TOKEN=nod_[A-Za-z0-9_-]{43}' "$bridge/token.env"
+  compose+=(-f "$release/deploy/nod/hermes.override.yaml")
+fi
+
 case "$action" in
   install)
     COMPOSE_PROJECT_NAME=homecompute-nod sh "$project/setup.sh"
@@ -58,6 +73,40 @@ case "$action" in
     flock -n 9
     "${compose[@]}" config --quiet
     "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
+    ;;
+  enable-hermes)
+    temporary=$(mktemp -d "$bridge/.render.XXXXXX")
+    trap 'rm -rf -- "$temporary"' EXIT
+    bridge_files=(src/server/app.ts src/server/access.ts src/server/thread.ts src/runtime/index.ts)
+    for file in "${bridge_files[@]}" src/ports/agent.ts; do
+      mkdir -p "$temporary/$(dirname "$file")"
+      git -C "$upstream" show "$revision:$file" > "$temporary/$file"
+    done
+    (cd "$temporary" && git apply --unidiff-zero --check "$release/deploy/nod/hermes-bridge.patch" &&
+      git apply --unidiff-zero "$release/deploy/nod/hermes-bridge.patch")
+    install -m 0444 "$release/deploy/nod/homecompute-hermes.ts" "$temporary/src/server/homecompute-hermes.ts"
+    for file in "${bridge_files[@]}" src/server/homecompute-hermes.ts; do
+      if [[ -f "$bridge/enabled" ]]; then
+        cmp -s "$temporary/$file" "$bridge/$file"
+      else
+        install -D -m 0444 "$temporary/$file" "$bridge/$file"
+      fi
+    done
+    "${compose[@]}" config --quiet
+    if ! "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server; then
+      if [[ ! -f "$bridge/enabled" ]]; then
+        base=("${compose[@]:0:${#compose[@]}-2}")
+        "${base[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
+      fi
+      exit 1
+    fi
+    install -m 0600 /dev/null "$bridge/enabled"
+    ;;
+  disable-hermes)
+    if [[ -f "$bridge/enabled" ]]; then
+      "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
+      rm -- "$bridge/enabled"
+    fi
     ;;
   status)
     "${compose[@]}" ps
@@ -82,6 +131,24 @@ assert.ok(metadata.scopes_supported.includes('workflow:read'));
 assert.equal((await fetch(`${n8n}/mcp-server/http`)).status, 401);
 assert.equal((await fetch(`${n8n}/rest/settings`)).status, 404);
 console.log('Nod server verified private n8n OAuth discovery, MCP authentication and editor isolation.');
+const bridge = process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN;
+if (bridge) {
+  const list = (token) => fetch('http://127.0.0.1:4310/mcp/hermes-nod', {
+    method: 'POST',
+    headers: {
+      Host: 'homecompute-capabilities.home.arpa',
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+  });
+  assert.equal((await list()).status, 401);
+  assert.equal((await list(process.env.NOD_AUTH_TOKEN)).status, 401);
+  const response = await list(bridge);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).result.tools.map(({name}) => name), ['nod_submit', 'nod_status']);
+  console.log('Nod bridge verified independent authentication and the bounded tool list.');
+}
 JS
     [[ $(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 --header "Host: nod.home.arpa" http://10.77.60.2:4310/) == 200 ]]
     printf 'Nod web app answered on its private guest address.\n'
