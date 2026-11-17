@@ -44,15 +44,21 @@ class DashboardHostTests(unittest.TestCase):
             before = state / f'before-{before_sha}.env'
             before.write_bytes(before_env)
             receipt_path = state / 'receipt.json'
-            receipt_raw = json.dumps({
-                'state': 'applied', 'sandbox': module.NAME, 'external_host': module.TARGET,
-                'applied_at': 1794342707, 'before_sha256': before_sha, 'backup': str(before),
-            }).encode()
+            receipt = {
+                'state': 'applied', 'sandbox': module.PIN['previous_owner_sandbox'],
+                'external_host': module.TARGET, 'local_hostname': module.PIN['local_hostname'],
+                'applied_at': 1767312000, 'before_sha256': before_sha, 'backup': str(before),
+            }
+            receipt_raw = json.dumps(receipt).encode()
             receipt_path.write_bytes(receipt_raw)
             with patch.object(module, 'STATE', state), patch.object(module, 'RECEIPT', receipt_path):
                 with self.assertRaisesRegex(ValueError, 'newer owner sandbox'):
-                    module.archive_recreated_receipt('2026-11-09T00:00:00Z')
-                recreated = '2026-11-11T22:39:06.601988765Z'
+                    module.archive_recreated_receipt('2026-01-01T00:00:00Z')
+                recreated = '2026-01-03T00:00:00.123456789Z'
+                receipt_path.write_text(json.dumps({**receipt, 'sandbox': 'unrelated'}))
+                with self.assertRaisesRegex(ValueError, 'prior applied hostname receipt'):
+                    module.archive_recreated_receipt(recreated)
+                receipt_path.write_bytes(receipt_raw)
                 archived = module.archive_recreated_receipt(recreated)
                 self.assertEqual(archived.read_bytes(), receipt_raw)
                 self.assertEqual(receipt_path.read_bytes(), receipt_raw)

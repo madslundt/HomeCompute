@@ -199,8 +199,9 @@ def archive_recreated_receipt(created_at: str) -> Path:
     receipt = json.loads(raw)
     applied = receipt.get('applied_at')
     created = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-    if (receipt.get('state') != 'applied' or receipt.get('sandbox') != NAME
-            or receipt.get('external_host') != TARGET or type(applied) is not int
+    if (receipt.get('state') != 'applied' or receipt.get('sandbox') not in (NAME, PIN['previous_owner_sandbox'])
+            or receipt.get('external_host') != TARGET or receipt.get('local_hostname') != PIN['local_hostname']
+            or type(applied) is not int
             or created.utcoffset() is None or created.timestamp() <= applied):
         raise ValueError('a newer owner sandbox and its prior applied hostname receipt are required')
     before_sha = receipt.get('before_sha256', '')
