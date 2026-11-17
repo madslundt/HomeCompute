@@ -8,6 +8,7 @@ native NemoClaw lifecycle. Credentials are never parsed or printed.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import fcntl
 import hashlib
 import json
@@ -140,7 +141,7 @@ def send_update(container_id: str, *, restore: bytes | None = None) -> dict:
     program = '''import hashlib,json,os,pathlib,re,stat,sys
 p=pathlib.Path("/sandbox/.hermes/.env"); assert not p.is_symlink() and p.is_file()
 st=p.stat(); assert st.st_uid==998 and st.st_gid==999 and stat.S_IMODE(st.st_mode)==0o640
-raw=p.read_bytes(); action=json.loads(sys.argv[1]); key=b"_NEMOCLAW_HERMES_DASHBOARD_EXTERNAL_HOST"
+raw=p.read_bytes(); action=json.load(sys.stdin); key=b"_NEMOCLAW_HERMES_DASHBOARD_EXTERNAL_HOST"
 if action["restore"] is not None:
  new=action["restore"].encode()
  assert new and b"\\0" not in new
@@ -165,8 +166,8 @@ except BaseException:
  raise
 print(json.dumps({"sha256":hashlib.sha256(new).hexdigest(),"restored":restored}))
 '''
-    return json.loads(call(['docker', 'exec', container_id, '/opt/hermes/.venv/bin/python', '-c',
-                            program, action]).decode())
+    return json.loads(call(['docker', 'exec', '-i', container_id, '/opt/hermes/.venv/bin/python', '-c',
+                            program], data=action.encode()).decode())
 
 
 def save_preimage(container_id: str, expected_sha: str) -> Path:
@@ -191,15 +192,48 @@ def stop_start() -> None:
     sandbox_status()
 
 
+def archive_recreated_receipt(created_at: str) -> Path:
+    if RECEIPT.is_symlink() or not RECEIPT.is_file():
+        raise ValueError('private hostname receipt required')
+    raw = RECEIPT.read_bytes()
+    receipt = json.loads(raw)
+    applied = receipt.get('applied_at')
+    created = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+    if (receipt.get('state') != 'applied' or receipt.get('sandbox') != NAME
+            or receipt.get('external_host') != TARGET or type(applied) is not int
+            or created.utcoffset() is None or created.timestamp() <= applied):
+        raise ValueError('a newer owner sandbox and its prior applied hostname receipt are required')
+    before_sha = receipt.get('before_sha256', '')
+    if not isinstance(before_sha, str) or not re.fullmatch(r'[0-9a-f]{64}', before_sha):
+        raise ValueError('the prior hostname rollback preimage must verify')
+    backup = STATE / ('before-' + before_sha + '.env')
+    if (str(backup) != receipt.get('backup')
+            or backup.is_symlink() or not backup.is_file() or digest(backup.read_bytes()) != before_sha):
+        raise ValueError('the prior hostname rollback preimage must verify')
+    archived = STATE / ('recreated-before-' + digest(raw) + '.json')
+    if archived.exists() or archived.is_symlink():
+        if archived.is_symlink() or not archived.is_file() or archived.read_bytes() != raw:
+            raise ValueError('existing hostname receipt archive differs')
+    else:
+        with archived.open('xb') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(raw)
+    return archived
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--rollback', action='store_true')
+    parser.add_argument('--reconcile-recreated', action='store_true',
+                        help='archive the verified receipt from before owner sandbox recreation')
     parser.add_argument('--expected-env-sha256')
     args = parser.parse_args()
     if args.apply and args.rollback:
         raise ValueError('--apply and --rollback are mutually exclusive')
+    if args.reconcile_recreated and not args.apply:
+        raise ValueError('--reconcile-recreated requires --apply')
     published(args.revision)
     secure_state()
     with LOCK.open('r+') as lock:
@@ -236,7 +270,13 @@ def main() -> None:
                               'applied': False})); return
         if args.expected_env_sha256 != observed['sha256']:
             raise ValueError('reviewed .env SHA-256 required; rerun the plan and review its hash')
-        if RECEIPT.exists() and json.loads(RECEIPT.read_bytes()).get('state') == 'applied':
+        if RECEIPT.is_symlink():
+            raise ValueError('private hostname receipt required')
+        prior_applied = RECEIPT.exists() and json.loads(RECEIPT.read_bytes()).get('state') == 'applied'
+        if args.reconcile_recreated:
+            created = call(['docker', 'inspect', container_id, '--format', '{{.Created}}']).decode().strip()
+            archive_recreated_receipt(created)
+        elif prior_applied:
             raise ValueError('existing applied receipt needs rollback or reconciliation')
         backup = save_preimage(container_id, observed['sha256'])
         if inspect_env(container_id)['sha256'] != observed['sha256']:

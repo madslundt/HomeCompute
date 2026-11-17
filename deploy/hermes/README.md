@@ -702,6 +702,11 @@ python3 scripts/setup-hermes-dashboard-host.py --revision FULL_SHA --apply \
   --expected-env-sha256 REVIEWED_PLAN_SHA256
 ```
 
+If the owner sandbox was recreated and the approved hostname is missing, use
+the same plan and apply with `--reconcile-recreated`. This verifies that the
+current container was created after the prior apply, retains the previous
+receipt and rollback preimage, and changes only the current hostname entry.
+
 To restore the captured `.env` preimage after verifying the receipt:
 
 ```bash
