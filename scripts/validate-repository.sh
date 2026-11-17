@@ -866,6 +866,12 @@ rg -F 'iptables -w -A HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RE
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
 rg -F 'iptables -w -A HC-CADDY-LAN -i br-hc-n8n -s 172.28.201.2/32 -j RETURN' \
   "$REPO_ROOT/modules/nixos/automation-network.nix" >/dev/null
+# The workflow API exception must precede the private-network reject.
+awk '
+  /-A HC-AUTOMATION -o br-hc-n8n -s 172\.28\.201\.2\/32 -d 172\.28\.201\.5\/32 -p tcp --dport 8080 -j RETURN/ { allow = NR }
+  /-A HC-AUTOMATION -d "\$subnet" -j REJECT/ { deny = NR }
+  END { exit !(allow && deny && allow < deny) }
+' "$REPO_ROOT/modules/nixos/automation-network.nix"
 rg -F 'TCP-LISTEN:18792,bind=172.28.200.1,reuseaddr,fork TCP:10.77.20.2:18891' \
   "$REPO_ROOT/hosts/home-core/default.nix" >/dev/null
 rg -F 'hc-openclaw-dashboard' \
@@ -1024,6 +1030,7 @@ jq -e '
   (.networks.migration.internal != true) and
   (.networks.migration.enable_ipv6 == false) and
   (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n") and
+  (.services.n8n.networks.migration.ipv4_address == "172.28.201.2") and
   (.services.n8n.networks["mcp-clients"].ipv4_address == "172.28.211.3") and
   (.networks["mcp-clients"].name == "homecompute-control-plane_mcp-clients") and
   (.networks["mcp-backends"].name == "homecompute-control-plane_mcp-backends")

@@ -147,6 +147,7 @@
       iptables -w -A HC-AUTOMATION -s 172.28.201.5/32 -j REJECT
       iptables -w -A HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
       iptables -w -A HC-AUTOMATION -o br-hc-n8n -d 172.28.201.4/32 -p tcp --dport 8000 -j RETURN
+      iptables -w -A HC-AUTOMATION -o br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.5/32 -p tcp --dport 8080 -j RETURN
       iptables -w -A HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
       iptables -w -A HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
       # n8n reaches https://llm.home.arpa through the host's LAN publication.
@@ -170,6 +171,7 @@
       iptables -w -C HC-AUTOMATION -s 172.28.201.5/32 -j REJECT
       iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.3/32 -p tcp --dport 7878 -j RETURN
       iptables -w -C HC-AUTOMATION -o br-hc-n8n -d 172.28.201.4/32 -p tcp --dport 8000 -j RETURN
+      iptables -w -C HC-AUTOMATION -o br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.5/32 -p tcp --dport 8080 -j RETURN
       iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 7878 -j RETURN
       iptables -w -C HC-AUTOMATION -d 192.168.30.30/32 -p tcp --dport 80 -j RETURN
       iptables -w -C HC-AUTOMATION -d 172.28.200.2/32 -p tcp --dport 8443 -j RETURN

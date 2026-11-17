@@ -17,6 +17,8 @@ services:
     extra_hosts:
       - homeassistant.local:192.168.30.30
     networks:
+      migration:
+        ipv4_address: 172.28.201.2
       mcp-clients:
         ipv4_address: ${N8N_MCP_CLIENTS_IP:?Set N8N_MCP_CLIENTS_IP}
     ports:

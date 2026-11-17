@@ -39,6 +39,9 @@ The internal URL is `https://automations.home.arpa`. The
 Compose service joins the existing control-plane clients network and the
 automation bridge at `172.28.201.5`; the firewall allows that address to reach
 only the Home Assistant HTTP Inbox webhook. It has no published container port.
+On the automation bridge, only n8n at `172.28.201.2` is allowed to connect to
+the manager on TCP 8080. A healthy container can still report connection
+refusals in n8n if this rule is absent or follows the private-network reject.
 SQLite state is stored in `/srv/state/automation/ai-automation-manager`.
 The Home LAN DNS A record points `automations.home.arpa` to `192.168.30.122`;
 its source declaration is `config/ai-automation-manager-dns.json` and it must
@@ -56,6 +59,33 @@ only by sops-nix into the restricted `homecompute-secrets` group:
   environment file.
 
 Do not expose the site outside the approved private LAN/Tailscale entry points.
+
+## Isolated firewall repair on Home Core
+
+For deployed revision `bf3431d53538f446fe799cc6b7651a7d25bef462`, use the
+published `codex/hourly-automation-firewall` hotfix release. From its clean checkout
+at `/srv/homecompute/releases/FULL_SHA`, run:
+
+```sh
+sudo bash /srv/homecompute/releases/FULL_SHA/scripts/setup-ai-automation-firewall.sh apply
+sudo bash /srv/homecompute/releases/FULL_SHA/scripts/setup-ai-automation-firewall.sh status
+```
+
+The tool adds the one rule and attaches a post-start hook to the active
+automation network unit. It checks the deployed revision, the source checkout,
+the live bridge addresses and rule order. Docker and n8n keep running. Use n8n
+MCP to confirm a new scheduled run reaches the authenticated claim step and
+finishes successfully. Use the same script with `rollback` to remove the
+rule and hook while this base release is installed.
+
+The hook is bound to the original NixOS firewall start script. When a future
+canonical rollout installs the rule itself, verify the live rule and unit
+start script first, then remove only the hotfix's
+`90-ai-automation-firewall.conf` from
+`/etc/systemd/system.attached/homecompute-automation-network.service.d/`
+and run `sudo systemctl daemon-reload`. If the manager moves on the automation
+bridge, reconcile its address in Compose and the firewall together before
+rolling out that release.
 
 ## n8n integration and delivery
 
