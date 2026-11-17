@@ -20,11 +20,11 @@ class HermesDashboardWatchTest(unittest.TestCase):
         self.assertIn("parser.add_argument('--refresh-watcher', action='store_true'", SETUP)
         self.assertIn("'owner_sandbox_restarted': False", SETUP)
         self.assertIn('refresh_watcher(args.revision)', SETUP)
-        refresh = SETUP.split('def refresh_watcher', 1)[1].split('\ndef verify_api_profile', 1)[0]
-        self.assertIn('update_watcher(revision)', refresh)
-        self.assertIn('homecompute-hermes-dashboard-watch.service', refresh)
-        self.assertNotIn("call(['nemohermes', NAME, 'stop']", refresh)
-        self.assertNotIn("call(['nemohermes', NAME, 'start']", refresh)
+        watcher = SETUP.split('def update_watcher', 1)[1].split('\ndef verify_api_profile', 1)[0]
+        self.assertIn('update_watcher(revision, force_restart=True)', watcher)
+        self.assertIn('homecompute-hermes-dashboard-watch.service', watcher)
+        self.assertNotIn("call(['nemohermes', NAME, 'stop']", watcher)
+        self.assertNotIn("call(['nemohermes', NAME, 'start']", watcher)
 
 
 if __name__ == '__main__':

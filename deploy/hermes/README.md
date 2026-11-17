@@ -120,7 +120,9 @@ native recovery after starting the sandbox. The source-owned user service
 `homecompute-hermes-dashboard-watch.service` is wanted alongside the Hermes
 startup unit, so an intermittent Hermes startup failure cannot cancel the
 watcher; it probes the authenticated Webapp forward every 20 seconds and invokes
-native recovery if needed. It never owns the in-sandbox gateway process. Refresh
+native recovery if needed. Enabling the watcher also registers it as a dependency
+of the owner service so a separate stop and start restores dashboard forwarding.
+It never owns the in-sandbox gateway process. Refresh
 only the watcher from a clean published guest release with
 `python3 scripts/setup-hermes-ha-api.py --revision FULL_SHA --refresh-watcher`,
 review the plan, then add `--apply`. This mode changes no Hermes profile or API

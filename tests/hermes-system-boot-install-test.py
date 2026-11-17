@@ -3,6 +3,8 @@
 import importlib.util
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -13,6 +15,21 @@ boot = importlib.util.module_from_spec(spec); spec.loader.exec_module(boot)
 
 
 class SystemOrderingTest(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('systemctl'), 'requires systemctl')
+    def test_enabled_dashboard_watcher_is_started_by_boot_and_owner_start(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            units = root / 'etc/systemd/user'
+            units.mkdir(parents=True)
+            name = 'homecompute-hermes-dashboard-watch.service'
+            shutil.copyfile(ROOT / 'deploy/hermes/hermes-dashboard-watch.service.in', units / name)
+            subprocess.run(
+                ['systemctl', f'--root={root}', '--global', 'enable', name],
+                check=True, capture_output=True,
+            )
+            for target in ('default.target', 'homecompute-hermes-personal.service'):
+                self.assertTrue((units / f'{target}.wants' / name).is_symlink(), target)
+
     def test_idempotent_ordering_and_unknown_file_preservation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

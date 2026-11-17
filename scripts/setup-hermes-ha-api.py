@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import time
@@ -128,7 +129,7 @@ def rollback_sandbox(before: dict, receipt: dict) -> dict:
     return remote_json(ROLLBACK_PROGRAM, payload)
 
 
-def update_watcher(revision: str) -> None:
+def update_watcher(revision: str, *, force_restart: bool = False) -> None:
     unit = Path.home() / '.config/systemd/user/homecompute-hermes-dashboard-watch.service'
     source = (ROOT / 'deploy/hermes/hermes-dashboard-watch.service.in').read_text()
     rendered = source.replace('@RELEASE@', str(ROOT)).replace('@OPERATOR_HOME@', str(Path.home()))
@@ -138,13 +139,15 @@ def update_watcher(revision: str) -> None:
         # The previous unit must be an exact render from the source revision it
         # names. Keep a private before-file before installing this revision.
         current = unit.read_text()
-        marker = '/.local/share/homecompute/releases/'
-        if marker not in current or not current.endswith('/scripts/recover-hermes-dashboard.py --watch\nRestart=on-failure\nRestartSec=5\nTimeoutStopSec=15\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n'):
+        releases = Path.home() / '.local/share/homecompute/releases'
+        match = re.search(
+            r'^ExecStart=/usr/bin/python3 ' + re.escape(str(releases))
+            + r'/([0-9a-f]{40})/scripts/recover-hermes-dashboard\.py --watch$',
+            current, flags=re.MULTILINE,
+        )
+        if match is None:
             raise ValueError('existing Hermes watcher differs from its source template')
-        prior = current.split(marker, 1)[1].split('/', 1)[0]
-        if len(prior) != 40 or any(ch not in '0123456789abcdef' for ch in prior):
-            raise ValueError('existing Hermes watcher release is invalid')
-        old_root = Path.home() / '.local/share/homecompute/releases' / prior
+        old_root = releases / match[1]
         old_source = old_root / 'deploy/hermes/hermes-dashboard-watch.service.in'
         if not old_source.is_file():
             raise ValueError('prior Hermes watcher source is unavailable')
@@ -156,17 +159,19 @@ def update_watcher(revision: str) -> None:
         if not backup.exists():
             backup.write_text(current); backup.chmod(0o600)
     unit.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if unit.exists() and unit.read_text() == rendered:
-        return
-    unit.write_text(rendered); unit.chmod(0o644)
+    changed = not unit.exists() or unit.read_text() != rendered
+    if changed:
+        unit.write_text(rendered); unit.chmod(0o644)
     subprocess.run(['systemd-analyze', '--user', 'verify', str(unit)], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(['systemctl', '--user', 'daemon-reload'], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(['systemctl', '--user', 'enable', '--now', unit.name], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.run(['systemctl', '--user', 'restart', unit.name], check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if changed or force_restart:
+        call(['systemctl', '--user', 'reset-failed', unit.name])
+        subprocess.run(['systemctl', '--user', 'restart', unit.name], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def refresh_watcher(revision: str) -> None:
@@ -179,11 +184,7 @@ def refresh_watcher(revision: str) -> None:
     with lock_path.open('a') as lock:
         os.chmod(lock_path, 0o600)
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        update_watcher(revision)
-        call(['systemctl', '--user', 'reset-failed',
-              'homecompute-hermes-dashboard-watch.service'])
-        call(['systemctl', '--user', 'restart',
-              'homecompute-hermes-dashboard-watch.service'])
+        update_watcher(revision, force_restart=True)
 
 
 def verify_api_profile(key: bytes) -> None:
@@ -231,6 +232,7 @@ def main() -> None:
     if args.refresh_watcher and not args.apply:
         print(json.dumps({'revision': args.revision, 'watcher_only': True,
                           'dependency': 'Wants=homecompute-hermes-personal.service',
+                          'wanted_by': ['default.target', 'homecompute-hermes-personal.service'],
                           'applied': False}))
         return
     if not args.apply and not args.rollback:
