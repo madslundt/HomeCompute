@@ -1,0 +1,20 @@
+[Unit]
+Description=Back up the Home Core Caddy CA in encrypted Restic
+RequiresMountsFor=/mnt/homecompute-backups
+ConditionPathExists=/var/lib/homecompute/nas-recovery-backup/backup-authorized
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/run/current-system/sw/bin
+ExecStart=/run/current-system/sw/bin/python3 -I /opt/homecompute/certificate-maintenance/current/scripts/certificate-maintenance.py backup-ca
+UMask=0077
+TimeoutStartSec=20min
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/mnt/homecompute-backups /var/lib/homecompute/nas-recovery-backup
+NoNewPrivileges=yes
+PrivateTmp=yes
+IOSchedulingClass=idle
+Nice=10

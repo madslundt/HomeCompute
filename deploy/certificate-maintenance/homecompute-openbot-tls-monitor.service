@@ -1,0 +1,16 @@
+[Unit]
+Description=Check the LiteLLM TLS route from OpenBot's agent runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/run/current-system/sw/bin
+ExecStart=/run/current-system/sw/bin/python3 -I /opt/homecompute/certificate-maintenance/current/scripts/certificate-maintenance.py monitor
+UMask=0077
+TimeoutStartSec=60s
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/homecompute/certificate-maintenance
+NoNewPrivileges=yes
+PrivateTmp=yes

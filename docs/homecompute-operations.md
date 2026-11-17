@@ -14,6 +14,10 @@ sudo.
 
 ## Everyday operation
 
+The [certificate maintenance runbook](../deploy/certificate-maintenance/README.md)
+covers the hourly OpenBot HTTPS check and the nightly encrypted Caddy CA
+snapshot on the NAS.
+
 Add this checkout's `scripts` directory to your shell path once if you want the
 short command name:
 

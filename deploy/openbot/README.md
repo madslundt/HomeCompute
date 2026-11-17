@@ -249,6 +249,10 @@ Node and embedded Codex also receive the Home Core root through
 `NODE_EXTRA_CA_CERTS` and `CODEX_CA_CERTIFICATE`. Rerun the installer after a
 CA rotation to refresh both mounts.
 
+The [certificate maintenance runbook](../certificate-maintenance/README.md)
+checks the gateway hourly from the bundled agent runtime and sends failures to
+the owner through Home Assistant Inbox.
+
 `homecompute-openbot.service` owns startup, restart, and graceful stop. It starts
 only after `homecompute-openbot-firewall.service` installs the container egress
 rules. Its post-start check waits up to one minute for Compose to create and
