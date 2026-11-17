@@ -48,7 +48,8 @@ def private(path):
         raise ValueError('private operator-owned regular file required')
 
 
-def upload_asset(cli, path, expected):
+def upload_asset(cli, path, expected, *, remote=None):
+    remote = REMOTE if remote is None else remote
     data = path.read_bytes()
     if hashlib.sha256(data).hexdigest() != expected:
         raise ValueError('pinned asset changed before transfer')
@@ -70,7 +71,7 @@ assert not p.exists() or p.read_bytes()==data
 if not p.exists():
  with p.open('xb') as f:os.chmod(p,0o600);f.write(data)
 '''
-        call(cli + ['exec', '--stdin', '--', 'python3', '-c', program, REMOTE + '/' + name, digest], chunk)
+        call(cli + ['exec', '--stdin', '--', 'python3', '-c', program, remote + '/' + name, digest], chunk)
         parts.append({'name': name, 'sha256': digest})
     program = '''import hashlib,json,os,pathlib,sys
 p=pathlib.Path(sys.argv[1]);parts=json.loads(sys.argv[3]);blocks=[]
@@ -83,7 +84,7 @@ assert not p.exists() or p.read_bytes()==data
 if not p.exists():
  with p.open('xb') as f:os.chmod(p,0o600);f.write(data)
 '''
-    call(cli + ['exec', '--', 'python3', '-c', program, REMOTE + '/' + path.name,
+    call(cli + ['exec', '--', 'python3', '-c', program, remote + '/' + path.name,
                 expected, json.dumps(parts)])
 
 

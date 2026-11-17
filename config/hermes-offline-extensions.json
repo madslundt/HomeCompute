@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "extensions": {
+    "rss-lite": {
+      "repo": "MrNorkum/hermes-rss-lite",
+      "commit": "9af39a59041be093899e5f2a0d658126b07a7120",
+      "sha256": "937e47f1abb7475251e09a72cad5d54ee406c0c7026c65ac6f2775211d9a05f1",
+      "subdir": "plugin",
+      "kind": "plugin",
+      "catalog_pin": true
+    },
+    "i-have-adhd": {
+      "repo": "ayghri/i-have-adhd",
+      "commit": "1ecea1993b7fce257ffbd686c070948b5e07eda6",
+      "sha256": "40830ca704072f5b126a9378c04f7470687d4b118bd12790356620882276e2aa",
+      "subdir": "skills/i-have-adhd",
+      "kind": "skill"
+    },
+    "recalllayer": {
+      "repo": "er-s-an/recalllayer",
+      "commit": "e89cc87ef7b2051f2b4dc6cb449b09df4cac36ce",
+      "sha256": "24f237855d50f0c8541a229b029aad81fd884282979dbe52c1f711fd608b0d77",
+      "subdir": "recalllayer",
+      "kind": "plugin",
+      "catalog_pin": true,
+      "memory_provider": "recalllayer"
+    },
+    "superpowers": {
+      "repo": "obra/superpowers",
+      "commit": "22f0b463e7a5e579904dd6211a520321035526f7",
+      "sha256": "5f15e6bfa1b628ebabc84f88508b9652f5c7b8cb4529731e266006ba8f798976",
+      "subdir": "",
+      "include": [
+        ".hermes-plugin",
+        "skills",
+        "LICENSE"
+      ],
+      "kind": "plugin",
+      "flatten": ".hermes-plugin",
+      "reviewed_caution": [
+        [
+          "dump_all_env",
+          "high",
+          "skills/systematic-debugging/SKILL.md",
+          95
+        ],
+        [
+          "unpinned_pip_install",
+          "medium",
+          "skills/writing-skills/references/anthropic-best-practices.md",
+          1082
+        ]
+      ]
+    },
+    "hermes-lcm": {
+      "repo": "stephenschoettler/hermes-lcm",
+      "commit": "49e99a272d2d461e5c90732e7ef2bc20e96f0826",
+      "sha256": "4c055c79e91ab1738fb70f325b265fce26c3c818c352e640a64e1d3dbdeb2182",
+      "subdir": "",
+      "include": [
+        "*.py",
+        "plugin.yaml",
+        "LICENSE"
+      ],
+      "kind": "plugin",
+      "context_engine": "lcm"
+    }
+  }
+}

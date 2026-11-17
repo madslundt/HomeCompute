@@ -580,6 +580,71 @@ Health-check that release and the owner DM/browser path. Leave the new instance
 stopped with its state preserved; switching code does not merge conversation
 histories. The retained old application state is the rollback state, while the
 encrypted whole-VM Synology archive is the disaster-recovery boundary.
+## Offline extensions
+
+The owner sandbox uses restricted OpenShell egress. Fetch the source archives
+on the operator workstation. [The extension manifest](../../config/hermes-offline-extensions.json)
+pins the commit and archive SHA-256, and identifies the installed subtree.
+The installer transfers checked chunks through native exec, scans the selected
+files with Hermes and publishes them into the owner profile.
+The sealed runtime and network policy are outside this lifecycle.
+
+Use an empty, private assets directory. Stage and qualify RSS Lite first.
+
+```bash
+assets="$(mktemp -d)"
+python3 scripts/setup-hermes-offline-extension.py fetch rss-lite --assets "$assets"
+```
+
+Transfer the mode-0600 archive into a mode-0700 operator-owned directory on the
+agents VM. From a clean release published on `origin/master`:
+
+```bash
+python3 scripts/setup-hermes-offline-extension.py plan rss-lite --revision FULL_SHA --assets /absolute/private/assets
+python3 scripts/setup-hermes-offline-extension.py apply rss-lite --revision FULL_SHA --assets /absolute/private/assets
+python3 scripts/setup-hermes-offline-extension.py verify rss-lite --revision FULL_SHA
+```
+
+The plan and apply require the qualified owner image and the existing
+seven-day off-host backup and network readiness records. The backup record
+must cover the encrypted application archive, PostgreSQL imports and isolated
+agents VM boot. Verification compares installed files against the staged pin
+and reads back the selected configuration. It does not verify that the
+running gateway loaded the extension.
+
+Restart only the selected Hermes sandbox through its native lifecycle
+after ensuring it is idle. Switch Hermes Desktop to the **Home Core** gateway,
+open **Capabilities → Plugins**, reload plugins, and open **RSS Lite**. Native
+Desktop uses a local copy of the Desktop half. Use the same pinned RSS Lite
+package on the Mac if the Desktop loader does not have it. Confirm the remote
+RSS API responds before checking a public feed. RSS Lite resolves and connects
+to feed hosts directly from the gateway. It deliberately ignores the
+environment proxy. A successful Desktop or API load does not prove feed access.
+The restricted owner sandbox can deny that direct connection.
+
+After RSS Lite qualification, apply the other manifest entries one at a time.
+RecallLayer is the offline third-party memory provider. It stores bounded
+user and assistant text and mirrored memory writes in SQLite under the owner
+profile. Test a synthetic remember and recall across fresh sessions. LCM
+changes the context engine and retains conversation content within the
+profile. Verify it can persist and retrieve a synthetic turn. Superpowers'
+pinned scanner findings cover a presence-only shell example and an unpinned
+installation example in reference material. The installer accepts only those
+reviewed findings above low severity for that exact pin. Verify its
+`pre_llm_call` bootstrap and skill discovery. Invoke `/i-have-adhd` to apply
+its response style in a session.
+
+Roll back in reverse install order so the expected config preimage remains
+valid. The rollback retains the removed code in the private receipt directory
+and leaves runtime data in the profile. Reconcile any later config or tree
+edits before retrying a refused rollback.
+
+```bash
+python3 scripts/setup-hermes-offline-extension.py rollback rss-lite --revision FULL_SHA
+```
+
+Repeat the native restart and Desktop check after rollback.
+
 ## Pinned OMH and dashboard lifecycle
 
 `config/hermes-omh.json` pins the exact currently qualified sandbox image; after a sandbox rebuild, update that image ID from the built runtime before applying the guarded add-on or speech installers.
