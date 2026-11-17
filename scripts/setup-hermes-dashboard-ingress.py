@@ -26,6 +26,20 @@ SERVE_HOST = 'home-core.tail479ad.ts.net'
 
 
 LEGACY_OFFICE = 'agents.home.arpa {\n\ttls internal\n\tencode zstd gzip\n\t@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10\n\thandle @private {\n\t\t# The observer still validates Origin and requires its own password.\n\t\t# Its native listener and both relay hops remain on private interfaces.\n\t\treverse_proxy 172.28.200.1:18802 {\n\t\t\theader_up Host 127.0.0.1:18802\n\t\t\theader_up X-HomeCompute-Office-Origin https://agents.home.arpa\n\t\t\ttransport http {\n\t\t\t\tdial_timeout 3s\n\t\t\t\tresponse_header_timeout 10s\n\t\t\t}\n\t\t}\n\t}\n\trespond "Forbidden" 403\n}\n'
+
+RETIRED_OFFICE_FALLBACK = '\t\thandle {\n\t\t\trespond "Not found" 404\n\t\t}\n'
+LEGACY_COMBINED_OFFICE_FALLBACK = (
+    '\t\thandle {\n'
+    '\t\t\treverse_proxy 172.28.200.1:18802 {\n'
+    '\t\t\t\theader_up Host 127.0.0.1:18802\n'
+    '\t\t\t\theader_up X-HomeCompute-Office-Origin https://agents.home.arpa\n'
+    '\t\t\t\ttransport http {\n'
+    '\t\t\t\t\tdial_timeout 3s\n'
+    '\t\t\t\t\tresponse_header_timeout 10s\n'
+    '\t\t\t\t}\n'
+    '\t\t\t}\n'
+    '\t\t}\n'
+)
 PRELOAD_REDIRECT = (
     "\t\t# Vite's lazy preloads use root-relative hashed script/style URLs.\n"
     "\t\t# Return only those chunks to Hermes.\n"
@@ -66,11 +80,14 @@ def patch(caddy, current_homepage, source_caddy, source_homepage):
         older = previous.replace(PRELOAD_REDIRECT, '', 1)
         previous_with_api = block.replace(CONNECTION_LIMIT, '', 1)
         older_with_api = previous_with_api.replace(PRELOAD_REDIRECT, '', 1)
-        candidates = [value for value in dict.fromkeys((LEGACY_OFFICE,
-                      previous_with_api, older_with_api,
-                      older_with_api.replace(KEEPALIVE_OFF, '', 1),
-                      no_api, previous, older,
-                      older.replace(KEEPALIVE_OFF, '', 1))) if caddy.count(value) == 1]
+        supported_hermes = (block, previous_with_api, older_with_api,
+                            older_with_api.replace(KEEPALIVE_OFF, '', 1),
+                            no_api, previous, older, older.replace(KEEPALIVE_OFF, '', 1))
+        supported_legacy = tuple(value.replace(RETIRED_OFFICE_FALLBACK,
+                                               LEGACY_COMBINED_OFFICE_FALLBACK, 1)
+                                 for value in supported_hermes)
+        candidates = [value for value in dict.fromkeys((LEGACY_OFFICE, *supported_hermes, *supported_legacy))
+                      if caddy.count(value) == 1]
         if len(candidates) != 1:
             raise ValueError('existing-office-route-differs')
         caddy = caddy.replace(candidates[0], block, 1)

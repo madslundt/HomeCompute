@@ -62,6 +62,17 @@ class SetupTests(unittest.TestCase):
         plan = setup.plan(self.module, 'a' * 40)
         return plan, setup.digest(json.dumps(plan, sort_keys=True).encode())
 
+    def test_retirement_revokes_only_openclaw_and_preserves_retained_principals(self):
+        self.module.native_tokens(admit_hermes=True, admit_openbot_android=True)
+        before = json.loads(self.tokens.read_bytes())
+        plan = setup.plan(self.module, 'a' * 40, retire_openclaw=True)
+        plan_digest = setup.digest(json.dumps(plan, sort_keys=True).encode())
+        with patch.object(setup, 'tools_for') as denied:
+            receipt = setup.apply(self.module, plan, plan_digest)
+        denied.assert_called_once_with(before.pop('openclaw'), expect_denied=True)
+        self.assertEqual(json.loads(self.tokens.read_bytes()), before)
+        self.assertTrue(receipt['retired_openclaw'])
+
     def test_apply_is_idempotent_and_rollback_restores_source_and_credentials(self):
         before = self.tokens.read_bytes()
         plan, digest = self.reviewed()

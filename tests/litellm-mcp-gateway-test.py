@@ -21,7 +21,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertRegex(CONFIG, r"(?ms)^mcp_servers:\s*\n\s+context7:")
         self.assertIn("url: https://mcp.context7.com/mcp", CONFIG)
         self.assertIn("url: http://n8n:5678/mcp-server/http", CONFIG)
-        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 4)
+        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 3)
         self.assertIn("url: http://aula-mcp:7878/mcp", CONFIG)
         aula = CONFIG.split("  aula:", 1)[1].split("  tilbudstrolden:", 1)[0]
         self.assertNotIn("allowed_tools:", aula)
@@ -45,7 +45,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("changed['mcp_servers'] = remaining", harness_access)
         self.assertNotIn("print(master", harness_access)
         for group in ("docs-public", "n8n-owner", "hermes-owner-tools",
-                      "openclaw-agent-tools", "openbot-android-bounded-ui",
+                      "openbot-android-bounded-ui",
                       "aula-read", "offers-read"):
             self.assertIn(f"access_groups: [{group}, all-harness-mcps]", CONFIG)
         self.assertIn("access_groups: [openbot-maintenance]", CONFIG)
@@ -54,14 +54,15 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("url: https://mcp.dinero.dk", CONFIG)
         self.assertIn("url: http://banknorwegian-mcp:8090/mcp", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
-        self.assertEqual(len(server_names), 10)
+        self.assertEqual(len(server_names), 9)
+        self.assertNotIn("homecompute_openclaw", server_names)
         self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
         self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
         self.assertIn("auth_value: os.environ/N8N_MCP_TOKEN", CONFIG)
 
     def test_server_registration_is_never_public_and_uses_named_access_groups(self) -> None:
         self.assertIn("allow_all_keys: false", CONFIG)
-        self.assertEqual(CONFIG.count("all-harness-mcps]"), 7)
+        self.assertEqual(CONFIG.count("all-harness-mcps]"), 6)
         dinero = CONFIG.split("  dinero:", 1)[1]
         self.assertIn("access_groups: [dinero-owner]", dinero)
         self.assertNotIn("all-harness-mcps", dinero)

@@ -98,13 +98,13 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
         raise ValueError('assistant context requires the independent owner Hermes MCP principal')
     if mcp_tokens is not None:
         allowed_actors = {"openclaw", "hermes", "hermes-owner", "openbot-android", "openbot-maintenance"}
-        if (not {"openclaw"} <= set(mcp_tokens) <= allowed_actors or tasks is None
+        if (not set(mcp_tokens) <= allowed_actors or not set(mcp_tokens) - {"hermes"} or tasks is None
                 or len(set(mcp_tokens.values())) != len(mcp_tokens)
                 or any(not isinstance(value, str) or len(value) < 32 or "\r" in value or "\n" in value
                        or value.startswith(("replace", "openshell:resolve:"))
                        or value in tokens.values() or value in tasks.tokens.values()
                        for value in mcp_tokens.values())):
-            raise ValueError("independent OpenClaw MCP credential and task transport required")
+            raise ValueError("independent native MCP credential and task transport required")
         # The retired `hermes` bearer stays denied. Reintroduction requires an
         # independently issued owner credential through the source-owned installer.
         mcp_tokens = {actor: value for actor, value in mcp_tokens.items() if actor != 'hermes'}
@@ -140,6 +140,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
         sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
         from mcp_adapter import handle_http
 
+    openclaw_retired = mcp_tokens is not None and 'openclaw' not in mcp_tokens
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_: Any) -> None:
             pass  # Do not log headers, personal text or credential-bearing requests.
@@ -157,6 +159,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
             self.wfile.write(data)
 
         def do_POST(self) -> None:
+            if openclaw_retired and self.path in {'/conversation', '/status'}:
+                self.send_json(404, {'error': 'unknown bounded endpoint'}); return
             if self.path in {'/v1/audio/transcriptions', '/v1/audio/speech'} and mcp_tokens is not None:
                 if not any(hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + mcp_tokens[name])
                            for name in ('openclaw', 'hermes-owner') if name in mcp_tokens):
@@ -182,7 +186,8 @@ def serve(store: Outbox, tokens: dict[str, str], allowed: dict[str, Any], turn: 
                     self.send_json(503, {'error': 'local speech unavailable'})
                 return
             if self.path == '/v1/embeddings' and mcp_tokens is not None:
-                if not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + mcp_tokens['openclaw']):
+                credential = mcp_tokens.get('openclaw')
+                if credential is None or not hmac.compare_digest(self.headers.get('Authorization', ''), 'Bearer ' + credential):
                     self.send_json(401, {'error': 'unauthorized'}); return
                 try:
                     size = int(self.headers.get('Content-Length', '0'))

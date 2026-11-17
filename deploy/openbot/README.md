@@ -161,7 +161,6 @@ Add these role-specific headers using the guarded export commands in
 
 ```sh
 sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --export-credential
-sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --export-openclaw-credential
 sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --export-openbot-android-credential
 ```
 
@@ -170,11 +169,10 @@ field. Do not paste these values into Codex, chat, issue text, shell history, or
 logs.
 
 - `x-mcp-homecompute_hermes-authorization: Bearer <Hermes owner credential>`
-- `x-mcp-homecompute_openclaw-authorization: Bearer <OpenClaw credential>`
 - `x-mcp-homecompute_openbot_android-authorization: Bearer <OpenBot Android credential>`
 
 Do not reuse one role's bearer as another role. Test before saving; the list
-should include all seven configured aliases. This connection is available to every
+should include the six shared aliases. Remove the previous OpenClaw header from any existing connection after the retired role is withdrawn. This connection is available to every
 OpenBot agent, so protect the key and delegated bearers as full household and
 workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog access.
 

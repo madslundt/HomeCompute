@@ -1,5 +1,10 @@
 # OpenClaw in the existing NemoClaw guest
 
+OpenClaw is retired in current production source. For the staged cutover and
+shared services to preserve, use the
+[OpenClaw retirement procedure](operations/openclaw-retirement.md).
+The sections below record the previous setup.
+
 **Recommended target:** a separate `agent-openclaw` OpenShell sandbox inside
 the existing agents VM, alongside the Hermes sandbox. Keep the standalone
 Docker stack disabled as an isolated validation fallback. This preserves the

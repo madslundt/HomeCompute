@@ -2,6 +2,9 @@
 
 ## Retirement
 
+For the dedicated workers and MCP principal, see the
+[OpenClaw backend retirement runbook](../../docs/operations/openclaw-retirement.md).
+
 Homepage and Caddy have retired the Agent Office and native OpenClaw
 dashboards. The private `agents.home.arpa` DNS record still serves Hermes at
 `/hermes/`. From an approved client network, the hostname root returns 404.

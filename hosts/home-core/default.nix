@@ -25,7 +25,6 @@ in
     ../../modules/nixos/service-recovery.nix
     ../../modules/nixos/model-update-monitor.nix
     ../../modules/nixos/agent-harness.nix
-    ../../modules/nixos/openclaw.nix
     ../../modules/nixos/mattermost.nix
     ../../modules/nixos/opencode.nix
     ../../modules/nixos/agents-vm.nix
@@ -93,8 +92,7 @@ in
     22
   ];
 
-  # The dedicated Telegram delivery relay accepts only the existing n8n
-  # container on its private bridge. Restore this exact rule at boot/reload.
+  # Preserve the supervised notification relay for the existing n8n client.
   networking.firewall.extraCommands = lib.mkAfter ''
     iptables -w -C INPUT -i br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.1/32 \
       -p tcp --dport 19443 -m conntrack --ctstate NEW,ESTABLISHED \
@@ -183,7 +181,7 @@ in
     enable = true;
     dataClassification = "household";
     restoreVerified = true;
-    # Budget 8 GiB for OpenClaw, 4 GiB for Chromium, and 4 GiB for
+    # Budget 8 GiB for Hermes, 4 GiB for Chromium, and 4 GiB for
     # guest services and browser proxies.
     resources.memoryMiB = 16384;
     resources.diskGiB = 200;

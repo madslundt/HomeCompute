@@ -37,6 +37,13 @@ class DashboardIngressTest(unittest.TestCase):
         self.assertEqual(home.count('    - Hermes:'), 1)
         self.assertEqual(module.patch(caddy, home, self.source_caddy, self.source_home), (caddy, home))
 
+    def test_known_combined_dashboard_migrates_to_hermes_only(self):
+        caddy, home = self.patch()
+        legacy = caddy.replace(module.RETIRED_OFFICE_FALLBACK, module.LEGACY_COMBINED_OFFICE_FALLBACK)
+        self.assertIn('reverse_proxy 172.28.200.1:18802', legacy)
+        self.assertNotIn('reverse_proxy 172.28.200.1:18802', caddy)
+        self.assertEqual(module.patch(legacy, home, self.source_caddy, self.source_home), (caddy, home))
+
     def test_unknown_route_or_operator_card_refused(self):
         with self.assertRaises(ValueError):
             self.patch(caddy=self.caddy.replace('172.28.200.1:18802', 'unknown:18802'))

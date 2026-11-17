@@ -283,6 +283,7 @@ python3 "$REPO_ROOT/tests/mattermost-household-test.py"
 python3 "$REPO_ROOT/tests/openclaw-team-test.py"
 python3 "$REPO_ROOT/tests/openclaw-team-recovery-test.py"
 python3 "$REPO_ROOT/tests/agent-office-ingress-test.py"
+python3 "$REPO_ROOT/tests/openclaw-retirement-test.py"
 python3 "$REPO_ROOT/tests/openclaw-child-results-test.py"
 python3 "$REPO_ROOT/tests/openclaw-performance-test.py"
 python3 "$REPO_ROOT/tests/openclaw-yield-acknowledgment-test.py"
@@ -1488,9 +1489,6 @@ if command -v nix >/dev/null 2>&1; then
     "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
   nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
-    "let f = builtins.getFlake \"path:$REPO_ROOT\"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath" \
-    >/dev/null
-  nix --extra-experimental-features 'nix-command flakes' eval --impure --raw --expr \
     "let f = builtins.getFlake \"path:$REPO_ROOT\"; in assert import (f.outPath + \"/tests/assistant-context-network.nix\") { flake = f; }; (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = \"active\"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath" \
     >/dev/null
 else
@@ -1502,7 +1500,6 @@ else
     sh -ec \
       'nix --extra-experimental-features "nix-command flakes" flake check path:/src --no-build --all-systems
        nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.computeSshTunnel.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
-       nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.openclaw.enable = true; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null
        nix --extra-experimental-features "nix-command flakes" eval --impure --raw --expr '\''let f = builtins.getFlake "path:/src"; in assert import (f.outPath + "/tests/assistant-context-network.nix") { flake = f; }; (f.nixosConfigurations.home-core.extendModules { modules = [ { homecompute.assistantContext = { enable = true; mode = "active"; inference.embedding = true; inference.briefings = true; delegation.enable = true; delivery.enable = true; managedBriefings = true; sync.enable = true; improvements.enable = true; improvements.applyReviewed = true; }; } ]; }).config.system.build.toplevel.drvPath'\'' >/dev/null'
 fi
 

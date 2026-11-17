@@ -55,7 +55,7 @@ class RelaySetupTest(unittest.TestCase):
 
     def test_install_issues_leaf_and_preserves_credentials_on_repeat_without_starting(self):
         before_ca = {p.name: p.read_bytes() for p in setup.CA.iterdir()}
-        first = setup.install()
+        first = setup.install(admit_hermes=True)
         tokens = setup.TOKENS.read_bytes()
         key = (setup.TLS / 'server.key').read_bytes()
         second = setup.install()
@@ -66,8 +66,8 @@ class RelaySetupTest(unittest.TestCase):
         self.assertEqual({p.name: p.read_bytes() for p in setup.CA.iterdir()}, before_ca)
         self.assertNotIn(tokens.decode(), json.dumps(first))
         values = json.loads(tokens)
-        self.assertEqual(set(values), {'openclaw'})
-        self.assertGreaterEqual(len(values['openclaw']), 32)
+        self.assertEqual(set(values), {'hermes-owner'})
+        self.assertGreaterEqual(len(values['hermes-owner']), 32)
         self.assertEqual(setup.TOKENS.stat().st_mode & 0o777, 0o600)
         self.assertEqual((setup.TLS / 'server.key').stat().st_mode & 0o777, 0o400)
         self.assertEqual(setup.TLS.stat().st_mode & 0o777, 0o750)
@@ -76,6 +76,11 @@ class RelaySetupTest(unittest.TestCase):
         signer = next(args for args in self.commands if '-CAkey' in args)
         self.assertIn('-set_serial', signer); self.assertNotIn('-CAcreateserial', signer)
         self.assertEqual(signer[signer.index('-days') + 1], '90')
+
+    def test_fresh_relay_refuses_implicit_legacy_principal(self):
+        with self.assertRaisesRegex(ValueError, 'explicit retained principal'):
+            setup.native_tokens()
+        self.assertFalse(setup.TOKENS.exists())
 
     def test_legacy_credentials_drop_hermes_and_preserve_openclaw_atomically(self):
         legacy = {'openclaw': 'existing-openclaw-' + 'x' * 40, 'hermes': 'retired-hermes-' + 'y' * 40}

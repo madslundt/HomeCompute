@@ -2,19 +2,20 @@
 
 ## Status
 
-Accepted; implementation and client migration pending the normal reviewed release.
+Accepted. The OpenClaw alias has been removed from the catalog in source as
+part of the [OpenClaw retirement](../operations/openclaw-retirement.md).
 Supersedes the per-client MCP catalog restriction in [ADR-033](033-litellm-mcp-gateway.md).
 
 ## Context
 
 HomeCompute now uses LiteLLM as the shared MCP endpoint for its harnesses. The
-owner wants Hermes, OpenBot, OpenClaw, Codex and future harnesses to use the
+owner wants Hermes, OpenBot, Codex and future harnesses to use the
 same configured MCP catalog. OpenBot's MCP list is server-wide, so a connection
 added there is available to every OpenBot agent.
 
 The catalog includes public Context7 lookup, read-only Aula and offer search,
-the owner n8n MCP with workflow and agent administration tools, and three
-HomeCompute relay aliases. The relay aliases require distinct bearer
+the owner n8n MCP with workflow and agent administration tools, and two
+shared HomeCompute relay aliases. The relay aliases require distinct bearer
 credentials. The Android alias includes five bounded UI interaction tools in
 addition to five read tools.
 
@@ -62,7 +63,7 @@ Codex app connectors, or unreviewed external MCP services.
 3. Add the LiteLLM endpoint and only the required role-scoped bearer headers to
    each client through its supported secret/configuration path.
 4. Verify `tools/list` and a harmless read call per backend and harness. Confirm
-   the seven catalog aliases, the exact ten Android tools, and default-denial of
+   the six shared catalog aliases, the exact ten Android tools, and default-denial of
    unrelated model-only service keys.
 5. Remove superseded direct MCP registrations only after each gateway client
    passes its authenticated check.

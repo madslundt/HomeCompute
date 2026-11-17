@@ -35,16 +35,23 @@ FILES = {
 # (the source file at revision 040bb71). Accept it as an installer preimage so
 # the guarded transaction can replace it with the selected release.
 COMPATIBLE_PREIMAGES = {
+    # Installed hashes match both the active receipt and published 58ca0f17.
+    'scripts/openclaw-communication.py': {
+        'd2a9f6d3e469a4e24359c68d8fe822bd7227bcc9962676e999892fc8f7ec37df',
+    },
     'scripts/setup-native-capabilities.py': {
+        'fa652f8676f45dd120d3c532b5d7f6b2b749f69035176ba7ca81f55cf1fbc18e',
         'f71e3c34d954fdc686d22bda8bc9b678d4b96d1ea455e3560ca574fd595b4159',
     },
     # Exact adapter sources recorded in the applied receipt for published
     # revision 67ae681be1a3491d115f996e86b6f84a5c431fa1. Accept them only as
     # preimages so the guarded upgrade can replace them with the selected source.
     'scripts/openclaw_capabilities.py': {
+        'd3c9bd1c393cf1704e819d74ad39cbaf2db1913dc58dd0cde00935c622e05711',
         'fd60bb7cd50333804dd7d3611387a37a7de939605d2ad1bf2f85f676d47b633a',
     },
     'deploy/codex-worker/mcp_adapter.py': {
+        'a2a3b32883a76aef7f26b90cee98d177377c71b7d6438732b311dddb912b9c79',
         '1f6916ffb67e8bc3994388df41cef6298093126b93490f69aa1cabadccfc4ad0',
     },
 }
@@ -92,7 +99,7 @@ def published(revision: str) -> None:
           'deploy/hermes/skills/android-gateway/SKILL.md'])
 
 
-def plan(module, revision: str) -> dict:
+def plan(module, revision: str, *, retire_openclaw: bool = False) -> dict:
     module.regular(module.TOKENS, module.pwd.getpwnam('homecompute-openclaw').pw_uid, 0o600)
     files = {}
     for name, (target, previous) in FILES.items():
@@ -101,10 +108,13 @@ def plan(module, revision: str) -> dict:
         if before not in {previous, after, *COMPATIBLE_PREIMAGES.get(name, set())}:
             raise ValueError('installed source differs from the reviewed preimage; preserve and reconcile drift')
         files[name] = {'before': before, 'after': after}
-    return {'revision': revision, 'files': files, 'credential_file_sha256': digest(module.TOKENS.read_bytes())}
+    reviewed = {'revision': revision, 'files': files, 'credential_file_sha256': digest(module.TOKENS.read_bytes())}
+    if retire_openclaw:
+        reviewed['retire_openclaw'] = True
+    return reviewed
 
 
-def tools_for(token: str) -> list[dict]:
+def tools_for(token: str, *, expect_denied: bool = False) -> list[dict]:
     connection = http.client.HTTPConnection('127.0.0.1', 18793, timeout=15)
     try:
         # A Type=simple unit is active before Python has imported its facades and
@@ -123,6 +133,10 @@ def tools_for(token: str) -> list[dict]:
                             'Accept': 'application/json, text/event-stream'})
         response = connection.getresponse()
         raw = response.read(262145)
+        if expect_denied:
+            if response.status != 401:
+                raise ValueError('retired OpenClaw credential was not denied')
+            return []
         if response.status != 200 or len(raw) > 262144:
             raise ValueError('Hermes bridge authentication failed')
         tools = json.loads(raw)['result']['tools']
@@ -176,6 +190,8 @@ def apply(module, reviewed: dict, expected: str, *, admit_openbot_maintenance: b
           revoke_openbot_maintenance: bool = False) -> dict:
     if digest(json.dumps(reviewed, sort_keys=True).encode()) != expected:
         raise ValueError('reviewed plan changed')
+    retire_openclaw = reviewed.get('retire_openclaw') is True
+    previous_openclaw = json.loads(module.TOKENS.read_bytes()).get('openclaw') if retire_openclaw else None
     module.directory(STATE, 0o700)
     receipt_path = STATE / 'receipt.json'
     receipt = None
@@ -188,7 +204,8 @@ def apply(module, reviewed: dict, expected: str, *, admit_openbot_maintenance: b
                    for name, row in reviewed['files'].items()):
                 raise ValueError('installed source differs from the active receipt')
             if (all(row['before'] == row['after'] for row in reviewed['files'].values())
-                    and not admit_openbot_maintenance and not revoke_openbot_maintenance):
+                    and not admit_openbot_maintenance and not revoke_openbot_maintenance
+                    and previous_openclaw is None):
                 probe(module)
                 return receipt
     state = adapter_state()
@@ -208,23 +225,29 @@ def apply(module, reviewed: dict, expected: str, *, admit_openbot_maintenance: b
     module.write(backup / 'metadata.json', json.dumps(metadata).encode(), mode=0o600)
     call(['systemctl', 'stop', ADAPTER])
     try:
-        if plan(module, reviewed['revision']) != reviewed:
+        if plan(module, reviewed['revision'], retire_openclaw=retire_openclaw) != reviewed:
             raise ValueError('installed state changed during preparation')
         for name, (target, _) in FILES.items():
             row = metadata[name]
             module.write(target, (ROOT / name).read_bytes(), row['uid'], row['gid'], row['mode'])
         module.native_tokens(admit_hermes=True, admit_openbot_android=True,
                              admit_openbot_maintenance=admit_openbot_maintenance,
-                             revoke_openbot_maintenance=revoke_openbot_maintenance)
+                             revoke_openbot_maintenance=revoke_openbot_maintenance, retire_openclaw=retire_openclaw)
         tokens = json.loads(module.TOKENS.read_bytes())
         if (admit_openbot_maintenance and 'openbot-maintenance' not in tokens
                 or revoke_openbot_maintenance and 'openbot-maintenance' in tokens):
             raise ValueError('OpenBot maintenance credential transition did not verify')
+        if retire_openclaw and 'openclaw' in tokens:
+            raise ValueError('OpenClaw credential was retained')
         call(['systemctl', 'start', ADAPTER])
         probe(module)
+        if previous_openclaw is not None:
+            tools_for(previous_openclaw, expect_denied=True)
         receipt = {'state': 'applied', 'revision': reviewed['revision'], 'plan_sha256': expected,
                    'backup': str(backup), 'files': {name: row['after'] for name, row in reviewed['files'].items()},
                    'tokens_sha256': digest(module.TOKENS.read_bytes())}
+        if retire_openclaw:
+            receipt['retired_openclaw'] = True
         module.write(STATE / 'receipt.json', json.dumps(receipt, sort_keys=True).encode(), mode=0o600)
         return receipt
     except BaseException:
@@ -292,9 +315,16 @@ def main() -> int:
                         help='add the maintenance-only principal; configure only on the isolated operator server')
     parser.add_argument('--revoke-openbot-maintenance', action='store_true',
                         help='remove the isolated OpenBot maintenance principal during an applied source update')
+    parser.add_argument('--retire-openclaw', action='store_true',
+                        help='review or apply removal of the OpenClaw native principal')
     parser.add_argument('--expected-plan-sha256')
     args = parser.parse_args()
     try:
+        if args.retire_openclaw and (args.rollback or args.export_credential or
+                args.export_openbot_android_credential or args.export_openclaw_credential or
+                args.export_openbot_maintenance_credential or args.admit_openbot_maintenance or
+                args.revoke_openbot_maintenance):
+            raise ValueError('review OpenClaw retirement as a separate operation')
         module = native(); module.guard(); published(args.revision)
         os.umask(0o077)
         descriptor = os.open('/var/lib/homecompute/deploy.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -323,7 +353,7 @@ def main() -> int:
             if args.rollback:
                 result = rollback(module)
             else:
-                reviewed = plan(module, args.revision)
+                reviewed = plan(module, args.revision, retire_openclaw=args.retire_openclaw)
                 result = (apply(module, reviewed, args.expected_plan_sha256,
                                 admit_openbot_maintenance=args.admit_openbot_maintenance,
                                 revoke_openbot_maintenance=args.revoke_openbot_maintenance) if args.apply else

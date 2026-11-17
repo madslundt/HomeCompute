@@ -233,6 +233,42 @@ class TransportTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); thread.join()
 
+    def test_retired_bearer_cannot_reach_mcp_or_the_legacy_embeddings_route(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        retained = {'hermes-owner': 'native-owner-' + 'y' * 40}
+        old = 'native-openclaw-' + 'x' * 40
+        tasks = SimpleNamespace(projects=set(), tokens={})
+        turn = Mock(side_effect=AssertionError('native model must not run'))
+        bridge = communication.serve(self.store, TOKENS, ALLOWED, turn, ('127.0.0.1', 0), lambda: NOW,
+                                     tasks=tasks, mcp_tokens=retained)
+        thread = threading.Thread(target=bridge.serve_forever, daemon=True)
+        thread.start()
+        def request(path, token):
+            return urllib.request.Request(f'http://127.0.0.1:{bridge.server_address[1]}' + path,
+                data=json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}).encode(),
+                headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
+                         'Accept': 'application/json, text/event-stream'})
+        try:
+            for path in ('/mcp', '/v1/embeddings'):
+                with self.assertRaises(urllib.error.HTTPError) as denied:
+                    urllib.request.urlopen(request(path, old), timeout=3)
+                self.assertEqual(denied.exception.code, 401)
+                denied.exception.close()
+            for path in ('/conversation', '/status'):
+                with self.assertRaises(urllib.error.HTTPError) as missing:
+                    urllib.request.urlopen(request(path, TOKENS['conversation']), timeout=3)
+                self.assertEqual(missing.exception.code, 404)
+                missing.exception.close()
+            with urllib.request.urlopen(request('/mcp', retained['hermes-owner']), timeout=3) as response:
+                self.assertEqual(response.status, 200)
+        finally:
+            bridge.shutdown()
+            bridge.server_close()
+            thread.join()
+        turn.assert_not_called()
+
     def test_native_mcp_rejects_missing_or_extra_assistants(self):
         from types import SimpleNamespace
         tasks = SimpleNamespace(projects=set(), tokens={})

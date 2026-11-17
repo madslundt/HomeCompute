@@ -143,10 +143,9 @@ LiteLLM also owns the private MCP gateway on `https://llm.home.arpa/mcp`. Keep
 server definitions in `litellm-config.yaml`. The catalog contains the local
 read-only Aula and TilbudsTrolden services, public Context7 documentation, the
 n8n instance MCP with its reviewed 55-tool catalog, and the hosted Dinero
-accounting MCP (beta). It also has three
-aliases for the private HomeCompute capability relay: Hermes owner, OpenClaw
-agent, and Android UI access. Those aliases keep the existing per-principal bearer credentials;
-clients send them as server-specific `x-mcp-<server-alias>-authorization`
+accounting MCP (beta). The private HomeCompute capability relay has aliases for
+Hermes owner, Android UI access, and isolated OpenBot maintenance. Clients
+send the corresponding bearer credentials as server-specific `x-mcp-<server-alias>-authorization`
 headers alongside a separate LiteLLM key. The relay accepts LiteLLM only from
 its fixed source address and `/mcp` path. LiteLLM trusts the relay using the
 read-only Home Core CA certificate. Context7 and n8n share the isolated internal

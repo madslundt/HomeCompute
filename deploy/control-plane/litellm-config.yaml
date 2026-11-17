@@ -236,13 +236,6 @@ mcp_servers:
     description: Hermes-owner capability principal; caller supplies its role-scoped bearer
     allow_all_keys: false
     access_groups: [hermes-owner-tools, all-harness-mcps]
-  homecompute_openclaw:
-    url: https://homecompute-capabilities.home.arpa:19445/mcp
-    transport: http
-    auth_type: oauth_delegate
-    description: OpenClaw capability principal; caller supplies its role-scoped bearer
-    allow_all_keys: false
-    access_groups: [openclaw-agent-tools, all-harness-mcps]
   homecompute_openbot_android:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http

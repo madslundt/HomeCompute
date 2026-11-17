@@ -1,5 +1,10 @@
 # OpenClaw and home-core Codex pilot
 
+OpenClaw is retired in current production source. For the staged cutover and
+shared services to preserve, use the
+[OpenClaw retirement procedure](operations/openclaw-retirement.md).
+The sections below record the previous setup.
+
 Status: the approved dedicated Codex VM and trusted broker are installed, and
 the supervised phone coding handoff/status feed is connected. HomeCompute is
 allowlisted at its immutable reviewed base. HomeClaw authentication is verified:

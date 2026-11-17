@@ -29,6 +29,10 @@ class RetiredIngressTest(unittest.TestCase):
         self.assertNotIn('homecompute.agentOffice.enable = true', host)
         self.assertNotIn('homecompute-openclaw-dashboard-', host)
         self.assertNotIn('hc-openclaw-dashboard', host)
+        self.assertNotIn('modules/nixos/openclaw.nix', host)
+        self.assertIn('homecompute.hermesDashboard.enable = true;', host)
+        self.assertIn('hc-openclaw-communication-supervised', host)
+        self.assertIn('homecore-openbot', homepage)
         self.assertNotIn('    - Agent office:', homepage)
         self.assertIn('href: https://agents.home.arpa/hermes/', homepage)
 

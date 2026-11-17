@@ -268,7 +268,7 @@ def certificate() -> bool:
 
 def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = False,
                   admit_openbot_maintenance: bool = False,
-                  revoke_openbot_maintenance: bool = False) -> bool:
+                  revoke_openbot_maintenance: bool = False, retire_openclaw: bool = False) -> bool:
     if admit_openbot_maintenance and revoke_openbot_maintenance:
         raise ValueError('OpenBot maintenance admission and revocation conflict')
     user = pwd.getpwnam('homecompute-openclaw')
@@ -277,12 +277,12 @@ def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = F
         if TOKENS.stat().st_size > 16384:
             raise ValueError('native credential file exceeds budget')
         value = json.loads(TOKENS.read_bytes())
-        if (not isinstance(value, dict) or not {'openclaw'} <= set(value) <=
+        if (not isinstance(value, dict) or not set(value) - {'hermes'} or not set(value) <=
                 {'openclaw', 'hermes', 'hermes-owner', 'openbot-android', 'openbot-maintenance'}
                 or any(not isinstance(token, str) or len(token) < 32 or '\n' in token or '\r' in token
                        or token.startswith(('replace', 'openshell:resolve:')) for token in value.values())
                 or len(set(value.values())) != len(value)):
-            raise ValueError('independent OpenClaw credential required')
+            raise ValueError('independent native credential required')
         before = dict(value)
         value.pop('hermes', None)
     else:
@@ -291,7 +291,7 @@ def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = F
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != user.pw_uid or info.st_mode & 0o077:
             raise ValueError('existing private adapter configuration directory required')
         before = None
-        value = {'openclaw': secrets.token_urlsafe(48)}
+        value = {}
     if admit_hermes and 'hermes-owner' not in value:
         value['hermes-owner'] = secrets.token_urlsafe(48)
     if admit_openbot_android and 'openbot-android' not in value:
@@ -300,14 +300,22 @@ def native_tokens(*, admit_hermes: bool = False, admit_openbot_android: bool = F
         value['openbot-maintenance'] = secrets.token_urlsafe(48)
     if revoke_openbot_maintenance:
         value.pop('openbot-maintenance', None)
+    if retire_openclaw:
+        if 'hermes-owner' not in value:
+            raise ValueError('preserve an independent Hermes owner credential before retiring OpenClaw')
+        value.pop('openclaw', None)
+    if not value:
+        raise ValueError('initial setup requires an explicit retained principal admission')
     if value == before:
         return False
     write(TOKENS, json.dumps(value).encode(), user.pw_uid, user.pw_gid, 0o600)
     return True
 
 
-def install() -> dict[str, Any]:
+def install(*, admit_hermes: bool = False) -> dict[str, Any]:
     guard()
+    if not (TOKENS.exists() or TOKENS.is_symlink()) and not admit_hermes:
+        raise ValueError('initial setup requires an explicit retained principal admission')
     call([str(BIN / 'docker'), 'image', 'inspect', IMAGE])
     for path, mode in ((INSTALL, 0o755), (TLS.parent, 0o750), (TLS, 0o750), (UNIT.parent, 0o755)):
         directory(path, mode)
@@ -317,7 +325,7 @@ def install() -> dict[str, Any]:
         regular(lock, ROOT_UID, 0o600)
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         issued = certificate()
-        created = native_tokens()
+        created = native_tokens(admit_hermes=admit_hermes)
         write(INSTALL / 'Caddyfile', caddyfile().encode())
         write(INSTALL / 'setup-native-capabilities.py', Path(__file__).read_bytes())
         write(UNIT, unit_text().encode())
@@ -351,11 +359,14 @@ def check(verify_tls: bool = True) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=('install', 'check', 'run', 'stop', 'close-firewall'))
+    parser.add_argument('--admit-hermes-owner', action='store_true', help='explicitly seed an independent owner principal during relay install')
     args = parser.parse_args()
+    if args.admit_hermes_owner and args.command != 'install':
+        parser.error('--admit-hermes-owner requires install')
     try:
         guard()
         if args.command == 'install':
-            print(json.dumps(install()))
+            print(json.dumps(install(admit_hermes=args.admit_hermes_owner)))
         elif args.command == 'run':
             return run()
         elif args.command == 'check':

@@ -117,15 +117,7 @@
           "require_health": true
         },
         {
-          "name": "homecompute-openclaw-access-proxy",
-          "require_health": false
-        },
-        {
           "name": "homecompute-native-mcp-relay",
-          "require_health": false
-        },
-        {
-          "name": "homecompute-site-egress",
           "require_health": false
         },
         {
