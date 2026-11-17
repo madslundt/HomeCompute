@@ -38,7 +38,7 @@ python3 scripts/model_registry.py render
 
 The renderer changes only the `model_list` block. Key scopes, authentication,
 privacy/logging, database configuration, retries, and transport remain explicit
-and reviewed. `automation-moe` is the only exposed text alias. The former
+and reviewed. `automation-moe` is the only exposed local text alias. The former
 `automation`, `home`, `automation-moe-nvidia`, and `automation-qualification`
 aliases selected candidate or qualification listeners; they are omitted from the
 gateway model list. The artifact remains marked candidate because its full
@@ -66,10 +66,14 @@ metadata privacy trigger remains in place.
 
 ### ChatGPT subscription routes
 
-The model list exposes `chatgpt-sol-latest`, `chatgpt-terra-latest`, and
-`chatgpt-luna-latest`. They currently route to `chatgpt/gpt-6.1-sol`,
-`chatgpt/gpt-6.1-terra`, and `chatgpt/gpt-6-luna`. These are HomeCompute aliases;
-review the tracked model registry when updating their upstream targets.
+| HomeCompute alias | ChatGPT provider target |
+| --- | --- |
+| `chatgpt-sol-latest` | `chatgpt/gpt-6.2-sol` |
+| `chatgpt-astra-latest` | `chatgpt/gpt-6.2-astra` |
+| `chatgpt-terra-latest` | `chatgpt/gpt-6.1-terra` |
+| `chatgpt-luna-latest` | `chatgpt/gpt-6-luna` |
+
+Update upstream targets in the tracked model registry.
 LiteLLM's ChatGPT provider needs a gateway-owned subscription login. One OAuth
 account is shared by every virtual key allowed to call these aliases; LiteLLM
 does not select a different ChatGPT account per key.

@@ -410,7 +410,8 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
     # Keep the public names stable; review the upstream targets when the
     # supported ChatGPT model families change.
     for alias, provider_model in (
-        ("chatgpt-sol-latest", "chatgpt/gpt-6.1-sol"),
+        ("chatgpt-sol-latest", "chatgpt/gpt-6.2-sol"),
+        ("chatgpt-astra-latest", "chatgpt/gpt-6.2-astra"),
         ("chatgpt-terra-latest", "chatgpt/gpt-6.1-terra"),
         ("chatgpt-luna-latest", "chatgpt/gpt-6-luna"),
     ):

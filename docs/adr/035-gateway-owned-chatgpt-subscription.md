@@ -20,9 +20,9 @@ scopes must make the cloud selection visible and intentional.
 
 ## Decision
 
-Expose exactly these aliases in LiteLLM's model list:
+The initial subscription model list contained these explicit aliases:
 
-| LiteLLM alias | Current ChatGPT provider target |
+| LiteLLM alias | Initial ChatGPT provider target |
 | --- | --- |
 | `chatgpt-sol-latest` | `chatgpt/gpt-6.1-sol` |
 | `chatgpt-terra-latest` | `chatgpt/gpt-6.1-terra` |
@@ -60,8 +60,8 @@ limits; a dollar budget does not cap subscription quota.
   Core. The gateway, host administrator, and backups can access it; protect the
   directory and include it in the control-plane credential restore procedure.
 - Every key allowed to call the aliases consumes the same account and plan
-  quota. Revoking the account session or removing the auth file stops all three
-  aliases until an operator signs in again.
+  quota. Revoking the account session or removing the auth file stops all
+  subscription aliases until an operator signs in again.
 - The model choices remain visible and independent of local inference. An
   upstream quota or account restriction returns an error; it does not reroute
   a local workflow to cloud.
@@ -85,3 +85,11 @@ and obscure which model a virtual key should be allowed to call.
 
 Rejected because API billing is a separate credential and account. No paid API
 fallback is authorized by this decision.
+
+## Model alias amendment (2026-11-17)
+
+Update `chatgpt-sol-latest` to `chatgpt/gpt-6.2-sol` and add
+`chatgpt-astra-latest` with target `chatgpt/gpt-6.2-astra`. Astra uses the same
+gateway-owned subscription login and requires a virtual key scoped to the
+alias. The [control-plane runbook](../../deploy/control-plane/README.md#chatgpt-subscription-routes)
+lists the current targets.
