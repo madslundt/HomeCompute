@@ -113,10 +113,15 @@ Nod. By design, Telegram remains available for owner chat.
 The bridge uses Nod's v0.7.6 background-event path so delegated text does not
 become a direct owner instruction in Nod's Trust checker. Nod's standing rules
 still apply. Review those rules before allowing Hermes to submit real tasks.
+Delegated turns and owner-approved continuations see only the delegated
+session's transcript. They use a separate workspace, a restricted runtime
+and a tool allowlist for existing app connections and browser sign-in. Owner
+chat search, memory, learned skills, local files and shell access are excluded.
 The credential grants task submission and access to results from this bridge.
 Keep it in the Nod guest and the owner sandbox's OpenShell credential store.
 The native relay accepts only the agents guest, the exact POST path and a
-bounded body. OpenShell binds the credential to `/mcp/hermes-nod` and the
+bounded body. Nod checks the relay hostname separately from its normal web
+interface. OpenShell binds the credential to `/mcp/hermes-nod` and the
 `nod` MCP registration. The shared LiteLLM catalog does not declare this tool.
 
 Use the same reviewed published HomeCompute revision for all three steps.
@@ -141,7 +146,7 @@ readiness records before registration.
    sudo bash scripts/setup-nod-guest.sh verify
    ```
 
-   This recreates only the web container with two read-only source mounts.
+   This recreates only the web container with read-only source mounts.
    The original image, PostgreSQL and Nod volumes are retained. Subsequent
    Nod installer and reconfigure runs use the applied bridge until disabled.
    If the mounted files drift, compare against the selected release before

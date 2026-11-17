@@ -2,13 +2,15 @@
 // copied to src/server. DATABASE_URL must name a disposable Postgres database.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { setTimeout as pause } from 'node:timers/promises';
+import { allowsHermesTool } from '../src/runtime/index.ts';
 import Fastify from 'fastify';
 import test from 'node:test';
 import { registerLocalAccess } from '../src/server/access.ts';
 import { ownerId } from '../src/server/config.ts';
 import { initializeDatabase, pool } from '../src/server/db.ts';
 import { registerHermesBridge } from '../src/server/homecompute-hermes.ts';
-import { boss, initializeThreads } from '../src/server/thread.ts';
+import { boss, initializeThreads, startThreadWorkers } from '../src/server/thread.ts';
 
 test('bridge isolates requests, supports safe retries and returns only the matching result', async (t) => {
   const secret = 'nod_' + 'A'.repeat(43);
@@ -29,11 +31,17 @@ test('bridge isolates requests, supports safe retries and returns only the match
   });
   registerHermesBridge(app, () => true);
 
-  async function rpc(method: string, params?: object, token = secret, path = '/mcp/hermes-nod') {
+  async function rpc(
+    method: string,
+    params?: object,
+    token = secret,
+    path = '/mcp/hermes-nod',
+    host = 'homecompute-capabilities.home.arpa',
+  ) {
     return app.inject({
       method: 'POST',
       url: path,
-      headers: { host: 'nod.home.arpa', authorization: 'Bearer ' + token },
+      headers: { host, authorization: 'Bearer ' + token },
       payload: { jsonrpc: '2.0', id: 1, method, params },
     });
   }
@@ -44,7 +52,18 @@ test('bridge isolates requests, supports safe retries and returns only the match
   }
 
   assert.equal((await rpc('tools/list', {}, 'owner_token')).statusCode, 401);
-  assert.equal((await rpc('tools/list', {}, secret, '/api/state')).statusCode, 401);
+  assert.equal(
+    (await rpc('tools/list', {}, secret, '/api/state', 'nod.home.arpa')).statusCode,
+    401,
+  );
+  assert.equal(
+    (await rpc('tools/list', {}, secret, '/mcp/hermes-nod', 'nod.home.arpa')).statusCode,
+    404,
+  );
+  assert.equal(allowsHermesTool('manage_personal_context', { action: 'history_search' }), false);
+  assert.equal(allowsHermesTool('browser', { action: 'upload' }), false);
+  assert.equal(allowsHermesTool('send_message', { intent: 'update', text: 'Preparing' }), false);
+  assert.equal(allowsHermesTool('send_message', { intent: 'final', text: 'Done' }), true);
   assert.deepEqual(
     (await rpc('tools/list')).json().result.tools.map((tool: any) => tool.name),
     ['nod_submit', 'nod_status'],
@@ -103,6 +122,67 @@ test('bridge isolates requests, supports safe retries and returns only the match
     result: 'Nod result',
     truncated: false,
   });
+  await pool.query(
+    `INSERT INTO messages(id,owner_id,role,text,thread_id,turn_id,attachments,created_at)
+      VALUES($1,$2,'assistant','Rich final',$3,$4,'[{}]',now()+interval '1 second')`,
+    [randomUUID(), ownerId, root.thread_id, continuationId],
+  );
+  assert.deepEqual(await tool('nod_status', { request_id }), { request_id, status: 'view_in_nod' });
+
+  let observed: unknown;
+  let workspace: string | undefined;
+  const unavailable = async () => {
+    throw new Error('No external service is used in this test');
+  };
+  await startThreadWorkers({
+    speech: { synthesize: unavailable },
+    requestCredential: unavailable,
+    integration: unavailable,
+    manage: unavailable,
+    browserStep: unavailable,
+    memoryContext: unavailable,
+    accountProfile: unavailable,
+    learnedSkills: unavailable,
+    runTurn: async (context) => {
+      observed = {
+        delegated: context.delegatedByHermes,
+        history: context.history.map((item) => item.text),
+        memory: context.memory,
+        account: context.account,
+        allowSteering: Boolean(context.takeMessages),
+        ownerThread: context.threadId === context.sessionId,
+      };
+      workspace = context.workspacePath;
+      await context.reply('Worker result');
+      return { status: 'succeeded' };
+    },
+  });
+  const workerId = randomUUID();
+  assert.equal(
+    (await tool('nod_submit', { request_id: workerId, task: 'Return a worker result.' })).status,
+    'accepted',
+  );
+  let status;
+  for (let i = 0; i < 30; i++) {
+    status = await tool('nod_status', { request_id: workerId });
+    if (status.status === 'succeeded') break;
+    await pause(100);
+  }
+  assert.deepEqual(status, {
+    request_id: workerId,
+    status: 'succeeded',
+    result: 'Worker result',
+    truncated: false,
+  });
+  assert.deepEqual(observed, {
+    delegated: true,
+    history: [],
+    memory: '',
+    account: undefined,
+    allowSteering: false,
+    ownerThread: false,
+  });
+  assert.ok(workspace && !workspace.endsWith(root.thread_id));
   await pool.query('UPDATE threads SET archived_at=now() WHERE id=$1', [root.thread_id]);
   assert.equal((await tool('nod_status', { request_id })).status, 'not_found');
 });

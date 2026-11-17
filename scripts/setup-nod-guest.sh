@@ -77,17 +77,21 @@ case "$action" in
   enable-hermes)
     temporary=$(mktemp -d "$bridge/.render.XXXXXX")
     trap 'rm -rf -- "$temporary"' EXIT
-    mkdir -p "$temporary/src/server"
-    git -C "$upstream" show "$revision:src/server/app.ts" > "$temporary/src/server/app.ts"
-    (cd "$temporary" && git apply --check "$release/deploy/nod/hermes-bridge.patch" &&
-      git apply "$release/deploy/nod/hermes-bridge.patch")
-    if [[ -f "$bridge/enabled" ]]; then
-      cmp -s "$temporary/src/server/app.ts" "$bridge/app.ts"
-      cmp -s "$release/deploy/nod/homecompute-hermes.ts" "$bridge/homecompute-hermes.ts"
-    else
-      install -m 0444 "$temporary/src/server/app.ts" "$bridge/app.ts"
-      install -m 0444 "$release/deploy/nod/homecompute-hermes.ts" "$bridge/homecompute-hermes.ts"
-    fi
+    bridge_files=(src/server/app.ts src/server/access.ts src/server/thread.ts src/runtime/index.ts)
+    for file in "${bridge_files[@]}" src/ports/agent.ts; do
+      mkdir -p "$temporary/$(dirname "$file")"
+      git -C "$upstream" show "$revision:$file" > "$temporary/$file"
+    done
+    (cd "$temporary" && git apply --unidiff-zero --check "$release/deploy/nod/hermes-bridge.patch" &&
+      git apply --unidiff-zero "$release/deploy/nod/hermes-bridge.patch")
+    install -m 0444 "$release/deploy/nod/homecompute-hermes.ts" "$temporary/src/server/homecompute-hermes.ts"
+    for file in "${bridge_files[@]}" src/server/homecompute-hermes.ts; do
+      if [[ -f "$bridge/enabled" ]]; then
+        cmp -s "$temporary/$file" "$bridge/$file"
+      else
+        install -D -m 0444 "$temporary/$file" "$bridge/$file"
+      fi
+    done
     "${compose[@]}" config --quiet
     if ! "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server; then
       if [[ ! -f "$bridge/enabled" ]]; then
@@ -132,7 +136,7 @@ if (bridge) {
   const list = (token) => fetch('http://127.0.0.1:4310/mcp/hermes-nod', {
     method: 'POST',
     headers: {
-      Host: 'nod.home.arpa',
+      Host: 'homecompute-capabilities.home.arpa',
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },

@@ -146,6 +146,7 @@ class RelaySetupTest(unittest.TestCase):
         self.assertIn('method POST', matcher)
         self.assertIn('expression {http.request.orig_uri} == "/mcp/hermes-nod"', matcher)
         self.assertIn('reverse_proxy 10.77.60.2:4310', config)
+        self.assertIn('header_up Host homecompute-capabilities.home.arpa', config)
         self.assertNotIn('/mcp/hermes-nod', setup.caddyfile(nod=False))
 
     def test_container_has_exact_image_and_no_broader_host_access(self):

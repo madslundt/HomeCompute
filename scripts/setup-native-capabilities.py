@@ -104,7 +104,7 @@ def caddyfile(*, nod: bool = True) -> str:
             max_size 16KB
         }
         reverse_proxy 10.77.60.2:4310 {
-            header_up Host nod.home.arpa
+            header_up Host homecompute-capabilities.home.arpa
             transport http {
                 dial_timeout 3s
                 response_header_timeout 12s
