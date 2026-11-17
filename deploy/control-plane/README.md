@@ -109,6 +109,34 @@ with no MCP grants unless separately approved. Subscription requests have no
 per-token API charge in LiteLLM; use request/token rate limits instead of a
 dollar budget. There is no automatic API-key fallback.
 
+#### Sol and Astra alias-only rollout
+
+Use this lifecycle if the full Home Core release is blocked and the operator
+approves updating these two aliases separately. It reads their generated
+entries from the selected published `origin/master` commit and combines them
+with the deployed release's config. The tool locks deployment, verifies the
+running Compose hash and pinned image, recreates only LiteLLM, and checks
+container health and the mounted config. On failure it reapplies the previous
+mount. Use a model-scoped key for a synthetic Responses request to each alias
+afterward.
+
+From the operator workstation, fetch and review the exact commit, then run:
+
+```bash
+git fetch origin master
+revision=FULL_SHA
+git show "${revision}:scripts/deploy-litellm-chatgpt.py" |
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core \
+    "sudo -n python3 - apply $revision"
+```
+
+The printed SHA-256 covers the generated file under
+`/var/lib/homecompute/litellm-chatgpt`. The full host revision marker continues
+to identify the underlying release. A full deployment will supersede this
+mount with the release config. To restore the underlying release's LiteLLM
+config before then, repeat the command with `rollback` instead of `apply` and
+the same source revision.
+
 ## Central MCP gateway
 
 LiteLLM also owns the private MCP gateway on `https://llm.home.arpa/mcp`. Keep

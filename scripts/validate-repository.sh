@@ -386,6 +386,7 @@ python3 "$REPO_ROOT/tests/homecompute-cli-test.py"
 python3 "$REPO_ROOT/tests/client-model-access-test.py"
 python3 "$REPO_ROOT/tests/litellm-routing-integration-test.py"
 python3 "$REPO_ROOT/tests/control-plane-routing-test.py"
+python3 "$REPO_ROOT/tests/deploy-litellm-chatgpt-test.py"
 python3 "$REPO_ROOT/tests/litellm-mcp-gateway-test.py"
 python3 "$REPO_ROOT/tests/token-usage-test.py"
 python3 "$REPO_ROOT/scripts/gb10_model_roster.py" \
