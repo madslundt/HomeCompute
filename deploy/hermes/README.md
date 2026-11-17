@@ -511,6 +511,24 @@ and browser profile volume outside Git and include them in the guest backup.
 The worker's stable `/devtools/browser/homecompute` endpoint resolves the local
 Chromium ID on each connection, so a browser restart does not stale the URL.
 
+If `browser_exec` asks to install Chromium on the managed owner instance, first
+check the worker, the sandbox's attached `hermes-personal-browser` provider, and
+the effective `browser_cdp` policy. A native sandbox recreation can leave the
+worker running while dropping the sandbox's browser attachment and settings.
+With the qualified worker running, retain the pre-change native policy, provider
+list, and private owner/profile configuration preimages in guest storage, then
+rerun just `connect-browser` from the reviewed published guest release. It
+reuses the existing worker and token, updates the default profile and any
+existing owner ChatGPT profiles listed in `config/hermes-chatgpt-profiles.json`,
+and restarts the owner sandbox. New profiles inherit the owner browser settings
+when cloned. If the connection needs to be reverted, restore the captured
+configuration and policy, detach the provider if it was newly attached, and
+restart the sandbox natively. Preserve the worker and its profile volume.
+
+In a fresh owner session, use `browser_exec` to open a public page, inspect it,
+and interact with a harmless control. Confirm a private URL is rejected. The
+worker has its own Chromium profile and sign-ins.
+
 During this clean installation, failed synthetic requests produced diagnostic
 request dumps rejected by NemoClaw's state-archive credential scan. The owner
 explicitly authorized discarding Hermes state. The supported one-time

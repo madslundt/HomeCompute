@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = runpy.run_path(str(ROOT / 'scripts/setup-hermes-chatgpt-profiles.py'))
@@ -36,6 +37,43 @@ class FakeHermes:
 
 
 class HermesChatGPTProfileTests(unittest.TestCase):
+    def test_browser_reconnect_updates_existing_owner_profiles_and_keeps_their_settings(self):
+        with patch.dict(sys.modules, {'yaml': type('Yaml', (), {
+            'safe_load': staticmethod(json.loads),
+            'safe_dump': staticmethod(json.dumps),
+        })}):
+            browser = runpy.run_path(str(ROOT / 'deploy/hermes/configure-browser.py'))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / '.hermes'
+            profiles = [item['name'] for item in DESIRED['profiles']]
+            named = [root / 'profiles' / name for name in profiles[:2]]
+            for home in [root, *named]:
+                home.mkdir(parents=True, exist_ok=True)
+                (home / 'config.yaml').write_text(json.dumps({
+                    'model': home.name, 'browser': {'backend': 'off', 'timeout': 20},
+                }))
+                (home / '.env').write_text('MODEL_KEY=synthetic\n')
+                (home / '.env').chmod(0o600)
+
+            conflict = named[-1] / '.env'
+            conflict.write_text('BROWSER_CDP_URL=ws://other.example/\n')
+            with self.assertRaisesRegex(ValueError, 'endpoint differs'):
+                browser['configure'](root, profiles)
+            self.assertEqual((root / '.env').read_text(), 'MODEL_KEY=synthetic\n')
+            conflict.write_text('MODEL_KEY=synthetic\n')
+
+            endpoint = browser['ENDPOINT']
+            self.assertEqual(browser['configure'](root, profiles), ['default', *profiles[:2]])
+            for home in [root, *named]:
+                self.assertEqual(json.loads((home / 'config.yaml').read_text()), {
+                    'model': home.name, 'browser': {'timeout': 20, 'cdp_url': endpoint, 'allow_private_urls': False},
+                })
+                self.assertEqual((home / '.env').read_text(), f'MODEL_KEY=synthetic\nBROWSER_CDP_URL={endpoint}\n')
+                self.assertEqual((home / '.env').stat().st_mode & 0o777, 0o600)
+            with patch('os.replace', side_effect=AssertionError('already correct')):
+                browser['configure'](root, profiles)
+            self.assertFalse((root / 'profiles' / profiles[2]).exists())
+
     def test_reviewed_plan_required_and_profile_plan_is_bound_to_state(self):
         fake = FakeHermes()
         before = SETUP['reconcile'](fake, CLI, DESIRED, {}, 'plan')

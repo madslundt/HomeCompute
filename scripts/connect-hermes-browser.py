@@ -16,6 +16,8 @@ NAME = json.loads((ROOT / 'config/hermes-release.json').read_text())['household_
 PROVIDER = 'hermes-personal-browser'
 PROFILE = 'homecompute-hermes-browser-v1'
 OS = ['openshell', '-g', 'nemoclaw']
+CLI = ['nemohermes', NAME]
+PYTHON = '/opt/hermes/.venv/bin/python'
 
 
 def main():
@@ -52,30 +54,17 @@ def main():
         raise RuntimeError('Existing browser provider differs from source')
     token = ''
     call(OS + ['sandbox', 'provider', 'attach', NAME, PROVIDER])
-    call(['nemohermes', NAME, 'policy', 'add', '--from-file',
+    call(CLI + ['policy', 'add', '--from-file',
           str(ROOT / 'deploy/hermes/browser-policy.yaml'),
           '--trusted-private-host', '172.18.0.1', '--yes'])
-    program = '''import os, pathlib, yaml
-token = os.environ['BROWSER_TOKEN']
-assert token.startswith('openshell:resolve:env:')
-url = 'ws://172.18.0.1:18810/devtools/browser/homecompute'
-home = pathlib.Path('/sandbox/.hermes')
-path = home / '.env'
-lines = [line for line in path.read_text().splitlines() if not line.startswith('BROWSER_CDP_URL=')]
-lines.append('BROWSER_CDP_URL=' + url)
-path.write_text('\\n'.join(lines) + '\\n'); path.chmod(0o640)
-path = home / 'config.yaml'
-config = yaml.safe_load(path.read_text()) or {}
-config.setdefault('browser', {})['cdp_url'] = url
-# Keep the pinned bundled browser tools; avoid auto-installing Browser Use.
-config['browser'].pop('backend', None)
-config['browser']['allow_private_urls'] = False
-path.write_text(yaml.safe_dump(config, sort_keys=False))
-print('Browser configured with an opaque gateway credential reference')
-'''
-    call(['nemohermes', NAME, 'exec', '--stdin', '--', 'python3', '-'], input=program)
-    call(['nemohermes', NAME, 'stop'])
-    call(['nemohermes', NAME, 'start'])
+    program = (ROOT / 'deploy/hermes/configure-browser.py').read_text()
+    roster = json.loads((ROOT / 'config/hermes-chatgpt-profiles.json').read_text())
+    profiles = [entry['name'] for entry in roster['profiles']] if roster['sandbox'] == NAME else []
+    print(call(CLI + ['exec', '--stdin', '--', PYTHON, '-', *profiles], input=program).strip(), flush=True)
+    call(CLI + ['stop'])
+    call(CLI + ['start'])
+    call(CLI + ['exec', '--', PYTHON, '-c',
+                "import os; assert os.getenv('BROWSER_TOKEN', '').startswith('openshell:resolve:env:')"])
     print('Dedicated browser connected; public-page and private-network denial probes remain required.')
 
 
