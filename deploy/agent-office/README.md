@@ -37,7 +37,9 @@ sudo systemctl disable --now homecompute-agent-office-proxy.service
 sudo systemctl disable --now homecompute-openclaw-dashboard-proxy.service
 ```
 
-Verify those units are inactive and that guest ports 18791, 18802, 18803, and
+If a stopped proxy reports `failed` after shutdown, clear that unit's status
+with `systemctl reset-failed UNIT` using the same service manager. Verify the
+units are inactive and that guest ports 18791, 18802, 18803, and
 18891 have no listeners. Verify the two Homepage cards are absent, Agent Office
 returns 404, the IP dashboard and Tailscale port 18791 are closed, and the
 Hermes dashboard still reaches its native sign-in. Keep the guest unit files,

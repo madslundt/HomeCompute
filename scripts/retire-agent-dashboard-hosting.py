@@ -182,6 +182,12 @@ def apply(report, paths, before, after):
         for name in UNITS:
             if report['units'][name]['active']:
                 core.call(['systemctl', 'stop', name])
+                state = core.call(['systemctl', 'show', '--property=ActiveState',
+                                   '--value', name]).strip()
+                # socat returns 143 on a requested stop. Clear only that
+                # retired unit's failure so it does not affect host health.
+                if state == 'failed':
+                    core.call(['systemctl', 'reset-failed', name])
             path = CONTROL / name
             if report['units'][name]['control'] != 'masked':
                 if path.exists():
