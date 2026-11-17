@@ -1394,11 +1394,13 @@ jq -e '
   (.services.openbot.security_opt | index("no-new-privileges:true") != null) and
   (.services.openbot.ports == null and .services.openbot.network_mode != "host") and
   (.services.openbot.environment.NODE_EXTRA_CA_CERTS == "/run/homecompute/home-core-root.crt") and
+  (.services.openbot.environment.SSL_CERT_FILE == "/run/homecompute/agent-ca-bundle.pem") and
   (.services.openbot.environment.CODEX_CA_CERTIFICATE == "/run/homecompute/home-core-root.crt") and
   (.services.openbot.extra_hosts | any(. == "homecompute-capabilities.home.arpa=10.77.20.1")) and
   (.services.openbot.extra_hosts | any(. == "mcp.home.arpa=10.77.20.1")) and
-  (.services.openbot.volumes | length == 2 and any(.[]; .target == "/data" and .read_only != true) and
-   any(.[]; .source == "/etc/homecompute-openbot/home-core-root.crt" and .target == "/run/homecompute/home-core-root.crt" and .read_only == true)) and
+  (.services.openbot.volumes | length == 3 and any(.[]; .target == "/data" and .read_only != true) and
+   any(.[]; .source == "/etc/homecompute-openbot/home-core-root.crt" and .target == "/run/homecompute/home-core-root.crt" and .read_only == true) and
+   any(.[]; .source == "/etc/homecompute-openbot/agent-ca-bundle.pem" and .target == "/run/homecompute/agent-ca-bundle.pem" and .read_only == true)) and
   (.services.openbot.shm_size == "1073741824" and .services.openbot.stop_grace_period == "1m0s") and
   (.services.openbot.mem_limit == "8589934592" and .services.openbot.pids_limit == 2048)
 ' "$openbot_json" >/dev/null

@@ -5,6 +5,7 @@ services:
     platform: linux/amd64
     environment:
       NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
+      SSL_CERT_FILE: /run/homecompute/agent-ca-bundle.pem
       # The embedded Codex client makes its own TLS requests outside Node.
       CODEX_CA_CERTIFICATE: /run/homecompute/home-core-root.crt
     extra_hosts:
@@ -32,6 +33,7 @@ services:
     volumes:
       - /home/hermes-operator/.local/share/homecompute-openbot/data:/data
       - /etc/homecompute-openbot/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
+      - /etc/homecompute-openbot/agent-ca-bundle.pem:/run/homecompute/agent-ca-bundle.pem:ro
     networks:
       openbot:
         ipv4_address: 172.30.192.2
