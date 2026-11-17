@@ -110,8 +110,14 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878", NETWORK)
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000", NETWORK)
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.5/32 -p tcp --dport 8090", NETWORK)
-        self.assertIn("-o br-hc-n8n -d 172.28.201.5/32 -p tcp --dport 8090", NETWORK)
+        self.assertIn("-o br-hc-n8n -d 172.28.201.6/32 -p tcp --dport 8090", NETWORK)
         self.assertIn("-j REJECT", NETWORK)
+
+    def test_manager_api_is_reachable_only_from_the_n8n_bridge_address(self) -> None:
+        rule = "-o br-hc-n8n -s 172.28.201.2/32 -d 172.28.201.5/32 -p tcp --dport 8080 -j RETURN"
+        insert = f"-A HC-AUTOMATION {rule}"
+        self.assertIn(f"-C HC-AUTOMATION {rule}", NETWORK)
+        self.assertLess(NETWORK.index(insert), NETWORK.index('-A HC-AUTOMATION -d "$subnet" -j REJECT'))
 
     def test_existing_unscoped_keys_are_denied_before_caddy_starts(self) -> None:
         self.assertIn("/key/list", DEFAULT_DENY)

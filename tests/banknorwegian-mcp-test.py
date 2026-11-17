@@ -334,7 +334,7 @@ class BankNorwegianMCPTests(unittest.TestCase):
     def test_g_deployment_wiring(self):
         self.assertIn("banknorwegian-mcp:", PRODUCTION)
         self.assertIn("dockerfile: banknorwegian.Dockerfile", PRODUCTION)
-        self.assertIn("172.28.201.5", PRODUCTION)
+        self.assertIn("172.28.201.6", PRODUCTION)
         self.assertIn("BANKNORWEGIAN_MCP_BACKENDS_IP", PRODUCTION)
         self.assertIn("BN_CLIENT_SECRET", PRODUCTION)
         self.assertIn("url: http://banknorwegian-mcp:8090/mcp", LITELLM)

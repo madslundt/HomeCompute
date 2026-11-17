@@ -1032,6 +1032,8 @@ jq -e '
   (.networks.migration.internal != true) and
   (.networks.migration.enable_ipv6 == false) and
   (.networks.migration.driver_opts["com.docker.network.bridge.name"] == "br-hc-n8n") and
+  (.services.n8n.networks.migration.ipv4_address == "172.28.201.2") and
+  (.services["banknorwegian-mcp"].networks.migration.ipv4_address == "172.28.201.6") and
   (.services.n8n.networks["mcp-clients"].ipv4_address == "172.28.211.3") and
   (.networks["mcp-clients"].name == "homecompute-control-plane_mcp-clients") and
   (.networks["mcp-backends"].name == "homecompute-control-plane_mcp-backends")
@@ -1059,6 +1061,17 @@ jq -e '
   (.services["tilbudstrolden-mcp"].networks["mcp-backends"].ipv4_address == "172.28.212.4") and
   (.services["tilbudstrolden-mcp"].networks | keys == ["mcp-backends", "migration"])
 ' "$automation_json" >/dev/null
+manager_json="$temporary_root/ai-automation-manager.json"
+CONTROL_PLANE_SECRET_GID=992 CADDY_CLIENTS_IP=172.28.210.2 docker compose \
+  --env-file "$REPO_ROOT/config/automation.env.example" \
+  -f "$REPO_ROOT/deploy/ai-automation-manager/compose.yaml" \
+  -f "$REPO_ROOT/deploy/ai-automation-manager/production.yaml" config --format json >"$manager_json"
+jq -es '
+  .[1].services["ai-automation-manager"].networks.migration.ipv4_address as $manager |
+  $manager == "172.28.201.5" and
+  all(.[0].services[]; .networks.migration.ipv4_address != $manager)
+' "$automation_json" "$manager_json" >/dev/null
+
 # Books is reconciled separately from the general deployment. Validate its
 # explicit host bindings, resource limits, and image pins before accepting it.
 books_json="$temporary_root/books.json"
