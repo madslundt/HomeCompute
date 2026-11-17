@@ -153,6 +153,18 @@ test('bridge isolates requests, supports safe retries and returns only the match
         ownerThread: context.threadId === context.sessionId,
       };
       workspace = context.workspacePath;
+      await assert.rejects(
+        () => context.integration('CONNECTED_CLI', {}),
+        /unavailable to delegated Hermes tasks/,
+      );
+      await assert.rejects(
+        () => context.integration('SYNTHETIC', { input: { workspaceFile: 'synthetic.pdf' } }),
+        /unavailable to delegated Hermes tasks/,
+      );
+      await assert.rejects(
+        () => context.reply('[Synthetic file](/workspace/test/synthetic.pdf)'),
+        /must be plain text/,
+      );
       await context.reply('Worker result');
       return { status: 'succeeded' };
     },

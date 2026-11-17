@@ -79,22 +79,24 @@ index 905935c..78d7ba8 100644
 @@ -263,0 +265 @@ export async function createApp(dependencies: AppDependencies = {}) {
 +  if (!desktopAccess && authToken) registerHermesBridge(app, () => publicConfiguration().llmReady);
 diff --git a/src/server/thread.ts b/src/server/thread.ts
-index 24c2acf..8b896e7 100644
+index 24c2acf..04dbd0b 100644
 --- a/src/server/thread.ts
 +++ b/src/server/thread.ts
-@@ -1510 +1510,5 @@ async function loadMessage(messageId: string | null) {
+@@ -59,0 +60 @@ import { inlineAppResult, noMailCheck, type MailCheck } from './integration-resu
++import { hasWorkspaceFiles } from './integration-files.ts';
+@@ -1510 +1511,5 @@ async function loadMessage(messageId: string | null) {
 -async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 +async function loadTurnContext(
 +  turn: any,
 +  dependencies: ThreadDependencies,
 +  delegatedByHermes = false,
 +) {
-@@ -1525 +1529 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+@@ -1525 +1530 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 -    loadMessage(sourceMessageId),
 +    loadMessage(delegatedByHermes ? null : sourceMessageId),
-@@ -1536,0 +1541 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+@@ -1536,0 +1542 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 +       AND (NOT $7::boolean OR u.session_id=$6)
-@@ -1541 +1546,9 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+@@ -1541 +1547,9 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 -      [ownerId, threadId, sourceMessageId, turn.id, Boolean(turn.background), turn.session_id],
 +      [
 +        ownerId,
@@ -105,29 +107,39 @@ index 24c2acf..8b896e7 100644
 +        turn.session_id,
 +        delegatedByHermes,
 +      ],
-@@ -1553,3 +1566,3 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+@@ -1553,3 +1567,3 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 -    dependencies.accountProfile?.().catch(() => undefined),
 -    dependencies.memoryContext?.().catch(() => ''),
 -    dependencies.learnedSkills?.().catch(() => undefined),
 +    delegatedByHermes ? undefined : dependencies.accountProfile?.().catch(() => undefined),
 +    delegatedByHermes ? undefined : dependencies.memoryContext?.().catch(() => ''),
 +    delegatedByHermes ? undefined : dependencies.learnedSkills?.().catch(() => undefined),
-@@ -1571 +1584 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+@@ -1571 +1585 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 -    !turn.background && sourceMessageId && dependencies.recall
 +    !delegatedByHermes && !turn.background && sourceMessageId && dependencies.recall
-@@ -1588,2 +1601,4 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+@@ -1588,2 +1602,4 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 -      notificationRule: preference?.notification_rule ?? defaultPreferences.notificationRule,
 -      rules: preference?.rules ?? defaultPreferences.rules,
 +      notificationRule: delegatedByHermes
 +        ? undefined
 +        : (preference?.notification_rule ?? defaultPreferences.notificationRule),
 +      rules: delegatedByHermes ? undefined : (preference?.rules ?? defaultPreferences.rules),
-@@ -1613 +1628 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
+@@ -1613 +1629 @@ async function loadTurnContext(turn: any, dependencies: ThreadDependencies) {
 -      ...(dependencies.localFiles ? { localFiles: true } : {}),
 +      ...(!delegatedByHermes && dependencies.localFiles ? { localFiles: true } : {}),
-@@ -1791 +1806,10 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+@@ -1706,0 +1723 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
++  let delegatedByHermes = false;
+@@ -1723 +1740,4 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-    const plain = !attachments.length && !presentation && !replyFileReferences(source).length;
++    const references = replyFileReferences(source);
++    if (delegatedByHermes && (references.length || attachments.length || presentation))
++      throw new Error('Delegated Hermes results must be plain text.');
++    const plain = !attachments.length && !presentation && !references.length;
+@@ -1733 +1752,0 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+-        const references = replyFileReferences(text);
+@@ -1791 +1810,10 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
 -    const taskContext = await dependencies.taskContext?.(ref);
-+    const delegatedByHermes = Boolean(
++    delegatedByHermes = Boolean(
 +      (
 +        await pool.query(
 +          `SELECT 1 FROM turns WHERE owner_id=$1 AND thread_id=$2 AND session_id=$3
@@ -137,27 +149,37 @@ index 24c2acf..8b896e7 100644
 +      ).rowCount,
 +    );
 +    const taskContext = delegatedByHermes ? undefined : await dependencies.taskContext?.(ref);
-@@ -1793,2 +1817,3 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+@@ -1793,2 +1821,3 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
 -    const tasks = await dependencies.taskLedger?.(threadId);
 -    const workspacePath = join(dataRoot, 'workspaces', threadId);
 +    const tasks = delegatedByHermes ? undefined : await dependencies.taskLedger?.(threadId);
 +    const workspaceId = delegatedByHermes ? turn.session_id : threadId;
 +    const workspacePath = join(dataRoot, 'workspaces', workspaceId);
-@@ -1807 +1832 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+@@ -1807 +1836 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
 -        await dependencies.writeArtifact(threadId, name, bytes, operation);
 +        await dependencies.writeArtifact(workspaceId, name, bytes, operation);
-@@ -1839,2 +1864,4 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+@@ -1839,2 +1868,4 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
 -    const loaded = await loadTurnContext(turn, dependencies);
 -    const proactivity = await dependencies.proactivity?.(ref, signal);
 +    const loaded = await loadTurnContext(turn, dependencies, delegatedByHermes);
 +    const proactivity = delegatedByHermes
 +      ? undefined
 +      : await dependencies.proactivity?.(ref, signal);
-@@ -1843 +1870 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+@@ -1843 +1874 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
 -    let ownerMessage = turn.source === 'user';
 +    let ownerMessage = !delegatedByHermes && turn.source === 'user';
-@@ -1989,0 +2017 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+@@ -1989,0 +2021 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
 +      delegatedByHermes,
-@@ -2122 +2150 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
+@@ -2084,0 +2117,9 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
++        if (
++          delegatedByHermes &&
++          (action === 'CONNECTED_CLI' ||
++            action.startsWith('LOCAL_FILES_') ||
++            hasWorkspaceFiles(args))
++        )
++          throw new Error(
++            'Workspace files and command line integrations are unavailable to delegated Hermes tasks.',
++          );
+@@ -2122 +2163 @@ async function executeTurn(turn: any, dependencies: ThreadDependencies) {
 -        turn.background && !taskContext
 +        delegatedByHermes || (turn.background && !taskContext)
