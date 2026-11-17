@@ -1450,6 +1450,11 @@ grep -Fq 'latest_image_id=' \
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
 # service-level assertions above, and ADR-017's controls would quietly become
 # documentation of an arrangement that no longer exists.
+# Certificate maintenance uses host systemd units and the installed OpenBot container.
+[[ ! -e "$REPO_ROOT/deploy/certificate-maintenance/compose.yaml" ]]
+grep -Fqx 'OnCalendar=hourly' \
+  "$REPO_ROOT/deploy/certificate-maintenance/homecompute-openbot-tls-monitor.timer"
+
 # Hermes is guest-operated through its fail-closed lifecycle helper; it must
 # not silently grow a host-side Compose project beside the NixOS VM boundary.
 [[ -f "$REPO_ROOT/deploy/hermes/README.md" ]]
@@ -1468,7 +1473,7 @@ grep -Fq 'latest_image_id=' \
 # Nod is a Compose overlay for a separate KVM guest with its own Docker daemon.
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode piper-tts podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode piper-tts podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

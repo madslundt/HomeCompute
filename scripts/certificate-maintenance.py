@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from functools import partial
 import hashlib
 import importlib.util
 import json
@@ -184,9 +185,9 @@ def backup_ca() -> None:
     nas = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(nas)
     nas.private_file(nas.STATE / "backup-authorized")
-    nas.require_mount(nas.load_configuration(nas.CONFIG))
+    nas.require_mount(nas.load_configuration(nas.CONFIG, mount_only=True))
     digests = ca_hashes()
-    restic = nas.restic
+    restic = partial(nas.restic, repository=nas.MOUNT / "restic-homecompute-selected")
     output = restic(["--retry-lock", "5m", "backup", "--json", "--tag", "homecompute-caddy-ca",
                      *map(str, digests)])
     summaries = [item["snapshot_id"] for line in output.splitlines()

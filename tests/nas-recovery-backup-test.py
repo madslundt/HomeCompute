@@ -6,12 +6,13 @@ import os
 from pathlib import Path
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("nas_backup", ROOT / "scripts/nas-recovery-backup.py")
@@ -86,6 +87,23 @@ class NASBackupTest(unittest.TestCase):
 
     def test_dedicated_share_validates(self):
         self.assertEqual(backup.configuration(CONFIG), CONFIG)
+
+    def test_mount_only_accepts_the_selected_state_backup_configuration(self):
+        path = Mock()
+        path.stat.return_value.st_mode = stat.S_IFREG | 0o644
+        path.stat.return_value.st_uid = 0
+        path.read_text.return_value = json.dumps({**CONFIG, "hermesSshKeyFile": "/runtime/ssh-key"})
+        with self.assertRaises(ValueError):
+            backup.load_configuration(path)
+        self.assertEqual(backup.load_configuration(path, mount_only=True), CONFIG)
+
+    def test_ca_snapshot_can_select_dedicated_encrypted_repository(self):
+        selected = backup.MOUNT / "restic-homecompute-selected"
+        with patch.object(backup, "private_file"), patch.object(backup, "root_directory") as directory, \
+                patch.object(backup.subprocess, "check_output") as run:
+            backup.restic(["snapshots"], repository=selected)
+        directory.assert_called_with(selected)
+        self.assertEqual(run.call_args.kwargs["env"]["RESTIC_REPOSITORY"], str(selected))
 
     def test_media_traversal_and_injected_targets_refused(self):
         for share in ["immich-library", "photos", "uploads", "video", "../backup", "x/y", "x\nfoo", "x;foo"]:

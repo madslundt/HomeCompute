@@ -57,12 +57,16 @@ def root_directory(path: Path, create: bool = False) -> None:
         raise ValueError(f"real root-only directory required: {path}")
 
 
-def load_configuration(path: Path) -> dict:
+def load_configuration(path: Path, *, mount_only: bool = False) -> dict:
     # NixOS /etc entries point into the immutable store; validate their target.
     info = path.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
         raise ValueError("configuration must be a real root-owned file without untrusted writes")
-    return configuration(json.loads(path.read_text()))
+    value = json.loads(path.read_text())
+    if mount_only:
+        # CA-only snapshots share NAS custody with both backup configurations.
+        value = {name: value[name] for name in ("address", "share", "credentialsFile")}
+    return configuration(value)
 
 
 def require_mount(config: dict) -> None:
@@ -80,13 +84,15 @@ def require_mount(config: dict) -> None:
     private_file(Path(config["credentialsFile"]))
 
 
-def restic(args: list[str]) -> str:
+def restic(args: list[str], *, repository: Path | None = None) -> str:
+    if repository is None:
+        repository = REPOSITORY
     private_file(PASSWORD)
     root_directory(STATE)
-    root_directory(REPOSITORY)
+    root_directory(repository)
     env = {"PATH": os.environ.get("PATH", "/run/current-system/sw/bin"),
            "HOME": str(STATE), "RESTIC_PASSWORD_FILE": str(PASSWORD),
-           "RESTIC_REPOSITORY": str(REPOSITORY), "RESTIC_CACHE_DIR": str(STATE / "cache")}
+           "RESTIC_REPOSITORY": str(repository), "RESTIC_CACHE_DIR": str(STATE / "cache")}
     return subprocess.check_output(["restic", *args], env=env, text=True, timeout=6600)
 
 
