@@ -218,6 +218,11 @@ REMOTE_PREP
   ssh_guest bash -s -- "$REMOTE_BASE" "$stage" "$release" <<'REMOTE_INSTALL'
 set -Eeuo pipefail
 base="$1"; stage="$2"; release="$3"
+root_ca=/home/hermes-operator/.config/homecompute-hermes/certs/home-core-root.crt
+bundle="$stage/agent-ca-bundle.pem"
+# Keep public roots for hosted services and add the private gateway root for agents.
+cat /etc/ssl/certs/ca-certificates.crt "$root_ca" > "$bundle"
+openssl verify -CAfile "$bundle" "$root_ca" >/dev/null
 sudo -n systemctl stop homecompute-openbot.service >/dev/null 2>&1 || true
 install -d -o hermes-operator -g hermes-operator -m 0700 "$release"
 for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health configure-openbot-hermes.py openbot-network.json openbot-install.json; do
@@ -233,6 +238,7 @@ sudo -n install -d -o root -g root -m 0755 /etc/homecompute-openbot /usr/local/l
 sudo -n install -o root -g root -m 0444 \
   /home/hermes-operator/.config/homecompute-hermes/certs/home-core-root.crt \
   /etc/homecompute-openbot/home-core-root.crt
+sudo -n install -o root -g root -m 0444 "$bundle" /etc/homecompute-openbot/agent-ca-bundle.pem
 sudo -n install -o root -g root -m 0644 "$release/openbot-network.json" /etc/homecompute-openbot/network.json
 sudo -n install -o root -g root -m 0755 "$release/network-policy.py" /usr/local/libexec/homecompute-openbot-network-policy
 sudo -n install -o root -g root -m 0755 "$release/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health

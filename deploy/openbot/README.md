@@ -92,7 +92,7 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
 ### ChatGPT subscription aliases
 
 The owner-selected OpenBot Researcher model uses LiteLLM's ChatGPT subscription
-alias. Terra and Luna remain available in the same provider for deliberate
+alias. Terra, Luna, and Astra are available in the same provider for deliberate
 assignment to another agent. This provider has a separate model-only LiteLLM key;
 it does not grant MCP access or replace the local `automation-moe` provider.
 
@@ -104,9 +104,19 @@ python3 scripts/provision-openbot-chatgpt-key.py
 ```
 
 The script creates a non-expiring key restricted to
-`chatgpt-sol-latest`, `chatgpt-terra-latest`, and `chatgpt-luna-latest`, with
-MCP explicitly denied. It stores the secret at
+`chatgpt-sol-latest`, `chatgpt-terra-latest`, `chatgpt-luna-latest`, and
+`chatgpt-astra-latest`, with MCP explicitly denied. It stores the secret at
 `~/.config/homecompute-openbot/secrets/chatgpt-models-key` in the agents VM.
+
+For an existing Sol/Terra/Luna key, add Astra in place from a clean checkout of
+the exact `origin/master` revision:
+
+```bash
+python3 scripts/provision-openbot-chatgpt-key.py --grant-astra
+```
+
+The command uses the installed guest key to identify the LiteLLM record and
+verifies the model scope and MCP denial. The API key saved in OpenBot still works.
 
 In OpenBot → home-core → Settings → Providers → Custom provider, add:
 
@@ -114,11 +124,10 @@ In OpenBot → home-core → Settings → Providers → Custom provider, add:
 - Display name: `HomeCompute ChatGPT subscription`
 - Base URL: `https://llm.home.arpa/v1`
 - API key: the value in `chatgpt-models-key`
-- Models: the three aliases above, using their matching ChatGPT Sol/Terra/Luna labels
+- Models: the four aliases above, using their matching ChatGPT Sol/Terra/Luna/Astra labels
 
 Assign Researcher to `chatgpt-sol-latest` / High. Keep its local
-`automation-moe` backup and ask-first backup policy. Terra and Luna are
-selectable; this change does not rebind other agents. Do not put the key in chat,
+`automation-moe` backup and ask-first backup policy. Do not put the key in chat,
 logs, source, or a command argument.
 
 Connect a cloud provider from Provider settings using the account or API key
@@ -232,6 +241,13 @@ sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --apply \
 ```
 
 ## Operations and recovery
+
+Verify a gateway request from an OpenBot agent after a guest rollout. The
+installer builds a read-only agent CA bundle from the guest's public system
+roots and the Home Core root. Agent processes read it through `SSL_CERT_FILE`.
+Node and embedded Codex also receive the Home Core root through
+`NODE_EXTRA_CA_CERTS` and `CODEX_CA_CERTIFICATE`. Rerun the installer after a
+CA rotation to refresh both mounts.
 
 `homecompute-openbot.service` owns startup, restart, and graceful stop. It starts
 only after `homecompute-openbot-firewall.service` installs the container egress

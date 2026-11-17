@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 from pathlib import Path
 import subprocess
 import unittest
 from unittest.mock import patch
 import builtins
+from urllib import request
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -20,11 +22,53 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ProvisionOpenBotChatGPTKeyTest(unittest.TestCase):
+    def test_grant_astra_updates_existing_model_scope_only(self) -> None:
+        digest = 'a' * 64
+        previous = {
+            'models': MODULE.MODELS[:-1],
+            'user_id': MODULE.OWNER,
+            'key_alias': 'openbot-chatgpt-models-2',
+            'expires': None,
+            'object_permission': {'mcp_servers': ['no-mcp-servers']},
+        }
+        cases = (
+            ('restricted key', previous, True, False),
+            ('already granted', {**previous, 'models': MODULE.MODELS}, False, False),
+            ('other scope', {**previous, 'models': ['automation-moe']}, False, True),
+        )
+        script_args = ['', json.dumps([MODULE.MODELS, MODULE.OWNER, MODULE.KEY_ALIAS_PATTERN])]
+        for name, info, should_update, should_raise in cases:
+            with self.subTest(name=name):
+                state = dict(info)
+                updates = []
+
+                def fake_urlopen(req, **_kwargs):
+                    if req.full_url.endswith('/key/update'):
+                        payload = json.loads(req.data)
+                        updates.append(payload)
+                        state['models'] = payload['models']
+                    return io.StringIO(json.dumps({'info': state}))
+
+                with patch.object(builtins, 'open', return_value=io.StringIO('test-master')), \
+                     patch.object(builtins, 'print') as mocked_print, \
+                     patch.object(request, 'urlopen', side_effect=fake_urlopen), \
+                     patch.object(MODULE.sys, 'argv', script_args), \
+                     patch.object(MODULE.sys, 'stdin', io.StringIO(digest + '\n')):
+                    if should_raise:
+                        with self.assertRaises(AssertionError):
+                            exec(MODULE.GRANT_ASTRA_SCRIPT, {})
+                    else:
+                        exec(MODULE.GRANT_ASTRA_SCRIPT, {})
+                        mocked_print.assert_called_once_with('astra-scope-verified')
+
+                self.assertEqual(updates, [{'key': digest, 'models': MODULE.MODELS}] if should_update else [])
+                self.assertEqual(state['object_permission'], previous['object_permission'])
+
     def test_receipt_requires_exact_models_expiry_and_mcp_deny(self) -> None:
         valid = {
             'key': 'sk-private-test-fixture',
             'key_alias': 'openbot-chatgpt-models-2',
-            'models': ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest'],
+            'models': ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest', 'chatgpt-astra-latest'],
             'user_id': 'openbot-chatgpt-models',
             'expires': None,
             'mcp_servers': ['no-mcp-servers'],

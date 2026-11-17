@@ -16,9 +16,10 @@
     "models": [
       {"id": "chatgpt-sol-latest", "display_name": "ChatGPT Sol (latest)"},
       {"id": "chatgpt-terra-latest", "display_name": "ChatGPT Terra (latest)"},
-      {"id": "chatgpt-luna-latest", "display_name": "ChatGPT Luna (latest)"}
+      {"id": "chatgpt-luna-latest", "display_name": "ChatGPT Luna (latest)"},
+      {"id": "chatgpt-astra-latest", "display_name": "ChatGPT Astra (latest)"}
     ],
-    "api_key_scope": "these three ChatGPT aliases only; MCP access denied"
+    "api_key_scope": "these four ChatGPT aliases only; MCP access denied"
   },
   "hermes_provider": {
     "runtime": "Hermes CLI managed by OpenBot inside homecompute-openbot",

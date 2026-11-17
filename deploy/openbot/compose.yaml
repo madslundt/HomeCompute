@@ -5,6 +5,8 @@ services:
     platform: linux/amd64
     environment:
       NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
+      CODEX_CA_CERTIFICATE: /run/homecompute/home-core-root.crt
+      SSL_CERT_FILE: /run/homecompute/agent-ca-bundle.pem
     extra_hosts:
       - homecompute-capabilities.home.arpa:10.77.20.1
       - llm.home.arpa:10.77.20.1
@@ -30,6 +32,7 @@ services:
     volumes:
       - /home/hermes-operator/.local/share/homecompute-openbot/data:/data
       - /etc/homecompute-openbot/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
+      - /etc/homecompute-openbot/agent-ca-bundle.pem:/run/homecompute/agent-ca-bundle.pem:ro
     networks:
       openbot:
         ipv4_address: 172.30.192.2
@@ -39,6 +42,8 @@ services:
     platform: linux/amd64
     environment:
       NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
+      CODEX_CA_CERTIFICATE: /run/homecompute/home-core-root.crt
+      SSL_CERT_FILE: /run/homecompute/agent-ca-bundle.pem
     extra_hosts:
       - mcp.home.arpa:10.77.20.1
     restart: "no"
@@ -62,6 +67,7 @@ services:
     volumes:
       - /home/hermes-operator/.local/share/homecompute-openbot/operator-data:/data
       - /etc/homecompute-openbot/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
+      - /etc/homecompute-openbot/agent-ca-bundle.pem:/run/homecompute/agent-ca-bundle.pem:ro
     networks:
       openbot_operator:
         ipv4_address: 172.30.194.2

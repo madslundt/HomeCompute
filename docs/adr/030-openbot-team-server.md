@@ -50,6 +50,9 @@ agents. LiteLLM retains the ChatGPT OAuth material; OpenBot receives only its
 scoped virtual key. The existing public/cleared-data rule for cloud agents still
 applies.
 
+The 2026-11-17 Astra grant extends this model-only key to
+`chatgpt-astra-latest` using the existing credential. MCP access remains denied.
+
 Use OpenBot's hosted account, Signal, and TURN services. Do not deploy its
 self-hosted Cloudflare account stack or publish ports from Home Core. Account
 sign-in and cloud-provider authentication are owner actions.
