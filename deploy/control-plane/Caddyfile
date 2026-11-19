@@ -128,6 +128,16 @@ nod.home.arpa {
 	respond "Forbidden" 403
 }
 
+paperclip.home.arpa {
+	tls internal
+	encode zstd gzip
+	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
+	handle @private {
+		reverse_proxy paperclip:3100
+	}
+	respond "Forbidden" 403
+}
+
 automations.home.arpa {
 	tls internal
 	encode zstd gzip
@@ -176,6 +186,10 @@ http://:8080 {
 	@nod host nod.home.arpa
 	handle @nod {
 		redir https://nod.home.arpa{uri} 308
+	}
+	@paperclip host paperclip.home.arpa
+	handle @paperclip {
+		redir https://paperclip.home.arpa{uri} 308
 	}
 	@automations host automations.home.arpa
 	handle @automations {

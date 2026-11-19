@@ -108,6 +108,7 @@ python3 "$REPO_ROOT/tests/home-core-service-recovery-test.py"
 python3 "$REPO_ROOT/tests/platform-health-test.py"
 python3 "$REPO_ROOT/tests/platform-observability-setup-test.py"
 python3 "$REPO_ROOT/tests/release-overrides-test.py"
+python3 "$REPO_ROOT/tests/paperclip-deployment-test.py"
 python3 "$REPO_ROOT/tests/podwave-deployment-test.py"
 python3 "$REPO_ROOT/tests/podwave-deploy-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/podwave-network-test.py"
@@ -812,6 +813,35 @@ jq -e '
   (.services.postgres.networks.edge == null)
 ' "$control_plane_json" >/dev/null
 
+paperclip_env="$temporary_root/paperclip.env"
+printf 'BETTER_AUTH_SECRET=validation-only\n' > "$paperclip_env"
+PAPERCLIP_SECRETS_FILE="$paperclip_env" docker compose \
+  -f "$REPO_ROOT/deploy/paperclip/compose.yaml" config --format json |
+jq -e '
+  (.services | keys == ["paperclip"]) and
+  (.networks.paperclip.external == true and .networks.paperclip.name == "homecompute-paperclip") and
+  (.services.paperclip |
+    (.image | test("^ghcr[.]io/paperclipai/paperclip:[0-9.]+@sha256:[a-f0-9]{64}$")) and
+    .user == "1000:1000" and .read_only == true and .cap_drop == ["ALL"] and
+    .ports == null and (.privileged // false | not) and
+    (.networks | keys == ["paperclip"]) and
+    ([.volumes[] | [.source, .target]] == [["/srv/state/paperclip", "/paperclip"]]) and
+    .environment.PAPERCLIP_DEPLOYMENT_MODE == "authenticated" and
+    .environment.PAPERCLIP_DEPLOYMENT_EXPOSURE == "private" and
+    .environment.PAPERCLIP_PUBLIC_URL == "https://paperclip.home.arpa")
+' >/dev/null
+jq -e '
+  .services.caddy.networks.paperclip != null and
+  .networks.paperclip.internal == true and
+  .networks.paperclip.name == "homecompute-paperclip" and
+  ([.services | to_entries[] | select(.value.networks.paperclip != null) | .key] == ["caddy"])
+' "$control_plane_json" >/dev/null
+jq -e '
+  .zone == "home.arpa" and
+  .records == [{"name": "paperclip.home.arpa", "type": "A", "value": "192.168.30.122", "ttl": 300}]
+' "$REPO_ROOT/config/paperclip-dns.json" >/dev/null
+rg -F 'href: https://paperclip.home.arpa/' "$REPO_ROOT/deploy/homepage/config/services.yaml" >/dev/null
+
 podwave_json="$temporary_root/podwave.json"
 docker compose -f "$REPO_ROOT/deploy/podwave/compose.yaml" config --format json >"$podwave_json"
 jq -e '
@@ -1475,7 +1505,7 @@ grep -Fqx 'OnCalendar=hourly' \
 # Nod is a Compose overlay for a separate KVM guest with its own Docker daemon.
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode piper-tts podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode paperclip piper-tts podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

@@ -1,0 +1,47 @@
+name: homecompute-paperclip
+
+services:
+  paperclip:
+    image: ghcr.io/paperclipai/paperclip:2026.1117.0@sha256:bdf38d10544dc6c831e16dc027f23ad586353ef3be1a1b2c6979e63b956aceb1
+    user: "1000:1000"
+    restart: unless-stopped
+    stop_grace_period: 90s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_PUBLIC_URL: https://paperclip.home.arpa
+      PAPERCLIP_TELEMETRY_DISABLED: "true"
+    env_file:
+      - ${PAPERCLIP_SECRETS_FILE:-/run/secrets/paperclip/environment}
+    volumes:
+      - type: bind
+        source: /srv/state/paperclip
+        target: /paperclip
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    healthcheck:
+      test: [CMD, curl, -fsS, -H, "Host: paperclip.home.arpa", "http://127.0.0.1:3100/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 90s
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
+    networks:
+      paperclip: {}
+
+networks:
+  paperclip:
+    name: homecompute-paperclip
+    external: true

@@ -67,6 +67,7 @@ services:
         ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
       mcp-web:
         ipv4_address: ${CADDY_MCP_WEB_IP:?Set CADDY_MCP_WEB_IP}
+      paperclip: {}
       podwave:
         aliases: [ai.home.arpa]
 
@@ -469,6 +470,13 @@ networks:
       config:
         - subnet: ${CONTROL_PLANE_MCP_BACKENDS_SUBNET:?Set CONTROL_PLANE_MCP_BACKENDS_SUBNET}
           gateway: ${CONTROL_PLANE_MCP_BACKENDS_GATEWAY:?Set CONTROL_PLANE_MCP_BACKENDS_GATEWAY}
+  paperclip:
+    name: homecompute-paperclip
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
   podwave:
     name: homecompute-podwave
     driver: bridge

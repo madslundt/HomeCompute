@@ -44,6 +44,11 @@ in
           };
 
           secrets = {
+            "paperclip/environment" = {
+              sopsFile = ../../secrets/paperclip.sops.yaml;
+              key = "paperclip/environment";
+              mode = "0400";
+            };
             # Complete dotenv document: decrypted only at activation, never
             # interpolated into the Nix store. Compose reads it with --env-file.
             "books_importer/environment" = {

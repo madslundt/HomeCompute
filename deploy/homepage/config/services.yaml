@@ -55,6 +55,12 @@
         href: https://openbot.run/app
         description: Open AI teammates · select the home-core server
 
+    - Paperclip:
+        id: homecore-paperclip
+        icon: mdi-paperclip
+        href: https://paperclip.home.arpa/
+        description: Organize AI agent teams and track their work
+
     - Nod:
         id: homecore-nod
         icon: mdi-robot-outline

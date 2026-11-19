@@ -48,6 +48,9 @@ limited to TCP 6080 from the Caddy edge address. The desktop does not share the
 Homepage container, Docker network, credentials, or host filesystem. See the
 [toolbox runbook](../toolbox/README.md) for setup and access.
 
+The **Paperclip** card opens `https://paperclip.home.arpa/`. Paperclip uses its
+own login. See the [Paperclip runbook](../paperclip/README.md) for setup and access.
+
 The **Nod** card opens `https://nod.home.arpa/` over the LAN or Tailscale
 split DNS. Nod uses its own owner token. See the [Nod runbook](../nod/README.md)
 for device access and integrations.

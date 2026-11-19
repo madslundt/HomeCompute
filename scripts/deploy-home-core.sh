@@ -144,9 +144,11 @@ ai_automation_manager=(docker compose --env-file /etc/homecompute/automation.env
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
+paperclip=(docker compose -f "$release/deploy/paperclip/compose.yaml")
 podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
 source "$release/scripts/lib/podwave-backup.sh"
 "${gateway[@]}" config --quiet
+"${paperclip[@]}" config --quiet
 "${podwave[@]}" config --quiet
 "${automation[@]}" config --quiet
 ai_automation_manager_enabled="$(sed -n 's/^AI_AUTOMATION_MANAGER_ENABLED=//p' /etc/homecompute/automation.env | tail -n 1)"
@@ -178,6 +180,7 @@ install -d -m 0755 /srv/state/control-plane/caddy-config/video-api
 install -m 0644 "$release/deploy/control-plane/video-api.Caddyfile" /srv/state/control-plane/caddy-config/video-api/Caddyfile
 "${gateway[@]}" pull
 "${automation[@]}" pull n8n
+"${paperclip[@]}" pull
 "${homepage[@]}" pull
 "${automation[@]}" build --no-cache aula-mcp
 "${automation[@]}" build --no-cache tilbudstrolden-mcp
@@ -220,6 +223,14 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
+"${paperclip[@]}" up -d --wait --wait-timeout 180
+curl --fail --silent --show-error --max-time 20 \
+  --cacert /etc/homecompute/control-plane/home-core-root.crt \
+  --resolve "paperclip.home.arpa:443:$(jq -er '.records[0].value' "$release/config/paperclip-dns.json")" \
+  https://paperclip.home.arpa/api/health |
+  jq -e '.status == "ok" and .deploymentMode == "authenticated"' >/dev/null
+# Retire the duplicate scoped secret once the regular SOPS path owns the container.
+rm -f -- /var/lib/homecompute/paperclip/environment
 podwave_backup="$(backup_podwave_state "$revision" "${podwave[@]}")"
 if [[ -n "$podwave_backup" ]]; then
   printf 'PodWave state backup: %s\n' "$podwave_backup"
