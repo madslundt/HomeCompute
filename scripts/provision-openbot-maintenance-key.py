@@ -2,6 +2,7 @@
 """Create a maintenance-only LiteLLM key for the isolated OpenBot operator server."""
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 import subprocess
@@ -82,7 +83,7 @@ def revoke_key(key: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == 'revoked'
 
 
-def run() -> None:
+def run(scoped: bool = False) -> None:
     if not GUEST_KEY.is_file() or GUEST_KEY.is_symlink():
         raise RuntimeError('The dedicated agents-VM SSH identity is unavailable')
     revision = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'],
@@ -93,10 +94,14 @@ def run() -> None:
                                capture_output=True, text=True, check=True).stdout
     if revision != published or porcelain:
         raise RuntimeError('Use a clean checkout of the exact published origin/master revision')
-    deployed = subprocess.run(['ssh', 'home-core', 'sudo -n cat /var/lib/homecompute/deployed-revision'],
-                              capture_output=True, text=True, check=True).stdout.strip()
-    if deployed != revision:
-        raise RuntimeError('Home Core must be deployed from this exact published revision first')
+    if scoped:
+        subprocess.run([str(ROOT / 'scripts/setup-openbot-guest.sh'), 'verify-scoped'],
+                       check=True, capture_output=True, text=True, timeout=180)
+    else:
+        deployed = subprocess.run(['ssh', 'home-core', 'sudo -n cat /var/lib/homecompute/deployed-revision'],
+                                  capture_output=True, text=True, check=True).stdout.strip()
+        if deployed != revision:
+            raise RuntimeError('Home Core must be deployed from this exact published revision first')
     existing = subprocess.run(
         ['ssh', '-J', 'home-core', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
          '-i', str(GUEST_KEY), GUEST,
@@ -155,8 +160,10 @@ def run() -> None:
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--scoped', action='store_true', help='verify the scoped gateway and VM backup first')
     try:
-        run()
+        run(parser.parse_args().scoped)
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
         print(f'OpenBot maintenance key provisioning failed ({type(exc).__name__})', file=sys.stderr)
         raise SystemExit(1) from None

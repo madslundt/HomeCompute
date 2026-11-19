@@ -24,17 +24,21 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|upgrade-team-image|login|login-operator|status|configure-compression
+Usage: setup-openbot-guest.sh install|install-scoped|verify-scoped|upgrade-team-image|login|login-operator|login-operator-scoped|status|configure-compression
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
          deployed revision. Managed upgrades preserve /data and refuse drift.
          This does not sign in to OpenBot or configure a provider.
+install-scoped  Add the isolated operator after verifying the scoped Core rollout
+                and encrypted VM backup. The team image and package pin must match.
+verify-scoped   Verify the scoped Core gateway and current VM backup.
 upgrade-team-image  Apply only the published image pin to the managed team-only release.
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
 login-operator  Sign the isolated operator server into the same owner account.
+login-operator-scoped  Sign in after verifying the scoped rollout.
 EOF
 }
 
@@ -69,6 +73,15 @@ require_current_master_checkout() {
   [[ "${published%%$'\t'*}" == "$revision" ]] || {
     echo 'Fetch origin/master and check out its current published revision first.' >&2; return 1;
   }
+}
+
+require_scoped_release() {
+  require_current_master_checkout
+  local revision release
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  release="/srv/homecompute/releases/$revision"
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core \
+    "sudo -n python3 $release/scripts/deploy-openbot-scoped-gateway.py verify --revision $revision && sudo -n python3 $release/scripts/backup-openbot-agents-vm.py verify --revision $revision"
 }
 
 configure_compression() {
@@ -214,13 +227,22 @@ status() {
 }
 
 login_server() {
-  require_published_release
+  if [[ "${3:-full}" == scoped ]]; then
+    require_scoped_release
+  else
+    require_published_release
+  fi
   ssh -tt -J home-core -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i "$KEY_FILE" \
     "$GUEST" "sudo -n docker exec -it $1 openbot login --name $2"
 }
 
 install_openbot() {
-  require_published_release
+  local mode="${1:-full}"
+  if [[ "$mode" == scoped ]]; then
+    require_scoped_release
+  else
+    require_published_release
+  fi
   local revision stage release compose_package compose_version compose_cli_version compose_sha256 compose_architecture
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   compose_package="$(jq -er '.docker_compose.apt_package' "$REPO_ROOT/config/openbot-install.json")"
@@ -231,10 +253,10 @@ install_openbot() {
   stage="/tmp/homecompute-openbot-$revision"
   release="$REMOTE_BASE/releases/$revision"
   ssh_guest bash -s -- "$REMOTE_BASE" "$stage" "$release" "$compose_package" \
-    "$compose_version" "$compose_cli_version" "$compose_sha256" "$compose_architecture" <<'REMOTE_PREP'
+     "$compose_version" "$compose_cli_version" "$compose_sha256" "$compose_architecture" "$mode" <<'REMOTE_PREP'
 set -Eeuo pipefail
 base="$1"; stage="$2"; compose_package="$4"; compose_version="$5"
-compose_cli_version="$6"; compose_sha256="$7"; compose_architecture="$8"
+compose_cli_version="$6"; compose_sha256="$7"; compose_architecture="$8"; mode="$9"
 command -v docker >/dev/null
 docker info >/dev/null
 test -r /home/hermes-operator/.config/homecompute-hermes/certs/home-core-root.crt || {
@@ -335,6 +357,7 @@ command -v apt-get >/dev/null
 test "$(dpkg --print-architecture)" = "$compose_architecture"
 installed_compose_version="$(dpkg-query -W -f='${Version}' "$compose_package" 2>/dev/null || true)"
 if test "$installed_compose_version" != "$compose_version"; then
+  [[ "$mode" != scoped ]] || { echo 'Scoped install requires the existing pinned Compose package.' >&2; exit 1; }
   sudo -n apt-get update -qq
   package_dir="$(mktemp -d /tmp/homecompute-openbot-compose.XXXXXX)"
   trap 'rm -rf "$package_dir"' EXIT
@@ -355,15 +378,61 @@ REMOTE_PREP
 
   scp -q -J home-core -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i "$KEY_FILE" "${ASSETS[@]}" "$GUEST:$stage/"
 
-  ssh_guest bash -s -- "$REMOTE_BASE" "$stage" "$release" <<'REMOTE_INSTALL'
+  ssh_guest bash -s -- "$REMOTE_BASE" "$stage" "$release" "$mode" <<'REMOTE_INSTALL'
 set -Eeuo pipefail
-base="$1"; stage="$2"; release="$3"
+base="$1"; stage="$2"; release="$3"; mode="$4"
 root_ca=/home/hermes-operator/.config/homecompute-hermes/certs/home-core-root.crt
 bundle="$stage/agent-ca-bundle.pem"
 # Keep public roots for hosted services and add the private gateway root for agents.
 cat /etc/ssl/certs/ca-certificates.crt "$root_ca" > "$bundle"
 openssl verify -CAfile "$bundle" "$root_ca" >/dev/null
-sudo -n systemctl stop homecompute-openbot.service >/dev/null 2>&1 || true
+if [[ "$mode" == scoped ]]; then
+  exec 9>"$base/image-upgrade.lock"
+  flock -n 9
+  previous="$(readlink -f "$base/current")"
+  [[ "$previous" == "$base/releases/"* && "${previous##*/}" =~ ^[0-9a-f]{40}$ ]] || exit 1
+  expected_image="$(awk '$1 == "image:" && !found++ { print $2 }' "$stage/compose.yaml")"
+  [[ "$expected_image" =~ ^ghcr[.]io/nightly-labs/openbot@sha256:[0-9a-f]{64}$ ]] || exit 1
+  [[ "$expected_image" == "$(sudo -n docker inspect --format '{{.Config.Image}}' homecompute-openbot)" ]] || {
+    echo 'Scoped install preserves the team image.' >&2; exit 1;
+  }
+  sudo -n systemctl --quiet is-active homecompute-openbot.service homecompute-openbot-firewall.service
+  if [[ "$previous" == "$release" ]]; then
+    sudo -n /usr/local/libexec/homecompute-openbot-health
+    exit 0
+  fi
+  cmp -s "$root_ca" /etc/homecompute-openbot/home-core-root.crt
+  cmp -s "$bundle" /etc/homecompute-openbot/agent-ca-bundle.pem
+  rollback_scoped() {
+    trap - EXIT
+    trap '' HUP INT TERM
+    set +e
+    systemctl_cmd=(sudo -n systemctl)
+    "${systemctl_cmd[@]}" stop homecompute-openbot.service
+    "${systemctl_cmd[@]}" stop homecompute-openbot-firewall.service
+    sudo -n docker stop homecompute-openbot-operator >/dev/null 2>&1 || true
+    ln -sfnT "$previous" "$base/current"
+    for unit in homecompute-openbot.service homecompute-openbot-firewall.service; do
+      sudo -n install -o root -g root -m 0644 "$previous/$unit" "/etc/systemd/system/$unit"
+    done
+    sudo -n install -o root -g root -m 0644 "$previous/openbot-network.json" /etc/homecompute-openbot/network.json
+    sudo -n install -o root -g root -m 0755 "$previous/network-policy.py" /usr/local/libexec/homecompute-openbot-network-policy
+    sudo -n install -o root -g root -m 0755 "$previous/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health
+    "${systemctl_cmd[@]}" daemon-reload
+    "${systemctl_cmd[@]}" start homecompute-openbot-firewall.service homecompute-openbot.service
+    "${systemctl_cmd[@]}" --quiet is-active homecompute-openbot-firewall.service homecompute-openbot.service &&
+      sudo -n /usr/local/libexec/homecompute-openbot-health || {
+      echo 'Previous OpenBot guest release requires recovery.' >&2; exit 1;
+    }
+    echo 'Previous OpenBot guest release restored; preserve operator data for review.' >&2
+    exit 1
+  }
+  trap rollback_scoped EXIT
+  trap 'exit 1' HUP INT TERM
+  sudo -n systemctl stop homecompute-openbot.service
+else
+  sudo -n systemctl stop homecompute-openbot.service >/dev/null 2>&1 || true
+fi
 install -d -o hermes-operator -g hermes-operator -m 0700 "$release"
 for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health configure-openbot-hermes.py openbot-network.json openbot-install.json; do
   if test -e "$release/$file" || test -L "$release/$file"; then
@@ -375,10 +444,10 @@ done
 sudo -n chmod 0644 "$release/compose.yaml" "$release/seccomp.json" "$release/homecompute-openbot.service" "$release/homecompute-openbot-firewall.service" "$release/openbot-network.json" "$release/openbot-install.json"
 sudo -n chmod 0755 "$release/network-policy.py" "$release/homecompute-openbot-health" "$release/configure-openbot-hermes.py"
 sudo -n install -d -o root -g root -m 0755 /etc/homecompute-openbot /usr/local/libexec
-sudo -n install -o root -g root -m 0444 \
-  /home/hermes-operator/.config/homecompute-hermes/certs/home-core-root.crt \
-  /etc/homecompute-openbot/home-core-root.crt
-sudo -n install -o root -g root -m 0444 "$bundle" /etc/homecompute-openbot/agent-ca-bundle.pem
+if [[ "$mode" != scoped ]]; then
+  sudo -n install -o root -g root -m 0444 "$root_ca" /etc/homecompute-openbot/home-core-root.crt
+  sudo -n install -o root -g root -m 0444 "$bundle" /etc/homecompute-openbot/agent-ca-bundle.pem
+fi
 sudo -n install -o root -g root -m 0644 "$release/openbot-network.json" /etc/homecompute-openbot/network.json
 sudo -n install -o root -g root -m 0755 "$release/network-policy.py" /usr/local/libexec/homecompute-openbot-network-policy
 sudo -n install -o root -g root -m 0755 "$release/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health
@@ -404,6 +473,7 @@ sudo -n systemctl restart homecompute-openbot-firewall.service
 sudo -n systemctl enable --now homecompute-openbot.service
 sudo -n systemctl --no-pager --quiet is-active homecompute-openbot.service
 sudo -n /usr/local/libexec/homecompute-openbot-health
+trap - EXIT HUP INT TERM
 rm -rf "$stage"
 echo 'OpenBot installed and digest-pinned. Account sign-in and model-provider setup remain pending.'
 REMOTE_INSTALL
@@ -413,9 +483,12 @@ main() {
   [[ $# == 1 ]] || { usage >&2; return 2; }
   case "$1" in
     install) install_openbot ;;
+    install-scoped) install_openbot scoped ;;
+    verify-scoped) require_scoped_release ;;
     upgrade-team-image) upgrade_team_image ;;
     login) login_server homecompute-openbot home-core ;;
     login-operator) login_server homecompute-openbot-operator home-core-operator ;;
+    login-operator-scoped) login_server homecompute-openbot-operator home-core-operator scoped ;;
     status) status ;;
     configure-compression) configure_compression ;;
     -h|--help|help) usage ;;

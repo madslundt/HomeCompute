@@ -33,14 +33,18 @@ FILES = {
 }
 # Exact previously published Home Core content observed during LiteLLM rollout
 # (the source file at revision 040bb71). Accept it as an installer preimage so
-# the guarded transaction can replace it with the selected release.
+# the guarded transaction can replace it with the selected release. The
+# scoped operator rollout also accepts the two exact retirement preimages
+# from f8841fc1 and the capabilities facade from d2cfff0f.
 COMPATIBLE_PREIMAGES = {
     # Installed hashes match both the active receipt and published 58ca0f17.
     'scripts/openclaw-communication.py': {
         'd2a9f6d3e469a4e24359c68d8fe822bd7227bcc9962676e999892fc8f7ec37df',
+        'f5e0a337813639fceed107e73e59065559059c7d97fa51245a1f6b828e5a86cf',
     },
     'scripts/setup-native-capabilities.py': {
         'fa652f8676f45dd120d3c532b5d7f6b2b749f69035176ba7ca81f55cf1fbc18e',
+        '101269005440ef42de3c8318ea49258e86688bdd36ead6594098871593d526a0',
         'f71e3c34d954fdc686d22bda8bc9b678d4b96d1ea455e3560ca574fd595b4159',
     },
     # Exact adapter sources recorded in the applied receipt for published
@@ -48,6 +52,7 @@ COMPATIBLE_PREIMAGES = {
     # preimages so the guarded upgrade can replace them with the selected source.
     'scripts/openclaw_capabilities.py': {
         'd3c9bd1c393cf1704e819d74ad39cbaf2db1913dc58dd0cde00935c622e05711',
+        '817151a40db0870e0993e4645a1b64d0e19a9cdcb700470842dc6335619f939b',
         'fd60bb7cd50333804dd7d3611387a37a7de939605d2ad1bf2f85f676d47b633a',
     },
     'deploy/codex-worker/mcp_adapter.py': {
