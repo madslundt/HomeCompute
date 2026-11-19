@@ -27,6 +27,13 @@ Reuse the controller's state snapshot, one-attempt receipt, and restart
 verification. The existing operator workstation CLI remains the Home Core
 release and rollback path.
 
+The scoped rollout may stage a published release while an existing Home Core
+release stays active. The scoped gateway installer adds exactly the isolated
+alias to the running configuration and records the prior mount for rollback.
+The guest workflow verifies a separate encrypted agents-VM snapshot in the
+active NAS repository before installing the operator. The standard host
+deployment remains the path for changing Home Core's declared release.
+
 ## Rollout gates
 
 Verify the separate instance and credentials, report freshness, and the

@@ -24,6 +24,8 @@ compute appliance. `home-core` is configured with `nixos-rebuild`.
 | `setup-openbot-guest.sh` | OpenBot team server in the agents VM | Published-revision-guarded `install`, interactive `login`, redacted `status` |
 | `configure-openbot-hermes.py` | Hermes CLI embedded in `homecompute-openbot` | Reconcile its custom local Home AI route without rewriting credential-bearing providers |
 | `provision-openbot-litellm-key.py` | OpenBot local-model provider and MCP client | Creates and installs a key scoped to `automation-moe` and `all-harness-mcps`; never prints the key |
+| `deploy-openbot-scoped-gateway.py` | Active Home Core LiteLLM gateway | Plan, apply, verify, or roll back only the isolated OpenBot maintenance alias |
+| `backup-openbot-agents-vm.py` | Agents VM and active encrypted NAS repository | Attended VM capture and fresh snapshot verification for the scoped rollout |
 | `provision-openbot-maintenance-key.py` | Isolated `home-core-operator` server | Creates and installs a distinct key scoped to `automation-moe` and the maintenance-only MCP server |
 | `setup-litellm-harness-mcp-access.py` | Home Core deployment | Idempotently grants the full LiteLLM catalog to the known Hermes, OpenBot, and OpenCode harness keys while preserving service-key deny sentinels |
 | `provision-openbot-chatgpt-key.py` | OpenBot ChatGPT subscription provider through LiteLLM | Creates and installs a key scoped to the three `chatgpt-*-latest` aliases with MCP denied; never prints the key |

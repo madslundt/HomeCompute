@@ -240,6 +240,91 @@ The HomeCompute and LiteLLM credentials are each server-wide within
 regular `home-core` server cannot list the maintenance alias or call the
 maintenance principal before enabling it.
 
+### Scoped operator rollout
+
+Use the scoped lifecycle when Home Core has a reviewed deployed release that
+cannot yet move to the current `master`. It stages published code and adds the
+single maintenance alias to the mounted LiteLLM configuration. The active
+Home Core and backup schedule continue to be owned by their existing release.
+The OpenBot guest installer keeps the running team image, Compose package
+and CA files. It briefly restarts OpenBot when it adds the isolated server.
+
+Start with a clean workstation checkout of the current published
+`origin/master`. On Home Core, stage the same full SHA in the versioned
+release directory. Use a previously staged directory only if its exact SHA,
+clean tree and `origin/master` provenance match. The staging step carries no
+deployment marker or current symlink update.
+
+```bash
+revision=FULL_SHA
+release="/srv/homecompute/releases/$revision"
+sudo git clone --no-checkout --single-branch --branch master \
+  https://github.com/madslundt/HomeCompute.git "$release"
+sudo git -C "$release" checkout --detach "$revision"
+cd "$release"
+```
+
+The selected-state NAS schedule omits the agents VM. Arrange an attended
+guest pause before running the scoped backup. The script checks the active
+NAS lifecycle and immutable VM seed, stops the agents VM, stages its qcow2
+disk and seed on local storage, and resumes the VM before the image check
+and encrypted NAS upload. Budget space for the entire disk plus 2 GiB.
+Verification checks that the snapshot contains the captured disk, seed,
+and manifest within the preceding 36 hours. Use the owner-approved window
+for the pause, since other agents in the VM also go offline during capture.
+
+```bash
+sudo systemd-run --unit=homecompute-openbot-vm-backup --wait --collect \
+  --property=RuntimeMaxSec=3h --setenv=PATH=/run/current-system/sw/bin \
+  /run/current-system/sw/bin/python3 "$release/scripts/backup-openbot-agents-vm.py" \
+  backup --revision "$revision" --acknowledge-guest-pause
+sudo python3 scripts/backup-openbot-agents-vm.py verify --revision "$revision"
+```
+
+Install the reviewed controller bundle and apply the native relay admission plan
+as described under [Isolated infrastructure maintenance server](#isolated-infrastructure-maintenance-server),
+using this staged release. The relay installer verifies the native tool inventory.
+
+Plan and apply the gateway overlay under the Home Core deployment lock. The
+planner binds the mounted configuration hash and current pinned image. On
+failure the gateway helper attempts to remount the previous configuration.
+A successful apply records the prior mount alongside the source and rendered
+hashes.
+
+```bash
+sudo python3 scripts/deploy-openbot-scoped-gateway.py plan --revision "$revision"
+sudo python3 scripts/deploy-openbot-scoped-gateway.py apply --revision "$revision" \
+  --expected-plan-sha256 REVIEWED_GATEWAY_PLAN_SHA256
+sudo python3 scripts/deploy-openbot-scoped-gateway.py verify --revision "$revision"
+```
+
+Then use the clean workstation checkout for guest installation, key
+provisioning and the interactive account sign-in.
+
+```bash
+./scripts/setup-openbot-guest.sh install-scoped
+./scripts/setup-openbot-guest.sh status
+python3 scripts/provision-openbot-maintenance-key.py --scoped
+./scripts/setup-openbot-guest.sh login-operator-scoped
+```
+
+Configure the isolated provider, connection, and agent as described above.
+Verify the eight tools through the scoped credential, a health report and
+a Git upgrade proposal. Confirm the shared server and model-only keys
+cannot discover or use the operator tools. After the owner approves one
+restart, verify its receipt and client path before routine use.
+
+If guest installation fails, the installer restores the prior team release's
+pointer, units and network assets and checks team health. The staged operator
+data is retained for inspection. To withdraw access after admission, use
+[Withdraw access](#withdraw-access) and restore the prior gateway mount from
+the same scoped release with the recorded receipt. Keep both private
+data directories under the backup and recovery lifecycle.
+
+```bash
+sudo python3 scripts/deploy-openbot-scoped-gateway.py rollback --revision "$revision"
+```
+
 ### Propose upgrades in Git
 
 Start with current host reports. Ask OpenBot to draft the source change for
