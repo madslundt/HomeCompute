@@ -88,6 +88,99 @@ class GatewayTest(unittest.TestCase):
 
 
 class BackupTest(unittest.TestCase):
+    def run_backup_with_sync(self, timer_state, sync_states, *, upload_error=None, drain_stuck=False):
+        with tempfile.TemporaryDirectory() as work, ExitStack() as mocked:
+            state = Path(work) / 'state'
+            calls = []
+            timer = 'homecompute-assistant-context-sync.timer'
+            service = 'homecompute-assistant-context-sync.service'
+            current = timer_state
+            pending = iter(sync_states)
+
+            def inspect(*args):
+                if args == ('systemctl', 'show', timer, '-p', 'ActiveState', '--value'):
+                    return current
+                self.assertEqual(args, ('systemctl', 'show', service, '-p', 'ActiveState', '-p', 'Job'))
+                calls.append('inspect sync')
+                return next(pending)
+
+            def control(*args):
+                nonlocal current
+                self.assertEqual(args[0], 'systemctl')
+                self.assertEqual(args[2:], (timer,))
+                if args[1] == 'stop':
+                    current = 'inactive'
+                    calls.append('pause')
+                else:
+                    self.assertEqual(args[1], 'start')
+                    self.assertFalse(any(state.glob('agents-vm-*')))
+                    current = 'active'
+                    calls.append('resume')
+
+            def capture(*_):
+                self.assertEqual(current, 'inactive')
+                calls.append('capture')
+                return {'captured_at': 'fixture'}
+
+            def upload(_):
+                self.assertEqual(current, 'inactive')
+                calls.append('upload')
+                if upload_error:
+                    raise upload_error
+                return '{"message_type":"summary","snapshot_id":"fixture"}'
+
+            def verify(*_):
+                self.assertEqual(current, 'inactive')
+                calls.append('verify')
+
+            clock = Mock()
+            clock.monotonic.return_value = 0
+            if drain_stuck:
+                clock.monotonic.side_effect = [0, 300]
+
+            nas = Mock()
+            nas.restic.side_effect = upload
+            for target, name, value in (
+                    (backup, 'STATE', state), (backup, 'RECEIPT', state / 'receipt.json'),
+                    (backup, 'load', Mock()), (backup, 'capture', capture),
+                    (backup, 'verify_snapshot', verify), (backup, 'command', control),
+                    (backup, 'time', clock),
+                    (backup.core, 'command', inspect)):
+                mocked.enter_context(patch.object(target, name, value))
+
+            if drain_stuck:
+                with self.assertRaisesRegex(ValueError, 'sync did not finish'):
+                    backup.backup(nas)
+            elif upload_error:
+                with self.assertRaises(type(upload_error)):
+                    backup.backup(nas)
+            else:
+                backup.backup(nas)
+            return calls
+
+    def test_backup_drains_scan_and_holds_timer_through_snapshot_verification(self):
+        calls = self.run_backup_with_sync('active', ['ActiveState=inactive\nJob=42',
+                                                     'ActiveState=inactive\nJob='])
+        self.assertEqual(calls, [
+            'pause', 'inspect sync', 'inspect sync', 'capture', 'upload', 'verify', 'resume',
+        ])
+
+    def test_backup_restores_active_timer_on_upload_failure_or_interruption(self):
+        for error in (ValueError('upload failed'), InterruptedError('backup interrupted')):
+            with self.subTest(error=type(error)):
+                calls = self.run_backup_with_sync(
+                    'active', ['ActiveState=inactive\nJob='], upload_error=error)
+                self.assertEqual(calls, ['pause', 'inspect sync', 'capture', 'upload', 'resume'])
+
+    def test_backup_refuses_a_scan_that_does_not_finish_and_restores_the_timer(self):
+        calls = self.run_backup_with_sync('active', ['ActiveState=activating\nJob=42'],
+                                          drain_stuck=True)
+        self.assertEqual(calls, ['pause', 'inspect sync', 'resume'])
+
+    def test_backup_preserves_an_inactive_timer(self):
+        calls = self.run_backup_with_sync('inactive', ['ActiveState=inactive\nJob='])
+        self.assertEqual(calls, ['inspect sync', 'capture', 'upload', 'verify'])
+
     def test_only_a_fresh_snapshot_with_disk_seed_and_manifest_qualifies(self):
         directory = '/var/lib/homecompute/openbot-scoped/agents-vm-x1y2z3_4'
         metadata = {'captured_at': datetime.now(timezone.utc).isoformat(),

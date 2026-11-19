@@ -269,6 +269,14 @@ guest pause before running the scoped backup. The script checks the active
 NAS lifecycle and immutable VM seed, stops the agents VM, stages its qcow2
 disk and seed on local storage, and resumes the VM before the image check
 and encrypted NAS upload. Budget space for the entire disk plus 2 GiB.
+Before pausing the VM, the backup stops the assistant-context sync timer
+and gives a running or queued scan up to five minutes to finish. It holds
+the timer through the NAS upload, snapshot verification, and staging cleanup.
+It restarts an originally active timer when the operation exits, including
+on failure or normal termination. A stopped timer stays stopped. If the
+script is forcibly killed and the timer was previously active, wait for
+the backup unit to stop, then restore the timer on home-core with
+`sudo systemctl start homecompute-assistant-context-sync.timer`.
 Verification checks that the snapshot contains the captured disk, seed,
 and manifest within the preceding 36 hours. Use the owner-approved window
 for the pause, since other agents in the VM also go offline during capture.

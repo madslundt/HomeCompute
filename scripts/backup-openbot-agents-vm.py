@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import fcntl
 import hashlib
@@ -17,9 +18,12 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 UNIT = 'homecompute-agents-vm.service'
+SYNC_TIMER = 'homecompute-assistant-context-sync.timer'
+SYNC_SERVICE = 'homecompute-assistant-context-sync.service'
 DISK = Path('/srv/state/agents-vm/agents.qcow2')
 STATE = Path('/var/lib/homecompute/openbot-scoped')
 RECEIPT = STATE / 'agents-vm-backup.json'
@@ -139,11 +143,46 @@ def verify_snapshot(nas, value):
         raise ValueError('Encrypted snapshot manifest differs from the captured bundle')
 
 
+def wait_for_context_sync():
+    # Match the collector's five-minute systemd start timeout. A timer may
+    # already have queued a job before stop even if the service is inactive.
+    deadline = time.monotonic() + 300
+    while True:
+        state = core.command('systemctl', 'show', SYNC_SERVICE, '-p', 'ActiveState', '-p', 'Job')
+        fields = set(state.splitlines())
+        if 'Job=' in fields and fields & {'ActiveState=inactive', 'ActiveState=failed'}:
+            return
+        if time.monotonic() >= deadline:
+            raise ValueError('Assistant-context sync did not finish before the VM backup')
+        time.sleep(1)
+
+
+@contextmanager
+def pause_context_sync():
+    state = core.command('systemctl', 'show', SYNC_TIMER, '-p', 'ActiveState', '--value')
+    if state not in {'active', 'inactive', 'failed'}:
+        raise ValueError('Assistant-context sync timer is changing state')
+    restore = state == 'active'
+    try:
+        if restore:
+            command('systemctl', 'stop', SYNC_TIMER)
+        wait_for_context_sync()
+        yield
+    finally:
+        if restore:
+            # A second termination request must not interrupt timer cleanup.
+            previous = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            try:
+                command('systemctl', 'start', SYNC_TIMER)
+            finally:
+                signal.signal(signal.SIGTERM, previous)
+
+
 def backup(nas):
     STATE.mkdir(mode=0o700, exist_ok=True)
     nas.root_directory(STATE)
     seed = load(ROOT / 'scripts/application-recovery.py').agents_seed()
-    with tempfile.TemporaryDirectory(prefix='agents-vm-', dir=STATE) as work:
+    with pause_context_sync(), tempfile.TemporaryDirectory(prefix='agents-vm-', dir=STATE) as work:
         directory = Path(work)
         metadata = capture(directory, seed)
         manifest = directory / 'manifest.json'
