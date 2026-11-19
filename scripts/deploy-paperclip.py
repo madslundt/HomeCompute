@@ -138,13 +138,23 @@ def render_redirect(current, canonical):
 
 def verify():
     address = json.loads((ROOT / "config/paperclip-dns.json").read_text())["records"][0]["value"]
-    curl = ("curl", "--fail", "--silent", "--show-error", "--max-time", "15")
-    body = run(*curl, "--cacert", GATEWAY_CA, "--resolve", f"{HOST}:443:{address}",
-               f"https://{HOST}/api/health", capture=True)
+    curl = ("curl", "--silent", "--show-error", "--max-time", "15")
+    # Docker hairpins a host-side request through its bridge IP, which Caddy
+    # correctly denies. Verify TLS at the published listener and check the
+    # upstream separately from the Caddy container.
+    status = run(*curl, "--cacert", GATEWAY_CA, "--resolve", f"{HOST}:443:{address}",
+                 "--output", "/dev/null", "--write-out", "%{http_code}",
+                 f"https://{HOST}/api/health", capture=True)
+    if status not in {"200", "403"}:
+        raise ValueError(f"Paperclip HTTPS listener returned HTTP {status}")
+    body = run("docker", "exec", "homecompute-control-plane-caddy-1", "wget", "-qO-",
+               "-T", "10", "--header", f"Host: {HOST}",
+               "http://paperclip:3100/api/health", capture=True)
     health = json.loads(body)
     if health.get("status") != "ok" or health.get("deploymentMode") != "authenticated":
         raise ValueError("Paperclip did not report authenticated readiness")
-    card = run(*curl, "-H", "Host: home-core", "http://127.0.0.1/api/services", capture=True)
+    card = run(*curl, "--fail", "-H", "Host: home-core",
+               "http://127.0.0.1/api/services", capture=True)
     if f"https://{HOST}/" not in card:
         raise ValueError("Homepage API does not return the Paperclip link")
 

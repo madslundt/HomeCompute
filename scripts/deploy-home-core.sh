@@ -224,10 +224,10 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
 "${paperclip[@]}" up -d --wait --wait-timeout 180
-curl --fail --silent --show-error --max-time 20 \
-  --cacert /etc/homecompute/control-plane/home-core-root.crt \
-  --resolve "paperclip.home.arpa:443:$(jq -er '.records[0].value' "$release/config/paperclip-dns.json")" \
-  https://paperclip.home.arpa/api/health |
+# Probe the upstream from Caddy. A host-side request hairpins through Docker
+# with a bridge source IP that is outside the private client allowlist.
+docker exec homecompute-control-plane-caddy-1 wget -qO- -T 10 \
+  --header 'Host: paperclip.home.arpa' http://paperclip:3100/api/health |
   jq -e '.status == "ok" and .deploymentMode == "authenticated"' >/dev/null
 # Retire the duplicate scoped secret once the regular SOPS path owns the container.
 rm -f -- /var/lib/homecompute/paperclip/environment
