@@ -31,39 +31,64 @@ class NoPublisher:
 
 
 class McpTests(unittest.TestCase):
-    def test_openbot_operator_release_and_restart_scope(self):
+    def test_openbot_has_read_only_proposals_and_exact_approved_restarts(self):
         from types import SimpleNamespace
 
         sys.path.insert(0, str(ROOT / 'scripts'))
         from openclaw_capabilities import Maintenance, OpenBotMaintenance
+        from maintenance_plan_preparation import DOCKER, GIT_IMAGE_PINS
 
         operator = OpenBotMaintenance()
-        regular = Maintenance()
-        names = {row['name']: row for row in tool_inventory(SimpleNamespace(maintenance=operator, read_only_only=True))}
-        self.assertIn('published master SHA', names['homecompute_maintenance_prepare']['description'])
-        self.assertTrue(operator.allowed_component('home-core', 'release'))
-        self.assertTrue(operator.allowed_component('home-core', 'restart-homepage'))
-        self.assertFalse(operator.allowed_component('home-core', 'restart-arbitrary'))
-        for target in ('home-spark', 'home-assistant'):
-            self.assertFalse(operator.allowed_component(target, 'release'))
-        with patch.object(regular, '_request') as request:
-            with self.assertRaises(ValueError):
-                regular.request('prepare', {'target': 'home-core', 'component': 'release'})
-            request.assert_not_called()
+        ledger = SimpleNamespace(maintenance=operator, read_only_only=True)
+        inventory = {row['name']: row for row in tool_inventory(ledger)}
+        proposal = inventory['homecompute_maintenance_proposal']
+        self.assertTrue(proposal['annotations']['readOnlyHint'])
+        self.assertEqual({'nixos', *GIT_IMAGE_PINS}, set(operator.proposal_components))
+        self.assertEqual({key: DOCKER[key.removeprefix('restart-')][0] for key in operator.RESTARTS},
+                         operator.RESTARTS)
+        prepare = inventory['homecompute_maintenance_prepare']['inputSchema']['properties']
+        self.assertEqual(['home-core'], prepare['target']['enum'])
+        self.assertEqual(set(operator.RESTARTS), set(prepare['component']['enum']))
+        legacy = tool_inventory(SimpleNamespace(maintenance=Maintenance()))
+        self.assertNotIn('homecompute_maintenance_proposal', {row['name'] for row in legacy})
 
-        release = {'policy': {'target': 'home-core', 'operation': 'deploy'}}
-        restart = {'policy': {'target': 'home-core', 'operation': 'fix'},
-                   'restart_container': 'homecompute-homepage-homepage-1'}
-        other_fix = {'policy': {'target': 'home-core', 'operation': 'fix'}}
-        ha_update = {'policy': {'target': 'home-assistant', 'operation': 'update'}}
-        args = {'plan_id': 'a' * 32}
-        for adapter, row in ((regular, release), (operator, other_fix), (operator, ha_update)):
-            with patch.object(adapter, '_request', return_value={'plan': row}) as request:
+        git_proposal = {'proposal': {'source_path': 'flake.lock'}}
+        with patch.object(operator, '_request', return_value=git_proposal) as request:
+            result = call_tool({'name': proposal['name'], 'arguments': {'component': 'nixos'}}, ledger)
+            self.assertEqual(git_proposal, json.loads(result['content'][0]['text']))
+            request.assert_called_once_with('proposal', {'component': 'nixos'})
+        for target, component in (('home-core', 'nixos'), ('home-core', 'release'), ('home-core', 'image-stt'),
+                                  ('home-core', 'restart-postgres'), ('home-spark', 'restart-homepage')):
+            with self.subTest(target=target, component=component), patch.object(operator, '_request') as request:
                 with self.assertRaises(ValueError):
-                    adapter.request('run', args)
+                    operator.request('prepare', {'target': target, 'component': component})
+                request.assert_not_called()
+
+        restart = {'policy': {'target': 'home-core', 'operation': 'fix'}, 'status': 'registered',
+                   'restart_container': operator.RESTARTS['restart-homepage'],
+                   'classification': {'approval_required': True}, 'approved': False}
+        proposals = [
+            {'policy': {'target': 'home-core', 'operation': 'update'}, 'approved': True},
+            {'policy': {'target': 'home-core', 'operation': 'deploy'}, 'approved': True},
+            dict(restart, restart_container='homecompute-control-plane-postgres-1', approved=True),
+            dict(restart, policy={'target': 'home-spark', 'operation': 'fix'}, approved=True),
+        ]
+        args = {'plan_id': 'a' * 32}
+        for other in proposals:
+            with patch.object(operator, '_request', return_value={'plan': other}) as request:
+                with self.assertRaises(ValueError):
+                    operator.request('run', args)
                 request.assert_called_once_with('status', args)
-        with patch.object(operator, '_request', return_value={'plans': [release, restart, other_fix, ha_update]}):
-            self.assertEqual([release, restart], operator.request('list', {})['plans'])
+        with patch.object(operator, '_request', return_value={'plan': restart}) as request:
+            self.assertEqual('exact_root_approval_required', operator.request('run', args)['plan']['reason'])
+            request.assert_called_once_with('status', args)
+        approved = dict(restart, approved=True)
+        receipt = {'plan': dict(approved, status='executing')}
+        with patch.object(operator, '_request', side_effect=[{'plan': approved}, receipt]) as request:
+            self.assertEqual(receipt, operator.request('run', args))
+            self.assertEqual(['status', 'run'], [item.args[0] for item in request.call_args_list])
+        with patch.object(operator, '_request', return_value={'plans': [restart, *proposals]}):
+            self.assertEqual([restart], operator.request('list', {})['plans'])
 
     def test_android_screenshot_uses_bounded_image_content_instead_of_json_text(self):
         from types import SimpleNamespace

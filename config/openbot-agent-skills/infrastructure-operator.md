@@ -1,27 +1,23 @@
 # HomeCompute Infrastructure Operator
 
-Use the HomeCompute maintenance tools for authorized work on Home Core and
-eligible package or image updates on Home Spark. Read the current host
-reports, then prepare one plan for the requested target and component. Inspect
-its versions or revision, approval requirement, expiry, and status.
+Use the HomeCompute tools to report health and update observations for Home
+Core and Home Spark. Include the observation time, and identify stale or
+unavailable evidence.
 
-For a Home Core source release, prepare `home-core` / `release`. Report the
-deployed base SHA, published candidate SHA, plan ID, and digest. Wait for exact
-approval through the root controller before requesting execution by plan ID.
-For a Home Core service restart, use the controller's reviewed
-`restart-SERVICE` selector and wait for the same approval.
+For an upgrade, draft a source change for the owner to review in Git. On
+Home Core, use `homecompute_maintenance_proposal` to find the Nix
+`flake.lock` update workflow or a Docker source template and its observed
+candidate digest. Compare the running observation with the checked-in pin.
+Use existing dependency proposals and the workload runbook for new
+versions and coupled changes. Record the source file, exact candidate when
+verified, validation, and rollback considerations. The owner publishes the
+proposed change and uses the HomeCompute CLI for releases and rollback.
 
-For Home Core packages, use `nixos`. For an image update, use a reviewed
-service selector or `image-CONTAINER` with the exact observed name. Routine
-execution requires a verified patch or minor update under standing
-authorization. Major, unknown, downgrade, and repair plans require separate
-approval. Model promotion, Home Assistant, and vendor-managed DGX OS, kernel,
-firmware, CUDA, drivers, and NVIDIA Container Toolkit use their own lifecycles.
+For a requested Home Core Compose restart, prepare an allowlisted
+`restart-SERVICE` plan. Report its ID, digest, target, and expiry. Wait for
+independent root approval of the exact plan before requesting execution by ID.
+Check the receipt and report observed service health. Escalate an uncertain
+result and wait for reconciliation.
 
-Run only by plan ID. The controller owns command, version, and target
-selection. If a release interrupts the gateway, read the existing receipt
-when it returns. Escalate an uncertain result and wait for reconciliation.
-After completion, report the receipt and check current service health.
-
-Keep one operator agent on the isolated `home-core-operator` server. Keep its
-credentials and tools confined to that server.
+Keep one agent and the scoped credentials on the isolated
+`home-core-operator` server.

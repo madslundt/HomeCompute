@@ -37,6 +37,19 @@ DOCKER = {
     'piper': ('home-core-piper-tts', 'piper-tts', ['compose.yaml'], 'piper-tts.env'),
     'stt': ('home-core-wyoming-stt', 'wyoming-stt', ['compose.yaml'], 'wyoming-stt.env'),
 }
+# The source templates own these production pins. For coupled application
+# updates (such as Immich server and ML), use the owning workload runbook.
+GIT_IMAGE_PINS = {
+    'homepage': ('config/homepage.env.example', 'HOMEPAGE_IMAGE', 'ghcr.io/gethomepage/homepage'),
+    'n8n': ('config/automation.env.example', 'N8N_IMAGE', 'docker.io/n8nio/n8n'),
+    'caddy': ('config/control-plane.env.example', 'CADDY_IMAGE', 'docker.io/library/caddy'),
+    'litellm': ('config/control-plane.env.example', 'LITELLM_IMAGE', 'ghcr.io/berriai/litellm-non_root'),
+    'postgres': ('config/control-plane.env.example', 'POSTGRES_IMAGE', 'docker.io/library/postgres'),
+    'open-webui': ('config/open-webui.env.example', 'OPEN_WEBUI_IMAGE', 'ghcr.io/open-webui/open-webui'),
+    'piper': ('config/piper-tts.env.example', 'PIPER_IMAGE', 'docker.io/rhasspy/wyoming-piper'),
+    'stt': ('config/wyoming-stt.env.example', 'WYOMING_STT_IMAGE', 'docker.io/rhasspy/wyoming-whisper'),
+}
+GITHUB = 'https://github.com/madslundt/HomeCompute'
 MCPS = {'aula-mcp', 'tilbudstrolden-mcp'}
 MODULES = {'core': 'prepare-core-maintenance.py', 'docker': 'prepare-docker-maintenance.py',
            'spark': 'prepare-spark-maintenance.py', 'ha': 'homeassistant-maintenance.py'}
@@ -178,13 +191,14 @@ def approve_remote(controller: Any, row: Any) -> None:
         raise ValueError('remote approval receipt mismatch')
 
 
-def image_candidate(component: str, now: float) -> str:
+def observed_image_candidate(component: str, now: float) -> tuple[dict, dict, str]:
     report = root_json(REPORT, 0)
-    if (type(report.get('schema_version')) is not int or report.get('schema_version') != 1 or report.get('host') != 'home-core'
+    if (not isinstance(report, dict) or type(report.get('schema_version')) is not int
+            or report['schema_version'] != 1 or report.get('host') != 'home-core'
             or report.get('mode') != 'observe-only' or report.get('automatic_actions') is not False):
         raise ValueError('trusted core maintenance report required')
     def fresh(value):
-        if not isinstance(value, str):
+        if not isinstance(value, str) or len(value) > 64:
             raise ValueError('report timestamp required')
         stamp = datetime.fromisoformat(value.replace('Z', '+00:00'))
         if stamp.tzinfo is None or not 0 <= now - stamp.timestamp() <= 86400:
@@ -207,7 +221,37 @@ def image_candidate(component: str, now: float) -> str:
         raise ValueError('exact observed registry candidate required')
     if (row.get('registry'), row.get('repository')) != (parsed['registry'], parsed['repository']):
         raise ValueError('observed repository provenance mismatch')
-    return parsed['registry'] + '/' + parsed['repository'] + '@' + digest
+    return row, parsed, digest
+
+
+def image_candidate(component: str, now: float) -> str:
+    _row, ref, digest = observed_image_candidate(component, now)
+    return f"{ref['registry']}/{ref['repository']}@{digest}"
+
+
+def upgrade_proposal(component: str, now: float) -> dict:
+    """Return bounded source-change evidence without staging or executing an update."""
+    if not isinstance(component, str) or component not in {'nixos', *GIT_IMAGE_PINS}:
+        raise ValueError('component outside Git upgrade catalogue')
+    proposal = {'target': 'home-core', 'component': component, 'repository': GITHUB}
+    if component == 'nixos':
+        return {**proposal, 'source_path': 'flake.lock',
+                'workflow': GITHUB + '/actions/workflows/update-flake.yml',
+                'update_pulls': GITHUB + '/pulls?q=is%3Apr+is%3Aopen+head%3Aautomation%2Fnix-flake-update'}
+    path, setting, repository = GIT_IMAGE_PINS[component]
+    proposal.update(source_path=path, setting=setting)
+    try:
+        row, ref, digest = observed_image_candidate(component, now)
+        tag = row.get('tracked_tag')
+        if not isinstance(tag, str) or f"{ref['registry']}/{ref['repository']}" != repository:
+            raise ValueError('observed candidate must match the source pin repository')
+        candidate = f"{repository}:{tag}@{digest}"
+        reference(candidate)
+    except (OSError, ValueError, TypeError, OverflowError):
+        return {**proposal, 'status': 'candidate_unavailable',
+                'update_pulls': GITHUB + '/pulls?q=is%3Apr+is%3Aopen+author%3Aapp%2Fdependabot'}
+    return {**proposal, 'status': 'tracked_tag_digest_changed', 'observed_image': row['image'],
+            'candidate': candidate, 'observed_at': row['checked_at']}
 
 
 def docker_inputs(controller: Any, component: str, docker: str) -> tuple[list[Path], Path]:
@@ -249,7 +293,7 @@ def prepare(controller: Any, target: str, component: str) -> dict[str, Any]:
     if not isinstance(target, str) or target not in {'home-core', 'home-spark', 'home-assistant'} or not isinstance(component, str):
         raise ValueError('finite infrastructure selectors required')
     image = bool(re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
-    if ((target == 'home-core' and not image and component not in {'nixos', 'release', *DOCKER, *MCPS, *('restart-' + key for key in DOCKER)})
+    if ((target == 'home-core' and not image and component not in {'nixos', *DOCKER, *MCPS, *('restart-' + key for key in DOCKER)})
             or (target == 'home-spark' and not image and component not in SPARK_COMPONENTS)
             or (target == 'home-assistant' and component not in module('ha').ENTITIES)
             or (controller.local_target == 'home-spark' and target != 'home-spark')):
@@ -275,11 +319,6 @@ def prepare(controller: Any, target: str, component: str) -> dict[str, Any]:
         helper = module('spark')
         plan, _ = helper.prepare(runner=controller.runner, clock=controller.clock)
         helper.write_plan(output, plan)
-    elif component == 'release':
-        import core_release_maintenance
-        plan = core_release_maintenance.prepare(controller)
-        validate_plan(plan)
-        module('core').write_plan(output, plan)
     elif component == 'nixos':
         import core_update_build
         core_update_build.prepare(controller, output)

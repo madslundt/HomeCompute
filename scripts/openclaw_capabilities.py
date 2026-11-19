@@ -320,12 +320,6 @@ class Actions:
 class Maintenance:
     """Opaque plan IDs only; root owns plans, classification and approvals."""
 
-    def allowed_component(self, target: str, component: str) -> bool:
-        return component != 'release'
-
-    def allowed_plan(self, plan: dict[str, Any]) -> bool:
-        return plan.get('policy', {}).get('operation') != 'deploy'
-
     def request(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if operation not in {'list', 'status', 'run', 'prepare', 'preparation'}:
             raise ValueError('maintenance operation unavailable to agent')
@@ -338,20 +332,7 @@ class Maintenance:
         if operation in {'status', 'run'} and (not isinstance(arguments['plan_id'], str)
                 or not re.fullmatch(r'[a-f0-9]{32}', arguments['plan_id'])):
             raise ValueError('invalid maintenance plan ID')
-        if operation == 'prepare' and not self.allowed_component(arguments['target'], arguments['component']):
-            raise ValueError('maintenance selection outside operator policy')
-        if operation == 'run' and not self.allowed_plan(self._request('status', arguments)['plan']):
-            raise ValueError('maintenance plan outside operator scope')
-        result = self._request(operation, arguments)
-        if operation == 'list':
-            result['plans'] = [plan for plan in result['plans'] if self.allowed_plan(plan)]
-        elif operation in {'status', 'run'} and not self.allowed_plan(result['plan']):
-            raise ValueError('maintenance plan outside operator scope')
-        elif operation in {'prepare', 'preparation'}:
-            receipt = result['preparation']
-            if receipt.get('target') is not None and not self.allowed_component(receipt['target'], receipt['component']):
-                return {'preparation': {'status': 'busy'}}
-        return result
+        return self._request(operation, arguments)
 
     def _request(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         connection = http.client.HTTPConnection('localhost', timeout=10)
@@ -368,6 +349,8 @@ class Maintenance:
             value = json.loads(raw)
             if not isinstance(value, (dict, list)):
                 raise ValueError('invalid maintenance receipt')
+            if operation == 'proposal':
+                return {'proposal': value}
             return {'plans': value} if isinstance(value, list) else {'preparation' if operation in {'prepare', 'preparation'} else 'plan': value}
         finally:
             connection.close()
@@ -375,36 +358,53 @@ class Maintenance:
 
 
 class OpenBotMaintenance(Maintenance):
-    """Narrow plan adapter for one isolated OpenBot infrastructure operator."""
+    """Git proposals and exact approved service restarts for the isolated operator."""
 
-    prepare_description = (
-        'Prepare one exact plan. On home-core select release for the published master SHA, '
-        'nixos for packages, a reviewed service or image-CONTAINER for an image update, or '
-        'restart-SERVICE for a reviewed Compose service restart. On home-spark select packages '
-        'or image-CONTAINER. Poll preparation for the plan ID. Deployments and restarts require '
-        'separate approval for that exact plan.'
-    )
+    RESTARTS = {
+        'restart-homepage': 'homecompute-homepage-homepage-1',
+        'restart-open-webui': 'homecompute-open-webui-open-webui-1',
+        'restart-piper': 'home-core-piper-tts',
+        'restart-stt': 'home-core-wyoming-stt',
+    }
+    restart_components = sorted(RESTARTS)
+    proposal_components = ['nixos', 'homepage', 'n8n', 'caddy', 'litellm', 'postgres', 'open-webui', 'piper', 'stt']
 
-    CORE_CONTAINERS = frozenset({
-        'homepage', 'n8n', 'caddy', 'litellm', 'postgres', 'open-webui', 'immich', 'piper', 'stt',
-    })
-    CORE_COMPONENTS = CORE_CONTAINERS | {
-        'nixos', 'release', 'aula-mcp', 'tilbudstrolden-mcp',
-    } | {'restart-' + service for service in CORE_CONTAINERS}
+    @classmethod
+    def allows_restart(cls, selection: dict[str, Any]) -> bool:
+        component = selection.get('component')
+        return (selection.get('target') == 'home-core' and isinstance(component, str)
+                and component in cls.RESTARTS)
 
-    def allowed_component(self, target: str, component: str) -> bool:
-        image = bool(re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
-        if target == 'home-core':
-            return component in self.CORE_COMPONENTS or image
-        return target == 'home-spark' and (component == 'packages' or image)
+    @classmethod
+    def allows_plan(cls, plan: dict[str, Any]) -> bool:
+        return (plan.get('policy', {}).get('target') == 'home-core'
+                and plan['policy'].get('operation') == 'fix'
+                and plan.get('restart_container') in cls.RESTARTS.values()
+                and plan.get('classification', {}).get('approval_required') is True)
 
-    def allowed_plan(self, plan: dict[str, Any]) -> bool:
-        policy = plan.get('policy', {})
-        target, operation = policy.get('target'), policy.get('operation')
-        if operation == 'update':
-            return target in {'home-core', 'home-spark'}
-        return target == 'home-core' and (operation == 'deploy'
-            or operation == 'fix' and bool(plan.get('restart_container')))
+    def request(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if operation == 'proposal':
+            if set(arguments) != {'component'} or arguments['component'] not in self.proposal_components:
+                raise ValueError('component outside Git upgrade catalogue')
+            return self._request(operation, arguments)
+        if operation == 'prepare' and not self.allows_restart(arguments):
+            raise ValueError('selector outside approved Home Core restart catalogue')
+        if operation == 'run':
+            plan = super().request('status', arguments)['plan']
+            if not self.allows_plan(plan):
+                raise ValueError('plan outside approved Home Core restart catalogue')
+            if plan['status'] == 'registered' and plan.get('approved') is not True:
+                return {'plan': dict(plan, reason='exact_root_approval_required')}
+        result = super().request(operation, arguments)
+        if operation == 'list':
+            result['plans'] = [plan for plan in result['plans'] if self.allows_plan(plan)]
+        elif operation == 'status' and not self.allows_plan(result['plan']):
+            raise ValueError('plan outside approved Home Core restart catalogue')
+        elif operation in {'prepare', 'preparation'}:
+            receipt = result['preparation']
+            if receipt.get('target') is not None and not self.allows_restart(receipt):
+                return {'preparation': {'status': 'busy'}}
+        return result
 
 
 class Capabilities:

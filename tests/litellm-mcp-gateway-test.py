@@ -74,7 +74,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertNotIn("all-harness-mcps", bank)
         maintenance = CONFIG[CONFIG.index("  homecompute_openbot_maintenance:"):CONFIG.index("  aula:")]
         self.assertNotIn("all-harness-mcps", maintenance)
-        self.assertEqual(len(re.findall(r"(?m)^      - homecompute_maintenance_[a-z]+$", maintenance)), 5)
+        self.assertIn("      - homecompute_maintenance_proposal", maintenance)
+        self.assertEqual(len(re.findall(r"(?m)^      - homecompute_maintenance_[a-z]+$", maintenance)), 6)
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)

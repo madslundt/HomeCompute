@@ -98,16 +98,6 @@ CLI invokes each host's guarded release script with the selected SHA. Spark's
 script also updates `/home/madslundt/HomeCompute` as its source checkout, then
 deploys the pinned SHA into an immutable release directory.
 
-## Deploy Home Core through the isolated OpenBot operator
-
-Once the operator server is admitted, it can prepare a deployment plan for the
-current published `master` revision on Home Core. Review CI and the exact
-plan, then approve its digest through the root maintenance controller. The
-standard Home Core wrapper performs the rollout and retains the prior revision.
-Use the workstation CLI for historical releases and for Home Spark. See the
-[OpenBot operator runbook](../deploy/openbot/README.md#deploy-or-maintain-home-core-from-openbot)
-for preparation, approval, backup requirements, and recovery.
-
 ## Deployment behavior
 
 `all` stops after the first failed deployment. There is no automatic rollback

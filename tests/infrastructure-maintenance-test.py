@@ -20,7 +20,6 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import infrastructure_maintenance as maintenance
-import core_release_maintenance as release
 
 
 def digest(value):
@@ -104,76 +103,9 @@ class MaintenanceTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.controller.approve(receipt['plan_id'], receipt['digest'])
 
-    def release_plan(self):
-        base, revision = 'a' * 40, 'b' * 40
-        published = subprocess.CompletedProcess([], 0, f'{revision}\trefs/heads/master\n'.encode())
-        with mock.patch.object(release, 'deployed_revision', return_value=base), \
-                mock.patch.object(release.subprocess, 'run', return_value=published) as lookup:
-            value = release.prepare(self.controller)
-        self.assertEqual([release.ORIGIN, release.MASTER], lookup.call_args.args[0][-2:])
-        return value
-
-    def test_release_requires_exact_approval_and_uses_wrapper_lock(self):
-        value = self.release_plan()
-        receipt = self.register(value)
-        self.assertEqual('b' * 40, receipt['policy']['revision'])
-        self.assertEqual('release_requires_approval', receipt['classification']['reason'])
-        plan_id = receipt['plan_id']
-        self.assertEqual('exact_root_approval_required', self.controller.run(plan_id)['reason'])
-        self.assertEqual([], self.calls)
-        self.controller.approve(plan_id, receipt['digest'])
-
-        def runner(argv, **kwargs):
-            self.calls.append(argv)
-            return subprocess.CompletedProcess(argv, 0, b'a' * 40 + b'\n', b'')
-
-        self.controller.runner = runner
-        with mock.patch.object(self.controller, 'deployment_locked') as lock:
-            self.assertEqual('succeeded', self.controller.run(plan_id)['status'])
-            self.assertEqual('succeeded', self.controller.run(plan_id)['status'])
-        lock.assert_not_called()
-        self.assertEqual(['snapshot', 'apply', 'verify'], [call[1] for call in self.calls])
-
-    def test_release_policy_cannot_substitute_phase_or_revision(self):
-        value = self.release_plan()
-        value['steps'][0][-1] = 'c' * 40
-        with self.assertRaises(ValueError):
-            self.register(value)
-        value = self.release_plan()
-        value['policy'] = plan()['policy']
-        with self.assertRaises(ValueError):
-            self.register(value)
-
-    def test_uncertain_release_blocks_another_release_until_reconciliation(self):
-        value = self.release_plan()
-        receipts = [self.register(value), self.register(value)]
-        for receipt in receipts:
-            self.controller.approve(receipt['plan_id'], receipt['digest'])
-
-        def runner(argv, **kwargs):
-            self.calls.append(argv)
-            return subprocess.CompletedProcess(argv, int(argv[1] == 'apply'), b'a' * 40 + b'\n', b'')
-
-        self.controller.runner = runner
-        self.assertEqual('uncertain', self.controller.run(receipts[0]['plan_id'])['status'])
-        self.assertEqual('prior_release_requires_reconciliation',
-                         self.controller.run(receipts[1]['plan_id'])['reason'])
-        self.assertEqual(['snapshot', 'apply'], [call[1] for call in self.calls])
-
-    def test_changed_master_refuses_execution_before_running_release_wrapper(self):
-        with mock.patch.object(release, 'STATE', self.root), \
-                mock.patch.object(release, 'trusted_path', side_effect=lambda path, *_a, **_kw: path), \
-                mock.patch.object(release.subprocess, 'run') as run, \
-                mock.patch.object(release.subprocess, 'check_output', return_value=b'c' * 40 + b'\n'):
-            with self.assertRaisesRegex(ValueError, 'master moved'):
-                release.execute('a' * 40, 'b' * 40)
-        run.assert_called_once()
-        self.assertIn('clone', run.call_args.args[0])
-
-    def test_core_restart_receipt_identifies_single_verified_container(self):
+    def test_restart_receipt_binds_one_container_and_requires_approval(self):
         value = plan()
-        command = maintenance.CONTAINER_COMMAND
-        name = 'homecompute-homepage-homepage-1'
+        command, name = maintenance.CONTAINER_COMMAND, 'homecompute-homepage-homepage-1'
         value['policy'] = {'target': 'home-core', 'operation': 'fix', 'updates': []}
         value['prechecks'][0]['argv'] = [command, 'snapshot', name]
         value['steps'] = [[command, 'restart', name]]
@@ -182,6 +114,9 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(name, receipt['restart_container'])
         self.assertEqual('exact_root_approval_required', self.controller.run(receipt['plan_id'])['reason'])
         self.assertEqual([], self.calls)
+        self.controller.approve(receipt['plan_id'], receipt['digest'])
+        self.assertEqual('succeeded', self.controller.run(receipt['plan_id'])['status'])
+        self.assertEqual(['snapshot', 'restart', 'verify'], [call[0][1] for call in self.calls])
 
         value['postchecks'][0][-1] = 'different-container'
         self.assertNotIn('restart_container', self.register(value))
@@ -553,10 +488,16 @@ class MaintenanceTests(unittest.TestCase):
             self.assertEqual(200, request('/status', {'plan_id': receipt['plan_id']})[0])
             self.assertEqual(200, request('/prepare', {'target': 'home-core', 'component': 'homepage'})[0])
             self.assertEqual(200, request('/preparation', {})[0])
+            status, proposal = request('/proposal', {'component': 'nixos'})
+            self.assertEqual(200, status)
+            self.assertEqual('flake.lock', proposal['source_path'])
+            self.assertEqual([receipt['plan_id']], [row['plan_id'] for row in self.controller.list()])
             for path, value in (('/approve', {'plan_id': receipt['plan_id'], 'digest': receipt['digest']}),
                                 ('/register', plan()), ('/run', {'argv': ['/bin/sh']}),
                                 ('/run', {'plan_id': receipt['plan_id'], 'approved': True}),
                                 ('/run', {'plan_id': '../operator-plan.json'}),
+                                ('/proposal', {'component': 'release'}),
+                                ('/proposal', {'component': 'nixos', 'argv': ['id']}),
                                 ('/prepare', {'target': 'home-core', 'component': '../bad'}),
                                 ('/prepare', {'target': 'home-core', 'component': 'homepage', 'argv': ['id']})):
                 self.assertEqual(400, request(path, value)[0])

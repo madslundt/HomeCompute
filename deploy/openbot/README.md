@@ -229,58 +229,56 @@ On **home-core-operator** only, add a Streamable HTTP connection at
 
 - `x-litellm-api-key: Bearer <OpenBot operator LiteLLM key>`
 - `x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`
-The allowed inventory is limited to `homecompute_systems`,
-`homecompute_system_read`, and the five `homecompute_maintenance_*` tools. The
-principal can read host reports and prepare, inspect, list, and run exact
-controller plans. Its scope covers Home Core releases, NixOS packages,
-eligible Docker images, and reviewed Compose restarts, plus the existing
-eligible Spark packages and images. Full releases target Home Core only.
-Routine verified changes use the controller's standing authorization.
-Releases, restarts, and major, unknown, or downgrade updates require exact
-root approval. An uncertain attempt requires independent reconciliation.
+
+The isolated server exposes eight tools. Use `homecompute_systems` and
+`homecompute_system_read` for health and update reports on Home Core and Home
+Spark. `homecompute_maintenance_proposal` returns Git upgrade evidence. The
+five remaining maintenance tools handle Home Core restart plans.
 
 The HomeCompute and LiteLLM credentials are each server-wide within
-home-core-operator. Keep one operator agent on that instance. Confirm the
+`home-core-operator`. Keep one operator agent on that instance. Confirm the
 regular `home-core` server cannot list the maintenance alias or call the
-maintenance principal before enabling routine use.
+maintenance principal before enabling it.
 
-### Deploy or maintain Home Core from OpenBot
+### Propose upgrades in Git
 
-Ask the isolated operator to prepare `home-core` / `release` for a deployment.
-The plan reports the current revision and the exact published `master` SHA.
-Review the source, verify its CI result, and check backup coverage before
-approving the plan. The release guard requires a fresh encrypted application
-recovery archive on the NAS and a current repository check. Confirm the agents VM is
-included in that backup before installing or updating OpenBot.
+Start with current host reports. Ask OpenBot to draft the source change for
+owner review. For Home Core NixOS packages, select `nixos` with
+`homecompute_maintenance_proposal`. It points to the existing flake update
+workflow and its pull request search. Use the workflow's `flake.lock` change
+as the candidate and wait for review and CI.
 
-From the trusted Home Core terminal, review and approve the digest printed by
-the root controller:
+For an eligible Docker component, the tool returns the source template and
+setting, and includes a candidate when a fresh registry report shows a digest
+change for the tracked tag. Compare the observed image with the checked-in pin
+before drafting the proposed edit. Use Dependabot and the owning workload
+runbook for new tags, coupled image changes, and migrations. Treat missing
+candidate evidence as a follow-up to verify with the source maintainer.
+OpenBot returns the proposal for human review. The owner publishes it in Git.
+
+Deploy reviewed Home Core changes and roll back from the operator workstation
+using the [HomeCompute CLI](../../docs/homecompute-operations.md#deploy-one-host).
+
+```bash
+./scripts/homecompute deploy home-core --revision FULL_SHA
+```
+
+### Request an approved service restart
+
+Use `homecompute_maintenance_prepare` with target `home-core` and one of
+`restart-homepage`, `restart-open-webui`, `restart-piper`, or `restart-stt`.
+Ask OpenBot for the plan ID and digest, then review and approve the exact plan
+from a trusted Home Core terminal.
 
 ```bash
 sudo python3 /opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py review PLAN_ID
 sudo python3 /opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py approve PLAN_ID PLAN_DIGEST
 ```
 
-Ask OpenBot to run that plan ID and read its status. The existing release
-wrapper owns the deployment lock, build, switch, service checks, and prior
-release pointer. A change to the published tip or the active base revision
-requires a fresh plan. The gateway may briefly disconnect during rollout.
-Check the existing plan receipt and
-`sudo journalctl -u homecompute-approved-release.service` if the result is
-unclear. For uncertain attempts, inspect the unit and running state through
-the [host operations runbook](../../docs/homecompute-operations.md) before
-root-only reconciliation. For rollback, use the prior full SHA through the
-documented host release command and handle any required data restore separately.
-Keep the controller version that can read release receipts while those
-receipts are retained in its ledger.
-
-For a NixOS package candidate, select `home-core` / `nixos`. For images,
-use an eligible service selector or `image-CONTAINER` with an exact observed
-container name. For an approved Compose recovery, use `restart-SERVICE` where
-SERVICE is one of `homepage`, `n8n`, `caddy`, `litellm`, `postgres`,
-`open-webui`, `immich`, `piper`, or `stt`. Read the controller receipt and
-verify service health after execution. Reconcile applied package and image
-changes into the owning lock or image pin in Git before another full release.
+OpenBot can request execution by plan ID after approval. Check the receipt
+and the actual client path. Reconcile an uncertain restart on Home Core
+before preparing another attempt. The owner handles other service recoveries
+through their workload runbooks.
 
 ### Withdraw access
 

@@ -6,8 +6,8 @@ Accepted for source implementation. Runtime admission remains gated on a clean
 published Home Core release, a fresh agents-VM backup, and explicit setup of the
 separate OpenBot operator server and its credentials.
 
-The release and restart scope is superseded by
-[ADR-038](038-openbot-approved-core-releases.md). The isolation decision remains in force.
+The OpenBot maintenance scope is superseded by
+[ADR-038](038-openbot-git-proposals-and-restarts.md). The isolation decision remains in force.
 
 ## Context
 

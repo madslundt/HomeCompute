@@ -258,7 +258,7 @@ mcp_servers:
     url: https://homecompute-capabilities.home.arpa:19445/mcp
     transport: http
     auth_type: oauth_delegate
-    description: Maintenance-only principal for the isolated OpenBot operator server
+    description: Host reports, Git upgrade proposals, and approved restarts for the isolated OpenBot operator
     allow_all_keys: false
     access_groups: [openbot-maintenance]
     allowed_tools:
@@ -269,6 +269,7 @@ mcp_servers:
       - homecompute_maintenance_list
       - homecompute_maintenance_status
       - homecompute_maintenance_run
+      - homecompute_maintenance_proposal
   aula:
     url: http://aula-mcp:7878/mcp
     transport: http
