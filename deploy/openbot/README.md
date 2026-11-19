@@ -6,9 +6,9 @@ bridges, and `/data` directories. Both use OpenBot's hosted account, Signal,
 and TURN services. Their images publish no ports and have no bundled web client;
 after sign-in, use the desktop/iPhone app or `https://openbot.run/app`.
 
-The container tracks OpenBot's mutable `latest` image tag. The systemd unit
-pulls it before each service start, and the health check verifies that the
-running container uses the pulled image. Its upstream seccomp profile is tracked here and was checked
+The Compose project pins the OpenBot 0.73.0 release by digest. The systemd
+unit pulls the pinned image before each service start, and the health check
+verifies the running containers against the pin. Its upstream seccomp profile is tracked here and was checked
 against SHA-256 `665289e6a1c41045f55166d0b01993c929f71df78e3a3b264f3252bb8e0b3d9e`.
 The guest installer verifies the Ubuntu 24.04 `docker-compose-v2` package
 version and `.deb` SHA-256 from `config/openbot-install.json` before installing
@@ -323,20 +323,40 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
   'sudo -n systemctl restart homecompute-openbot.service'
 ```
 
+For an image-only upgrade of an existing team-only deployment, use a clean
+checkout of the current published `origin/master` revision:
+
+```bash
+./scripts/setup-openbot-guest.sh upgrade-team-image
+./scripts/setup-openbot-guest.sh status
+```
+
+The helper checks the current guest bundle against its source and checks the
+installed units and helpers against that bundle. It carries forward the existing
+systemd and network configuration, then installs the published image pin in a
+new guest release. Use the full installer to reconcile other guest changes or
+install the separately staged operator server.
+
 OpenBot keeps its database, credentials, keyring, workspaces, and logs together
-in the guest data directory. Do not copy only part of it. The agents-VM disk is
-covered when the full encrypted Home Core application-state backup is running
-and has a prior restore drill. Confirm a fresh completed NAS backup that
-includes the agents VM before an image update or
-before adding household workspaces or provider sign-ins. The 2026-11-10
-read-only check found the scheduled backup timer active, a completed archive
-receipt from 2026-11-09 22:26 UTC, and a later backup attempt deferred with
-exit 75 at 2026-11-10 09:43 CET. The completed receipt remains inside Home
-Compute's 36-hour readiness window; inspect the current receipt and timer again
-before a future data or image change. To recover, restore the whole agents VM
-using its runbook, then run the service status command above. Code rollback
-does not restore OpenBot data. Keep the prior Home Core release and guest image
-pinned until the next off-host backup completes.
+under `/data`. Before an image change, confirm an encrypted NAS backup that
+includes all of this directory. The scheduled Immich and Hermes backup does not
+include it. For an attended OpenBot backup, stop `homecompute-openbot.service`,
+confirm its container has stopped, and archive the entire guest directory
+`~/.local/share/homecompute-openbot/data` with numeric owners, ACLs, and extended
+attributes. Resume the original service after capture, including on error.
+Store the archive in the encrypted HomeCompute Restic repository under the
+`homecompute-openbot-pre-upgrade` tag, verify the hash by reading the archive
+back with `restic dump`, and retain the snapshot ID, archive path, and hash in
+the private backup receipt. Remove the temporary plaintext archive after
+verification. A fresh full agents-VM backup with OpenBot data also qualifies.
+
+Keep the previous guest release and image until the replacement and backup
+have been verified. To recover from a data migration failure, stop the service
+and restore the entire pre-upgrade data archive into a separate directory first.
+Verify the hash, ownership and permissions, then preserve the failed directory
+and move the verified copy into place. Select the prior guest release and
+reinstall its recorded health helper before starting the service. Restoring
+only the previous image does not restore the database or other application data.
 
 The source-managed Hermes CLI inside OpenBot uses its own `/data/.hermes`
 configuration. To reconcile its local Home AI route after deployment, run:

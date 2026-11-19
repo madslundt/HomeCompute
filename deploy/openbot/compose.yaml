@@ -1,7 +1,7 @@
 services:
   openbot:
     container_name: homecompute-openbot
-    image: ghcr.io/nightly-labs/openbot:latest
+    image: ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b
     platform: linux/amd64
     environment:
       NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
@@ -38,7 +38,7 @@ services:
         ipv4_address: 172.30.192.2
   openbot_operator:
     container_name: homecompute-openbot-operator
-    image: ghcr.io/nightly-labs/openbot:latest
+    image: ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b
     platform: linux/amd64
     environment:
       NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
