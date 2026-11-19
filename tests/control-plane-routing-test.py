@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import re
+import runpy
 import subprocess
 import tempfile
 from types import SimpleNamespace
@@ -33,6 +34,24 @@ CERT_SPEC = importlib.util.spec_from_file_location("gateway_certificate", ROOT /
 assert CERT_SPEC and CERT_SPEC.loader
 CERTIFICATE = importlib.util.module_from_spec(CERT_SPEC)
 CERT_SPEC.loader.exec_module(CERTIFICATE)
+
+
+class LiteLLMGatewayHostnameTests(unittest.TestCase):
+    def test_scoped_hostname_migration_preserves_legacy_and_unrelated_sites(self):
+        release = (ROOT / 'deploy/control-plane/Caddyfile').read_text()
+        migration = runpy.run_path(str(ROOT / 'scripts/deploy-litellm-gateway-hostnames.py'))
+        before = release.replace('{$LLM_FQDN}, {$MCP_LEGACY_FQDN} {', '{$MCP_FQDN} {')
+        expected = before.replace('{$MCP_FQDN} {', 'llm.home.arpa, mcp.home.arpa {')
+        self.assertEqual(migration['render'](before, release), expected)
+        self.assertEqual(migration['render'](expected, release), expected)
+        self.assertEqual(migration['render'](release, release), release)
+
+    def test_scoped_hostname_migration_refuses_an_unexpected_proxy(self):
+        release = (ROOT / 'deploy/control-plane/Caddyfile').read_text()
+        migration = runpy.run_path(str(ROOT / 'scripts/deploy-litellm-gateway-hostnames.py'))
+        unknown = '{$MCP_FQDN} {\n\ttls internal\n\treverse_proxy unexpected:4000\n}\n'
+        with self.assertRaisesRegex(ValueError, 'expected legacy LiteLLM virtual host'):
+            migration['render'](unknown, release)
 
 
 class GatewayCertificateTests(unittest.TestCase):

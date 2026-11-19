@@ -195,6 +195,29 @@ the LiteLLM Admin UI; `/mcp` is a protocol endpoint, so opening it in a browser
 without a client key returns an authentication challenge. The Homepage administration card
 opens the Admin UI.
 
+A staged OpenBot upgrade can begin using `llm.home.arpa` while an older
+Home Core release still serves only `mcp.home.arpa`. In that case, stage the
+exact published release on Home Core and use the scoped rollout:
+
+```sh
+revision=FULL_RELEASE_SHA
+release="/srv/homecompute/releases/$revision"
+sudo git clone --single-branch --branch master https://github.com/madslundt/HomeCompute.git "$release"
+sudo git -C "$release" checkout --detach "$revision"
+sudo python3 "$release/scripts/deploy-litellm-gateway-hostnames.py" --revision "$revision"
+sudo systemctl start homecompute-openbot-tls-monitor.service
+```
+
+The helper checks the live Caddy Compose configuration, applies the published
+TLS site to both names, and restarts only Caddy. It preserves the active
+Paperclip overlay. Both endpoints must challenge unauthenticated clients,
+and the installed OpenBot runtime probe must pass. The helper restores the
+previous Caddy config if verification fails. It records the previous
+Compose arguments and config hashes in
+`/var/lib/homecompute/litellm-gateway-hostnames/FULL_RELEASE_SHA/receipt.json`.
+The next full Home Core rollout supplies the same route from canonical
+Compose wiring.
+
 Speech clients use the [speech API contract](../../docs/speech-api.md).
 `whisper` serves transcription. `tts-danish` and `tts-english` are stable
 capability aliases for the selected bilingual OmniVoice service; `omnivoice`
