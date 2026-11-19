@@ -145,6 +145,9 @@ homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/d
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
 paperclip=(docker compose -f "$release/deploy/paperclip/compose.yaml")
+if [[ -f /var/lib/homecompute/paperclip/connector-egress-enabled ]]; then
+  paperclip+=(-f "$release/deploy/paperclip/connector-egress.compose.yaml")
+fi
 podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
 source "$release/scripts/lib/podwave-backup.sh"
 "${gateway[@]}" config --quiet

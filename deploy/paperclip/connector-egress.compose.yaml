@@ -1,0 +1,54 @@
+services:
+  paperclip:
+    environment:
+      NODE_USE_ENV_PROXY: "1"
+      HTTPS_PROXY: http://172.30.198.2:3128
+      NO_PROXY: localhost,127.0.0.1,::1,paperclip,caddy,paperclip.home.arpa
+    networks:
+      connector: {}
+
+  paperclip-connector-egress:
+    image: python:3.12.15-slim-bookworm@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e07258
+    user: "10001:10001"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    working_dir: /opt/homecompute
+    command:
+      - python3
+      - -B
+      - -c
+      - |
+        from openclaw_site_egress import Proxy
+        hosts = frozenset({'my.paperclip.app', 'api.github.com', 'github.com'})
+        with Proxy(('172.30.198.2', 3128), hosts, tunnel_seconds=300) as proxy:
+            proxy.serve_forever()
+    volumes:
+      - ../../scripts/openclaw_site_egress.py:/opt/homecompute/openclaw_site_egress.py:ro
+    healthcheck:
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('172.30.198.2', 3128), 2).close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 4
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 48
+    logging:
+      driver: local
+      options:
+        max-size: 5m
+        max-file: "2"
+    networks:
+      connector:
+        ipv4_address: 172.30.198.2
+      connector-uplink:
+        gw_priority: 1
+
+networks:
+  connector:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.198.0/29}]
+  connector-uplink: {}

@@ -76,11 +76,13 @@ def public_addresses(host: str, resolver=socket.getaddrinfo) -> list[tuple]:
 class Proxy(socketserver.ThreadingTCPServer):
     daemon_threads, allow_reuse_address = True, True
 
-    def __init__(self, address: tuple[str, int], hosts: frozenset[str], *, policy: Path | None = None):
+    def __init__(self, address: tuple[str, int], hosts: frozenset[str], *,
+                 policy: Path | None = None, tunnel_seconds: int = 50):
         if (policy is None and not hosts or len(hosts) > 64
                 or any(not HOST.fullmatch(h) for h in hosts)):
             raise ValueError('Registered hosts required')
         self.hosts, self.policy, self.slots = hosts, policy, threading.BoundedSemaphore(32)
+        self.tunnel_seconds = tunnel_seconds
         super().__init__(address, Handler)
 
     def handle_error(self, *_args):
@@ -139,7 +141,7 @@ class Handler(socketserver.StreamRequestHandler):
                 raise ValueError('Upstream unavailable')
             self.wfile.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
             self.wfile.flush()
-            deadline = time.monotonic() + 50
+            deadline = time.monotonic() + self.server.tunnel_seconds
             while time.monotonic() < deadline:
                 if not permitted(match[1].decode(), hosts=self.server.hosts,
                                  policy=getattr(self.server, 'policy', None)):

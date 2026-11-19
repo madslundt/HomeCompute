@@ -842,6 +842,17 @@ jq -e '
       | .source] == ["/var/lib/homecompute/paperclip/inference-key"]))
 ' >/dev/null
 rg -Fx $'\tbind 127.0.0.1' "$REPO_ROOT/deploy/paperclip/inference.Caddyfile" >/dev/null
+PAPERCLIP_SECRETS_FILE="$paperclip_env" docker compose \
+  -f "$REPO_ROOT/deploy/paperclip/compose.yaml" \
+  -f "$REPO_ROOT/deploy/paperclip/connector-egress.compose.yaml" config --format json |
+jq -e '
+  (.services | keys == ["paperclip", "paperclip-connector-egress"]) and
+  .networks.connector.internal == true and
+  (.services.paperclip.networks | keys == ["connector", "paperclip"]) and
+  (.services["paperclip-connector-egress"] |
+    .read_only == true and (.ports // [] | length == 0) and
+    (.networks | keys == ["connector", "connector-uplink"])) and
+  .services.paperclip.environment.HTTPS_PROXY == "http://172.30.198.2:3128"' >/dev/null
 
 jq -e '
   .services.caddy.networks.paperclip != null and

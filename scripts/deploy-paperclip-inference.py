@@ -7,7 +7,6 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import re
 import runpy
 import subprocess
 import sys
@@ -51,29 +50,24 @@ def existing_network(core):
         raise ValueError('Expected only Paperclip and Caddy on the private bridge')
 
 
-def checked_previous_file(core):
-    file = core.command('docker', 'inspect', '--format',
-                        '{{index .Config.Labels "com.docker.compose.project.config_files"}}', RELAY)
-    if not re.fullmatch(r'/srv/homecompute/releases/[a-f0-9]{40}/deploy/paperclip/compose\.yaml', file):
-        raise ValueError('Running inference relay is outside the managed release')
-    core.protected(Path(file))
-    return file
-
-
-def compose(compose_file, *args):
-    subprocess.run(['docker', 'compose', '-f', str(compose_file), '--profile', 'inference', *args],
+def compose(files, *args):
+    command = ['docker', 'compose']
+    for path in files:
+        command.extend(('-f', str(path)))
+    subprocess.run([*command, '--profile', 'inference', *args],
                    check=True, timeout=150)
 
 
-def replace(compose_file):
-    compose(compose_file, 'up', '-d', '--no-deps', '--force-recreate',
+def replace(files):
+    compose(files, 'up', '-d', '--no-deps', '--force-recreate',
             '--wait', '--wait-timeout', '120', SERVICE)
 
 
 def apply(core, revision):
     existing_network(core)
+    egress = runpy.run_path(str(ROOT / 'scripts/deploy-paperclip-connector-egress.py'))
     running = core.command('docker', 'ps', '--filter', f'name=^{RELAY}$', '--format', '{{.Names}}')
-    previous = checked_previous_file(core) if running == RELAY else None
+    previous = egress['managed_files'](core, RELAY) if running == RELAY else None
     if not Path('/run/secrets/paperclip/environment').exists():
         core.protected(STATE / 'environment', private=True)
         os.environ['PAPERCLIP_SECRETS_FILE'] = str(STATE / 'environment')
@@ -95,9 +89,11 @@ def apply(core, revision):
     }, root_uid=10001, root_gid=10001)
     plan = setup.plan(revision)
     setup.apply(revision, plan['plan_sha256'])
-    compose_file = ROOT / COMPOSE_PATH
+    files = (ROOT / COMPOSE_PATH,)
+    if egress['MARKER'].is_file():
+        files += (ROOT / egress['OVERLAY'],)
     try:
-        replace(compose_file)
+        replace(files)
         existing_network(core)
         subprocess.run(['docker', 'exec', PAPERCLIP, 'node', '--input-type=module', '-e', CLIENT_CHECK],
                        check=True, timeout=60)
@@ -105,7 +101,7 @@ def apply(core, revision):
         if previous:
             replace(previous)
         else:
-            compose(compose_file, 'rm', '--stop', '--force', SERVICE)
+            compose(files, 'rm', '--stop', '--force', SERVICE)
         raise
 
 

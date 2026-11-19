@@ -76,7 +76,7 @@ class EgressTests(unittest.TestCase):
         with patch.object(egress, 'public_addresses', checked), \
              patch.object(egress.socket, 'socket', return_value=upstream) as create_socket, \
              patch.object(egress.select, 'select', side_effect=selections):
-            egress.Handler(connection, ('fixture', 1), SimpleNamespace(hosts=frozenset({HOST})))
+            egress.Handler(connection, ('fixture', 1), SimpleNamespace(hosts=frozenset({HOST}), tunnel_seconds=50))
         return bytes(connection.sent), upstream, resolutions, create_socket.call_count
 
     def test_connect_uses_validated_ip_once_and_closes_tunnel(self):
@@ -150,7 +150,8 @@ class EgressTests(unittest.TestCase):
              patch.object(egress, 'public_addresses', return_value=[answer()[:3] + (answer()[4],)]), \
              patch.object(egress.socket, 'socket', return_value=upstream), \
              patch.object(egress.select, 'select') as poll:
-            egress.Handler(connection, ('fixture', 1), SimpleNamespace(hosts=frozenset(), policy=Path('/operator/policy.json')))
+            server = SimpleNamespace(hosts=frozenset(), policy=Path('/operator/policy.json'), tunnel_seconds=50)
+            egress.Handler(connection, ('fixture', 1), server)
         self.assertTrue(bytes(connection.sent).startswith(b'HTTP/1.1 200'))
         self.assertTrue(upstream.closed); poll.assert_not_called()
 

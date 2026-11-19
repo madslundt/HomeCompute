@@ -96,6 +96,30 @@ is present. To suspend inference, stop and remove only the
 its dedicated LiteLLM key. Keep the Paperclip application and its state online
 while updating agent connections.
 
+## External connectors
+
+Paperclip starts on an internal bridge. The optional connector proxy allows
+outbound TLS to exactly `my.paperclip.app`, `api.github.com`, and `github.com`.
+Run the following from a published release on home-core to enable it. The
+installer takes the deployment lock, restarts Paperclip and any running model
+relay, and checks connectivity from Paperclip before recording the opt-in.
+
+```sh
+sudo python3 "/srv/homecompute/releases/$revision/scripts/deploy-paperclip-connector-egress.py" \
+  --revision "$revision"
+```
+
+In Brave, use **Connect GitHub** to enroll with Paperclip Cloud, then approve
+the GitHub installation for selected repositories. Project **Configuration**
+lists the repositories visible to that account. Use it to attach the source
+repository for each project. Paperclip Cloud enrollment and GitHub repository
+consent are stored through their supported application flows.
+
+The full host rollout honors the root-owned `connector-egress-enabled` marker
+in `/var/lib/homecompute/paperclip`. Run the same installer with `--disable`
+to return Paperclip to its internal network. To add another provider, review
+its required endpoints and add exact hostnames in `connector-egress.compose.yaml`.
+
 ## Backup and rollback
 
 Embedded PostgreSQL, database dumps, workspace files, uploads, and the local
