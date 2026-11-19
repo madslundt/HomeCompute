@@ -8,8 +8,8 @@ record is declared in [paperclip-dns.json](../../config/paperclip-dns.json).
 
 Paperclip uses its own sign-in. On a new instance, create your owner account,
 then select **Claim this instance**. The first authenticated user to complete
-the claim becomes instance admin. The deployment supplies no provider
-credentials, agent integrations, or host workspaces.
+the claim becomes instance admin. The base deployment provisions instance
+signing secrets. Local inference is enabled separately.
 
 ## Release and verification
 
@@ -56,6 +56,35 @@ on home-core after a full rollout. For the scoped rollout, use the selected
 release directory and export
 `PAPERCLIP_SECRETS_FILE=/var/lib/homecompute/paperclip/environment` in the
 root shell running Compose.
+
+## Local inference
+
+From the exact published release on home-core, run:
+
+```sh
+sudo python3 "/srv/homecompute/releases/$revision/scripts/deploy-paperclip-inference.py" \
+  --revision "$revision"
+```
+
+The installer provisions a dedicated LiteLLM key for `automation-moe` with
+MCP denied, starts the inference sidecar, and checks model listing and
+Responses from the live Paperclip container. The sidecar shares Paperclip’s
+network namespace and listens on loopback. It forwards only
+`GET /v1/models` and `POST /v1/responses` to the private Caddy gateway over
+verified TLS. The key lives in a protected host file readable by the
+sidecar’s UID. Paperclip talks to the loopback relay without a credential.
+
+In Paperclip, create a shared **Local endpoint** connection with the
+**OpenAI Responses** format, base URL `http://127.0.0.1:18080/v1`,
+**No authentication**, and model `automation-moe`. Select the intended
+Codex agents for this connection. In each agent’s setup, select the shared
+connection and `automation-moe`, then test it before completing setup.
+
+The normal host rollout starts the inference profile when its provisioned key
+is present. To suspend inference, stop and remove only the
+`paperclip-inference` Compose service using the running release and revoke
+its dedicated LiteLLM key. Keep the Paperclip application and its state online
+while updating agent connections.
 
 ## Backup and rollback
 

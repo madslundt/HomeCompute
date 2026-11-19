@@ -95,11 +95,12 @@ class InferenceKeySetup:
     """Hash-bound creation of only the two assistant-context key files."""
 
     def __init__(self, *, key_paths: dict[str, Path] | None = None,
+                 key_specs: dict[str, dict[str, Any]] | None = None,
                  root_uid: int = 0, root_gid: int = 0,
                  runner: Callable[..., Any] = subprocess.run):
         self.keys = {
             name: {**spec, "path": (key_paths or {}).get(name, spec["path"])}
-            for name, spec in KEYS.items()
+            for name, spec in (KEYS if key_specs is None else key_specs).items()
         }
         self.root_uid = root_uid
         self.root_gid = root_gid
@@ -238,6 +239,11 @@ class InferenceKeySetup:
         if (not isinstance(info, dict) or info.get("models") != [spec["model"]]
                 or info.get("user_id") != spec["owner"] or info.get("expires") is not None):
             raise Refused("existing-key-scope-mismatch")
+        if spec.get("verify_mcp_denied"):
+            permission = info.get("object_permission")
+            if (not isinstance(permission, dict) or permission.get("mcp_servers") != ["no-mcp-servers"]
+                    or permission.get("mcp_access_groups")):
+                raise Refused("existing-key-mcp-scope-mismatch")
         if expected_intent_id is not None:
             metadata = info.get("metadata")
             if (not isinstance(metadata, dict)

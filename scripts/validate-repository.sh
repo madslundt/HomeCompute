@@ -830,6 +830,19 @@ jq -e '
     .environment.PAPERCLIP_DEPLOYMENT_EXPOSURE == "private" and
     .environment.PAPERCLIP_PUBLIC_URL == "https://paperclip.home.arpa")
 ' >/dev/null
+PAPERCLIP_SECRETS_FILE="$paperclip_env" docker compose --profile inference \
+  -f "$REPO_ROOT/deploy/paperclip/compose.yaml" config --format json |
+jq -e '
+  (.services | keys == ["paperclip", "paperclip-inference"]) and
+  (.services["paperclip-inference"] |
+    .network_mode == "service:paperclip" and
+    .depends_on.paperclip.condition == "service_healthy" and .depends_on.paperclip.restart == true and
+    .ports == null and .networks == null and .user == "10001:10001" and .read_only and
+    ([.volumes[] | select(.target == "/run/paperclip/inference-key" and .read_only == true)
+      | .source] == ["/var/lib/homecompute/paperclip/inference-key"]))
+' >/dev/null
+rg -Fx $'\tbind 127.0.0.1' "$REPO_ROOT/deploy/paperclip/inference.Caddyfile" >/dev/null
+
 jq -e '
   .services.caddy.networks.paperclip != null and
   .networks.paperclip.internal == true and

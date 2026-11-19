@@ -223,7 +223,12 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
-"${paperclip[@]}" up -d --wait --wait-timeout 180
+if [[ -s /var/lib/homecompute/paperclip/inference-key ]]; then
+  "${paperclip[@]}" --profile inference up -d --wait --wait-timeout 180
+else
+  "${paperclip[@]}" --profile inference rm --stop --force paperclip-inference
+  "${paperclip[@]}" up -d --wait --wait-timeout 180
+fi
 # Probe the upstream from Caddy. A host-side request hairpins through Docker
 # with a bridge source IP that is outside the private client allowlist.
 docker exec homecompute-control-plane-caddy-1 wget -qO- -T 10 \

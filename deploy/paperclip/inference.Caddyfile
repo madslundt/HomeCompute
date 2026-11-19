@@ -1,0 +1,42 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+(inference) {
+	reverse_proxy https://caddy:8443 {
+		header_up -*
+		header_up Host llm.home.arpa
+		header_up Content-Type application/json
+		header_up Accept "application/json, text/event-stream"
+		header_up Authorization "Bearer {$PAPERCLIP_LITELLM_KEY}"
+		transport http {
+			tls_server_name llm.home.arpa
+			tls_trust_pool file /run/paperclip/home-core-root.crt
+			dial_timeout 3s
+			response_header_timeout 10m
+		}
+	}
+}
+
+http://:18080 {
+	bind 127.0.0.1
+	@models {
+		method GET
+		path /v1/models
+	}
+	@responses {
+		method POST
+		path /v1/responses
+	}
+	route {
+		handle @models {
+			import inference
+		}
+		handle @responses {
+			import inference
+		}
+		respond "Not found" 404
+	}
+}
