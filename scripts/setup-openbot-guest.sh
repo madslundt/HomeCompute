@@ -396,7 +396,8 @@ if [[ "$mode" == scoped ]]; then
   [[ "$expected_image" == "$(sudo -n docker inspect --format '{{.Config.Image}}' homecompute-openbot)" ]] || {
     echo 'Scoped install preserves the team image.' >&2; exit 1;
   }
-  sudo -n systemctl --quiet is-active homecompute-openbot.service homecompute-openbot-firewall.service
+  sudo -n systemctl --quiet is-active homecompute-openbot.service
+  sudo -n systemctl --quiet is-active homecompute-openbot-firewall.service
   if [[ "$previous" == "$release" ]]; then
     sudo -n /usr/local/libexec/homecompute-openbot-health
     exit 0
@@ -420,7 +421,8 @@ if [[ "$mode" == scoped ]]; then
     sudo -n install -o root -g root -m 0755 "$previous/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health
     "${systemctl_cmd[@]}" daemon-reload
     "${systemctl_cmd[@]}" start homecompute-openbot-firewall.service homecompute-openbot.service
-    "${systemctl_cmd[@]}" --quiet is-active homecompute-openbot-firewall.service homecompute-openbot.service &&
+    "${systemctl_cmd[@]}" --quiet is-active homecompute-openbot-firewall.service &&
+      "${systemctl_cmd[@]}" --quiet is-active homecompute-openbot.service &&
       sudo -n /usr/local/libexec/homecompute-openbot-health || {
       echo 'Previous OpenBot guest release requires recovery.' >&2; exit 1;
     }

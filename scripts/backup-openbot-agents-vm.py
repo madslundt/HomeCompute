@@ -90,6 +90,7 @@ def capture(directory, seed):
         command('systemctl', 'stop', UNIT)
         if not stopped():
             raise ValueError('Agents VM did not stop completely')
+        captured_at = datetime.now(timezone.utc).isoformat()
         disk_size = DISK.stat().st_size
         command('cp', '--sparse=always', '--', str(DISK), str(directory / DISK.name), timeout=900)
         shutil.copyfile(seed, directory / 'seed.iso')
@@ -104,8 +105,13 @@ def capture(directory, seed):
             signal.signal(signal.SIGTERM, previous)
     if (directory / DISK.name).stat().st_size != disk_size:
         raise ValueError('Staged VM disk size differs from the captured disk')
-    command(str(qemu_img), 'check', '-q', str(directory / DISK.name), timeout=900)
-    return {'captured_at': datetime.now(timezone.utc).isoformat(),
+    copied = directory / DISK.name
+    image = json.loads(subprocess.check_output(
+        [str(qemu_img), 'info', '--output=json', str(copied)], timeout=30))
+    if image.get('format') != 'qcow2' or 'backing-filename' in image or 'data-file' in image.get('format-specific', {}).get('data', {}):
+        raise ValueError('Expected a self-contained qcow2 copy')
+    command(str(qemu_img), 'check', '-q', str(copied), timeout=900)
+    return {'captured_at': captured_at,
             'disk_bytes': disk_size, 'seed_sha256': hashlib.sha256(seed.read_bytes()).hexdigest()}
 
 
