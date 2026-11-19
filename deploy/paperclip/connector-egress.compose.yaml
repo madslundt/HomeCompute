@@ -3,9 +3,13 @@ services:
     environment:
       NODE_USE_ENV_PROXY: "1"
       HTTPS_PROXY: http://172.30.198.2:3128
-      NO_PROXY: localhost,127.0.0.1,::1,paperclip,caddy,paperclip.home.arpa
+      NO_PROXY: localhost,127.0.0.1,::1,paperclip,caddy,paperclip.home.arpa,api.githubcopilot.com
+    extra_hosts:
+      api.githubcopilot.com: 172.30.198.2
+      github.com: 172.30.198.10
     networks:
       connector: {}
+      github-metadata: {}
 
   paperclip-connector-egress:
     image: python:3.12.15-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
@@ -16,19 +20,14 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     working_dir: /opt/homecompute
-    command:
-      - python3
-      - -B
-      - -c
-      - |
-        from openclaw_site_egress import Proxy
-        hosts = frozenset({'my.paperclip.app', 'api.github.com', 'github.com'})
-        with Proxy(('172.30.198.2', 3128), hosts, tunnel_seconds=300) as proxy:
-            proxy.serve_forever()
+    command: [python3, -B, connector-egress.py]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "443"
     volumes:
       - ../../scripts/openclaw_site_egress.py:/opt/homecompute/openclaw_site_egress.py:ro
+      - ./connector-egress.py:/opt/homecompute/connector-egress.py:ro
     healthcheck:
-      test: [CMD, python3, -c, "import socket; socket.create_connection(('172.30.198.2', 3128), 2).close()"]
+      test: [CMD, python3, -c, "import socket; socket.create_connection(('172.30.198.2', 3128), 2).close(); socket.create_connection(('172.30.198.2', 443), 2).close(); socket.create_connection(('172.30.198.10', 443), 2).close()"]
       interval: 10s
       timeout: 3s
       retries: 4
@@ -43,6 +42,8 @@ services:
     networks:
       connector:
         ipv4_address: 172.30.198.2
+      github-metadata:
+        ipv4_address: 172.30.198.10
       connector-uplink:
         gw_priority: 1
 
@@ -52,3 +53,7 @@ networks:
     ipam:
       config: [{subnet: 172.30.198.0/29}]
   connector-uplink: {}
+  github-metadata:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.198.8/29}]

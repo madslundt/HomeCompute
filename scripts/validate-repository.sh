@@ -848,11 +848,13 @@ PAPERCLIP_SECRETS_FILE="$paperclip_env" docker compose \
 jq -e '
   (.services | keys == ["paperclip", "paperclip-connector-egress"]) and
   .networks.connector.internal == true and
-  (.services.paperclip.networks | keys == ["connector", "paperclip"]) and
+  .networks["github-metadata"].internal == true and
+  (.services.paperclip.networks | keys == ["connector", "github-metadata", "paperclip"]) and
+  (.services.paperclip.extra_hosts | sort == ["api.githubcopilot.com=172.30.198.2", "github.com=172.30.198.10"]) and
   (.services["paperclip-connector-egress"] |
     (.image | test("^python:[0-9.]+-slim-bookworm@sha256:[a-f0-9]{64}$")) and
     .read_only == true and (.ports // [] | length == 0) and
-    (.networks | keys == ["connector", "connector-uplink"])) and
+    (.networks | keys == ["connector", "connector-uplink", "github-metadata"])) and
   .services.paperclip.environment.HTTPS_PROXY == "http://172.30.198.2:3128"' >/dev/null
 
 jq -e '

@@ -100,6 +100,11 @@ while updating agent connections.
 
 Paperclip starts on an internal bridge. The optional connector proxy allows
 outbound TLS to exactly `my.paperclip.app`, `api.github.com`, and `github.com`.
+The managed GitHub connector also opens direct TLS sockets to
+`api.githubcopilot.com` and `github.com` for MCP and OAuth discovery. Paperclip
+resolves those names to two fixed listeners on internal Docker networks. The
+relay resolves and validates each public GitHub destination and passes through
+TLS so Paperclip checks the certificate against the original hostname.
 Run the following from a published release on home-core to enable it. The
 installer takes the deployment lock, restarts Paperclip and any running model
 relay, and checks connectivity from Paperclip before recording the opt-in.
@@ -117,8 +122,8 @@ consent are stored through their supported application flows.
 
 The full host rollout honors the root-owned `connector-egress-enabled` marker
 in `/var/lib/homecompute/paperclip`. Run the same installer with `--disable`
-to return Paperclip to its internal network. To add another provider, review
-its required endpoints and add exact hostnames in `connector-egress.compose.yaml`.
+to return Paperclip to its original internal network. To add another provider,
+review its required endpoints and transport before extending `connector-egress.py`.
 
 ## Backup and rollback
 

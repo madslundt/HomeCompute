@@ -32,6 +32,21 @@ for (const host of ["my.paperclip.app", "api.github.com", "github.com"]) {
 const denied = await fetch("https://example.com/", {signal: AbortSignal.timeout(5000)}).catch(() => null);
 if (denied !== null) throw new Error("Unlisted HTTPS destination was reachable");
 console.log("Unlisted HTTPS destination blocked");
+const { lookup } = await import("node:dns/promises");
+const { guardedRemoteHttpFetch } = await import("/app/server/dist/services/remote-http-fetch.js");
+for (const [host, ip, path, expected] of [
+  ["api.githubcopilot.com", "172.30.198.2", "/mcp/", 401],
+  ["github.com", "172.30.198.10", "/.well-known/oauth-authorization-server/login/oauth", 200],
+]) {
+  const { address } = await lookup(host);
+  if (address !== ip) throw new Error(`${host} must use the private TLS relay`);
+  const response = await guardedRemoteHttpFetch(`https://${host}${path}`, {
+    signal: AbortSignal.timeout(8000),
+  }, {allowPrivateNetwork: true, error: message => new Error(message)});
+  if (response.status !== expected) throw new Error(`${host} TLS probe returned ${response.status}`);
+  await response.arrayBuffer();
+  console.log(`Paperclip pinned TLS route verified: ${host}`);
+}
 '''
 
 
@@ -71,7 +86,7 @@ def check_private(core):
         raise ValueError('Paperclip must publish no ports')
     names = core.command('docker', 'inspect', '--format',
                          '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}', APP).split()
-    if set(names) - {'homecompute-paperclip', 'homecompute-paperclip_connector'}:
+    if set(names) - {'homecompute-paperclip', 'homecompute-paperclip_connector', 'homecompute-paperclip_github-metadata'}:
         raise ValueError('Paperclip has an unexpected network attachment')
     for name in names:
         if core.command('docker', 'network', 'inspect', '--format', '{{.Internal}}', name) != 'true':
