@@ -76,9 +76,19 @@ sidecar’s UID. Paperclip talks to the loopback relay without a credential.
 
 In Paperclip, create a shared **Local endpoint** connection with the
 **OpenAI Responses** format, base URL `http://127.0.0.1:18080/v1`,
-**No authentication**, and model `automation-moe`. Select the intended
-Codex agents for this connection. In each agent’s setup, select the shared
-connection and `automation-moe`, then test it before completing setup.
+**No authentication**, and model `automation-moe`. In **Mads projects**,
+grant this connection to Engineering Lead, Software Engineer, Product & UX,
+Code Reviewer, and QA Engineer. In each agent’s setup, select **Advanced** →
+**Custom Gateway**, choose the shared connection, and set the model to
+`automation-moe`. Use the local Paperclip Codex runtime and run its connection
+test. Leave periodic heartbeats off for this on-demand team.
+
+Complete runtime setup before customizing `AGENTS.md` on new agents.
+Paperclip 2026.1117.0 can save the runtime and report an instruction revision
+error when finishing setup for an existing draft with custom instructions.
+If that happens, reopen the same agent. Check the saved connection and model
+under **Harness / Runtime**, the existing `AGENTS.md` under **Identity**, and
+the agent’s readiness on the roster before retrying setup.
 
 The normal host rollout starts the inference profile when its provisioned key
 is present. To suspend inference, stop and remove only the
