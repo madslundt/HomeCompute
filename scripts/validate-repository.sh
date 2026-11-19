@@ -850,6 +850,7 @@ jq -e '
   .networks.connector.internal == true and
   (.services.paperclip.networks | keys == ["connector", "paperclip"]) and
   (.services["paperclip-connector-egress"] |
+    (.image | test("^python:[0-9.]+-slim-bookworm@sha256:[a-f0-9]{64}$")) and
     .read_only == true and (.ports // [] | length == 0) and
     (.networks | keys == ["connector", "connector-uplink"])) and
   .services.paperclip.environment.HTTPS_PROXY == "http://172.30.198.2:3128"' >/dev/null
