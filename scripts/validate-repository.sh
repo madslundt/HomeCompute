@@ -56,6 +56,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-compute-modalities.sh"
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
+  "$REPO_ROOT/scripts/setup-openbot-guest.sh"
   "$REPO_ROOT/scripts/setup-nod-guest.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
@@ -1409,7 +1410,7 @@ docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
   -f "$REPO_ROOT/deploy/openbot/compose.yaml" config --format json >"$openbot_json"
 jq -e '
   (.services | keys == ["openbot", "openbot_operator"]) and
-  (.services.openbot.image == "ghcr.io/nightly-labs/openbot:latest") and
+  (.services.openbot.image == "ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b") and
   (.services.openbot.platform == "linux/amd64") and
   (.services.openbot.cap_drop == ["ALL"] and .services.openbot.cap_add == ["SYS_CHROOT"]) and
   (.services.openbot.security_opt | index("no-new-privileges:true") != null) and
@@ -1423,7 +1424,7 @@ jq -e '
    any(.[]; .source == "/etc/homecompute-openbot/agent-ca-bundle.pem" and .target == "/run/homecompute/agent-ca-bundle.pem" and .read_only == true)) and
   (.services.openbot.shm_size == "1073741824" and .services.openbot.stop_grace_period == "1m0s") and
   (.services.openbot.mem_limit == "8589934592" and .services.openbot.pids_limit == 2048) and
-  (.services.openbot_operator.image == "ghcr.io/nightly-labs/openbot:latest") and
+  (.services.openbot_operator.image == "ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b") and
   (.services.openbot_operator.platform == "linux/amd64") and
   (.services.openbot_operator.cap_drop == ["ALL"] and .services.openbot_operator.cap_add == ["SYS_CHROOT"]) and
   (.services.openbot_operator.security_opt | index("no-new-privileges:true") != null) and
@@ -1441,9 +1442,9 @@ jq -e '
 ' "$openbot_json" >/dev/null
 grep -Fqx 'ExecStartPre=/usr/bin/docker compose --project-name homecompute-openbot --file compose.yaml pull' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot.service"
-grep -Fqx 'readonly IMAGE_REF=ghcr.io/nightly-labs/openbot:latest' \
+grep -Fqx 'readonly IMAGE_REF=ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
-grep -Fq 'latest_image_id=' \
+grep -Fq 'release_image_id=' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
 
 # Adding a project here is the point at which its isolation gets reviewed.

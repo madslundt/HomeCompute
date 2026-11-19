@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly IMAGE_REF=ghcr.io/nightly-labs/openbot:latest
+readonly IMAGE_REF=ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b
 readonly CONTAINERS=(homecompute-openbot homecompute-openbot-operator)
 
 for container in "${CONTAINERS[@]}"; do
@@ -15,8 +15,8 @@ for container in "${CONTAINERS[@]}"; do
   ports="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$container")"
   [[ "$ports" == null || "$ports" == '{}' ]] || { echo "OpenBot must not publish host ports: $container" >&2; exit 1; }
   configured_image="$(docker inspect --format '{{.Config.Image}}' "$container")"
-  [[ "$configured_image" == "$IMAGE_REF" ]] || { echo "OpenBot container is not configured from the latest tag: $container" >&2; exit 1; }
+  [[ "$configured_image" == "$IMAGE_REF" ]] || { echo "OpenBot container does not use the release image pin: $container" >&2; exit 1; }
   running_image_id="$(docker inspect --format '{{.Image}}' "$container")"
-  latest_image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")"
-  [[ "$running_image_id" == "$latest_image_id" ]] || { echo "Running OpenBot image differs from the pulled latest tag: $container" >&2; exit 1; }
+  release_image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")"
+  [[ "$running_image_id" == "$release_image_id" ]] || { echo "Running OpenBot image differs from the release image pin: $container" >&2; exit 1; }
 done

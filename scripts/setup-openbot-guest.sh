@@ -4,8 +4,9 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+readonly SCRIPT_DIR REPO_ROOT
 readonly GUEST="hermes-operator@10.77.20.2"
 readonly KEY_FILE="${OPENBOT_GUEST_SSH_KEY:-$HOME/.ssh/id_ed25519_ai-services-01}"
 readonly REMOTE_BASE="/home/hermes-operator/.local/share/homecompute-openbot"
@@ -23,12 +24,13 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|login|login-operator|status|configure-compression
+Usage: setup-openbot-guest.sh install|upgrade-team-image|login|login-operator|status|configure-compression
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
          deployed revision. Managed upgrades preserve /data and refuse drift.
          This does not sign in to OpenBot or configure a provider.
+upgrade-team-image  Apply only the published image pin to the managed team-only release.
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
@@ -59,7 +61,7 @@ require_published_release() {
   [[ "$deployed" == "$revision" ]] || { echo 'Home Core must be deployed from this exact published revision first.' >&2; return 1; }
 }
 
-configure_compression() {
+require_current_master_checkout() {
   require_clean_master_checkout
   local revision published
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
@@ -67,11 +69,147 @@ configure_compression() {
   [[ "${published%%$'\t'*}" == "$revision" ]] || {
     echo 'Fetch origin/master and check out its current published revision first.' >&2; return 1;
   }
+}
+
+configure_compression() {
+  require_current_master_checkout
+  local revision
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   git -C "$REPO_ROOT" show "$revision:scripts/configure-openbot-hermes.py" |
     ssh_guest python3 - --compression-only
 }
 
+image_pin() {
+  git -C "$REPO_ROOT" show "$1:deploy/openbot/compose.yaml" |
+    awk '$1 == "image:" && !found++ { print $2 }'
+}
+
+upgrade_team_image() {
+  require_current_master_checkout
+  local revision previous base old_image new_image asset source filename checksum manifest
+  local pin_pattern='^ghcr[.]io/nightly-labs/openbot@sha256:[0-9a-f]{64}$'
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  local installed
+  # shellcheck disable=SC2016 # The path is resolved on the guest.
+  installed="$(ssh_guest '
+    directory=$(readlink -f ~/.local/share/homecompute-openbot/current) || exit 1
+    base=${directory##*/}
+    if test -f "$directory/image-base-revision"; then
+      base=$(cat "$directory/image-base-revision") || exit 1
+    fi
+    printf "%s %s\n" "${directory##*/}" "$base"
+  ')"
+  IFS=' ' read -r previous base <<< "$installed"
+  [[ "$previous" =~ ^[0-9a-f]{40}$ && "$base" =~ ^[0-9a-f]{40}$ ]] || return 1
+  # The original team-only release may be on a historical production branch.
+  git -C "$REPO_ROOT" fetch --no-tags origin "$base"
+  old_image="$(image_pin "$previous")"
+  new_image="$(image_pin "$revision")"
+  [[ "$old_image" =~ $pin_pattern && "$new_image" =~ $pin_pattern ]] || {
+    echo 'Both OpenBot releases must have an immutable image pin.' >&2; return 1;
+  }
+  if [[ "$previous" == "$base" ]]; then
+    git -C "$REPO_ROOT" show "$base:deploy/openbot/homecompute-openbot-health" |
+      grep -Fx 'readonly CONTAINER=homecompute-openbot' >/dev/null || {
+      echo 'The selected base release does not manage a single OpenBot team server.' >&2
+      return 1
+    }
+  fi
+  manifest=''
+  for asset in "${ASSETS[@]}"; do
+    source="${asset#"$REPO_ROOT/"}"
+    filename="${asset##*/}"
+    checksum="$(
+      git -C "$REPO_ROOT" show "$base:$source" |
+        render_team_pin "$filename" "$old_image" |
+        shasum -a 256
+    )"
+    manifest+="${checksum%% *}  $filename"$'\n'
+  done
+  # Pass a single shell-safe token to preserve the manifest across SSH.
+  manifest="$(printf '%s' "$manifest" | base64 | tr -d '\n')"
+  ssh_guest bash -s -- "$REMOTE_BASE" "$previous" "$base" "$revision" "$old_image" "$new_image" "$manifest" <<'REMOTE_IMAGE'
+set -Eeuo pipefail
+root="$1"; previous="$2"; base="$3"; revision="$4"; old_image="$5"; image="$6"
+image_releases="$root/releases/team-image"
+old="$root/releases/$previous"
+if [[ "$previous" != "$base" ]]; then
+  old="$image_releases/$previous"
+fi
+release="$image_releases/$revision"
+exec 9>"$root/image-upgrade.lock"
+flock -n 9
+test -L "$root/current"
+test "$(readlink -f "$root/current")" = "$old"
+cd "$old"
+printf '%s' "$7" | base64 -d | sha256sum --check --strict --quiet
+cmp -s homecompute-openbot.service /etc/systemd/system/homecompute-openbot.service
+cmp -s homecompute-openbot-firewall.service /etc/systemd/system/homecompute-openbot-firewall.service
+cmp -s openbot-network.json /etc/homecompute-openbot/network.json
+cmp -s network-policy.py /usr/local/libexec/homecompute-openbot-network-policy
+cmp -s homecompute-openbot-health /usr/local/libexec/homecompute-openbot-health
+test -z "$(systemctl show homecompute-openbot.service -p DropInPaths --value)"
+test "$(docker compose --file compose.yaml config --services)" = openbot
+operator="$(docker ps -a --filter 'name=^/homecompute-openbot-operator$' --format '{{.Names}}')"
+test -z "$operator"
+test "$(docker inspect --format '{{.Config.Image}}' homecompute-openbot)" = "$old_image"
+sudo -n /usr/local/libexec/homecompute-openbot-health
+if [[ "$old_image" == "$image" ]]; then
+  echo 'OpenBot is already running the published image.'
+  exit 0
+fi
+
+install -d -m 0700 "$image_releases"
+stage="$(mktemp -d "$image_releases/.stage.XXXXXX")"
+restore_before_start=false
+cleanup() {
+  if "$restore_before_start"; then
+    ln -sfnT -- "$old" "$root/current" &&
+      sudo -n install -o root -g root -m 0755 "$old/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health &&
+      sudo -n systemctl start homecompute-openbot.service ||
+        echo 'Could not resume the previous OpenBot release; inspect the guest service.' >&2
+  fi
+  rm -rf -- "$stage"
+}
+trap cleanup EXIT
+for file in compose.yaml seccomp.json homecompute-openbot.service homecompute-openbot-firewall.service network-policy.py homecompute-openbot-health configure-openbot-hermes.py openbot-network.json openbot-install.json; do
+  test -f "$file" && test ! -L "$file"
+  cp -p -- "$file" "$stage/$file"
+done
+sed -i "s|^    image: .*|    image: $image|" "$stage/compose.yaml"
+sed -i "s|^readonly IMAGE_REF=.*|readonly IMAGE_REF=$image|" "$stage/homecompute-openbot-health"
+printf '%s\n' "$base" > "$stage/image-base-revision"
+test "$(docker compose --file "$stage/compose.yaml" config --images)" = "$image"
+docker pull --platform linux/amd64 "$image"
+if [[ -e "$release" || -L "$release" ]]; then
+  test -d "$release" && test ! -L "$release"
+  diff -qr -- "$stage" "$release"
+else
+  mv -T -- "$stage" "$release"
+fi
+test "$(readlink -f "$root/current")" = "$old"
+restore_before_start=true
+sudo -n systemctl stop homecompute-openbot.service
+ln -sfnT -- "$release" "$root/current"
+sudo -n install -o root -g root -m 0755 "$release/homecompute-openbot-health" /usr/local/libexec/homecompute-openbot-health
+# A new start may migrate /data. Recovery after that point uses the data backup.
+restore_before_start=false
+sudo -n systemctl start homecompute-openbot.service
+sudo -n /usr/local/libexec/homecompute-openbot-health
+docker exec homecompute-openbot openbot version
+REMOTE_IMAGE
+}
+
+render_team_pin() {
+  case "$1" in
+    compose.yaml) sed "s|^    image: .*|    image: $2|" ;;
+    homecompute-openbot-health) sed "s|^readonly IMAGE_REF=.*|readonly IMAGE_REF=$2|" ;;
+    *) cat ;;
+  esac
+}
+
 status() {
+  # shellcheck disable=SC2016 # Expand the container name on the guest.
   ssh_guest 'sudo -n systemctl is-active homecompute-openbot-firewall.service homecompute-openbot.service || true; for c in homecompute-openbot homecompute-openbot-operator; do sudo -n docker inspect --format "{{.Name}} {{.State.Status}} {{.Config.Image}} ports={{json .HostConfig.PortBindings}}" "$c" 2>/dev/null || true; sudo -n docker exec "$c" openbot version 2>/dev/null || true; done'
 }
 
@@ -108,7 +246,9 @@ if test -e "$current" || test -L "$current"; then
   test -L "$current" || { echo 'Existing OpenBot current path is not a symlink' >&2; exit 1; }
   previous_release="$(readlink -f "$current")"
   previous_revision="${previous_release##*/}"
-  [[ "$previous_release" == "$base/releases/$previous_revision" && "$previous_revision" =~ ^[0-9a-f]{40}$ ]] || {
+  [[ "$previous_revision" =~ ^[0-9a-f]{40}$ &&
+    ( "$previous_release" == "$base/releases/$previous_revision" ||
+      "$previous_release" == "$base/releases/team-image/$previous_revision" ) ]] || {
     echo 'Existing OpenBot release is outside its managed version directory' >&2
     exit 1
   }
@@ -273,6 +413,7 @@ main() {
   [[ $# == 1 ]] || { usage >&2; return 2; }
   case "$1" in
     install) install_openbot ;;
+    upgrade-team-image) upgrade_team_image ;;
     login) login_server homecompute-openbot home-core ;;
     login-operator) login_server homecompute-openbot-operator home-core-operator ;;
     status) status ;;
