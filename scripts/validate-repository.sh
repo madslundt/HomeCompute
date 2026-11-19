@@ -823,6 +823,9 @@ jq -e '
   (.services.paperclip |
     (.image | test("^ghcr[.]io/paperclipai/paperclip:[0-9.]+@sha256:[a-f0-9]{64}$")) and
     .user == "1000:1000" and .cap_drop == ["ALL"] and
+    (.cap_add // [] | length == 0) and
+    (.security_opt | index("no-new-privileges:true") != null and
+      any(test("^seccomp=.*codex-seccomp[.]json$"))) and
     .ports == null and (.privileged // false | not) and
     (.networks | keys == ["paperclip"]) and
     ([.volumes[] | [.source, .target]] == [["/srv/state/paperclip", "/paperclip"]]) and

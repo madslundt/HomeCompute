@@ -54,8 +54,9 @@ def compose(files, *args):
     command = ['docker', 'compose']
     for path in files:
         command.extend(('-f', str(path)))
+    env = {**os.environ, 'PAPERCLIP_SECCOMP_PROFILE': str(files[0].with_name('codex-seccomp.json'))}
     subprocess.run([*command, '--profile', 'inference', *args],
-                   check=True, timeout=150)
+                   check=True, timeout=150, env=env)
 
 
 def replace(files):

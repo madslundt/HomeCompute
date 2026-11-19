@@ -197,6 +197,7 @@ def deploy():
         raise ValueError("Paperclip requires a real state directory")
     run("install", "-d", "-m", "0700", "-o", "1000", "-g", "1000", str(state))
     os.environ["PAPERCLIP_SECRETS_FILE"] = str(secret)
+    os.environ["PAPERCLIP_SECCOMP_PROFILE"] = str(ROOT / "deploy/paperclip/codex-seccomp.json")
     paperclip = ["docker", "compose", "-f", str(ROOT / "deploy/paperclip/compose.yaml")]
     run(*paperclip, "config", "--quiet")
     run(*paperclip, "pull")

@@ -125,6 +125,23 @@ in `/var/lib/homecompute/paperclip`. Run the same installer with `--disable`
 to return Paperclip to its original internal network. To add another provider,
 review its required endpoints and transport before extending `connector-egress.py`.
 
+## Codex sandbox
+
+The Paperclip container uses `codex-seccomp.json`, based on the effective
+capability-free Docker Engine 29.9.2 profile observed on home-core. The added
+rules allow the bundled Bubblewrap to create descendant namespaces and mount
+its private filesystem. Linux still denies privileged mounts and mount
+namespace creation in the outer container. The container remains non-root
+with all capabilities dropped, `no-new-privileges`, private Docker networks,
+and Docker's existing masked paths.
+
+The scoped connector installer runs `verify-codex-sandbox.sh` in a disposable
+container before restarting Paperclip. The probe verifies workspace writes and
+checks that Codex cannot access a separate file, the outer process environment,
+or the outer loopback listener. Review the baseline against Docker's effective
+profile when updating Docker, and rerun the probe when updating Paperclip or
+its Codex runtime.
+
 ## Backup and rollback
 
 Embedded PostgreSQL, database dumps, workspace files, uploads, and the local

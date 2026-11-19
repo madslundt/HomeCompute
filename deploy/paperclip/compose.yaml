@@ -8,7 +8,9 @@ services:
     stop_grace_period: 90s
     # Embedded PostgreSQL creates native library symlinks below /app at first boot.
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=${PAPERCLIP_SECCOMP_PROFILE:-./codex-seccomp.json}
     environment:
       PAPERCLIP_DEPLOYMENT_MODE: authenticated
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private

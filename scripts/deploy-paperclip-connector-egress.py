@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import json
 import os
 from pathlib import Path
 import re
@@ -50,8 +51,8 @@ for (const [host, ip, path, expected] of [
 '''
 
 
-def run(*args):
-    subprocess.run(args, check=True, timeout=240)
+def run(*args, env=None):
+    subprocess.run(args, check=True, timeout=240, env=env)
 
 
 def compose(files, *args, inference=False):
@@ -60,7 +61,8 @@ def compose(files, *args, inference=False):
         command.extend(('-f', str(path)))
     if inference:
         command.extend(('--profile', 'inference'))
-    run(*command, *args)
+    env = {**os.environ, 'PAPERCLIP_SECCOMP_PROFILE': str(files[0].with_name('codex-seccomp.json'))}
+    run(*command, *args, env=env)
 
 
 def managed_files(core, container):
@@ -93,6 +95,33 @@ def check_private(core):
             raise ValueError('Paperclip network attachments must be internal')
 
 
+def qualify_sandbox(core, files):
+    profile = files[0].with_name('codex-seccomp.json')
+    probe = files[0].with_name('verify-codex-sandbox.sh')
+    core.protected(profile)
+    script = core.protected(probe).decode()
+    image = core.command('env', f'PAPERCLIP_SECCOMP_PROFILE={profile}',
+                         'docker', 'compose', '-f', str(files[0]), 'config', '--images')
+    run('docker', 'run', '--rm', '--network', 'none', '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m',
+        '--user', '1000:1000', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+        '--security-opt', f'seccomp={profile}', '--pids-limit', '64', '--entrypoint', '/bin/sh',
+        image, '-ec', script)
+
+
+def check_sandbox(core, file):
+    profile = json.loads(core.protected(file.with_name('codex-seccomp.json')))
+    raw = core.command('docker', 'inspect', '--format', '{{json .HostConfig.SecurityOpt}}', APP)
+    options = json.loads(raw)
+    filters = [option.removeprefix('seccomp=') for option in options if option.startswith('seccomp=')]
+    if ('no-new-privileges:true' not in options or len(filters) != 1
+            or json.loads(filters[0]) != profile):
+        raise ValueError('Paperclip did not load its qualified seccomp profile')
+    raw = core.command('docker', 'inspect', '--format',
+                       '{{.Config.User}} {{.HostConfig.Privileged}} {{len .HostConfig.CapAdd}} {{json .HostConfig.CapDrop}}', APP)
+    if raw != '1000:1000 false 0 ["ALL"]':
+        raise ValueError('Paperclip container privileges differ from the qualified sandbox')
+
+
 def apply(core, disable):
     check_private(core)
     if STATE.is_symlink() or (STATE.stat().st_uid, STATE.stat().st_mode & 0o777) != (0, 0o700):
@@ -112,6 +141,7 @@ def apply(core, disable):
     desired = base if disable else enabled
     compose(desired, 'config', '--quiet')
     compose(desired, 'pull', *(['paperclip'] if disable else ['paperclip', PROXY]))
+    qualify_sandbox(core, desired)
     if relay_running:
         compose(desired, 'pull', 'paperclip-inference', inference=True)
     try:
@@ -123,6 +153,7 @@ def apply(core, disable):
         if relay_running:
             start(desired, 'paperclip-inference', inference=True)
         check_private(core)
+        check_sandbox(core, desired[0])
         if disable:
             compose(enabled, 'rm', '--stop', '--force', PROXY)
             MARKER.unlink(missing_ok=True)
