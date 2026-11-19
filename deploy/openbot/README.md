@@ -189,8 +189,18 @@ workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog acce
 
 The maintenance MCP alias is excluded from `all-harness-mcps` and the existing
 OpenBot team key. It belongs only on the separate `home-core-operator` server.
-After deploying a reviewed Home Core release, prepare and review the native
-relay admission plan, then apply it with the explicit maintenance flag:
+After deploying the reviewed Home Core revision, install the maintenance
+controller from that exact checkout on Home Core. The first command prints
+the bundle digest for review. The install preserves the existing ledger.
+
+```bash
+sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts
+sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts \
+  --bundle-sha256 REVIEWED_BUNDLE_SHA256
+```
+
+Prepare and review the native relay admission plan, then apply it with the
+explicit maintenance flag:
 
 ```bash
 sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
@@ -215,20 +225,64 @@ In **home-core-operator** Provider settings, add a custom OpenAI-compatible
 provider using `https://mcp.home.arpa/v1`, model `automation-moe`, and this
 dedicated key. The same key is required for the isolated maintenance MCP alias.
 On **home-core-operator** only, add a Streamable HTTP connection at
-`https://mcp.home.arpa/mcp` with the LiteLLM API key and the header
-`x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`.
+`https://mcp.home.arpa/mcp` with both secure headers.
+
+- `x-litellm-api-key: Bearer <OpenBot operator LiteLLM key>`
+- `x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`
 The allowed inventory is limited to `homecompute_systems`,
 `homecompute_system_read`, and the five `homecompute_maintenance_*` tools. The
-principal can read host reports and prepare, inspect, list, and request a
-controller-prepared plan. Routine verified changes use the controller's
-existing standing authorization; major, unknown, downgrade, fix, and uncertain
-plans remain blocked pending exact root approval. The principal cannot target
-Home Assistant, deploy HomeCompute source releases, or manage models.
+principal can read host reports and prepare, inspect, list, and run exact
+controller plans. Its scope covers Home Core releases, NixOS packages,
+eligible Docker images, and reviewed Compose restarts, plus the existing
+eligible Spark packages and images. Full releases target Home Core only.
+Routine verified changes use the controller's standing authorization.
+Releases, restarts, and major, unknown, or downgrade updates require exact
+root approval. An uncertain attempt requires independent reconciliation.
 
 The HomeCompute and LiteLLM credentials are each server-wide within
 home-core-operator. Keep one operator agent on that instance. Confirm the
 regular `home-core` server cannot list the maintenance alias or call the
 maintenance principal before enabling routine use.
+
+### Deploy or maintain Home Core from OpenBot
+
+Ask the isolated operator to prepare `home-core` / `release` for a deployment.
+The plan reports the current revision and the exact published `master` SHA.
+Review the source, verify its CI result, and check backup coverage before
+approving the plan. The release guard requires a fresh encrypted application
+recovery archive on the NAS and a current repository check. Confirm the agents VM is
+included in that backup before installing or updating OpenBot.
+
+From the trusted Home Core terminal, review and approve the digest printed by
+the root controller:
+
+```bash
+sudo python3 /opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py review PLAN_ID
+sudo python3 /opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py approve PLAN_ID PLAN_DIGEST
+```
+
+Ask OpenBot to run that plan ID and read its status. The existing release
+wrapper owns the deployment lock, build, switch, service checks, and prior
+release pointer. A change to the published tip or the active base revision
+requires a fresh plan. The gateway may briefly disconnect during rollout.
+Check the existing plan receipt and
+`sudo journalctl -u homecompute-approved-release.service` if the result is
+unclear. For uncertain attempts, inspect the unit and running state through
+the [host operations runbook](../../docs/homecompute-operations.md) before
+root-only reconciliation. For rollback, use the prior full SHA through the
+documented host release command and handle any required data restore separately.
+Keep the controller version that can read release receipts while those
+receipts are retained in its ledger.
+
+For a NixOS package candidate, select `home-core` / `nixos`. For images,
+use an eligible service selector or `image-CONTAINER` with an exact observed
+container name. For an approved Compose recovery, use `restart-SERVICE` where
+SERVICE is one of `homepage`, `n8n`, `caddy`, `litellm`, `postgres`,
+`open-webui`, `immich`, `piper`, or `stt`. Read the controller receipt and
+verify service health after execution. Reconcile applied package and image
+changes into the owning lock or image pin in Git before another full release.
+
+### Withdraw access
 
 To withdraw access, remove the MCP connection from the isolated server, revoke
 the dedicated LiteLLM key, and remove the relay bearer through the guarded
@@ -271,8 +325,9 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
 
 OpenBot keeps its database, credentials, keyring, workspaces, and logs together
 in the guest data directory. Do not copy only part of it. The agents-VM disk is
-included in the encrypted Home Core application-state backup and has a prior
-restore drill. Confirm a fresh completed NAS backup before an image update or
+covered when the full encrypted Home Core application-state backup is running
+and has a prior restore drill. Confirm a fresh completed NAS backup that
+includes the agents VM before an image update or
 before adding household workspaces or provider sign-ins. The 2026-11-10
 read-only check found the scheduled backup timer active, a completed archive
 receipt from 2026-11-09 22:26 UTC, and a later backup attempt deferred with

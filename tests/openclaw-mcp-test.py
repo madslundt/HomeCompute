@@ -11,11 +11,12 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
 from broker import Ledger, serve
-from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS, bounded_result, call_tool
+from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS, bounded_result, call_tool, tool_inventory
 
 PROJECT = {"repository": "example/synthetic", "base_sha": "a" * 40,
            "base_branch": "main", "classification": "cloud_allowed",
@@ -30,6 +31,40 @@ class NoPublisher:
 
 
 class McpTests(unittest.TestCase):
+    def test_openbot_operator_release_and_restart_scope(self):
+        from types import SimpleNamespace
+
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        from openclaw_capabilities import Maintenance, OpenBotMaintenance
+
+        operator = OpenBotMaintenance()
+        regular = Maintenance()
+        names = {row['name']: row for row in tool_inventory(SimpleNamespace(maintenance=operator, read_only_only=True))}
+        self.assertIn('published master SHA', names['homecompute_maintenance_prepare']['description'])
+        self.assertTrue(operator.allowed_component('home-core', 'release'))
+        self.assertTrue(operator.allowed_component('home-core', 'restart-homepage'))
+        self.assertFalse(operator.allowed_component('home-core', 'restart-arbitrary'))
+        for target in ('home-spark', 'home-assistant'):
+            self.assertFalse(operator.allowed_component(target, 'release'))
+        with patch.object(regular, '_request') as request:
+            with self.assertRaises(ValueError):
+                regular.request('prepare', {'target': 'home-core', 'component': 'release'})
+            request.assert_not_called()
+
+        release = {'policy': {'target': 'home-core', 'operation': 'deploy'}}
+        restart = {'policy': {'target': 'home-core', 'operation': 'fix'},
+                   'restart_container': 'homecompute-homepage-homepage-1'}
+        other_fix = {'policy': {'target': 'home-core', 'operation': 'fix'}}
+        ha_update = {'policy': {'target': 'home-assistant', 'operation': 'update'}}
+        args = {'plan_id': 'a' * 32}
+        for adapter, row in ((regular, release), (operator, other_fix), (operator, ha_update)):
+            with patch.object(adapter, '_request', return_value={'plan': row}) as request:
+                with self.assertRaises(ValueError):
+                    adapter.request('run', args)
+                request.assert_called_once_with('status', args)
+        with patch.object(operator, '_request', return_value={'plans': [release, restart, other_fix, ha_update]}):
+            self.assertEqual([release, restart], operator.request('list', {})['plans'])
+
     def test_android_screenshot_uses_bounded_image_content_instead_of_json_text(self):
         from types import SimpleNamespace
         import base64

@@ -117,9 +117,9 @@ MAINTENANCE_TOOLS = [
     {"name": "homecompute_maintenance_list", "description": "List trusted prepared update and repair plans for home-core, home-spark and Home Assistant, including versions and approval requirements.",
      "inputSchema": {"type": "object", "additionalProperties": False, "properties": {}, "required": []},
      "annotations": {"readOnlyHint": True, "openWorldHint": False}},
-    {"name": "homecompute_maintenance_status", "description": "Read one trusted maintenance plan and its result. Human approval is required for fixes, major upgrades and uncertain versions.",
+    {"name": "homecompute_maintenance_status", "description": "Read one trusted maintenance plan and its result. Human approval is required for deployments, fixes, major upgrades and uncertain versions.",
      "inputSchema": MAINTENANCE_ID, "annotations": {"readOnlyHint": True, "openWorldHint": False}},
-    {"name": "homecompute_maintenance_run", "description": "Run one root-prepared exact maintenance plan. Verified routine updates use standing authorization; fixes and major or uncertain upgrades are blocked until exact human approval. Commands and versions cannot be supplied by this tool.",
+    {"name": "homecompute_maintenance_run", "description": "Run one root-prepared exact maintenance plan. Verified routine updates use standing authorization; deployments, fixes and major or uncertain upgrades require exact human approval. Commands and versions cannot be supplied by this tool.",
      "inputSchema": MAINTENANCE_ID, "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False}},
 ]
 
@@ -130,10 +130,15 @@ def tool_inventory(ledger: Tasks) -> list[dict[str, Any]]:
         from semantic_operations import TOOL
         operations_tools = [TOOL]
     base_tools = [] if getattr(ledger, "read_only_only", False) else TOOLS
+    maintenance = getattr(ledger, "maintenance", None)
+    maintenance_tools = MAINTENANCE_TOOLS if maintenance is not None else []
+    description = getattr(maintenance, "prepare_description", None)
+    if description is not None:
+        maintenance_tools = [dict(MAINTENANCE_TOOLS[0], description=description), *MAINTENANCE_TOOLS[1:]]
     return (base_tools + (ACTION_TOOLS if getattr(ledger, "actions", None) is not None else [])
             + (READ_TOOLS if getattr(ledger, "infrastructure", None) is not None else [])
             + (HA_TOOLS if getattr(ledger, "home_assistant", None) is not None else [])
-            + (MAINTENANCE_TOOLS if getattr(ledger, "maintenance", None) is not None else [])
+            + maintenance_tools
             + (ledger.services.tools if getattr(ledger, "services", None) is not None else [])
             + operations_tools)
 

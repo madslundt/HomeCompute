@@ -25,7 +25,7 @@ FILES = ('infrastructure_maintenance.py', 'infrastructure_update_policy.py',
          'maintenance_plan_preparation.py', 'homeassistant-maintenance.py', 'container-maintenance.py',
          'infrastructure_maintenance_operator.py', 'mcp_maintenance.py',
          'docker_maintenance.py', 'docker_maintenance_backup.py',
-         'host_maintenance_sources.py', 'core_update_build.py')
+         'host_maintenance_sources.py', 'core_update_build.py', 'core_release_maintenance.py')
 DEST = Path('/opt/homecompute/infrastructure-maintenance')
 STATE = Path('/var/lib/homecompute-infrastructure-maintenance')
 NAME = 'homecompute-infrastructure-maintenance'
@@ -203,6 +203,9 @@ def install(source, expected, public_key=None):
             if text.split()[1].encode() not in existing:
                 write(authorized, existing.rstrip(b'\n') + (b'\n' if existing else b'') + line + b'\n', 0o600)
         return {'host': host, 'installed': True, 'root_key_installed': public_key is not None, 'updates_run': 0}
+    release_helper = ('#!' + python + ' -I\nimport sys\nsys.path.insert(0, ' + repr(str(DEST)) +
+                      ')\nfrom core_release_maintenance import main\nraise SystemExit(main())\n')
+    write(LIBEXEC / 'homecompute-release-maintenance', release_helper.encode(), 0o755)
     pwd.getpwnam('homecompute-openclaw')
     attached = Path('/etc/systemd/system.attached')
     directory(attached); directory(attached / 'multi-user.target.wants')

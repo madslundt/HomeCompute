@@ -8,7 +8,7 @@ No command output, credentials or argv are returned across the agent socket.
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import fcntl
 import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -37,6 +37,8 @@ ID = re.compile(r'[a-f0-9]{32}')
 HASH = re.compile(r'[a-f0-9]{64}')
 MAX_JSON = 524288
 MAX_OUTPUT = 1048576
+RELEASE_TIMEOUT = 7320
+RELEASE_COMMAND = '/usr/local/libexec/homecompute-release-maintenance'
 BINARIES = {'docker', 'apt-get', 'dpkg-query', 'sha256sum', 'nixos-rebuild', 'nix-env', 'readlink', 'ssh'}
 BIN_DIRS = {'/usr/bin', '/bin', '/run/current-system/sw/bin'}
 NIX_SYSTEM = r'/nix/store/[a-z0-9]{32}-nixos-system-home-core-[A-Za-z0-9.+_-]+'
@@ -97,6 +99,12 @@ def argv_scope(argv, target, local_target='home-core'):
             or sum(len(arg.encode()) for arg in argv) > 16384):
         raise ValueError('invalid bounded argv')
     executable = Path(argv[0])
+    if argv[0] == RELEASE_COMMAND:
+        if (target != local_target or target != 'home-core' or len(argv) != 4
+                or argv[1] not in {'snapshot', 'apply', 'verify'}
+                or any(not re.fullmatch(r'[a-f0-9]{40}', revision) for revision in argv[2:])):
+            raise ValueError('finite local release command required')
+        return
     if argv[0] in {MCP_COMMAND, DOCKER_COMMAND}:
         if (target != local_target or (argv[0] == MCP_COMMAND and target != 'home-core') or len(argv) != 3
                 or argv[1] not in {'snapshot', 'apply', 'verify'} or not ID.fullmatch(argv[2])):
@@ -146,7 +154,9 @@ def validate_plan(value, local_target='home-core'):
     if type(value['schema_version']) is not int or value['schema_version'] != 1:
         raise ValueError('invalid schema')
     classification = classify_plan(value['policy'])
-    if type(value['timeout_seconds']) is not int or not 1 <= value['timeout_seconds'] <= 900:
+    deployment = classification['operation'] == 'deploy'
+    maximum = RELEASE_TIMEOUT if deployment else 900
+    if type(value['timeout_seconds']) is not int or not 1 <= value['timeout_seconds'] <= maximum:
         raise ValueError('invalid plan timeout')
     expiry = value['expires_at']
     if type(expiry) not in {int, float} or not math.isfinite(expiry) or expiry <= 0:
@@ -161,6 +171,15 @@ def validate_plan(value, local_target='home-core'):
                     raise ValueError('precheck requires exact output digest')
                 row = row['argv']
             argv_scope(row, value['policy']['target'], local_target)
+            if row[0] == RELEASE_COMMAND and not deployment:
+                raise ValueError('release command requires release policy')
+    if deployment:
+        revisions = [classification['base_revision'], classification['revision']]
+        snapshot = [RELEASE_COMMAND, 'snapshot', *revisions]
+        if (len(value['prechecks']) != 1 or value['prechecks'][0]['argv'] != snapshot
+                or value['steps'] != [[RELEASE_COMMAND, 'apply', *revisions]]
+                or value['postchecks'] != [[RELEASE_COMMAND, 'verify', *revisions]]):
+            raise ValueError('release phases must bind the exact approved revisions')
     if len(canonical(value).encode()) > MAX_JSON:
         raise ValueError('plan exceeds budget')
     if value.get('requires_approval') or classification['classification'] == 'unchanged':
@@ -285,11 +304,19 @@ class Controller:
         classification['updates'] = classification['updates'][:limit]
         if compact:
             classification = {key: val for key, val in classification.items() if key != 'updates'}
-        return {'plan_id': row['id'], 'digest': row['digest'], 'status': row['status'],
+        receipt = {'plan_id': row['id'], 'digest': row['digest'], 'status': row['status'],
                 'reason': row['reason'], 'expires_at': plan['expires_at'], 'policy': policy,
                 'updates_truncated': len(policy['updates']) != len(plan['policy']['updates']),
                 'requires_approval': plan.get('requires_approval', False),
                 'classification': classification, 'approved': row['approved_digest'] == row['digest']}
+        if policy['operation'] == 'fix' and policy['target'] == 'home-core' and len(plan['steps']) == 1:
+            step = plan['steps'][0]
+            if step[:2] == [CONTAINER_COMMAND, 'restart']:
+                container = step[2]
+                if ([check['argv'] for check in plan['prechecks']] == [[CONTAINER_COMMAND, 'snapshot', container]]
+                        and plan['postchecks'] == [[CONTAINER_COMMAND, 'verify', container]]):
+                    receipt['restart_container'] = container
+        return receipt
     def register(self, path):
         plan = root_json(path, self.uid)
         validate_plan(plan, self.local_target)
@@ -348,7 +375,7 @@ class Controller:
             db.execute('UPDATE plans SET approved_digest=? WHERE id=?', (digest, plan_id))
             return self.public(self.row(db, plan_id))
     def run(self, plan_id, _started=None, _blocking=True):
-        with self.locked(_blocking), self.deployment_locked(), self.connect() as db:
+        with self.locked(_blocking), ExitStack() as locks, self.connect() as db:
             row = self.row(db, plan_id)
             if row['status'] != 'registered':
                 return self.public(row)
@@ -359,6 +386,15 @@ class Controller:
                 return self.public(self.row(db, plan_id))
             if classification['approval_required'] and row['approved_digest'] != row['digest']:
                 return dict(self.public(row), reason='exact_root_approval_required')
+            deployment = classification['operation'] == 'deploy'
+            if deployment and db.execute(
+                "SELECT 1 FROM plans WHERE status='uncertain' AND json_extract(plan, '$.policy.operation')='deploy' LIMIT 1"
+            ).fetchone():
+                return dict(self.public(row), reason='prior_release_requires_reconciliation')
+            # The release wrapper takes the same host lock and rechecks the base
+            # revision inside it. Other maintenance commands use the outer lock.
+            if not deployment:
+                locks.enter_context(self.deployment_locked())
             db.execute("UPDATE plans SET status='executing', reason=NULL WHERE id=?", (plan_id,))
             db.commit()  # Durable one-attempt marker precedes every subprocess.
             if _started:
@@ -368,7 +404,7 @@ class Controller:
             try:
                 for phase in ('prechecks', 'steps', 'postchecks'):
                     for command in plan[phase]:
-                        if self.clock() >= plan['expires_at']:
+                        if (not deployment or phase != 'postchecks') and self.clock() >= plan['expires_at']:
                             raise ValueError('plan_expired')
                         argv = command['argv'] if isinstance(command, dict) else command
                         timeout = deadline - time.monotonic()

@@ -320,6 +320,12 @@ class Actions:
 class Maintenance:
     """Opaque plan IDs only; root owns plans, classification and approvals."""
 
+    def allowed_component(self, target: str, component: str) -> bool:
+        return component != 'release'
+
+    def allowed_plan(self, plan: dict[str, Any]) -> bool:
+        return plan.get('policy', {}).get('operation') != 'deploy'
+
     def request(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if operation not in {'list', 'status', 'run', 'prepare', 'preparation'}:
             raise ValueError('maintenance operation unavailable to agent')
@@ -332,6 +338,22 @@ class Maintenance:
         if operation in {'status', 'run'} and (not isinstance(arguments['plan_id'], str)
                 or not re.fullmatch(r'[a-f0-9]{32}', arguments['plan_id'])):
             raise ValueError('invalid maintenance plan ID')
+        if operation == 'prepare' and not self.allowed_component(arguments['target'], arguments['component']):
+            raise ValueError('maintenance selection outside operator policy')
+        if operation == 'run' and not self.allowed_plan(self._request('status', arguments)['plan']):
+            raise ValueError('maintenance plan outside operator scope')
+        result = self._request(operation, arguments)
+        if operation == 'list':
+            result['plans'] = [plan for plan in result['plans'] if self.allowed_plan(plan)]
+        elif operation in {'status', 'run'} and not self.allowed_plan(result['plan']):
+            raise ValueError('maintenance plan outside operator scope')
+        elif operation in {'prepare', 'preparation'}:
+            receipt = result['preparation']
+            if receipt.get('target') is not None and not self.allowed_component(receipt['target'], receipt['component']):
+                return {'preparation': {'status': 'busy'}}
+        return result
+
+    def _request(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
         connection = http.client.HTTPConnection('localhost', timeout=10)
         stream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         stream.settimeout(10)
@@ -355,66 +377,34 @@ class Maintenance:
 class OpenBotMaintenance(Maintenance):
     """Narrow plan adapter for one isolated OpenBot infrastructure operator."""
 
-    CORE_COMPONENTS = frozenset({
-        'nixos', 'homepage', 'n8n', 'caddy', 'litellm', 'postgres', 'open-webui',
-        'immich', 'piper', 'stt', 'aula-mcp', 'tilbudstrolden-mcp',
+    prepare_description = (
+        'Prepare one exact plan. On home-core select release for the published master SHA, '
+        'nixos for packages, a reviewed service or image-CONTAINER for an image update, or '
+        'restart-SERVICE for a reviewed Compose service restart. On home-spark select packages '
+        'or image-CONTAINER. Poll preparation for the plan ID. Deployments and restarts require '
+        'separate approval for that exact plan.'
+    )
+
+    CORE_CONTAINERS = frozenset({
+        'homepage', 'n8n', 'caddy', 'litellm', 'postgres', 'open-webui', 'immich', 'piper', 'stt',
     })
+    CORE_COMPONENTS = CORE_CONTAINERS | {
+        'nixos', 'release', 'aula-mcp', 'tilbudstrolden-mcp',
+    } | {'restart-' + service for service in CORE_CONTAINERS}
 
-    @classmethod
-    def allowed_component(cls, target: str, component: str) -> bool:
+    def allowed_component(self, target: str, component: str) -> bool:
+        image = bool(re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
         if target == 'home-core':
-            return component in cls.CORE_COMPONENTS or bool(
-                re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
-        if target == 'home-spark':
-            return component == 'packages' or bool(
-                re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
-        return False
+            return component in self.CORE_COMPONENTS or image
+        return target == 'home-spark' and (component == 'packages' or image)
 
-    @staticmethod
-    def plan_target(result: dict[str, Any]) -> str | None:
-        plan = result.get('plan') if isinstance(result, dict) else None
-        policy = plan.get('policy') if isinstance(plan, dict) else None
-        return policy.get('target') if isinstance(policy, dict) else None
-
-    @staticmethod
-    def update_plan(result: dict[str, Any]) -> bool:
-        plan = result.get('plan') if isinstance(result, dict) else None
-        policy = plan.get('policy') if isinstance(plan, dict) else None
-        return isinstance(policy, dict) and policy.get('operation') == 'update'
-
-    def request(self, operation: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        if operation == 'prepare':
-            target, component = arguments.get('target'), arguments.get('component')
-            if not isinstance(target, str) or not isinstance(component, str) or not self.allowed_component(target, component):
-                raise ValueError('maintenance selection outside OpenBot operator policy')
-        if operation == 'list':
-            result = super().request(operation, arguments)
-            result['plans'] = [row for row in result.get('plans', [])
-                               if (self.plan_target({'plan': row}) in {'home-core', 'home-spark'}
-                                   and self.update_plan({'plan': row}))]
-            return result
-        if operation == 'status':
-            result = super().request(operation, arguments)
-            if (self.plan_target(result) not in {'home-core', 'home-spark'}
-                    or not self.update_plan(result)):
-                raise ValueError('maintenance plan outside OpenBot operator scope')
-            return result
-        if operation == 'run':
-            status = super().request('status', arguments)
-            if (self.plan_target(status) not in {'home-core', 'home-spark'}
-                    or not self.update_plan(status)):
-                raise ValueError('maintenance plan outside OpenBot operator scope')
-            return super().request(operation, arguments)
-        if operation == 'preparation':
-            result = super().request(operation, arguments)
-            preparation = result.get('preparation', {})
-            target = preparation.get('target') if isinstance(preparation, dict) else None
-            if target is not None and target not in {'home-core', 'home-spark'}:
-                raise ValueError('maintenance preparation outside OpenBot operator scope')
-            return result
-        if operation not in {'preparation', 'list', 'status', 'prepare', 'run'}:
-            raise ValueError('maintenance operation unavailable to OpenBot operator')
-        return super().request(operation, arguments)
+    def allowed_plan(self, plan: dict[str, Any]) -> bool:
+        policy = plan.get('policy', {})
+        target, operation = policy.get('target'), policy.get('operation')
+        if operation == 'update':
+            return target in {'home-core', 'home-spark'}
+        return target == 'home-core' and (operation == 'deploy'
+            or operation == 'fix' and bool(plan.get('restart_container')))
 
 
 class Capabilities:

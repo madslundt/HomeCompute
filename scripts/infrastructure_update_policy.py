@@ -119,6 +119,14 @@ def classify_version(installed: str, candidate: str, scheme: str) -> Decision:
 
 def classify_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """One exceptional component requires review of the entire exact plan."""
+    if isinstance(plan, dict) and plan.get("operation") == "deploy":
+        if (set(plan) != {"operation", "target", "updates", "base_revision", "revision"}
+                or plan["target"] != "home-core" or plan["updates"] != []
+                or any(not isinstance(plan[key], str) or not re.fullmatch(r"[a-f0-9]{40}", plan[key])
+                       for key in ("base_revision", "revision"))
+                or plan["base_revision"] == plan["revision"]):
+            raise ValueError("deployment requires distinct full Home Core revisions")
+        return {**plan, **decision("review", "release_requires_approval")}
     if not isinstance(plan, dict) or set(plan) != {"operation", "target", "updates"}:
         raise ValueError("exact operation, target and update metadata required")
     operation, target, updates = plan["operation"], plan["target"], plan["updates"]

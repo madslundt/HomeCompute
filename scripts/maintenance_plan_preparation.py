@@ -249,7 +249,7 @@ def prepare(controller: Any, target: str, component: str) -> dict[str, Any]:
     if not isinstance(target, str) or target not in {'home-core', 'home-spark', 'home-assistant'} or not isinstance(component, str):
         raise ValueError('finite infrastructure selectors required')
     image = bool(re.fullmatch(r'image-[A-Za-z0-9][A-Za-z0-9_.-]{0,110}', component))
-    if ((target == 'home-core' and not image and component not in {'nixos', *DOCKER, *MCPS, *('restart-' + key for key in DOCKER)})
+    if ((target == 'home-core' and not image and component not in {'nixos', 'release', *DOCKER, *MCPS, *('restart-' + key for key in DOCKER)})
             or (target == 'home-spark' and not image and component not in SPARK_COMPONENTS)
             or (target == 'home-assistant' and component not in module('ha').ENTITIES)
             or (controller.local_target == 'home-spark' and target != 'home-spark')):
@@ -275,6 +275,11 @@ def prepare(controller: Any, target: str, component: str) -> dict[str, Any]:
         helper = module('spark')
         plan, _ = helper.prepare(runner=controller.runner, clock=controller.clock)
         helper.write_plan(output, plan)
+    elif component == 'release':
+        import core_release_maintenance
+        plan = core_release_maintenance.prepare(controller)
+        validate_plan(plan)
+        module('core').write_plan(output, plan)
     elif component == 'nixos':
         import core_update_build
         core_update_build.prepare(controller, output)

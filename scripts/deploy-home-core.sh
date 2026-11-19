@@ -2,10 +2,14 @@
 # Run from a reviewed checkout on home-core: sudo bash scripts/deploy-home-core.sh SHA
 set -Eeuo pipefail
 revision="${1:-}"
-[[ $# == 1 && "$revision" =~ ^[0-9a-f]{40}$ ]] || {
-  printf 'Usage: sudo bash scripts/deploy-home-core.sh FULL_COMMIT_SHA\n' >&2
+expected_current=""
+if [[ $# == 3 && $2 == --expect-current && $3 =~ ^[0-9a-f]{40}$ && $3 != "$revision" ]]; then
+  expected_current="$3"
+elif [[ $# != 1 ]]; then
+  printf 'Usage: sudo bash scripts/deploy-home-core.sh FULL_COMMIT_SHA [--expect-current FULL_COMMIT_SHA]\n' >&2
   exit 2
-}
+fi
+[[ "$revision" =~ ^[0-9a-f]{40}$ ]] || { printf 'Full commit SHA required.\n' >&2; exit 2; }
 [[ $EUID == 0 && $(hostname) == home-core ]] || {
   printf 'Run as root on home-core.\n' >&2; exit 1;
 }
@@ -14,6 +18,12 @@ install -d -m 0755 /srv/homecompute/releases
 install -d -m 0700 /var/lib/homecompute
 exec 9>/var/lib/homecompute/deploy.lock
 flock -n 9 || { printf 'Another deployment is running.\n' >&2; exit 1; }
+if [[ -n "$expected_current" ]]; then
+  [[ $(cat /var/lib/homecompute/deployed-revision) == "$expected_current" &&
+     $(readlink /srv/homecompute/current) == "/srv/homecompute/releases/$expected_current" ]] || {
+    printf 'The active Home Core release differs from the approved base.\n' >&2; exit 1;
+  }
+fi
 [[ ! -e /var/lib/homecompute/homepage-maintenance/active-image.json ]] || {
   printf 'Reconcile the human-approved Homepage image override before full deployment.\n' >&2; exit 1;
 }
@@ -23,7 +33,7 @@ flock -n 9 || { printf 'Another deployment is running.\n' >&2; exit 1; }
 # Prepared image overrides preserve the selected digest until source pins are
 # reconciled. A full deployment must not silently replace those running images.
 if [[ -f /var/lib/homecompute-infrastructure-maintenance/plans.sqlite ]]; then
-  python3 - /var/lib/homecompute-infrastructure-maintenance/plans.sqlite <<'PY'
+  python3 - /var/lib/homecompute-infrastructure-maintenance/plans.sqlite "$expected_current" <<'PY'
 import json, sqlite3, sys
 with sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True) as db:
     for (raw,) in db.execute("SELECT plan FROM plans WHERE status IN ('succeeded','executing','uncertain')"):
@@ -34,6 +44,10 @@ with sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True) as db:
         if any(command[:2] == ['/usr/local/libexec/homecompute-mcp-maintenance', 'apply']
                for command in plan['steps']):
             raise SystemExit('Reconcile MCP image updates and source pins before full deployment.')
+        if sys.argv[2] and plan['policy']['target'] == 'home-core' and any(
+                command[0].endswith('/nix-env') and command[1:4] == ['--profile', '/nix/var/nix/profiles/system', '--set']
+                for command in plan['steps']):
+            raise SystemExit('Reconcile the NixOS package generation and flake lock before an approved release.')
 PY
 fi
 # Automatic daemon replacements keep exact deployment state outside Compose.
@@ -72,6 +86,20 @@ fi
 }
 git -C "$release" checkout --detach "$revision"
 [[ -z $(git -C "$release" status --porcelain --untracked-files=all) ]]
+if [[ -n "$expected_current" ]]; then
+  python3 - "$release/scripts/platform-health.py" <<'PYTHON'
+import runpy
+import sys
+
+health = runpy.run_path(sys.argv[1])
+readiness = health['nas_readiness']()
+if not readiness.get('nas_backup_ready') or not readiness.get('nas_check_ready'):
+    raise SystemExit('A fresh completed NAS backup and repository check are required.')
+receipt = health['private_record'](health['NAS_STATE'] / 'last-backup.json')
+if receipt.get('scope') != '/srv/backups/agent-recovery':
+    raise SystemExit('The NAS backup must cover Home Core application state and the agents VM.')
+PYTHON
+fi
 (cd /var/lib/homecompute && nixos-rebuild build --flake "$release#home-core")
 if ! nixos-rebuild switch --flake "$release#home-core"; then
   # A scheduled application-state backup may defer with TEMPFAIL (75) while
