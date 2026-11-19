@@ -225,10 +225,15 @@ In **home-core-operator** Provider settings, add a custom OpenAI-compatible
 provider using `https://mcp.home.arpa/v1`, model `automation-moe`, and this
 dedicated key. The same key is required for the isolated maintenance MCP alias.
 On **home-core-operator** only, add a Streamable HTTP connection at
-`https://mcp.home.arpa/mcp` with both secure headers.
+`https://mcp.home.arpa/mcp` with these headers.
 
 - `x-litellm-api-key: Bearer <OpenBot operator LiteLLM key>`
-- `x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`
+- `x-mcp-servers: homecompute_openbot_maintenance`
+- `Authorization: Bearer <maintenance credential>`
+
+`x-mcp-servers` selects the maintenance alias for the delegated
+`Authorization` header. Test the connection before saving it and confirm the
+eight tools appear.
 
 The isolated server exposes eight tools. Use `homecompute_systems` and
 `homecompute_system_read` for health and update reports on Home Core and Home
