@@ -6,7 +6,7 @@ services:
     user: "1000:1000"
     restart: unless-stopped
     stop_grace_period: 90s
-    read_only: true
+    # Embedded PostgreSQL creates native library symlinks below /app at first boot.
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:

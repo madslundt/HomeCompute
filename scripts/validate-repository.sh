@@ -822,7 +822,7 @@ jq -e '
   (.networks.paperclip.external == true and .networks.paperclip.name == "homecompute-paperclip") and
   (.services.paperclip |
     (.image | test("^ghcr[.]io/paperclipai/paperclip:[0-9.]+@sha256:[a-f0-9]{64}$")) and
-    .user == "1000:1000" and .read_only == true and .cap_drop == ["ALL"] and
+    .user == "1000:1000" and .cap_drop == ["ALL"] and
     .ports == null and (.privileged // false | not) and
     (.networks | keys == ["paperclip"]) and
     ([.volumes[] | [.source, .target]] == [["/srv/state/paperclip", "/paperclip"]]) and
