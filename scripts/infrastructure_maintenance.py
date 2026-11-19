@@ -285,11 +285,19 @@ class Controller:
         classification['updates'] = classification['updates'][:limit]
         if compact:
             classification = {key: val for key, val in classification.items() if key != 'updates'}
-        return {'plan_id': row['id'], 'digest': row['digest'], 'status': row['status'],
+        receipt = {'plan_id': row['id'], 'digest': row['digest'], 'status': row['status'],
                 'reason': row['reason'], 'expires_at': plan['expires_at'], 'policy': policy,
                 'updates_truncated': len(policy['updates']) != len(plan['policy']['updates']),
                 'requires_approval': plan.get('requires_approval', False),
                 'classification': classification, 'approved': row['approved_digest'] == row['digest']}
+        if policy['operation'] == 'fix' and policy['target'] == 'home-core' and len(plan['steps']) == 1:
+            step = plan['steps'][0]
+            if step[:2] == [CONTAINER_COMMAND, 'restart']:
+                container = step[2]
+                if ([check['argv'] for check in plan['prechecks']] == [[CONTAINER_COMMAND, 'snapshot', container]]
+                        and plan['postchecks'] == [[CONTAINER_COMMAND, 'verify', container]]):
+                    receipt['restart_container'] = container
+        return receipt
     def register(self, path):
         plan = root_json(path, self.uid)
         validate_plan(plan, self.local_target)
@@ -431,6 +439,10 @@ def serve(controller, path=SOCKET, actor_uid=None):
                 elif self.path == '/prepare':
                     value = json.loads(body); exact(value, {'target', 'component'})
                     result = controller.prepare(value['target'], value['component'], _async=True)
+                elif self.path == '/proposal' and controller.local_target == 'home-core':
+                    from maintenance_plan_preparation import upgrade_proposal
+                    value = json.loads(body); exact(value, {'component'})
+                    result = upgrade_proposal(value['component'], controller.clock())
                 elif self.path == '/preparation' and body in {b'', b'{}'}:
                     result = controller.preparation_status or {'status': 'idle'}
                 elif self.path in {'/run', '/status'}:

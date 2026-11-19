@@ -125,6 +125,55 @@ class RemoteTest(unittest.TestCase):
             with self.assertRaises(ValueError): prep.approve_remote(self.controller, {'plan': prep.canonical(plan)})
 
 
+class UpgradeProposalTest(unittest.TestCase):
+    def test_nixos_points_at_existing_lockfile_workflow(self):
+        root = Path(__file__).resolve().parents[1]
+        with patch.object(prep, 'root_json') as read:
+            proposal = prep.upgrade_proposal('nixos', NOW)
+        read.assert_not_called()
+        self.assertEqual('flake.lock', proposal['source_path'])
+        self.assertTrue((root / proposal['source_path']).is_file())
+        self.assertTrue((root / '.github/workflows' / proposal['workflow'].rsplit('/', 1)[-1]).is_file())
+
+    def test_image_proposal_requires_fresh_observation_and_maps_source_pin(self):
+        root = Path(__file__).resolve().parents[1]
+        for path, variable, repository in prep.GIT_IMAGE_PINS.values():
+            pin, = [line.split('=', 1)[1] for line in (root / path).read_text().splitlines()
+                    if line.startswith(variable + '=')]
+            ref = prep.reference(pin)
+            self.assertEqual(repository, f"{ref['registry']}/{ref['repository']}")
+
+        checked = datetime.fromtimestamp(NOW, timezone.utc).isoformat()
+        row = {'host': 'home-core', 'container': prep.DOCKER['homepage'][0], 'state': 'update_available',
+               'image': 'ghcr.io/gethomepage/homepage:v2.8.0', 'tracked_tag': 'v2.8.0',
+               'registry': 'ghcr.io', 'repository': 'gethomepage/homepage',
+               'remote_index_digest': 'sha256:' + 'a' * 64, 'checked_at': checked,
+               'private_detail': 'never returned'}
+        report = {'schema_version': 1, 'host': 'home-core', 'generated_at': checked,
+                  'mode': 'observe-only', 'automatic_actions': False,
+                  'docker_image_updates': {'images': [row]}}
+        with patch.object(prep, 'root_json', return_value=report):
+            result = prep.upgrade_proposal('homepage', NOW)
+            self.assertEqual('config/homepage.env.example', result['source_path'])
+            self.assertEqual('HOMEPAGE_IMAGE', result['setting'])
+            self.assertEqual(row['image'] + '@' + row['remote_index_digest'], result['candidate'])
+            self.assertEqual(checked, result['observed_at'])
+            self.assertNotIn('plan_id', result)
+            self.assertNotIn('never returned', json.dumps(result))
+            self.assertNotIn('candidate', prep.upgrade_proposal('homepage', NOW + 90000))
+            row['tracked_tag'] = 'invalid tag'
+            self.assertEqual('candidate_unavailable', prep.upgrade_proposal('homepage', NOW)['status'])
+            row['tracked_tag'] = 'v2.8.0'
+            row.update(image='docker.io/example/other:v2.8.0',
+                       registry='docker.io', repository='example/other')
+            self.assertNotIn('candidate', prep.upgrade_proposal('homepage', NOW))
+
+    def test_non_git_selectors_are_unavailable(self):
+        for component in ('release', 'restart-homepage', 'packages', '../flake.lock'):
+            with self.subTest(component=component), self.assertRaises(ValueError):
+                prep.upgrade_proposal(component, NOW)
+
+
 class PreparationTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

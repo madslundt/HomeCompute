@@ -11,11 +11,12 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/codex-worker"))
 from broker import Ledger, serve
-from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS, bounded_result, call_tool
+from mcp_adapter import MAX_BODY_BYTES, MAX_RESPONSE_BYTES, TOOLS, bounded_result, call_tool, tool_inventory
 
 PROJECT = {"repository": "example/synthetic", "base_sha": "a" * 40,
            "base_branch": "main", "classification": "cloud_allowed",
@@ -30,6 +31,65 @@ class NoPublisher:
 
 
 class McpTests(unittest.TestCase):
+    def test_openbot_has_read_only_proposals_and_exact_approved_restarts(self):
+        from types import SimpleNamespace
+
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        from openclaw_capabilities import Maintenance, OpenBotMaintenance
+        from maintenance_plan_preparation import DOCKER, GIT_IMAGE_PINS
+
+        operator = OpenBotMaintenance()
+        ledger = SimpleNamespace(maintenance=operator, read_only_only=True)
+        inventory = {row['name']: row for row in tool_inventory(ledger)}
+        proposal = inventory['homecompute_maintenance_proposal']
+        self.assertTrue(proposal['annotations']['readOnlyHint'])
+        self.assertEqual({'nixos', *GIT_IMAGE_PINS}, set(operator.proposal_components))
+        self.assertEqual({key: DOCKER[key.removeprefix('restart-')][0] for key in operator.RESTARTS},
+                         operator.RESTARTS)
+        prepare = inventory['homecompute_maintenance_prepare']['inputSchema']['properties']
+        self.assertEqual(['home-core'], prepare['target']['enum'])
+        self.assertEqual(set(operator.RESTARTS), set(prepare['component']['enum']))
+        legacy = tool_inventory(SimpleNamespace(maintenance=Maintenance()))
+        self.assertNotIn('homecompute_maintenance_proposal', {row['name'] for row in legacy})
+
+        git_proposal = {'proposal': {'source_path': 'flake.lock'}}
+        with patch.object(operator, '_request', return_value=git_proposal) as request:
+            result = call_tool({'name': proposal['name'], 'arguments': {'component': 'nixos'}}, ledger)
+            self.assertEqual(git_proposal, json.loads(result['content'][0]['text']))
+            request.assert_called_once_with('proposal', {'component': 'nixos'})
+        for target, component in (('home-core', 'nixos'), ('home-core', 'release'), ('home-core', 'image-stt'),
+                                  ('home-core', 'restart-postgres'), ('home-spark', 'restart-homepage')):
+            with self.subTest(target=target, component=component), patch.object(operator, '_request') as request:
+                with self.assertRaises(ValueError):
+                    operator.request('prepare', {'target': target, 'component': component})
+                request.assert_not_called()
+
+        restart = {'policy': {'target': 'home-core', 'operation': 'fix'}, 'status': 'registered',
+                   'restart_container': operator.RESTARTS['restart-homepage'],
+                   'classification': {'approval_required': True}, 'approved': False}
+        proposals = [
+            {'policy': {'target': 'home-core', 'operation': 'update'}, 'approved': True},
+            {'policy': {'target': 'home-core', 'operation': 'deploy'}, 'approved': True},
+            dict(restart, restart_container='homecompute-control-plane-postgres-1', approved=True),
+            dict(restart, policy={'target': 'home-spark', 'operation': 'fix'}, approved=True),
+        ]
+        args = {'plan_id': 'a' * 32}
+        for other in proposals:
+            with patch.object(operator, '_request', return_value={'plan': other}) as request:
+                with self.assertRaises(ValueError):
+                    operator.request('run', args)
+                request.assert_called_once_with('status', args)
+        with patch.object(operator, '_request', return_value={'plan': restart}) as request:
+            self.assertEqual('exact_root_approval_required', operator.request('run', args)['plan']['reason'])
+            request.assert_called_once_with('status', args)
+        approved = dict(restart, approved=True)
+        receipt = {'plan': dict(approved, status='executing')}
+        with patch.object(operator, '_request', side_effect=[{'plan': approved}, receipt]) as request:
+            self.assertEqual(receipt, operator.request('run', args))
+            self.assertEqual(['status', 'run'], [item.args[0] for item in request.call_args_list])
+        with patch.object(operator, '_request', return_value={'plans': [restart, *proposals]}):
+            self.assertEqual([restart], operator.request('list', {})['plans'])
+
     def test_android_screenshot_uses_bounded_image_content_instead_of_json_text(self):
         from types import SimpleNamespace
         import base64

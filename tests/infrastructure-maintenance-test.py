@@ -103,6 +103,24 @@ class MaintenanceTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.controller.approve(receipt['plan_id'], receipt['digest'])
 
+    def test_restart_receipt_binds_one_container_and_requires_approval(self):
+        value = plan()
+        command, name = maintenance.CONTAINER_COMMAND, 'homecompute-homepage-homepage-1'
+        value['policy'] = {'target': 'home-core', 'operation': 'fix', 'updates': []}
+        value['prechecks'][0]['argv'] = [command, 'snapshot', name]
+        value['steps'] = [[command, 'restart', name]]
+        value['postchecks'] = [[command, 'verify', name]]
+        receipt = self.register(value)
+        self.assertEqual(name, receipt['restart_container'])
+        self.assertEqual('exact_root_approval_required', self.controller.run(receipt['plan_id'])['reason'])
+        self.assertEqual([], self.calls)
+        self.controller.approve(receipt['plan_id'], receipt['digest'])
+        self.assertEqual('succeeded', self.controller.run(receipt['plan_id'])['status'])
+        self.assertEqual(['snapshot', 'restart', 'verify'], [call[0][1] for call in self.calls])
+
+        value['postchecks'][0][-1] = 'different-container'
+        self.assertNotIn('restart_container', self.register(value))
+
     def test_prechecks_bind_current_snapshot_before_any_effect(self):
         value = plan()
         value['prechecks'][0]['stdout_sha256'] = digest(b'old snapshot')
@@ -470,10 +488,16 @@ class MaintenanceTests(unittest.TestCase):
             self.assertEqual(200, request('/status', {'plan_id': receipt['plan_id']})[0])
             self.assertEqual(200, request('/prepare', {'target': 'home-core', 'component': 'homepage'})[0])
             self.assertEqual(200, request('/preparation', {})[0])
+            status, proposal = request('/proposal', {'component': 'nixos'})
+            self.assertEqual(200, status)
+            self.assertEqual('flake.lock', proposal['source_path'])
+            self.assertEqual([receipt['plan_id']], [row['plan_id'] for row in self.controller.list()])
             for path, value in (('/approve', {'plan_id': receipt['plan_id'], 'digest': receipt['digest']}),
                                 ('/register', plan()), ('/run', {'argv': ['/bin/sh']}),
                                 ('/run', {'plan_id': receipt['plan_id'], 'approved': True}),
                                 ('/run', {'plan_id': '../operator-plan.json'}),
+                                ('/proposal', {'component': 'release'}),
+                                ('/proposal', {'component': 'nixos', 'argv': ['id']}),
                                 ('/prepare', {'target': 'home-core', 'component': '../bad'}),
                                 ('/prepare', {'target': 'home-core', 'component': 'homepage', 'argv': ['id']})):
                 self.assertEqual(400, request(path, value)[0])

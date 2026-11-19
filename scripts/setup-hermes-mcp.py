@@ -181,7 +181,8 @@ def probe(module) -> None:
         names = {row.get('name') for row in maintenance_tools}
         expected = {'homecompute_maintenance_prepare', 'homecompute_maintenance_preparation',
                     'homecompute_maintenance_list', 'homecompute_maintenance_status',
-                    'homecompute_maintenance_run', 'homecompute_systems', 'homecompute_system_read'}
+                    'homecompute_maintenance_run', 'homecompute_maintenance_proposal',
+                    'homecompute_systems', 'homecompute_system_read'}
         if names != expected:
             raise ValueError('OpenBot maintenance principal must expose only host reads and bounded maintenance tools')
 

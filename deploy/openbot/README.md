@@ -189,8 +189,18 @@ workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog acce
 
 The maintenance MCP alias is excluded from `all-harness-mcps` and the existing
 OpenBot team key. It belongs only on the separate `home-core-operator` server.
-After deploying a reviewed Home Core release, prepare and review the native
-relay admission plan, then apply it with the explicit maintenance flag:
+After deploying the reviewed Home Core revision, install the maintenance
+controller from that exact checkout on Home Core. The first command prints
+the bundle digest for review. The install preserves the existing ledger.
+
+```bash
+sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts
+sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts \
+  --bundle-sha256 REVIEWED_BUNDLE_SHA256
+```
+
+Prepare and review the native relay admission plan, then apply it with the
+explicit maintenance flag:
 
 ```bash
 sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
@@ -215,20 +225,62 @@ In **home-core-operator** Provider settings, add a custom OpenAI-compatible
 provider using `https://mcp.home.arpa/v1`, model `automation-moe`, and this
 dedicated key. The same key is required for the isolated maintenance MCP alias.
 On **home-core-operator** only, add a Streamable HTTP connection at
-`https://mcp.home.arpa/mcp` with the LiteLLM API key and the header
-`x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`.
-The allowed inventory is limited to `homecompute_systems`,
-`homecompute_system_read`, and the five `homecompute_maintenance_*` tools. The
-principal can read host reports and prepare, inspect, list, and request a
-controller-prepared plan. Routine verified changes use the controller's
-existing standing authorization; major, unknown, downgrade, fix, and uncertain
-plans remain blocked pending exact root approval. The principal cannot target
-Home Assistant, deploy HomeCompute source releases, or manage models.
+`https://mcp.home.arpa/mcp` with both secure headers.
+
+- `x-litellm-api-key: Bearer <OpenBot operator LiteLLM key>`
+- `x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`
+
+The isolated server exposes eight tools. Use `homecompute_systems` and
+`homecompute_system_read` for health and update reports on Home Core and Home
+Spark. `homecompute_maintenance_proposal` returns Git upgrade evidence. The
+five remaining maintenance tools handle Home Core restart plans.
 
 The HomeCompute and LiteLLM credentials are each server-wide within
-home-core-operator. Keep one operator agent on that instance. Confirm the
+`home-core-operator`. Keep one operator agent on that instance. Confirm the
 regular `home-core` server cannot list the maintenance alias or call the
-maintenance principal before enabling routine use.
+maintenance principal before enabling it.
+
+### Propose upgrades in Git
+
+Start with current host reports. Ask OpenBot to draft the source change for
+owner review. For Home Core NixOS packages, select `nixos` with
+`homecompute_maintenance_proposal`. It points to the existing flake update
+workflow and its pull request search. Use the workflow's `flake.lock` change
+as the candidate and wait for review and CI.
+
+For an eligible Docker component, the tool returns the source template and
+setting, and includes a candidate when a fresh registry report shows a digest
+change for the tracked tag. Compare the observed image with the checked-in pin
+before drafting the proposed edit. Use Dependabot and the owning workload
+runbook for new tags, coupled image changes, and migrations. Treat missing
+candidate evidence as a follow-up to verify with the source maintainer.
+OpenBot returns the proposal for human review. The owner publishes it in Git.
+
+Deploy reviewed Home Core changes and roll back from the operator workstation
+using the [HomeCompute CLI](../../docs/homecompute-operations.md#deploy-one-host).
+
+```bash
+./scripts/homecompute deploy home-core --revision FULL_SHA
+```
+
+### Request an approved service restart
+
+Use `homecompute_maintenance_prepare` with target `home-core` and one of
+`restart-homepage`, `restart-open-webui`, `restart-piper`, or `restart-stt`.
+Ask OpenBot for the plan ID and digest, then review and approve the exact plan
+from a trusted Home Core terminal.
+
+```bash
+sudo python3 /opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py review PLAN_ID
+sudo python3 /opt/homecompute/infrastructure-maintenance/infrastructure_maintenance.py approve PLAN_ID PLAN_DIGEST
+```
+
+OpenBot can request execution by plan ID after approval. Check the receipt
+and the actual client path. Reconcile an uncertain restart on Home Core
+before preparing another attempt. The owner handles other service recoveries
+through their workload runbooks.
+
+### Withdraw access
 
 To withdraw access, remove the MCP connection from the isolated server, revoke
 the dedicated LiteLLM key, and remove the relay bearer through the guarded

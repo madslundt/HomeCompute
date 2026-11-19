@@ -124,6 +124,38 @@ MAINTENANCE_TOOLS = [
 ]
 
 
+def maintenance_tools(maintenance: Any) -> list[dict[str, Any]]:
+    if maintenance is None:
+        return []
+    if not hasattr(maintenance, 'restart_components'):
+        return MAINTENANCE_TOOLS
+
+    descriptions = [
+        'Prepare a Home Core Compose restart. The exact plan requires separate root approval.',
+        'Read preparation status for a Home Core Compose restart.',
+        'List reviewed Home Core Compose restart plans.',
+        'Read one Home Core Compose restart plan and its approval status or receipt.',
+        'Request execution of one root-approved Home Core Compose restart plan by ID.',
+    ]
+    tools = [dict(tool, description=description) for tool, description in zip(MAINTENANCE_TOOLS, descriptions)]
+    tools[0]['inputSchema'] = {
+        'type': 'object', 'additionalProperties': False, 'required': ['target', 'component'],
+        'properties': {'target': {**string(1, 64), 'enum': ['home-core']},
+                       'component': {**string(1, 128), 'enum': maintenance.restart_components}},
+    }
+    tools.append({
+        'name': 'homecompute_maintenance_proposal',
+        'description': ('Read evidence for a Home Core upgrade proposal in Git. '
+                        'Returns the Nix lockfile update workflow or a source pin and observed Docker candidate.'),
+        'inputSchema': {
+            'type': 'object', 'additionalProperties': False, 'required': ['component'],
+            'properties': {'component': {**string(1, 128), 'enum': maintenance.proposal_components}},
+        },
+        'annotations': {'readOnlyHint': True, 'openWorldHint': False},
+    })
+    return tools
+
+
 def tool_inventory(ledger: Tasks) -> list[dict[str, Any]]:
     operations_tools = []
     if getattr(ledger, 'operations_search', None) is not None:
@@ -133,7 +165,7 @@ def tool_inventory(ledger: Tasks) -> list[dict[str, Any]]:
     return (base_tools + (ACTION_TOOLS if getattr(ledger, "actions", None) is not None else [])
             + (READ_TOOLS if getattr(ledger, "infrastructure", None) is not None else [])
             + (HA_TOOLS if getattr(ledger, "home_assistant", None) is not None else [])
-            + (MAINTENANCE_TOOLS if getattr(ledger, "maintenance", None) is not None else [])
+            + maintenance_tools(getattr(ledger, "maintenance", None))
             + (ledger.services.tools if getattr(ledger, "services", None) is not None else [])
             + operations_tools)
 

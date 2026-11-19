@@ -6,6 +6,9 @@ Accepted for source implementation. Runtime admission remains gated on a clean
 published Home Core release, a fresh agents-VM backup, and explicit setup of the
 separate OpenBot operator server and its credentials.
 
+The OpenBot maintenance scope is superseded by
+[ADR-038](038-openbot-git-proposals-and-restarts.md). The isolation decision remains in force.
+
 ## Context
 
 OpenBot's MCP connections are shared server-wide. Its regular team server has
