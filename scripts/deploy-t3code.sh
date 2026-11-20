@@ -51,7 +51,8 @@ compose=(docker compose -f "$release/deploy/t3code/compose.yaml")
 docker run --rm --interactive --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges:true \
   --security-opt "seccomp=$release/deploy/paperclip/codex-seccomp.json" \
-  --tmpfs /tmp:mode=1777,nosuid,nodev,size=512m --env HOME=/tmp --workdir /tmp \
+  --tmpfs /tmp:mode=1777,nosuid,nodev,size=512m --workdir /tmp \
+  --tmpfs /data:mode=0700,uid=12073,gid=12073,nosuid,nodev \
   "homecompute/t3code:$revision" sh -s < "$release/deploy/paperclip/verify-codex-sandbox.sh"
 "${compose[@]}" up -d --no-build --pull never --wait --wait-timeout 90
 "${compose[@]}" ps
