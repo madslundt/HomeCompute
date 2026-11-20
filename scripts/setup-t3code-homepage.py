@@ -14,7 +14,16 @@ STATE = Path("/var/lib/homecompute/t3code-homepage")
 PROJECT = "homecompute-homepage"
 TARGET = "/app/config/services.yaml"
 GROUP = "- AI assistants:\n"
+ACCESS_URL = json.loads((ROOT / "deploy/t3code/access.json").read_text())["url"]
 CARD = r"^    - T3 Code:\n.*?(?=^    - |^- |\Z)"
+
+LEGACY_CARD = """    - T3 Code:
+        id: homecore-t3code
+        icon: mdi-code-braces
+        href: http://127.0.0.1:3773/
+        description: Coding workspace · requires the Home Core SSH tunnel
+
+"""
 
 spec = importlib.util.spec_from_file_location("paperclip_deploy", ROOT / "scripts/deploy-paperclip.py")
 deploy = importlib.util.module_from_spec(spec)
@@ -28,8 +37,10 @@ def add_card(current, canonical):
         raise ValueError("Expected a single canonical T3 Code card under AI assistants")
     existing = re.findall(CARD, current, re.M | re.S)
     if existing or "homecore-t3code" in current:
-        if (existing != matches or current.count("homecore-t3code") != 1
-                or matches[0] not in re.split(r"^[-] ", current.split(GROUP, 1)[1], maxsplit=1, flags=re.M)[0]):
+        assistant_cards = re.split(r"^- ", current.partition(GROUP)[2], maxsplit=1, flags=re.M)[0]
+        if existing == [LEGACY_CARD] and current.count("homecore-t3code") == 1 and LEGACY_CARD in assistant_cards:
+            return current.replace(LEGACY_CARD, matches[0], 1)
+        if (existing != matches or current.count("homecore-t3code") != 1 or matches[0] not in assistant_cards):
             raise ValueError("Existing T3 Code card differs from the published card")
         return current
     return current.replace(GROUP, GROUP + matches[0], 1)
@@ -83,7 +94,7 @@ def check_card():
     groups = json.loads(body)
     links = [service.get("href") for group in groups if group.get("name") == "AI assistants"
              for service in group["services"] if service.get("id") == "homecore-t3code"]
-    if links != ["http://127.0.0.1:3773/"]:
+    if links != [ACCESS_URL]:
         raise ValueError("Homepage API did not return the expected T3 Code card")
 
 

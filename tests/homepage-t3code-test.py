@@ -25,17 +25,22 @@ class HomepageCardTests(unittest.TestCase):
     def test_add_card_preserves_links_and_is_idempotent(self):
         updated = homepage.add_card(CURRENT, CANONICAL)
         card, other_cards = updated.split("    - Working link:", 1)
-        self.assertIn("href: http://127.0.0.1:3773/", card)
+        self.assertIn(f"href: {homepage.ACCESS_URL}", card)
         self.assertEqual(
             "    - Working link:" + other_cards,
             CURRENT.removeprefix(homepage.GROUP),
         )
         self.assertEqual(homepage.add_card(updated, CANONICAL), updated)
 
+    def test_updates_only_the_previous_tunnel_card(self):
+        previous = CURRENT.replace(homepage.GROUP, homepage.GROUP + homepage.LEGACY_CARD, 1)
+        expected = homepage.add_card(CURRENT, CANONICAL)
+        self.assertEqual(homepage.add_card(previous, CANONICAL), expected)
+
     def test_refuses_duplicate_or_conflicting_card(self):
         for current in (
             CURRENT.replace("existing-link", "homecore-t3code"),
-            homepage.add_card(CURRENT, CANONICAL).replace(":3773/", ":3774/"),
+            homepage.add_card(CURRENT, CANONICAL).replace(homepage.ACCESS_URL, "https://wrong.invalid/"),
         ):
             with self.subTest(current=current):
                 with self.assertRaisesRegex(ValueError, "differs"):
