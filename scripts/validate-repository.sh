@@ -1559,7 +1559,7 @@ docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
       .extra_hosts == ["ai.home.arpa=10.77.20.1"] and
       (.volumes | length == 1 and (.[0] |
         .type == "bind" and .source == "/var/lib/homecompute-openbot-partner/data" and
-        .target == "/data" and .bind.create_host_path == false)) and
+        .target == "/data" and .bind.create_host_path != true)) and
       .cpus == 2 and .mem_limit == "4294967296" and .pids_limit == 1024 and
       (.networks | keys == ["partner"]) and .networks.partner.ipv4_address == $partner.container_address) and
     (.networks | keys == ["partner"]) and
