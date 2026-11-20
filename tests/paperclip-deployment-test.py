@@ -11,6 +11,14 @@ DEPLOY = runpy.run_path(str(ROOT / "scripts/deploy-paperclip.py"))
 
 
 class PaperclipOverlayTest(unittest.TestCase):
+    def test_secret_uses_the_same_nested_path_for_nixos_and_scoped_install(self):
+        secrets = (ROOT / "secrets/paperclip.sops.yaml").read_text()
+        installer = (ROOT / "scripts/deploy-paperclip.py").read_text()
+        nixos = (ROOT / "modules/nixos/secrets.nix").read_text()
+        self.assertRegex(secrets, r"(?m)^paperclip:\n +environment: ENC\[")
+        self.assertIn('"paperclip/environment"', nixos)
+        self.assertIn('["paperclip"]["environment"]', installer)
+
     def test_codex_profile_preserves_the_capability_free_docker_baseline(self):
         profile = json.loads((ROOT / "deploy/paperclip/codex-seccomp.json").read_text())
         exceptions = profile["syscalls"][18:]
