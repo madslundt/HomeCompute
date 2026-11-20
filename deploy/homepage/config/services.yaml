@@ -34,8 +34,8 @@
     - T3 Code:
         id: homecore-t3code
         icon: mdi-code-braces
-        href: https://home-core.tail479ad.ts.net:18798/
-        description: Coding workspace · Tailscale and T3 Code pairing required
+        href: https://t3code.home.arpa/
+        description: Coding workspace · T3 Code pairing required
 
     - AI automation manager:
         id: homecore-ai-automation-manager

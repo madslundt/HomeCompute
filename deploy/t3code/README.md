@@ -15,15 +15,16 @@ approved for the provider you sign in to.
 
 ## Connect from your workstation
 
-Connect the workstation to the household tailnet and open **T3 Code** in
-Homepage, or use [the private HTTPS address](https://home-core.tail479ad.ts.net:18798/).
-Tailscale Serve proxies that address to T3 Code's loopback listener. The route
-is private to the tailnet and T3 Code still requires an application session.
+Open **T3 Code** in Homepage or visit [t3code.home.arpa](https://t3code.home.arpa/)
+from an approved home network. Use the home DNS resolver and trust the
+[HomeCompute Caddy CA](../homepage/README.md). Caddy reaches the application
+over a dedicated, internal Docker network. T3 Code requires an application
+session.
 
 For a new browser or device, create a five-minute, single-use link:
 
 ```sh
-ssh home-core 'sudo docker exec homecompute-t3code-t3code-1 t3 auth pairing create --ttl 5m --base-url https://home-core.tail479ad.ts.net:18798'
+ssh home-core 'sudo docker exec homecompute-t3code-t3code-1 t3 auth pairing create --ttl 5m --base-url https://t3code.home.arpa'
 ```
 
 Open the printed link, then use the Homepage card for future visits. Generate
@@ -52,8 +53,8 @@ revision=FULL_RELEASE_SHA
 release=/srv/homecompute/releases/$revision
 sudo git clone https://github.com/madslundt/HomeCompute.git "$release"
 sudo git -C "$release" checkout --detach "$revision"
-sudo bash "$release/scripts/deploy-t3code.sh" "$revision"
 sudo python3 "$release/scripts/setup-t3code-access.py"
+sudo bash "$release/scripts/deploy-t3code.sh" "$revision"
 ```
 
 For a release directory already present, verify its checkout and run just the
@@ -68,10 +69,12 @@ sudo docker exec homecompute-t3code-t3code-1 t3 policy show
 sudo docker exec homecompute-t3code-t3code-1 codex login status
 ```
 
-The access installer verifies the loopback service's pairing requirement and
-reserves only the T3 Code HTTPS route. Tailscale retains the background Serve
-configuration across reboots. Verify the public TLS certificate, pairing and
-the projects view from a tailnet client before applying the [Homepage card](../homepage/README.md).
+The access installer adds the virtual host and the internal Docker network to
+the healthy gateway. The normal Home Core release also declares both. Add the
+record in [t3code-dns.json](../../config/t3code-dns.json) in UniFi Network under
+**Settings → Policy Engine → Policy Table → DNS Records**. Verify DNS, trusted
+TLS, browser pairing, and the projects view before applying the [Homepage
+card](../homepage/README.md).
 Docker stdout collection is disabled because the upstream foreground server
 prints a pairing credential at startup.
 
@@ -83,12 +86,9 @@ directory. Restart the prior image if the upgrade has to be deferred. Keep
 backup archives private because they contain credentials and session data.
 
 To roll back an upgrade, stop the container, preserve its current state, restore
-the pre-upgrade snapshot, and apply the previous compatible release with its
-installer. To roll back the first installation while retaining all data, use
-the active release and its full revision. The following commands remove the
-Tailscale listener and stop the application container:
-
-```sh
-sudo python3 "$release/scripts/setup-t3code-access.py" --remove
-sudo env T3CODE_RELEASE="$revision" docker compose -f "$release/deploy/t3code/compose.yaml" down
-```
+the pre-upgrade snapshot, and apply the previous compatible release. To remove
+the scoped gateway change, reapply Caddy using the Compose files in
+`/var/lib/homecompute/t3code-gateway/FULL_SHA/receipt.json` in their recorded
+order with `/etc/homecompute/control-plane.env`. Restore the Homepage
+configuration recorded in its [rollback procedure](../homepage/README.md) and
+remove the T3 Code DNS record only if it still matches the declared value.

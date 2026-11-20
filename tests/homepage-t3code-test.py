@@ -32,10 +32,12 @@ class HomepageCardTests(unittest.TestCase):
         )
         self.assertEqual(homepage.add_card(updated, CANONICAL), updated)
 
-    def test_updates_only_the_previous_tunnel_card(self):
-        previous = CURRENT.replace(homepage.GROUP, homepage.GROUP + homepage.LEGACY_CARD, 1)
+    def test_updates_only_known_previous_cards(self):
         expected = homepage.add_card(CURRENT, CANONICAL)
-        self.assertEqual(homepage.add_card(previous, CANONICAL), expected)
+        for card in (homepage.LEGACY_CARD, homepage.TAILSCALE_CARD):
+            with self.subTest(card=card):
+                previous = CURRENT.replace(homepage.GROUP, homepage.GROUP + card, 1)
+                self.assertEqual(homepage.add_card(previous, CANONICAL), expected)
 
     def test_refuses_duplicate_or_conflicting_card(self):
         for current in (

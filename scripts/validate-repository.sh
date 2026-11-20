@@ -892,18 +892,30 @@ jq -e '
 rg -F 'href: https://paperclip.home.arpa/' "$REPO_ROOT/deploy/homepage/config/services.yaml" >/dev/null
 
 printf '[validate] T3 Code Compose boundary\n'
+jq -e '
+  .networks.t3code.name == "homecompute-t3code-ingress" and
+  .networks.t3code.internal == true and
+  .networks.t3code.driver_opts["com.docker.network.bridge.gateway_mode_ipv4"] == "isolated" and
+  ([.services | to_entries[] | select(.value.networks.t3code != null) | .key] == ["caddy"])
+' "$control_plane_json" >/dev/null
+jq -e '
+  .zone == "home.arpa" and
+  .records == [{"name": "t3code.home.arpa", "type": "A", "value": "192.168.30.122", "ttl": 300}]
+' "$REPO_ROOT/config/t3code-dns.json" >/dev/null
 # Compose v2 omits an explicit false bind.create_host_path in rendered JSON.
 rg -q '^[[:space:]]+create_host_path: false$' "$REPO_ROOT/deploy/t3code/compose.yaml"
 T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml" config --format json |
   jq -e '
-    .services.t3code |
+    .networks.ingress.external == true and .networks.ingress.name == "homecompute-t3code-ingress" and
+    (.services.t3code |
+    .networks.ingress.aliases == ["t3code"] and .networks.default.gw_priority == 1 and
     .platform == "linux/amd64" and .user == "12073:12073" and .read_only and
     .cap_drop == ["ALL"] and (.security_opt | index("no-new-privileges:true") != null) and
     (.security_opt | index("seccomp:../paperclip/codex-seccomp.json") != null) and
     (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "3773") and
     (.volumes | length == 1 and .[0].type == "bind" and .[0].source == "/srv/state/t3code" and
       .[0].target == "/data" and .[0].bind.create_host_path != true) and
-    .logging.driver == "none"
+    .logging.driver == "none")
   ' >/dev/null
 jq -e '.limits | .connect == false and .webhookTasks == false and
   .previewTunnel == false and .telemetry == false and .updates.mode == "off"' \

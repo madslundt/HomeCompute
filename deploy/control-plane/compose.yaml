@@ -68,6 +68,7 @@ services:
         ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
       mcp-web:
         ipv4_address: ${CADDY_MCP_WEB_IP:?Set CADDY_MCP_WEB_IP}
+      t3code: {}
       paperclip: {}
       paperclip-inference:
         ipv4_address: 172.28.216.2
@@ -475,6 +476,13 @@ networks:
       config:
         - subnet: ${CONTROL_PLANE_MCP_BACKENDS_SUBNET:?Set CONTROL_PLANE_MCP_BACKENDS_SUBNET}
           gateway: ${CONTROL_PLANE_MCP_BACKENDS_GATEWAY:?Set CONTROL_PLANE_MCP_BACKENDS_GATEWAY}
+  t3code:
+    name: homecompute-t3code-ingress
+    driver: bridge
+    internal: true
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
   paperclip:
     name: homecompute-paperclip
     driver: bridge

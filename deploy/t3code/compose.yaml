@@ -16,6 +16,11 @@ services:
     security_opt:
       - no-new-privileges:true
       - seccomp:../paperclip/codex-seccomp.json
+    networks:
+      default:
+        gw_priority: 1
+      ingress:
+        aliases: [t3code]
     ports:
       - "127.0.0.1:3773:3773"
     volumes:
@@ -38,3 +43,8 @@ services:
     # The upstream foreground server prints a pairing credential at startup.
     logging:
       driver: none
+
+networks:
+  ingress:
+    name: homecompute-t3code-ingress
+    external: true

@@ -25,6 +25,14 @@ LEGACY_CARD = """    - T3 Code:
 
 """
 
+TAILSCALE_CARD = """    - T3 Code:
+        id: homecore-t3code
+        icon: mdi-code-braces
+        href: https://home-core.tail479ad.ts.net:18798/
+        description: Coding workspace · Tailscale and T3 Code pairing required
+
+"""
+
 spec = importlib.util.spec_from_file_location("paperclip_deploy", ROOT / "scripts/deploy-paperclip.py")
 deploy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(deploy)
@@ -38,8 +46,9 @@ def add_card(current, canonical):
     existing = re.findall(CARD, current, re.M | re.S)
     if existing or "homecore-t3code" in current:
         assistant_cards = re.split(r"^- ", current.partition(GROUP)[2], maxsplit=1, flags=re.M)[0]
-        if existing == [LEGACY_CARD] and current.count("homecore-t3code") == 1 and LEGACY_CARD in assistant_cards:
-            return current.replace(LEGACY_CARD, matches[0], 1)
+        if (len(existing) == 1 and existing[0] in (LEGACY_CARD, TAILSCALE_CARD)
+                and current.count("homecore-t3code") == 1 and existing[0] in assistant_cards):
+            return current.replace(existing[0], matches[0], 1)
         if (existing != matches or current.count("homecore-t3code") != 1 or matches[0] not in assistant_cards):
             raise ValueError("Existing T3 Code card differs from the published card")
         return current

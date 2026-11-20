@@ -51,7 +51,7 @@ Homepage container, Docker network, credentials, or host filesystem. See the
 The **Paperclip** card opens `https://paperclip.home.arpa/`. Paperclip uses its
 own login. See the [Paperclip runbook](../paperclip/README.md) for setup and access.
 
-The **T3 Code** card opens the private Home Core HTTPS address over Tailscale.
+The **T3 Code** card opens `https://t3code.home.arpa/` through the private gateway.
 For first-time pairing, see the [T3 Code runbook](../t3code/README.md).
 
 The **Nod** card opens `https://nod.home.arpa/` over the LAN or Tailscale

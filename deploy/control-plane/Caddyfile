@@ -128,6 +128,15 @@ nod.home.arpa {
 	respond "Forbidden" 403
 }
 
+t3code.home.arpa {
+	tls internal
+	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
+	handle @private {
+		reverse_proxy t3code:3773
+	}
+	respond "Forbidden" 403
+}
+
 paperclip.home.arpa {
 	tls internal
 	encode zstd gzip
@@ -186,6 +195,10 @@ http://:8080 {
 	@nod host nod.home.arpa
 	handle @nod {
 		redir https://nod.home.arpa{uri} 308
+	}
+	@t3code host t3code.home.arpa
+	handle @t3code {
+		redir https://t3code.home.arpa{uri} 308
 	}
 	@paperclip host paperclip.home.arpa
 	handle @paperclip {
