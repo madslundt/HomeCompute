@@ -109,6 +109,26 @@ The catalog is available for deliberate selection. Keep the initial three
 agents on `automation-moe` and use ChatGPT for public or explicitly approved
 material. Keep the reviewed Hermes profile in its local runtime.
 
+### Research agent
+
+When the account owner accepts shared-server file access, add **Research** on
+the same OpenBot server. Create it with Home AI (local) first. Use its own
+workspace, **Ask first** for permissions, and turn off Computer Use and Local
+scripts. Then select **ChatGPT Sol** under **HomeCompute ChatGPT subscription**
+(`chatgpt-sol-latest`). Leave model backups and schedules empty.
+
+> Undersøg offentlige emner, og svar kort på dansk. Brug officielle eller
+> primære kilder, hvor det er muligt. Giv links, og markér tydeligt det, du
+> ikke kunne verificere. Arbejd i dit eget arbejdsområde. Brug kun offentligt
+> materiale og den offentlige brief, du har fået. Bed om en anonymiseret
+> brief, hvis opgaven indeholder private oplysninger. Del dit resultat i
+> OpenBot, og bed om godkendelse, før du sender noget ud af OpenBot.
+
+Ask first requests approval for actions and leaves writes available. The
+research workspace organizes files, and the provider can still have file-read
+access elsewhere on the server. Give Research only public briefs and sources.
+Verify the binding with a synthetic turn before handing it real work.
+
 ## Reviewed personal context
 
 Give the partner the short Danish profile draft to edit and approve. Keep it
