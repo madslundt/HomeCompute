@@ -95,7 +95,11 @@ class AgentsVmModuleTest(unittest.TestCase):
         body = MODULE.split('systemd.services.homecompute-agents-ai-proxy = {', 1)[1]
         body = body.split('    # OpenShell', 1)[0]
         self.assertIn('wantedBy = [ "multi-user.target" ];', body)
-        self.assertIn('after = [ "homecompute-agents-network.service" ];', body)
+        self.assertIn('after = [ "homecompute-agents-network.service" "docker.service" ];', body)
+        self.assertIn('partOf = [ "docker.service" ];', body)
+        self.assertIn('ExecStartPre = "+${agentsProxyAddressPolicy} install";', body)
+        self.assertIn('rule=(-s ${hostAddress}/32 -d 172.28.200.2/32 -o br-hc-ctrl -p tcp --dport 8443 -j ACCEPT)', MODULE)
+        self.assertIn('-t nat -I POSTROUTING 1', MODULE)
         self.assertIn('TCP4-LISTEN:443,bind=${hostAddress}', body)
         self.assertIn('TCP4:172.28.200.2:8443,bind=${hostAddress}', body)
 
