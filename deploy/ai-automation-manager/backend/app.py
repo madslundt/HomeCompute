@@ -586,15 +586,6 @@ def list_runs(item_id: str, _: str = Depends(require_site_session)) -> dict[str,
     return {"runs": [row_run(row) for row in rows]}
 
 
-@app.get("/api/delivery-history")
-def delivery_history(_: str = Depends(require_site_session)) -> dict[str, Any]:
-    with connection() as database:
-        rows = database.execute("""
-            SELECT * FROM run_history_entries ORDER BY sort_time DESC, id DESC LIMIT 50
-        """).fetchall()
-    return {"runs": [row_run(row) for row in rows]}
-
-
 def expire_interrupted_runs(database: sqlite3.Connection) -> None:
     cutoff = (datetime.now(timezone.utc) - RUN_LEASE).strftime("%Y-%m-%dT%H:%M:%SZ")
     database.execute("""

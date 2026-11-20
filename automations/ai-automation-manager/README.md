@@ -30,8 +30,7 @@ and the implemented dashboard with synthetic sample items is [here](../../docs/i
 | Notify me | New field: every run / when content changes / when action is needed |
 | Completion rule | New field: success criteria / manual archive |
 | Last run / run history | Shows queued, running, failed, suppressed, pending and delivered runs |
-| Delivery history | Shows the latest 50 runs across automations with results and Inbox receipts |
-| Run now | Queues a Ready automation immediately using its existing delivery settings |
+| Run now | Choose Run now from the selected Ready automation’s three-dot menu to queue it using its existing delivery settings |
 
 The data model and definitions are in [`CONTEXT.md`](CONTEXT.md).
 
@@ -130,8 +129,8 @@ ssh home-core "sudo -n bash -s -- $revision" < scripts/deploy-ai-automation-mana
 
 This uses the declared Compose files, keeps the state directory, and takes a
 private SQLite snapshot before replacing the container. It leaves the host
-release marker as-is. Verify HTTPS and the signed-in delivery history before
-publishing the n8n changes. Publish the worker first. Install the poller in the
+release marker as-is. Verify HTTPS and signed-in per-automation run history.
+When releasing n8n changes, publish the worker first. Install the poller in the
 same n8n project, reuse the worker's manager bearer credential, and verify the
 poller calls the correct worker ID before publishing it.
 

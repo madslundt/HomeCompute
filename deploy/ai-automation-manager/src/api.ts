@@ -47,7 +47,6 @@ export const api = {
   runs: async (id: string, signal?: AbortSignal) => (await call<{ runs: Run[] }>(
     `/api/automations/${encodeURIComponent(id)}/runs`, { signal },
   )).runs,
-  deliveryHistory: async (signal?: AbortSignal) => (await call<{ runs: Run[] }>('/api/delivery-history', { signal })).runs,
   runNow: async (id: string) => (await call<{ run: Run }>(
     `/api/automations/${encodeURIComponent(id)}/runs`, { method: 'POST' },
   )).run,

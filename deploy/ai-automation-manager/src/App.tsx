@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, Archive, Bell, BookOpen, Check, ChevronDown, CircleHelp, Clock3, FilePlus2, Filter, Inbox, LoaderCircle, LogOut, MoreHorizontal, Pencil, Play, Plus, Search, Settings2, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Activity, Archive, Bell, BookOpen, Check, CircleHelp, Clock3, FilePlus2, Filter, Inbox, LoaderCircle, LogOut, MoreHorizontal, Pencil, Play, Plus, Search, Settings2, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { ApiError, api } from './api'
-import { activeRun, DeliveryHistory, RunEntry, useRunHistory } from './RunHistory'
+import { activeRun, RunEntry, useRunHistory } from './RunHistory'
 import { Automation, AutomationInput, CompletionRule, dayNames, ItemStatus, NotifyWhen, Session, UpdateStyle, updateStyleLabels, notifyWhenLabels, completionRuleLabels } from './types'
 
 type FilterStatus = 'All items' | 'Active' | 'Drafts' | 'Resolved' | 'Archived'
@@ -29,7 +29,6 @@ function App() {
   const [items, setItems] = useState<Automation[]>([])
   const [recipients, setRecipients] = useState<{ id: string; name: string }[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [view, setView] = useState<'automations' | 'deliveries'>('automations')
   const [runRefresh, setRunRefresh] = useState(0)
   const [startingId, setStartingId] = useState<string | null>(null)
   const [runError, setRunError] = useState('')
@@ -41,19 +40,15 @@ function App() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuButton = useRef<HTMLButtonElement>(null)
   const [showAllRuns, setShowAllRuns] = useState(false)
 
   const selected = items.find(item => item.id === selectedId) ?? null
   const refreshItems = useCallback(() => { void api.automations().then(setItems).catch(() => {}) }, [])
-  const history = useRunHistory(session?.authenticated ? view === 'deliveries' ? 'deliveries' : selectedId : null,
-    runRefresh, refreshItems)
+  const history = useRunHistory(session?.authenticated ? selectedId : null, runRefresh, refreshItems)
   const runs = history?.runs ?? []
   const currentRun = runs.find(activeRun)
 
-  function openAutomation(id: string) {
-    setSelectedId(id)
-    setView('automations')
-  }
   const visibleItems = useMemo(() => items.filter(item => {
     const statusMatch = filter === 'All items' || (filter === 'Active' ? item.status === 'Ready' : item.status === filter.slice(0, -1) || item.status === filter)
     const q = query.trim().toLocaleLowerCase()
@@ -74,11 +69,14 @@ function App() {
 
   useEffect(() => {
     setShowAllRuns(false)
+    setMenuOpen(false)
     setRunError('')
   }, [selectedId])
 
   async function runNow() {
-    if (!selected || startingId || currentRun) return
+    if (selected?.status !== 'Ready' || startingId || currentRun) return
+    setMenuOpen(false)
+    menuButton.current?.focus()
     setStartingId(selected.id)
     setRunError('')
     try {
@@ -100,7 +98,7 @@ function App() {
 
   async function signOut() {
     try { await api.signOut() } catch { /* session expires server-side */ }
-    setSession({ authenticated: false }); setItems([]); setSelectedId(null); setView('automations'); setNotice(''); setRunError('')
+    setSession({ authenticated: false }); setItems([]); setSelectedId(null); setNotice(''); setRunError('')
   }
 
   function openNew() { setDraft(initialInput()); setEditing('new'); setError('') }
@@ -108,14 +106,14 @@ function App() {
     setDraft({ name: item.name, task_description: item.task_description, current_context: item.current_context, success_criteria: item.success_criteria,
       status: item.status, cadence: item.cadence, days_to_run: [...item.days_to_run], time_to_run: item.time_to_run, update_style: item.update_style,
       notify_when: item.notify_when, completion_rule: item.completion_rule, project: item.project, tag: item.tag, recipients: [...item.recipients] })
-    setEditing(item); setError('')
+    setMenuOpen(false); setEditing(item); setError('')
   }
 
   async function save(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError('')
     try {
       const saved = editing === 'new' ? await api.create(draft) : await api.update(editing!.id, draft)
-      await loadData(); openAutomation(saved.id); setEditing(null); setNotice(editing === 'new' ? 'Automation created' : 'Changes saved')
+      await loadData(); setSelectedId(saved.id); setEditing(null); setNotice(editing === 'new' ? 'Automation created' : 'Changes saved')
       window.setTimeout(() => setNotice(''), 3000)
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save automation.') }
     finally { setBusy(false) }
@@ -134,25 +132,34 @@ function App() {
   if (!session.authenticated) return <main className="signin-page"><section className="signin-card"><div className="brand-mark"><Sparkles size={20} /></div><p className="eyebrow">HOMECOMPUTE · PRIVATE</p><h1>Your updates,<br />in one place.</h1><p className="signin-copy">Manage the briefings and system checks delivered through your Home Assistant Inbox.</p><form onSubmit={signIn} className="signin-form"><label>Username<input autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required /></label><label>Password<input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button full" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<span>→</span></button></form><div className="signin-foot"><ShieldCheck size={15} /> Private to your home network</div></section><div className="signin-art"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-center"><Sparkles size={38}/></div><div className="art-label">A little more signal.<br/>A lot less noise.</div></div></main>
 
   return <div className="app-shell">
-    <aside className="rail"><div className="rail-logo"><Sparkles size={20}/></div><button className={view === 'automations' ? 'rail-icon active' : 'rail-icon'} title="Automations" onClick={() => setView('automations')}><Activity size={19}/></button><button className={view === 'deliveries' ? 'rail-icon active' : 'rail-icon'} title="Inbox" onClick={() => setView('deliveries')}><Inbox size={19}/></button><button className="rail-icon" title="Help"><CircleHelp size={19}/></button><div className="rail-bottom"><button className="rail-icon" title="Settings"><Settings2 size={19}/></button><button className="avatar" title={session.username}>{session.username?.slice(0,1).toUpperCase()}</button></div></aside>
-    <aside className="sidebar"><div className="workspace-label"><div className="workspace-avatar">H</div><div><strong>HomeCompute</strong><small>Personal workspace</small></div><ChevronDown size={15}/></div><div className="nav-caption">WORKSPACE</div><button className={view === 'automations' ? 'nav-item selected' : 'nav-item'} onClick={() => setView('automations')}><Activity size={16}/> Automations <span>{items.filter(i => i.status === 'Ready').length}</span></button><button className={view === 'deliveries' ? 'nav-item selected' : 'nav-item'} onClick={() => setView('deliveries')}><Inbox size={16}/> Delivery history</button><div className="sidebar-rule"/><div className="section-heading"><span>YOUR AUTOMATIONS</span><button onClick={openNew} aria-label="Create automation"><Plus size={15}/></button></div>{items.filter(i => i.status === 'Ready').slice(0,5).map(item => <button key={item.id} className={`mini-item ${selectedId === item.id ? 'chosen' : ''}`} onClick={() => openAutomation(item.id)}><span className={`mini-dot ${item.cadence === 'hourly' ? 'dot-hourly' : ''}`}/><span>{item.name}</span></button>)}{!items.some(i => i.status === 'Ready') && <p className="empty-mini">Ready items will appear here.</p>}<div className="sidebar-spacer"/><div className="sidebar-note"><div className="note-icon"><BookOpen size={15}/></div><div><strong>Keep your signal clear</strong><p>Small, focused updates make it easier to see what matters.</p></div></div><button className="account-button" onClick={signOut}><LogOut size={15}/> Sign out</button></aside>
-    <main className="main-pane"><header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span className="crumb-sep">/</span><strong>{view === 'deliveries' ? 'Delivery history' : 'Automations'}</strong></div><div className="top-actions"><span className="private-label"><span/> Private workspace</span><button className="primary-button" onClick={openNew}><Plus size={16}/> New automation</button></div></header>
-      <div className="page-content">{view === 'deliveries'
-        ? <DeliveryHistory history={history} openAutomation={openAutomation} />
-        : <><div className="page-heading"><div><p className="eyebrow">YOUR PERSONAL SIGNAL</p><h1>Automations</h1><p className="page-subtitle">Briefings, topics and system checks—organized around what matters to you.</p></div><div className="summary-pill"><span className="summary-pulse"/><strong>{items.filter(i=>i.status==='Ready').length}</strong> active</div></div>
+    <aside className="rail"><div className="rail-logo"><Sparkles size={20}/></div><span className="rail-icon active" title="Automations"><Activity size={19}/></span><button className="rail-icon" title="Help"><CircleHelp size={19}/></button><div className="rail-bottom"><button className="rail-icon" title="Settings"><Settings2 size={19}/></button><button className="avatar" title={session.username}>{session.username?.slice(0,1).toUpperCase()}</button></div></aside>
+    <aside className="sidebar"><div className="section-heading"><span>YOUR AUTOMATIONS</span><button onClick={openNew} aria-label="Create automation"><Plus size={15}/></button></div>{items.filter(i => i.status === 'Ready').slice(0,5).map(item => <button key={item.id} className={`mini-item ${selectedId === item.id ? 'chosen' : ''}`} onClick={() => setSelectedId(item.id)}><span className={`mini-dot ${item.cadence === 'hourly' ? 'dot-hourly' : ''}`}/><span>{item.name}</span></button>)}{!items.some(i => i.status === 'Ready') && <p className="empty-mini">Ready items will appear here.</p>}<div className="sidebar-spacer"/><div className="sidebar-note"><div className="note-icon"><BookOpen size={15}/></div><div><strong>Keep your signal clear</strong><p>Small, focused updates make it easier to see what matters.</p></div></div><button className="account-button" onClick={signOut}><LogOut size={15}/> Sign out</button></aside>
+    <main className="main-pane"><header className="topbar"><div className="breadcrumbs"><span>Workspace</span><span className="crumb-sep">/</span><strong>Automations</strong></div><div className="top-actions"><span className="private-label"><span/> Private workspace</span><button className="primary-button" onClick={openNew}><Plus size={16}/> New automation</button></div></header>
+      <div className="page-content"><div className="page-heading"><div><p className="eyebrow">YOUR PERSONAL SIGNAL</p><h1>Automations</h1><p className="page-subtitle">Briefings, topics and system checks—organized around what matters to you.</p></div><div className="summary-pill"><span className="summary-pulse"/><strong>{items.filter(i=>i.status==='Ready').length}</strong> active</div></div>
         <section className="overview-strip"><div className="overview-stat"><span className="stat-icon blue"><Activity size={16}/></span><div><strong>{items.filter(i=>i.status==='Ready').length}</strong><span>Running</span></div></div><div className="overview-separator"/><div className="overview-stat"><span className="stat-icon green"><Check size={16}/></span><div><strong>{items.filter(i=>i.status==='Resolved').length}</strong><span>Resolved</span></div></div><div className="overview-separator"/><div className="overview-stat"><span className="stat-icon amber"><Clock3 size={16}/></span><div><strong>{items.filter(i=>i.cadence==='hourly' && i.status==='Ready').length}</strong><span>Hourly checks</span></div></div><div className="overview-end"><span><Bell size={14}/> Sent through Home Assistant</span></div></section>
         <div className="content-grid"><section className="list-panel"><div className="list-toolbar"><div className="filter-tabs">{statusFilters.map(tab=><button key={tab} onClick={()=>setFilter(tab)} className={filter===tab?'tab active':'tab'}>{tab}{tab==='All items'&&<span>{items.length}</span>}</button>)}</div><div className="search-wrap"><Search size={15}/><input placeholder="Search automations" value={query} onChange={e=>setQuery(e.target.value)}/><button title="Filters"><Filter size={14}/></button></div></div>
           <div className="list-head"><span>AUTOMATION</span><span>SCHEDULE</span><span>STATUS</span><span>LAST RUN</span><span/></div>
           <div className="automation-list">{visibleItems.map(item=><button key={item.id} className={`automation-row ${selectedId===item.id?'row-selected':''}`} onClick={()=>setSelectedId(item.id)}><span className="item-title-cell"><span className={`item-symbol ${item.update_style}`}><Sparkles size={15}/></span><span className="item-title-copy"><strong>{item.name}</strong><small>{item.project || item.tag || item.task_description}</small></span></span><span className="schedule-cell"><Clock3 size={14}/>{cadenceLabel(item)}</span><span><span className={`status-badge ${statusColor[item.status]}`}><i/>{item.status}</span></span><span className="last-run-cell">{displayDate(item.last_run_at)}</span><MoreHorizontal className="row-more" size={17}/></button>)}{visibleItems.length===0&&<div className="empty-list"><div className="empty-illustration"><Activity size={22}/></div><h3>{items.length?'No matching automations':'Start with one useful update'}</h3><p>{items.length?'Try another search or status filter.':'Create a topic briefing, a daily news roundup, or a system check.'}</p>{items.length===0&&<button className="primary-button" onClick={openNew}><Plus size={15}/> Create automation</button>}</div>}</div>
           <div className="list-footer"><span>Showing {visibleItems.length} of {items.length} automations</span><span><span className="footer-dot"/> Synced just now</span></div>
         </section>
-        <aside className="detail-panel">{selected?<><div className="detail-top"><div className="detail-type"><span className={`item-symbol ${selected.update_style}`}><Sparkles size={15}/></span><span>{selected.project || selected.tag || 'PERSONAL'}</span><div className="more-wrap"><button className="icon-button" onClick={()=>setMenuOpen(v=>!v)}><MoreHorizontal size={19}/></button>{menuOpen&&<div className="menu-pop"><button onClick={()=>openEdit(selected)}><Pencil size={14}/> Edit automation</button><button className="danger-text" onClick={removeSelected}><Trash2 size={14}/> Delete</button></div>}</div></div><span className={`status-badge ${statusColor[selected.status]}`}><i/>{selected.status}</span><h2>{selected.name}</h2><p className="detail-description">{selected.task_description}</p><div className="detail-actions"><button className="edit-link" onClick={()=>openEdit(selected)}><Pencil size={13}/> Edit details</button>
-          {selected.status === 'Ready' && <button className="secondary-button" disabled={Boolean(startingId || currentRun)} onClick={runNow}>
-            <Play size={13} /> {startingId === selected.id ? 'Queuing…' : currentRun?.state === 'queued' ? 'Queued' : currentRun ? 'In progress' : 'Run now'}
-          </button>}</div>
-          {selected.status === 'Ready' && <p className="run-help">
-            {currentRun?.state === 'queued' ? 'The worker checks for queued runs every minute.' : 'Manual runs use this automation’s Inbox settings.'}
-          </p>}
+        <aside className="detail-panel">{selected?<><div className="detail-top"><div className="detail-type"><span className={`item-symbol ${selected.update_style}`}><Sparkles size={15}/></span><span>{selected.project || selected.tag || 'PERSONAL'}</span><div className="more-wrap" onKeyDown={event => {
+          if (event.key === 'Escape' && menuOpen) {
+            setMenuOpen(false)
+            menuButton.current?.focus()
+          }
+        }}>
+          <button ref={menuButton} className="icon-button" aria-label="Automation actions" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>
+            <MoreHorizontal size={19} />
+          </button>
+          {menuOpen && <div className="menu-pop">
+            {selected.status === 'Ready' && <button disabled={Boolean(startingId || currentRun)} onClick={runNow}>
+              <Play size={14} /> Run now
+            </button>}
+            <button onClick={() => openEdit(selected)}><Pencil size={14} /> Edit automation</button>
+            <button className="danger-text" onClick={removeSelected}><Trash2 size={14} /> Delete</button>
+          </div>}
+        </div></div><span className={`status-badge ${statusColor[selected.status]}`}><i/>{selected.status}</span><h2>{selected.name}</h2><p className="detail-description">{selected.task_description}</p>
+          <button className="edit-link" onClick={() => openEdit(selected)}><Pencil size={13} /> Edit details</button>
           {runError && <p className="inline-warning" role="alert">{runError}</p>}</div>
           <div className="detail-section"><div className="detail-label"><span>SUCCESS CRITERIA</span><span className="optional-label">{selected.completion_rule==='manual_archive'?'OPTIONAL':'RESOLUTION RULE'}</span></div><div className="criteria-box"><span className="criteria-check"><Check size={13}/></span><p>{selected.success_criteria || 'No success criteria. This item will run until you archive it.'}</p></div></div>
           {selected.current_context&&<div className="detail-section"><div className="detail-label"><span>WORKING CONTEXT</span><span className="optional-label">MARKDOWN</span></div><p className="context-preview">{selected.current_context}</p></div>}
@@ -164,14 +171,15 @@ function App() {
                 {showAllRuns ? 'Show recent' : 'View all'}
               </button>}
             </div>
+            {currentRun?.state === 'queued' && <p className="run-help" role="status">The worker checks for queued runs every minute.</p>}
             {history?.error && <p className="inline-warning" role="alert">{history.error}</p>}
             {!history && <p className="no-runs" role="status">Loading runs…</p>}
-            {history && !history.error && !runs.length && <p className="no-runs">No runs yet. Start a Ready automation or wait for its next schedule.</p>}
+            {history && !history.error && !runs.length && <p className="no-runs">No runs yet. Use Run now in the three-dot menu for a Ready automation.</p>}
             {runs.length > 0 && <ul className="run-list">
               {runs.slice(0, showAllRuns ? 50 : 3).map(run => <RunEntry key={run.id} run={run} />)}
             </ul>}
           </div>
-        </>:<div className="detail-empty"><div className="empty-illustration"><Sparkles size={22}/></div><h3>Choose an automation</h3><p>Select an item to see its task, schedule and delivery settings.</p></div>}</aside></div></>}
+        </>:<div className="detail-empty"><div className="empty-illustration"><Sparkles size={22}/></div><h3>Choose an automation</h3><p>Select an item to see its task, schedule and delivery settings.</p></div>}</aside></div>
         <footer className="page-footer"><span>HomeCompute · AI automations</span><span><ShieldCheck size={13}/> Your data stays on your home network</span></footer>
       </div>
     </main>

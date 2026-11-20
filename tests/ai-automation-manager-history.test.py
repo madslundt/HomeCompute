@@ -68,7 +68,7 @@ class AutomationHistoryTests(unittest.TestCase):
         self.assertEqual(queued.status_code, 202)
         return queued.json()["run"]
 
-    def test_manual_claim_and_receipt_appear_in_both_histories(self):
+    def test_manual_claim_and_receipt_appear_in_run_history(self):
         run = self.queue()
         self.assertEqual(run["state"], "queued")
         self.assertEqual(run["source"], "manual")
@@ -82,7 +82,6 @@ class AutomationHistoryTests(unittest.TestCase):
         self.worker("POST", run["id"] + "/result", json=RESULT)
         self.worker("POST", run["id"] + "/delivery", json={"state": "delivered", "receipt_id": "fixture"})
         recent = self.client.get(self.run_path).json()["runs"]
-        self.assertEqual(recent, self.client.get("/api/delivery-history").json()["runs"])
         self.assertEqual(recent[0]["delivery_receipt"], "fixture")
         self.assertEqual(recent[0]["automation_name"], ITEM["name"])
         self.assertEqual(recent[0]["state"], "delivered")
@@ -95,7 +94,7 @@ class AutomationHistoryTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/workflows/claim-manual").status_code, 401)
         self.assertEqual(self.client.get("/api/workflows/manual-queue").status_code, 401)
         with TestClient(manager.app, base_url=ORIGIN) as unknown:
-            self.assertEqual(unknown.get("/api/delivery-history").status_code, 401)
+            self.assertEqual(unknown.get(self.run_path).status_code, 401)
             self.assertEqual(unknown.post(self.run_path).status_code, 401)
         draft = self.create(dict(ITEM, status="Draft"))
         self.assertEqual(self.client.post(f"/api/automations/{draft}/runs", headers=self.site).status_code, 409)
