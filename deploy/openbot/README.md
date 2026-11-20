@@ -164,6 +164,8 @@ should include the six shared aliases. Remove the previous OpenClaw header from 
 OpenBot agent, so protect the key and delegated bearers as full household and
 workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog access.
 
+<a id="isolated-infrastructure-maintenance-server"></a>
+
 ### Infrastructure maintenance on the shared server
 
 The `home-core` OpenBot server uses a distinct maintenance key and the
@@ -173,10 +175,25 @@ the local model for infrastructure tasks. Home Core enforces exact root
 approval for any restart. Tools expose bounded host and update metadata,
 Git upgrade proposals, and the supported restart plans.
 
-Use the normal Home Core release to install the maintenance controller and
-admit the relay principal. Existing deployments with a verified scoped
-maintenance alias already have those two pieces. Provision the separate team
-key from a clean, current published checkout:
+For an initial installation, deploy the published Home Core release. From
+that exact release on Home Core, preview the controller bundle and relay
+plan, then apply the reviewed digests:
+
+```bash
+sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts
+sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts \
+  --bundle-sha256 REVIEWED_BUNDLE_SHA256
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
+sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --apply \
+  --expected-plan-sha256 PLAN_SHA256 --admit-openbot-maintenance
+```
+
+Existing deployments with a verified scoped maintenance alias can reuse the
+controller and gateway configuration. To rotate the relay bearer before
+activating the team connection, revoke it using the guarded installer, generate
+a new plan against the updated state, then admit it again. This temporarily
+withdraws only the maintenance grant. Provision the separate team key from a
+clean checkout of the current published revision:
 
 ```bash
 python3 scripts/provision-openbot-maintenance-key.py

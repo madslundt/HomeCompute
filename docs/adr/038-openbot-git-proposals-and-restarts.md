@@ -4,6 +4,8 @@
 
 Accepted for source implementation. Runtime admission follows the backup
 and isolation gates in [ADR-037](037-openbot-infrastructure-maintenance.md).
+[ADR-039](039-shared-openbot-maintenance.md) supersedes the separate server
+decision and retains the execution policy.
 
 ## Context
 
