@@ -131,54 +131,49 @@ Verify the binding with a synthetic turn before handing it real work.
 
 ## LiteLLM household tools
 
-Create two credentials from a clean checkout of the current published release.
-The helper verifies each LiteLLM key's grant and lists its tools over HTTPS
-from the partner container. The keys are stored outside Git on the agents VM.
+Prepare the household credential from a clean checkout of the current published
+release. The helper verifies the LiteLLM grant and lists its tools over HTTPS
+from the partner container. The credential is stored outside Git on the agents VM.
 
 ```bash
-./scripts/provision-openbot-partner-mcp.py prepare public
-./scripts/provision-openbot-partner-mcp.py prepare aula
+./scripts/provision-openbot-partner-mcp.py prepare homecompute
 ```
 
-On the partner server, open **Marketplace → Apps → Add custom server**. Both
-connections use Streamable HTTP at `https://llm.home.arpa/mcp`.
+The existing Aula credential is upgraded in place. If `household-aula` exists,
+edit that entry and keep its `x-litellm-api-key` header. Set the name to
+`homecompute` and set `x-mcp-servers` to `aula,tilbudstrolden`. Test and save
+the edit. In **Agents**, select all agents after the owner approves access to
+Aula for the team. Keep **Everyone** at **No access** for server members.
+Remove `household-public` once the consolidated connection verifies.
 
-| Connection name | `x-mcp-servers` header | Key scope | OpenBot agent access |
-| --- | --- | --- | --- |
-| `household-public` | `tilbudstrolden` | `public` | All agents |
-| `household-aula` | `aula` | `aula` | Hermes on `custom:automation-moe` |
+For a fresh install, open **Marketplace → Apps → Add custom server** on the
+partner server. Set the name to `homecompute` and choose Streamable HTTP.
 
-The public key is limited to looking up stores and offers. TilbudsTrolden's
-household, pantry, recipes, and history endpoints require separate grants.
-
-Set the `x-litellm-api-key` header to the corresponding **Bearer** value.
-Run `./scripts/provision-openbot-partner-mcp.py copy public` or
-`./scripts/provision-openbot-partner-mcp.py copy aula` from an interactive Mac
-terminal and paste directly into that header's value field. Clear the clipboard
-after saving.
-
-OpenBot 0.73.0 tests a new HTTP connection before saving and starts sign-in
-when the real endpoint returns 401 without credentials. To set Aula access
-before adding the key, create `household-aula` over Streamable HTTP at
-`https://openbot-aula-draft.invalid/mcp` with empty headers. The reserved
+OpenBot 0.73.0 tests a new HTTP connection before saving. Start with
+`https://openbot-aula-draft.invalid/mcp` and empty headers. The reserved
 `.invalid` hostname is unreachable, which OpenBot allows on save. Disable
-the saved entry, set **Agents** to Hermes only and **Everyone** to **No
-access**, then edit that same entry to use the real endpoint and both headers.
-Use **Test connection** to confirm the read-only catalog, save, and enable
-the connection.
+the saved entry and set **Everyone** to **No access**. Edit the same entry to
+use `https://llm.home.arpa/mcp` and
+`x-mcp-servers: aula,tilbudstrolden`. Run
+`./scripts/provision-openbot-partner-mcp.py copy homecompute` from an
+interactive Mac terminal and paste the value into the `x-litellm-api-key`
+header. Test and save. Set **Agents** to all agents after the owner approves
+access to Aula for the team, enable the connection, and clear the clipboard.
 
-In a fresh thread, verify that Hermes sees the Aula tool catalog and that
-Research sees only the public connection. Tool listing does not require reading
-school messages or calendar entries. Hermes keeps Aula results in its local
-model conversation and hands off only public briefs to Research. The OpenBot
-agent selection filters the tools offered to a session. All agents share the
-server's filesystem permissions, so this setting is not filesystem isolation.
+Aula is read-only and TilbudsTrolden is limited to public store and offer
+lookups. OpenBot applies agent access to the entire connection. Selecting all
+agents also grants access to agents added later. Hermes runs on local
+`custom:automation-moe`. Research runs on ChatGPT Sol and can send Aula
+results to the model through LiteLLM when directly using the connection.
+Use **Test connection** to list tools without reading school messages or
+calendar entries, and verify the saved agent selection. All agents share the
+server's filesystem permissions.
 
 Use `check` in place of `prepare` to recheck existing key grants. To withdraw
-access, disable the corresponding app connection and revoke the matching
-`openbot-partner-mcp-public` or `openbot-partner-mcp-aula` alias in LiteLLM's
-Admin UI. Remove the matching protected key file from the agents VM
-after revocation if re-enrolling.
+access, disable `homecompute` and revoke `openbot-partner-mcp-aula` in
+LiteLLM's Admin UI. Remove its protected key file from the agents VM after
+revocation if re-enrolling. Revoke `openbot-partner-mcp-public` separately
+after removing the legacy public connection.
 
 ## Reviewed personal context
 

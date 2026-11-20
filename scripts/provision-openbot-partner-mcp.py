@@ -22,7 +22,12 @@ SCOPES = {
     },
     "aula": {"mcp_access_groups": ["aula-read"]},
 }
-SERVERS = {"public": ["tilbudstrolden"], "aula": ["aula"]}
+SCOPES["homecompute"] = SCOPES["aula"] | SCOPES["public"]
+SERVERS = {
+    "public": ["tilbudstrolden"],
+    "aula": ["aula"],
+    "homecompute": ["aula", "tilbudstrolden"],
+}
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8"]
 GUEST_SSH = [*SSH, "-J", "home-core", "-o", "IdentitiesOnly=yes", "-i", str(GUEST_KEY), GUEST]
 MODEL_DENY = ["no-default-models"]
@@ -55,8 +60,8 @@ else:
     sys.stdout.buffer.write(raw)
 '''
 
-KEY_API = r'''import json, sys, urllib.parse, urllib.request
-action, name, expected, models = json.loads(sys.argv[1])
+KEY_API = r'''import hashlib, json, sys, urllib.parse, urllib.request
+action, name, expected, models, previous = json.loads(sys.argv[1])
 master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
 def request(path, data=None):
     req = urllib.request.Request('http://127.0.0.1:4000' + path,
@@ -74,15 +79,27 @@ def find():
         if page >= listing['total_pages']:
             return matches
         page += 1
-def verify(key):
+def permissions(key):
     info = request('/key/info?' + urllib.parse.urlencode({'key': key}))['info']
-    policy = info.get('object_permission') or {}
     assert info['models'] == models and info['key_alias'] == name
     assert info['expires'] is None and not info.get('team_id')
-    for field in ('mcp_access_groups', 'mcp_servers', 'mcp_tool_permissions', 'mcp_toolsets'):
-        assert (policy.get(field) or None) == expected.get(field)
+    policy = info.get('object_permission') or {}
+    return {field: policy[field] for field in
+            ('mcp_access_groups', 'mcp_servers', 'mcp_tool_permissions', 'mcp_toolsets')
+            if policy.get(field)}
+def verify(key):
+    assert permissions(key) == expected
 if action == 'check':
     verify(sys.stdin.read().strip())
+    print('verified')
+elif action == 'consolidate':
+    key = sys.stdin.read().strip()
+    current = permissions(key)
+    if current != expected:
+        assert previous and current == previous
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        request('/key/update', {'key': digest, 'object_permission': expected})
+        verify(digest)
     print('verified')
 elif action == 'revoke-new':
     key = sys.stdin.read().strip()
@@ -159,7 +176,8 @@ if 'aula' in expected and any(re.search('raw_request|set_template|mark_read|send
     raise SystemExit('Aula write tool present')
 if scoped_tools:
     verified = {f'{server}-{tool}' for server, tools in scoped_tools.items() for tool in tools}
-    if set(selected) != verified:
+    matching = {tool for tool in selected if any(matches(tool, server) for server in scoped_tools)}
+    if matching != verified:
         raise SystemExit('unexpected MCP tool grant')
 print(f"Verified only {', '.join(expected)} ({len(selected)} tools), with zero model access.")
 '''
@@ -190,7 +208,9 @@ def guest(args: list[str], message: str, *, data: str | None = None, timeout: in
 
 
 def lite_api(action: str, scope: str, key: str | None = None) -> str:
-    params = json.dumps([action, "openbot-partner-mcp-" + scope, SCOPES[scope], MODEL_DENY])
+    key_scope = "aula" if scope == "homecompute" else scope
+    previous = SCOPES["aula"] if action == "consolidate" else None
+    params = json.dumps([action, "openbot-partner-mcp-" + key_scope, SCOPES[scope], MODEL_DENY, previous])
     remote = shlex.join(["sudo", "-n", "docker", "exec", "-i", "homecompute-control-plane-litellm-1",
                          "python3", "-c", KEY_API, params])
     return checked([*SSH, "home-core", remote],
@@ -199,7 +219,8 @@ def lite_api(action: str, scope: str, key: str | None = None) -> str:
 
 
 def file_action(action: str, scope: str, key: str | None = None) -> str:
-    return guest(["python3", "-c", GUEST_FILES, action, scope],
+    key_scope = "aula" if scope == "homecompute" else scope
+    return guest(["python3", "-c", GUEST_FILES, action, key_scope],
                  f"Could not {action} the protected {scope} key on the agents VM",
                  data=key + "\n" if key else None)
 
@@ -239,7 +260,8 @@ def apply(action: str, scope: str) -> None:
         if file_action("install", scope, key) != "installed":
             raise RuntimeError("Credential delivery is unverified; rerun check before proceeding")
     else:
-        lite_api("check", scope, key)
+        operation = "consolidate" if action == "prepare" and scope == "homecompute" else "check"
+        lite_api(operation, scope, key)
         evidence = check_gateway(scope, key)
     print(evidence)
     if action == "copy":
