@@ -145,8 +145,11 @@ connections use Streamable HTTP at `https://llm.home.arpa/mcp`.
 
 | Connection name | `x-mcp-servers` header | Key scope | OpenBot agent access |
 | --- | --- | --- | --- |
-| `household-public` | `context7,tilbudstrolden` | `public` | All agents |
+| `household-public` | `tilbudstrolden` | `public` | All agents |
 | `household-aula` | `aula` | `aula` | Hermes on `custom:automation-moe` |
+
+The public key is limited to looking up stores and offers. TilbudsTrolden's
+household, pantry, recipes, and history endpoints require separate grants.
 
 Set the `x-litellm-api-key` header to the corresponding **Bearer** value.
 Run `./scripts/provision-openbot-partner-mcp.py copy public` or

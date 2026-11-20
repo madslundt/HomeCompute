@@ -14,9 +14,15 @@ GUEST_KEY = Path.home() / ".ssh/id_ed25519_ai-services-01"
 GUEST = "hermes-operator@10.77.20.2"
 CONTAINER = "homecompute-openbot-partner"
 SCOPES = {
-    "public": {"context7": "docs-public", "tilbudstrolden": "offers-read"},
-    "aula": {"aula": "aula-read"},
+    "public": {
+        "mcp_servers": ["tilbudstrolden"],
+        "mcp_tool_permissions": {"tilbudstrolden": [
+            "deals_this_week", "get_store_offers", "list_stores", "search_deals",
+        ]},
+    },
+    "aula": {"mcp_access_groups": ["aula-read"]},
 }
+SERVERS = {"public": ["tilbudstrolden"], "aula": ["aula"]}
 SSH = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8"]
 GUEST_SSH = [*SSH, "-J", "home-core", "-o", "IdentitiesOnly=yes", "-i", str(GUEST_KEY), GUEST]
 MODEL_DENY = ["no-default-models"]
@@ -50,7 +56,7 @@ else:
 '''
 
 KEY_API = r'''import json, sys, urllib.parse, urllib.request
-action, name, groups, models = json.loads(sys.argv[1])
+action, name, expected, models = json.loads(sys.argv[1])
 master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
 def request(path, data=None):
     req = urllib.request.Request('http://127.0.0.1:4000' + path,
@@ -73,8 +79,8 @@ def verify(key):
     policy = info.get('object_permission') or {}
     assert info['models'] == models and info['key_alias'] == name
     assert info['expires'] is None and not info.get('team_id')
-    assert sorted(policy.get('mcp_access_groups') or []) == sorted(groups)
-    assert not policy.get('mcp_servers') and not (policy.get('mcp_tool_permissions') or {})
+    for field in ('mcp_access_groups', 'mcp_servers', 'mcp_tool_permissions', 'mcp_toolsets'):
+        assert (policy.get(field) or None) == expected.get(field)
 if action == 'check':
     verify(sys.stdin.read().strip())
     print('verified')
@@ -86,7 +92,7 @@ elif action == 'revoke-new':
 else:
     assert not find(), 'A matching key exists in LiteLLM; recover or revoke it before creating another'
     key = request('/key/generate', {'models': models, 'key_alias': name, 'duration': None,
-        'object_permission': {'mcp_access_groups': groups},
+        'object_permission': expected,
         'metadata': {'purpose': 'Household OpenBot MCP only'}})['key']
     try:
         verify(key)
@@ -99,7 +105,7 @@ else:
 VERIFY_GATEWAY = r'''import json, re, sys, urllib.error, urllib.request
 base = 'https://llm.home.arpa'
 key = sys.stdin.read().strip()
-expected = json.loads(sys.argv[1])
+expected, scoped_tools = json.loads(sys.argv[1])
 
 def request(path, headers, data=None):
     req = urllib.request.Request(base + path, headers=headers,
@@ -151,6 +157,10 @@ if (not unfiltered or any(not any(matches(tool, server) for server in expected) 
     raise SystemExit('unexpected MCP catalog')
 if 'aula' in expected and any(re.search('raw_request|set_template|mark_read|send_message', name) for name in selected):
     raise SystemExit('Aula write tool present')
+if scoped_tools:
+    verified = {f'{server}-{tool}' for server, tools in scoped_tools.items() for tool in tools}
+    if set(selected) != verified:
+        raise SystemExit('unexpected MCP tool grant')
 print(f"Verified only {', '.join(expected)} ({len(selected)} tools), with zero model access.")
 '''
 
@@ -180,7 +190,7 @@ def guest(args: list[str], message: str, *, data: str | None = None, timeout: in
 
 
 def lite_api(action: str, scope: str, key: str | None = None) -> str:
-    params = json.dumps([action, "openbot-partner-mcp-" + scope, list(SCOPES[scope].values()), MODEL_DENY])
+    params = json.dumps([action, "openbot-partner-mcp-" + scope, SCOPES[scope], MODEL_DENY])
     remote = shlex.join(["sudo", "-n", "docker", "exec", "-i", "homecompute-control-plane-litellm-1",
                          "python3", "-c", KEY_API, params])
     return checked([*SSH, "home-core", remote],
@@ -195,13 +205,15 @@ def file_action(action: str, scope: str, key: str | None = None) -> str:
 
 
 def check_gateway(scope: str, key: str) -> str:
+    expected = [SERVERS[scope], SCOPES[scope].get("mcp_tool_permissions", {})]
     args = ["sudo", "-n", "docker", "exec", "-i", CONTAINER,
-            "python3", "-c", VERIFY_GATEWAY, json.dumps(list(SCOPES[scope]))]
+            "python3", "-c", VERIFY_GATEWAY, json.dumps(expected)]
     result = run([*GUEST_SSH, shlex.join(args)], data=key, timeout=145)
     if result.returncode:
         statuses = ("model list", "initialize", "notifications/initialized", "tools/list")
         reasons = {"model catalog is not empty", "tools/list response has no tool list",
-                   "unexpected MCP catalog", "Aula write tool present", "gateway connection failed"}
+                   "unexpected MCP catalog", "unexpected MCP tool grant", "Aula write tool present",
+                   "gateway connection failed"}
         reason = result.stderr.strip()
         prefix, _, status = reason.rpartition(" HTTP ")
         if reason in reasons or (prefix in statuses and status.isascii() and status.isdecimal()):
