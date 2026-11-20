@@ -51,9 +51,8 @@ Homepage container, Docker network, credentials, or host filesystem. See the
 The **Paperclip** card opens `https://paperclip.home.arpa/`. Paperclip uses its
 own login. See the [Paperclip runbook](../paperclip/README.md) for setup and access.
 
-The **T3 Code** card opens `http://127.0.0.1:3773/` on the workstation.
-Start the SSH tunnel in the [T3 Code runbook](../t3code/README.md) before opening
-the card.
+The **T3 Code** card opens the private Home Core HTTPS address over Tailscale.
+For first-time pairing, see the [T3 Code runbook](../t3code/README.md).
 
 The **Nod** card opens `https://nod.home.arpa/` over the LAN or Tailscale
 split DNS. Nod uses its own owner token. See the [Nod runbook](../nod/README.md)
@@ -120,8 +119,8 @@ pulls, and reconciles this project.
 ### Apply the T3 Code card independently
 
 When Homepage runs from a scoped release, use the card installer from a clean,
-published release on Home Core. Review the reported configuration hashes before
-applying the card.
+published release on Home Core after verifying the private T3 Code route. Review
+the reported configuration hashes before applying the card.
 
 ```sh
 sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-t3code-homepage.py
