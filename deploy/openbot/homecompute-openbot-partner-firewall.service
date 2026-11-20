@@ -1,0 +1,11 @@
+[Unit]
+Description=HomeCompute private household OpenBot container egress
+BindsTo=docker.service
+After=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /etc/homecompute-openbot-partner/current/network-policy.py apply partner
+ExecStop=/usr/bin/python3 /etc/homecompute-openbot-partner/current/network-policy.py remove partner

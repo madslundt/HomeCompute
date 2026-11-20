@@ -9,9 +9,14 @@ import subprocess
 import sys
 
 CONFIG = Path('/etc/homecompute-openbot/network.json')
+PARTNER_CONFIG = Path('/etc/homecompute-openbot-partner/current/openbot-network.json')
 CHAIN = 'HC-OPENBOT-EGRESS'
 SUBNET = ipaddress.ip_network('172.30.192.0/24')
 CONTAINER = ipaddress.ip_address('172.30.192.2')
+PARTNER_CHAIN = 'HC-OB-PARTNER-EGRESS'
+PARTNER_BRIDGE = 'hc-ob-partner'
+PARTNER_SUBNET = ipaddress.ip_network('172.30.196.0/24')
+PARTNER_CONTAINER = ipaddress.ip_address('172.30.196.2')
 HOST = ipaddress.ip_address('10.77.20.1')
 LOCAL_MODEL_PORT = 18080
 ANDROID_MCP_PORT = 19445
@@ -24,12 +29,18 @@ BLOCKED = (
 )
 
 
-def load_turn_addresses() -> list[ipaddress.IPv4Address]:
-    value = json.loads(CONFIG.read_text())
+def load_turn_addresses(partner: bool = False) -> list[ipaddress.IPv4Address]:
+    value = json.loads((PARTNER_CONFIG if partner else CONFIG).read_text())
     if value.get('schema_version') != 1:
         raise ValueError('unsupported OpenBot network configuration')
     if value.get('docker_subnet') != str(SUBNET) or value.get('container_address') != str(CONTAINER):
         raise ValueError('OpenBot Docker network does not match the reviewed policy')
+    if partner and value.get('partner') != {
+        'bridge': PARTNER_BRIDGE,
+        'docker_subnet': str(PARTNER_SUBNET),
+        'container_address': str(PARTNER_CONTAINER),
+    }:
+        raise ValueError('Partner OpenBot Docker network does not match the reviewed policy')
     endpoint = value.get('local_model_endpoint', {})
     if endpoint != {'address': str(HOST), 'port': LOCAL_MODEL_PORT}:
         raise ValueError('OpenBot local model endpoint does not match the reviewed boundary')
@@ -63,19 +74,39 @@ def iptables(*arguments: str, check: bool = True) -> subprocess.CompletedProcess
                           check=check)
 
 
-def remove() -> None:
-    while iptables('-C', 'DOCKER-USER', '-s', str(SUBNET), '-j', CHAIN, check=False).returncode == 0:
-        iptables('-D', 'DOCKER-USER', '-s', str(SUBNET), '-j', CHAIN)
-    if iptables('-L', CHAIN, check=False).returncode == 0:
-        iptables('-F', CHAIN)
-        iptables('-X', CHAIN)
+def remove_rule(table_chain: str, *rule: str) -> None:
+    while iptables('-C', table_chain, *rule, check=False).returncode == 0:
+        iptables('-D', table_chain, *rule)
 
 
-def apply() -> None:
+def egress_jump(partner: bool) -> tuple[str, ...]:
+    if partner:
+        return ('-i', PARTNER_BRIDGE, '-j', PARTNER_CHAIN)
+    return ('-s', str(SUBNET), '-j', CHAIN)
+
+
+def remove(partner: bool = False) -> None:
+    chain = PARTNER_CHAIN if partner else CHAIN
+    remove_rule('DOCKER-USER', *egress_jump(partner))
+    if partner:
+        remove_rule('INPUT', '-i', PARTNER_BRIDGE, '-j', 'REJECT')
+    if iptables('-L', chain, check=False).returncode == 0:
+        iptables('-F', chain)
+        iptables('-X', chain)
+
+
+def apply(partner: bool = False) -> None:
     if iptables('-L', 'DOCKER-USER', check=False).returncode != 0:
         raise RuntimeError('Docker DOCKER-USER chain is unavailable')
-    addresses = load_turn_addresses()
-    subnet, container, chain = SUBNET, CONTAINER, CHAIN
+    addresses = load_turn_addresses(partner)
+    container, chain = (PARTNER_CONTAINER, PARTNER_CHAIN) if partner else (CONTAINER, CHAIN)
+    if partner:
+        # INPUT covers connections to any guest-local address. The temporary
+        # FORWARD guard also blocks traffic while the egress chain is rebuilt.
+        guest_deny = ('-i', PARTNER_BRIDGE, '-j', 'REJECT')
+        if iptables('-C', 'INPUT', *guest_deny, check=False).returncode != 0:
+            iptables('-I', 'INPUT', '1', *guest_deny)
+        iptables('-I', 'DOCKER-USER', '1', *guest_deny)
     iptables('-N', chain, check=False)
     iptables('-F', chain)
     iptables('-A', chain, '!', '-s', f'{container}/32', '-j', 'REJECT')
@@ -83,8 +114,9 @@ def apply() -> None:
     iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'udp', '--dport', '53', '-j', 'ACCEPT')
     iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', '53', '-j', 'ACCEPT')
     iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(LOCAL_MODEL_PORT), '-j', 'ACCEPT')
-    iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(ANDROID_MCP_PORT), '-j', 'ACCEPT')
-    iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(MCP_GATEWAY_PORT), '-j', 'ACCEPT')
+    if not partner:
+        iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(ANDROID_MCP_PORT), '-j', 'ACCEPT')
+        iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(MCP_GATEWAY_PORT), '-j', 'ACCEPT')
     for address in addresses:
         for port in ('3478', '49152:65535'):
             iptables('-A', chain, '-d', f'{address}/32', '-p', 'udp', '--dport', port, '-j', 'ACCEPT')
@@ -94,18 +126,23 @@ def apply() -> None:
         iptables('-A', chain, '-d', blocked_subnet, '-j', 'REJECT')
     iptables('-A', chain, '-p', 'tcp', '-m', 'multiport', '--dports', '80,443', '-j', 'ACCEPT')
     iptables('-A', chain, '-j', 'REJECT')
-    if iptables('-C', 'DOCKER-USER', '-s', str(subnet), '-j', chain, check=False).returncode != 0:
-        iptables('-I', 'DOCKER-USER', '1', '-s', str(subnet), '-j', chain)
+    jump = egress_jump(partner)
+    if iptables('-C', 'DOCKER-USER', *jump, check=False).returncode != 0:
+        iptables('-I', 'DOCKER-USER', '1', *jump)
+    if partner:
+        remove_rule('DOCKER-USER', '-i', PARTNER_BRIDGE, '-j', 'REJECT')
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] not in {'apply', 'remove'}:
-        print('Usage: network-policy.py apply|remove', file=sys.stderr)
+    args = sys.argv[1:]
+    if not args or args[0] not in {'apply', 'remove'} or args[1:] not in ([], ['partner']):
+        print('Usage: network-policy.py apply|remove [partner]', file=sys.stderr)
         return 2
-    if sys.argv[1] == 'remove':
-        remove()
+    partner = args[1:] == ['partner']
+    if args[0] == 'remove':
+        remove(partner)
     else:
-        apply()
+        apply(partner)
     return 0
 
 

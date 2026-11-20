@@ -22,7 +22,7 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
         self.config = Path(self.temp.name) / "network.json"
         value = json.loads((ROOT / "config/openbot-network.json").read_text())
         self.config.write_text(json.dumps(value))
-        self.patch = patch.object(policy, "CONFIG", self.config)
+        self.patch = patch.multiple(policy, CONFIG=self.config, PARTNER_CONFIG=self.config)
         self.patch.start()
 
     def tearDown(self):
@@ -66,6 +66,31 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
         self.config.write_text(json.dumps(value))
         with self.assertRaisesRegex(ValueError, 'LiteLLM MCP gateway endpoint'):
             policy.load_turn_addresses()
+
+    def test_partner_bridge_uses_only_dns_and_local_inference(self):
+        calls = []
+
+        def iptables(*arguments, check=True):
+            calls.append(arguments)
+            return subprocess.CompletedProcess(arguments, int(arguments[0] == '-C'))
+
+        with patch.object(policy, "iptables", side_effect=iptables):
+            policy.apply(partner=True)
+            policy.remove(partner=True)
+
+        self.assertIn(('-I', 'INPUT', '1', '-i', policy.PARTNER_BRIDGE, '-j', 'REJECT'), calls)
+        self.assertIn(('-I', 'DOCKER-USER', '1', '-i', policy.PARTNER_BRIDGE, '-j', policy.PARTNER_CHAIN), calls)
+        host_rules = [call for call in calls if call[:5] == ('-A', policy.PARTNER_CHAIN, '-d', '10.77.20.1/32', '-p')]
+        self.assertEqual([(call[5], call[7]) for call in host_rules], [('udp', '53'), ('tcp', '53'), ('tcp', '18080')])
+        self.assertIn(('-A', policy.PARTNER_CHAIN, '-d', '172.16.0.0/12', '-j', 'REJECT'), calls)
+        self.assertNotIn(policy.CHAIN, {field for call in calls for field in call})
+
+    def test_partner_rejects_a_modified_bridge(self):
+        value = json.loads(self.config.read_text())
+        value['partner']['bridge'] = 'docker0'
+        self.config.write_text(json.dumps(value))
+        with self.assertRaisesRegex(ValueError, 'Partner OpenBot Docker network'):
+            policy.load_turn_addresses(partner=True)
 
 
 if __name__ == "__main__":

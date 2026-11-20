@@ -1,0 +1,46 @@
+services:
+  openbot:
+    container_name: homecompute-openbot-partner
+    image: ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b
+    platform: linux/amd64
+    extra_hosts:
+      - ai.home.arpa:10.77.20.1
+    restart: "no"
+    security_opt:
+      - seccomp=/etc/homecompute-openbot-partner/current/seccomp.json
+      - no-new-privileges:true
+    shm_size: 512m
+    stop_grace_period: 60s
+    cpus: 2.0
+    mem_limit: 4g
+    pids_limit: 1024
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_CHROOT
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    volumes:
+      - type: bind
+        source: /var/lib/homecompute-openbot-partner/data
+        target: /data
+        bind:
+          create_host_path: false
+    networks:
+      partner:
+        ipv4_address: 172.30.196.2
+
+networks:
+  partner:
+    name: homecompute-openbot-partner
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: hc-ob-partner
+    enable_ipv6: false
+    ipam:
+      config:
+        - subnet: 172.30.196.0/24
+          gateway: 172.30.196.1

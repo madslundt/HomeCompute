@@ -3,18 +3,26 @@ set -Eeuo pipefail
 
 readonly IMAGE_REF=ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b
 readonly CONTAINER=homecompute-openbot
+[[ $# == 0 || ( $# == 1 && "$1" == homecompute-openbot-partner ) ]] || exit 2
+readonly target="${1:-$CONTAINER}"
+image_ref="$IMAGE_REF"
+if [[ "$target" == homecompute-openbot-partner ]]; then
+  image_ref="$(docker compose --project-name "$target" \
+    --file /etc/homecompute-openbot-partner/current/compose.partner.yaml config --images)"
+  [[ "$image_ref" =~ ^ghcr[.]io/nightly-labs/openbot@sha256:[0-9a-f]{64}$ ]]
+fi
 
 running=false
 for ((attempt = 0; attempt < 30; attempt++)); do
-  running="$(docker inspect --format '{{.State.Running}}' "$CONTAINER" 2>/dev/null || true)"
+  running="$(docker inspect --format '{{.State.Running}}' "$target" 2>/dev/null || true)"
   [[ "$running" == true ]] && break
   sleep 2
 done
-[[ "$running" == true ]] || { echo "OpenBot container is not running: $CONTAINER" >&2; exit 1; }
-ports="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$CONTAINER")"
-[[ "$ports" == null || "$ports" == '{}' ]] || { echo "OpenBot must not publish host ports: $CONTAINER" >&2; exit 1; }
-configured_image="$(docker inspect --format '{{.Config.Image}}' "$CONTAINER")"
-[[ "$configured_image" == "$IMAGE_REF" ]] || { echo "OpenBot container does not use the release image pin: $CONTAINER" >&2; exit 1; }
-running_image_id="$(docker inspect --format '{{.Image}}' "$CONTAINER")"
-release_image_id="$(docker image inspect --format '{{.Id}}' "$IMAGE_REF")"
-[[ "$running_image_id" == "$release_image_id" ]] || { echo "Running OpenBot image differs from the release image pin: $CONTAINER" >&2; exit 1; }
+[[ "$running" == true ]] || { echo "OpenBot container is not running: $target" >&2; exit 1; }
+ports="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$target")"
+[[ "$ports" == null || "$ports" == '{}' ]] || { echo "OpenBot must not publish host ports: $target" >&2; exit 1; }
+configured_image="$(docker inspect --format '{{.Config.Image}}' "$target")"
+[[ "$configured_image" == "$image_ref" ]] || { echo "OpenBot container does not use the release image pin: $target" >&2; exit 1; }
+running_image_id="$(docker inspect --format '{{.Image}}' "$target")"
+release_image_id="$(docker image inspect --format '{{.Id}}' "$image_ref")"
+[[ "$running_image_id" == "$release_image_id" ]] || { echo "Running OpenBot image differs from the release image pin: $target" >&2; exit 1; }

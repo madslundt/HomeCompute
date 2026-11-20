@@ -57,6 +57,8 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-home-core-piper.sh"
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
   "$REPO_ROOT/scripts/setup-openbot-guest.sh"
+  "$REPO_ROOT/deploy/openbot/install-partner.sh"
+  "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
   "$REPO_ROOT/scripts/setup-nod-guest.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
@@ -354,6 +356,7 @@ python3 -m unittest "$REPO_ROOT/tests/benchmark_correctness_test.py"
 python3 "$REPO_ROOT/tests/model-update-check-test.py"
 python3 "$REPO_ROOT/tests/android-gateway-test.py"
 python3 "$REPO_ROOT/tests/openbot-network-policy-test.py"
+python3 "$REPO_ROOT/tests/openbot-partner-hermes-test.py"
 python3 "$REPO_ROOT/tests/openbot-scoped-rollout-test.py"
 python3 "$REPO_ROOT/tests/android-notifications-setup-test.py"
 python3 "$REPO_ROOT/tests/gb10-model-roster-test.py"
@@ -1539,6 +1542,35 @@ grep -Fqx "readonly IMAGE_REF=$(jq -er '.services.openbot.image' "$openbot_json"
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
 grep -Fq 'release_image_id=' \
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
+
+docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
+  -f "$REPO_ROOT/deploy/openbot/compose.partner.yaml" config --format json |
+  jq -e --slurpfile config "$REPO_ROOT/config/openbot-network.json" '
+    $config[0].partner as $partner |
+    (.services | keys == ["openbot"]) and
+    (.services.openbot |
+      .container_name == "homecompute-openbot-partner" and
+      (.image | test("^ghcr[.]io/nightly-labs/openbot@sha256:[0-9a-f]{64}$")) and
+      .platform == "linux/amd64" and .restart == "no" and
+      .cap_drop == ["ALL"] and .cap_add == ["SYS_CHROOT"] and
+      (.security_opt | index("no-new-privileges:true") != null) and
+      (.security_opt | index("seccomp=/etc/homecompute-openbot-partner/current/seccomp.json") != null) and
+      .ports == null and .network_mode == null and .privileged != true and .environment == null and
+      .extra_hosts == ["ai.home.arpa=10.77.20.1"] and
+      (.volumes | length == 1 and (.[0] |
+        .type == "bind" and .source == "/var/lib/homecompute-openbot-partner/data" and
+        .target == "/data" and .bind.create_host_path == false)) and
+      .cpus == 2 and .mem_limit == "4294967296" and .pids_limit == 1024 and
+      (.networks | keys == ["partner"]) and .networks.partner.ipv4_address == $partner.container_address) and
+    (.networks | keys == ["partner"]) and
+    (.networks.partner | .name == "homecompute-openbot-partner" and .driver == "bridge" and
+      .driver_opts["com.docker.network.bridge.name"] == $partner.bridge and
+      .enable_ipv6 != true and .ipam.config[0].subnet == $partner.docker_subnet)
+  ' >/dev/null
+grep -Fqx 'BindsTo=homecompute-openbot-partner-firewall.service docker.service' \
+  "$REPO_ROOT/deploy/openbot/homecompute-openbot-partner.service"
+grep -Fqx 'After=homecompute-openbot-partner-firewall.service docker.service' \
+  "$REPO_ROOT/deploy/openbot/homecompute-openbot-partner.service"
 
 # Adding a project here is the point at which its isolation gets reviewed.
 # Without this check a new deploy/<name>/compose.yaml would inherit none of the
