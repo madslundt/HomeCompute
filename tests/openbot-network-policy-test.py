@@ -67,7 +67,7 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'LiteLLM MCP gateway endpoint'):
             policy.load_turn_addresses()
 
-    def test_partner_bridge_uses_only_dns_and_local_inference(self):
+    def test_partner_bridge_uses_only_dns_and_model_gateways(self):
         calls = []
 
         def iptables(*arguments, check=True):
@@ -81,7 +81,8 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
         self.assertIn(('-I', 'INPUT', '1', '-i', policy.PARTNER_BRIDGE, '-j', 'REJECT'), calls)
         self.assertIn(('-I', 'DOCKER-USER', '1', '-i', policy.PARTNER_BRIDGE, '-j', policy.PARTNER_CHAIN), calls)
         host_rules = [call for call in calls if call[:5] == ('-A', policy.PARTNER_CHAIN, '-d', '10.77.20.1/32', '-p')]
-        self.assertEqual([(call[5], call[7]) for call in host_rules], [('udp', '53'), ('tcp', '53'), ('tcp', '18080')])
+        self.assertEqual([(call[5], call[7]) for call in host_rules],
+                         [('udp', '53'), ('tcp', '53'), ('tcp', '18080'), ('tcp', '443')])
         self.assertIn(('-A', policy.PARTNER_CHAIN, '-d', '172.16.0.0/12', '-j', 'REJECT'), calls)
         self.assertNotIn(policy.CHAIN, {field for call in calls for field in call})
 

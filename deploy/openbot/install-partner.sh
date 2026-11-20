@@ -66,6 +66,9 @@ fi
 if [[ -e "$data" || -L "$data" ]]; then
   [[ ! -L "$data" && -d "$data" && "$(stat -c '%a:%u' "$data")" == 700:1000 ]]
 fi
+for certificate in /etc/homecompute-openbot/home-core-root.crt /etc/homecompute-openbot/agent-ca-bundle.pem; do
+  [[ -f "$certificate" && ! -L "$certificate" && -r "$certificate" ]]
+done
 
 install -d -m 0755 "$root" "$root/releases"
 stage="$(mktemp -d "$root/releases/.stage.XXXXXXXX")"

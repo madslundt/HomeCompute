@@ -20,7 +20,7 @@ PARTNER_CONTAINER = ipaddress.ip_address('172.30.196.2')
 HOST = ipaddress.ip_address('10.77.20.1')
 LOCAL_MODEL_PORT = 18080
 ANDROID_MCP_PORT = 19445
-MCP_GATEWAY_PORT = 443
+GATEWAY_HTTPS_PORT = 443
 BLOCKED = (
     '0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8',
     '169.254.0.0/16', '172.16.0.0/12', '192.0.0.0/24',
@@ -48,7 +48,7 @@ def load_turn_addresses(partner: bool = False) -> list[ipaddress.IPv4Address]:
     if android_mcp != {'address': str(HOST), 'port': ANDROID_MCP_PORT}:
         raise ValueError('OpenBot Android MCP endpoint does not match the reviewed boundary')
     mcp_gateway = value.get('mcp_gateway_endpoint', {})
-    if mcp_gateway != {'address': str(HOST), 'port': MCP_GATEWAY_PORT}:
+    if mcp_gateway != {'address': str(HOST), 'port': GATEWAY_HTTPS_PORT}:
         raise ValueError('OpenBot LiteLLM MCP gateway endpoint does not match the reviewed boundary')
     turn = value.get('turn_client_ports', {})
     if turn != {'udp_listeners': [3478], 'udp_relay_range': [49152, 65535],
@@ -116,7 +116,7 @@ def apply(partner: bool = False) -> None:
     iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(LOCAL_MODEL_PORT), '-j', 'ACCEPT')
     if not partner:
         iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(ANDROID_MCP_PORT), '-j', 'ACCEPT')
-        iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(MCP_GATEWAY_PORT), '-j', 'ACCEPT')
+    iptables('-A', chain, '-d', f'{HOST}/32', '-p', 'tcp', '--dport', str(GATEWAY_HTTPS_PORT), '-j', 'ACCEPT')
     for address in addresses:
         for port in ('3478', '49152:65535'):
             iptables('-A', chain, '-d', f'{address}/32', '-p', 'udp', '--dport', port, '-j', 'ACCEPT')

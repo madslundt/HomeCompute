@@ -3,8 +3,12 @@ services:
     container_name: homecompute-openbot-partner
     image: ghcr.io/nightly-labs/openbot@sha256:20ecb481d3d782b754b8bba6dc4dbaf1f84c4e72b569611330e22c3ef2bd1f9b
     platform: linux/amd64
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
+      SSL_CERT_FILE: /run/homecompute/agent-ca-bundle.pem
     extra_hosts:
       - ai.home.arpa:10.77.20.1
+      - llm.home.arpa:10.77.20.1
     restart: "no"
     security_opt:
       - seccomp=/etc/homecompute-openbot-partner/current/seccomp.json
@@ -24,6 +28,18 @@ services:
         max-size: 10m
         max-file: "3"
     volumes:
+      - type: bind
+        source: /etc/homecompute-openbot/home-core-root.crt
+        target: /run/homecompute/home-core-root.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/homecompute-openbot/agent-ca-bundle.pem
+        target: /run/homecompute/agent-ca-bundle.pem
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: /var/lib/homecompute-openbot-partner/data
         target: /data

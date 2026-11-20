@@ -1556,11 +1556,17 @@ docker compose --project-directory "$REPO_ROOT/deploy/openbot" \
       .cap_drop == ["ALL"] and .cap_add == ["SYS_CHROOT"] and
       (.security_opt | index("no-new-privileges:true") != null) and
       (.security_opt | index("seccomp=/etc/homecompute-openbot-partner/current/seccomp.json") != null) and
-      .ports == null and .network_mode == null and .privileged != true and .environment == null and
-      .extra_hosts == ["ai.home.arpa=10.77.20.1"] and
-      (.volumes | length == 1 and (.[0] |
-        .type == "bind" and .source == "/var/lib/homecompute-openbot-partner/data" and
-        .target == "/data" and .bind.create_host_path != true)) and
+      .ports == null and .network_mode == null and .privileged != true and
+      .environment == {"NODE_EXTRA_CA_CERTS":"/run/homecompute/home-core-root.crt",
+                       "SSL_CERT_FILE":"/run/homecompute/agent-ca-bundle.pem"} and
+      (.extra_hosts | sort) == ["ai.home.arpa=10.77.20.1", "llm.home.arpa=10.77.20.1"] and
+      (.volumes | length == 3 and
+        all(.[]; .type == "bind" and .bind.create_host_path != true) and
+        any(.[]; .source == "/var/lib/homecompute-openbot-partner/data" and .target == "/data" and .read_only != true) and
+        any(.[]; .source == "/etc/homecompute-openbot/home-core-root.crt" and
+          .target == "/run/homecompute/home-core-root.crt" and .read_only == true) and
+        any(.[]; .source == "/etc/homecompute-openbot/agent-ca-bundle.pem" and
+          .target == "/run/homecompute/agent-ca-bundle.pem" and .read_only == true)) and
       .cpus == 2 and .mem_limit == "4294967296" and .pids_limit == 1024 and
       (.networks | keys == ["partner"]) and .networks.partner.ipv4_address == $partner.container_address) and
     (.networks | keys == ["partner"]) and

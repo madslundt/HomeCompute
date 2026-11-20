@@ -7,8 +7,10 @@ embedded Hermes CLI and its `/data/.hermes` home. The guest administrator can
 access this storage for operation and recovery.
 
 The separate systemd service depends on its own egress guard. Its private
-forwarding exceptions are Home Core DNS and the existing local model
-compatibility API at `http://ai.home.arpa:18080/v1`. The guard also rejects
+forwarding exceptions are Home Core DNS, the local compatibility API at
+`http://ai.home.arpa:18080/v1`, and the private LiteLLM HTTPS gateway at
+`https://llm.home.arpa/v1`. The container uses the existing public CA material
+as read-only mounts. LiteLLM continues to require credentials for MCP. The guard also rejects
 connections from the partner bridge to the agents VM itself. Public web
 and the same OpenBot TURN relays are allowed for the client connection and
 Hermes installation. The server has a 2 CPU and 4 GiB limit and publishes no
@@ -88,10 +90,24 @@ Use the following instructions in each agent profile.
 > detalje mangler. Behold teksten som et udkast, indtil jeg beslutter, hvad
 > der skal ske med den.
 
-The local setup uses the compatibility model catalog. A future ChatGPT-backed
-public research agent requires a separate, approved model-only connection to
-LiteLLM with explicit cloud data rules and a verified workspace boundary.
-Keep private profile files and personal context out of that workspace.
+## Optional ChatGPT models
+
+Under Server settings → Providers → Custom provider, add the OpenAI-compatible
+endpoint `https://llm.home.arpa/v1`. Use provider ID
+`homecompute-chatgpt`, display name **HomeCompute ChatGPT subscription**,
+and the OpenCode runtime. Leave its API key and headers empty. The guest model
+gateway supplies inference authorization on its private model routes.
+
+| Model ID | Display name |
+| --- | --- |
+| `chatgpt-sol-latest` | ChatGPT Sol |
+| `chatgpt-terra-latest` | ChatGPT Terra |
+| `chatgpt-luna-latest` | ChatGPT Luna |
+| `chatgpt-astra-latest` | ChatGPT Astra |
+
+The catalog is available for deliberate selection. Keep the initial three
+agents on `automation-moe` and use ChatGPT for public or explicitly approved
+material. Keep the reviewed Hermes profile in its local runtime.
 
 ## Reviewed personal context
 
@@ -122,8 +138,9 @@ Hermes conversation to see the reviewed profile in effect.
   without prompting it to recite or disclose the profile.
 - Verify the selected Compose image, network, mount, and published ports in
   `status-partner` and Docker inspect. From the partner container confirm
-  that the local model endpoint lists `automation-moe`, and that the Home
-  Core MCP HTTPS, Android relay, and guest SSH ports are unreachable.
+  that the local model endpoint lists `automation-moe`, the LiteLLM HTTPS
+  endpoint lists the four subscription aliases, and anonymous MCP is rejected.
+  Check that the Android relay and guest SSH ports are unreachable.
 - For a service rollback, disable and stop only
   `homecompute-openbot-partner.service` in the guest. Keep the data and the
   immutable release bundle. Revoke the partner server session in OpenBot if
