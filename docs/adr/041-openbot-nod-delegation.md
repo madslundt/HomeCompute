@@ -2,6 +2,8 @@
 
 Status: Accepted for source implementation. Live admission requires the
 reviewed release, dedicated credentials, and an authenticated client smoke test.
+The separate client connection is superseded by
+[ADR-042](042-consolidate-openbot-nod-connection.md).
 
 Date: 2026-11-20
 

@@ -182,6 +182,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-039](adr/039-shared-openbot-maintenance.md) | Use the primary OpenBot server for bounded maintenance with independent approval and guest upgrades |
 | [ADR-040](adr/040-keyless-lan-model-catalog.md) | Admit the Default LAN and designated workloads to the keyless LiteLLM API |
 | [ADR-041](adr/041-openbot-nod-delegation.md) | Delegate tasks from the owner OpenBot server to Nod using an independent principal |
+| [ADR-042](adr/042-consolidate-openbot-nod-connection.md) | Use the owner OpenBot server's existing gateway connection for Nod |
 
 ## Research and model evidence
 

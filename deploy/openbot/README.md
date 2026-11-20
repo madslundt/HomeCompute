@@ -75,30 +75,36 @@ covers roles and data boundaries.
 ## Ask the local Nod assistant
 
 After [enabling the private Nod bridge](../nod/README.md#openbot-delegation),
-provision a dedicated LiteLLM virtual key in the private Admin UI for the
-`nod` server and `openbot-nod` group. Use `models: ["no-default-models"]`,
-`allowed_routes: ["/mcp"]`, and
-`object_permission: {"mcp_servers":["nod"],"mcp_access_groups":["openbot-nod"]}`.
-Keep the key independent from household and maintenance keys.
+grant `openbot-nod` to the owner `openbot-agent` key. A normal Home Core
+release applies the grant. For an already-running gateway with the `nod`
+alias, run the targeted grant on Home Core from a reviewed checkout of the
+published revision:
 
-On the owner **home-core** server, add a separate Streamable HTTP connection
-named `nod` at `https://llm.home.arpa/mcp`. Set these secure headers:
+```sh
+sudo python3 scripts/setup-litellm-harness-mcp-access.py --openbot-nod-only
+```
 
-- `x-litellm-api-key: Bearer <dedicated Nod LiteLLM key>`
-- `x-mcp-servers: nod`
-- `Authorization: Bearer <dedicated OpenBot token from Nod's openbot.env>`
+On the owner **Mads home-core** server, edit the existing `homecompute`
+connection at `https://llm.home.arpa/mcp`. Add this secure header and keep its
+other headers:
 
-Copy the token value directly from the private operator terminal into the
-secure header field. OpenBot shares MCP connections with every agent on that
-server. Grant it only where the agents and their model providers are trusted
-with results from the owner's Nod app connections.
+- `x-mcp-nod-authorization: Bearer <dedicated OpenBot token from Nod's openbot.env>`
 
-Verify discovery shows exactly `nod_submit` and `nod_status` under the Nod
-alias and the regular shared key cannot discover them. In a fresh owner
-thread, ask OpenBot to ask Nod to return `NOD-BRIDGE-OK` without using apps or
-websites. Check that OpenBot submits once, polls the same request ID and
-returns that text. If Nod requires owner input, handle it in the Nod app and
-poll the same request ID.
+If the connection has an `x-mcp-servers` filter, include `nod` in its existing
+list. Copy the token value directly from the private operator terminal into
+the secure header field. OpenBot shares the connection with its agents on
+that server, so grant it only where the agents and their model providers are
+trusted with results from Nod's connected apps.
+
+Use **Test connection** to verify the existing tools and the additional
+`nod_submit` and `nod_status` tools, then save. If a separate `nod` connection
+was configured during the pilot, disable it after confirming the combined
+connection. In a fresh owner thread, ask OpenBot to delegate a synthetic
+request to Nod and poll the same request ID for its result. Handle approval
+or sign-in in Nod.
+
+Remove the Nod bearer header to withdraw access from this connection. Remove
+the `openbot-nod` group from the key when rolling back the source grant.
 
 ## Shared LiteLLM MCP connections
 

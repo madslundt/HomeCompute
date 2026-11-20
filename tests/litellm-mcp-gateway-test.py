@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Guard the centralized MCP catalog, least-privilege grants, and network path."""
 
+import io
+import json
 from pathlib import Path
 import re
+import runpy
 import unittest
+from unittest.mock import mock_open, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +88,41 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("access_groups: [openbot-nod]", nod)
         self.assertIn("allowed_tools: [nod_submit, nod_status]", nod)
         self.assertNotIn("all-harness-mcps", nod)
+
+    def test_targeted_nod_grant_updates_only_the_owner_key(self) -> None:
+        code = runpy.run_path(str(ROOT / "scripts/setup-litellm-harness-mcp-access.py"))["LITELLM_CODE"]
+        permission = {"mcp_access_groups": ["all-harness-mcps"], "mcp_servers": []}
+        grants = {
+            alias: {"key_alias": alias, "token": alias, "object_permission": dict(permission)}
+            for alias in ("openbot-agent", "hermes-agent", "openbot-partner")
+        }
+        writes = []
+
+        def request(req, timeout):
+            if "/key/list?" in req.full_url:
+                value = {"keys": list(grants.values()), "total_pages": 1}
+            elif req.full_url.endswith("/key/update"):
+                body = json.loads(req.data)
+                writes.append(body["key"])
+                grants[body["key"]]["object_permission"] = body["object_permission"]
+                value = {}
+            elif req.full_url.endswith("/key/info?key=openbot-agent"):
+                value = {"info": grants["openbot-agent"]}
+            else:
+                self.fail(f"Unexpected admin API call {req.full_url}")
+            return io.StringIO(json.dumps(value))
+
+        with (patch("builtins.open", mock_open(read_data="synthetic-key")),
+              patch("sys.argv", ["-", "--openbot-nod-only"]),
+              patch("urllib.request.urlopen", request),
+              patch("sys.stdout", new=io.StringIO())):
+            exec(code, {})
+            exec(code, {})
+        self.assertEqual(writes, ["openbot-agent"])
+        self.assertEqual(grants["openbot-agent"]["object_permission"]["mcp_access_groups"],
+                         ["all-harness-mcps", "openbot-nod"])
+        self.assertEqual(grants["hermes-agent"]["object_permission"], permission)
+        self.assertEqual(grants["openbot-partner"]["object_permission"], permission)
 
     def test_bank_norwegian_is_disabled_in_production(self) -> None:
         self.assertNotIn("  banknorwegian:", CONFIG)

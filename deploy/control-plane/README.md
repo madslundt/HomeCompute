@@ -207,9 +207,11 @@ completes one browser sign-in before `tools/list` succeeds.
 For setup and the client migration plan, see [ADR-033](../../docs/adr/033-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
 
-The private `nod` alias uses a separate path on the native relay. It requires
-a dedicated `openbot-nod` grant and the OpenBot-specific Nod bearer. The
-alias stays outside both the shared harness and the keyless LAN catalogs.
+The private `nod` alias uses a separate path on the native relay. The owner
+OpenBot key receives the `openbot-nod` grant and the existing `homecompute`
+connection supplies the OpenBot-specific Nod bearer as
+`x-mcp-nod-authorization`. The alias stays outside both the general harness
+grant and the keyless LAN catalog.
 See the [Nod bridge runbook](../nod/README.md#openbot-delegation).
 
 The `llm.home.arpa` private DNS A record must point to `192.168.30.122` in the

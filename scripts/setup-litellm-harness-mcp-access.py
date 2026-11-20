@@ -2,16 +2,19 @@
 """Grant the full LiteLLM MCP catalog to known harness virtual keys."""
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 
 
 CONTAINER = "homecompute-control-plane-litellm-1"
-LITELLM_CODE = r'''import json, urllib.parse, urllib.request
+LITELLM_CODE = r'''import json, sys, urllib.parse, urllib.request
 master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
 base = 'http://127.0.0.1:4000'
 headers = {'Authorization': 'Bearer ' + master, 'Content-Type': 'application/json'}
-targets = {'hermes-desktop-mcp', 'hermes-agent', 'openbot-agent', 'opencode-home-core'}
+openbot_only = sys.argv[1:] == ['--openbot-nod-only']
+targets = {'openbot-agent'} if openbot_only else {
+    'hermes-desktop-mcp', 'hermes-agent', 'openbot-agent', 'opencode-home-core'}
 def request(path, body=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(base + path, data=data, headers=headers)
@@ -37,6 +40,8 @@ for alias in sorted(targets):
     if len(matches) > 1:
         raise RuntimeError('A harness key alias is not unique')
     if not matches:
+        if openbot_only:
+            raise RuntimeError('The owner OpenBot key does not exist')
         continue
     item = matches[0]
     key_id = item.get('token')
@@ -49,7 +54,10 @@ for alias in sorted(targets):
             or not isinstance(servers, list) or any(not isinstance(server, str) for server in servers)):
         raise RuntimeError('LiteLLM harness MCP permissions were malformed')
     changed = dict(permission)
-    changed['mcp_access_groups'] = sorted(set(groups) | {'all-harness-mcps'})
+    required_groups = {'all-harness-mcps'}
+    if alias == 'openbot-agent':
+        required_groups.add('openbot-nod')
+    changed['mcp_access_groups'] = sorted(set(groups) | required_groups)
     if 'no-mcp-servers' in servers:
         remaining = [server for server in servers if server != 'no-mcp-servers']
         # LiteLLM merges object_permission updates; omission does not clear a
@@ -61,7 +69,7 @@ for alias in sorted(targets):
     actual = info.get('object_permission') or {}
     actual_groups = actual.get('mcp_access_groups') if isinstance(actual, dict) else None
     actual_servers = actual.get('mcp_servers') if isinstance(actual, dict) else None
-    if (not isinstance(actual_groups, list) or 'all-harness-mcps' not in actual_groups
+    if (not isinstance(actual_groups, list) or not required_groups.issubset(actual_groups)
             or isinstance(actual_servers, list) and 'no-mcp-servers' in actual_servers):
         raise RuntimeError('A LiteLLM full harness MCP grant did not verify')
     verified.append(alias)
@@ -69,9 +77,12 @@ print(json.dumps({'all_mcp_access': verified, 'missing_harness_keys': sorted(tar
 '''
 
 
-def apply(runner=subprocess.run) -> None:
+def apply(runner=subprocess.run, *, openbot_nod_only: bool = False) -> None:
+    args = ["docker", "exec", "-i", CONTAINER, "python3", "-"]
+    if openbot_nod_only:
+        args.append("--openbot-nod-only")
     result = runner(
-        ["docker", "exec", "-i", CONTAINER, "python3", "-"],
+        args,
         input=LITELLM_CODE,
         capture_output=True,
         text=True,
@@ -84,8 +95,11 @@ def apply(runner=subprocess.run) -> None:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--openbot-nod-only", action="store_true", help="reconcile only the owner OpenBot key")
+    args = parser.parse_args()
     try:
-        apply()
+        apply(openbot_nod_only=args.openbot_nod_only)
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
         print(f"LiteLLM harness MCP access setup failed: {exc}", file=sys.stderr)
         raise SystemExit(1) from None

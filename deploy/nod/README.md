@@ -237,8 +237,8 @@ and Nod's standing rules before granting the connection.
    Verify one synthetic submission and response over that connection. Check
    the HomeCompute status, services, doctor, and drift commands after rollout.
 
-Revoke the dedicated LiteLLM key and remove the OpenBot connection to withdraw
-client access. Run `setup-nod-guest.sh disable-openbot` from the applied
-release and retire `openbot.env` to withdraw the backend credential. To remove
+Remove the Nod bearer header from OpenBot to withdraw client access. Run
+`setup-nod-guest.sh disable-openbot` from the applied release and retire
+`openbot.env` to withdraw the backend credential. To remove
 the relay route, deploy the prior release's relay configuration and verify its
 health. Hermes and accepted Nod runs retain their separate lifecycles.
