@@ -159,6 +159,7 @@ case "$action" in
   verify)
     "${compose[@]}" exec -T server node --input-type=module - <<'JS'
 import assert from 'node:assert/strict';
+import { request } from 'node:http';
 const base = process.env.OPENAI_COMPATIBLE_BASE_URL;
 const headers = { Authorization: `Bearer ${process.env.OPENAI_COMPATIBLE_API_KEY}` };
 const models = await fetch(`${base}/models`, { headers });
@@ -180,23 +181,42 @@ const delegates = [
   ['hermes', process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN, process.env.HOMECOMPUTE_NOD_OPENBOT_TOKEN],
   ['openbot', process.env.HOMECOMPUTE_NOD_OPENBOT_TOKEN, process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN],
 ];
+function list(delegate, token) {
+  // The relay sets a specific Host. Fetch uses the URL host on this Node build.
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+  return new Promise((resolve, reject) => {
+    const probe = request({
+      hostname: '127.0.0.1',
+      port: 4310,
+      path: `/mcp/${delegate}-nod`,
+      method: 'POST',
+      timeout: 5000,
+      headers: {
+        Host: 'homecompute-capabilities.home.arpa',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    }, (response) => {
+      let data = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { data += chunk; });
+      response.on('error', reject);
+      response.on('end', () => resolve({ status: response.statusCode, data }));
+    });
+    probe.on('timeout', () => probe.destroy(new Error('Nod bridge probe timed out')));
+    probe.on('error', reject);
+    probe.end(body);
+  });
+}
 for (const [delegate, bridge, other] of delegates) {
   if (!bridge) continue;
-  const list = (token) => fetch(`http://127.0.0.1:4310/mcp/${delegate}-nod`, {
-    method: 'POST',
-    headers: {
-      Host: 'homecompute-capabilities.home.arpa',
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
-  });
-  assert.equal((await list()).status, 401);
-  assert.equal((await list(process.env.NOD_AUTH_TOKEN)).status, 401);
-  if (other) assert.equal((await list(other)).status, 401);
-  const response = await list(bridge);
+  assert.equal((await list(delegate)).status, 401);
+  assert.equal((await list(delegate, process.env.NOD_AUTH_TOKEN)).status, 401);
+  if (other) assert.equal((await list(delegate, other)).status, 401);
+  const response = await list(delegate, bridge);
   assert.equal(response.status, 200);
-  assert.deepEqual((await response.json()).result.tools.map(({name}) => name), ['nod_submit', 'nod_status']);
+  assert.deepEqual(JSON.parse(response.data).result.tools.map(({name}) => name), ['nod_submit', 'nod_status']);
   console.log(`Nod ${delegate} bridge verified independent authentication and the bounded tool list.`);
 }
 JS
