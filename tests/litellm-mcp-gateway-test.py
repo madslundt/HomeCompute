@@ -86,7 +86,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("auth_type: oauth_delegate", nod)
         self.assertIn("allow_all_keys: false", nod)
         self.assertIn("access_groups: [openbot-nod]", nod)
-        self.assertIn("allowed_tools: [nod_submit, nod_status]", nod)
+        self.assertIn("allowed_tools: [nod_submit, nod_status, nod_schedule_result]", nod)
         self.assertNotIn("all-harness-mcps", nod)
 
     def test_targeted_nod_grant_updates_only_the_owner_key(self) -> None:

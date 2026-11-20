@@ -63,8 +63,10 @@ validate_token() {
 
 configure_bridge() {
   local hermes="$1" openbot="$2"
+  local schedules="$bridge/openbot-schedules.json"
   compose=("${base_compose[@]}")
   export NOD_DELEGATION_HERMES_ENV=/dev/null NOD_DELEGATION_OPENBOT_ENV=/dev/null
+  export NOD_DELEGATION_SCHEDULES_JSON=
   if [[ $hermes == no && $openbot == no ]]; then
     return
   fi
@@ -76,6 +78,14 @@ configure_bridge() {
   if [[ $openbot == yes ]]; then
     validate_token "$bridge/openbot.env" HOMECOMPUTE_NOD_OPENBOT_TOKEN
     NOD_DELEGATION_OPENBOT_ENV="$bridge/openbot.env"
+    if [[ -e "$schedules" || -L "$schedules" ]]; then
+      [[ -f "$schedules" && ! -L "$schedules" && $(stat -c '%a:%u:%h' "$schedules") == 600:0:1 &&
+         $(wc -c < "$schedules") -le 8192 ]] || {
+        printf 'The Nod schedule allowlist must be a private root-owned file of at most 8192 bytes.\n' >&2
+        exit 1
+      }
+      NOD_DELEGATION_SCHEDULES_JSON="$(< "$schedules")"
+    fi
   fi
   if [[ $hermes == yes && $openbot == yes ]] &&
      cmp -s <(cut -d= -f2 "$bridge/token.env") <(cut -d= -f2 "$bridge/openbot.env"); then
@@ -216,7 +226,9 @@ for (const [delegate, bridge, other] of delegates) {
   if (other) assert.equal((await list(delegate, other)).status, 401);
   const response = await list(delegate, bridge);
   assert.equal(response.status, 200);
-  assert.deepEqual(JSON.parse(response.data).result.tools.map(({name}) => name), ['nod_submit', 'nod_status']);
+  const expected = ['nod_submit', 'nod_status'];
+  if (delegate === 'openbot') expected.push('nod_schedule_result');
+  assert.deepEqual(JSON.parse(response.data).result.tools.map(({name}) => name), expected);
   console.log(`Nod ${delegate} bridge verified independent authentication and the bounded tool list.`);
 }
 JS

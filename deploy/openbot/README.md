@@ -97,11 +97,18 @@ that server, so grant it only where the agents and their model providers are
 trusted with results from Nod's connected apps.
 
 Use **Test connection** to verify the existing tools and the additional
-`nod_submit` and `nod_status` tools, then save. If a separate `nod` connection
+`nod_submit`, `nod_status`, and `nod_schedule_result` tools, then save.
+If a separate `nod` connection
 was configured during the pilot, disable it after confirming the combined
 connection. In a fresh owner thread, ask OpenBot to delegate a synthetic
 request to Nod and poll the same request ID for its result. Handle approval
 or sign-in in Nod.
+
+To reuse a scheduled result, opt in the schedule in the
+[Nod guest](../nod/README.md#share-a-saved-schedule-result). For example, ask
+Hermes to read the saved `morning-brief` result, report its age, and check for
+a newer failed run. The lookup reads a saved result without rerunning the
+schedule.
 
 Remove the Nod bearer header to withdraw access from this connection. Remove
 the `openbot-nod` group from the key when rolling back the source grant.

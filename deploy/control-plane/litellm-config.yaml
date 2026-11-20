@@ -170,10 +170,10 @@ mcp_servers:
     url: https://homecompute-capabilities.home.arpa:19445/mcp/openbot-nod
     transport: http
     auth_type: oauth_delegate
-    description: Submit and check isolated tasks on the local Nod assistant
+    description: Submit isolated Nod tasks and read saved results from approved schedules
     allow_all_keys: false
     access_groups: [openbot-nod]
-    allowed_tools: [nod_submit, nod_status]
+    allowed_tools: [nod_submit, nod_status, nod_schedule_result]
   n8n:
     url: http://n8n:5678/mcp-server/http
     transport: http

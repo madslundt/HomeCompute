@@ -242,3 +242,58 @@ Remove the Nod bearer header from OpenBot to withdraw client access. Run
 `openbot.env` to withdraw the backend credential. To remove
 the relay route, deploy the prior release's relay configuration and verify its
 health. Hermes and accepted Nod runs retain their separate lifecycles.
+
+### Share a saved schedule result
+
+`nod_schedule_result` is available to the OpenBot delegate. An empty allowlist
+shares zero schedules. The tool lists approved aliases when called without an
+argument. Pass one alias in `schedule` to read its latest saved result. Nod
+returns the result's age and the latest run's status and timestamps. A newer
+failed, pending, or resultless run can leave the last available saved result
+in place. This lookup requires a completed run with a saved text-only output.
+Attachments, structured cards, approval prompts, and hidden chat messages
+stay in Nod.
+
+On the Nod guest, identify the schedule in the private operator terminal:
+
+```sh
+sudo docker exec homecompute-nod-postgres-1 psql -X -U nod -d nod \
+  -c 'SELECT id, title FROM schedules ORDER BY title;'
+```
+
+From a reviewed release with the updated bridge enabled, create the private
+file on first use and edit it:
+
+```sh
+allowlist=/var/lib/homecompute-nod/hermes-bridge/openbot-schedules.json
+sudo test -e "$allowlist" || sudo install -m 0600 /dev/null "$allowlist"
+sudoedit "$allowlist"
+```
+
+Use a JSON object mapping a human-readable alias to each approved Nod
+schedule UUID. Aliases are lowercase and may include digits, hyphens, and
+underscores. Select up to 32 schedules. These IDs are placeholders:
+
+```json
+{
+  "morning-brief": "01234567-89ab-4cde-8012-3456789abcde"
+}
+```
+
+Share only schedules whose saved results can go to agents and model providers
+on the owner OpenBot server. The approval covers saved results for that
+schedule UUID, including prior runs. Inspect the allowlist when a schedule's
+purpose or data sources change. A replacement schedule has its own UUID and
+needs its own explicit grant. Remove the entry or use `{}` to withdraw
+access. Apply every change with the reviewed installer:
+
+```sh
+sudo bash scripts/setup-nod-guest.sh reconfigure
+sudo bash scripts/setup-nod-guest.sh verify
+```
+
+The setup rejects unsafe file ownership and permissions. If JSON or its
+schema is invalid, Nod withholds the schedule tool and guest verification
+reports the missing tool. Verify an opted-in lookup and an unapproved alias
+through the existing HomeCompute connection. A lookup makes no model call or
+scheduled run.

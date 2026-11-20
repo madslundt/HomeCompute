@@ -183,6 +183,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-040](adr/040-keyless-lan-model-catalog.md) | Admit the Default LAN and designated workloads to the keyless LiteLLM API |
 | [ADR-041](adr/041-openbot-nod-delegation.md) | Delegate tasks from the owner OpenBot server to Nod using an independent principal |
 | [ADR-042](adr/042-consolidate-openbot-nod-connection.md) | Use the owner OpenBot server's existing gateway connection for Nod |
+| [ADR-043](adr/043-nod-saved-schedule-results.md) | Read saved results from selected Nod schedules through the owner OpenBot connection |
 
 ## Research and model evidence
 
