@@ -20,9 +20,9 @@ BASELINE = SOURCE.replace(ASTRA, "").replace("gpt-6.2-sol", "gpt-6.1-sol")
 class ChatGPTConfigTests(unittest.TestCase):
     def test_updates_only_sol_and_astra_against_running_source(self):
         baseline = BASELINE.replace("timeout: 600", "timeout: 321")
-        baseline = baseline.replace("  banknorwegian:\n", "  existing-mcp:\n")
+        baseline = baseline.replace("  dinero:\n", "  existing-mcp:\n")
         expected = SOURCE.replace("timeout: 600", "timeout: 321")
-        expected = expected.replace("  banknorwegian:\n", "  existing-mcp:\n")
+        expected = expected.replace("  dinero:\n", "  existing-mcp:\n")
 
         self.assertEqual(DEPLOY.render_aliases(baseline, SOURCE), expected)
 
