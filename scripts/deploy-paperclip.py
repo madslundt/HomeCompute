@@ -186,7 +186,7 @@ def deploy():
         "revision": ROOT.name, "caddy": caddy_report, "homepage": homepage_report,
     }, indent=2, sort_keys=True) + "\n")
     secret = STATE / "environment"
-    data = run("sops", "decrypt", "--extract", '["paperclip/environment"]',
+    data = run("sops", "decrypt", "--extract", '["paperclip"]["environment"]',
                str(ROOT / "secrets/paperclip.sops.yaml"), capture=True,
                env={**os.environ, "SOPS_AGE_KEY_FILE": "/var/lib/sops-nix/key.txt"})
     if not re.fullmatch(r"BETTER_AUTH_SECRET=[a-f0-9]{64}\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=[a-f0-9]{64}\n?", data):
