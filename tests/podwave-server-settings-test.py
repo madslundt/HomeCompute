@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -62,6 +63,24 @@ class PodWaveServerSettingsTests(unittest.TestCase):
             "llms": [{**managed, "base": SETTINGS.HOME_AI_BASE, "key": ""}, external],
             "defaultLlm": "local",
         })
+
+    def test_migration_probes_https_with_the_container_ca_before_saving(self) -> None:
+        original = {"llms": [{"id": "local", "base": "https://ai.home.arpa:8443/v1", "keySet": False}]}
+        final = {"llms": [{"id": "local", "base": SETTINGS.HOME_AI_BASE, "keySet": False}]}
+        calls = []
+
+        def runner(container, code):
+            calls.append(code)
+            if len(calls) == 1:
+                return json.dumps(original)
+            if len(calls) == 4:
+                return json.dumps(final)
+            return ""
+
+        self.assertEqual(SETTINGS.reconcile("fixture", runner), {"changed": True, "fields": ["base"]})
+        self.assertIn('ssl.create_default_context(cafile="/run/homecompute/home-core-root.crt")', calls[1])
+        self.assertIn("context=context", calls[1])
+        self.assertIn('method="PUT"', calls[2])
 
     def test_non_openai_tts_is_untouched(self) -> None:
         config = {"tts": {"prov": "elevenlabs", "base": SETTINGS.HOME_AI_BASE,

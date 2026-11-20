@@ -92,13 +92,20 @@ def reconcile(container: str, runner=docker_exec) -> dict:
     if not update:
         return {"changed": False, "fields": []}
 
-    if any(row.get("base") == HOME_AI_BASE for section in ("llms", "ttss")
-           for row in update.get(section, [])):
-        runner(container, f'''import json, urllib.request
-with urllib.request.urlopen({HOME_AI_BASE + '/models'!r}, timeout=8) as response:
+    changed_profiles = [
+        profile for kind in ("llm", "tts")
+        for profile in ([update[kind]] if kind in update else update.get(kind + "s", []))
+    ]
+    if any(profile.get("base") == HOME_AI_BASE for profile in changed_profiles):
+        try:
+            runner(container, f'''import json, ssl, urllib.request
+context = ssl.create_default_context(cafile="/run/homecompute/home-core-root.crt")
+with urllib.request.urlopen({HOME_AI_BASE + '/models'!r}, context=context, timeout=8) as response:
     if not json.load(response)['data']:
         raise RuntimeError("The keyless LiteLLM catalog is empty")
 ''')
+        except RuntimeError as error:
+            raise RuntimeError("PodWave could not verify the keyless gateway with its mounted CA") from error
     body = json.dumps(update, separators=(",", ":"))
     update_script = f'''import json, urllib.request
 body = {body!r}.encode()
