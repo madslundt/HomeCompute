@@ -1,0 +1,40 @@
+name: homecompute-t3code
+
+services:
+  t3code:
+    image: homecompute/t3code:${T3CODE_RELEASE:?select a HomeCompute release}
+    build:
+      context: .
+    platform: linux/amd64
+    command: [t3, serve, --host, 0.0.0.0, --port, "3773"]
+    working_dir: /data/projects
+    user: "12073:12073"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:../paperclip/codex-seccomp.json
+    ports:
+      - "127.0.0.1:3773:3773"
+    volumes:
+      - type: bind
+        source: /srv/state/t3code
+        target: /data
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:mode=1777,nosuid,nodev,size=512m
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", "http://127.0.0.1:3773/"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 20s
+    cpus: 2
+    mem_limit: 3g
+    pids_limit: 256
+    # The upstream foreground server prints a pairing credential at startup.
+    logging:
+      driver: none

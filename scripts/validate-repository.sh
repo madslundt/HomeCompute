@@ -61,6 +61,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
+  "$REPO_ROOT/scripts/deploy-t3code.sh"
   "$REPO_ROOT/scripts/deploy-podwave.sh"
   "$REPO_ROOT/scripts/immich-db-backup.sh"
   "$REPO_ROOT/scripts/set-synology-immich-secret.sh"
@@ -872,6 +873,22 @@ jq -e '
 ' "$REPO_ROOT/config/paperclip-dns.json" >/dev/null
 rg -F 'href: https://paperclip.home.arpa/' "$REPO_ROOT/deploy/homepage/config/services.yaml" >/dev/null
 
+printf '[validate] T3 Code Compose boundary\n'
+T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml" config --format json |
+  jq -e '
+    .services.t3code |
+    .platform == "linux/amd64" and .user == "12073:12073" and .read_only and
+    .cap_drop == ["ALL"] and (.security_opt | index("no-new-privileges:true") != null) and
+    (.security_opt | index("seccomp:../paperclip/codex-seccomp.json") != null) and
+    (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "3773") and
+    (.volumes | length == 1 and .[0].type == "bind" and .[0].source == "/srv/state/t3code" and
+      .[0].target == "/data" and .[0].bind.create_host_path == false) and
+    .logging.driver == "none"
+  ' >/dev/null
+jq -e '.limits | .connect == false and .webhookTasks == false and
+  .previewTunnel == false and .telemetry == false and .updates.mode == "off"' \
+  "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
+
 podwave_json="$temporary_root/podwave.json"
 docker compose -f "$REPO_ROOT/deploy/podwave/compose.yaml" config --format json >"$podwave_json"
 jq -e '
@@ -1520,7 +1537,7 @@ grep -Fqx 'OnCalendar=hourly' \
 # Nod is a Compose overlay for a separate KVM guest with its own Docker daemon.
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode paperclip piper-tts podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode paperclip piper-tts podwave t3code toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

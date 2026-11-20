@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "organization": "HomeCompute",
+  "settings": {
+    "defaultRuntimeMode": { "value": "approval-required", "locked": false }
+  },
+  "limits": {
+    "connect": false,
+    "webhookTasks": false,
+    "browserCookieImport": false,
+    "previewTunnel": false,
+    "telemetry": false,
+    "updates": { "mode": "off" },
+    "providers": { "allowedDrivers": ["codex"] }
+  }
+}
