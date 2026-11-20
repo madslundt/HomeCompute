@@ -44,7 +44,13 @@ export const api = {
   },
   automations: async () => (await call<{ automations: Automation[] }>('/api/automations')).automations,
   recipients: async () => (await call<{ recipients: Recipient[] }>('/api/recipients')).recipients,
-  runs: async (id: string) => (await call<{ runs: Run[] }>(`/api/automations/${encodeURIComponent(id)}/runs`)).runs,
+  runs: async (id: string, signal?: AbortSignal) => (await call<{ runs: Run[] }>(
+    `/api/automations/${encodeURIComponent(id)}/runs`, { signal },
+  )).runs,
+  deliveryHistory: async (signal?: AbortSignal) => (await call<{ runs: Run[] }>('/api/delivery-history', { signal })).runs,
+  runNow: async (id: string) => (await call<{ run: Run }>(
+    `/api/automations/${encodeURIComponent(id)}/runs`, { method: 'POST' },
+  )).run,
   create: async (item: AutomationInput) => (await call<{ automation: Automation }>('/api/automations', { method: 'POST', body: JSON.stringify(item) })).automation,
   update: async (id: string, item: AutomationInput) => (await call<{ automation: Automation }>(`/api/automations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(item) })).automation,
   delete: (id: string) => call<{ deleted: boolean }>(`/api/automations/${encodeURIComponent(id)}`, { method: 'DELETE' }),

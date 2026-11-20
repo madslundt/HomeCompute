@@ -29,7 +29,9 @@ and the implemented dashboard with synthetic sample items is [here](../../docs/i
 | Update style | New field: fresh briefing / changes since last run / current-status check |
 | Notify me | New field: every run / when content changes / when action is needed |
 | Completion rule | New field: success criteria / manual archive |
-| Last run / run history | Replaces AI last run and exposes delivery outcomes |
+| Last run / run history | Shows queued, running, failed, suppressed, pending and delivered runs |
+| Delivery history | Shows the latest 50 runs across automations with results and Inbox receipts |
+| Run now | Queues a Ready automation immediately using its existing delivery settings |
 
 The data model and definitions are in [`CONTEXT.md`](CONTEXT.md).
 
@@ -99,15 +101,51 @@ so the repeated autumn DST hour remains distinct. Pending notifications can be
 retried without re-running the AI step. Daily schedule windows remain 07:00 and
 21:00, Europe/Copenhagen, matching the existing workflow.
 
+Manual requests are stored in SQLite until the dedicated
+[`manual-poller.ts`](manual-poller.ts) workflow notices them, normally within
+a minute. The poller invokes the existing worker through its private
+sub-workflow trigger. The worker claims from the bearer-authenticated manager
+API and uses the same result and delivery path as scheduled runs. The poller
+does not retain successful polling executions. Duplicate button presses share
+one queued run. Manual and scheduled runs of the same automation cannot overlap.
+A running claim that is still unfinished after two hours is marked failed on a
+subsequent claim or Run now request. The timed-out result can no longer update
+the automation.
+
 Only Home Assistant changes in the companion HA-automations checkout add the
 read-only `action: recipients` webhook action. It returns the minimal user IDs
 and names for active non-system users with configured Inbox delivery mappings.
 Its default `ingest` behavior stays unchanged.
 
+## Release and rollback
+
+The normal Home Core release builds the manager. To update only this workload
+from a reviewed commit on `origin/master`, run from that checkout on the
+operator workstation:
+
+```sh
+revision=$(git rev-parse HEAD)
+ssh home-core "sudo -n bash -s -- $revision" < scripts/deploy-ai-automation-manager.sh
+```
+
+This uses the declared Compose files, keeps the state directory, and takes a
+private SQLite snapshot before replacing the container. It leaves the host
+release marker as-is. Verify HTTPS and the signed-in delivery history before
+publishing the n8n changes. Publish the worker first. Install the poller in the
+same n8n project, reuse the worker's manager bearer credential, and verify the
+poller calls the correct worker ID before publishing it.
+
+For rollback, unpublish the poller, republish the previous worker version, and
+run the same manager deployment command with its previous image revision. The
+SQLite queue is additive. Restore the snapshot only when recovering data
+because restoration discards later runs.
+
 ## Checks and rollout state
 
 - Frontend: `npm ci && npm run build` in `deploy/ai-automation-manager`.
 - Backend syntax: `python3 -m py_compile deploy/ai-automation-manager/backend/app.py`.
+- Backend integration: install the backend requirements and `httpx` in a test
+  environment, then run `python3 tests/ai-automation-manager-history.test.py`.
 - HA recipient mapping: run `python3 tests/hygge-inbox-recipients.test.py` from the companion HA-automations checkout.
 - Workflow: validate the entire graph using the connected n8n SDK. Compile the
   tracked SDK source to JSON, then run

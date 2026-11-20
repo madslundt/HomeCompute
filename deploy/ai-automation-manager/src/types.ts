@@ -36,11 +36,13 @@ export type AutomationInput = Omit<Automation, 'id' | 'recipient_names' | 'last_
 export type Run = {
   id: string
   automation_id: string
+  automation_name: string
+  source: 'scheduled' | 'manual'
   schedule_key: string
   scheduled_at: string
-  started_at: string
+  started_at: string | null
   finished_at: string | null
-  state: 'running' | 'delivery_pending' | 'delivered' | 'skipped' | 'failed'
+  state: 'queued' | 'running' | 'delivery_pending' | 'delivered' | 'skipped' | 'failed'
   change_summary: string | null
   recipients: string[]
   delivery_receipt: string | null

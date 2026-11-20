@@ -74,6 +74,31 @@ const claim = node({
   },
 });
 
+const manualStart = trigger({
+  type: 'n8n-nodes-base.executeWorkflowTrigger',
+  version: 1.3,
+  config: {
+    name: 'Start manual automation work', position: [0, -60],
+    parameters: { inputSource: 'passthrough' },
+  },
+});
+
+const claimManual = node({
+  type: 'n8n-nodes-base.httpRequest',
+  version: 4.5,
+  config: {
+    name: 'Claim manual runs', position: [460, -60],
+    parameters: {
+      method: 'POST',
+      url: 'http://ai-automation-manager:8080/api/workflows/claim-manual',
+      authentication: 'genericCredentialType',
+      genericAuthType: 'httpTemplatedCustomAuth',
+      options: { timeout: 15000 },
+    },
+    credentials: { httpTemplatedCustomAuth: managerAuth },
+  },
+});
+
 const dueItems = node({
   type: 'n8n-nodes-base.splitOut',
   version: 1,
@@ -454,7 +479,7 @@ const recordSkipped = node({
   },
 });
 
-export default workflow('homecompute-ai-automation-manager', 'HomeCompute AI automation updates')
+export default workflow('homecompute-ai-automation-manager', 'HomeCompute AI automation updates', { callerPolicy: 'workflowsFromSameOwner' })
   .add(schedule)
   .to(buildClaims)
   .to(claim)
@@ -468,6 +493,9 @@ export default workflow('homecompute-ai-automation-manager', 'HomeCompute AI aut
   .add(writeUpdate.onError(recordFailure))
   .to(saveResult.onError(recordFailure))
   .to(notifyResult.onTrue(normalizeMessage).onFalse(normalizeSkipped))
+  .add(manualStart)
+  .to(claimManual)
+  .to(dueItems)
   .add(schedule)
   .to(pending)
   .to(pendingRuns)
@@ -477,7 +505,7 @@ export default workflow('homecompute-ai-automation-manager', 'HomeCompute AI aut
   .to(recordDelivered)
   .add(normalizeSkipped)
   .to(recordSkipped)
-  .group('Claim scheduled work', [buildClaims, claim, dueItems], {
+  .group('Claim scheduled work', [buildClaims, claim], {
     description: 'Turns each Copenhagen clock tick into an idempotent claim for due automations.',
   })
   .group('Research and save updates', [

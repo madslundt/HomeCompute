@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 import uuid
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -51,6 +51,7 @@ LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW = 300
 LOGIN_BLOCK = 300
 LOGIN_MAX_CLIENTS = 1024
+RUN_LEASE = timedelta(hours=2)
 
 
 class SignIn(BaseModel):
@@ -219,7 +220,23 @@ def initialize() -> None:
                 UNIQUE (automation_id, schedule_key)
             );
             CREATE INDEX IF NOT EXISTS run_delivery ON automation_runs(state, started_at);
+
             CREATE INDEX IF NOT EXISTS run_history ON automation_runs(automation_id, started_at DESC);
+            CREATE TABLE IF NOT EXISTS manual_run_requests (
+                id TEXT PRIMARY KEY,
+                automation_id TEXT NOT NULL UNIQUE REFERENCES automations(id) ON DELETE CASCADE,
+                requested_at TEXT NOT NULL
+            );
+            CREATE VIEW IF NOT EXISTS run_history_entries AS
+            SELECT r.id,r.automation_id,a.name AS automation_name,r.schedule_key,r.scheduled_at,
+                r.started_at,r.finished_at,r.state,r.change_summary,r.recipients,r.delivery_receipt,r.error_code,
+                CASE WHEN r.schedule_key LIKE 'manual:%' THEN 'manual' ELSE 'scheduled' END AS source,
+                r.started_at AS sort_time
+            FROM automation_runs r JOIN automations a ON a.id=r.automation_id
+            UNION ALL
+            SELECT q.id,q.automation_id,a.name,'manual:' || q.id,q.requested_at,
+                NULL,NULL,'queued',NULL,a.recipients,NULL,NULL,'manual',q.requested_at
+            FROM manual_run_requests q JOIN automations a ON a.id=q.automation_id;
         """)
         run_columns = {row[1] for row in database.execute("PRAGMA table_info(automation_runs)").fetchall()}
         if "changed" not in run_columns:
@@ -238,7 +255,7 @@ def row_item(row: sqlite3.Row) -> dict[str, Any]:
 def row_run(row: sqlite3.Row) -> dict[str, Any]:
     value = dict(row)
     value["recipients"] = json.loads(value["recipients"])
-    value.pop("updated_context", None)
+    value.pop("sort_time", None)
     return value
 
 
@@ -563,11 +580,90 @@ def list_runs(item_id: str, _: str = Depends(require_site_session)) -> dict[str,
     with connection() as database:
         load_item(database, item_id)
         rows = database.execute("""
-            SELECT id,automation_id,schedule_key,scheduled_at,started_at,finished_at,state,
-                   change_summary,recipients,delivery_receipt,error_code
-            FROM automation_runs WHERE automation_id = ? ORDER BY started_at DESC LIMIT 50
+            SELECT * FROM run_history_entries WHERE automation_id=?
+            ORDER BY sort_time DESC, id DESC LIMIT 50
         """, (item_id,)).fetchall()
     return {"runs": [row_run(row) for row in rows]}
+
+
+@app.get("/api/delivery-history")
+def delivery_history(_: str = Depends(require_site_session)) -> dict[str, Any]:
+    with connection() as database:
+        rows = database.execute("""
+            SELECT * FROM run_history_entries ORDER BY sort_time DESC, id DESC LIMIT 50
+        """).fetchall()
+    return {"runs": [row_run(row) for row in rows]}
+
+
+def expire_interrupted_runs(database: sqlite3.Connection) -> None:
+    cutoff = (datetime.now(timezone.utc) - RUN_LEASE).strftime("%Y-%m-%dT%H:%M:%SZ")
+    database.execute("""
+        UPDATE automation_runs SET state='failed',finished_at=?,error_code='run_interrupted'
+        WHERE state='running' AND started_at <= ?
+    """, (utc_now(), cutoff))
+
+
+@app.post("/api/automations/{item_id}/runs", status_code=202)
+def request_manual_run(item_id: str, request: Request, _: str = Depends(require_site_session)) -> dict[str, Any]:
+    require_same_origin(request)
+    with connection() as database:
+        database.execute("BEGIN IMMEDIATE")
+        item = load_item(database, item_id)
+        if item["status"] != "Ready":
+            raise HTTPException(status_code=409, detail="Set this automation to Ready before starting a run.")
+        expire_interrupted_runs(database)
+        if database.execute("""
+            SELECT 1 FROM automation_runs WHERE automation_id=? AND state='running'
+        """, (item_id,)).fetchone():
+            raise HTTPException(status_code=409, detail="This automation already has a run in progress.")
+        database.execute("""
+            INSERT INTO manual_run_requests (id,automation_id,requested_at) VALUES (?,?,?)
+            ON CONFLICT(automation_id) DO NOTHING
+        """, (str(uuid.uuid4()), item_id, utc_now()))
+        row = database.execute("""
+            SELECT * FROM run_history_entries WHERE automation_id=? AND state='queued'
+        """, (item_id,)).fetchone()
+        database.commit()
+    return {"run": row_run(row)}
+
+
+@app.get("/api/workflows/manual-queue", dependencies=[Depends(require_workflow_token)])
+def manual_queue() -> dict[str, bool]:
+    with connection() as database:
+        pending = database.execute("SELECT 1 FROM manual_run_requests LIMIT 1").fetchone()
+    return {"has_pending": pending is not None}
+
+
+@app.post("/api/workflows/claim-manual", dependencies=[Depends(require_workflow_token)])
+def claim_manual() -> dict[str, Any]:
+    due: list[dict[str, Any]] = []
+    now = utc_now()
+    with connection() as database:
+        database.execute("BEGIN IMMEDIATE")
+        expire_interrupted_runs(database)
+        rows = database.execute("""
+            SELECT q.id AS request_id,q.requested_at,a.* FROM manual_run_requests q
+            JOIN automations a ON a.id=q.automation_id
+            WHERE a.status != 'Ready' OR NOT EXISTS (
+                SELECT 1 FROM automation_runs r WHERE r.automation_id=a.id AND r.state='running'
+            )
+            ORDER BY q.requested_at,q.id LIMIT 10
+        """).fetchall()
+        for row in rows:
+            item = row_item(row)
+            run_id, requested_at = item.pop("request_id"), item.pop("requested_at")
+            ready = item["status"] == "Ready"
+            database.execute("""
+                INSERT INTO automation_runs
+                    (id,automation_id,schedule_key,scheduled_at,started_at,finished_at,state,recipients,error_code)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (run_id, item["id"], f"manual:{run_id}", requested_at, now, None if ready else now,
+                  "running" if ready else "failed", row["recipients"], None if ready else "item_not_ready"))
+            database.execute("DELETE FROM manual_run_requests WHERE id=?", (run_id,))
+            if ready:
+                due.append({"run_id": run_id, **item})
+        database.commit()
+    return {"items": due}
 
 
 @app.post("/api/workflows/claim", dependencies=[Depends(require_workflow_token)])
@@ -576,7 +672,13 @@ def claim_due(body: ClaimRequest) -> dict[str, Any]:
     now = utc_now()
     with connection() as database:
         database.execute("BEGIN IMMEDIATE")
-        rows = database.execute("SELECT * FROM automations WHERE status = 'Ready' ORDER BY last_run_at IS NOT NULL, last_run_at, created_at LIMIT 200").fetchall()
+        expire_interrupted_runs(database)
+        rows = database.execute("""
+            SELECT * FROM automations a WHERE status='Ready' AND NOT EXISTS (
+                SELECT 1 FROM automation_runs r WHERE r.automation_id=a.id AND r.state='running'
+            )
+            ORDER BY last_run_at IS NOT NULL,last_run_at,created_at LIMIT 200
+        """).fetchall()
         for row in rows:
             item = row_item(row)
             if body.weekday not in item["days_to_run"]:
@@ -666,9 +768,9 @@ def record_delivery(run_id: str, body: DeliveryWrite) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Home Assistant receipt is required.")
     with connection() as database:
         database.execute("""
-            UPDATE automation_runs SET state=?,delivery_receipt=?,error_code=NULL
+            UPDATE automation_runs SET state=?,delivery_receipt=?,finished_at=?,error_code=NULL
             WHERE id=? AND state='delivery_pending'
-        """, (state, body.receipt_id or None, run_id))
+        """, (state, body.receipt_id or None, utc_now(), run_id))
         if database.execute("SELECT changes()").fetchone()[0] == 0:
             row = database.execute("SELECT state FROM automation_runs WHERE id=?", (run_id,)).fetchone()
             if not row:
