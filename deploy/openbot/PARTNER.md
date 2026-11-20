@@ -129,6 +129,48 @@ research workspace organizes files, and the provider can still have file-read
 access elsewhere on the server. Give Research only public briefs and sources.
 Verify the binding with a synthetic turn before handing it real work.
 
+## LiteLLM household tools
+
+Create two credentials from a clean checkout of the current published release.
+The helper verifies each LiteLLM key's grant and lists its tools over HTTPS
+from the partner container. The keys are stored outside Git on the agents VM.
+
+```bash
+./scripts/provision-openbot-partner-mcp.py prepare public
+./scripts/provision-openbot-partner-mcp.py prepare aula
+```
+
+On the partner server, open **Marketplace → Apps → Add custom server**. Both
+connections use Streamable HTTP at `https://llm.home.arpa/mcp`.
+
+| Connection name | `x-mcp-servers` header | Key scope | OpenBot agent access |
+| --- | --- | --- | --- |
+| `household-public` | `context7,tilbudstrolden` | `public` | All agents |
+| `household-aula` | `aula` | `aula` | Hermes on `custom:automation-moe` |
+
+Set the `x-litellm-api-key` header to the corresponding **Bearer** value.
+Run `./scripts/provision-openbot-partner-mcp.py copy public` or
+`./scripts/provision-openbot-partner-mcp.py copy aula` from an interactive Mac
+terminal and paste directly into that header's value field. Clear the clipboard
+after saving. Stop new turns while setting up Aula, save that connection
+disabled, set **Agents** to Hermes only and **Everyone** to **No access**,
+then enable it. If the client cannot save a disabled connection or does not
+offer the Agents control, use a separate disabled draft with no credential,
+set access first, and then add the credential to that saved entry.
+
+In a fresh thread, verify that Hermes sees the Aula tool catalog and that
+Research sees only the public connection. Tool listing does not require reading
+school messages or calendar entries. Hermes keeps Aula results in its local
+model conversation and hands off only public briefs to Research. The OpenBot
+agent selection filters the tools offered to a session. All agents share the
+server's filesystem permissions, so this setting is not filesystem isolation.
+
+Use `check` in place of `prepare` to recheck existing key grants. To withdraw
+access, disable the corresponding app connection and revoke the matching
+`openbot-partner-mcp-public` or `openbot-partner-mcp-aula` alias in LiteLLM's
+Admin UI. Remove the matching protected key file from the agents VM
+after revocation if re-enrolling.
+
 ## Reviewed personal context
 
 Give the partner the short Danish profile draft to edit and approve. Keep it
