@@ -5,6 +5,7 @@ import importlib.util
 import io
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -25,19 +26,20 @@ class PartnerHermesTest(unittest.TestCase):
         self.profile = self.home / ".hermes/memories/USER.md"
 
     def run_configure(self, source, volume=None):
-        settings = {setup.COMPRESSION_KEY: str(setup.COMPRESSION_THRESHOLD_TOKENS)}
+        settings = {}
         commands = []
 
         def docker(*args):
             commands.append(args)
             if args[1] == "inspect":
                 return "true" if args[3] == "{{.State.Running}}" else str(volume or self.home)
-            if args[4:7] == ("config", "get", "custom_providers"):
-                return "[]"
             if args[4:6] == ("config", "set"):
                 settings[args[6]] = args[7]
             if args[4:6] == ("config", "get"):
-                return settings[args[6]]
+                key = args[6]
+                if key not in settings:
+                    raise subprocess.CalledProcessError(1, args, stderr=f"Config key not set: {key}\n")
+                return settings[key]
             return ""
 
         args = ["configure-openbot-hermes.py", "--container", setup.PARTNER_CONTAINER, "--install-user-profile"]
@@ -54,6 +56,7 @@ class PartnerHermesTest(unittest.TestCase):
         self.assertEqual(result, 0, output)
         self.assertEqual(settings["model.base_url"], "http://ai.home.arpa:18080/v1")
         self.assertEqual(settings["model.default"], "automation-moe")
+        self.assertEqual(settings["memory.write_approval"], "true")
         self.assertIn("updates:\n  check: false\n", (self.home / ".hermes/config.yaml").read_text())
         self.assertTrue(all(setup.PARTNER_CONTAINER in command for command in commands))
         self.assertEqual(self.profile.read_text(), value)

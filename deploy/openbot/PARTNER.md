@@ -42,7 +42,8 @@ select `home-core-partner`. Keep invitations empty for the private setup.
 
 The Hermes helper runs the same pinned installer stages as the OpenBot 0.73.0
 Hermes **Download** action. It verifies the installer checksum and configures the
-CLI inside the partner container for local inference. In the signed-in client,
+CLI inside the partner container for local inference and memory-write approval.
+In the signed-in client,
 open the server's Providers page and confirm Hermes offers
 `custom:automation-moe`. In the same server's Providers settings add
 **Home AI (local)** as a custom OpenAI-compatible provider at

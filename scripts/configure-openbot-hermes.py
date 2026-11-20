@@ -47,6 +47,15 @@ def run(*args: str) -> str:
     return result.stdout.strip()
 
 
+def read_optional_json_setting(cli: tuple[str, ...], key: str, default):
+    try:
+        return json.loads(run(*cli, "get", key, "--json"))
+    except subprocess.CalledProcessError as exc:
+        if exc.returncode == 1 and f"Config key not set: {key}" in (exc.stderr or "").splitlines():
+            return default
+        raise
+
+
 def has_secret_fields(value: object) -> bool:
     if isinstance(value, dict):
         for key, child in value.items():
@@ -125,7 +134,7 @@ def disable_passive_update_checks(config_path: Path) -> None:
 
 def reconcile_compression(container: str) -> None:
     cli = ("docker", "exec", container, HERMES, "config")
-    current = json.loads(run(*cli, "get", COMPRESSION_KEY, "--json"))
+    current = read_optional_json_setting(cli, COMPRESSION_KEY, None)
     if current != COMPRESSION_THRESHOLD_TOKENS:
         run(*cli, "set", COMPRESSION_KEY, str(COMPRESSION_THRESHOLD_TOKENS))
         current = json.loads(run(*cli, "get", COMPRESSION_KEY, "--json"))
@@ -171,9 +180,9 @@ def main() -> int:
     try:
         profile = None
         if args.install_user_profile:
-            raw_profile = sys.stdin.read(PARTNER_PROFILE_MAX_CHARS + 2)
-            profile = raw_profile.removesuffix("\n").strip()
-            if not profile or len(raw_profile) > PARTNER_PROFILE_MAX_CHARS + 1 or "\x00" in profile:
+            raw_profile = sys.stdin.read(PARTNER_PROFILE_MAX_CHARS + 2).removesuffix("\n")
+            profile = raw_profile.strip()
+            if not profile or len(raw_profile) > PARTNER_PROFILE_MAX_CHARS or "\x00" in profile:
                 raise RuntimeError("Provide a reviewed nonempty UTF-8 profile of at most 1300 characters")
             profile += "\n"
         state = run("docker", "inspect", "--format", "{{.State.Running}}", args.container)
@@ -197,6 +206,7 @@ def main() -> int:
         model_settings = dict(MODEL_SETTINGS)
         if partner:
             provider["base_url"] = model_settings["model.base_url"] = PARTNER_MODEL_URL
+            model_settings["memory.write_approval"] = "true"
 
         # Check the actual container trust store and keyless path before changing settings.
         probe = f"""
@@ -220,8 +230,8 @@ with urllib.request.urlopen({provider['base_url'] + '/models'!r}, timeout=8) as 
 
         run("docker", "exec", args.container, HERMES, "--version")
 
-        raw = run("docker", "exec", args.container, HERMES, "config", "get", "custom_providers", "--json")
-        providers = json.loads(raw)
+        cli = ("docker", "exec", args.container, HERMES, "config")
+        providers = read_optional_json_setting(cli, "custom_providers", [])
         if not isinstance(providers, list):
             raise RuntimeError("Hermes custom_providers must be a JSON list")
 
