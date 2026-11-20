@@ -3,6 +3,11 @@
   "addresses_verified_on": "2026-11-09",
   "docker_subnet": "172.30.192.0/24",
   "container_address": "172.30.192.2",
+  "partner": {
+    "bridge": "hc-ob-partner",
+    "docker_subnet": "172.30.196.0/24",
+    "container_address": "172.30.196.2"
+  },
   "local_model_endpoint": {
     "address": "10.77.20.1",
     "port": 18080

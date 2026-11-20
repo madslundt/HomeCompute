@@ -38,6 +38,11 @@ status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
 configure-model-gateway  Verify keyless HTTPS and migrate the embedded Hermes model settings.
+install-partner          Install the independent household server from published master.
+status-partner           Show the household server state and installed revision.
+login-partner            Enroll the household server using its owner's email code.
+configure-partner-hermes Install and configure the household server's embedded Hermes for local inference.
+install-partner-profile FILE  Stream the owner's reviewed USER.md into private Hermes memory.
 EOF
 }
 
@@ -97,6 +102,39 @@ configure_model_gateway() {
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   git -C "$REPO_ROOT" show "$revision:scripts/configure-openbot-hermes.py" |
     ssh_guest python3 -
+}
+
+install_partner() {
+  require_fresh_vm_backup
+  local revision
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  # shellcheck disable=SC2016 # The staging directory is expanded on the guest.
+  git -C "$REPO_ROOT" archive "$revision" deploy/openbot config/openbot-network.json scripts/configure-openbot-hermes.py |
+    ssh_guest 'set -eu
+      stage="$(mktemp -d /tmp/homecompute-openbot-partner.XXXXXXXX)"
+      trap '\''rm -rf -- "$stage"'\'' EXIT
+      tar -xf - -C "$stage"
+      sudo -n /bin/bash "$stage/deploy/openbot/install-partner.sh" "$stage" '"$revision"
+}
+
+status_partner() {
+  ssh_guest 'readlink /etc/homecompute-openbot-partner/current || true
+    systemctl is-active homecompute-openbot-partner.service homecompute-openbot-partner-firewall.service || true
+    docker inspect --format "{{.Name}} {{.State.Status}} {{.Config.Image}} ports={{json .HostConfig.PortBindings}}" homecompute-openbot-partner'
+}
+
+login_partner() {
+  require_current_master_checkout
+  ssh -tt -J home-core -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i "$KEY_FILE" \
+    "$GUEST" 'sudo -n docker exec -it homecompute-openbot-partner openbot login --name home-core-partner'
+}
+
+configure_partner_hermes() {
+  require_current_master_checkout
+  ssh_guest docker exec -i homecompute-openbot-partner /bin/bash -s \
+    < "$REPO_ROOT/deploy/openbot/install-partner-hermes.sh"
+  ssh_guest /usr/bin/python3 /etc/homecompute-openbot-partner/current/configure-openbot-hermes.py \
+    --container homecompute-openbot-partner "$@"
 }
 
 image_pin() {
@@ -556,8 +594,17 @@ REMOTE_PURGE
 }
 
 main() {
+  if [[ $# == 2 && "$1" == install-partner-profile ]]; then
+    [[ -f "$2" && ! -L "$2" ]] || { echo 'Supply a reviewed local profile file.' >&2; return 2; }
+    configure_partner_hermes --install-user-profile < "$2"
+    return
+  fi
   [[ $# == 1 ]] || { usage >&2; return 2; }
   case "$1" in
+    install-partner) install_partner ;;
+    status-partner) status_partner ;;
+    login-partner) login_partner ;;
+    configure-partner-hermes) configure_partner_hermes ;;
     install) install_openbot ;;
     retire-operator) install_openbot retire ;;
     purge-retired-operator) purge_retired_operator ;;

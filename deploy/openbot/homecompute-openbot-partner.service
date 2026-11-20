@@ -1,0 +1,24 @@
+[Unit]
+Description=HomeCompute private household OpenBot server
+BindsTo=homecompute-openbot-partner-firewall.service docker.service
+After=homecompute-openbot-partner-firewall.service docker.service
+PartOf=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/etc/homecompute-openbot-partner/current
+ExecStartPre=/usr/bin/docker compose --project-name homecompute-openbot-partner --file compose.partner.yaml config --quiet
+ExecStart=/usr/bin/docker compose --project-name homecompute-openbot-partner --file compose.partner.yaml up --no-color --no-log-prefix --abort-on-container-exit --pull never
+ExecStartPost=/bin/bash /etc/homecompute-openbot-partner/current/homecompute-openbot-health homecompute-openbot-partner
+ExecStop=/usr/bin/docker compose --project-name homecompute-openbot-partner --file compose.partner.yaml down --timeout 60
+Restart=always
+RestartSec=10s
+KillSignal=SIGINT
+KillMode=process
+StandardOutput=null
+StandardError=null
+TimeoutStartSec=120
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

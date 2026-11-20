@@ -54,9 +54,7 @@ def live_nas():
             ['git', '-C', str(release), 'show', f'{base}:{name}'], timeout=10):
         raise ValueError('Active NAS lifecycle differs from Git')
     nas = load(path)
-    if nas.REPOSITORY != REPOSITORY:
-        raise ValueError('Scoped backup requires the active selected-state repository')
-    nas.require_mount(nas.load_configuration(nas.CONFIG))
+    nas.require_mount(nas.load_configuration(nas.CONFIG, mount_only=True))
     nas.private_file(nas.PASSWORD)
     nas.root_directory(nas.REPOSITORY)
     return nas
@@ -128,17 +126,18 @@ def verify_snapshot(nas, value):
     if not 0 <= age <= 36 * 3600:
         raise ValueError('Agents VM backup is outside the 36-hour readiness window')
     # Explicitly verify the immutable snapshot rather than trusting a date or NAS tag.
-    snapshots = json.loads(nas.restic(['--no-lock', 'snapshots', '--json', snapshot]))
+    snapshots = json.loads(nas.restic(['--no-lock', 'snapshots', '--json', snapshot], repository=REPOSITORY))
     if (len(snapshots) != 1 or snapshots[0]['id'] != snapshot
             or snapshots[0].get('paths') != [directory] or TAG not in snapshots[0].get('tags', [])):
         raise ValueError('Encrypted snapshot identity differs from the receipt')
-    entries = [json.loads(line) for line in nas.restic(['--no-lock', 'ls', '--json', snapshot]).splitlines()]
+    entries = [json.loads(line) for line in
+               nas.restic(['--no-lock', 'ls', '--json', snapshot], repository=REPOSITORY).splitlines()]
     files = {row['path']: row.get('size') for row in entries if row.get('type') == 'file'}
     manifest = directory + '/manifest.json'
     if (set(files) != {manifest, directory + '/' + DISK.name, directory + '/seed.iso'}
             or files[directory + '/' + DISK.name] != value['disk_bytes']):
         raise ValueError('Encrypted snapshot lacks the complete agents VM bundle')
-    if json.loads(nas.restic(['--no-lock', 'dump', snapshot, manifest])) != {
+    if json.loads(nas.restic(['--no-lock', 'dump', snapshot, manifest], repository=REPOSITORY)) != {
             key: value[key] for key in ('captured_at', 'disk_bytes', 'seed_sha256')}:
         raise ValueError('Encrypted snapshot manifest differs from the captured bundle')
 
@@ -187,9 +186,9 @@ def backup(nas):
         metadata = capture(directory, seed)
         manifest = directory / 'manifest.json'
         manifest.write_text(json.dumps(metadata, sort_keys=True) + '\n')
-        nas.require_mount(nas.load_configuration(nas.CONFIG))
+        nas.require_mount(nas.load_configuration(nas.CONFIG, mount_only=True))
         records = [json.loads(line) for line in nas.restic(
-            ['backup', '--json', '--tag', TAG, '--', str(directory)]).splitlines()]
+            ['backup', '--json', '--tag', TAG, '--', str(directory)], repository=REPOSITORY).splitlines()]
         summaries = [row['snapshot_id'] for row in records if row.get('message_type') == 'summary']
         if len(summaries) != 1:
             raise ValueError('Restic did not confirm one completed scoped backup')

@@ -45,6 +45,9 @@ terminal. It stores the server session only in OpenBot's `/data` keyring. Then
 sign in to the desktop/iPhone app or `openbot.run/app` with the same account and
 select the `home-core` server.
 
+For the independently enrolled household server and its embedded Hermes agent,
+follow the [private household server runbook](PARTNER.md).
+
 ## Models and teams
 
 Use the existing OpenBot model providers at `https://llm.home.arpa/v1`.

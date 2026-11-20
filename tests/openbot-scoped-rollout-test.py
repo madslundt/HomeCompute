@@ -122,8 +122,9 @@ class BackupTest(unittest.TestCase):
                 calls.append('capture')
                 return {'captured_at': 'fixture'}
 
-            def upload(_):
+            def upload(_, *, repository):
                 self.assertEqual(current, 'inactive')
+                self.assertEqual(repository, backup.REPOSITORY)
                 calls.append('upload')
                 if upload_error:
                     raise upload_error
