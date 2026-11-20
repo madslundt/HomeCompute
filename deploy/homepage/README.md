@@ -51,6 +51,10 @@ Homepage container, Docker network, credentials, or host filesystem. See the
 The **Paperclip** card opens `https://paperclip.home.arpa/`. Paperclip uses its
 own login. See the [Paperclip runbook](../paperclip/README.md) for setup and access.
 
+The **T3 Code** card opens `http://127.0.0.1:3773/` on the workstation.
+Start the SSH tunnel in the [T3 Code runbook](../t3code/README.md) before opening
+the card.
+
 The **Nod** card opens `https://nod.home.arpa/` over the LAN or Tailscale
 split DNS. Nod uses its own owner token. See the [Nod runbook](../nod/README.md)
 for device access and integrations.
@@ -112,6 +116,26 @@ sudo docker compose --env-file /etc/homecompute/homepage.env \
 
 The normal `scripts/deploy-home-core.sh` release deployment also validates,
 pulls, and reconciles this project.
+
+### Apply the T3 Code card independently
+
+When Homepage runs from a scoped release, use the card installer from a clean,
+published release on Home Core. Review the reported configuration hashes before
+applying the card.
+
+```sh
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-t3code-homepage.py
+sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-t3code-homepage.py \
+  --apply --expected-before-sha256 REVIEWED_BEFORE_SHA256
+```
+
+The installer overlays only the services list, checks the Homepage API, and
+restores the prior Compose configuration if verification fails. Its receipt
+in `/var/lib/homecompute/t3code-homepage/FULL_SHA/receipt.json` records the previous
+Compose files. To roll back, pass those files in the recorded order to
+`docker compose --env-file /etc/homecompute/homepage.env`, then run
+`up -d --no-deps --pull never --wait homepage`. The next full Home Core release
+uses the tracked card directly.
 
 ## Agent dashboards
 

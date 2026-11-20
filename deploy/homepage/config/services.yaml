@@ -31,6 +31,12 @@
         description: Find books and request downloads
 
 - AI assistants:
+    - T3 Code:
+        id: homecore-t3code
+        icon: mdi-code-braces
+        href: http://127.0.0.1:3773/
+        description: Coding workspace · requires the Home Core SSH tunnel
+
     - AI automation manager:
         id: homecore-ai-automation-manager
         icon: mdi-clipboard-text-clock-outline
