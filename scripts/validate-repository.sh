@@ -857,6 +857,8 @@ jq -e '
   .networks.connector.internal == true and
   .networks["github-metadata"].internal == true and
   (.services.paperclip.networks | keys == ["connector", "github-metadata", "paperclip"]) and
+  (.services.paperclip.networks.connector.ipv4_address == "172.30.198.3") and
+  (.services.paperclip.networks["github-metadata"].ipv4_address == "172.30.198.11") and
   (.services.paperclip.extra_hosts | sort == ["api.githubcopilot.com=172.30.198.2", "github.com=172.30.198.10"]) and
   (.services["paperclip-connector-egress"] |
     (.image | test("^python:[0-9.]+-slim-bookworm@sha256:[a-f0-9]{64}$")) and

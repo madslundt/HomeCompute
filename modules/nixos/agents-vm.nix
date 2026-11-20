@@ -12,6 +12,19 @@ let
   hostAddress = cfg.network.hostAddress;
   prefixLength = toString cfg.network.prefixLength;
   inferenceBridgePort = 18080;
+  agentsProxyAddressPolicy = pkgs.writeShellScript "homecompute-agents-proxy-source" ''
+    set -euo pipefail
+    iptables=${pkgs.iptables}/bin/iptables
+    # Docker masquerades host-local connections into the edge bridge. Exempt
+    # only the agents relay's bound source and Caddy's TLS listener.
+    rule=(-s ${hostAddress}/32 -d 172.28.200.2/32 -o br-hc-ctrl -p tcp --dport 8443 -j ACCEPT)
+    while "$iptables" -w -t nat -C POSTROUTING "''${rule[@]}" 2>/dev/null; do
+      "$iptables" -w -t nat -D POSTROUTING "''${rule[@]}"
+    done
+    if [ "$1" = install ]; then
+      "$iptables" -w -t nat -I POSTROUTING 1 "''${rule[@]}"
+    fi
+  '';
   statePath = "/srv/state/agents-vm";
   guestDisk = "${statePath}/agents.qcow2";
 
@@ -426,12 +439,15 @@ in
     systemd.services.homecompute-agents-ai-proxy = {
       description = "Proxy the agents guest's HTTPS to Caddy using the isolated bridge identity";
       wantedBy = [ "multi-user.target" ];
-      requires = [ "homecompute-agents-network.service" ];
-      after = [ "homecompute-agents-network.service" ];
+      requires = [ "homecompute-agents-network.service" "docker.service" ];
+      after = [ "homecompute-agents-network.service" "docker.service" ];
+      partOf = [ "docker.service" ];
       serviceConfig = {
         DynamicUser = true;
         AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
         CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
+        ExecStartPre = "+${agentsProxyAddressPolicy} install";
+        ExecStopPost = "+${agentsProxyAddressPolicy} remove";
         ExecStart = "${pkgs.socat}/bin/socat TCP4-LISTEN:443,bind=${hostAddress},reuseaddr,fork TCP4:172.28.200.2:8443,bind=${hostAddress}";
         PrivateTmp = true;
         ProtectHome = true;

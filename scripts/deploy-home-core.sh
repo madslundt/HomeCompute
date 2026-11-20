@@ -222,6 +222,10 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
+# Network recreation can reinsert Docker's general masquerade rule.
+if systemctl is-active --quiet homecompute-agents-ai-proxy.service; then
+  systemctl restart homecompute-agents-ai-proxy.service
+fi
 if [[ -s /var/lib/homecompute/paperclip/inference-key ]]; then
   "${paperclip[@]}" --profile inference up -d --wait --wait-timeout 180
 else
