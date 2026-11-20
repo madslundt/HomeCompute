@@ -10,10 +10,9 @@ roster import was verified. Apply and reconcile the manifest through
 ## Model policy
 
 - OpenBot runs in a Docker container inside the `home-core` agents VM, so its
-  Home AI endpoint is `http://ai.home.arpa:18080/v1`. The guest's DNS maps
-  `ai.home.arpa` to the host-only `10.77.20.1` bridge; that bridge verifies TLS
-  while forwarding to Caddy. The former `https://ai.home.arpa:8443/v1` URL
-  resolved to a LAN address where port 8443 does not listen.
+  Home AI endpoint is `https://llm.home.arpa/v1`. The container resolves
+  `llm.home.arpa` to the host-only `10.77.20.1` bridge. The bridge forwards
+  TLS to Caddy, and OpenBot verifies the HomeCompute CA.
 - Omit a provider API key for this LAN endpoint. The Caddy gateway injects its
   restricted network-inference key. Keep TLS verification enabled and ensure
   the OpenBot runtime trusts Home Core's private Caddy CA.
@@ -103,7 +102,7 @@ synthetic material until isolation is qualified.
 OpenBot's Hermes provider runs its own Hermes CLI inside the
 `homecompute-openbot` container. The CLI observed there is v0.22.7. Configure
 that CLI with `hermes model` and select the custom OpenAI-compatible endpoint
-`http://ai.home.arpa:18080/v1`, model `automation-moe`, and no API key. This
+`https://llm.home.arpa/v1`, model `automation-moe`, and no API key. This
 connects Hermes to Home AI without Nous Portal sign-in. The CLI's `/data/.hermes`
 state is separate from the other Hermes/OpenShell sandbox; this connection does
 not share that sandbox's memory, profiles, or sessions. Keep Home AI as the

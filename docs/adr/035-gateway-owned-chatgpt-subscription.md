@@ -3,6 +3,8 @@
 Status: Accepted; rollout requires the normal reviewed release and an
 interactive account sign-in.
 
+The keyless access policy is amended by [ADR-040](040-keyless-lan-model-catalog.md).
+
 Date: 2026-11-12
 
 ## Context

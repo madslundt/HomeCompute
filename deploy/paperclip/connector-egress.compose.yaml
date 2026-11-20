@@ -3,7 +3,7 @@ services:
     environment:
       NODE_USE_ENV_PROXY: "1"
       HTTPS_PROXY: http://172.30.198.2:3128
-      NO_PROXY: localhost,127.0.0.1,::1,paperclip,caddy,paperclip.home.arpa,api.githubcopilot.com
+      NO_PROXY: localhost,127.0.0.1,::1,paperclip,caddy,paperclip.home.arpa,llm.home.arpa,api.githubcopilot.com
     extra_hosts:
       api.githubcopilot.com: 172.30.198.2
       github.com: 172.30.198.10

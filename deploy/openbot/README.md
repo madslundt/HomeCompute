@@ -16,11 +16,10 @@ The container has no Docker socket, host-home mount, host networking, or
 published ports. Its only persistent mount is its private `/data` directory;
 all capabilities are dropped except `SYS_CHROOT`, which Chromium's sandbox
 needs inside the container. `no-new-privileges` remains enabled. The agents-VM Docker bridge egress policy
-allows public TCP 80/443, the LiteLLM compatibility endpoint at
-`ai.home.arpa:18080`, the private LiteLLM gateway at `llm.home.arpa:443`, and
+allows public TCP 80/443, the private LiteLLM gateway at `llm.home.arpa:443`, and
+the retained `ai.home.arpa:18080` compatibility endpoint during migration, and
 the documented TURN ports for the two currently resolved OpenBot relays. The
-gateway hostname resolves to the host-only bridge; egress allows only TCP 443
-to that address for MCP. The Android relay remains separately pinned to TCP
+gateway hostname resolves to the host-only bridge; egress uses TCP 443 there for model inference and authenticated MCP. The Android relay remains separately pinned to TCP
 19445. Other private destinations and public UDP destinations are blocked. The
 Home Core firewall repeats the TURN restriction by relay IP.
 
@@ -48,75 +47,27 @@ select the `home-core` server.
 
 ## Models and teams
 
-Provision the dedicated LiteLLM consumer after installation:
+Use the existing OpenBot model providers at `https://llm.home.arpa/v1`.
+Leave their API key fields empty. If a client requires a value, enter `local`.
+Keep `automation-moe` for local agents and the existing ChatGPT alias assignments
+for agents already configured to use the subscription. Keep the ask-first backup
+policy. The private agents bridge authorizes model requests from OpenBot.
 
-```bash
-python3 scripts/provision-openbot-litellm-key.py
+After deploying Home Core from the reviewed release, update the embedded
+Hermes provider from that exact release:
+
+```sh
+./scripts/setup-openbot-guest.sh configure-model-gateway
 ```
 
-It creates a non-expiring key restricted to local-only `automation-moe` and
-the `all-harness-mcps` gateway group, and stores it in the guest at
-`~/.config/homecompute-openbot/secrets/litellm-api-key` with mode `0600`.
-In OpenBot's server Provider settings, add the custom OpenAI-compatible endpoint
-`http://ai.home.arpa:18080/v1`, model `automation-moe`, and that key. To copy
-the key into the app, read it in the operator's own terminal (do not paste it
-into logs or chat):
-
-```bash
-ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
-  hermes-operator@10.77.20.2 \
-  'cat ~/.config/homecompute-openbot/secrets/litellm-api-key'
-```
-
-### ChatGPT subscription aliases
-
-The owner-selected OpenBot Researcher model uses LiteLLM's ChatGPT subscription
-alias. Terra, Luna, and Astra are available in the same provider for deliberate
-assignment to another agent. This provider has a separate model-only LiteLLM key;
-it does not grant MCP access or replace the local `automation-moe` provider.
-
-After publishing this source, create and install the key from a clean checkout
-of the exact `origin/master` revision:
-
-```bash
-python3 scripts/provision-openbot-chatgpt-key.py
-```
-
-The script creates a non-expiring key restricted to
-`chatgpt-sol-latest`, `chatgpt-terra-latest`, `chatgpt-luna-latest`, and
-`chatgpt-astra-latest`, with MCP explicitly denied. It stores the secret at
-`~/.config/homecompute-openbot/secrets/chatgpt-models-key` in the agents VM.
-
-For an existing Sol/Terra/Luna key, add Astra in place from a clean checkout of
-the exact `origin/master` revision:
-
-```bash
-python3 scripts/provision-openbot-chatgpt-key.py --grant-astra
-```
-
-The command uses the installed guest key to identify the LiteLLM record and
-verifies the model scope and MCP denial. The API key saved in OpenBot still works.
-
-In OpenBot → home-core → Settings → Providers → Custom provider, add:
-
-- Provider ID: `homecompute-chatgpt`
-- Display name: `HomeCompute ChatGPT subscription`
-- Base URL: `https://llm.home.arpa/v1`
-- API key: the value in `chatgpt-models-key`
-- Models: the four aliases above, using their matching ChatGPT Sol/Terra/Luna/Astra labels
-
-Assign Researcher to `chatgpt-sol-latest` / High. Keep its local
-`automation-moe` backup and ask-first backup policy. Do not put the key in chat,
-logs, source, or a command argument.
-
-Connect a cloud provider from Provider settings using the account or API key
-you choose. Assign it only to agents intended to send data to that provider;
-cloud providers receive the prompts and files sent to their agents. The
-recommended OpenBot roles and data boundaries are documented in
-[`docs/openbot-agent-setup.md`](../../docs/openbot-agent-setup.md); apply them in
-the UI because OpenBot has no supported declarative agent-roster import.
-HomeCompute does not sign into a cloud account or choose cloud providers on the
-owner's behalf.
+In the OpenBot server **Providers** settings, edit the existing Home AI and
+HomeCompute ChatGPT subscription entries. Set the same HTTPS base and clear
+their model API keys. Retain the provider IDs and model assignments. The
+subscription provider uses `chatgpt-sol-latest`, `chatgpt-terra-latest`,
+`chatgpt-luna-latest`, and `chatgpt-astra-latest`. Test a synthetic turn on
+`automation-moe` and on an explicitly selected subscription alias after the
+provider updates. The [agent setup guide](../../docs/openbot-agent-setup.md)
+covers roles and data boundaries.
 
 ## Shared LiteLLM MCP connections
 

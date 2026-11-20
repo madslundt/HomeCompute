@@ -496,7 +496,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://ai.home.arpa/v1/embeddings",
+        "url": "https://llm.home.arpa/v1/embeddings",
         "authentication": "none",
         "sendBody": true,
         "specifyBody": "json",

@@ -52,9 +52,8 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("homecompute_openbot_maintenance", CONFIG)
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
         self.assertIn("url: https://mcp.dinero.dk", CONFIG)
-        self.assertIn("url: http://banknorwegian-mcp:8090/mcp", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
-        self.assertEqual(len(server_names), 9)
+        self.assertEqual(len(server_names), 8)
         self.assertNotIn("homecompute_openclaw", server_names)
         self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
         self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
@@ -69,9 +68,6 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("auth_type: oauth2", dinero)
         self.assertIn("oauth2_flow: authorization_code", dinero)
         self.assertIn("issuer: https://dinero.oauth.connect.visma.com", dinero)
-        bank = CONFIG.split("  banknorwegian:", 1)[1]
-        self.assertIn("access_groups: [banknorwegian-read]", bank)
-        self.assertNotIn("all-harness-mcps", bank)
         maintenance = CONFIG[CONFIG.index("  homecompute_openbot_maintenance:"):CONFIG.index("  aula:")]
         self.assertNotIn("all-harness-mcps", maintenance)
         self.assertIn("      - homecompute_maintenance_proposal", maintenance)
@@ -79,6 +75,13 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)
+
+    def test_bank_norwegian_is_disabled_in_production(self) -> None:
+        self.assertNotIn("  banknorwegian:", CONFIG)
+        self.assertNotIn("banknorwegian-mcp", AUTOMATION)
+        self.assertNotIn("--dport 8090", NETWORK)
+        self.assertNotIn("BN_CLIENT_ID", DEPLOY)
+        self.assertIn("--filter label=com.docker.compose.service=banknorwegian-mcp", DEPLOY)
 
     def test_gateway_has_dedicated_internal_client_and_backend_networks(self) -> None:
         self.assertIn("mcp-web:", COMPOSE)
@@ -111,8 +114,6 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("172.28.200.3/32", (ROOT / "scripts/setup-native-capabilities.py").read_text())
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.3/32 -p tcp --dport 7878", NETWORK)
         self.assertIn("-s 172.28.212.2/32 -d 172.28.212.4/32 -p tcp --dport 8000", NETWORK)
-        self.assertIn("-s 172.28.212.2/32 -d 172.28.212.5/32 -p tcp --dport 8090", NETWORK)
-        self.assertIn("-o br-hc-n8n -d 172.28.201.6/32 -p tcp --dport 8090", NETWORK)
         self.assertIn("-j REJECT", NETWORK)
 
     def test_manager_api_is_reachable_only_from_the_n8n_bridge_address(self) -> None:

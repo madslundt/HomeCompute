@@ -20,7 +20,7 @@ COMPRESSION_KEY = "compression.threshold_tokens"
 COMPRESSION_THRESHOLD_TOKENS = 128_000
 PROVIDER = {
     "name": "Home AI (local)",
-    "base_url": "http://ai.home.arpa:18080/v1",
+    "base_url": "https://llm.home.arpa/v1",
     "model": "automation-moe",
     "api_mode": "chat_completions",
 }
@@ -156,6 +156,13 @@ def main() -> int:
             print(f"OpenBot Hermes compression threshold: {COMPRESSION_THRESHOLD_TOKENS} tokens.")
             return 0
 
+        # Check the actual container trust store and keyless path before changing settings.
+        probe = f"""
+import json, urllib.request
+with urllib.request.urlopen({PROVIDER['base_url'] + '/models'!r}, timeout=8) as response:
+    assert {PROVIDER['model']!r} in {{row['id'] for row in json.load(response)['data']}}
+"""
+        run("docker", "exec", args.container, "python3", "-c", probe)
         disable_passive_update_checks(Path(data_root) / ".hermes/config.yaml")
 
         run("docker", "exec", args.container, HERMES, "--version")

@@ -100,9 +100,14 @@ Phone/browser API base: `https://home-core.tail479ad.ts.net:8443/v1`, with a
 publicly trusted Let's Encrypt certificate provisioned by Tailscale. No local
 CA installation is needed for this hostname. The gateway remains private.
 
-LAN API base: `https://ai.home.arpa/v1` over the approved LAN or Tailscale subnet
-route. Health endpoint: `https://ai.home.arpa/healthz`. The direct Tailscale
-listener is `https://ai.home.arpa:8443/v1` when the hostname resolves to
+Canonical LAN API base: `https://llm.home.arpa/v1`. The trusted Default LAN can
+use the full LiteLLM model catalog without a client credential. Verify with
+`curl --cacert artifacts/home-core-root.crt https://llm.home.arpa/v1/models`.
+The normal deployment provisions the internal LAN catalog key.
+
+Compatibility API base: `https://ai.home.arpa/v1` over the approved LAN or
+Tailscale subnet route. Health endpoint: `https://ai.home.arpa/healthz`. Use
+`https://ai.home.arpa:8443/v1` for the direct listener when the hostname resolves to
 `100.110.248.102`. Caddy publishes only the exact LAN 443 and Tailscale 8443
 addresses, with source restrictions in `HC-CADDY-LAN` and `HC-CADDY-INGRESS`.
 Tailscale Funnel owns port 443 for the separate TTLock webhook.
@@ -118,22 +123,29 @@ curl --cacert artifacts/home-core-root.crt \
   https://ai.home.arpa/healthz
 ```
 
-Since 2026-10-13, approved LAN/Tailscale API clients can omit credentials.
-Caddy supplies a non-admin network key scoped to `automation`, `home`,
-`automation-moe`, `stt-danish`, and `whisper-turbo`, stored root-owned 0600 in
-`/srv/state/control-plane/caddy-data/network-inference-key`. Explicit client keys
-retain their scopes when valid. Unrecognized credentials fall back to the same
-restricted network access; SDKs can use `local` as a placeholder. CORS allows any
-origin with successful preflight on the exposed model-listing and inference
-paths, without cookie credentials. The administrative master
-key is not a client credential. Key-management endpoints and the admin UI are
-not exposed through Caddy. An administrator can call `/key/generate` or
-`/key/delete` at `http://127.0.0.1:4000` inside the LiteLLM container, reading its
-master key from `/run/secrets/litellm_master_key`. A persistent n8n consumer
-credential is now stored encrypted in n8n for the OpenAI-compatible local
-endpoint. The administrative master key is still not a client credential.
-The candidate Plapre speech alias is excluded from that key until an operator
-explicitly runs `scripts/setup-network-inference.py --enable-plapre`.
+The compatibility host still supplies its scoped local-model key to approved
+LAN and Tailscale clients. On the canonical hostname, scoped client keys keep
+their permissions, and cross-origin requests cannot use the LAN catalog key.
+The LiteLLM UI and MCP gateway use their existing authentication. See the
+[control-plane runbook](../deploy/control-plane/README.md) for both credentials
+and access boundaries.
+
+## Roll back the Open WebUI model gateway
+
+Before redeploying a release that uses the internal HTTP model URL, stop
+Open WebUI through the currently running Compose release. Select the private
+SQLite backup under `/srv/state/open-webui/data/embedding-config-backups/`
+from immediately before this migration. Run the helper from the published
+gateway release and then deploy the previous Home Core revision.
+
+```sh
+sudo python3 /srv/homecompute/current/scripts/rollback-open-webui-model-gateway.py \
+  --backup MIGRATION_BACKUP.sqlite3
+```
+
+The helper restores only the migrated provider URLs and credential fields.
+It preserves indexed content and other database data. If a provider was
+edited after rollout, the helper stops for operator reconciliation.
 
 ## Secrets and operations
 

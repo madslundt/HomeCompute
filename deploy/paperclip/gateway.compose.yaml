@@ -1,0 +1,17 @@
+services:
+  paperclip:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
+      CODEX_CA_CERTIFICATE: /run/homecompute/home-core-root.crt
+    extra_hosts:
+      llm.home.arpa: 172.28.216.2
+    volumes:
+      - /etc/homecompute/control-plane/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
+    networks:
+      paperclip-inference:
+        ipv4_address: 172.28.216.3
+
+networks:
+  paperclip-inference:
+    external: true
+    name: homecompute-paperclip-inference

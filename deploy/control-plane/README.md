@@ -107,9 +107,10 @@ JSON contents. Keep the directory private and include it in the protected
 backup/restore plan for `/srv/state/control-plane`.
 
 Give each client a separate virtual key restricted to only the aliases it needs,
-with no MCP grants unless separately approved. Subscription requests have no
-per-token API charge in LiteLLM; use request/token rate limits instead of a
-dollar budget. There is no automatic API-key fallback.
+with no MCP grants unless separately approved. Clients on the trusted Default
+LAN can also choose these aliases through the keyless model API. A request for
+one of these aliases uses the shared gateway account and has no per-token API
+charge in LiteLLM. Use request/token limits to control subscription quota.
 
 #### Sol and Astra alias-only rollout
 
@@ -270,8 +271,31 @@ forbidden.
 - LiteLLM listens on `0.0.0.0:4000` only inside its container namespace. This
   narrow exception is necessary for Caddy to reach it and is not a host bind.
 
-The approved LAN/Tailscale inference API is keyless. Caddy supplies a restricted
-virtual key when a client sends no credentials or an unrecognized/expired key;
+The canonical model base is `https://llm.home.arpa/v1`. Clients on the trusted
+Default LAN (`192.168.10.0/24`) can omit the API key or use the literal
+`local` for clients that require a value. `GET /v1/models` lists every loaded
+LiteLLM alias, including the explicit ChatGPT subscription models. Caddy uses
+the peer address and applies keyless access only to model listing and the
+supported inference operations. Same-origin browsers and native clients can use
+this access. Explicit credentials keep their own scopes and authentication
+errors. Caddy also admits requests from the isolated agents relay, production
+n8n, and the fixed Paperclip, PodWave, and Open WebUI private network addresses.
+These workloads use the same URL. PodWave and n8n retain their local model
+scope. Keyless text generation from the agents bridge uses the existing Spark
+intake gate during model swaps. The private Docker listener serves only model
+API requests. MCP and the operator UI use LiteLLM authentication.
+
+The release runs `scripts/setup-lan-catalog-key.py` after LiteLLM starts and
+before Caddy starts. It reconciles a non-admin, model-API-only virtual key
+against the loaded model list and verifies the listing with that key. Back up
+`/srv/state/control-plane/caddy-data/lan-catalog-key` with the LiteLLM database.
+After deploying, compare the keyless listing from the Default LAN against the
+release model list. Check that a scoped key still lists only its models and
+that a guest or tailnet peer outside that subnet receives HTTP 401 with no key.
+
+The compatibility inference API on `ai.home.arpa` and the Tailscale
+certificate hostname retains its existing local model scope. Caddy supplies a
+restricted virtual key when a client sends no credentials or an unrecognized/expired key;
 valid explicit client keys retain their scopes. Credential checks use a GET
 probe so inference bodies remain untouched. Provision the key with
 `sudo python3 scripts/setup-network-inference.py` after LiteLLM is healthy and
@@ -282,13 +306,9 @@ LiteLLM database. Missing/empty state prevents Caddy from starting. Browser CORS
 allows all origins without cookies and handles OPTIONS on the API base and
 exposed model-listing/inference paths, including bare checks and trailing
 slashes. It includes private-network approval for clients that request it.
-Actual request methods remain restricted; management routes remain unexposed.
-The keyless network key is intentionally local-only, so `/v1/models` at
-`ai.home.arpa` does not list the `chatgpt-*-latest` subscription aliases. To use
-those aliases, point the client at `https://llm.home.arpa/v1` and provide a
-LiteLLM virtual key explicitly scoped to the desired ChatGPT aliases. The
-`llm.home.arpa` host also serves `/mcp` and the LiteLLM operator UI; its
-`/v1/models` response is filtered by that key's model scope.
+Actual request methods remain restricted. Inside the agents VM,
+`http://ai.home.arpa:18080/v1` is the host-only compatibility transport
+for the pinned OpenShell router. It continues to use the local model scope.
 
 The opt-in Daythread long-recording Whisper path uses the separate
 `/recording-stt/v1/audio/transcriptions` route. Caddy accepts it only from the

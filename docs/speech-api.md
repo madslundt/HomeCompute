@@ -1,6 +1,6 @@
 # Speech API contract
 
-Applications use `https://ai.home.arpa/v1` through Caddy and LiteLLM. Inference
+Applications with approved network access use `https://llm.home.arpa/v1` through Caddy and LiteLLM. Inference
 remains local. Use separate alias-scoped virtual keys for new clients. The
 existing private-network credential and keyless LAN compatibility behavior are
 preserved; this rollout does not create a public internet service.
@@ -101,9 +101,8 @@ entities; update it through MCP after publishing its sanitized source.
 Open WebUI audio is configured by `setup-open-webui-speech.py`: its default is a
 read-only plan; `--apply --revision FULL_SHA` requires a clean published release
 and updates only audio settings through the authenticated application API. It
-uses internal `http://litellm:4000/v1`, `whisper`, `tts-danish`, `danish-default`,
-and WAV. A dedicated key permits only Whisper and the two speech aliases; it is
-kept outside Git at `/srv/state/open-webui/speech-api-key`. Private prior audio
+uses `https://llm.home.arpa/v1` without a model API key, with `whisper`,
+`tts-danish`, `danish-default`, and WAV. Private prior audio
 settings are retained under `/var/lib/homecompute-open-webui-speech`; rollback
 uses the same audio API to restore that saved payload, preserving other settings.
 The script does not rebuild indexes, change chat models, or restart the app.

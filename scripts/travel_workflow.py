@@ -100,7 +100,7 @@ def build() -> dict[str, Any]:
                 'rightValue': True, 'operator': {'type': 'boolean', 'operation': 'true', 'singleValue': True}}],
             'combinator': 'and'}, 'options': {}}),
         node('Embed hotel preferences', 'httpRequest', 4.5, [0, 0], {
-            'method': 'POST', 'url': 'https://ai.home.arpa/v1/embeddings', 'authentication': 'none',
+            'method': 'POST', 'url': 'https://llm.home.arpa/v1/embeddings', 'authentication': 'none',
             'sendBody': True, 'specifyBody': 'json', 'jsonBody': '={{ JSON.stringify($json.embeddingBody) }}',
             'options': {'timeout': 8000, 'redirect': {'redirect': {'followRedirects': False}},
                 'response': {'response': {'responseFormat': 'json'}}}},

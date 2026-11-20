@@ -40,7 +40,9 @@ The following are security requirements, not optional deployment advice:
 - non-loopback inference binds require a verified firewall or VPN allow-list;
 - interactive access is limited to approved LANs or the household tailnet;
   public port forwarding and Tailscale Funnel are prohibited;
-- clients receive distinct, revocable credentials;
+- clients using authenticated services receive distinct, revocable credentials;
+  the trusted Default LAN and approved local workload networks use the model
+  inference API under the [LAN catalog policy](docs/adr/040-keyless-lan-model-catalog.md);
 - logs exclude prompts, responses, tool data, audio, and authorization values;
 - Home Assistant remains authoritative for validating and executing actions;
 - private workloads do not receive implicit cloud fallback.

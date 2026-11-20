@@ -331,18 +331,14 @@ class BankNorwegianMCPTests(unittest.TestCase):
         self.assertEqual(self.mcp.call("banknorwegian_status")[1]["consent"], None)
         self.assertIn(("DELETE", "/openbanking/consents/consent-1"), MockBank.log_requests)
 
-    def test_g_deployment_wiring(self):
-        self.assertIn("banknorwegian-mcp:", PRODUCTION)
-        self.assertIn("dockerfile: banknorwegian.Dockerfile", PRODUCTION)
-        self.assertIn("172.28.201.6", PRODUCTION)
-        self.assertIn("BANKNORWEGIAN_MCP_BACKENDS_IP", PRODUCTION)
-        self.assertIn("BN_CLIENT_SECRET", PRODUCTION)
-        self.assertIn("url: http://banknorwegian-mcp:8090/mcp", LITELLM)
-        self.assertIn("access_groups: [banknorwegian-read]", LITELLM)
-        self.assertIn("BANKNORWEGIAN_MCP_BACKENDS_IP=172.28.212.5", ENV_EXAMPLE)
-        self.assertIn("BN_CLIENT_SECRET=", ENV_EXAMPLE)
-        self.assertIn("-p tcp --dport 8090", NETWORK)
-        self.assertIn("172.28.212.5/32", NETWORK)
+    def test_g_bank_backend_is_not_in_production(self):
+        for text, marker in (
+            (PRODUCTION, "banknorwegian-mcp:"),
+            (LITELLM, "url: http://banknorwegian-mcp:8090/mcp"),
+            (ENV_EXAMPLE, "BN_CLIENT_SECRET="),
+            (NETWORK, "-p tcp --dport 8090"),
+        ):
+            self.assertNotIn(marker, text)
         self.assertIn("@sha256:", DOCKERFILE)
         self.assertNotIn("pip install", DOCKERFILE)
 

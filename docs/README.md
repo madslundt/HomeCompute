@@ -180,6 +180,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-037](adr/037-openbot-infrastructure-maintenance.md) | Isolate OpenBot infrastructure maintenance behind a dedicated server and scoped plan tools |
 | [ADR-038](adr/038-openbot-git-proposals-and-restarts.md) | Use the isolated OpenBot operator for observations, Git upgrade proposals, and approved service restarts |
 | [ADR-039](adr/039-shared-openbot-maintenance.md) | Use the primary OpenBot server for bounded maintenance with independent approval and guest upgrades |
+| [ADR-040](adr/040-keyless-lan-model-catalog.md) | Admit the Default LAN and designated workloads to the keyless LiteLLM API |
 
 ## Research and model evidence
 

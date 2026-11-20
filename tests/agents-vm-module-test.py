@@ -91,22 +91,13 @@ class AgentsVmModuleTest(unittest.TestCase):
         self.assertNotIn('extraGroups = [ "kvm" "homecompute-state" ];', MODULE)
         self.assertNotIn('SupplementaryGroups = [ "kvm" "homecompute-state" ];', MODULE)
 
-    def test_ai_proxy_socket_waits_for_bridge_without_boot_cycle(self) -> None:
-        socket_match = re.search(
-            r"systemd\.sockets\.homecompute-agents-ai-proxy = \{(?P<body>.*?)\n    \};",
-            MODULE,
-            re.DOTALL,
-        )
-        self.assertIsNotNone(socket_match)
-        body = socket_match.group("body")
+    def test_ai_proxy_preserves_a_distinct_source_for_guest_tls(self) -> None:
+        body = MODULE.split('systemd.services.homecompute-agents-ai-proxy = {', 1)[1]
+        body = body.split('    # OpenShell', 1)[0]
         self.assertIn('wantedBy = [ "multi-user.target" ];', body)
         self.assertIn('after = [ "homecompute-agents-network.service" ];', body)
-        self.assertIn('Accept = false;', body)
-        self.assertNotIn('wantedBy = [ "sockets.target" ];', body)
-        self.assertNotRegex(body, r'Service\s*=\s*".*@\.service"')
-        self.assertIn("systemd.services.homecompute-agents-ai-proxy = {", MODULE)
-        self.assertNotIn('systemd.services."homecompute-agents-ai-proxy@"', MODULE)
-        self.assertNotIn('StandardInput = "socket";', MODULE)
+        self.assertIn('TCP4-LISTEN:443,bind=${hostAddress}', body)
+        self.assertIn('TCP4:172.28.200.2:8443,bind=${hostAddress}', body)
 
     def test_http_inference_bridge_is_host_only_and_verifies_caddy(self) -> None:
         self.assertIn("inferenceBridgePort = 18080;", MODULE)

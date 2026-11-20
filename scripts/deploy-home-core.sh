@@ -45,16 +45,6 @@ fi
 for required_file in /var/lib/sops-nix/key.txt /srv/state/automation/n8n/database.sqlite /srv/state/automation/n8n/config; do
   [[ -s "$required_file" ]] || { printf 'Restore required file first: %s\n' "$required_file" >&2; exit 1; }
 done
-# Compose config is checked after the NixOS switch below. Fail before any host
-# mutation when the full production stack's required Bank Norwegian settings
-# are missing, rather than switching NixOS and then stopping partway through.
-for required_setting in BN_CLIENT_ID BN_CLIENT_SECRET BANKNORWEGIAN_MCP_STATE_ROOT BANKNORWEGIAN_MCP_BACKENDS_IP; do
-  if ! grep -Eq "^${required_setting}=.+$" /etc/homecompute/automation.env; then
-    printf 'Missing required Bank Norwegian setting %s in /etc/homecompute/automation.env; refusing before deployment.\n' \
-      "$required_setting" >&2
-    exit 1
-  fi
-done
 release="/srv/homecompute/releases/$revision"
 if [[ ! -d "$release" ]]; then
   git clone https://github.com/madslundt/HomeCompute.git "$release"
@@ -144,7 +134,7 @@ ai_automation_manager=(docker compose --env-file /etc/homecompute/automation.env
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
-paperclip=(docker compose -f "$release/deploy/paperclip/compose.yaml")
+paperclip=(docker compose -f "$release/deploy/paperclip/compose.yaml" -f "$release/deploy/paperclip/gateway.compose.yaml")
 export PAPERCLIP_SECCOMP_PROFILE="$release/deploy/paperclip/codex-seccomp.json"
 if [[ -f /var/lib/homecompute/paperclip/connector-egress-enabled ]]; then
   paperclip+=(-f "$release/deploy/paperclip/connector-egress.compose.yaml")
@@ -172,9 +162,7 @@ if [[ "$ai_automation_manager_enabled" == 1 ]]; then
 fi
 "${homepage[@]}" config --quiet
 open_webui_ready=false
-if [[ -s /run/secrets/open-webui/litellm-api-key &&
-      -s /run/secrets/open-webui/webui-secret-key &&
-      -s /srv/state/open-webui/embedding-api-key ]]; then
+if [[ -s /run/secrets/open-webui/webui-secret-key ]]; then
   open_webui_ready=true
   "${open_webui[@]}" config --quiet
 fi
@@ -188,7 +176,6 @@ install -m 0644 "$release/deploy/control-plane/video-api.Caddyfile" /srv/state/c
 "${homepage[@]}" pull
 "${automation[@]}" build --no-cache aula-mcp
 "${automation[@]}" build --no-cache tilbudstrolden-mcp
-"${automation[@]}" build --no-cache banknorwegian-mcp
 if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" pull
 fi
@@ -208,6 +195,13 @@ if docker network inspect "$edge_network" >/dev/null 2>&1; then
     "${speech_gateway[@]}" down
   fi
 fi
+# Stop any older managed Bank Norwegian container while retaining its state.
+docker ps --quiet \
+  --filter label=com.docker.compose.project=homecompute-automation \
+  --filter label=com.docker.compose.service=banknorwegian-mcp |
+while IFS= read -r container; do
+  docker stop "$container" >/dev/null
+done
 # Bootstrap authenticated internal services before provisioning the keyless edge.
 "${gateway[@]}" up -d --wait --wait-timeout 180 postgres
 # Existing databases must be guarded before the updated proxy accepts traffic.
@@ -223,6 +217,7 @@ docker exec -i homecompute-control-plane-postgres-1 \
 python3 "$release/scripts/setup-litellm-mcp-default-deny.py"
 python3 "$release/scripts/setup-litellm-harness-mcp-access.py"
 python3 "$release/scripts/setup-network-inference.py"
+python3 "$release/scripts/setup-lan-catalog-key.py"
 python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180

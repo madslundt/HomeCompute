@@ -141,7 +141,13 @@ def recreate(release, source, image_id):
     container = inspection()
     if container["Image"] != image_id:
         raise ValueError("LiteLLM image changed during the config rollout")
-    return verify_container(release, source, container)
+    checksum = verify_container(release, source, container)
+    # Older installations can use this scoped lifecycle before the keyless
+    # front door is installed. Reconcile only an already provisioned key.
+    key_file = Path("/srv/state/control-plane/caddy-data/lan-catalog-key")
+    if key_file.exists() or key_file.is_symlink():
+        run(sys.executable, str(Path(__file__).with_name("setup-lan-catalog-key.py")), timeout=180)
+    return checksum
 
 
 def change_config(release, previous, desired, image_id):

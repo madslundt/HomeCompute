@@ -309,7 +309,7 @@ in
         "homecompute-agents-firewall.service"
         "homecompute-agents-vm.service"
         "homecompute-agents-dns.service"
-        "homecompute-agents-ai-proxy.socket"
+        "homecompute-agents-ai-proxy.service"
       ];
       path = [ pkgs.iproute2 ];
       serviceConfig = {
@@ -423,30 +423,21 @@ in
       };
     };
 
-    systemd.sockets.homecompute-agents-ai-proxy = {
-      description = "Host-only AI TLS edge for the agents guest";
-      # This listener binds an address created by the custom bridge service.
-      # Starting it from sockets.target creates a boot ordering cycle because
-      # that target is reached before the bridge's multi-user service.
+    systemd.services.homecompute-agents-ai-proxy = {
+      description = "Proxy the agents guest's HTTPS to Caddy using the isolated bridge identity";
       wantedBy = [ "multi-user.target" ];
       requires = [ "homecompute-agents-network.service" ];
       after = [ "homecompute-agents-network.service" ];
-      socketConfig = {
-        # Give the listening socket to one long-running socket-proxyd process.
-        # Per-connection activation would require an inetd-style template and
-        # proved less reliable for this opaque TLS stream.
-        Accept = false;
-        ListenStream = "${hostAddress}:443";
-      };
-    };
-    systemd.services.homecompute-agents-ai-proxy = {
-      description = "Proxy an agents guest connection to the local Caddy edge";
       serviceConfig = {
         DynamicUser = true;
-        ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd 192.168.30.122:443";
+        AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
+        CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];
+        ExecStart = "${pkgs.socat}/bin/socat TCP4-LISTEN:443,bind=${hostAddress},reuseaddr,fork TCP4:172.28.200.2:8443,bind=${hostAddress}";
         PrivateTmp = true;
         ProtectHome = true;
         ProtectSystem = "strict";
+        NoNewPrivileges = true;
+        Restart = "on-failure";
       };
     };
 
