@@ -181,6 +181,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-038](adr/038-openbot-git-proposals-and-restarts.md) | Use the isolated OpenBot operator for observations, Git upgrade proposals, and approved service restarts |
 | [ADR-039](adr/039-shared-openbot-maintenance.md) | Use the primary OpenBot server for bounded maintenance with independent approval and guest upgrades |
 | [ADR-040](adr/040-keyless-lan-model-catalog.md) | Admit the Default LAN and designated workloads to the keyless LiteLLM API |
+| [ADR-041](adr/041-openbot-nod-delegation.md) | Delegate tasks from the owner OpenBot server to Nod using an independent principal |
 
 ## Research and model evidence
 

@@ -1,7 +1,8 @@
 services:
   server:
     env_file:
-      - /var/lib/homecompute-nod/hermes-bridge/token.env
+      - ${NOD_DELEGATION_HERMES_ENV:-/dev/null}
+      - ${NOD_DELEGATION_OPENBOT_ENV:-/dev/null}
     volumes:
       - /var/lib/homecompute-nod/hermes-bridge/src/server/app.ts:/app/src/server/app.ts:ro
       - /var/lib/homecompute-nod/hermes-bridge/src/server/homecompute-hermes.ts:/app/src/server/homecompute-hermes.ts:ro

@@ -3,8 +3,8 @@ set -Eeuo pipefail
 umask 077
 
 action="${1:-}"
-if [[ $# != 1 || ! "$action" =~ ^(install|reconfigure|status|verify|stop|enable-hermes|disable-hermes)$ ]]; then
-  printf 'Usage: sudo bash scripts/setup-nod-guest.sh install|reconfigure|status|verify|stop|enable-hermes|disable-hermes\n' >&2
+if [[ $# != 1 || ! "$action" =~ ^(install|reconfigure|status|verify|stop|(enable|disable)-(hermes|openbot))$ ]]; then
+  printf 'Usage: sudo bash scripts/setup-nod-guest.sh install|reconfigure|status|verify|stop|enable-hermes|disable-hermes|enable-openbot|disable-openbot\n' >&2
   exit 2
 fi
 if [[ $EUID != 0 || $(hostname) != homecompute-nod ]]; then
@@ -19,7 +19,7 @@ project="$upstream/deployment/self-host"
 revision=e697ec36504826bb3151907f457e4498fb95cedc
 bridge="$state/hermes-bridge"
 base_override="$release/deploy/nod/compose.override.yaml"
-compose=(docker compose --project-name homecompute-nod
+base_compose=(docker compose --project-name homecompute-nod
   --env-file "$project/.env" --env-file "$state/model.env"
   -f "$project/compose.yaml" -f "$base_override")
 
@@ -49,17 +49,59 @@ unset NOD_ENV_FILE NOD_BIND_ADDRESS NOD_PUBLIC_URL NOD_IMAGE_TAG PORT
 unset LLM_PROVIDER LLM_MODEL OPENAI_COMPATIBLE_BASE_URL OPENAI_COMPATIBLE_API_KEY
 export PORT=4310 NOD_BIND_ADDRESS=10.77.60.2 NOD_PUBLIC_URL=https://nod.home.arpa
 
-if [[ $action == enable-hermes || $action == disable-hermes ]]; then
+if [[ $action == reconfigure || $action == enable-* || $action == disable-* ]]; then
   exec 9>"$state/deploy.lock"
   flock -n 9
-  [[ -d "$bridge" && ! -L "$bridge" && $(stat -c '%a:%u' "$bridge") == 700:0 ]]
 fi
 
-if [[ $action == enable-hermes || ( $action != disable-hermes && -f "$bridge/enabled" ) ]]; then
-  [[ -f "$bridge/token.env" && ! -L "$bridge/token.env" && $(stat -c '%a:%u' "$bridge/token.env") == 600:0 ]]
-  [[ $(wc -c < "$bridge/token.env") -eq 77 ]]
-  LC_ALL=C grep -qxE 'HOMECOMPUTE_NOD_BRIDGE_TOKEN=nod_[A-Za-z0-9_-]{43}' "$bridge/token.env"
+validate_token() {
+  local file="$1" name="$2"
+  [[ -f "$file" && ! -L "$file" && $(stat -c '%a:%u:%h' "$file") == 600:0:1 ]] &&
+    [[ $(wc -c < "$file") -eq $(("${#name}" + 49)) ]] &&
+    LC_ALL=C grep -qxE "$name=nod_[A-Za-z0-9_-]{43}" "$file"
+}
+
+configure_bridge() {
+  local hermes="$1" openbot="$2"
+  compose=("${base_compose[@]}")
+  export NOD_DELEGATION_HERMES_ENV=/dev/null NOD_DELEGATION_OPENBOT_ENV=/dev/null
+  if [[ $hermes == no && $openbot == no ]]; then
+    return
+  fi
+  [[ -d "$bridge" && ! -L "$bridge" && $(stat -c '%a:%u' "$bridge") == 700:0 ]]
+  if [[ $hermes == yes ]]; then
+    validate_token "$bridge/token.env" HOMECOMPUTE_NOD_BRIDGE_TOKEN
+    NOD_DELEGATION_HERMES_ENV="$bridge/token.env"
+  fi
+  if [[ $openbot == yes ]]; then
+    validate_token "$bridge/openbot.env" HOMECOMPUTE_NOD_OPENBOT_TOKEN
+    NOD_DELEGATION_OPENBOT_ENV="$bridge/openbot.env"
+  fi
+  if [[ $hermes == yes && $openbot == yes ]] &&
+     cmp -s <(cut -d= -f2 "$bridge/token.env") <(cut -d= -f2 "$bridge/openbot.env"); then
+    printf 'Nod delegates require distinct credentials.\n' >&2
+    exit 1
+  fi
   compose+=(-f "$release/deploy/nod/hermes.override.yaml")
+}
+
+recreate_server() {
+  "${compose[@]}" config --quiet &&
+    "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
+}
+
+prior_hermes=no prior_openbot=no
+[[ ! -f "$bridge/enabled" ]] || prior_hermes=yes
+[[ ! -f "$bridge/openbot-enabled" ]] || prior_openbot=yes
+hermes="$prior_hermes" openbot="$prior_openbot"
+case "$action" in
+  enable-hermes) hermes=yes; marker="$bridge/enabled" ;;
+  disable-hermes) hermes=no; marker="$bridge/enabled" ;;
+  enable-openbot) openbot=yes; marker="$bridge/openbot-enabled" ;;
+  disable-openbot) openbot=no; marker="$bridge/openbot-enabled" ;;
+esac
+if [[ $action != enable-* && $action != disable-* ]]; then
+  configure_bridge "$hermes" "$openbot"
 fi
 
 case "$action" in
@@ -69,12 +111,10 @@ case "$action" in
     "${compose[@]}" up -d --build --wait --wait-timeout 300
     ;;
   reconfigure)
-    exec 9>"$state/deploy.lock"
-    flock -n 9
-    "${compose[@]}" config --quiet
-    "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
+    recreate_server
     ;;
-  enable-hermes)
+  enable-hermes|enable-openbot)
+    configure_bridge "$hermes" "$openbot"
     temporary=$(mktemp -d "$bridge/.render.XXXXXX")
     trap 'rm -rf -- "$temporary"' EXIT
     bridge_files=(src/server/app.ts src/server/access.ts src/server/thread.ts src/runtime/index.ts)
@@ -86,26 +126,31 @@ case "$action" in
       git apply --unidiff-zero "$release/deploy/nod/hermes-bridge.patch")
     install -m 0444 "$release/deploy/nod/homecompute-hermes.ts" "$temporary/src/server/homecompute-hermes.ts"
     for file in "${bridge_files[@]}" src/server/homecompute-hermes.ts; do
-      if [[ -f "$bridge/enabled" ]]; then
-        cmp -s "$temporary/$file" "$bridge/$file"
+      if [[ $prior_hermes == yes || $prior_openbot == yes ]]; then
+        cmp -s "$temporary/$file" "$bridge/$file" || {
+          printf 'Applied Nod bridge differs from this release. Disable it from its originating release before upgrading.\n' >&2
+          exit 1
+        }
       else
         install -D -m 0444 "$temporary/$file" "$bridge/$file"
       fi
     done
-    "${compose[@]}" config --quiet
-    if ! "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server; then
-      if [[ ! -f "$bridge/enabled" ]]; then
-        base=("${compose[@]:0:${#compose[@]}-2}")
-        "${base[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
-      fi
+    if ! recreate_server; then
+      configure_bridge "$prior_hermes" "$prior_openbot"
+      recreate_server
       exit 1
     fi
-    install -m 0600 /dev/null "$bridge/enabled"
+    install -m 0600 /dev/null "$marker"
     ;;
-  disable-hermes)
-    if [[ -f "$bridge/enabled" ]]; then
-      "${compose[@]}" up -d --no-build --no-deps --wait --wait-timeout 180 server
-      rm -- "$bridge/enabled"
+  disable-hermes|disable-openbot)
+    if [[ -f "$marker" ]]; then
+      configure_bridge "$hermes" "$openbot"
+      if ! recreate_server; then
+        configure_bridge "$prior_hermes" "$prior_openbot"
+        recreate_server
+        exit 1
+      fi
+      rm -- "$marker"
     fi
     ;;
   status)
@@ -131,9 +176,13 @@ assert.ok(metadata.scopes_supported.includes('workflow:read'));
 assert.equal((await fetch(`${n8n}/mcp-server/http`)).status, 401);
 assert.equal((await fetch(`${n8n}/rest/settings`)).status, 404);
 console.log('Nod server verified private n8n OAuth discovery, MCP authentication and editor isolation.');
-const bridge = process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN;
-if (bridge) {
-  const list = (token) => fetch('http://127.0.0.1:4310/mcp/hermes-nod', {
+const delegates = [
+  ['hermes', process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN, process.env.HOMECOMPUTE_NOD_OPENBOT_TOKEN],
+  ['openbot', process.env.HOMECOMPUTE_NOD_OPENBOT_TOKEN, process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN],
+];
+for (const [delegate, bridge, other] of delegates) {
+  if (!bridge) continue;
+  const list = (token) => fetch(`http://127.0.0.1:4310/mcp/${delegate}-nod`, {
     method: 'POST',
     headers: {
       Host: 'homecompute-capabilities.home.arpa',
@@ -144,10 +193,11 @@ if (bridge) {
   });
   assert.equal((await list()).status, 401);
   assert.equal((await list(process.env.NOD_AUTH_TOKEN)).status, 401);
+  if (other) assert.equal((await list(other)).status, 401);
   const response = await list(bridge);
   assert.equal(response.status, 200);
   assert.deepEqual((await response.json()).result.tools.map(({name}) => name), ['nod_submit', 'nod_status']);
-  console.log('Nod bridge verified independent authentication and the bounded tool list.');
+  console.log(`Nod ${delegate} bridge verified independent authentication and the bounded tool list.`);
 }
 JS
     [[ $(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 5 --header "Host: nod.home.arpa" http://10.77.60.2:4310/) == 200 ]]

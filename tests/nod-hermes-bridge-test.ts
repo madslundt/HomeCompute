@@ -3,24 +3,28 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as pause } from 'node:timers/promises';
-import { allowsHermesTool } from '../src/runtime/index.ts';
+import { allowsDelegatedTool } from '../src/runtime/index.ts';
 import Fastify from 'fastify';
 import test from 'node:test';
 import { registerLocalAccess } from '../src/server/access.ts';
 import { ownerId } from '../src/server/config.ts';
 import { initializeDatabase, pool } from '../src/server/db.ts';
-import { registerHermesBridge } from '../src/server/homecompute-hermes.ts';
+import { registerDelegationBridge } from '../src/server/homecompute-hermes.ts';
 import { boss, initializeThreads, startThreadWorkers } from '../src/server/thread.ts';
 
 test('bridge isolates requests, supports safe retries and returns only the matching result', async (t) => {
   const secret = 'nod_' + 'A'.repeat(43);
+  const openbotSecret = 'nod_' + 'B'.repeat(43);
+  const openbotPath = '/mcp/openbot-nod';
   process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN = secret;
+  process.env.HOMECOMPUTE_NOD_OPENBOT_TOKEN = openbotSecret;
   const app = Fastify();
   t.after(async () => {
     await app.close();
     await boss.stop({ graceful: false });
     await pool.end();
     delete process.env.HOMECOMPUTE_NOD_BRIDGE_TOKEN;
+    delete process.env.HOMECOMPUTE_NOD_OPENBOT_TOKEN;
   });
   await initializeDatabase();
   await initializeThreads();
@@ -29,7 +33,7 @@ test('bridge isolates requests, supports safe retries and returns only the match
     origin: 'https://nod.home.arpa',
     bearer: true,
   });
-  registerHermesBridge(app, () => true);
+  registerDelegationBridge(app, () => true);
 
   async function rpc(
     method: string,
@@ -45,8 +49,11 @@ test('bridge isolates requests, supports safe retries and returns only the match
       payload: { jsonrpc: '2.0', id: 1, method, params },
     });
   }
-  async function tool(name: string, args: object) {
-    const response = await rpc('tools/call', { name, arguments: args });
+  async function tool(name: string, args: object, client: 'hermes' | 'openbot' = 'hermes') {
+    const credential = client === 'openbot' ? openbotSecret : secret;
+    const response = await rpc(
+      'tools/call', { name, arguments: args }, credential, `/mcp/${client}-nod`,
+    );
     assert.equal(response.statusCode, 200);
     return JSON.parse(response.json().result.content[0].text);
   }
@@ -60,10 +67,16 @@ test('bridge isolates requests, supports safe retries and returns only the match
     (await rpc('tools/list', {}, secret, '/mcp/hermes-nod', 'nod.home.arpa')).statusCode,
     404,
   );
-  assert.equal(allowsHermesTool('manage_personal_context', { action: 'history_search' }), false);
-  assert.equal(allowsHermesTool('browser', { action: 'upload' }), false);
-  assert.equal(allowsHermesTool('send_message', { intent: 'update', text: 'Preparing' }), false);
-  assert.equal(allowsHermesTool('send_message', { intent: 'final', text: 'Done' }), true);
+  assert.equal((await rpc('tools/list', {}, secret, openbotPath)).statusCode, 401);
+  assert.equal((await rpc('tools/list', {}, openbotSecret)).statusCode, 401);
+  assert.equal((await rpc('tools/list', {}, 'owner_token', openbotPath)).statusCode, 401);
+  assert.equal(
+    (await rpc('tools/list', {}, openbotSecret, openbotPath, 'nod.home.arpa')).statusCode, 404,
+  );
+  assert.equal(allowsDelegatedTool('manage_personal_context', { action: 'history_search' }), false);
+  assert.equal(allowsDelegatedTool('browser', { action: 'upload' }), false);
+  assert.equal(allowsDelegatedTool('send_message', { intent: 'update', text: 'Preparing' }), false);
+  assert.equal(allowsDelegatedTool('send_message', { intent: 'final', text: 'Done' }), true);
   assert.deepEqual(
     (await rpc('tools/list')).json().result.tools.map((tool: any) => tool.name),
     ['nod_submit', 'nod_status'],
@@ -80,6 +93,7 @@ test('bridge isolates requests, supports safe retries and returns only the match
     'request_id_in_use',
   );
   assert.equal((await tool('nod_status', { request_id })).status, 'queued');
+  assert.equal((await tool('nod_status', { request_id }, 'openbot')).status, 'not_found');
   assert.equal((await tool('nod_status', { request_id: randomUUID() })).status, 'not_found');
   const turns = (
     await pool.query(
@@ -145,7 +159,7 @@ test('bridge isolates requests, supports safe retries and returns only the match
     learnedSkills: unavailable,
     runTurn: async (context) => {
       observed = {
-        delegated: context.delegatedByHermes,
+        delegated: context.delegatedByHomeCompute,
         history: context.history.map((item) => item.text),
         memory: context.memory,
         account: context.account,
@@ -155,11 +169,11 @@ test('bridge isolates requests, supports safe retries and returns only the match
       workspace = context.workspacePath;
       await assert.rejects(
         () => context.integration('CONNECTED_CLI', {}),
-        /unavailable to delegated Hermes tasks/,
+        /unavailable to delegated HomeCompute tasks/,
       );
       await assert.rejects(
         () => context.integration('SYNTHETIC', { input: { workspaceFile: 'synthetic.pdf' } }),
-        /unavailable to delegated Hermes tasks/,
+        /unavailable to delegated HomeCompute tasks/,
       );
       await assert.rejects(
         () => context.reply('[Synthetic file](/workspace/test/synthetic.pdf)'),
@@ -169,14 +183,18 @@ test('bridge isolates requests, supports safe retries and returns only the match
       return { status: 'succeeded' };
     },
   });
-  const workerId = randomUUID();
+  // The same UUID can be used independently by both principals. Hermes must
+  // retain its original result while OpenBot's separate run succeeds.
+  const workerId = request_id;
+  const workerArgs = { request_id: workerId, task: 'Return a worker result.' };
   assert.equal(
-    (await tool('nod_submit', { request_id: workerId, task: 'Return a worker result.' })).status,
+    (await tool('nod_submit', workerArgs, 'openbot')).status,
     'accepted',
   );
+  assert.equal((await tool('nod_submit', workerArgs, 'openbot')).status, 'accepted');
   let status;
   for (let i = 0; i < 30; i++) {
-    status = await tool('nod_status', { request_id: workerId });
+    status = await tool('nod_status', { request_id: workerId }, 'openbot');
     if (status.status === 'succeeded') break;
     await pause(100);
   }
@@ -195,6 +213,12 @@ test('bridge isolates requests, supports safe retries and returns only the match
     ownerThread: false,
   });
   assert.ok(workspace && !workspace.endsWith(root.thread_id));
+  assert.deepEqual(await tool('nod_status', { request_id }), { request_id, status: 'view_in_nod' });
+  const openbotTurns = await pool.query('SELECT session_id FROM turns WHERE source_id=$1', [
+    'homecompute-openbot:' + workerId,
+  ]);
+  assert.equal(openbotTurns.rowCount, 1);
+  assert.notEqual(openbotTurns.rows[0].session_id, root.session_id);
   await pool.query('UPDATE threads SET archived_at=now() WHERE id=$1', [root.thread_id]);
   assert.equal((await tool('nod_status', { request_id })).status, 'not_found');
 });

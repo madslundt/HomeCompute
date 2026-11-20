@@ -191,3 +191,54 @@ agents guest, then `setup-nod-guest.sh disable-hermes` in the Nod guest, and
 restore the prior native relay installer and restart the relay. Remove the
 external `token.env` once the bridge is revoked. Any work already accepted
 stays in Nod and can be inspected or stopped there with Nod's own controls.
+
+## OpenBot delegation
+
+OpenBot uses the same delegated runtime with its own credential and request
+namespace. It can submit a new task and check that task's status. Nod keeps
+owner approvals and sign-in in the Nod app. Existing connected accounts and
+saved logins may be used under Nod's Trust rules. The delegated runtime excludes
+owner chat history, memory, local files and shell access. Review [ADR-041](../../docs/adr/041-openbot-nod-delegation.md)
+and Nod's standing rules before granting the connection.
+
+1. Publish and deploy the reviewed Home Core release. Retain the prior relay
+   release and a current Nod volume backup. On Home Core, use the deployed
+   release to stage and restart the native relay:
+
+   ```sh
+   cd /srv/homecompute/current
+   sudo python3 scripts/setup-native-capabilities.py install
+   sudo python3 scripts/setup-native-capabilities.py check
+   sudo systemctl restart homecompute-native-mcp-relay.service
+   sudo systemctl is-active homecompute-native-mcp-relay.service
+   ```
+
+2. Stage the same release's Nod files and installer on the Nod guest using the
+   [installation process above](#install). If a Hermes bridge from an older
+   release is active and the installer reports differing sources, disable it
+   using its originating release, then re-enable it using the selected release.
+   This recreates the web container and keeps its volumes. Create the
+   independent OpenBot credential once and activate the OpenBot route:
+
+   ```sh
+   sudo install -d -m 0700 /var/lib/homecompute-nod/hermes-bridge
+   sudo bash -c '
+     set -euo pipefail
+     umask 077
+     set -o noclobber
+     token=$(openssl rand -base64 32 | tr "+/" "_-" | tr -d "=\n")
+     printf "HOMECOMPUTE_NOD_OPENBOT_TOKEN=nod_%s\n" "$token" > /var/lib/homecompute-nod/hermes-bridge/openbot.env
+   '
+   sudo bash scripts/setup-nod-guest.sh enable-openbot
+   sudo bash scripts/setup-nod-guest.sh verify
+   ```
+
+3. Configure [the owner OpenBot MCP connection](../openbot/README.md#ask-the-local-nod-assistant).
+   Verify one synthetic submission and response over that connection. Check
+   the HomeCompute status, services, doctor, and drift commands after rollout.
+
+Revoke the dedicated LiteLLM key and remove the OpenBot connection to withdraw
+client access. Run `setup-nod-guest.sh disable-openbot` from the applied
+release and retire `openbot.env` to withdraw the backend credential. To remove
+the relay route, deploy the prior release's relay configuration and verify its
+health. Hermes and accepted Nod runs retain their separate lifecycles.

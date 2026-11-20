@@ -72,6 +72,34 @@ subscription provider uses `chatgpt-sol-latest`, `chatgpt-terra-latest`,
 provider updates. The [agent setup guide](../../docs/openbot-agent-setup.md)
 covers roles and data boundaries.
 
+## Ask the local Nod assistant
+
+After [enabling the private Nod bridge](../nod/README.md#openbot-delegation),
+provision a dedicated LiteLLM virtual key in the private Admin UI for the
+`nod` server and `openbot-nod` group. Use `models: ["no-default-models"]`,
+`allowed_routes: ["/mcp"]`, and
+`object_permission: {"mcp_servers":["nod"],"mcp_access_groups":["openbot-nod"]}`.
+Keep the key independent from household and maintenance keys.
+
+On the owner **home-core** server, add a separate Streamable HTTP connection
+named `nod` at `https://llm.home.arpa/mcp`. Set these secure headers:
+
+- `x-litellm-api-key: Bearer <dedicated Nod LiteLLM key>`
+- `x-mcp-servers: nod`
+- `Authorization: Bearer <dedicated OpenBot token from Nod's openbot.env>`
+
+Copy the token value directly from the private operator terminal into the
+secure header field. OpenBot shares MCP connections with every agent on that
+server. Grant it only where the agents and their model providers are trusted
+with results from the owner's Nod app connections.
+
+Verify discovery shows exactly `nod_submit` and `nod_status` under the Nod
+alias and the regular shared key cannot discover them. In a fresh owner
+thread, ask OpenBot to ask Nod to return `NOD-BRIDGE-OK` without using apps or
+websites. Check that OpenBot submits once, polls the same request ID and
+returns that text. If Nod requires owner input, handle it in the Nod app and
+poll the same request ID.
+
 ## Shared LiteLLM MCP connections
 
 OpenBot's MCP list is shared with every agent on its server. The owner has

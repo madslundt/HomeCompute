@@ -165,8 +165,8 @@ n8n instance MCP with its reviewed 55-tool catalog, and the hosted Dinero
 accounting MCP (beta). The private HomeCompute capability relay has aliases for
 Hermes owner, Android UI access, and isolated OpenBot maintenance. Clients
 send the corresponding bearer credentials as server-specific `x-mcp-<server-alias>-authorization`
-headers alongside a separate LiteLLM key. The relay accepts LiteLLM only from
-its fixed source address and `/mcp` path. LiteLLM trusts the relay using the
+headers alongside a separate LiteLLM key. The shared relay accepts LiteLLM
+requests at `/mcp` from its fixed source address. LiteLLM trusts the relay using the
 read-only Home Core CA certificate. Context7 and n8n share the isolated internal
 client network with LiteLLM; the two local MCP backends remain on the separate
 `mcp-backends` network. n8n's instance MCP token is mounted from the SOPS-managed
@@ -206,6 +206,11 @@ owner-consented token per caller and the first caller for a granted key
 completes one browser sign-in before `tools/list` succeeds.
 For setup and the client migration plan, see [ADR-033](../../docs/adr/033-litellm-mcp-gateway.md)
 and the [gateway evaluation](../../docs/research/mcp-gateway-evaluation-2026-11-10.md).
+
+The private `nod` alias uses a separate path on the native relay. It requires
+a dedicated `openbot-nod` grant and the OpenBot-specific Nod bearer. The
+alias stays outside both the shared harness and the keyless LAN catalogs.
+See the [Nod bridge runbook](../nod/README.md#openbot-delegation).
 
 The `llm.home.arpa` private DNS A record must point to `192.168.30.122` in the
 home LAN resolver. Caddy also retains `mcp.home.arpa` as a compatibility alias

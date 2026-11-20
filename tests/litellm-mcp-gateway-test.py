@@ -21,7 +21,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertRegex(CONFIG, r"(?ms)^mcp_servers:\s*\n\s+context7:")
         self.assertIn("url: https://mcp.context7.com/mcp", CONFIG)
         self.assertIn("url: http://n8n:5678/mcp-server/http", CONFIG)
-        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp"), 3)
+        self.assertEqual(CONFIG.count("url: https://homecompute-capabilities.home.arpa:19445/mcp\n"), 3)
         self.assertIn("url: http://aula-mcp:7878/mcp", CONFIG)
         aula = CONFIG.split("  aula:", 1)[1].split("  tilbudstrolden:", 1)[0]
         self.assertNotIn("allowed_tools:", aula)
@@ -53,7 +53,7 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertIn("url: http://tilbudstrolden-mcp:8000/mcp", CONFIG)
         self.assertIn("url: https://mcp.dinero.dk", CONFIG)
         server_names = re.findall(r"(?m)^  ([a-zA-Z0-9_-]+):$", CONFIG[CONFIG.index("mcp_servers:"):])
-        self.assertEqual(len(server_names), 8)
+        self.assertEqual(len(server_names), 9)
         self.assertNotIn("homecompute_openclaw", server_names)
         self.assertTrue(all(re.fullmatch(r"[a-zA-Z0-9_]+", name) for name in server_names))
         self.assertEqual(len(re.findall(r"(?m)^      - (?:[a-z0-9_]+)$", CONFIG[CONFIG.index("  n8n:"):CONFIG.index("  homecompute_hermes:")])), 55)
@@ -75,6 +75,15 @@ class LiteLLMMCPGatewayTests(unittest.TestCase):
         self.assertEqual(len(re.findall(r"(?m)^      - homecompute_android_[a-z_]+$", CONFIG[CONFIG.index("  homecompute_openbot_android:"):CONFIG.index("  aula:")])), 10)
         self.assertIn("require_key_mcp_access_defined: true", CONFIG)
         self.assertIn("mcp_disabled_capabilities: [prompts, resources]", CONFIG)
+
+    def test_openbot_nod_is_outside_shared_and_public_mcp_grants(self) -> None:
+        nod = CONFIG.split("  nod:\n", 1)[1].split("  n8n:\n", 1)[0]
+        self.assertIn("url: https://homecompute-capabilities.home.arpa:19445/mcp/openbot-nod", nod)
+        self.assertIn("auth_type: oauth_delegate", nod)
+        self.assertIn("allow_all_keys: false", nod)
+        self.assertIn("access_groups: [openbot-nod]", nod)
+        self.assertIn("allowed_tools: [nod_submit, nod_status]", nod)
+        self.assertNotIn("all-harness-mcps", nod)
 
     def test_bank_norwegian_is_disabled_in_production(self) -> None:
         self.assertNotIn("  banknorwegian:", CONFIG)

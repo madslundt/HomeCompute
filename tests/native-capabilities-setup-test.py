@@ -154,6 +154,18 @@ class RelaySetupTest(unittest.TestCase):
         self.assertIn('header_up Host homecompute-capabilities.home.arpa', config)
         self.assertNotIn('/mcp/hermes-nod', setup.caddyfile(nod=False))
 
+    def test_openbot_nod_only_accepts_gateway_post_on_the_exact_private_path(self):
+        config = setup.caddyfile()
+        matcher, route = config.split('@openbot_nod {', 1)[1].split('handle @openbot_nod', 1)
+        self.assertIn('remote_ip 172.28.200.3\n', matcher)
+        self.assertNotIn('10.77.20.2', matcher)
+        self.assertIn('method POST', matcher)
+        self.assertIn('path /mcp/openbot-nod', matcher)
+        self.assertIn('expression {http.request.orig_uri} == "/mcp/openbot-nod"', matcher)
+        self.assertIn('max_size 16KB', route.split('@embeddings', 1)[0])
+        self.assertIn('reverse_proxy 10.77.60.2:4310', route.split('@embeddings', 1)[0])
+        self.assertNotIn('/mcp/openbot-nod', setup.caddyfile(nod=False))
+
     def test_container_has_exact_image_and_no_broader_host_access(self):
         command = setup.container_command()
         for value in ('--pull=never', '--network=host', '--user', '1000:1000', '--read-only', '--cap-drop=ALL',

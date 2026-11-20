@@ -93,25 +93,31 @@ def write(path: Path, data: bytes, owner: int | None = None, group: int = 0, mod
 
 
 def caddyfile(*, nod: bool = True) -> str:
-    nod_route = '''    @hermes_nod {
-        remote_ip 10.77.20.2
+    def nod_route(name: str, source: str, path: str) -> str:
+        return f'''    @{name} {{
+        remote_ip {source}
         method POST
-        path /mcp/hermes-nod
-        expression {http.request.orig_uri} == "/mcp/hermes-nod"
-    }
-    handle @hermes_nod {
-        request_body {
+        path {path}
+        expression {{http.request.orig_uri}} == "{path}"
+    }}
+    handle @{name} {{
+        request_body {{
             max_size 16KB
-        }
-        reverse_proxy 10.77.60.2:4310 {
+        }}
+        reverse_proxy 10.77.60.2:4310 {{
             header_up Host homecompute-capabilities.home.arpa
-            transport http {
+            transport http {{
                 dial_timeout 3s
                 response_header_timeout 12s
-            }
-        }
-    }
-''' if nod else ''
+            }}
+        }}
+    }}
+'''
+    nod_routes = (
+        nod_route('hermes_nod', '10.77.20.2', '/mcp/hermes-nod')
+        + nod_route('openbot_nod', '172.28.200.3', '/mcp/openbot-nod')
+        if nod else ''
+    )
     return f'''{{
     admin off
     auto_https off
@@ -142,7 +148,7 @@ https://{HOST}:19445 {{
             }}
         }}
     }}
-{nod_route}    @embeddings {{
+{nod_routes}    @embeddings {{
         remote_ip 10.77.20.2
         method POST
         path /v1/embeddings

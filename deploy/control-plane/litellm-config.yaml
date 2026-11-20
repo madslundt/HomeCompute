@@ -166,6 +166,14 @@ mcp_servers:
     description: Public library documentation lookup from Context7
     allow_all_keys: false
     access_groups: [docs-public, all-harness-mcps]
+  nod:
+    url: https://homecompute-capabilities.home.arpa:19445/mcp/openbot-nod
+    transport: http
+    auth_type: oauth_delegate
+    description: Submit and check isolated tasks on the local Nod assistant
+    allow_all_keys: false
+    access_groups: [openbot-nod]
+    allowed_tools: [nod_submit, nod_status]
   n8n:
     url: http://n8n:5678/mcp-server/http
     transport: http
