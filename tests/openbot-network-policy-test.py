@@ -49,10 +49,9 @@ class OpenBotNetworkPolicyTests(unittest.TestCase):
                    '--dport', '443', '-j', 'ACCEPT')
         self.assertIn(gateway, calls)
         self.assertEqual(sum('--dport' in call and call[call.index('--dport') + 1] == '443'
-                             for call in calls), 2)
-        self.assertTrue(any(call[:2] == ('-I', 'DOCKER-USER') and
-                            call[call.index('-s') + 1] == str(policy.OPERATOR_SUBNET)
-                            and call[-1] == policy.OPERATOR_CHAIN for call in calls))
+                             for call in calls), 1)
+        self.assertEqual([call[-1] for call in calls if call[:2] == ('-I', 'DOCKER-USER')],
+                         [policy.CHAIN])
 
     def test_rejects_unreviewed_android_mcp_destination(self):
         value = json.loads(self.config.read_text())

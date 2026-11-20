@@ -1,21 +1,23 @@
 #!/usr/bin/env python3
-"""Create a maintenance-only LiteLLM key for the isolated OpenBot operator server."""
+"""Create a maintenance-only LiteLLM key for the primary OpenBot server."""
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 GUEST_KEY = Path.home() / '.ssh/id_ed25519_ai-services-01'
 GUEST = 'hermes-operator@10.77.20.2'
-DESTINATION = '/home/hermes-operator/.config/homecompute-openbot-operator/secrets/litellm-api-key'
+DESTINATION = '/home/hermes-operator/.config/homecompute-openbot/secrets/maintenance-litellm-api-key'
+RETIRED_KEY = '/home/hermes-operator/.config/homecompute-openbot-operator/secrets/litellm-api-key'
 MODEL = 'automation-moe'
 GROUP = 'openbot-maintenance'
 SERVER = 'homecompute_openbot_maintenance'
-OWNER = 'openbot-maintenance'
+OWNER = 'openbot-team-maintenance'
 
 LITELLM_SCRIPT = r'''import json, urllib.parse, urllib.request
 master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
@@ -25,11 +27,11 @@ def api(path, body):
         headers={'Authorization': 'Bearer ' + master, 'Content-Type': 'application/json'})
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.load(response)
-body = {'models': ['automation-moe'], 'key_alias': 'openbot-maintenance',
-        'user_id': 'openbot-maintenance', 'duration': None,
+body = {'models': ['automation-moe'], 'key_alias': 'openbot-team-maintenance',
+        'user_id': 'openbot-team-maintenance', 'duration': None,
         'object_permission': {'mcp_access_groups': ['openbot-maintenance'],
                               'mcp_servers': ['homecompute_openbot_maintenance']},
-        'metadata': {'purpose': 'Isolated OpenBot operator; automation-moe and maintenance-only MCP'}}
+        'metadata': {'purpose': 'Primary OpenBot server; automation-moe and maintenance-only MCP'}}
 result = api('/key/generate', body)
 key = result.get('key')
 try:
@@ -43,7 +45,7 @@ try:
     groups = permission.get('mcp_access_groups') if isinstance(permission, dict) else None
     servers = permission.get('mcp_servers') if isinstance(permission, dict) else None
     if (groups != ['openbot-maintenance'] or servers != ['homecompute_openbot_maintenance']
-            or info.get('models') != ['automation-moe'] or info.get('user_id') != 'openbot-maintenance'
+            or info.get('models') != ['automation-moe'] or info.get('user_id') != 'openbot-team-maintenance'
             or info.get('expires') is not None):
         raise RuntimeError('OpenBot maintenance key MCP scope did not verify')
 except BaseException:
@@ -65,7 +67,7 @@ print('revoked')
 '''
 
 CLEAN_GUEST_SCRIPT = r'''import json,os,pathlib,sys
-p=pathlib.Path('/home/hermes-operator/.config/homecompute-openbot-operator/secrets/litellm-api-key')
+p=pathlib.Path(%r)
 key=json.loads(sys.stdin.readline())['key'].encode()+b'\n'
 if not p.exists():print('absent');raise SystemExit(0)
 assert key.endswith(b'\n') and key.count(b'\n')==1
@@ -83,7 +85,20 @@ def revoke_key(key: str) -> bool:
     return result.returncode == 0 and result.stdout.strip() == 'revoked'
 
 
-def run(scoped: bool = False) -> None:
+def guest_command(*command: str, **kwargs) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ['ssh', '-J', 'home-core', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+         '-o', 'IdentitiesOnly=yes', '-i', str(GUEST_KEY), GUEST, *command],
+        capture_output=True, text=True, timeout=30, **kwargs,
+    )
+
+
+def remove_guest_key(path: str, key: str) -> None:
+    guest_command('python3 -c ' + shlex.quote(CLEAN_GUEST_SCRIPT % path),
+                  input=json.dumps({'key': key}) + '\n', check=True)
+
+
+def verify_checkout() -> None:
     if not GUEST_KEY.is_file() or GUEST_KEY.is_symlink():
         raise RuntimeError('The dedicated agents-VM SSH identity is unavailable')
     revision = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'],
@@ -94,24 +109,21 @@ def run(scoped: bool = False) -> None:
                                capture_output=True, text=True, check=True).stdout
     if revision != published or porcelain:
         raise RuntimeError('Use a clean checkout of the exact published origin/master revision')
-    if scoped:
-        subprocess.run([str(ROOT / 'scripts/setup-openbot-guest.sh'), 'verify-scoped'],
-                       check=True, capture_output=True, text=True, timeout=180)
-    else:
-        deployed = subprocess.run(['ssh', 'home-core', 'sudo -n cat /var/lib/homecompute/deployed-revision'],
-                                  capture_output=True, text=True, check=True).stdout.strip()
-        if deployed != revision:
-            raise RuntimeError('Home Core must be deployed from this exact published revision first')
-    existing = subprocess.run(
-        ['ssh', '-J', 'home-core', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
-         '-i', str(GUEST_KEY), GUEST,
-         f'sudo -n systemctl --quiet is-active homecompute-openbot.service && '
-         f'sudo -n docker inspect --format "{{{{.State.Running}}}}" homecompute-openbot-operator | grep -qx true && '
-         f'test ! -e {DESTINATION} && test ! -L {DESTINATION}'],
-        capture_output=True, text=True, check=False,
-    )
+    remote = subprocess.check_output(
+        ['git', '-C', str(ROOT), 'ls-remote', '--exit-code', 'origin', 'refs/heads/master'],
+        text=True, timeout=30).split()[0]
+    if revision != remote:
+        raise RuntimeError('Fetch and use the current published revision')
+
+
+def run() -> None:
+    verify_checkout()
+    existing = guest_command(
+        'sudo -n systemctl --quiet is-active homecompute-openbot.service && '
+        'sudo -n docker inspect --format "{{.State.Running}}" homecompute-openbot | grep -qx true && '
+        f'test ! -e {DESTINATION} && test ! -L {DESTINATION}', check=False)
     if existing.returncode:
-        raise RuntimeError('The isolated OpenBot operator server must be active and its key path unused')
+        raise RuntimeError('The primary OpenBot server must be active and its new key path unused')
     host = subprocess.run(
         ['ssh', 'home-core', 'sudo -n docker exec -i homecompute-control-plane-litellm-1 python3 -'],
         input=LITELLM_SCRIPT, text=True, capture_output=True, timeout=45, check=False,
@@ -133,7 +145,7 @@ def run(scoped: bool = False) -> None:
             raise RuntimeError('LiteLLM key scope failed verification; revoke the returned key manually')
         raise RuntimeError('LiteLLM returned a key with an unexpected scope; key was revoked')
     receiver = (
-        'set -eu; install -d -m 0700 ~/.config/homecompute-openbot-operator/secrets; '
+        'set -eu; install -d -m 0700 ~/.config/homecompute-openbot/secrets; '
         f'test ! -e {DESTINATION} && test ! -L {DESTINATION}; '
         f'umask 077; cat > {DESTINATION}; chmod 0600 {DESTINATION}; '
         f'test -f {DESTINATION} && test ! -L {DESTINATION} && '
@@ -146,12 +158,10 @@ def run(scoped: bool = False) -> None:
         capture_output=True, timeout=30, check=False,
     )
     if guest.returncode or guest.stdout.strip() != 'key-installed':
-        subprocess.run(
-            ['ssh', '-J', 'home-core', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
-             '-i', str(GUEST_KEY), GUEST, 'python3 -'],
-            input=CLEAN_GUEST_SCRIPT + '\n' + json.dumps({'key': key}) + '\n',
-            text=True, capture_output=True, timeout=30, check=False,
-        )
+        try:
+            remove_guest_key(DESTINATION, key)
+        except subprocess.CalledProcessError:
+            pass
         revoked = revoke_key(key)
         if not revoked:
             raise RuntimeError('Guest key installation failed and LiteLLM key revocation needs operator review')
@@ -159,11 +169,51 @@ def run(scoped: bool = False) -> None:
     print('Created and installed a non-expiring LiteLLM key scoped to automation-moe and the OpenBot maintenance MCP server.')
 
 
+def revoke_operator() -> None:
+    verify_checkout()
+    found = guest_command(f'test ! -L {RETIRED_KEY} && if test -f {RETIRED_KEY}; then '
+                          f'test "$(stat -c %a {RETIRED_KEY})" = 600 && cat {RETIRED_KEY}; fi', check=True)
+    key = found.stdout.rstrip('\n')
+    if not key:
+        print('Retired OpenBot key file is absent.')
+        return
+    if not key.startswith('sk-') or any(ch.isspace() for ch in key):
+        raise RuntimeError('Invalid retired key')
+    check_alias = r'''import json, urllib.error, urllib.parse, urllib.request
+master = open('/run/secrets/litellm_master_key', encoding='utf-8').read().strip()
+key = %r
+url = 'http://127.0.0.1:4000/key/info?' + urllib.parse.urlencode({'key': key})
+req = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + master})
+try:
+    with urllib.request.urlopen(req, timeout=20) as response:
+        info = json.load(response)['info']
+except urllib.error.HTTPError as error:
+    if error.code != 404:
+        raise
+    print('absent')
+else:
+    if info.get('user_id') != 'openbot-maintenance' or info.get('key_alias') != 'openbot-maintenance':
+        raise RuntimeError('Refusing to revoke an unrelated LiteLLM key')
+    print('operator')
+'''
+    check = subprocess.run(
+        ['ssh', 'home-core', 'sudo -n docker exec -i homecompute-control-plane-litellm-1 python3 -'],
+        input=check_alias % key, text=True, capture_output=True, timeout=35, check=True)
+    state = check.stdout.strip()
+    if state not in {'absent', 'operator'} or state == 'operator' and not revoke_key(key):
+        raise RuntimeError('Could not revoke the retired OpenBot key')
+    remove_guest_key(RETIRED_KEY, key)
+    print('Revoked and removed the retired OpenBot gateway key.')
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scoped', action='store_true', help='verify the scoped gateway and VM backup first')
+    parser.add_argument('--revoke-operator', action='store_true', help='revoke only the retired operator key')
     try:
-        run(parser.parse_args().scoped)
+        if parser.parse_args().revoke_operator:
+            revoke_operator()
+        else:
+            run()
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
-        print(f'OpenBot maintenance key provisioning failed ({type(exc).__name__})', file=sys.stderr)
+        print(f'OpenBot maintenance key operation failed ({type(exc).__name__}).', file=sys.stderr)
         raise SystemExit(1) from None
