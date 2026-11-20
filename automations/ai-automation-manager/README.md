@@ -41,10 +41,16 @@ Compose service joins the existing control-plane clients network and the
 automation bridge at `172.28.201.5`; the firewall allows that address to reach
 only the Home Assistant HTTP Inbox webhook. It has no published container port.
 Only n8n at `172.28.201.2` can call its workflow API on port 8080 through the
-automation bridge. Bank Norwegian MCP uses `172.28.201.6` on the same bridge.
-After a full release verifies the canonical rule and a successful scheduled
-claim, remove the managed `90-ai-automation-firewall.conf` drop-in from
-`homecompute-automation-network.service.d` and reload systemd.
+automation bridge. Bank Norwegian MCP is disabled in production.
+
+If a host still has the scoped `90-ai-automation-firewall.conf` compatibility
+drop-in, verify that the selected release declares the same n8n-to-manager
+allow rule ahead of the private-network reject. Under the deployment lock,
+archive the exact old drop-in and reload systemd before switching to the
+canonical release. The live firewall rules stay installed until NixOS applies
+the replacement policy. After the switch, verify the firewall and Docker
+units are active, check the rule order, and verify a scheduled claim. Retain
+the archive for rollback to the old generation.
 SQLite state is stored in `/srv/state/automation/ai-automation-manager`.
 The Home LAN DNS A record points `automations.home.arpa` to `192.168.30.122`;
 its source declaration is `config/ai-automation-manager-dns.json` and it must
