@@ -66,17 +66,32 @@ Do not expose the site outside the approved private LAN/Tailscale entry points.
 
 The site exposes bearer-authenticated, internal endpoints for schedule claims,
 run results, pending delivery recovery, delivery receipts, and failure records.
-The n8n workflow must be a separate workflow from `Notion AI automations`, use
-the HomeCompute local model and the current research tool credential, and call
+The n8n workflow is separate from `Notion AI automations`. It uses
+the HomeCompute local model and the existing Tavily credential, and calls
 the Home Assistant Inbox webhook directly. Recipient IDs are revalidated by the
 Inbox when each notification is ingested. Use the run UUID as `external_id` for
 Inbox idempotency and set `source` to `homecompute-ai-automations`.
 
 The source workflow definition is
-[`workflow.ts`](workflow.ts). It was validated with the connected n8n workflow
-SDK and remains separate from the existing active Notion workflow. Its credential
-references are placeholders for the local model, Tavily, and the site's bearer
-token; bind these in a reviewed n8n draft before a future activation.
+[`workflow.ts`](workflow.ts). Compile and validate the graph with the n8n
+workflow SDK, then apply its changes to the existing `HomeCompute AI automation
+updates` workflow as a single n8n MCP update. Reuse the existing local model,
+Tavily, and manager bearer credentials. Record the previous published version
+before publishing the reviewed draft. Republish that version to roll back the
+workflow. This publication does not require redeploying Home Core.
+
+Each claimed run plans up to five distinct public queries using the local
+model. n8n enforces the cap before calling Tavily. A second local model call
+writes the structured update from the evidence and has no search tools. When
+evidence is insufficient, the update identifies the gap and keeps the automation
+Ready. An automation that needs no public research skips Tavily.
+
+Errors in planning, research, writing, or saving a result are reported to the
+manager with the run UUID and a generic error code. Delivery errors remain
+eligible for the existing pending-delivery recovery. For a stale running entry,
+match its UUID to the claimed item in a terminal n8n execution before calling
+the manager's authenticated failure endpoint. Recover only entries whose
+execution actually failed before saving a result.
 
 Schedule claiming is idempotent. Time-slot runs deduplicate per local date and
 slot; hourly runs deduplicate per Copenhagen local hour **including UTC offset**
@@ -94,6 +109,9 @@ Its default `ingest` behavior stays unchanged.
 - Frontend: `npm ci && npm run build` in `deploy/ai-automation-manager`.
 - Backend syntax: `python3 -m py_compile deploy/ai-automation-manager/backend/app.py`.
 - HA recipient mapping: run `python3 tests/hygge-inbox-recipients.test.py` from the companion HA-automations checkout.
+- Workflow: validate the entire graph using the connected n8n SDK. Compile the
+  tracked SDK source to JSON, then run
+  `node tests/ai-automation-manager-workflow.test.mjs /path/to/compiled.json`.
 - Repository validation: `./scripts/validate-repository.sh`.
 
 The companion Home Assistant recipient action and the separate n8n workflow
