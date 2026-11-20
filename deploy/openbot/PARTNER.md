@@ -155,11 +155,17 @@ Set the `x-litellm-api-key` header to the corresponding **Bearer** value.
 Run `./scripts/provision-openbot-partner-mcp.py copy public` or
 `./scripts/provision-openbot-partner-mcp.py copy aula` from an interactive Mac
 terminal and paste directly into that header's value field. Clear the clipboard
-after saving. Stop new turns while setting up Aula, save that connection
-disabled, set **Agents** to Hermes only and **Everyone** to **No access**,
-then enable it. If the client cannot save a disabled connection or does not
-offer the Agents control, use a separate disabled draft with no credential,
-set access first, and then add the credential to that saved entry.
+after saving.
+
+OpenBot 0.73.0 tests a new HTTP connection before saving and starts sign-in
+when the real endpoint returns 401 without credentials. To set Aula access
+before adding the key, create `household-aula` over Streamable HTTP at
+`https://openbot-aula-draft.invalid/mcp` with empty headers. The reserved
+`.invalid` hostname is unreachable, which OpenBot allows on save. Disable
+the saved entry, set **Agents** to Hermes only and **Everyone** to **No
+access**, then edit that same entry to use the real endpoint and both headers.
+Use **Test connection** to confirm the read-only catalog, save, and enable
+the connection.
 
 In a fresh thread, verify that Hermes sees the Aula tool catalog and that
 Research sees only the public connection. Tool listing does not require reading
