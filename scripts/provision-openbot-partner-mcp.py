@@ -96,47 +96,62 @@ else:
     print(key)
 '''
 
-VERIFY_GATEWAY = r'''
-const key = await new Promise((resolve, reject) => {
-  let raw = "";
-  process.stdin.setEncoding("utf8").on("data", chunk => raw += chunk).on("end", () => resolve(raw.trim())).on("error", reject);
-});
-const expected = JSON.parse(process.argv[1]);
-const base = "https://llm.home.arpa";
-const modelList = await fetch(base + "/v1/models", {headers: {authorization: "Bearer " + key}, signal: AbortSignal.timeout(15000)});
-if (!modelList.ok || (await modelList.json()).data.length !== 0) throw new Error("MCP credential must have zero model access");
+VERIFY_GATEWAY = r'''import json, re, sys, urllib.error, urllib.request
+base = 'https://llm.home.arpa'
+key = sys.stdin.read().strip()
+expected = json.loads(sys.argv[1])
 
-async function listTools(servers) {
-  const headers = {"x-litellm-api-key": "Bearer " + key, accept: "application/json, text/event-stream", "content-type": "application/json"};
-  if (servers) headers["x-mcp-servers"] = servers.join(",");
-  async function send(body) {
-    const response = await fetch(base + "/mcp", {method: "POST", headers, body: JSON.stringify({jsonrpc: "2.0", ...body}), signal: AbortSignal.timeout(25000)});
-    if (!response.ok) throw new Error("MCP request failed with HTTP " + response.status);
-    return response;
-  }
-  const initialized = await send({id: 1, method: "initialize", params: {protocolVersion: "2025-03-26", capabilities: {}, clientInfo: {name: "household-mcp-verification", version: "1"}}});
-  const session = initialized.headers.get("mcp-session-id");
-  if (session) headers["mcp-session-id"] = session;
-  await initialized.text();
-  const ready = await send({method: "notifications/initialized"});
-  await ready.text();
-  const response = await send({id: 2, method: "tools/list", params: {}});
-  const body = await response.text();
-  const messages = response.headers.get("content-type")?.includes("text/event-stream")
-    ? body.split("\n").filter(line => line.startsWith("data: ")).map(line => JSON.parse(line.slice(6)))
-    : [JSON.parse(body)];
-  return messages.find(message => message.id === 2).result.tools.map(tool => tool.name);
-}
+def request(path, headers, data=None):
+    req = urllib.request.Request(base + path, headers=headers,
+        data=json.dumps(data).encode() if data is not None else None)
+    try:
+        with urllib.request.urlopen(req, timeout=25) as response:
+            return response.headers, response.read().decode()
+    except urllib.error.HTTPError as exc:
+        step = data['method'] if data else 'model list'
+        raise SystemExit(f'{step} HTTP {exc.code}') from None
+    except urllib.error.URLError:
+        raise SystemExit('gateway connection failed') from None
 
-const unfiltered = await listTools();
-const selected = await listTools(expected);
-const matches = (tool, server) => tool.startsWith(server + "-") || tool.startsWith(server + "_");
-if (!unfiltered.length || unfiltered.some(tool => !expected.some(server => matches(tool, server)))
-    || expected.some(server => !unfiltered.some(tool => matches(tool, server)))
-    || JSON.stringify(unfiltered.sort()) !== JSON.stringify(selected.sort())) throw new Error("Unexpected MCP catalog");
-const aulaWrite = /raw_request|set_template|mark_read|send_message/;
-if (expected.includes("aula") && selected.some(name => aulaWrite.test(name))) throw new Error("Aula write tool present");
-console.log("Verified only " + expected.join(", ") + " (" + selected.length + " tools), with zero model access.");
+def list_tools(servers=None):
+    headers = {'x-litellm-api-key': 'Bearer ' + key, 'accept': 'application/json, text/event-stream',
+               'content-type': 'application/json'}
+    if servers:
+        headers['x-mcp-servers'] = ','.join(servers)
+    def send(**body):
+        return request('/mcp', headers, {'jsonrpc': '2.0', **body})
+    session, _ = send(id=1, method='initialize', params={
+        'protocolVersion': '2025-03-26', 'capabilities': {},
+        'clientInfo': {'name': 'household-mcp-verification', 'version': '1'},
+    })
+    if session.get('mcp-session-id'):
+        headers['mcp-session-id'] = session['mcp-session-id']
+    send(method='notifications/initialized')
+    response, body = send(id=2, method='tools/list', params={})
+    if 'text/event-stream' in response.get('content-type', ''):
+        messages = [json.loads(line[6:]) for line in body.splitlines() if line.startswith('data: ')]
+    else:
+        messages = [json.loads(body)]
+    result = next((message.get('result') for message in messages if message.get('id') == 2), None)
+    if not isinstance((result or {}).get('tools'), list):
+        raise SystemExit('tools/list response has no tool list')
+    return sorted(tool['name'] for tool in result['tools'])
+
+def matches(tool, server):
+    return tool.startswith((server + '-', server + '_'))
+
+_, models = request('/v1/models', {'Authorization': 'Bearer ' + key})
+if json.loads(models)['data']:
+    raise SystemExit('model catalog is not empty')
+unfiltered = list_tools()
+selected = list_tools(expected)
+if (not unfiltered or any(not any(matches(tool, server) for server in expected) for tool in unfiltered)
+        or any(not any(matches(tool, server) for tool in unfiltered) for server in expected)
+        or unfiltered != selected):
+    raise SystemExit('unexpected MCP catalog')
+if 'aula' in expected and any(re.search('raw_request|set_template|mark_read|send_message', name) for name in selected):
+    raise SystemExit('Aula write tool present')
+print(f"Verified only {', '.join(expected)} ({len(selected)} tools), with zero model access.")
 '''
 
 
@@ -180,10 +195,19 @@ def file_action(action: str, scope: str, key: str | None = None) -> str:
 
 
 def check_gateway(scope: str, key: str) -> str:
-    return guest(["sudo", "-n", "docker", "exec", "-i", CONTAINER,
-                  "node", "--input-type=module", "-e", VERIFY_GATEWAY, json.dumps(list(SCOPES[scope]))],
-                 f"The partner container could not verify the {scope} MCP catalog or model denial",
-                 data=key, timeout=145)
+    args = ["sudo", "-n", "docker", "exec", "-i", CONTAINER,
+            "python3", "-c", VERIFY_GATEWAY, json.dumps(list(SCOPES[scope]))]
+    result = run([*GUEST_SSH, shlex.join(args)], data=key, timeout=145)
+    if result.returncode:
+        statuses = ("model list", "initialize", "notifications/initialized", "tools/list")
+        reasons = {"model catalog is not empty", "tools/list response has no tool list",
+                   "unexpected MCP catalog", "Aula write tool present", "gateway connection failed"}
+        reason = result.stderr.strip()
+        prefix, _, status = reason.rpartition(" HTTP ")
+        if reason in reasons or (prefix in statuses and status.isascii() and status.isdecimal()):
+            raise RuntimeError(f"{scope} gateway verification failed ({reason})")
+        raise RuntimeError(f"The partner container could not verify the {scope} MCP catalog or model denial")
+    return result.stdout.strip()
 
 
 def apply(action: str, scope: str) -> None:
