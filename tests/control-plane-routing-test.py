@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import contextlib
+import hashlib
 import io
 import json
 import re
@@ -30,6 +31,10 @@ KEY_SPEC = importlib.util.spec_from_file_location("network_inference", ROOT / "s
 assert KEY_SPEC and KEY_SPEC.loader
 NETWORK = importlib.util.module_from_spec(KEY_SPEC)
 KEY_SPEC.loader.exec_module(NETWORK)
+LAN_SPEC = importlib.util.spec_from_file_location("lan_catalog", ROOT / "scripts/setup-lan-catalog-key.py")
+assert LAN_SPEC and LAN_SPEC.loader
+LAN_CATALOG = importlib.util.module_from_spec(LAN_SPEC)
+LAN_SPEC.loader.exec_module(LAN_CATALOG)
 CERT_SPEC = importlib.util.spec_from_file_location("gateway_certificate", ROOT / "scripts/renew-gateway-certificate.py")
 assert CERT_SPEC and CERT_SPEC.loader
 CERTIFICATE = importlib.util.module_from_spec(CERT_SPEC)
@@ -448,6 +453,51 @@ class NetworkCredentialTests(unittest.TestCase):
                  self.assertRaises(SystemExit):
                 NETWORK.provision()
             generate.assert_not_called()
+
+
+class LanCatalogCredentialTests(unittest.TestCase):
+    def test_interrupted_issuance_reuses_the_registered_key(self):
+        aliases = {"automation-moe", "chatgpt-sol-latest"}
+        key = "sk-synthetic-catalog"
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "lan-catalog-key"
+            pending = target.with_name(".lan-catalog-key.pending")
+            pending.write_text(key + "\n")
+            with patch.object(LAN_CATALOG, "KEY_FILE", target), \
+                 patch.object(LAN_CATALOG.os, "geteuid", return_value=0), \
+                 patch.object(LAN_CATALOG, "read_key", side_effect=[None, key]), \
+                 patch.object(LAN_CATALOG, "list_models", return_value=aliases), \
+                 patch.object(LAN_CATALOG, "key_scope", return_value=aliases), \
+                 patch.object(LAN_CATALOG, "api") as api, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                LAN_CATALOG.provision()
+            api.assert_not_called()
+            self.assertEqual(target.read_text().strip(), key)
+            self.assertFalse(pending.exists())
+
+    def test_existing_key_scope_tracks_the_loaded_catalog(self):
+        aliases = {"automation-moe", "chatgpt-sol-latest"}
+        key = "sk-synthetic-catalog"
+        with patch.object(LAN_CATALOG.os, "geteuid", return_value=0), \
+             patch.object(LAN_CATALOG, "read_key", return_value=key), \
+             patch.object(LAN_CATALOG, "list_models", return_value=aliases), \
+             patch.object(LAN_CATALOG, "key_scope", side_effect=[{"retired-alias"}, aliases]), \
+             patch.object(LAN_CATALOG, "api") as api, \
+             contextlib.redirect_stdout(io.StringIO()):
+            LAN_CATALOG.provision()
+        api.assert_called_once_with("/key/update", body={
+            "key": hashlib.sha256(key.encode()).hexdigest(), "models": sorted(aliases),
+        })
+
+    def test_provisioning_does_not_recreate_a_revoked_key(self):
+        with patch.object(LAN_CATALOG.os, "geteuid", return_value=0), \
+             patch.object(LAN_CATALOG, "read_key", return_value="sk-revoked-synthetic"), \
+             patch.object(LAN_CATALOG, "list_models", return_value={"automation-moe"}), \
+             patch.object(LAN_CATALOG, "key_scope", return_value=None), \
+             patch.object(LAN_CATALOG, "api") as api, \
+             self.assertRaisesRegex(RuntimeError, "missing in LiteLLM"):
+            LAN_CATALOG.provision()
+        api.assert_not_called()
 
 
 class LocalOnlyControlPlaneTests(unittest.TestCase):

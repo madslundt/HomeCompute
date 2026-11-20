@@ -194,6 +194,7 @@ python3 "$REPO_ROOT/tests/homeassistant-actions-test.py"
 python3 "$REPO_ROOT/tests/native-capabilities-setup-test.py"
 python3 "$REPO_ROOT/tests/openclaw-speech-setup-test.py"
 python3 "$REPO_ROOT/tests/open-webui-speech-test.py"
+python3 "$REPO_ROOT/tests/open-webui-embeddings-test.py"
 python3 "$REPO_ROOT/tests/openclaw-speech-bridge-test.py"
 python3 "$REPO_ROOT/tests/wyoming-tts-client-test.py"
 python3 "$REPO_ROOT/tests/openclaw-public-dns-launcher-test.py"
@@ -865,12 +866,25 @@ jq -e '
   .services.caddy.networks.paperclip != null and
   .networks.paperclip.internal == true and
   .networks.paperclip.name == "homecompute-paperclip" and
+  .services.caddy.networks["paperclip-inference"].ipv4_address == "172.28.216.2" and
+  .networks["paperclip-inference"].internal == true and
+  .networks["paperclip-inference"].driver_opts["com.docker.network.bridge.gateway_mode_ipv4"] == "isolated" and
   ([.services | to_entries[] | select(.value.networks.paperclip != null) | .key] == ["caddy"])
 ' "$control_plane_json" >/dev/null
 jq -e '
   .zone == "home.arpa" and
   .records == [{"name": "paperclip.home.arpa", "type": "A", "value": "192.168.30.122", "ttl": 300}]
 ' "$REPO_ROOT/config/paperclip-dns.json" >/dev/null
+PAPERCLIP_SECRETS_FILE="$paperclip_env" docker compose \
+  -f "$REPO_ROOT/deploy/paperclip/compose.yaml" \
+  -f "$REPO_ROOT/deploy/paperclip/gateway.compose.yaml" config --format json |
+jq -e '
+  .services.paperclip.networks["paperclip-inference"].ipv4_address == "172.28.216.3" and
+  .services.paperclip.extra_hosts == ["llm.home.arpa=172.28.216.2"] and
+  .services.paperclip.environment.NODE_EXTRA_CA_CERTS == "/run/homecompute/home-core-root.crt" and
+  .networks["paperclip-inference"].external == true and
+  .networks["paperclip-inference"].name == "homecompute-paperclip-inference"
+' >/dev/null
 rg -F 'href: https://paperclip.home.arpa/' "$REPO_ROOT/deploy/homepage/config/services.yaml" >/dev/null
 
 printf '[validate] T3 Code Compose boundary\n'
@@ -898,7 +912,9 @@ jq -e '
   (.services.podwave.cap_drop == ["ALL"] and (.services.podwave.privileged // false) == false) and
   ([.services.podwave.volumes[] | select(.target == "/data" and .source == "/srv/state/podwave" and .read_only != true)] | length == 1) and
   ([.services.podwave.volumes[] | select(.target == "/run/homecompute/home-core-root.crt" and .source == "/etc/homecompute/control-plane/home-core-root.crt" and .read_only == true)] | length == 1) and
-  ([.services.podwave.networks[]] | length == 1) and
+  (.services.podwave.networks | keys == ["inference", "podwave"]) and
+  (.services.podwave.networks.inference.ipv4_address == "172.28.217.3") and
+  (.networks.inference.name == "homecompute-podwave-inference" and .networks.inference.external == true) and
   (.networks.podwave.external == true and .networks.podwave.name == "homecompute-podwave")
 ' "$podwave_json" >/dev/null
 control_plane_speech_json="$temporary_root/control-plane-speech.json"

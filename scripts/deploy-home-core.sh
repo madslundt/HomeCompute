@@ -144,7 +144,7 @@ ai_automation_manager=(docker compose --env-file /etc/homecompute/automation.env
 homepage=(docker compose --env-file /etc/homecompute/homepage.env -f "$release/deploy/homepage/compose.yaml")
 open_webui=(docker compose --env-file /etc/homecompute/open-webui.env -f "$release/deploy/open-webui/compose.yaml")
 immich=(docker compose --env-file /etc/homecompute/immich.env -f "$release/deploy/immich/compose.yaml")
-paperclip=(docker compose -f "$release/deploy/paperclip/compose.yaml")
+paperclip=(docker compose -f "$release/deploy/paperclip/compose.yaml" -f "$release/deploy/paperclip/gateway.compose.yaml")
 export PAPERCLIP_SECCOMP_PROFILE="$release/deploy/paperclip/codex-seccomp.json"
 if [[ -f /var/lib/homecompute/paperclip/connector-egress-enabled ]]; then
   paperclip+=(-f "$release/deploy/paperclip/connector-egress.compose.yaml")
@@ -172,9 +172,7 @@ if [[ "$ai_automation_manager_enabled" == 1 ]]; then
 fi
 "${homepage[@]}" config --quiet
 open_webui_ready=false
-if [[ -s /run/secrets/open-webui/litellm-api-key &&
-      -s /run/secrets/open-webui/webui-secret-key &&
-      -s /srv/state/open-webui/embedding-api-key ]]; then
+if [[ -s /run/secrets/open-webui/webui-secret-key ]]; then
   open_webui_ready=true
   "${open_webui[@]}" config --quiet
 fi
@@ -223,6 +221,7 @@ docker exec -i homecompute-control-plane-postgres-1 \
 python3 "$release/scripts/setup-litellm-mcp-default-deny.py"
 python3 "$release/scripts/setup-litellm-harness-mcp-access.py"
 python3 "$release/scripts/setup-network-inference.py"
+python3 "$release/scripts/setup-lan-catalog-key.py"
 python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180

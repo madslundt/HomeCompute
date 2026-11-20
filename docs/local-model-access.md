@@ -2,22 +2,30 @@
 
 ## Active endpoint and model
 
-For phones and browser apps over Tailscale, use
+Use `https://llm.home.arpa/v1` on the trusted Default LAN. Leave the API key
+blank or enter `local` if your SDK requires a value. Clients need to trust Home
+Core's private CA. The listing includes all loaded LiteLLM aliases, including
+the gateway's ChatGPT subscription models. Selecting a ChatGPT alias sends
+that request to ChatGPT through the shared gateway account. Explicit LiteLLM
+keys keep their own scopes.
+
+```sh
+curl --cacert artifacts/home-core-root.crt https://llm.home.arpa/v1/models
+```
+
+For existing phone/browser setups over Tailscale, use
 `https://home-core.tail479ad.ts.net:8443/v1`. It uses a publicly trusted
 Let's Encrypt certificate and does not need a HomeCompute CA profile or an
 API key. The certificate is checked daily and renewed through Tailscale before
 expiry. Verify connectivity at
 `https://home-core.tail479ad.ts.net:8443/v1/models`.
 
-Use `https://ai.home.arpa/v1` without an API key from approved LAN or Tailscale
-clients. The gateway supplies an internal credential limited to
-`automation-moe`, `stt-danish`, and `whisper-turbo`; `embedding` is added
-with `sudo python3 scripts/setup-network-inference.py --enable-embedding`. Plapre is added to
-that scope only after the explicit `--enable-plapre` migration. Explicit LiteLLM keys remain optional and retain
-their own model scopes when valid. Empty, placeholder, expired, or unrecognized
-credentials fall back to the common network aliases rather than preventing
-keyless access. For SDKs that require a nonempty key, use the placeholder
-`local`. Browser requests can originate from any origin; the gateway handles
+`https://ai.home.arpa/v1` is the compatibility base for local aliases on approved
+networks. On that host the gateway supplies an internal credential restricted
+to the configured local aliases. Valid explicit LiteLLM keys retain their
+scopes. Empty, placeholder, expired, or unrecognized credentials use the
+compatibility key. For SDKs that require a value, use `local`. The compatibility
+host accepts browser requests from any origin and handles
 preflight for model listing, Chat Completions, Responses, and audio transcription, including base-URL
 checks, optional trailing slashes, and private-network approval headers. DNS,
 certificate trust, and network admission still apply.
@@ -51,8 +59,8 @@ A certificate error stops the request before HTTP/CORS; verify that
 
 ## Text embeddings
 
-Use `https://ai.home.arpa/v1` or the Tailscale gateway base URL above, with
-`model: "embedding"` and no API key from approved networks. Send
+Use `https://llm.home.arpa/v1` on the Default LAN or the Tailscale compatibility
+base above, with `model: "embedding"` and no API key. Send
 `POST /v1/embeddings` with `input` as a string or array of strings and
 `encoding_format: "float"`. The route serves `microsoft/harrier-oss-v1-0.6b`
 at revision `f9b9dc8d367d443f2479d27aa5d8d2850c0774ee` on home-core's CPU.
@@ -227,7 +235,7 @@ must send the tool result back as the next conversation turn. Use
 `--tool-choice required` for a required-call request. The normal text-only
 request shape is unchanged when `--tools` is omitted.
 
-For another OpenAI-compatible SDK, set `base_url="https://ai.home.arpa/v1"`,
+For another OpenAI-compatible SDK, set `base_url="https://llm.home.arpa/v1"`,
 `api_key="local"` for keyless network access, choose an exposed alias, and pass
 `tools=[...]` with `tool_choice="auto"` or `"required"`. An explicit scoped key
 can also be used and restricts aliases according to its permissions.

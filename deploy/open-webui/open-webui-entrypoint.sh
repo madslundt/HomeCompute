@@ -16,8 +16,16 @@ read_required_secret() {
   printf '%s' "$value"
 }
 
-export OPENAI_API_KEYS="$(read_required_secret /run/secrets/litellm_api_key)"
-export RAG_OPENAI_API_KEY="$(read_required_secret /run/secrets/embedding_api_key)"
+export RAG_OPENAI_API_KEY=local
+python - <<'PY_CERTS'
+from pathlib import Path
+import certifi
+
+root = Path('/run/homecompute/home-core-root.crt')
+Path('/tmp/homecompute-ca-bundle.pem').write_bytes(Path(certifi.where()).read_bytes() + b'\n' + root.read_bytes())
+PY_CERTS
+export SSL_CERT_FILE=/tmp/homecompute-ca-bundle.pem
+export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 export WEBUI_SECRET_KEY="$(read_required_secret /run/secrets/webui_secret_key)"
 
 if (( ${#WEBUI_SECRET_KEY} < 32 )); then
@@ -40,10 +48,12 @@ root = Path(os.environ.get('DATA_DIR', '/app/backend/data'))
 database = root / 'webui.db'
 if database.is_symlink() or root.is_symlink():
     raise SystemExit('Open WebUI embedding migration refused a symlink')
+legacy_base = 'http://litellm:4000/v1'
+gateway = 'https://llm.home.arpa/v1'
 desired = {
     'rag.embedding_engine': 'openai', 'rag.embedding_model': 'embedding',
     'rag.enable_hybrid_search': True,
-    'rag.openai.api_base_url': 'http://litellm:4000/v1',
+    'rag.openai.api_base_url': gateway,
     'rag.openai.api_key': os.environ['RAG_OPENAI_API_KEY'],
     'rag.embedding_batch_size': 16, 'rag.embedding_concurrent_requests': 1,
     'rag.text_splitter': '', 'rag.chunk_size': 512, 'rag.chunk_overlap': 64,
@@ -51,6 +61,9 @@ desired = {
 identity_keys = set(desired) - {'rag.openai.api_key', 'rag.embedding_batch_size',
                                 'rag.embedding_concurrent_requests', 'rag.enable_hybrid_search'}
 identity = {key: desired[key] for key in sorted(identity_keys)}
+# Both addresses serve the same gateway alias. A transport-only migration
+# preserves the embedding space and the marker from previous releases.
+identity['rag.openai.api_base_url'] = legacy_base
 identity['query_prefix'] = os.environ.get('RAG_EMBEDDING_QUERY_PREFIX')
 identity['content_prefix'] = os.environ.get('RAG_EMBEDDING_CONTENT_PREFIX', '')
 fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
@@ -63,8 +76,25 @@ if database.exists():
     if not {'key', 'value', 'updated_at'} <= columns:
         raise SystemExit('Open WebUI embedding migration requires the pinned v0.11.4 schema')
     current = {key: json.loads(value) if isinstance(value, str) else value for key, value in connection.execute('SELECT key,value FROM config')}
+    identity_changed = any(
+        current.get(key) != desired[key] and
+        not (key == 'rag.openai.api_base_url' and current.get(key) == legacy_base)
+        for key in identity_keys
+    )
+    urls = current.get('openai.api_base_urls', [])
+    if legacy_base in urls or gateway in urls:
+        keys = current.get('openai.api_keys', [])
+        if len(keys) != len(urls) or urls.count(legacy_base) + urls.count(gateway) != 1:
+            raise SystemExit('Open WebUI gateway migration could not identify one managed connection')
+        slot = urls.index(legacy_base if legacy_base in urls else gateway)
+        desired['openai.api_base_urls'] = [gateway if index == slot else url for index, url in enumerate(urls)]
+        desired['openai.api_keys'] = ['local' if index == slot else key for index, key in enumerate(keys)]
+    for audio in ('stt', 'tts'):
+        url_key = f'audio.{audio}.openai.api_base_url'
+        if current.get(url_key) in (legacy_base, gateway):
+            desired[url_key] = gateway
+            desired[f'audio.{audio}.openai.api_key'] = 'local'
     changed = any(current.get(key) != value for key, value in desired.items())
-    identity_changed = any(current.get(key) != desired[key] for key in identity_keys)
     identity_changed |= not marker.exists() or marker.read_text().strip() != fingerprint
     if identity_changed:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}

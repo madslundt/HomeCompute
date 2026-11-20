@@ -414,19 +414,67 @@ import /config/video-api/Caddyfile
 	import ai_api
 }
 
-# The LiteLLM hostname exposes its authenticated API, MCP endpoint, and
-# operator UI. Keep the old MCP name as a compatibility alias during client
-# migration. Both names stay on the existing private LAN/Tailscale listeners.
+(keyless_models) {
+	# Automated workflows and PodWave keep their existing local-only model scope.
+	map {http.request.remote.host} {model_api_key} {
+		172.28.201.2 {env.LITELLM_NETWORK_KEY}
+		172.28.217.3 {env.LITELLM_NETWORK_KEY}
+		default {env.LITELLM_LAN_CATALOG_KEY}
+	}
+	@model_api_slash path /v1/models/ /v1/responses/ /v1/chat/completions/ /v1/completions/ /v1/audio/transcriptions/ /v1/audio/speech/ /v1/embeddings/ /v1/videos/
+	uri @model_api_slash strip_suffix /
+	@lan_inference {
+		host {$LLM_FQDN}
+		remote_ip {args[:]}
+		header !X-Litellm-Api-Key
+		header !Api-Key
+		header !X-Api-Key
+		header !X-Goog-Api-Key
+		header !Ocp-Apim-Subscription-Key
+		expression <<CEL
+			(!header({'Authorization': '*'}) || header({'Authorization': 'Bearer local'})) &&
+			(!header({'Origin': '*'}) || header({'Origin': 'https://{$LLM_FQDN}'})) &&
+			!header({'Sec-Fetch-Site': 'cross-site'}) && !header({'Sec-Fetch-Site': 'same-site'}) &&
+			((method('GET') && (path('/v1/models') ||
+				{http.request.uri.path}.matches('^/v1/videos/video_[A-Za-z0-9_=-]{1,1000}(/content)?$'))) ||
+				(method('POST') && path('/v1/responses', '/v1/chat/completions', '/v1/completions',
+					'/v1/audio/transcriptions', '/v1/audio/speech', '/v1/embeddings', '/v1/videos')))
+			CEL
+	}
+	handle @lan_inference {
+		request_header Authorization "Bearer {model_api_key}"
+		request_body {
+			max_size 32MB
+		}
+		import litellm_proxy
+	}
+}
+
+# The bridge proxy's outbound socket binds the isolated agents address.
 {$LLM_FQDN}, {$MCP_LEGACY_FQDN} {
 	tls internal
 	encode zstd gzip
-	import litellm_proxy
+	import keyless_models 192.168.10.0/24 10.77.20.1 172.28.201.2
+	handle {
+		import litellm_proxy
+	}
 	log {
 		output stdout
 		format filter {
 			request>uri delete
 			request>headers delete
 		}
+	}
+}
+
+# Unpublished HTTPS entry for fixed clients on their private Docker bridges.
+https://{$LLM_FQDN}:443 {
+	bind 172.28.216.2 172.28.217.2 {$CADDY_CLIENTS_IP:172.28.210.2}
+	tls internal
+	encode zstd gzip
+	import keyless_models 172.28.216.3 172.28.217.3 {$OPEN_WEBUI_CLIENT_IP:172.28.210.5}
+	handle {
+		respond "Not found" 404
 	}
 }
 

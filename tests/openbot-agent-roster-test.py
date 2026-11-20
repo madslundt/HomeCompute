@@ -70,7 +70,9 @@ class OpenBotAgentRosterTests(unittest.TestCase):
             [model['id'] for model in provider['models']],
             ['chatgpt-sol-latest', 'chatgpt-terra-latest', 'chatgpt-luna-latest', 'chatgpt-astra-latest'],
         )
-        self.assertEqual(provider['api_key_scope'], 'these four ChatGPT aliases only; MCP access denied')
+        self.assertNotIn('api_key_path', provider)
+        self.assertEqual(self.roster['endpoint_url'], provider['base_url'])
+        self.assertEqual(self.roster['hermes_provider']['endpoint_url'], provider['base_url'])
 
     def test_researcher_uses_litellm_sol_and_keeps_its_local_backup(self):
         researcher = self.agents['researcher']

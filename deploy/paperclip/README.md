@@ -59,29 +59,25 @@ root shell running Compose.
 
 ## Local inference
 
-From the exact published release on home-core, run:
+The normal Home Core release attaches Paperclip to a dedicated, internal
+Docker network for the canonical LiteLLM gateway. The app trusts the
+HomeCompute CA and uses the same HTTPS endpoint as LAN clients.
+
+Probe keyless model listing and a synthetic Responses turn from the Paperclip
+container after deploying that release:
 
 ```sh
 sudo python3 "/srv/homecompute/releases/$revision/scripts/deploy-paperclip-inference.py" \
-  --revision "$revision"
+  --revision "$revision" --verify-direct
 ```
 
-The installer provisions a dedicated LiteLLM key for `automation-moe` with
-MCP denied, starts the inference sidecar, and checks model listing and
-Responses from the live Paperclip container. The sidecar shares Paperclip’s
-network namespace and listens on loopback. It forwards only
-`GET /v1/models` and `POST /v1/responses` to the private Caddy gateway over
-verified TLS. The key lives in a protected host file readable by the
-sidecar’s UID. Paperclip talks to the loopback relay without a credential.
-
 In Paperclip, create a shared **Local endpoint** connection with the
-**OpenAI Responses** format, base URL `http://127.0.0.1:18080/v1`,
-**No authentication**, and model `automation-moe`. In **Mads projects**,
-grant this connection to Engineering Lead, Software Engineer, Product & UX,
-Code Reviewer, and QA Engineer. In each agent’s setup, select **Advanced** →
-**Custom Gateway**, choose the shared connection, and set the model to
-`automation-moe`. Use the local Paperclip Codex runtime and run its connection
-test. Leave periodic heartbeats off for this on-demand team.
+**OpenAI Responses** format, base URL `https://llm.home.arpa/v1`,
+**No authentication**, and model `automation-moe`. Grant the existing
+five engineering-team agents access. Under each agent's **Advanced** →
+**Custom Gateway**, choose the new connection and keep `automation-moe`.
+Run the connection test and leave periodic heartbeats off. The prior loopback
+connection remains available throughout the cutover and for rollback.
 
 Complete runtime setup before customizing `AGENTS.md` on new agents.
 Paperclip 2026.1117.0 can save the runtime and report an instruction revision
@@ -90,11 +86,12 @@ If that happens, reopen the same agent. Check the saved connection and model
 under **Harness / Runtime**, the existing `AGENTS.md` under **Identity**, and
 the agent’s readiness on the roster before retrying setup.
 
-The normal host rollout starts the inference profile when its provisioned key
-is present. To suspend inference, stop and remove only the
-`paperclip-inference` Compose service using the running release and revoke
-its dedicated LiteLLM key. Keep the Paperclip application and its state online
-while updating agent connections.
+After verifying all five agents use the HTTPS connection, retire the old
+loopback connection. Stop and remove the `paperclip-inference` sidecar through
+the running Compose release and revoke its dedicated legacy key. The file
+`/var/lib/homecompute/paperclip/inference-key` controls legacy profile startup.
+Archive it with the protected pre-migration state before removing it from that
+path.
 
 ## External connectors
 

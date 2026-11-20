@@ -10,16 +10,13 @@ import json
 import os
 from pathlib import Path
 import socket
-import stat
 import subprocess
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
-KEY_FILE = Path('/srv/state/open-webui/speech-api-key')
 STATE = Path('/var/lib/homecompute-open-webui-speech')
-MODELS = ['whisper', 'tts-danish', 'tts-english']
-OWNER = 'open-webui-speech'
-BASE = 'http://litellm:4000/v1'
+BASE = 'https://llm.home.arpa/v1'
+LEGACY_BASE = 'http://litellm:4000/v1'
 CONTAINER = 'homecompute-open-webui-open-webui-1'
 
 
@@ -27,14 +24,14 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def candidate(before, key):
+def candidate(before):
     after = deepcopy(before)
     for kind in ('stt', 'tts'):
         current = after[kind]
         if (current['ENGINE'] not in ('', 'openai') or current['OPENAI_API_BASE_URL'] not in
-                ('https://api.openai.com/v1', BASE)):
+                ('https://api.openai.com/v1', BASE, LEGACY_BASE)):
             raise ValueError('Existing audio provider requires review')
-        current.update(ENGINE='openai', OPENAI_API_BASE_URL=BASE, OPENAI_API_KEY=key)
+        current.update(ENGINE='openai', OPENAI_API_BASE_URL=BASE, OPENAI_API_KEY='local')
     after['stt'].update(MODEL='whisper', OPENAI_API_REQUEST_FORMAT='multipart')
     if set(after['tts'].get('OPENAI_PARAMS') or {}) - {'response_format'}:
         raise ValueError('Existing speech parameters require review')
@@ -92,34 +89,14 @@ def private_write(path, data):
 def setup(apply=False, revision=None):
     if os.geteuid() != 0 or socket.gethostname() != 'home-core':
         raise ValueError('Run as root on home-core')
-    spec = importlib.util.spec_from_file_location('webui_keys', ROOT / 'scripts/setup-open-webui-embeddings.py')
-    keys = importlib.util.module_from_spec(spec); spec.loader.exec_module(keys)
     if apply:
         spec = importlib.util.spec_from_file_location('speech_lifecycle', ROOT / 'scripts/setup-omnivoice.py')
         lifecycle = importlib.util.module_from_spec(spec); spec.loader.exec_module(lifecycle)
         lifecycle.published(revision)
-    key = None
-    if KEY_FILE.exists() or KEY_FILE.is_symlink():
-        info = KEY_FILE.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o600:
-            raise ValueError('Private speech key file required')
-        key = KEY_FILE.read_text().strip()
-        data = keys.api('/key/info', {'key': key}, query=True).get('info', {})
-        if set(data.get('models', [])) != set(MODELS) or data.get('user_id') != OWNER or data.get('expires') is not None:
-            raise ValueError('Speech-only credential required')
     before = remote('read')
-    proposed = candidate(before, key or 'pending-speech-only-key')
+    proposed = candidate(before)
     changed = proposed != before
     if apply:
-        if not key:
-            generated = keys.api('/key/generate', {'models': MODELS, 'key_alias': OWNER, 'user_id': OWNER, 'duration': None,
-                'object_permission': {'mcp_servers': ['no-mcp-servers']}})
-            key = generated['key']
-            if not key.startswith('sk-') or set(generated['models']) != set(MODELS):
-                raise ValueError('Unexpected speech credential')
-            private_write(KEY_FILE, (key+'\n').encode())
-        proposed = candidate(before, key)
-        changed = proposed != before
         if changed:
             STATE.mkdir(mode=0o700, exist_ok=True)
             private_write(STATE / ('before-'+str(uuid.uuid4())+'.json'), json.dumps(before).encode())
@@ -127,7 +104,7 @@ def setup(apply=False, revision=None):
         if remote('read') != proposed:
             raise ValueError('Speech configuration verification failed')
     return {'applied': apply, 'changed': changed, 'stt_model': 'whisper', 'tts_model': 'tts-danish',
-            'voice': 'danish-default', 'format': 'wav', 'credential_scope': MODELS}
+            'voice': 'danish-default', 'format': 'wav', 'endpoint': BASE}
 
 
 if __name__ == '__main__':

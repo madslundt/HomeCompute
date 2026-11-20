@@ -24,7 +24,7 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression
+Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression|configure-model-gateway
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
@@ -37,6 +37,7 @@ upgrade-team-image  Apply the published image pin in a guest systemd job.
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
+configure-model-gateway  Verify keyless HTTPS and migrate the embedded Hermes model settings.
 EOF
 }
 
@@ -88,6 +89,14 @@ configure_compression() {
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   git -C "$REPO_ROOT" show "$revision:scripts/configure-openbot-hermes.py" |
     ssh_guest python3 - --compression-only
+}
+
+configure_model_gateway() {
+  require_published_release
+  local revision
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  git -C "$REPO_ROOT" show "$revision:scripts/configure-openbot-hermes.py" |
+    ssh_guest python3 -
 }
 
 image_pin() {
@@ -557,6 +566,7 @@ main() {
     login) login_server homecompute-openbot home-core ;;
     status) status ;;
     configure-compression) configure_compression ;;
+    configure-model-gateway) configure_model_gateway ;;
     -h|--help|help) usage ;;
     *) usage >&2; return 2 ;;
   esac

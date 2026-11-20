@@ -88,6 +88,37 @@ class WebUIMigrationTests(unittest.TestCase):
         self.environment['RAG_EMBEDDING_QUERY_PREFIX'] += 'changed'
         self.assertNotEqual(self.run_migration().returncode, 0)
 
+    def test_gateway_transport_migrates_an_indexed_installation_and_preserves_custom_urls(self):
+        self.assertEqual(self.run_migration().returncode, 0)
+        identity = self.root / '.homecompute-embedding-identity'
+        fingerprint = identity.read_text()
+        previous = 'http://litellm:4000/v1'
+        gateway = 'https://llm.home.arpa/v1'
+        custom = 'http://image-fixture/v1'
+        with sqlite3.connect(self.database) as connection:
+            connection.execute('INSERT INTO file VALUES(?)', ('synthetic-existing-document',))
+            rows = {
+                'rag.openai.api_base_url': previous,
+                'openai.api_base_urls': [previous, custom],
+                'openai.api_keys': ['old-credential', 'synthetic-image-key'],
+                'audio.tts.openai.api_base_url': previous,
+                'audio.tts.openai.api_key': 'old-speech-credential',
+                'audio.stt.openai.api_base_url': 'https://other.invalid/v1',
+            }
+            connection.executemany('INSERT OR REPLACE INTO config VALUES (?,?,1)',
+                                   [(key, json.dumps(value)) for key, value in rows.items()])
+        self.environment['RAG_OPENAI_API_KEY'] = 'local'
+        result = self.run_migration()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = self.values()
+        self.assertEqual(fingerprint, identity.read_text())
+        self.assertEqual(values['rag.openai.api_base_url'], gateway)
+        self.assertEqual(values['openai.api_base_urls'], [gateway, custom])
+        self.assertEqual(values['openai.api_keys'], ['local', 'synthetic-image-key'])
+        self.assertEqual(values['audio.tts.openai.api_base_url'], gateway)
+        self.assertEqual(values['audio.tts.openai.api_key'], 'local')
+        self.assertEqual(values['audio.stt.openai.api_base_url'], 'https://other.invalid/v1')
+
     def test_unattached_existing_vectors_also_prevent_mixing(self):
         vector_root = self.root / 'vector_db'; vector_root.mkdir()
         connection = sqlite3.connect(vector_root / 'chroma.sqlite3')

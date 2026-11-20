@@ -16,13 +16,14 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'deploy/paperclip/compose.yaml'
 OVERLAY = 'deploy/paperclip/connector-egress.compose.yaml'
+GATEWAY = 'deploy/paperclip/gateway.compose.yaml'
 STATE = Path('/var/lib/homecompute/paperclip')
 MARKER = STATE / 'connector-egress-enabled'
 APP = 'homecompute-paperclip-paperclip-1'
 RELAY = 'homecompute-paperclip-paperclip-inference-1'
 PROXY = 'paperclip-connector-egress'
 LABEL = '{{index .Config.Labels "com.docker.compose.project.config_files"}}'
-RELEASE_PATH = re.compile(r'/srv/homecompute/releases/[a-f0-9]{40}/deploy/paperclip/(?:compose|connector-egress.compose)\.yaml')
+RELEASE_PATH = re.compile(r'/srv/homecompute/releases/[a-f0-9]{40}/deploy/paperclip/(?:compose|connector-egress\.compose|gateway\.compose)\.yaml')
 
 CHECK = r'''
 for (const host of ["my.paperclip.app", "api.github.com", "github.com"]) {
@@ -67,10 +68,11 @@ def compose(files, *args, inference=False):
 
 def managed_files(core, container):
     files = tuple(Path(value) for value in core.command('docker', 'inspect', '--format', LABEL, container).split(','))
-    if (not 1 <= len(files) <= 2
-            or any(not RELEASE_PATH.fullmatch(str(path)) for path in files)
-            or files[0].name != 'compose.yaml'
-            or (len(files) == 2 and files[1] != files[0].with_name(Path(OVERLAY).name))):
+    if (not files or files[0].name != 'compose.yaml'
+            or any(not RELEASE_PATH.fullmatch(str(path)) or path.parent != files[0].parent for path in files)
+            or tuple(path.name for path in files[1:]) not in (
+                (), (Path(GATEWAY).name,), (Path(OVERLAY).name,), (Path(GATEWAY).name, Path(OVERLAY).name),
+            )):
         raise ValueError('Running Paperclip configuration is outside the managed release')
     for path in files:
         core.protected(path)
@@ -88,7 +90,8 @@ def check_private(core):
         raise ValueError('Paperclip must publish no ports')
     names = core.command('docker', 'inspect', '--format',
                          '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}', APP).split()
-    if set(names) - {'homecompute-paperclip', 'homecompute-paperclip_connector', 'homecompute-paperclip_github-metadata'}:
+    if set(names) - {'homecompute-paperclip', 'homecompute-paperclip-inference',
+                     'homecompute-paperclip_connector', 'homecompute-paperclip_github-metadata'}:
         raise ValueError('Paperclip has an unexpected network attachment')
     for name in names:
         if core.command('docker', 'network', 'inspect', '--format', '{{.Internal}}', name) != 'true':
@@ -137,6 +140,9 @@ def apply(core, disable):
         core.protected(secret, private=True)
     os.environ['PAPERCLIP_SECRETS_FILE'] = str(secret)
     base = (ROOT / BASE,)
+    if any(path.name == Path(GATEWAY).name for path in previous):
+        base += (ROOT / GATEWAY,)
+    was_enabled = previous[-1].name == Path(OVERLAY).name
     enabled = (*base, ROOT / OVERLAY)
     desired = base if disable else enabled
     compose(desired, 'config', '--quiet')
@@ -161,14 +167,14 @@ def apply(core, disable):
             run('docker', 'exec', APP, 'node', '--input-type=module', '-e', CHECK)
             MARKER.touch(mode=0o600)
     except (OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt):
-        if len(previous) == 2:
+        if was_enabled:
             start(previous, PROXY)
         if relay_running:
             compose(desired, 'rm', '--stop', '--force', 'paperclip-inference', inference=True)
         start(previous, 'paperclip')
         if previous_relay:
             start(previous_relay, 'paperclip-inference', inference=True)
-        if len(previous) == 1:
+        if not was_enabled:
             compose(enabled, 'rm', '--stop', '--force', PROXY)
         raise
 

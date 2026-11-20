@@ -22,12 +22,12 @@ NETWORK = 'homecompute-paperclip'
 COMPOSE_PATH = 'deploy/paperclip/compose.yaml'
 MODEL = 'automation-moe'
 CLIENT_CHECK = r'''
-const base = "http://127.0.0.1:18080";
+const base = process.env.HOMECOMPUTE_PAPERCLIP_MODEL_ORIGIN || "http://127.0.0.1:18080";
 const model = "automation-moe";
 const listing = await fetch(base + "/v1/models", { signal: AbortSignal.timeout(6000) });
 if (!listing.ok) throw new Error("Model listing failed");
 const ids = (await listing.json()).data?.map(entry => entry.id);
-if (JSON.stringify(ids) !== JSON.stringify([model])) throw new Error("Unexpected model scope");
+if (!ids?.includes(model)) throw new Error("Expected automation-moe in model listing");
 const forbidden = await fetch(base + "/mcp", { signal: AbortSignal.timeout(6000) });
 if (forbidden.status !== 404) throw new Error("Unexpected tool route");
 const response = await fetch(base + "/v1/responses", {
@@ -91,6 +91,8 @@ def apply(core, revision):
     plan = setup.plan(revision)
     setup.apply(revision, plan['plan_sha256'])
     files = (ROOT / COMPOSE_PATH,)
+    if any(path.name == Path(egress['GATEWAY']).name for path in egress['managed_files'](core, PAPERCLIP)):
+        files += (ROOT / egress['GATEWAY'],)
     if egress['MARKER'].is_file():
         files += (ROOT / egress['OVERLAY'],)
     try:
@@ -109,10 +111,16 @@ def apply(core, revision):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', required=True)
+    parser.add_argument("--verify-direct", action="store_true", help="Probe keyless HTTPS from the existing Paperclip container")
     args = parser.parse_args()
     core = SimpleNamespace(**runpy.run_path(str(ROOT / 'scripts/retire-openclaw-core.py')))
     try:
         core.release(args.revision)
+        if args.verify_direct:
+            subprocess.run(['docker', 'exec', '-e', 'HOMECOMPUTE_PAPERCLIP_MODEL_ORIGIN=https://llm.home.arpa',
+                            PAPERCLIP, 'node', '--input-type=module', '-e', CLIENT_CHECK],
+                           check=True, timeout=60)
+            return 0
         os.umask(0o077)
         with core.LOCK.open('r+') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

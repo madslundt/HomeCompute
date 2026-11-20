@@ -96,7 +96,7 @@ class TravelEmbeddingTests(unittest.TestCase):
     def test_generated_workflow_has_bounded_fixed_http_and_disabled_branch(self):
         workflow = build(); nodes = {n['name']: n for n in workflow['nodes']}
         http = nodes['Embed hotel preferences']
-        self.assertEqual(http['parameters']['url'], 'https://ai.home.arpa/v1/embeddings')
+        self.assertEqual(http['parameters']['url'], 'https://llm.home.arpa/v1/embeddings')
         self.assertEqual(http['parameters']['options']['timeout'], 8000)
         self.assertFalse(http['retryOnFail']); self.assertEqual(http['onError'], 'continueRegularOutput')
         branches = workflow['connections']['Use hotel preferences']['main']

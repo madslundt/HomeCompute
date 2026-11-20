@@ -34,9 +34,18 @@ services:
     logging:
       driver: local
       options: {max-size: 10m, max-file: "3"}
-    networks: [podwave]
+    extra_hosts:
+      llm.home.arpa: 172.28.217.2
+    networks:
+      podwave:
+        gw_priority: 1
+      inference:
+        ipv4_address: 172.28.217.3
 
 networks:
+  inference:
+    external: true
+    name: homecompute-podwave-inference
   podwave:
     external: true
     name: homecompute-podwave

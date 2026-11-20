@@ -115,6 +115,12 @@ fi
 podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
 source "$helper_release/scripts/lib/podwave-backup.sh"
 "${podwave[@]}" config --quiet
+if "${podwave[@]}" config --networks | grep -Fxq inference; then
+  [[ $(docker network inspect --format '{{.Internal}}' homecompute-podwave-inference 2>/dev/null) == true ]] || {
+    printf 'Deploy the Home Core release to establish the private PodWave inference network.\n' >&2
+    exit 1
+  }
+fi
 image_ref="$("${podwave[@]}" config --format json | jq -er '.services.podwave.image')"
 [[ "$image_ref" =~ ^homecompute/podwave:[0-9a-f]{40}$ ]] || {
   printf 'PodWave image is not pinned to a full upstream commit: %s\n' "$image_ref" >&2; exit 1;

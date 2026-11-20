@@ -16,16 +16,15 @@ without using the host's LAN or Tailscale listener. PodWave trusts the mounted
 HomeCompute root CA alongside the image's public roots. Its separate default
 bridge provides outbound provider access.
 
-For the built-in HomeCompute gateway, use `https://ai.home.arpa:8443/v1` and
-model `automation-moe`. The URL resolves to Caddy only inside the PodWave bridge;
-the gateway adds its restricted network inference credential. Do not put the
-LiteLLM master or network inference key in PodWave settings.
+Use `https://llm.home.arpa/v1` and model `automation-moe` for the built-in
+HomeCompute gateway. Leave the model API key blank. The dedicated inference
+bridge reaches Caddy using the HomeCompute CA.
 
 For HomeCompute TTS, select the OpenAI-compatible provider on the same base URL,
 model `omnivoice`, voice A `danish-default`, and voice B `english-default`. The
-gateway key is scoped for these aliases. The release migrates only the old
-`OmniVoice` model and placeholder household voice to these supported values;
-other user-selected provider settings are preserved. The LLM connection probe
+release migrates saved Home AI LLM and TTS profiles to the same keyless URL
+and corrects the legacy OmniVoice model casing and placeholder voice. Other
+provider profiles retain their URLs and credentials. The LLM connection probe
 allows 128 output tokens so local reasoning models can finish their reasoning
 before returning the short test response.
 
@@ -72,7 +71,9 @@ provisioned workload on its own:
 ./scripts/homecompute deploy-podwave --revision FULL_HOME_COMPUTE_COMMIT_SHA
 ```
 
-It requires the existing Caddy route, PodWave network, CA, and state directory.
+It requires the existing Caddy route, the PodWave inference bridge, the CA,
+and the state directory. Deploy the full Home Core release for the initial
+gateway cutover.
 When removing the legacy login, it checks the running Caddy configuration
 against the selected release, validates the change, and recreates only Caddy
 from that release. If other edge changes are pending, use the full rollout.

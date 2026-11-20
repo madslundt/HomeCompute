@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Migrate known invalid PodWave Home AI server TTS defaults in place."""
+"""Migrate Home AI PodWave profiles to the canonical HTTPS endpoint."""
 
 from __future__ import annotations
 
@@ -10,7 +10,8 @@ import subprocess
 import sys
 
 
-HOME_AI_BASE = "https://ai.home.arpa:8443/v1"
+HOME_AI_BASE = "https://llm.home.arpa/v1"
+LEGACY_BASES = {"https://ai.home.arpa/v1", "https://ai.home.arpa:8443/v1"}
 LEGACY_TTS_VOICE = "Seeded synthetic household voice"
 REMOTE_CONFIG_SCRIPT = r'''import json, urllib.request
 with urllib.request.urlopen("http://127.0.0.1:8080/api/config", timeout=10) as response:
@@ -19,9 +20,9 @@ print(json.dumps(config, separators=(",", ":")))
 '''
 
 
-def profile_updates(tts: dict) -> dict[str, str]:
+def voice_updates(tts: dict) -> dict[str, str]:
     """Return safe migrations for one known Home AI TTS profile."""
-    if tts.get("prov") != "openai" or str(tts.get("base", "")).rstrip("/") != HOME_AI_BASE:
+    if tts.get("prov") != "openai" or str(tts.get("base", "")).rstrip("/") not in LEGACY_BASES | {HOME_AI_BASE}:
         return {}
 
     updates: dict[str, str] = {}
@@ -35,38 +36,42 @@ def profile_updates(tts: dict) -> dict[str, str]:
     return updates
 
 
+def profile_updates(profile: dict, kind: str) -> dict[str, str]:
+    updates = voice_updates(profile) if kind == "tts" else {}
+    if kind == "tts" and profile.get("prov") != "openai":
+        return updates
+    base = str(profile.get("base", "")).rstrip("/")
+    if base in LEGACY_BASES:
+        updates["base"] = HOME_AI_BASE
+    if base in LEGACY_BASES | {HOME_AI_BASE} and profile.get("keySet"):
+        updates["key"] = ""
+    return updates
+
+
 def migrate_updates(config: dict) -> dict:
-    """Build a config update for either PodWave's legacy or profile-list schema."""
-    tts = config.get("tts")
-    if isinstance(tts, dict):
-        updates = profile_updates(tts)
-        return {"tts": updates} if updates else {}
-
-    profiles = config.get("ttss")
-    if not isinstance(profiles, list):
-        return {}
-    updated_profiles = []
-    changed_fields: set[str] = set()
-    for profile in profiles:
-        if not isinstance(profile, dict):
-            continue
-        updates = profile_updates(profile)
-        changed_fields.update(updates)
-        updated_profiles.append({**profile, **updates})
-    if not changed_fields:
-        return {}
-
-    # Config responses are masked: omitting keys lets PodWave retain the saved
-    # secrets by profile ID when it accepts the complete updated profile list.
-    result = {"ttss": updated_profiles}
-    if isinstance(config.get("defaultTts"), str):
-        result["defaultTts"] = config["defaultTts"]
+    """Update exact Home AI profile URLs and retain external provider settings."""
+    result = {}
+    for kind, default in (("llm", "defaultLlm"), ("tts", "defaultTts")):
+        profiles = config.get(kind + "s")
+        if isinstance(profiles, list):
+            if any(not isinstance(p, dict) or not isinstance(p.get("id"), str) for p in profiles):
+                raise RuntimeError("PodWave returned an invalid provider profile")
+            changes = [profile_updates(profile, kind) for profile in profiles]
+            if any(changes):
+                result[kind + "s"] = [{**profile, **update} for profile, update in zip(profiles, changes)]
+                if isinstance(config.get(default), str):
+                    result[default] = config[default]
+        elif isinstance(config.get(kind), dict):
+            changes = profile_updates(config[kind], kind)
+            if changes:
+                result[kind] = changes
     return result
 
 
 def docker_exec(container: str, code: str) -> str:
     result = subprocess.run(
-        ["docker", "exec", container, "/app/.venv/bin/python", "-c", code],
+        ["docker", "exec", "-i", container, "/app/.venv/bin/python", "-"],
+        input=code,
         capture_output=True,
         text=True,
         timeout=30,
@@ -87,6 +92,13 @@ def reconcile(container: str, runner=docker_exec) -> dict:
     if not update:
         return {"changed": False, "fields": []}
 
+    if any(row.get("base") == HOME_AI_BASE for section in ("llms", "ttss")
+           for row in update.get(section, [])):
+        runner(container, f'''import json, urllib.request
+with urllib.request.urlopen({HOME_AI_BASE + '/models'!r}, timeout=8) as response:
+    if not json.load(response)['data']:
+        raise RuntimeError("The keyless LiteLLM catalog is empty")
+''')
     body = json.dumps(update, separators=(",", ":"))
     update_script = f'''import json, urllib.request
 body = {body!r}.encode()
@@ -97,23 +109,24 @@ with urllib.request.urlopen(request, timeout=10) as response:
 '''
     runner(container, update_script)
     verified = json.loads(runner(container, REMOTE_CONFIG_SCRIPT))
-    if "tts" in update:
-        verified_tts = verified.get("tts", {})
-        expected = update["tts"]
-        retained = all(verified_tts.get(field) == value for field, value in expected.items())
-        fields = expected
-    else:
-        profiles_by_id = {p.get("id"): p for p in verified.get("ttss", []) if isinstance(p, dict)}
-        expected_profiles = {p["id"]: p for p in update["ttss"] if isinstance(p.get("id"), str)}
-        fields = {field for pid, p in expected_profiles.items()
-                  for field in ("model", "voiceA", "voiceB")
-                  if p.get(field) != next((old.get(field) for old in config.get("ttss", [])
-                                           if isinstance(old, dict) and old.get("id") == pid), None)}
-        retained = all(profiles_by_id.get(pid, {}).get(field) == p.get(field)
-                       for pid, p in expected_profiles.items() for field in ("model", "voiceA", "voiceB")
-                       if field in p)
-    if not retained:
-        raise RuntimeError("PodWave did not retain the migrated TTS settings")
+    fields = set()
+    for kind in ("llm", "tts"):
+        if kind in update:
+            expected = update[kind]
+            if any(verified.get(kind, {}).get(field) != value for field, value in expected.items()):
+                raise RuntimeError("PodWave did not retain the migrated provider settings")
+            fields.update(expected)
+        if kind + "s" in update:
+            profiles = {row["id"]: row for row in verified.get(kind + "s", [])}
+            originals = {row["id"]: row for row in config[kind + "s"]}
+            for profile in update[kind + "s"]:
+                changed = profile_updates(originals[profile["id"]], kind)
+                current = profiles.get(profile["id"], {})
+                for field, value in changed.items():
+                    retained = current.get("keySet") is False if field == "key" else current.get(field) == value
+                    if not retained:
+                        raise RuntimeError("PodWave did not retain the migrated provider settings")
+                fields.update(changed)
     return {"changed": True, "fields": sorted(fields)}
 
 
