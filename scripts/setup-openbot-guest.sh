@@ -41,7 +41,7 @@ configure-model-gateway  Verify keyless HTTPS and migrate the embedded Hermes mo
 install-partner          Install the independent household server from published master.
 status-partner           Show the household server state and installed revision.
 login-partner            Enroll the household server using its owner's email code.
-configure-partner-hermes Configure the household server's embedded Hermes for local inference.
+configure-partner-hermes Install and configure the household server's embedded Hermes for local inference.
 install-partner-profile FILE  Stream the owner's reviewed USER.md into private Hermes memory.
 EOF
 }
@@ -131,6 +131,8 @@ login_partner() {
 
 configure_partner_hermes() {
   require_current_master_checkout
+  ssh_guest docker exec -i homecompute-openbot-partner /bin/bash -s \
+    < "$REPO_ROOT/deploy/openbot/install-partner-hermes.sh"
   ssh_guest /usr/bin/python3 /etc/homecompute-openbot-partner/current/configure-openbot-hermes.py \
     --container homecompute-openbot-partner "$@"
 }

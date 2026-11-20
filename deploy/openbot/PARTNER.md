@@ -27,6 +27,7 @@ run:
 ```bash
 ./scripts/setup-openbot-guest.sh install-partner
 ./scripts/setup-openbot-guest.sh status-partner
+./scripts/setup-openbot-guest.sh configure-partner-hermes
 ./scripts/setup-openbot-guest.sh login-partner
 ```
 
@@ -39,14 +40,10 @@ The partner enters their own email and verification code in the enrollment
 terminal. Sign in to the desktop or web client with the same account and
 select `home-core-partner`. Keep invitations empty for the private setup.
 
-Under Server settings → Providers, download Hermes onto the selected server.
-Use the downloaded CLI with the local model through the guarded helper:
-
-```bash
-./scripts/setup-openbot-guest.sh configure-partner-hermes
-```
-
-Reload the server's Providers page and confirm Hermes offers
+The Hermes helper runs the same pinned installer stages as the OpenBot 0.73.0
+Hermes **Download** action. It verifies the installer checksum and configures the
+CLI inside the partner container for local inference. In the signed-in client,
+open the server's Providers page and confirm Hermes offers
 `custom:automation-moe`. In the same server's Providers settings add
 **Home AI (local)** as a custom OpenAI-compatible provider at
 `http://ai.home.arpa:18080/v1` with model `automation-moe`. Leave the API key

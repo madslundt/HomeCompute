@@ -58,6 +58,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-home-core-stt.sh"
   "$REPO_ROOT/scripts/setup-openbot-guest.sh"
   "$REPO_ROOT/deploy/openbot/install-partner.sh"
+  "$REPO_ROOT/deploy/openbot/install-partner-hermes.sh"
   "$REPO_ROOT/deploy/openbot/homecompute-openbot-health"
   "$REPO_ROOT/scripts/setup-nod-guest.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
