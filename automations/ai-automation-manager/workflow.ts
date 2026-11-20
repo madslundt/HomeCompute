@@ -105,21 +105,41 @@ const dueItems = node({
   config: { name: 'Split claimed automations', position: [680, 160], parameters: { fieldToSplitOut: 'items', options: {} } },
 });
 
+const automationModel = { __rl: true, mode: 'id', value: 'automation-moe', cachedResultName: 'automation-moe' };
+const modelCredential = newCredential('HomeCompute LiteLLM OpenAI');
+// LiteLLM accepts a per-request budget in seconds. n8n's client uses milliseconds.
+const modelRequest = '{"timeout":900,"chat_template_kwargs":{"enable_thinking":false}}';
+
+const planningModel = languageModel({
+  type: '@n8n/n8n-nodes-langchain.lmChatOpenAi',
+  version: 1.2,
+  config: {
+    name: 'HomeCompute local search planner', position: [850, 360],
+    parameters: {
+      model: automationModel,
+      responsesApiEnabled: false,
+      options: { temperature: 0, timeout: 960000, maxRetries: 0, maxTokens: 512, extraBody: modelRequest },
+    },
+    credentials: { openAiApi: modelCredential },
+  },
+});
+
 const localModel = languageModel({
   type: '@n8n/n8n-nodes-langchain.lmChatOpenAi',
   version: 1.2,
   config: {
-    name: 'HomeCompute local automation model', position: [1470, 390],
+    name: 'HomeCompute local automation model', position: [2100, 390],
     parameters: {
-      model: { __rl: true, mode: 'id', value: 'automation-moe', cachedResultName: 'automation-moe' },
+      model: automationModel,
       responsesApiEnabled: false,
-      options: { temperature: 0, timeout: 600000, maxRetries: 0 },
+      options: { temperature: 0, timeout: 960000, maxRetries: 0, maxTokens: 4096, extraBody: modelRequest },
     },
-    credentials: { openAiApi: newCredential('HomeCompute LiteLLM OpenAI') },
+    credentials: { openAiApi: modelCredential },
   },
 });
 
 const maxSearches = 5;
+const resultsPerSearch = 3;
 
 const searchPlanParser = outputParser({
   type: '@n8n/n8n-nodes-langchain.outputParserStructured',
@@ -142,14 +162,14 @@ const planSearches = node({
     onError: 'continueErrorOutput',
     parameters: {
       promptType: 'define',
-      text: expr(`=Task description:\n{{ $json.task_description }}\n\nUpdate style: {{ $json.update_style }}\n\nPrevious working context: {{ $json.current_context || '(None yet)' }}\n\nSuccess criteria: {{ $json.success_criteria || '(None specified)' }}\n\nCurrent date: {{ $now.setZone('Europe/Copenhagen').toISODate() }}`),
+      text: expr(`=Task description:\n{{ $json.task_description }}\n\nUpdate style: {{ $json.update_style }}\n\nPrevious working context: {{ $json.current_context ? $json.current_context.slice(0, 2500) : '(None yet)' }}\n\nSuccess criteria: {{ $json.success_criteria || '(None specified)' }}\n\nCurrent date: {{ $now.setZone('Europe/Copenhagen').toISODate() }}`),
       hasOutputParser: true,
       messages: { messageValues: [{
         type: 'SystemMessagePromptTemplate',
         message: `Plan the public web searches that would help with this task. Return at most ${maxSearches} distinct, focused queries in priority order. Use an empty queries array when public research would not help. Search queries will be sent to a public provider, so use public topics only and omit private or identifying information, credentials, local addresses, and internal details.`,
       }] },
     },
-    subnodes: { model: localModel, outputParser: searchPlanParser },
+    subnodes: { model: planningModel, outputParser: searchPlanParser },
   },
 });
 
@@ -202,7 +222,7 @@ const research = node({
       resource: 'search',
       operation: 'query',
       query: expr('{{ $json.query }}'),
-      options: { search_depth: 'basic', max_results: 5 },
+      options: { search_depth: 'basic', max_results: resultsPerSearch },
     },
     credentials: { tavilyApi: newCredential('Tavily account') },
   },
@@ -226,12 +246,12 @@ for (const [index, { json }] of $input.all().entries()) {
     run.searchFailed = true;
     continue;
   }
-  for (const result of json.results) {
+  for (const result of json.results.slice(0, ${resultsPerSearch})) {
     if (typeof result?.url !== 'string' || !/^https?:\\/\\//i.test(result.url) || result.url.length > 2048) continue;
     if (!run.evidence.has(result.url)) run.evidence.set(result.url, {
       url: result.url,
-      title: String(result.title ?? '').slice(0, 240),
-      excerpt: String(result.content ?? '').slice(0, 1200),
+      title: String(result.title ?? '').slice(0, 160),
+      excerpt: String(result.content ?? '').replace(/\\s+/g, ' ').trim().slice(0, 600),
     });
   }
 }
@@ -286,7 +306,7 @@ const writeUpdate = node({
 
 Follow the requested reading level and detail. In briefing mode, write a fresh briefing. In changes mode, emphasize meaningful developments. In status_check mode, identify what is healthy, changed, uncertain, or needs action.
 
-Return the structured update. Write updated_context as complete replacement Markdown that retains useful durable notes. Start change_summary with a concise takeaway for the Inbox and stay under 2000 characters. Set changed only for meaningful changes, and action_needed only when a person should take a concrete action. Use Resolved only when completion rule is success_criteria and the evidence clearly meets every explicit criterion. Use Ready otherwise.`,
+Return the structured update. Write updated_context as concise, complete replacement Markdown that retains useful durable notes. Start change_summary with a concise takeaway for the Inbox and stay under 2000 characters. Set changed only for meaningful changes, and action_needed only when a person should take a concrete action. Use Resolved only when completion rule is success_criteria and the evidence clearly meets every explicit criterion. Use Ready otherwise.`,
       }] },
     },
     subnodes: { model: localModel, outputParser: resultParser },
@@ -509,7 +529,7 @@ export default workflow('homecompute-ai-automation-manager', 'HomeCompute AI aut
     description: 'Turns each Copenhagen clock tick into an idempotent claim for due automations.',
   })
   .group('Research and save updates', [
-    planSearches, searchPlanParser, prepareSearches, hasSearch, research, collectEvidence,
+    planSearches, planningModel, searchPlanParser, prepareSearches, hasSearch, research, collectEvidence,
     researchFailed, writeUpdate, localModel, resultParser, saveResult, recordFailure, notifyResult,
   ], {
     description: 'Plans up to five public searches, writes a structured update, and reports failed runs to the manager.',

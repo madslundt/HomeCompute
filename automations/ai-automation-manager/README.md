@@ -87,6 +87,13 @@ writes the structured update from the evidence and has no search tools. When
 evidence is insufficient, the update identifies the gap and keeps the automation
 Ready. An automation that needs no public research skips Tavily.
 
+Both local calls disable extended reasoning for this workflow and request a
+15-minute inference timeout from LiteLLM. The n8n client allows 16 minutes for
+the call. The planner gets up to 512 completion tokens, with a short excerpt
+of working context. The writer gets up to 4,096 completion tokens and receives
+up to three results per search, with each excerpt capped at 600 characters.
+The writer still sees the complete working context.
+
 Errors in planning, research, writing, or saving a result are reported to the
 manager with the run UUID and a generic error code. Delivery errors remain
 eligible for the existing pending-delivery recovery. For a stale running entry,

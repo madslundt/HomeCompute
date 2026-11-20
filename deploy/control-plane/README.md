@@ -47,7 +47,9 @@ are omitted. The cold CPU automation standby remains an operator-run
 maintenance action.
 
 `automation-moe` has a per-deployment request budget of 600 seconds. This value
-is an initial budget, not a final p95/p99-based SLO. Verify timeout
+is the default for callers. The AI automation manager requests 900 seconds for
+its model calls. Caddy allows 16 minutes for response headers on the LiteLLM
+proxy so the gateway can honor this longer request budget. Verify timeout
 behavior against the image pinned in `config/control-plane.env.example` with
 synthetic refused, non-responsive, error, and streaming upstreams before
 promoting the generated config. Model generation does not create, broaden, or
@@ -218,6 +220,12 @@ Compose arguments and config hashes in
 `/var/lib/homecompute/litellm-gateway-hostnames/FULL_RELEASE_SHA/receipt.json`.
 The next full Home Core rollout supplies the same route from canonical
 Compose wiring.
+
+For a response-timeout-only release on a host with existing Caddy overlays,
+use the same staged checkout and append `--response-timeout-only` to the
+deployment command. It updates only the timeout in the mounted LiteLLM proxy
+snippet while retaining the other sites and overlays. The receipt contains
+the previous Compose arguments for a Caddy-only rollback.
 
 Speech clients use the [speech API contract](../../docs/speech-api.md).
 `whisper` serves transcription. `tts-danish` and `tts-english` are stable

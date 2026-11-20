@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply the published LiteLLM hostname migration to the active Caddy edge."""
+"""Apply a scoped LiteLLM hostname or response-timeout change to Caddy."""
 from __future__ import annotations
 
 import argparse
@@ -41,6 +41,20 @@ def render(active, published):
     if active.count(LEGACY_HEAD) != 1 or active.count(legacy) != 1:
         raise ValueError('Active Caddy config lacks the expected legacy LiteLLM virtual host')
     return active.replace(legacy, scoped, 1)
+
+
+def render_response_timeout(active, published):
+    def proxy_block(config):
+        blocks = re.findall(r'^\(litellm_proxy\) \{\n.*?^\}\n', config, re.MULTILINE | re.DOTALL)
+        if len(blocks) != 1 or len(re.findall(r'^\s*response_header_timeout \d+m$', blocks[0], re.MULTILINE)) != 1:
+            raise ValueError('Expected one LiteLLM proxy with a response header timeout')
+        return blocks[0]
+
+    before, desired = proxy_block(active), proxy_block(published)
+    timeout = r'(?m)^(\s*response_header_timeout )\d+m$'
+    if re.sub(timeout, r'\1TIMEOUT', before) != re.sub(timeout, r'\1TIMEOUT', desired):
+        raise ValueError('Active LiteLLM proxy differs beyond its response header timeout')
+    return active.replace(before, desired, 1)
 
 
 def install(core, path, data):
@@ -106,15 +120,15 @@ def replace(core, compose):
                  '--wait', '--wait-timeout', '60', 'caddy')
 
 
-def apply(core):
+def apply(core, *, response_timeout_only=False):
     row, current, source = active_edge(core)
     before = core.protected(source).decode()
     published = (ROOT / 'deploy/control-plane/Caddyfile').read_text()
-    candidate = render(before, published)
+    candidate = render_response_timeout(before, published) if response_timeout_only else render(before, published)
     if candidate == before:
         verify(core)
         return
-    if 'MCP_FQDN=mcp.home.arpa' not in row['Config']['Env']:
+    if not response_timeout_only and 'MCP_FQDN=mcp.home.arpa' not in row['Config']['Env']:
         raise ValueError('Live legacy LiteLLM hostname differs from the release convention')
     subprocess.run(['docker', 'exec', '-i', CONTAINER, '/bin/sh', '/opt/homecompute/caddy-entrypoint.sh',
                     'caddy', 'validate', '--config', '-', '--adapter', 'caddyfile'],
@@ -153,13 +167,15 @@ def apply(core):
         try:
             replace(core, current)
         except subprocess.SubprocessError as rollback:
-            raise RuntimeError('Caddy hostname rollout and rollback failed; inspect the scoped receipt') from rollback
-        raise RuntimeError('Caddy hostname rollout failed; prior Caddy config restored') from error
+            raise RuntimeError('Scoped Caddy rollout and rollback failed; inspect the scoped receipt') from rollback
+        raise RuntimeError('Scoped Caddy rollout failed; prior Caddy config restored') from error
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--revision', required=True)
+    parser.add_argument('--response-timeout-only', action='store_true',
+                        help='Apply only the published LiteLLM response header timeout')
     args = parser.parse_args()
     core = SimpleNamespace(**runpy.run_path(str(ROOT / 'scripts/retire-openclaw-core.py')))
     try:
@@ -167,11 +183,11 @@ def main() -> int:
         os.umask(0o077)
         with core.LOCK.open('r+') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            apply(core)
-        print(f'LiteLLM hostnames and OpenBot runtime verified from release {ROOT.name}.')
+            apply(core, response_timeout_only=args.response_timeout_only)
+        print(f'LiteLLM edge and OpenBot runtime verified from release {ROOT.name}.')
         return 0
     except (OSError, RuntimeError, ValueError, KeyError, subprocess.SubprocessError) as error:
-        print(f'LiteLLM hostname rollout stopped: {error}', file=sys.stderr)
+        print(f'LiteLLM edge rollout stopped: {error}', file=sys.stderr)
         if error.__cause__ is not None:
             print(f'Cause: {error.__cause__}', file=sys.stderr)
         return 1
