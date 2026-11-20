@@ -888,6 +888,8 @@ jq -e '
 rg -F 'href: https://paperclip.home.arpa/' "$REPO_ROOT/deploy/homepage/config/services.yaml" >/dev/null
 
 printf '[validate] T3 Code Compose boundary\n'
+# Compose v2 omits an explicit false bind.create_host_path in rendered JSON.
+rg -q '^[[:space:]]+create_host_path: false$' "$REPO_ROOT/deploy/t3code/compose.yaml"
 T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml" config --format json |
   jq -e '
     .services.t3code |
@@ -896,7 +898,7 @@ T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml
     (.security_opt | index("seccomp:../paperclip/codex-seccomp.json") != null) and
     (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "3773") and
     (.volumes | length == 1 and .[0].type == "bind" and .[0].source == "/srv/state/t3code" and
-      .[0].target == "/data" and .[0].bind.create_host_path == false) and
+      .[0].target == "/data" and .[0].bind.create_host_path != true) and
     .logging.driver == "none"
   ' >/dev/null
 jq -e '.limits | .connect == false and .webhookTasks == false and
