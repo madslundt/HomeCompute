@@ -54,6 +54,17 @@ class LiteLLMGatewayHostnameTests(unittest.TestCase):
             migration['render'](unknown, release)
 
 
+    def test_scoped_response_timeout_preserves_existing_sites_and_proxy_settings(self):
+        release = (ROOT / 'deploy/control-plane/Caddyfile').read_text()
+        migration = runpy.run_path(str(ROOT / 'scripts/deploy-litellm-gateway-hostnames.py'))
+        desired = release + '\nexample.home.arpa {\n\trespond 200\n}\n'
+        before = desired.replace('response_header_timeout 16m', 'response_header_timeout 10m', 1)
+        self.assertEqual(migration['render_response_timeout'](before, release), desired)
+        self.assertEqual(migration['render_response_timeout'](desired, release), desired)
+        with self.assertRaisesRegex(ValueError, 'differs beyond its response header timeout'):
+            migration['render_response_timeout'](before.replace('reverse_proxy litellm:4000', 'reverse_proxy other:4000'), release)
+
+
 class GatewayCertificateTests(unittest.TestCase):
     def test_published_pointer_always_selects_a_complete_private_pair(self):
         with tempfile.TemporaryDirectory() as directory:

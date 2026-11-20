@@ -227,7 +227,7 @@ http://:8080 {
 		lb_try_duration 5s
 		transport http {
 			dial_timeout 3s
-			response_header_timeout 10m
+			response_header_timeout 16m
 		}
 	}
 }

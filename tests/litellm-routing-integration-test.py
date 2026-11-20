@@ -26,7 +26,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 ENV_SAMPLE = ROOT / "config/control-plane.env.example"
 PINNED_IMAGE = re.search(r"^LITELLM_IMAGE=(\S+)$", ENV_SAMPLE.read_text(encoding="utf-8"), re.MULTILINE).group(1)
-STATE: dict[str, Any] = {"primary": "healthy", "fallback": "healthy", "calls": []}
+STATE: dict[str, Any] = {"primary": "healthy", "fallback": "healthy", "calls": [], "template_kwargs": None}
 STATE_LOCK = threading.Lock()
 
 
@@ -37,9 +37,12 @@ class SyntheticBackend(BaseHTTPRequestHandler):
         with STATE_LOCK:
             STATE["calls"].append(role)
             behavior = STATE[role]
+            STATE["template_kwargs"] = body.get("chat_template_kwargs")
         if behavior == "hang":
             time.sleep(30)
             return
+        if behavior == "slow":
+            time.sleep(2.5)
         if behavior == "reset":
             self.close_connection = True
             self.connection.close()
@@ -177,9 +180,10 @@ router_settings:
         if hasattr(cls, "tempdir"):
             cls.tempdir.cleanup()
 
-    def request(self, alias: str = "automation", *, stream: bool = False) -> tuple[int | str, str, float]:
+    def request(self, alias: str = "automation", *, stream: bool = False,
+                extra: dict[str, Any] | None = None) -> tuple[int | str, str, float]:
         body = json.dumps(
-            {"model": alias, "messages": [{"role": "user", "content": "hello"}], "stream": stream}
+            {"model": alias, "messages": [{"role": "user", "content": "hello"}], "stream": stream, **(extra or {})}
         ).encode()
         request = urllib.request.Request(
             self.base_url() + "/v1/chat/completions",
@@ -232,6 +236,17 @@ router_settings:
         self.assertIn("fallback_ok", payload)
         self.assertLess(elapsed, 8)
         self.assertIn("fallback", self.calls())
+
+    def test_chat_request_can_extend_its_timeout_and_disable_thinking(self) -> None:
+        self.set_modes(primary="slow")
+        options = {"timeout": 6, "chat_template_kwargs": {"enable_thinking": False}}
+        status, payload, elapsed = self.request(alias="home", extra=options)
+        self.assertEqual(200, status)
+        self.assertIn("primary_ok", payload)
+        self.assertGreater(elapsed, 2)
+        self.assertEqual(["primary"], self.calls())
+        with STATE_LOCK:
+            self.assertEqual(STATE["template_kwargs"], options["chat_template_kwargs"])
 
     def test_primary_500_and_503_use_fallback(self) -> None:
         for status_code in ("500", "503"):

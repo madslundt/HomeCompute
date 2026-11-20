@@ -58,5 +58,33 @@ test('advances successful items and records failures without another search loop
   }
   assert.deepEqual(connections['Did a public search fail?'].main.map(output => output.map(e => e.node)),
     [[failure], [writer]]);
-  assert.equal(findNode('HomeCompute local automation model').parameters.options.timeout, 600000);
+});
+
+test('bounds evidence and gives both local model calls a longer request budget', () => {
+  assert.equal(findNode('Run public searches').parameters.options.max_results, 3);
+  const collect = new Function('$input', '$', findNode('Collect evidence by automation').parameters.jsCode);
+  const hits = Array.from({ length: 5 }, (_, index) => ({
+    url: 'https://example.org/' + index,
+    title: 'T'.repeat(180),
+    content: '   Short    text    ' + 'x'.repeat(2000),
+  }));
+  const [{ json }] = collect(input([{ results: hits }]), () => ({
+    itemMatching: () => ({ json: { run_id: 'a' } }),
+  }));
+  assert.equal(json.evidence.length, 3);
+  assert.ok(json.evidence.every(hit => hit.title.length === 160 && hit.excerpt.length === 600 &&
+    hit.excerpt.startsWith('Short text ')));
+
+  for (const [name, consumer, maxTokens] of [
+    ['HomeCompute local search planner', 'Plan public searches', 512],
+    ['HomeCompute local automation model', 'Write the structured automation update', 4096],
+  ]) {
+    const { model, options } = findNode(name).parameters;
+    assert.equal(model.value, 'automation-moe');
+    assert.deepEqual(connections[name].ai_languageModel[0].map(edge => edge.node), [consumer]);
+    assert.equal(options.maxRetries, 0);
+    assert.equal(options.maxTokens, maxTokens);
+    assert.equal(options.timeout, 960000);
+    assert.deepEqual(JSON.parse(options.extraBody), { timeout: 900, chat_template_kwargs: { enable_thinking: false } });
+  }
 });
