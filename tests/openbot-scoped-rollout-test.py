@@ -88,6 +88,18 @@ class GatewayTest(unittest.TestCase):
 
 
 class BackupTest(unittest.TestCase):
+    def test_openbot_backup_validates_selected_store_when_default_store_is_retired(self):
+        revision = 'a' * 40
+        release = Path('/srv/homecompute/releases') / revision
+        nas = Mock(REPOSITORY=Path('/mnt/homecompute-backups/restic-homecompute-agent-recovery'))
+        with (patch.object(backup.core, 'protected', side_effect=[revision.encode(), b'reviewed NAS helper']),
+              patch.object(Path, 'resolve', return_value=release),
+              patch.object(backup.core, 'command', return_value=revision),
+              patch.object(backup.subprocess, 'check_output', return_value=b'reviewed NAS helper'),
+              patch.object(backup, 'load', return_value=nas)):
+            self.assertIs(backup.live_nas(), nas)
+        nas.root_directory.assert_called_once_with(backup.REPOSITORY)
+
     def run_backup_with_sync(self, timer_state, sync_states, *, upload_error=None, drain_stuck=False):
         with tempfile.TemporaryDirectory() as work, ExitStack() as mocked:
             state = Path(work) / 'state'

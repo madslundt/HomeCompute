@@ -56,7 +56,7 @@ def live_nas():
     nas = load(path)
     nas.require_mount(nas.load_configuration(nas.CONFIG, mount_only=True))
     nas.private_file(nas.PASSWORD)
-    nas.root_directory(nas.REPOSITORY)
+    nas.root_directory(REPOSITORY)
     return nas
 
 
