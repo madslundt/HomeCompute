@@ -46,6 +46,10 @@ quality qualification is incomplete. Disabled aliases backed by stopped models
 are omitted. The cold CPU automation standby remains an operator-run
 maintenance action.
 
+The Flash-Next deployment declares `supports_reasoning` in the model catalog
+so LiteLLM accepts the Responses API thinking effort sent by Paperclip Codex.
+The upstream accepts `low`, `medium`, and `xhigh`.
+
 `automation-moe` has a per-deployment request budget of 600 seconds. This value
 is the default for callers. The AI automation manager requests 900 seconds for
 its model calls. Caddy allows 16 minutes for response headers on the LiteLLM
@@ -139,6 +143,18 @@ to identify the underlying release. A full deployment will supersede this
 mount with the release config. To restore the underlying release's LiteLLM
 config before then, repeat the command with `rollback` instead of `apply` and
 the same source revision.
+
+#### Paperclip reasoning flag rollout
+
+If the operator approves a scoped rollout, use the same reviewed release
+procedure with `apply "$revision" --automation-reasoning` as the script
+arguments. The tool verifies that the published `automation-moe` entry differs
+from the running release's entry only by `supports_reasoning: true`. The
+resulting config is stored under `/var/lib/homecompute/litellm-automation-reasoning`.
+Only LiteLLM is recreated. Verify a synthetic `xhigh` Responses call from
+Paperclip using its [live probe](../paperclip/README.md#local-inference).
+If the probe fails, use `rollback "$revision" --automation-reasoning` with
+the same revision. A normal Home Core deployment replaces the scoped mount.
 
 ## Central MCP gateway
 

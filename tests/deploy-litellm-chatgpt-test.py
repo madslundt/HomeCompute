@@ -51,9 +51,31 @@ class ChatGPTConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "prior config restored"):
                 DEPLOY.change_config("release", "old", "new", "image")
         self.assertEqual(create.call_args_list, [
-            call("release", "new", "image"),
-            call("release", "old", "image"),
+            call("release", "new", "image", reconcile_legacy_key=True),
+            call("release", "old", "image", reconcile_legacy_key=True),
         ])
+
+    def test_reasoning_scope_preserves_the_rest_of_the_running_config(self):
+        baseline = BASELINE.replace("      supports_reasoning: true\n", "", 1)
+        expected = BASELINE
+        self.assertEqual(DEPLOY.render_automation_reasoning(baseline, SOURCE), expected)
+        self.assertEqual(DEPLOY.render_automation_reasoning(expected, SOURCE), expected)
+
+    def test_reasoning_scope_skips_legacy_key_reconciliation(self):
+        with patch.object(DEPLOY, "compose"), \
+             patch.object(DEPLOY, "inspection", return_value={"Image": "pinned"}), \
+             patch.object(DEPLOY, "verify_container", return_value="checksum"), \
+             patch.object(DEPLOY, "run") as run, \
+             patch.object(DEPLOY.Path, "exists", return_value=True):
+            DEPLOY.recreate("release", "config", "pinned", reconcile_legacy_key=False)
+        run.assert_not_called()
+
+    def test_reasoning_scope_rejects_other_automation_changes(self):
+        baseline = SOURCE.replace("      supports_reasoning: true\n", "", 1)
+        for candidate in (baseline, SOURCE.replace("      timeout: 600", "      timeout: 321", 1)):
+            with self.subTest(candidate_has_flag="supports_reasoning: true" in candidate):
+                with self.assertRaisesRegex(ValueError, "reasoning support"):
+                    DEPLOY.render_automation_reasoning(baseline, candidate)
 
 
 if __name__ == "__main__":

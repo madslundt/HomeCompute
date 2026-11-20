@@ -35,7 +35,10 @@ if (forbidden.status !== 404) throw new Error("Unexpected tool route");
 const response = await fetch(base + "/v1/responses", {
   method: "POST", signal: AbortSignal.timeout(50000),
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ model, input: "Reply with only ready.", max_output_tokens: 256 }),
+  body: JSON.stringify({
+    model, input: "Reply with only ready.", max_output_tokens: 512,
+    reasoning: { effort: "xhigh" },
+  }),
 });
 if (!response.ok) throw new Error("Responses probe failed with HTTP " + response.status);
 const result = await response.json();

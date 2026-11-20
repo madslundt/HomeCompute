@@ -8,6 +8,7 @@ model_list:
       timeout: 600
       stream_timeout: 600
     model_info:
+      supports_reasoning: true
       input_cost_per_token: 0.00000015
       output_cost_per_token: 0.00000047
       cache_read_input_token_cost: 0.000000016

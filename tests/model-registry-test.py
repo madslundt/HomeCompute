@@ -33,6 +33,9 @@ class ModelRegistryTests(unittest.TestCase):
                         if f'model_name: "{alias}"' in rendered]
         self.assertEqual(text_aliases, ['automation-moe'])
         self.assertIn('openai/automation-qualification', rendered)
+        automation = rendered.split('model_name: "automation-moe"', 1)[1].split("  - model_name:", 1)[0]
+        self.assertIn("      supports_reasoning: true\n", automation)
+        self.assertEqual(1, rendered.count("supports_reasoning:"))
         self.assertNotIn('COMPUTE_HOME_BASE_URL', rendered)
 
     def test_video_is_pinned_on_demand_and_renders_the_native_video_api(self) -> None:

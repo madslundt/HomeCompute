@@ -443,6 +443,7 @@
       "runtime_profile": "blazux-qwen38-flash-dgx",
       "endpoint_env": "COMPUTE_AUTOMATION_CANDIDATE_BASE_URL",
       "served_model_name": "automation-qualification",
+      "supports_reasoning": true,
       "context_tokens": 262144,
       "concurrency": 4,
       "lifecycle": "operator-on-demand",

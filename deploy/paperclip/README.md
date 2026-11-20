@@ -63,8 +63,9 @@ The normal Home Core release attaches Paperclip to a dedicated, internal
 Docker network for the canonical LiteLLM gateway. The app trusts the
 HomeCompute CA and uses the same HTTPS endpoint as LAN clients.
 
-Probe keyless model listing and a synthetic Responses turn from the Paperclip
-container after deploying that release:
+Probe keyless model listing and a synthetic Responses turn with the Engineering
+Lead’s `xhigh` thinking effort from the Paperclip container after deploying that
+release:
 
 ```sh
 sudo python3 "/srv/homecompute/releases/$revision/scripts/deploy-paperclip-inference.py" \

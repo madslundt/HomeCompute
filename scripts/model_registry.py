@@ -133,6 +133,8 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
         if not re.fullmatch(r"[A-Z][A-Z0-9_]*_BASE_URL", endpoint_env):
             raise RegistryError(f"deployments.{deployment_id}.endpoint_env must reference a named environment variable")
         string(deployment.get("served_model_name"), f"deployments.{deployment_id}.served_model_name")
+        if "supports_reasoning" in deployment and not isinstance(deployment["supports_reasoning"], bool):
+            raise RegistryError(f"deployments.{deployment_id}.supports_reasoning must be a boolean")
         context = deployment.get("context_tokens")
         if not isinstance(context, int) or isinstance(context, bool) or context <= 0:
             raise RegistryError(f"deployments.{deployment_id}.context_tokens must be positive")
@@ -347,6 +349,9 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                 lines.append(f"      stream_timeout: {timeout}")
                 pricing = route.get("pricing_usd_per_million_tokens")
                 lines.append("    model_info:")
+                if "supports_reasoning" in deployment:
+                    supports_reasoning = json.dumps(deployment["supports_reasoning"])
+                    lines.append(f"      supports_reasoning: {supports_reasoning}")
                 if pricing is None:
                     lines.extend([
                         "      input_cost_per_token: 0",

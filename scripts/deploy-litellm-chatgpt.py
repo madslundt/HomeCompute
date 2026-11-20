@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply or roll back only the Sol and Astra subscription aliases on Home Core."""
+"""Apply or roll back scoped LiteLLM model changes on Home Core."""
 
 import argparse
 import fcntl
@@ -68,6 +68,29 @@ def render_aliases(baseline, source):
     return baseline[:base_block.start()] + model_list + baseline[base_block.end():]
 
 
+def render_automation_reasoning(baseline, source):
+    entry = re.compile(r'^  - model_name: "automation-moe"\n.*?(?=^  - model_name:|\Z)', re.M | re.S)
+    flag = "      supports_reasoning: true\n"
+    model_info = "    model_info:\n"
+    entries = []
+    for config in (baseline, source):
+        blocks = list(MODEL_LIST.finditer(config))
+        if len(blocks) != 1:
+            raise ValueError("Expected a single generated model_list in each config")
+        matches = list(entry.finditer(config, blocks[0].start(), blocks[0].end()))
+        if len(matches) != 1 or '      model: "openai/automation-qualification"\n' not in matches[0][0]:
+            raise ValueError("Expected one automation-moe entry for the Flash-Next deployment")
+        entries.append(matches[0])
+    current, desired = entries
+    if desired[0].count(model_info + flag) != 1:
+        raise ValueError("Published automation-moe entry must declare reasoning support")
+    if current[0] == desired[0]:
+        return baseline
+    if current[0] != desired[0].replace(model_info + flag, model_info, 1):
+        raise ValueError("Expected reasoning support to be the only automation-moe change")
+    return baseline[:current.start()] + desired[0] + baseline[current.end():]
+
+
 def run(*args, env=None, timeout=30):
     result = subprocess.run(
         args, env=env, capture_output=True, text=True, timeout=timeout,
@@ -132,7 +155,7 @@ def verify_container(release, source, container, *, require_healthy=True):
     return expected
 
 
-def recreate(release, source, image_id):
+def recreate(release, source, image_id, *, reconcile_legacy_key=True):
     compose(
         release, source, "up", "-d", "--no-deps", "--no-build",
         "--pull", "never", "--wait", "--wait-timeout", "180", "litellm",
@@ -145,17 +168,17 @@ def recreate(release, source, image_id):
     # Older installations can use this scoped lifecycle before the keyless
     # front door is installed. Reconcile only an already provisioned key.
     key_file = Path("/srv/state/control-plane/caddy-data/lan-catalog-key")
-    if key_file.exists() or key_file.is_symlink():
+    if reconcile_legacy_key and (key_file.exists() or key_file.is_symlink()):
         run(sys.executable, str(Path(__file__).with_name("setup-lan-catalog-key.py")), timeout=180)
     return checksum
 
 
-def change_config(release, previous, desired, image_id):
+def change_config(release, previous, desired, image_id, *, reconcile_legacy_key=True):
     try:
-        return recreate(release, desired, image_id)
+        return recreate(release, desired, image_id, reconcile_legacy_key=reconcile_legacy_key)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, KeyboardInterrupt) as error:
         try:
-            recreate(release, previous, image_id)
+            recreate(release, previous, image_id, reconcile_legacy_key=reconcile_legacy_key)
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as rollback:
             raise RuntimeError(f"LiteLLM rollout failed ({error}); rollback failed ({rollback})") from rollback
         raise RuntimeError(f"LiteLLM rollout failed ({error}); prior config restored") from error
@@ -179,7 +202,7 @@ def install_config(path, text):
             temporary.unlink(missing_ok=True)
 
 
-def deploy(action, revision):
+def deploy(action, revision, *, automation_reasoning=False):
     if os.geteuid() != 0 or socket.gethostname() != "home-core":
         raise ValueError("Run as root on home-core")
     with (STATE / "deploy.lock").open("a") as lock:
@@ -195,7 +218,8 @@ def deploy(action, revision):
             raise ValueError("The full-release marker and clean active checkout must agree")
 
         baseline = release / CONFIG
-        generated = STATE / "litellm-chatgpt" / f"{base_revision}-{revision}.yaml"
+        directory = "litellm-automation-reasoning" if automation_reasoning else "litellm-chatgpt"
+        generated = STATE / directory / f"{base_revision}-{revision}.yaml"
         container = inspection()
         current = mounted_source(container)
         if current not in (baseline, generated):
@@ -206,12 +230,16 @@ def deploy(action, revision):
         desired = baseline
         if action == "apply":
             base_text = baseline.read_text()
-            desired_text = render_aliases(base_text, published_config(revision))
+            render = render_automation_reasoning if automation_reasoning else render_aliases
+            desired_text = render(base_text, published_config(revision))
             if desired_text != base_text:
                 install_config(generated, desired_text)
                 desired = generated
         if desired != current:
-            checksum = change_config(release, current, desired, container["Image"])
+            checksum = change_config(
+                release, current, desired, container["Image"],
+                reconcile_legacy_key=not automation_reasoning,
+            )
         print(f"LiteLLM {action} verified on host release {base_revision}")
         print(f"Source revision {revision}; mounted config SHA-256 {checksum}")
 
@@ -220,11 +248,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("apply", "rollback"))
     parser.add_argument("revision")
+    parser.add_argument("--automation-reasoning", action="store_true",
+                        help="Apply only the automation-moe reasoning capability flag")
     args = parser.parse_args()
     if not SHA.fullmatch(args.revision):
         parser.error("revision must be a full lowercase Git SHA")
     try:
-        deploy(args.action, args.revision)
+        deploy(args.action, args.revision, automation_reasoning=args.automation_reasoning)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"LiteLLM deployment failed: {error}", file=sys.stderr)
         return 1
