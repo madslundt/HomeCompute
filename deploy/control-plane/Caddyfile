@@ -442,6 +442,17 @@ import /config/video-api/Caddyfile
 			CEL
 	}
 	handle @lan_inference {
+		# OpenBot used this intake gate on its previous guest transport.
+		@guest_text {
+			remote_ip 10.77.20.1
+			method POST
+			path /v1/chat/completions /v1/responses /v1/completions
+		}
+		forward_auth @guest_text 172.28.200.1:18191 {
+			uri /health
+			header_up -Authorization
+			header_up -X-Litellm-Api-Key
+		}
 		request_header Authorization "Bearer {model_api_key}"
 		request_body {
 			max_size 32MB

@@ -273,7 +273,9 @@ this access. Explicit credentials keep their own scopes and authentication
 errors. Caddy also admits requests from the isolated agents relay, production
 n8n, and the fixed Paperclip, PodWave, and Open WebUI private network addresses.
 These workloads use the same URL. PodWave and n8n retain their local model
-scope. The private Docker listener serves only model API requests. MCP and the operator UI use LiteLLM authentication.
+scope. Keyless text generation from the agents bridge uses the existing Spark
+intake gate during model swaps. The private Docker listener serves only model
+API requests. MCP and the operator UI use LiteLLM authentication.
 
 The release runs `scripts/setup-lan-catalog-key.py` after LiteLLM starts and
 before Caddy starts. It reconciles a non-admin, model-API-only virtual key

@@ -28,6 +28,8 @@ const listing = await fetch(base + "/v1/models", { signal: AbortSignal.timeout(6
 if (!listing.ok) throw new Error("Model listing failed");
 const ids = (await listing.json()).data?.map(entry => entry.id);
 if (!ids?.includes(model)) throw new Error("Expected automation-moe in model listing");
+if (base === "http://127.0.0.1:18080" && ids.length !== 1)
+  throw new Error("Unexpected legacy relay model scope");
 const forbidden = await fetch(base + "/mcp", { signal: AbortSignal.timeout(6000) });
 if (forbidden.status !== 404) throw new Error("Unexpected tool route");
 const response = await fetch(base + "/v1/responses", {

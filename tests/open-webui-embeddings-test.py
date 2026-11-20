@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import runpy
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -118,6 +119,30 @@ class WebUIMigrationTests(unittest.TestCase):
         self.assertEqual(values['audio.tts.openai.api_base_url'], gateway)
         self.assertEqual(values['audio.tts.openai.api_key'], 'local')
         self.assertEqual(values['audio.stt.openai.api_base_url'], 'https://other.invalid/v1')
+
+    def test_rollback_restores_legacy_settings_without_removing_new_data(self):
+        self.assertEqual(self.run_migration().returncode, 0)
+        with sqlite3.connect(self.database) as connection:
+            original = {
+                'rag.openai.api_base_url': 'http://litellm:4000/v1',
+                'rag.openai.api_key': 'sk-synthetic-legacy',
+                'openai.api_base_urls': ['http://litellm:4000/v1', 'https://images.invalid/v1'],
+                'openai.api_keys': ['sk-synthetic-chat', ''],
+            }
+            connection.executemany('INSERT OR REPLACE INTO config VALUES (?,?,1)',
+                                   [(key, json.dumps(value)) for key, value in original.items()])
+        self.environment['RAG_OPENAI_API_KEY'] = 'local'
+        before = set((self.root / 'embedding-config-backups').iterdir())
+        self.assertEqual(self.run_migration().returncode, 0)
+        backup, = set((self.root / 'embedding-config-backups').iterdir()) - before
+        with sqlite3.connect(self.database) as connection:
+            connection.execute('INSERT INTO file VALUES (?)', ('after-cutover',))
+        restore = runpy.run_path(str(ROOT / 'scripts/rollback-open-webui-model-gateway.py'))['restore']
+        self.assertEqual(restore(self.database.resolve(), backup.resolve()), 4)
+        self.assertEqual(restore(self.database.resolve(), backup.resolve()), 0)
+        self.assertEqual({key: self.values()[key] for key in original}, original)
+        with sqlite3.connect(self.database) as connection:
+            self.assertEqual(connection.execute('SELECT id FROM file').fetchall(), [('after-cutover',)])
 
     def test_unattached_existing_vectors_also_prevent_mixing(self):
         vector_root = self.root / 'vector_db'; vector_root.mkdir()

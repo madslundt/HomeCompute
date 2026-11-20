@@ -130,6 +130,23 @@ The LiteLLM UI and MCP gateway use their existing authentication. See the
 [control-plane runbook](../deploy/control-plane/README.md) for both credentials
 and access boundaries.
 
+## Roll back the Open WebUI model gateway
+
+Before redeploying a release that uses the internal HTTP model URL, stop
+Open WebUI through the currently running Compose release. Select the private
+SQLite backup under `/srv/state/open-webui/data/embedding-config-backups/`
+from immediately before this migration. Run the helper from the published
+gateway release and then deploy the previous Home Core revision.
+
+```sh
+sudo python3 /srv/homecompute/current/scripts/rollback-open-webui-model-gateway.py \
+  --backup MIGRATION_BACKUP.sqlite3
+```
+
+The helper restores only the migrated provider URLs and credential fields.
+It preserves indexed content and other database data. If a provider was
+edited after rollout, the helper stops for operator reconciliation.
+
 ## Secrets and operations
 
 - The public Tailscale certificate pair lives under
