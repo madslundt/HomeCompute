@@ -1,9 +1,8 @@
 # OpenBot on the agents VM
 
-OpenBot runs in the Ubuntu agents VM on `home-core`. The existing team server
-and the isolated `home-core-operator` server use separate containers, Docker
-bridges, and `/data` directories. Both use OpenBot's hosted account, Signal,
-and TURN services. Their images publish no ports and have no bundled web client;
+The `home-core` OpenBot team server runs in the Ubuntu agents VM. It uses
+OpenBot's hosted account, Signal, and TURN services. The container publishes
+no ports and has no bundled web client;
 after sign-in, use the desktop/iPhone app or `https://openbot.run/app`.
 
 The Compose project pins the OpenBot 0.73.0 release by digest. The systemd
@@ -46,26 +45,6 @@ The login command asks for the account email and one-time code in the local
 terminal. It stores the server session only in OpenBot's `/data` keyring. Then
 sign in to the desktop/iPhone app or `openbot.run/app` with the same account and
 select the `home-core` server.
-
-The same service unit also owns an isolated `homecompute-openbot-operator`
-container with its own persistent `operator-data` directory. It is a separate
-OpenBot server, not another agent on the shared team server. Its Docker network
-has its own egress chain and permits only the same reviewed model, MCP, public
-HTTPS, DNS, and TURN destinations. The operator container has a 1 CPU / 2 GiB
-limit. Verify a fresh completed agents-VM backup and guest capacity before
-installing this source revision. Sign the server into the owner account using
-the interactive terminal command, then select **home-core-operator** in the
-client:
-
-```bash
-./scripts/setup-openbot-guest.sh login-operator
-```
-
-Create exactly one agent on that server and assign it the
-`config/openbot-agent-skills/infrastructure-operator.md` instructions. Keep its
-computer-use, local-scripts, routines, and other MCP connections disabled. The
-HomeCompute server connection is intentionally configured separately below;
-do not add it to the existing `home-core` team server.
 
 ## Models and teams
 
@@ -185,153 +164,73 @@ should include the six shared aliases. Remove the previous OpenClaw header from 
 OpenBot agent, so protect the key and delegated bearers as full household and
 workflow access. Revoke the `openbot-agent` key to withdraw LiteLLM catalog access.
 
-### Isolated infrastructure maintenance server
+### Infrastructure maintenance on the shared server
 
-The maintenance MCP alias is excluded from `all-harness-mcps` and the existing
-OpenBot team key. It belongs only on the separate `home-core-operator` server.
-After deploying the reviewed Home Core revision, install the maintenance
-controller from that exact checkout on Home Core. The first command prints
-the bundle digest for review. The install preserves the existing ledger.
+The `home-core` OpenBot server uses a distinct maintenance key and the
+`openbot-maintenance` native principal. The LiteLLM alias is excluded from
+`all-harness-mcps`. Every agent on `home-core` can use this connection, so use
+the local model for infrastructure tasks. Home Core enforces exact root
+approval for any restart. Tools expose bounded host and update metadata,
+Git upgrade proposals, and the supported restart plans.
 
-```bash
-sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts
-sudo python3 scripts/setup-infrastructure-maintenance.py --source scripts \
-  --bundle-sha256 REVIEWED_BUNDLE_SHA256
-```
-
-Prepare and review the native relay admission plan, then apply it with the
-explicit maintenance flag:
-
-```bash
-sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
-sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA --apply \
-  --expected-plan-sha256 PLAN_SHA256 --admit-openbot-maintenance
-```
-
-Provision a separate LiteLLM key restricted to `automation-moe` and the
-`homecompute_openbot_maintenance` server, then retrieve that key in the
-operator's terminal for the isolated server's provider and secure MCP settings:
+Use the normal Home Core release to install the maintenance controller and
+admit the relay principal. Existing deployments with a verified scoped
+maintenance alias already have those two pieces. Provision the separate team
+key from a clean, current published checkout:
 
 ```bash
 python3 scripts/provision-openbot-maintenance-key.py
-ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
-  hermes-operator@10.77.20.2 \
-  'cat ~/.config/homecompute-openbot-operator/secrets/litellm-api-key'
-sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA \
-  --export-openbot-maintenance-credential
 ```
 
-In **home-core-operator** Provider settings, add a custom OpenAI-compatible
-provider using `https://mcp.home.arpa/v1`, model `automation-moe`, and this
-dedicated key. The same key is required for the isolated maintenance MCP alias.
-On **home-core-operator** only, add a Streamable HTTP connection at
-`https://mcp.home.arpa/mcp` with both secure headers.
+In **home-core** only, add a separate **Streamable HTTP** connection named
+`homecompute-maintenance` at `https://llm.home.arpa/mcp`. Set all three headers
+in the secure connection fields:
 
-- `x-litellm-api-key: Bearer <OpenBot operator LiteLLM key>`
-- `x-mcp-homecompute_openbot_maintenance-authorization: Bearer <maintenance credential>`
+- `x-litellm-api-key: Bearer <team maintenance LiteLLM key>`
+- `x-mcp-servers: homecompute_openbot_maintenance`
+- `Authorization: Bearer <HomeCompute maintenance bearer>`
 
-The isolated server exposes eight tools. Use `homecompute_systems` and
-`homecompute_system_read` for health and update reports on Home Core and Home
-Spark. `homecompute_maintenance_proposal` returns Git upgrade evidence. The
-five remaining maintenance tools handle Home Core restart plans.
+The team key is in
+`~/.config/homecompute-openbot/secrets/maintenance-litellm-api-key` in the
+guest. Use the guarded `setup-hermes-mcp.py --export-openbot-maintenance-credential`
+command on Home Core from the active relay release to retrieve the separate
+bearer. Copy credentials directly from the private operator terminal. Verify
+that eight tools appear and ask the team agent to report health for each host
+and prepare a read-only Git upgrade proposal.
 
-The HomeCompute and LiteLLM credentials are each server-wide within
-`home-core-operator`. Keep one operator agent on that instance. Confirm the
-regular `home-core` server cannot list the maintenance alias or call the
-maintenance principal before enabling it.
+### Retire the duplicate server
 
-### Scoped operator rollout
+Stage the current reviewed published revision under
+`/srv/homecompute/releases/FULL_SHA` on Home Core to use the existing guarded
+VM backup utility. Verify a fresh encrypted VM backup in the active NAS
+repository. If a new snapshot is needed, use
+`backup-openbot-agents-vm.py backup --revision FULL_SHA --acknowledge-guest-pause`
+in the approved maintenance window.
 
-Use the scoped lifecycle when Home Core has a reviewed deployed release that
-cannot yet move to the current `master`. It stages published code and adds the
-single maintenance alias to the mounted LiteLLM configuration. The active
-Home Core and backup schedule continue to be owned by their existing release.
-The OpenBot guest installer keeps the running team image, Compose package
-and CA files. It briefly restarts OpenBot when it adds the isolated server.
-
-Start with a clean workstation checkout of the current published
-`origin/master`. On Home Core, stage the same full SHA in the versioned
-release directory. Use a previously staged directory only if its exact SHA,
-clean tree and `origin/master` provenance match. The staging step carries no
-deployment marker or current symlink update.
+From the same clean published workstation checkout, first switch the guest
+to the team-only release:
 
 ```bash
-revision=FULL_SHA
-release="/srv/homecompute/releases/$revision"
-sudo git clone --no-checkout --single-branch --branch master \
-  https://github.com/madslundt/HomeCompute.git "$release"
-sudo git -C "$release" checkout --detach "$revision"
-cd "$release"
-```
-
-The selected-state NAS schedule omits the agents VM. Arrange an attended
-guest pause before running the scoped backup. The script checks the active
-NAS lifecycle and immutable VM seed, stops the agents VM, stages its qcow2
-disk and seed on local storage, and resumes the VM before the image check
-and encrypted NAS upload. Budget space for the entire disk plus 2 GiB.
-Before pausing the VM, the backup stops the assistant-context sync timer
-and gives a running or queued scan up to five minutes to finish. It holds
-the timer through the NAS upload, snapshot verification, and staging cleanup.
-It restarts an originally active timer when the operation exits, including
-on failure or normal termination. A stopped timer stays stopped. If the
-script is forcibly killed and the timer was previously active, wait for
-the backup unit to stop, then restore the timer on home-core with
-`sudo systemctl start homecompute-assistant-context-sync.timer`.
-Verification checks that the snapshot contains the captured disk, seed,
-and manifest within the preceding 36 hours. Use the owner-approved window
-for the pause, since other agents in the VM also go offline during capture.
-
-```bash
-sudo systemd-run --unit=homecompute-openbot-vm-backup --wait --collect \
-  --property=RuntimeMaxSec=3h --setenv=PATH=/run/current-system/sw/bin \
-  /run/current-system/sw/bin/python3 "$release/scripts/backup-openbot-agents-vm.py" \
-  backup --revision "$revision" --acknowledge-guest-pause
-sudo python3 scripts/backup-openbot-agents-vm.py verify --revision "$revision"
-```
-
-Install the reviewed controller bundle and apply the native relay admission plan
-as described under [Isolated infrastructure maintenance server](#isolated-infrastructure-maintenance-server),
-using this staged release. The relay installer verifies the native tool inventory.
-
-Plan and apply the gateway overlay under the Home Core deployment lock. The
-planner binds the mounted configuration hash and current pinned image. On
-failure the gateway helper attempts to remount the previous configuration.
-A successful apply records the prior mount alongside the source and rendered
-hashes.
-
-```bash
-sudo python3 scripts/deploy-openbot-scoped-gateway.py plan --revision "$revision"
-sudo python3 scripts/deploy-openbot-scoped-gateway.py apply --revision "$revision" \
-  --expected-plan-sha256 REVIEWED_GATEWAY_PLAN_SHA256
-sudo python3 scripts/deploy-openbot-scoped-gateway.py verify --revision "$revision"
-```
-
-Then use the clean workstation checkout for guest installation, key
-provisioning and the interactive account sign-in.
-
-```bash
-./scripts/setup-openbot-guest.sh install-scoped
+./scripts/setup-openbot-guest.sh retire-operator
 ./scripts/setup-openbot-guest.sh status
-python3 scripts/provision-openbot-maintenance-key.py --scoped
-./scripts/setup-openbot-guest.sh login-operator-scoped
 ```
 
-Configure the isolated provider, connection, and agent as described above.
-Verify the eight tools through the scoped credential, a health report and
-a Git upgrade proposal. Confirm the shared server and model-only keys
-cannot discover or use the operator tools. After the owner approves one
-restart, verify its receipt and client path before routine use.
-
-If guest installation fails, the installer restores the prior team release's
-pointer, units and network assets and checks team health. The staged operator
-data is retained for inspection. To withdraw access after admission, use
-[Withdraw access](#withdraw-access) and restore the prior gateway mount from
-the same scoped release with the recorded receipt. Keep both private
-data directories under the backup and recovery lifecycle.
+The migration verifies the previous managed bundle and keeps the team image
+and team data directory. It briefly restarts the service. Confirm that
+existing team chats load and the new connection works before deleting the
+retired service. Sign out the retired server before the switch if it is still
+registered. Then revoke its old LiteLLM key and explicitly purge its stopped
+container, bridge, local credentials and data:
 
 ```bash
-sudo python3 scripts/deploy-openbot-scoped-gateway.py rollback --revision "$revision"
+python3 scripts/provision-openbot-maintenance-key.py --revoke-operator
+./scripts/setup-openbot-guest.sh purge-retired-operator
+./scripts/setup-openbot-guest.sh status
 ```
+
+The encrypted VM snapshots still follow the NAS retention policy. Rotate the
+native maintenance bearer if old credentials were exported or could remain
+accessible beyond the approved backup boundary.
 
 ### Propose upgrades in Git
 
@@ -375,9 +274,9 @@ through their workload runbooks.
 
 ### Withdraw access
 
-To withdraw access, remove the MCP connection from the isolated server, revoke
-the dedicated LiteLLM key, and remove the relay bearer through the guarded
-source installer on Home Core:
+To withdraw access, remove the maintenance connection from the shared
+server, revoke its dedicated LiteLLM key, and remove the relay bearer
+through the guarded source installer on Home Core:
 
 ```bash
 sudo python3 scripts/setup-hermes-mcp.py --revision FULL_SHA
@@ -414,19 +313,24 @@ ssh -J home-core -i ~/.ssh/id_ed25519_ai-services-01 \
   'sudo -n systemctl restart homecompute-openbot.service'
 ```
 
-For an image-only upgrade of an existing team-only deployment, use a clean
-checkout of the current published `origin/master` revision:
+OpenBot can prepare an upgrade proposal. For upgrades to OpenBot itself,
+review the release notes, resolve the Linux AMD64 image to an immutable
+digest, and update the matching pins in `compose.yaml` and
+`homecompute-openbot-health` through Git. From a clean checkout of the current
+published `origin/master` revision, review the plan before approving it in the
+operator terminal:
 
 ```bash
+./scripts/setup-openbot-guest.sh plan-team-image
 ./scripts/setup-openbot-guest.sh upgrade-team-image
 ./scripts/setup-openbot-guest.sh status
 ```
 
-The helper checks the current guest bundle against its source and checks the
+The upgrade runs as a guest systemd job that survives the OpenBot restart and
+records its result in the journal. The helper checks the current guest bundle against its source and checks the
 installed units and helpers against that bundle. It carries forward the existing
 systemd and network configuration, then installs the published image pin in a
-new guest release. Use the full installer to reconcile other guest changes or
-install the separately staged operator server.
+new guest release. Use the full installer to reconcile other guest changes.
 
 OpenBot keeps its database, credentials, keyring, workspaces, and logs together
 under `/data`. Before an image change, confirm an encrypted NAS backup that

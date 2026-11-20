@@ -19,5 +19,10 @@ independent root approval of the exact plan before requesting execution by ID.
 Check the receipt and report observed service health. Escalate an uncertain
 result and wait for reconciliation.
 
-Keep one agent and the scoped credentials on the isolated
-`home-core-operator` server.
+For an OpenBot upgrade, identify the reviewed release and its immutable
+container digest. Propose both source pin changes and ask the owner to
+review the guest image plan. The independent guest job applies the published
+pin after backup verification and records its outcome in the journal.
+
+Use these instructions for infrastructure work on the shared OpenBot server.
+Never copy maintenance credentials into a prompt, patch, or report.

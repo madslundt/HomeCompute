@@ -24,21 +24,19 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|install-scoped|verify-scoped|upgrade-team-image|login|login-operator|login-operator-scoped|status|configure-compression
+Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
          deployed revision. Managed upgrades preserve /data and refuse drift.
          This does not sign in to OpenBot or configure a provider.
-install-scoped  Add the isolated operator after verifying the scoped Core rollout
-                and encrypted VM backup. The team image and package pin must match.
-verify-scoped   Verify the scoped Core gateway and current VM backup.
-upgrade-team-image  Apply only the published image pin to the managed team-only release.
+retire-operator  Switch to the team-only release with a verified VM backup.
+purge-retired-operator  Delete the retired instance’s local state after verification.
+plan-team-image  Show the deployed and published image digests for review.
+upgrade-team-image  Apply the published image pin in a guest systemd job.
 status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
-login-operator  Sign the isolated operator server into the same owner account.
-login-operator-scoped  Sign in after verifying the scoped rollout.
 EOF
 }
 
@@ -75,13 +73,13 @@ require_current_master_checkout() {
   }
 }
 
-require_scoped_release() {
+require_fresh_vm_backup() {
   require_current_master_checkout
   local revision release
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   release="/srv/homecompute/releases/$revision"
   ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core \
-    "sudo -n python3 $release/scripts/deploy-openbot-scoped-gateway.py verify --revision $revision && sudo -n python3 $release/scripts/backup-openbot-agents-vm.py verify --revision $revision"
+    "sudo -n python3 $release/scripts/backup-openbot-agents-vm.py verify --revision $revision"
 }
 
 configure_compression() {
@@ -97,8 +95,19 @@ image_pin() {
     awk '$1 == "image:" && !found++ { print $2 }'
 }
 
-upgrade_team_image() {
+plan_team_image() {
   require_current_master_checkout
+  local revision image running
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  image="$(image_pin "$revision")"
+  running="$(ssh_guest 'docker inspect --format "{{.Config.Image}}" homecompute-openbot')"
+  local pin_pattern='^ghcr[.]io/nightly-labs/openbot@sha256:[0-9a-f]{64}$'
+  [[ "$running" =~ $pin_pattern && "$image" =~ $pin_pattern ]]
+  printf 'Revision: %s\nRunning: %s\nPublished: %s\n' "$revision" "$running" "$image"
+}
+
+upgrade_team_image() {
+  require_fresh_vm_backup
   local revision previous base old_image new_image asset source filename checksum manifest
   local pin_pattern='^ghcr[.]io/nightly-labs/openbot@sha256:[0-9a-f]{64}$'
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
@@ -141,8 +150,13 @@ upgrade_team_image() {
   done
   # Pass a single shell-safe token to preserve the manifest across SSH.
   manifest="$(printf '%s' "$manifest" | base64 | tr -d '\n')"
-  ssh_guest bash -s -- "$REMOTE_BASE" "$previous" "$base" "$revision" "$old_image" "$new_image" "$manifest" <<'REMOTE_IMAGE'
+  local job_script
+  job_script="$(ssh_guest 'umask 077; mktemp /tmp/homecompute-openbot-image.XXXXXXXX')"
+  [[ "$job_script" =~ ^/tmp/homecompute-openbot-image[.][a-zA-Z0-9]{8}$ ]]
+  ssh_guest "cat > $job_script" <<'REMOTE_IMAGE'
 set -Eeuo pipefail
+umask 077
+rm -f -- "$0"
 root="$1"; previous="$2"; base="$3"; revision="$4"; old_image="$5"; image="$6"
 image_releases="$root/releases/team-image"
 old="$root/releases/$previous"
@@ -211,6 +225,13 @@ sudo -n systemctl start homecompute-openbot.service
 sudo -n /usr/local/libexec/homecompute-openbot-health
 docker exec homecompute-openbot openbot version
 REMOTE_IMAGE
+  local unit="homecompute-openbot-image-$revision"
+  printf 'Guest upgrade unit: %s.service\n' "$unit"
+  ssh_guest sudo -n systemd-run --wait --collect --uid=hermes-operator \
+    --property=RuntimeMaxSec=20min --property=StandardOutput=journal \
+    --property=StandardError=journal --unit="$unit" \
+    /usr/bin/bash "$job_script" "$REMOTE_BASE" "$previous" "$base" "$revision" \
+    "$old_image" "$new_image" "$manifest"
 }
 
 render_team_pin() {
@@ -227,19 +248,15 @@ status() {
 }
 
 login_server() {
-  if [[ "${3:-full}" == scoped ]]; then
-    require_scoped_release
-  else
-    require_published_release
-  fi
+  require_published_release
   ssh -tt -J home-core -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -i "$KEY_FILE" \
     "$GUEST" "sudo -n docker exec -it $1 openbot login --name $2"
 }
 
 install_openbot() {
   local mode="${1:-full}"
-  if [[ "$mode" == scoped ]]; then
-    require_scoped_release
+  if [[ "$mode" == retire ]]; then
+    require_fresh_vm_backup
   else
     require_published_release
   fi
@@ -320,6 +337,7 @@ if test -e "$current" || test -L "$current"; then
     }
   fi
   if docker inspect homecompute-openbot-operator >/dev/null 2>&1; then
+    [[ "$mode" == retire ]] || { echo 'Use retire-operator for an existing operator.' >&2; exit 1; }
     project="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' homecompute-openbot-operator)"
     service="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' homecompute-openbot-operator)"
     [[ "$project" == homecompute-openbot && "$service" == openbot_operator ]] || {
@@ -357,7 +375,7 @@ command -v apt-get >/dev/null
 test "$(dpkg --print-architecture)" = "$compose_architecture"
 installed_compose_version="$(dpkg-query -W -f='${Version}' "$compose_package" 2>/dev/null || true)"
 if test "$installed_compose_version" != "$compose_version"; then
-  [[ "$mode" != scoped ]] || { echo 'Scoped install requires the existing pinned Compose package.' >&2; exit 1; }
+  [[ "$mode" != retire ]] || { echo 'Operator retirement preserves the installed Compose package.' >&2; exit 1; }
   sudo -n apt-get update -qq
   package_dir="$(mktemp -d /tmp/homecompute-openbot-compose.XXXXXX)"
   trap 'rm -rf "$package_dir"' EXIT
@@ -386,7 +404,7 @@ bundle="$stage/agent-ca-bundle.pem"
 # Keep public roots for hosted services and add the private gateway root for agents.
 cat /etc/ssl/certs/ca-certificates.crt "$root_ca" > "$bundle"
 openssl verify -CAfile "$bundle" "$root_ca" >/dev/null
-if [[ "$mode" == scoped ]]; then
+if [[ "$mode" == retire ]]; then
   exec 9>"$base/image-upgrade.lock"
   flock -n 9
   previous="$(readlink -f "$base/current")"
@@ -394,17 +412,18 @@ if [[ "$mode" == scoped ]]; then
   expected_image="$(awk '$1 == "image:" && !found++ { print $2 }' "$stage/compose.yaml")"
   [[ "$expected_image" =~ ^ghcr[.]io/nightly-labs/openbot@sha256:[0-9a-f]{64}$ ]] || exit 1
   [[ "$expected_image" == "$(sudo -n docker inspect --format '{{.Config.Image}}' homecompute-openbot)" ]] || {
-    echo 'Scoped install preserves the team image.' >&2; exit 1;
+    echo 'Operator retirement preserves the team image.' >&2; exit 1;
   }
   sudo -n systemctl --quiet is-active homecompute-openbot.service
   sudo -n systemctl --quiet is-active homecompute-openbot-firewall.service
   if [[ "$previous" == "$release" ]]; then
     sudo -n /usr/local/libexec/homecompute-openbot-health
+    rm -rf -- "$stage"
     exit 0
   fi
   cmp -s "$root_ca" /etc/homecompute-openbot/home-core-root.crt
   cmp -s "$bundle" /etc/homecompute-openbot/agent-ca-bundle.pem
-  rollback_scoped() {
+  restore_previous_release() {
     trap - EXIT
     trap '' HUP INT TERM
     set +e
@@ -429,9 +448,12 @@ if [[ "$mode" == scoped ]]; then
     echo 'Previous OpenBot guest release restored; preserve operator data for review.' >&2
     exit 1
   }
-  trap rollback_scoped EXIT
+  trap restore_previous_release EXIT
   trap 'exit 1' HUP INT TERM
+  # Stop the old unit before replacing its firewall helper. Its ExecStop
+  # removes both the original team chain and the operator chain.
   sudo -n systemctl stop homecompute-openbot.service
+  sudo -n systemctl stop homecompute-openbot-firewall.service
 else
   sudo -n systemctl stop homecompute-openbot.service >/dev/null 2>&1 || true
 fi
@@ -446,7 +468,7 @@ done
 sudo -n chmod 0644 "$release/compose.yaml" "$release/seccomp.json" "$release/homecompute-openbot.service" "$release/homecompute-openbot-firewall.service" "$release/openbot-network.json" "$release/openbot-install.json"
 sudo -n chmod 0755 "$release/network-policy.py" "$release/homecompute-openbot-health" "$release/configure-openbot-hermes.py"
 sudo -n install -d -o root -g root -m 0755 /etc/homecompute-openbot /usr/local/libexec
-if [[ "$mode" != scoped ]]; then
+if [[ "$mode" != retire ]]; then
   sudo -n install -o root -g root -m 0444 "$root_ca" /etc/homecompute-openbot/home-core-root.crt
   sudo -n install -o root -g root -m 0444 "$bundle" /etc/homecompute-openbot/agent-ca-bundle.pem
 fi
@@ -462,12 +484,6 @@ fi
 test ! -L "$base/data"
 test "$(stat -c %a "$base/data")" = 700
 test "$(stat -c %u "$base/data")" = 1000
-if test ! -e "$base/operator-data" && test ! -L "$base/operator-data"; then
-  install -d -o hermes-operator -g hermes-operator -m 0700 "$base/operator-data"
-fi
-test ! -L "$base/operator-data"
-test "$(stat -c %a "$base/operator-data")" = 700
-test "$(stat -c %u "$base/operator-data")" = 1000
 ln -sfnT "$release" "$base/current"
 sudo -n systemctl daemon-reload
 sudo -n systemctl enable homecompute-openbot-firewall.service
@@ -477,20 +493,68 @@ sudo -n systemctl --no-pager --quiet is-active homecompute-openbot.service
 sudo -n /usr/local/libexec/homecompute-openbot-health
 trap - EXIT HUP INT TERM
 rm -rf "$stage"
-echo 'OpenBot installed and digest-pinned. Account sign-in and model-provider setup remain pending.'
+echo 'OpenBot team server is running the published image.'
 REMOTE_INSTALL
+}
+
+purge_retired_operator() {
+  require_fresh_vm_backup
+  local revision
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  ssh_guest bash -s -- "$REMOTE_BASE" "$revision" <<'REMOTE_PURGE'
+set -Eeuo pipefail
+base="$1"; revision="$2"
+exec 9>"$base/image-upgrade.lock"
+flock -n 9
+release="$base/releases/$revision"
+test "$(readlink -f "$base/current")" = "$release"
+cd "$release"
+test "$(docker compose --file compose.yaml config --services)" = openbot
+sudo -n systemctl --quiet is-active homecompute-openbot.service
+sudo -n systemctl --quiet is-active homecompute-openbot-firewall.service
+sudo -n /usr/local/libexec/homecompute-openbot-health
+mount_source="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' homecompute-openbot)"
+test "$mount_source" = "$base/data"
+test -d "$base/data" && test ! -L "$base/data"
+team_inode="$(stat -c '%d:%i' "$base/data")"
+# Revoke the operator’s old gateway key before deleting its only local copy.
+test ! -e "$HOME/.config/homecompute-openbot-operator/secrets/litellm-api-key"
+operator=homecompute-openbot-operator
+if docker inspect "$operator" >/dev/null 2>&1; then
+  test "$(docker inspect --format '{{.State.Running}} {{index .Config.Labels "com.docker.compose.project"}} {{index .Config.Labels "com.docker.compose.service"}}' "$operator")" = 'false homecompute-openbot openbot_operator'
+  docker rm "$operator" >/dev/null
+fi
+if docker network inspect "$operator" >/dev/null 2>&1; then
+  test "$(docker network inspect --format '{{index .Labels "com.docker.compose.project"}} {{index .Labels "com.docker.compose.network"}} {{len .Containers}}' "$operator")" = 'homecompute-openbot openbot_operator 0'
+  docker network rm "$operator" >/dev/null
+fi
+# Delete only the retired instance’s local state. Never follow substituted
+# paths or remove a directory that is a mount point or aliases team state.
+for path in "$base/operator-data" "$HOME/.config/homecompute-openbot-operator"; do
+  test ! -L "$path"
+  if test -e "$path"; then
+    test -d "$path" && test "$(realpath -e "$path")" = "$path"
+    ! mountpoint -q "$path"
+    test "$(stat -c '%d:%i' "$path")" != "$team_inode"
+  fi
+done
+sudo -n rm -rf --one-file-system -- "$base/operator-data" "$HOME/.config/homecompute-openbot-operator"
+test ! -e "$base/operator-data" && test ! -e "$HOME/.config/homecompute-openbot-operator"
+test "$(stat -c '%d:%i' "$base/data")" = "$team_inode"
+sudo -n /usr/local/libexec/homecompute-openbot-health
+printf '%s\n' 'Removed the retired OpenBot instance and verified the team data mount.'
+REMOTE_PURGE
 }
 
 main() {
   [[ $# == 1 ]] || { usage >&2; return 2; }
   case "$1" in
     install) install_openbot ;;
-    install-scoped) install_openbot scoped ;;
-    verify-scoped) require_scoped_release ;;
+    retire-operator) install_openbot retire ;;
+    purge-retired-operator) purge_retired_operator ;;
+    plan-team-image) plan_team_image ;;
     upgrade-team-image) upgrade_team_image ;;
     login) login_server homecompute-openbot home-core ;;
-    login-operator) login_server homecompute-openbot-operator home-core-operator ;;
-    login-operator-scoped) login_server homecompute-openbot-operator home-core-operator scoped ;;
     status) status ;;
     configure-compression) configure_compression ;;
     -h|--help|help) usage ;;

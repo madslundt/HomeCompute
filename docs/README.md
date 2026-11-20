@@ -179,6 +179,7 @@ then reconcile the older note rather than silently carrying both conclusions.
 | [ADR-036](adr/036-share-lite-llm-mcp-catalog-across-harnesses.md) | Share the full configured LiteLLM MCP catalog with enrolled harnesses using separate client keys |
 | [ADR-037](adr/037-openbot-infrastructure-maintenance.md) | Isolate OpenBot infrastructure maintenance behind a dedicated server and scoped plan tools |
 | [ADR-038](adr/038-openbot-git-proposals-and-restarts.md) | Use the isolated OpenBot operator for observations, Git upgrade proposals, and approved service restarts |
+| [ADR-039](adr/039-shared-openbot-maintenance.md) | Use the primary OpenBot server for bounded maintenance with independent approval and guest upgrades |
 
 ## Research and model evidence
 
