@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import runpy
+import subprocess
 import unittest
 from unittest.mock import Mock, patch
 
@@ -21,6 +22,14 @@ class PersonalModelsTest(unittest.TestCase):
             {"id": f"agent-00000000-0000-0000-0000-{index:012x}", "name": agent["existing_names"][0]}
             for index, agent in enumerate(self.targets)
         ]
+
+    def test_cli_passes_a_mode_to_the_personal_models_subcommand(self):
+        command = ROOT / "scripts/setup-openbot-guest.sh"
+        result = subprocess.run(
+            ["bash", str(command), "personal-models", "invalid"], capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Use personal-models plan, apply or rollback.", result.stderr)
 
     def test_missing_agent_stops_before_any_updates(self):
         request = Mock(return_value=self.roster[:-1])
