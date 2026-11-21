@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "default_agent": "opencode2",
+  "default_model": "homecompute/automation-moe",
+  "projects": [
+    {
+      "id": "homecompute",
+      "name": "HomeCompute",
+      "po": "HomeCompute PO",
+      "repository": "madslundt/HomeCompute",
+      "base": "master",
+      "context": "Operate a local-first AI platform spanning Home Core services and Home Spark inference. Maintain the roadmap and technical priorities. Read AGENTS.md, CONTRIBUTING.md, SECURITY.md, the owning runbook and relevant ADRs. Git is authoritative. Verify the owning lifecycle, scoped credentials, backup and rollback requirements. Leave release and live operations to the owner.",
+      "review_cron": "0 9 * * 1-5"
+    },
+    {
+      "id": "chessmate",
+      "name": "ChessMate",
+      "po": "ChessMate PO",
+      "repository": "madslundt/ChessMate",
+      "base": "main",
+      "context": "Maintain the roadmap for self-hosted chess play, analysis and progressive training. Consult the React, FastAPI, python-chess, Stockfish and PostgreSQL architecture and repository tests. Keep chess legality and evaluation grounded in the deterministic engine. Use synthetic games and profiles.",
+      "review_cron": "15 9 * * 1-5"
+    },
+    {
+      "id": "daythread",
+      "name": "Daythread",
+      "po": "Daythread PO",
+      "repository": "madslundt/Daythread",
+      "base": "main",
+      "context": "Maintain the roadmap for private audio capture, transcription, source-linked recall, summaries and diary workflows. Track architecture and decisions in the public application repository. Use synthetic audio, transcripts and identities. Review client and server compatibility, localization and retention implications. This project admission covers the public Daythread repository.",
+      "review_cron": "30 9 * * 1-5"
+    }
+  ],
+  "specialists": {
+    "lead-engineer": {
+      "name": "Lead Engineer",
+      "agent": "opencode2",
+      "optional_agent": "codex",
+      "instructions": "Review the architecture, security boundaries, compatibility, failure modes and proposed diff. Read and inspect source and tests. Report blocking findings with file references. Use Codex only when the owner approves the task, provider and data."
+    },
+    "engineer": {
+      "name": "Engineer",
+      "agent": "opencode2",
+      "instructions": "Implement only the assigned acceptance criteria in the allocated worktree. Read and edit source, run scoped checks and commit locally. Return the worktree, branch, commits, test results and scope changes to the PO."
+    },
+    "researcher": {
+      "name": "Researcher",
+      "agent": "opencode2",
+      "instructions": "Read project docs and primary sources available within the approved network. Cite evidence and distinguish findings from inferences. Report gaps when a source cannot be reached. Ask for approval before sending project context to an external research service."
+    },
+    "ux-designer": {
+      "name": "UX Designer",
+      "agent": "opencode2",
+      "instructions": "Review navigation, flows, copy, accessibility, error recovery and keyboard and touch interaction. Read available product and UI source and use synthetic scenarios. Return recommendations and acceptance checks."
+    },
+    "ui-designer": {
+      "name": "UI Designer",
+      "agent": "opencode2",
+      "instructions": "Review visual hierarchy, responsive layouts, typography and usable states. Read existing design tokens and UI components. Return implementation guidance and examples within the project design system."
+    },
+    "qa-engineer": {
+      "name": "QA Engineer",
+      "agent": "opencode2",
+      "instructions": "Independently inspect the implementation worktree and run relevant checks on synthetic fixtures. Verify each acceptance criterion. Report reproducible failures, untested behavior and exact check results to the PO."
+    }
+  }
+}

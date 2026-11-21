@@ -1,0 +1,44 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+# Only the control-plane Caddy can enter the runtime through this listener.
+http://:6768 {
+	bind 172.28.219.3
+	@edge remote_ip 172.28.219.2
+	handle @edge {
+		reverse_proxy orca:6768 {
+			# The outer Caddy already checked the host and browser Origin.
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-Host orca.home.arpa
+		}
+	}
+	respond 403
+}
+
+http://:18080 {
+	bind 172.28.218.3
+	respond /health 204
+	@localInference expression `(method('GET') && path('/v1/models')) || (method('POST') && path('/v1/chat/completions'))`
+	handle @localInference {
+		request_body {
+			max_size 8MB
+		}
+		reverse_proxy https://172.28.219.2:8443 {
+			header_up -*
+			header_up Host llm.home.arpa
+			header_up Content-Type application/json
+			header_up Accept "application/json, text/event-stream"
+			header_up Authorization "Bearer {env.ORCA_LITELLM_KEY}"
+			transport http {
+				tls_server_name llm.home.arpa
+				tls_trust_pool file /run/orca/home-core-root.crt
+				dial_timeout 3s
+				response_header_timeout 10m
+			}
+		}
+	}
+	respond 404
+}

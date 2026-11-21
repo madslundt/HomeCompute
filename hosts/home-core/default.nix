@@ -39,6 +39,7 @@ in
     ../../modules/nixos/storage.nix
     ../../modules/nixos/backups.nix
     ../../modules/nixos/nas-recovery-backup.nix
+    ../../modules/nixos/orca-backup.nix
     ../../modules/nixos/immich.nix
     ../../modules/nixos/secrets.nix
   ];
