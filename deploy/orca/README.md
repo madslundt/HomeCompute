@@ -156,9 +156,10 @@ roles here instantiate as workers per task and the POs hold durable project
 memory. The bot folders hold Orca's SOUL and MEMORY files.
 
 Public repository cloning and public issue, PR and check-run reads work
-without a GitHub token. GitHub Projects owns priority. Public REST results
-cover repository metadata, and weekly summaries explicitly report that board
-status is unavailable until a scoped Projects read grant exists.
+without a GitHub token. GitHub Projects owns priority. The [team setup guide](../../docs/research/orca-team-setup-2026-11-21.md)
+covers role boundaries, independent review, worktree browser checks and
+attended Claude Teams. The four project Groups keep their existing PO, worktrees
+and memory. Keep the three specialist roles in task-scoped workers.
 
 Orca posts weekly reviews to the four bot chats on Monday at 09:00, 09:15,
 09:30 and 09:45 Europe/Copenhagen. Reconciliation converts the matching legacy
@@ -205,9 +206,90 @@ off with the same installer and `disable`. Verify sign-in and a synthetic
 manual request before assigning Codex to Developer or Reviewer. Keep schedules and
 routine work on the local model. Cloud prompts and files go to the chosen
 provider. Select it explicitly for each approved task and use only cleared
-data. Claude Code needs its own install and sign-in in this trust boundary.
-Telemetric reporting is disabled in the pilot, and Orca Cloud sign-in and
+data. Telemetric reporting is disabled in the pilot, and Orca Cloud sign-in and
 connections are unconfigured.
+
+## Claude Code and worktree browser
+
+The image pins Claude Code 2.1.323 to the SHA-256 in Anthropic's verified
+release manifest. The browser uses Chromium Headless Shell
+156.0.8078.79 from a signed Debian snapshot and the same-version Orca
+`agent-browser` driver extracted from the verified Orca Debian package.
+The driver lives in Orca's external dependency lookup path so the headless
+runtime retains its release identity. [Anthropic binary verification](https://code.claude.com/docs/en/setup#binary-integrity-and-code-signing)
+
+Use Claude as an explicit Developer or Reviewer selection after account
+sign-in and a synthetic smoke test. The default PO and scheduled reviews use
+local OpenCode. Start an approved Claude task in its own worktree and choose
+Ask. For attended Claude Teams, open the worktree terminal and use Orca's
+`orca claude-teams` command with separate read-only tasks for the first run.
+[Orca Agent Teams](https://orca.dev/docs/agents/supported)
+
+Enable the Anthropic login and API hosts on Home Core before signing in.
+This enables only the Claude egress selection and retains the independent
+Codex selection. Open the authorization URL on the owner's trusted browser.
+
+```sh
+ssh home-core 'sudo bash /srv/homecompute/current/scripts/set-orca-cloud-egress.sh claude enable'
+ssh -t home-core 'sudo docker exec -it homecompute-orca-orca-1 orca account add --agent claude'
+ssh home-core 'sudo docker exec homecompute-orca-orca-1 claude --version'
+ssh home-core 'sudo docker exec homecompute-orca-orca-1 orca agent installed'
+```
+
+After signing in, start one owner-approved Claude chat with a synthetic
+prompt in a project worktree, verify the expected response, and inspect
+the account in Orca. To withdraw network access, use the same egress
+tool with `claude disable`, or remove the Claude account through Orca
+to withdraw authentication. Connectors and optional telemetry are disabled.
+[Claude network requirements](https://code.claude.com/docs/en/network-config)
+
+For UI work, start the project fixture on loopback inside the worktree.
+Use `orca tab create --headless --url http://127.0.0.1:PORT/`, `orca snapshot`, and
+`orca screenshot` from that worktree. Verify the actual render in addition
+to checking Orca's runtime status. The browser shares the restricted Orca
+container network and is intended for synthetic fixtures and approved data.
+Keep personal browser profiles, cookies and account sign-ins outside it.
+[Orca browser commands](https://orca.dev/docs/cli/reference)
+
+## Read-only GitHub Projects
+
+Declare each approved board owner in the corresponding [team entry](teams.json).
+For a personal board use `"github_project": {"kind": "user", "owner": "OWNER"}`.
+For an organization use `"kind": "organization"`. The owner binds the exact
+board number during credential provisioning. Multiple teams may share a board.
+Each projection uses that team's exact public repository. A team without
+a board configured keeps reading public repository metadata.
+
+The dedicated reader polls every 15 minutes through the existing GitHub
+proxy. It issues a fixed GraphQL query and publishes up to 40 open issue/PR
+references with the board's Status and Priority fields, followed by a flag
+if additional results exist. The reader drops items for other repositories,
+private repositories and draft cards. Orca's agent container mounts only the
+snapshot directory read-only. It ignores snapshots when the board or
+repository differs from the manifest or the snapshot is older than 30 minutes.
+
+After deploying the board mappings, create a dedicated classic GitHub token
+with only `read:project`, an expiry, and access to the approved boards. Use
+the owner's private terminal to enter it with hidden input. The provisioner
+verifies the exact GitHub-reported scope and queries each selected board
+number before installing the credential and board bindings. Keep it out of chat, command arguments and Git.
+[GitHub Projects authentication](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication)
+
+```sh
+ssh -t home-core 'sudo python3 /srv/homecompute/current/deploy/orca/github-projects.py provision'
+ssh home-core 'sudo docker restart homecompute-orca-orca-projects-1'
+ssh home-core 'sudo docker exec homecompute-orca-orca-1 orca-reconcile-schedules'
+```
+
+Check `github_projects_status` from `orca-project-status PROJECT_ID` for each
+team and inspect a completed weekly review in Orca. An expired or revoked grant
+falls back to public repository metadata. Revoke an unused token in GitHub and use the same provisioner for rotation.
+Restart the reader after revocation so it replaces the cached snapshot.
+The external credential and board bindings can be reprovisioned after restore.
+When rolling back to an earlier release that predates this reader, remove the
+`orca-projects` service from the active Compose project with
+`docker compose -f /srv/homecompute/current/deploy/orca/compose.yaml rm -sf orca-projects`
+using the active `ORCA_RELEASE` value, then deploy the prior release.
 
 ## Backup, upgrade and rollback
 

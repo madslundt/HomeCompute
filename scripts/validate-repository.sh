@@ -67,6 +67,7 @@ shell_files=(
   "$REPO_ROOT/scripts/deploy-t3code.sh"
   "$REPO_ROOT/scripts/backup-orca.sh"
   "$REPO_ROOT/scripts/set-orca-codex-egress.sh"
+  "$REPO_ROOT/scripts/set-orca-cloud-egress.sh"
   "$REPO_ROOT/deploy/orca/gateway-entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-podwave.sh"
   "$REPO_ROOT/scripts/immich-db-backup.sh"

@@ -17,6 +17,7 @@ API = "https://api.github.com"
 PAGE_SIZE = 50
 BOT_ROOT = Path("/data/profile/bots")
 SNAPSHOT = "project-status.json"
+BOARDS = Path("/etc/homecompute-orca/github-projects")
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -63,11 +64,31 @@ def review(repository):
     }
 
 
-def save_review(repository, destination):
+def board_status(project):
+    fallback = {"github_projects_status": "unavailable: repository metadata only"}
+    if not (entry := project.get("github_project")):
+        return fallback
+    if not re.fullmatch(r"[a-z0-9-]+", project["id"]):
+        raise ValueError("unexpected project ID")
+    try:
+        with (BOARDS / (project["id"] + ".json")).open("rb") as file:
+            snapshot = json.loads(file.read(64_000))
+        timestamp = datetime.fromisoformat(snapshot["captured_at"])
+        age = (datetime.now(timezone.utc) - timestamp).total_seconds()
+        if (snapshot["repository"] == project["repository"] and snapshot.get("board") == entry
+                and snapshot["status"] == "available" and 0 <= age <= 1800):
+            return {"github_projects_status": "available", "github_projects": snapshot}
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return fallback
+
+
+def save_review(project, destination):
+    repository = project["repository"]
     summary = {
         "repository": repository,
         "captured_at": datetime.now(timezone.utc).isoformat(),
-        "github_projects_status": "unavailable: repository metadata only",
+        **board_status(project),
     }
     try:
         summary.update(review(repository))
@@ -95,15 +116,16 @@ def main():
     parser.add_argument("--save-review", action="store_true",
                         help="Write the weekly precheck snapshot inside the bot home.")
     args = parser.parse_args()
-    repository = projects[args.project]["repository"]
+    project = projects[args.project]
+    repository = project["repository"]
     try:
         if args.save_review:
             destination = Path.cwd().resolve()
             if destination.parent != BOT_ROOT or not (destination / "SOUL.md").is_file():
                 raise ValueError("expected an Orca bot home directory")
-            save_review(repository, destination)
+            save_review(project, destination)
         else:
-            print(json.dumps(review(repository), indent=2))
+            print(json.dumps({**board_status(project), **review(repository)}, indent=2))
     except (OSError, ValueError, KeyError):
         print("GitHub project metadata is unavailable.", file=sys.stderr)
         return 1

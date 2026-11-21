@@ -25,6 +25,12 @@ services:
         target: /data
         bind:
           create_host_path: false
+      - type: bind
+        source: /var/lib/homecompute/orca/github-projects/snapshots
+        target: /etc/homecompute-orca/github-projects
+        read_only: true
+        bind:
+          create_host_path: false
     tmpfs:
       - /tmp:rw,nosuid,nodev,size=512m,mode=1777
     networks:
@@ -112,6 +118,44 @@ services:
     cpus: 0.25
     mem_limit: 64m
     pids_limit: 64
+    logging:
+      driver: none
+
+  orca-projects:
+    image: python:3.12.15-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
+    init: true
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [python3, -B, /opt/orca/github-projects.py, serve]
+    depends_on:
+      orca-egress:
+        condition: service_healthy
+    environment:
+      HTTPS_PROXY: http://orca-egress:3128
+      https_proxy: http://orca-egress:3128
+    volumes:
+      - ./github-projects.py:/opt/orca/github-projects.py:ro
+      - ./teams.json:/opt/orca/teams.json:ro
+      - type: bind
+        source: /var/lib/homecompute/orca/github-projects/credentials
+        target: /run/orca-projects/credentials
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/homecompute/orca/github-projects/snapshots
+        target: /snapshots
+        bind:
+          create_host_path: false
+    networks:
+      runtime:
+        ipv4_address: 172.28.218.5
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 16
     logging:
       driver: none
 

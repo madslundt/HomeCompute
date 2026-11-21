@@ -36,6 +36,7 @@
       "po": "Daythread PO",
       "repository": "madslundt/Daythread",
       "base": "main",
+      "github_project": {"kind": "user", "owner": "madslundt"},
       "context": "Own private audio capture, Whisper and transcription, summaries, embeddings, retrieval and privacy. Use the public Daythread repository, synthetic audio, transcripts and identities. Review localization, retention and client/server compatibility. Keep production data and separate service repositories outside the workspace.",
       "review_cron": "45 9 * * 1"
     }
@@ -62,7 +63,7 @@
     "designer": {
       "name": "Designer",
       "agent": "opencode2",
-      "instructions": "Work only on UI or UX tasks. Use project design tokens, interaction and accessibility requirements, and approved design tools. Provide flows, responsive states, visual guidance and implementation acceptance criteria."
+      "instructions": "Work only on UI or UX tasks. Use project design tokens and accessibility requirements. Use Orca headless browser automation on a loopback fixture. Provide flows, responsive state evidence, visual guidance and implementation acceptance criteria."
     }
   },
   "backlog_authority": "GitHub Projects"
