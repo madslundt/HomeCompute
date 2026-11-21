@@ -123,7 +123,10 @@ reply at `medium` through the live scoped relay using disposable process state.
    backup and a clean checkout of the exact published and deployed revision.
    Run `./scripts/setup-openbot-guest.sh personal-models plan`, then `apply`.
    Verify the same agent IDs, provider, model and effort through the signed-in
-   owner Team client and use a synthetic Danish chat and tool request. Check
+   owner Team client and use a synthetic Danish chat and tool request.
+   OpenBot sends the saved per-agent effort on ACP turns. The embedded
+   Hermes CLI coerces the unknown config path's bare `none` to YAML null,
+   so use OpenBot's settings API for this rollout. Check
    separate Hermes service restart readiness before moving privileged jobs.
 4. Use the source definitions in [openbot-personal-team.json](../config/openbot-personal-team.json)
    to retain, rename and restrict the owner agents in place through the
