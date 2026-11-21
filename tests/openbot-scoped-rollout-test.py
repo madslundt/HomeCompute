@@ -100,6 +100,26 @@ class BackupTest(unittest.TestCase):
             self.assertIs(backup.live_nas(), nas)
         nas.root_directory.assert_called_once_with(backup.REPOSITORY)
 
+    def test_owner_snapshot_requires_fresh_private_owner_archive_identity(self):
+        snapshot = '2' * 64
+        path = '/var/lib/homecompute/openbot-scoped/owner-backup-ABCD1234/owner-data.tar'
+        value = {'snapshot': snapshot, 'path': path, 'sha256': 'e' * 64,
+                 'verified_at': datetime.now(timezone.utc).isoformat()}
+        nas = Mock()
+        nas.restic.return_value = json.dumps([
+            {'id': snapshot, 'paths': [path], 'tags': [backup.OWNER_TAG]},
+        ])
+        backup.verify_owner_snapshot(nas, value)
+        with self.assertRaisesRegex(ValueError, '36-hour'):
+            backup.verify_owner_snapshot(nas, {
+                **value, 'verified_at': (datetime.now(timezone.utc) - timedelta(hours=37)).isoformat(),
+            })
+        nas.restic.return_value = json.dumps([
+            {'id': snapshot, 'paths': [path], 'tags': [backup.TAG]},
+        ])
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            backup.verify_owner_snapshot(nas, value)
+
     def run_backup_with_sync(self, timer_state, sync_states, *, upload_error=None, drain_stuck=False):
         with tempfile.TemporaryDirectory() as work, ExitStack() as mocked:
             state = Path(work) / 'state'
