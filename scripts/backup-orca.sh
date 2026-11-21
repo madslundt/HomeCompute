@@ -15,10 +15,13 @@ container=homecompute-orca-orca-1
 state=/srv/state/orca
 archives=/srv/backups/agent-recovery/orca
 [[ -d "$state" && ! -L "$state" && $(stat -c %u:%g:%a "$state") == 12074:12074:700 ]] || exit 1
-if ! metadata=$(docker inspect --type container --format '{{.State.Running}} {{index .Config.Labels "com.docker.compose.project"}} {{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}} {{.RW}}{{end}}{{end}}' "$container" 2>/dev/null); then
-  printf 'Orca container is absent or unavailable; skipping backup.\n'
+known=$(docker ps --all --filter "name=^/${container}$" --format '{{.Names}}')
+if [[ -z "$known" ]]; then
+  printf 'Orca has no installed container; skipping backup.\n'
   exit 0
 fi
+[[ "$known" == "$container" ]]
+metadata=$(docker inspect --type container --format '{{.State.Running}} {{index .Config.Labels "com.docker.compose.project"}} {{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}} {{.RW}}{{end}}{{end}}' "$container")
 case "$metadata" in
   "true homecompute-orca $state true") running=true ;;
   "false homecompute-orca $state true") running=false ;;
@@ -53,6 +56,7 @@ tar -tzf "$partial" >/dev/null
 mv -nT -- "$partial" "$archive"
 [[ ! -e "$partial" && -s "$archive" ]]
 (cd "$archives" && sha256sum -- "$(basename "$archive")" > "$(basename "$archive").sha256")
+sync -f "$archives"
 printf 'Orca recovery archive recorded at %s\n' "$archive"
 # Retain two complete daily/upgrade archives locally. Restic owns off-host retention.
 find "$archives" -maxdepth 1 -type f -name 'orca-*.tar.gz' -printf '%f\n' |

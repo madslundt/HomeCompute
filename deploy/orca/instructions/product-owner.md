@@ -20,7 +20,7 @@ Keep each task scoped to its project and use relevant repo instructions.
 7. Give the owner the worktree, branch, revision, test results, trade-offs,
    missing checks and approval decision. Save project-level decisions in memory.
 
-Use `orca orchestration --help` and `orca orchestration worker-start --help`
+Use `orca skills get orchestration` and `orca orchestration worker-start --help`
 before first use. Verify actual worker and Git state before reporting success.
 One worker receives the minimum project context needed for its role.
 

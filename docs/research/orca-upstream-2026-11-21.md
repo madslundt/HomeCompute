@@ -35,3 +35,16 @@ OpenCode v1.19.6's global config uses `model: "homecompute/automation-moe"`, `en
 The pilot selects [OpenCode v2.3.2](https://github.com/anomalyco/opencode/releases/tag/v2.3.2) as Orca's `opencode2` agent. Its standalone v2 provider schema uses `providers`, the built-in OpenAI-compatible package and a model-specific request body. The verified Linux x64 digest is `563b5d663637226b6e3bb4bb6803281bc39b0d2cd88db06d674b6420aab009b0`. OpenCode 2.3.2 returned the expected synthetic response through the live TLS-verified HomeCompute gateway from the approved LAN using the same provider and settings. A separate live Chat Completions probe with forced tool use and xhigh reasoning returned the expected function and populated reasoning content. Those tests used synthetic inputs and the existing approved LAN route.
 
 A paired Chromium fixture also exercised the pinned native Group PO to native orchestration worker path. It observed a distinct Git worktree, a running structured OpenCode worker and a transcript returned by the orchestration CLI. The test used a local model fixture and temporary repository. Group and account settings use the host's native Chat surface and Ask permission, since the empty host profile defaults to terminal sessions and a broader launch permission.
+
+The pilot image also ran as UID 12074 with the declared read-only filesystem
+and seccomp profile. The source-controlled reconciler created all three
+configured OpenCode 2.3.2 POs and Groups in that disposable runtime. A second
+pass found the same records, and the schedule reconciler created three local
+disabled schedules. The HomeCompute metadata adapter successfully read public
+issues, PRs and CI from the fixture runtime. A stop, cold checksum-verified
+backup and offline restore recovered all three bot records, schedules and
+repository registrations. A separate Caddy fixture using the pilot proxy
+rules served the real web client over trusted fixture TLS, upgraded its
+WebSocket and refused a foreign Origin. The relay authenticated to a
+TLS-verified model gateway fixture and denied MCP and Responses paths.
+These are disposable checks, separate from Home Core rollout and client testing.

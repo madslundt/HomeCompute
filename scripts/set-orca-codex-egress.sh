@@ -21,15 +21,17 @@ overlay=(-f "$release/deploy/orca/codex.compose.yaml")
 marker=/var/lib/homecompute/orca/codex-egress-enabled
 [[ -d ${marker%/*} && ! -L ${marker%/*} && $(stat -c %u:%a "${marker%/*}") == 0:700 ]]
 [[ ! -L "$marker" ]]
-if [[ $1 == enable && ! -e "$marker" ]]; then
-  # Roll back to the default allowlist if the opt-in service is unhealthy.
+if [[ $1 == enable ]]; then
+  # Roll back an unsuccessful first enable to the default allowlist.
   if ! "${compose[@]}" "${overlay[@]}" up -d --no-deps --wait --wait-timeout 90 orca-egress; then
-    "${compose[@]}" up -d --no-deps --wait --wait-timeout 90 orca-egress
+    if [[ ! -e "$marker" ]]; then
+      "${compose[@]}" up -d --no-deps --wait --wait-timeout 90 orca-egress
+    fi
     exit 1
   fi
   install -m 0600 /dev/null "$marker"
-elif [[ $1 == disable ]]; then
-  rm -f -- "$marker"
+else
   "${compose[@]}" up -d --no-deps --wait --wait-timeout 90 orca-egress
+  rm -f -- "$marker"
 fi
 printf 'Orca Codex egress selection recorded.\n'

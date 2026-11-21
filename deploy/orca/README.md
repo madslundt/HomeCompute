@@ -138,12 +138,12 @@ Git worktree and give QA independent review input:
 ```sh
 orca orchestration worker-start --agent opencode2 --worktree new-top-level \
   --repo id:REPO_ID --setup skip --spec-file /data/projects/worker-spec.json
-orca orchestration worker-show WORKER_ID
-orca orchestration worker-read WORKER_ID --source transcript
+orca orchestration worker-show --dispatch DISPATCH_ID
+orca orchestration worker-read --dispatch DISPATCH_ID --source transcript
 ```
 
-Run `orca orchestration worker-start --help` from the PO's own Orca chat
-terminal context to see the required objective, task and run arguments. Use
+Run `orca skills get orchestration` from the PO's own chat context to load
+the guide bundled with the pinned CLI. Use
 the native worktree and orchestration identities in the handoff. Shared
 persistent Orca bots retain the same memory across Groups, so the shared
 roles here instantiate as workers per task and the POs hold durable project
@@ -160,8 +160,11 @@ sudo docker exec homecompute-orca-orca-1 orca-reconcile-schedules
 sudo docker exec homecompute-orca-orca-1 orca-project-status homecompute
 sudo docker exec homecompute-orca-orca-1 orca-project-status chessmate
 sudo docker exec homecompute-orca-orca-1 orca-project-status daythread
-sudo docker exec homecompute-orca-orca-1 orca-reconcile-schedules --enable
 sudo docker exec homecompute-orca-orca-1 orca automations list
+sudo docker exec homecompute-orca-orca-1 orca automations run REVIEW_AUTOMATION_UUID
+sudo docker exec homecompute-orca-orca-1 orca automations runs --id REVIEW_AUTOMATION_UUID
+# After reviewing each manual result:
+sudo docker exec homecompute-orca-orca-1 orca-reconcile-schedules --enable
 ```
 
 For GitHub writes, the PO drafts an issue or PR and gives the owner the
