@@ -620,6 +620,11 @@ REMOTE_PURGE
 }
 
 main() {
+  if [[ "${1:-}" == personal-models && $# -le 2 ]]; then
+    shift
+    personal_models "$@"
+    return
+  fi
   if [[ $# == 2 && "$1" == install-partner-profile ]]; then
     [[ -f "$2" && ! -L "$2" ]] || { echo 'Supply a reviewed local profile file.' >&2; return 2; }
     configure_partner_hermes --install-user-profile < "$2"
@@ -639,7 +644,6 @@ main() {
     login) login_server homecompute-openbot home-core ;;
     status) status ;;
     configure-compression) configure_compression ;;
-    personal-models) shift; personal_models "$@" ;;
     configure-model-gateway) configure_model_gateway ;;
     -h|--help|help) usage ;;
     *) usage >&2; return 2 ;;
