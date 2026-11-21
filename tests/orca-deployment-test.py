@@ -127,6 +127,8 @@ class OrcaDeploymentTest(unittest.TestCase):
         self.assertEqual(edit[:3], ("automations", "edit", "original-id"))
         self.assertIn("15 9 * * 1", edit)
         self.assertIn("/usr/local/bin/orca-project-status example --save-review", edit)
+        prompt = edit[edit.index("--prompt") + 1]
+        self.assertIn("/data/profile/bots/example-po/project-status.json", prompt)
 
     def test_open_code_has_explicit_queued_deep_lane(self):
         config = json.loads((DEPLOY / "opencode.json").read_bytes())
