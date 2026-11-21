@@ -1,11 +1,24 @@
 FROM node:24-bookworm@sha256:aca79828f8a4afc627f189387c965625bcc419233946210a3b9522d90a59b5c6
 
+# Debian's signed snapshot locks the browser dependency set for each release.
+RUN set -eux; \
+    printf '%s\n' \
+      'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian/20261121T190000Z/ bookworm main' \
+      'deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20261121T190000Z/ bookworm-security main' \
+      > /tmp/orca-browser.list; \
+    apt-get -o Dir::Etc::sourcelist=/tmp/orca-browser.list -o Dir::Etc::sourceparts=- update; \
+    apt-get -o Dir::Etc::sourcelist=/tmp/orca-browser.list -o Dir::Etc::sourceparts=- \
+      install -y --no-install-recommends chromium-headless-shell=156.0.8078.79-1~deb12u1 fonts-liberation; \
+    rm -rf /var/lib/apt/lists/* /tmp/orca-browser.list
+
 RUN set -eux; \
     cd /tmp; \
     curl -fLsS --retry 3 -o orca.tgz https://github.com/stablyai/orca/releases/download/v1.4.268/orca-server-linux-x64.tar.gz; \
     curl -fLsS --retry 3 -o orca-web.deb https://github.com/stablyai/orca/releases/download/v1.4.268/orca-ide_1.4.268_amd64.deb; \
     curl -fLsS --retry 3 -o opencode.tgz https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-linux-x64.tar.gz; \
     curl -fLsS --retry 3 -o codex.tgz https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-x86_64-unknown-linux-musl.tar.gz; \
+    curl -fLsS --retry 3 -o claude https://downloads.claude.ai/claude-code-releases/2.1.323/linux-x64/claude; \
+    echo '604d29a6869409106b6a1110bdadcc8b72e8654a5a865d23258f938a696e348e  claude' | sha256sum -c -; \
     echo '7e84701fb7e034de8d37050c7f96b6b36289fd0f777cbed4be471e6e2130a93f  orca.tgz' | sha256sum -c -; \
     echo 'ce08aa4bb05972ee3acc89f6c97ce6140c84014a14b0c7e70fe6ece1b40b28a7  orca-web.deb' | sha256sum -c -; \
     echo '563b5d663637226b6e3bb4bb6803281bc39b0d2cd88db06d674b6420aab009b0  opencode.tgz' | sha256sum -c -; \
@@ -13,7 +26,11 @@ RUN set -eux; \
     mkdir /opt/orca; \
     tar xzf orca.tgz --no-same-owner --strip-components=1 -C /opt/orca; \
     mkdir -p /opt/orca/out renderer-extract; \
-    dpkg-deb --fsys-tarfile orca-web.deb | tar x --no-same-owner -C renderer-extract ./opt/Orca/resources/app.asar.unpacked/out/renderer; \
+    dpkg-deb --fsys-tarfile orca-web.deb | tar x --no-same-owner -C renderer-extract \
+      ./opt/Orca/resources/app.asar.unpacked/out/renderer ./opt/Orca/resources/agent-browser-linux-x64; \
+    install -Dm 0755 renderer-extract/opt/Orca/resources/agent-browser-linux-x64 \
+      /opt/orca/orcad/node_modules/@agent-browser/cli-linux-x64-gnu/bin/agent-browser; \
+    install -m 0755 claude /usr/local/bin/claude; \
     mv renderer-extract/opt/Orca/resources/app.asar.unpacked/out/renderer /opt/orca/out/renderer; \
     test -s /opt/orca/out/renderer/web-index.html; \
     test -s /opt/orca/out/renderer/.orca-web-client-files.json; \
@@ -25,7 +42,7 @@ RUN set -eux; \
     ln -s /opt/orca/bin/orca-ide /usr/local/bin/orca-ide; \
     groupadd --gid 12074 orca; \
     useradd --uid 12074 --gid 12074 --home-dir /data --no-create-home --shell /bin/bash orca; \
-    rm -r orca.tgz orca-web.deb opencode.tgz codex.tgz renderer-extract
+    rm -r orca.tgz orca-web.deb opencode.tgz codex.tgz claude renderer-extract
 
 COPY opencode.json /etc/homecompute-orca/opencode.json
 COPY teams.json /etc/homecompute-orca/teams.json
@@ -35,6 +52,9 @@ COPY schedules.py /usr/local/bin/orca-reconcile-schedules
 
 ENV HOME=/data ORCA_USER_DATA_PATH=/data/profile \
     ORCA_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 \
+    ORCA_BROWSER_EXECUTABLE=/usr/bin/chromium-headless-shell \
+    DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    ENABLE_CLAUDEAI_MCP_SERVERS=false \
     OPENCODE_CONFIG=/etc/homecompute-orca/opencode.json \
     OPENCODE_DISABLE_PROJECT_CONFIG=true OPENCODE_DISABLE_MODELS_FETCH=true \
     OPENCODE_DISABLE_DEFAULT_PLUGINS=true GIT_TERMINAL_PROMPT=0
