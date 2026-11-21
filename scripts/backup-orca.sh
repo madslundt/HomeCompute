@@ -9,7 +9,7 @@ if [[ ${1:-} != --deployment-lock-held ]]; then
 else
   shift
 fi
-[[ $# == 0 && $EUID == 0 && $(hostname) == home-core ]] || exit 2
+[[ $# == 0 && $EUID == 0 && $(< /proc/sys/kernel/hostname) == home-core ]] || exit 2
 
 container=homecompute-orca-orca-1
 state=/srv/state/orca
