@@ -140,6 +140,12 @@ if [[ -f /var/lib/homecompute/paperclip/connector-egress-enabled ]]; then
   paperclip+=(-f "$release/deploy/paperclip/connector-egress.compose.yaml")
 fi
 podwave=(docker compose -f "$release/deploy/podwave/compose.yaml")
+export ORCA_RELEASE="$revision"
+orca=(docker compose -f "$release/deploy/orca/compose.yaml")
+if [[ -f /var/lib/homecompute/orca/codex-egress-enabled ]]; then
+  orca+=(-f "$release/deploy/orca/codex.compose.yaml")
+fi
+"${orca[@]}" config --quiet
 source "$release/scripts/lib/podwave-backup.sh"
 "${gateway[@]}" config --quiet
 "${paperclip[@]}" config --quiet
@@ -180,6 +186,8 @@ if [[ "$open_webui_ready" == true ]]; then
   "${open_webui[@]}" pull
 fi
 "${podwave[@]}" build --pull podwave
+"${orca[@]}" build orca
+"${orca[@]}" pull orca-gateway orca-egress
 edge_network=homecompute-control-plane_edge
 speech_proxies_to_restore=()
 if docker network inspect "$edge_network" >/dev/null 2>&1; then
@@ -222,6 +230,14 @@ python3 "$release/scripts/renew-gateway-certificate.py" --no-restart
 # Release Homepage's former LAN port 80 before the gateway claims it.
 "${homepage[@]}" up -d --wait --wait-timeout 180
 "${gateway[@]}" up -d --wait --wait-timeout 180
+python3 "$release/scripts/provision-orca-inference-key.py" "$revision"
+orca_image=$(docker inspect --format '{{.Config.Image}}' homecompute-orca-orca-1 2>/dev/null || true)
+if [[ -n "$orca_image" && "$orca_image" != "homecompute/orca:$revision" ]]; then
+  bash "$release/scripts/backup-orca.sh" --deployment-lock-held
+fi
+"${orca[@]}" up -d --wait --wait-timeout 180
+docker exec homecompute-control-plane-caddy-1 wget -qO /dev/null -T 10 \
+  http://172.28.219.3:6768/web-index.html
 # Network recreation can reinsert Docker's general masquerade rule.
 if systemctl is-active --quiet homecompute-agents-ai-proxy.service; then
   systemctl restart homecompute-agents-ai-proxy.service

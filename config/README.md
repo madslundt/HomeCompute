@@ -12,6 +12,7 @@ they do not use them as production configuration in place.
 | `model-catalog.json` | `scripts/model_registry.py` and the LiteLLM renderer | Immutable text artifacts, supported runtime profiles, deployment identities, endpoint environment names, lifecycle, and qualification evidence |
 | `capability-routes.json` | `scripts/model_registry.py` and the LiteLLM renderer | Stable capabilities, deployment mapping, local-only policy, context requirements, and named timeout profiles |
 | `openbot-network.json` | Home Core agents-VM firewall and OpenBot guest egress policy | Current OpenBot TURN relay IPv4s, exact TURN ports, and the local LiteLLM compatibility boundary |
+| `orca-dns.json` | Home LAN DNS | Private `orca.home.arpa` A record for the Orca coding workspace |
 | `mcp-gateway-dns.json` | Home LAN DNS | Private `llm.home.arpa` A record for the LiteLLM gateway; apply in UniFi DNS and verify from a client |
 | `ai-automation-manager-dns.json` | Home LAN DNS | Private `automations.home.arpa` A record for the AI automation manager; apply in UniFi DNS and verify from a client |
 | `paperclip-dns.json` | Home LAN DNS | Private `paperclip.home.arpa` A record for Paperclip; apply in UniFi DNS and verify from a client |

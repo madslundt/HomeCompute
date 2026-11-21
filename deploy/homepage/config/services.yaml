@@ -37,6 +37,12 @@
         href: https://t3code.home.arpa/
         description: Coding workspace · T3 Code pairing required
 
+    - Orca:
+        id: homecore-orca
+        icon: mdi-dolphin
+        href: https://orca.home.arpa/
+        description: AI development teams, coding agents and orchestration
+
     - AI automation manager:
         id: homecore-ai-automation-manager
         icon: mdi-clipboard-text-clock-outline
