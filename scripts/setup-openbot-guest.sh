@@ -24,7 +24,7 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression|configure-model-gateway
+Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression|configure-model-gateway|personal-models
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
@@ -38,6 +38,7 @@ status   Read guest systemd and container status without showing account data.
 login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
 configure-model-gateway  Verify keyless HTTPS and migrate the embedded Hermes model settings.
+personal-models [plan|apply|rollback]  Reconcile the three owner interactive model choices.
 install-partner          Install the independent household server from published master.
 status-partner           Show the household server state and installed revision.
 login-partner            Enroll the household server using its owner's email code.
@@ -102,6 +103,31 @@ configure_model_gateway() {
   revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
   git -C "$REPO_ROOT" show "$revision:scripts/configure-openbot-hermes.py" |
     ssh_guest python3 -
+}
+
+personal_models() {
+  local mode=${1:-plan} revision
+  case "$mode" in
+    plan) require_published_release ;;
+    apply|rollback)
+      require_published_release
+      revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+      ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core \
+        "sudo -n python3 /srv/homecompute/releases/$revision/scripts/backup-openbot-agents-vm.py verify-owner --revision $revision" ||
+        require_fresh_vm_backup
+      ;;
+    *) echo 'Use personal-models plan, apply or rollback.' >&2; return 1 ;;
+  esac
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  # shellcheck disable=SC2016 # Expand the private staging path on the guest.
+  git -C "$REPO_ROOT" archive "$revision" config/openbot-personal-team.json scripts/configure-openbot-personal-models.py |
+    ssh_guest 'set -eu
+      umask 077
+      stage="$(mktemp -d /tmp/homecompute-openbot-personal.XXXXXXXX)"
+      trap '\''rm -rf -- "$stage"'\'' EXIT
+      tar -xf - -C "$stage"
+      docker exec -i homecompute-openbot python3 -c "$(cat "$stage/scripts/configure-openbot-personal-models.py")" \
+        /dev/stdin '"$mode"' < "$stage/config/openbot-personal-team.json"'
 }
 
 install_partner() {
@@ -613,6 +639,7 @@ main() {
     login) login_server homecompute-openbot home-core ;;
     status) status ;;
     configure-compression) configure_compression ;;
+    personal-models) shift; personal_models "$@" ;;
     configure-model-gateway) configure_model_gateway ;;
     -h|--help|help) usage ;;
     *) usage >&2; return 2 ;;

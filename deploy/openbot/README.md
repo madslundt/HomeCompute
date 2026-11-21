@@ -357,6 +357,17 @@ back with `restic dump`, and retain the snapshot ID, archive path, and hash in
 the private backup receipt. Remove the temporary plaintext archive after
 verification. A fresh full agents-VM backup with OpenBot data also qualifies.
 
+The guarded `personal-models` command also accepts the attended owner-only
+backup. The root-only receipt at
+`/var/lib/homecompute/openbot-scoped/owner-backup.json` records `snapshot`,
+`path`, `sha256` and the UTC ISO-8601 value `verified_at` after checking the
+dumped archive. Use archive path
+`/var/lib/homecompute/openbot-scoped/owner-backup-XXXXXXXX/owner-data.tar` and
+the existing encrypted selected Restic repository and tag above. Record the
+receipt only after the owner service has resumed successfully. The verification
+command matches the encrypted snapshot and checks the receipt is at most
+36 hours old. These receipts and their contents stay outside Git.
+
 Keep the previous guest release and image until the replacement and backup
 have been verified. To recover from a data migration failure, stop the service
 and restore the entire pre-upgrade data archive into a separate directory first.

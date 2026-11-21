@@ -1,0 +1,91 @@
+{
+  "container": "homecompute-openbot",
+  "model": {
+    "provider": "hermes",
+    "model": "custom:automation-moe",
+    "reasoningEffort": "none"
+  },
+  "fast_local_agents": [
+    {
+      "existing_names": [
+        "Hermes"
+      ],
+      "role": "Personal Assistant",
+      "rollback_model": {
+        "provider": "hermes",
+        "model": "custom:automation-moe",
+        "reasoningEffort": "xhigh"
+      },
+      "responsibility": "Own mobile chat, owner memory, briefs and reminders. Relay reviewed specialist output to the owner."
+    },
+    {
+      "existing_names": [
+        "Home Planner",
+        "Life Planner"
+      ],
+      "role": "Life Planner",
+      "rollback_model": {
+        "provider": "hermes",
+        "model": "custom:automation-moe",
+        "reasoningEffort": "xhigh"
+      },
+      "responsibility": "Read approved calendars and family activities, identify conflicts and preparation needs, and request approval for changes."
+    },
+    {
+      "existing_names": [
+        "Home Assistant",
+        "Home Guardian",
+        "Home Assistant Product Owner"
+      ],
+      "role": "Home Guardian",
+      "rollback_model": {
+        "provider": "opencode",
+        "model": "homecompute-chatgpt/chatgpt-sol-latest",
+        "reasoningEffort": "high"
+      },
+      "responsibility": "Analyze scoped Home Assistant events, energy and host status. Keep actions behind existing deterministic Home Assistant and infrastructure controls."
+    }
+  ],
+  "researcher": {
+    "existing_name": "Researcher",
+    "role": "Public research and source verification",
+    "private_escalation": "Hermes local only"
+  },
+  "approval_policy": {
+    "access": "workspace",
+    "computer_use": false,
+    "auto_approve": false,
+    "implicit_cloud_fallback": false,
+    "personal_mcp_owner": "standalone Hermes owner profile"
+  },
+  "briefing": {
+    "agent": "Hermes",
+    "name": "Hverdagsbriefing",
+    "schedule": {
+      "kind": "weekdays",
+      "time": "07:00"
+    },
+    "timezone": "Europe/Copenhagen",
+    "instruction": "Brug kun verificerede, ejerspecifikke kilder. Opsummér dagens kalender, vigtige familieaktiviteter, opgaver og påmindelser, væsentlige Home Assistant-hændelser og softwareprojekter, der kræver min opmærksomhed. Højst fem handlingsrettede punkter. Angiv utilgængelige kilder. Udfør ingen handlinger og send ingen beskeder videre.",
+    "enable_after": "Verify the existing morning n8n owner delivery edge, establish one schedule owner, approve the scoped sources and verify synthetic OpenBot notification on the owner's iPhone."
+  },
+  "project_event_notice": {
+    "agent": "Hermes",
+    "repositories": [
+      "madslundt/HomeCompute",
+      "madslundt/House-battery",
+      "madslundt/ChessMate",
+      "madslundt/Daythread"
+    ],
+    "event": "pull_request",
+    "action": "ready_for_review",
+    "allowed_fields": [
+      "repository",
+      "number",
+      "html_url"
+    ],
+    "idempotency_key": "GitHub delivery ID",
+    "route": "Existing approved n8n ingress to an owner OpenBot signed signal",
+    "enable_after": "Verify authenticated GitHub ingress, configure the signed signal credential, and observe one synthetic event in the owner OpenBot history and on the owner's iPhone."
+  }
+}

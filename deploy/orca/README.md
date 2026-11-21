@@ -102,6 +102,7 @@ sudo env ORCA_RELEASE="$revision" docker compose -f "$release/deploy/orca/compos
 | Group | PO bot | GitHub checkout | Default agent |
 | --- | --- | --- | --- |
 | HomeCompute | HomeCompute PO | `madslundt/HomeCompute` · `master` | OpenCode 2.3.2 · `automation-moe` |
+| House-battery | House-battery PO | `madslundt/House-battery` · `main` | OpenCode 2.3.2 · `automation-moe` |
 | ChessMate | ChessMate PO | `madslundt/ChessMate` · `main` | OpenCode 2.3.2 · `automation-moe` |
 | Daythread | Daythread PO | `madslundt/Daythread` · `main` | OpenCode 2.3.2 · `automation-moe` |
 
@@ -126,14 +127,18 @@ ssh home-core 'sudo docker exec homecompute-orca-orca-1 orca pair --address wss:
   | node scripts/reconcile-orca-teams.mjs --apply
 ```
 
-Each PO owns its project Group. Lead Engineer, Engineer, Researcher, UX
-Designer, UI Designer and QA Engineer are reusable roles applied to native,
-task-scoped workers. OpenCode uses chat completions, tool calls and thinking
-with `reasoning_effort=xhigh`. [OpenCode provider configuration](opencode.json)
-holds the exact wire settings. The team installer selects native Chat and Ask
+Each PO owns its project Group. Developer, Reviewer and Designer are reusable
+roles for native task-scoped workers. OpenCode uses `homecompute/automation-moe`
+at `medium`. An approved background work item can select
+`homecompute-deep/automation-moe` at `xhigh`. The second Caddy listener sends
+one HTTP/1.1 upstream request at a time through that provider. Chat and other
+clients use separate transports. The lane shares the same model and GPU, so
+this cap addresses concurrent Orca deep requests. Keep at most one active
+deep work item across projects and two local workers during qualification.
+[OpenCode provider configuration](opencode.json) holds the exact wire settings. The team installer selects native Chat and Ask
 permission on the pilot host. Keep worker specs to the project, issue,
 acceptance criteria and the one assigned role. Launch coding in a separate
-Git worktree and give QA independent review input:
+Git worktree and give the Reviewer independent review input:
 
 ```sh
 orca orchestration worker-start --agent opencode2 --worktree new-top-level \
@@ -150,16 +155,25 @@ roles here instantiate as workers per task and the POs hold durable project
 memory. The bot folders hold Orca's SOUL and MEMORY files.
 
 Public repository cloning and public issue, PR and check-run reads work
-without a GitHub token. Schedule creation uses native Orca automations and
-starts disabled so the owner can review the first result. The schedules run
-on weekdays at 09:00, 09:15 and 09:30 Copenhagen time and post to bot chat.
-Use the read-only GitHub helper to verify each repo, then enable the schedules:
+without a GitHub token. GitHub Projects owns priority. Public REST results
+cover repository metadata, and weekly summaries explicitly report that board
+status is unavailable until a scoped Projects read grant exists.
+
+Orca posts weekly reviews to the four bot chats on Monday at 09:00, 09:15,
+09:30 and 09:45 Europe/Copenhagen. Reconciliation converts the matching legacy
+schedule in place and keeps its history and enabled state. New schedules start
+disabled. The native scheduled precheck writes a bounded `project-status.json`
+inside its bot home. The bot reads that file with the built-in reader. Shell approval remains in force. Manual Run Now bypasses precheck. In the paired UI,
+open the bot's folder and verify its exact home path before populating a fresh
+snapshot for a manual review.
 
 ```sh
 sudo docker exec homecompute-orca-orca-1 orca-reconcile-schedules
-sudo docker exec homecompute-orca-orca-1 orca-project-status homecompute
-sudo docker exec homecompute-orca-orca-1 orca-project-status chessmate
-sudo docker exec homecompute-orca-orca-1 orca-project-status daythread
+for project in homecompute house-battery chessmate daythread; do
+  sudo docker exec homecompute-orca-orca-1 orca-project-status "$project"
+done
+sudo docker exec --workdir /data/profile/bots/VERIFIED_BOT_FOLDER \
+  homecompute-orca-orca-1 orca-project-status PROJECT_ID --save-review
 sudo docker exec homecompute-orca-orca-1 orca automations list
 sudo docker exec homecompute-orca-orca-1 orca automations run REVIEW_AUTOMATION_UUID
 sudo docker exec homecompute-orca-orca-1 orca automations runs --id REVIEW_AUTOMATION_UUID
@@ -187,7 +201,7 @@ ssh -t home-core 'sudo docker exec -it homecompute-orca-orca-1 orca account add 
 
 The network selection is retained as an owner-only receipt and can be turned
 off with the same installer and `disable`. Verify sign-in and a synthetic
-manual request before assigning Codex to Lead Engineer. Keep schedules and
+manual request before assigning Codex to Developer or Reviewer. Keep schedules and
 routine work on the local model. Cloud prompts and files go to the chosen
 provider. Select it explicitly for each approved task and use only cleared
 data. Claude Code needs its own install and sign-in in this trust boundary.

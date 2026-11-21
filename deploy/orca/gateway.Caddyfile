@@ -18,6 +18,25 @@ http://:6768 {
 	respond 403
 }
 
+(automation_inference) {
+	reverse_proxy https://172.28.219.2:8443 {
+		header_up -*
+		header_up Host llm.home.arpa
+		header_up Content-Type application/json
+		header_up Accept "application/json, text/event-stream"
+		header_up Authorization "Bearer {env.ORCA_LITELLM_KEY}"
+		transport http {
+			versions 1.1
+			max_conns_per_host {args[0]}
+			tls_server_name llm.home.arpa
+			tls_trust_pool file /run/orca/home-core-root.crt
+			dial_timeout 3s
+			keepalive 30s
+			response_header_timeout 6m
+		}
+	}
+}
+
 http://:18080 {
 	bind 172.28.218.3
 	respond /health 204
@@ -26,19 +45,20 @@ http://:18080 {
 		request_body {
 			max_size 8MB
 		}
-		reverse_proxy https://172.28.219.2:8443 {
-			header_up -*
-			header_up Host llm.home.arpa
-			header_up Content-Type application/json
-			header_up Accept "application/json, text/event-stream"
-			header_up Authorization "Bearer {env.ORCA_LITELLM_KEY}"
-			transport http {
-				tls_server_name llm.home.arpa
-				tls_trust_pool file /run/orca/home-core-root.crt
-				dial_timeout 3s
-				response_header_timeout 10m
-			}
+		import automation_inference 0
+	}
+	respond 404
+}
+
+# Each HTTP/1.1 connection handles one request at a time on this transport.
+http://:18081 {
+	bind 172.28.218.3
+	@localInference expression `(method('GET') && path('/v1/models')) || (method('POST') && path('/v1/chat/completions'))`
+	handle @localInference {
+		request_body {
+			max_size 8MB
 		}
+		import automation_inference 1
 	}
 	respond 404
 }

@@ -7,6 +7,13 @@ provides agent creation and model selection in its UI; no supported declarative
 roster import was verified. Apply and reconcile the manifest through
 `https://openbot.run/app` and review every changed profile against this file.
 
+
+The [personal-team rollout](ai-team-migration.md) defines the guarded owner
+overlay for Hermes, Home Planner and Home Assistant Product Owner. After
+applying that rollout, use its scoped reconciliation for those model settings.
+The assignments below describe the legacy roster and retain the settings
+needed to roll back.
+
 ## Model policy
 
 - OpenBot runs in a Docker container inside the `home-core` agents VM, so its

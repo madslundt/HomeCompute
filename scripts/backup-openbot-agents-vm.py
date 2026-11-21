@@ -27,6 +27,8 @@ SYNC_SERVICE = 'homecompute-assistant-context-sync.service'
 DISK = Path('/srv/state/agents-vm/agents.qcow2')
 STATE = Path('/var/lib/homecompute/openbot-scoped')
 RECEIPT = STATE / 'agents-vm-backup.json'
+OWNER_RECEIPT = STATE / 'owner-backup.json'
+OWNER_TAG = 'homecompute-openbot-pre-upgrade'
 REPOSITORY = Path('/mnt/homecompute-backups/restic-homecompute-selected')
 TAG = 'homecompute-openbot-agents-vm'
 
@@ -142,6 +144,23 @@ def verify_snapshot(nas, value):
         raise ValueError('Encrypted snapshot manifest differs from the captured bundle')
 
 
+def verify_owner_snapshot(nas, value):
+    snapshot, path = value["snapshot"], value["path"]
+    if (not re.fullmatch(r"[0-9a-f]{64}", snapshot)
+            or not re.fullmatch(r"[0-9a-f]{64}", value["sha256"])
+            or not re.fullmatch(
+                r"/var/lib/homecompute/openbot-scoped/owner-backup-[A-Za-z0-9_]{8}/owner-data[.]tar",
+                path)):
+        raise ValueError("Expected a protected owner-only backup receipt")
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(value["verified_at"])).total_seconds()
+    if not 0 <= age <= 36 * 3600:
+        raise ValueError("Owner backup is outside the 36-hour readiness window")
+    result = json.loads(nas.restic(["--no-lock", "snapshots", "--json", snapshot], repository=REPOSITORY))
+    if (len(result) != 1 or result[0]["id"] != snapshot or result[0].get("paths") != [path]
+            or OWNER_TAG not in result[0].get("tags", [])):
+        raise ValueError("Encrypted owner backup does not match the protected receipt")
+
+
 def wait_for_context_sync():
     # Match the collector's five-minute systemd start timeout. A timer may
     # already have queued a job before stop even if the service is inactive.
@@ -205,7 +224,7 @@ def interrupted(_signal, _frame):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=('backup', 'verify'))
+    parser.add_argument('operation', choices=('backup', 'verify', 'verify-owner'))
     parser.add_argument('--revision', required=True)
     parser.add_argument('--acknowledge-guest-pause', action='store_true')
     args = parser.parse_args()
@@ -220,9 +239,14 @@ def main():
             with core.LOCK.open('r+') as lock:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 backup(nas)
+        elif args.operation == 'verify-owner':
+            verify_owner_snapshot(nas, json.loads(core.protected(OWNER_RECEIPT, private=True)))
         else:
             verify_snapshot(nas, json.loads(core.protected(RECEIPT, private=True)))
-        print('Verified fresh encrypted snapshot of the agents VM and seed.')
+        if args.operation == 'verify-owner':
+            print('Verified fresh encrypted snapshot of the OpenBot owner data.')
+        else:
+            print('Verified fresh encrypted snapshot of the agents VM and seed.')
         return 0
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print(f'OpenBot VM backup operation stopped ({type(error).__name__}); check the guest and backup state.',
