@@ -4,7 +4,6 @@
 import json
 from pathlib import Path
 import re
-import subprocess
 import sys
 from urllib.error import HTTPError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -38,18 +37,6 @@ def client():
     return request
 
 
-def set_embedded_effort(effort):
-    command = ["/data/.local/bin/hermes", "config"]
-    key = "agent.reasoning_effort"
-    current = subprocess.check_output([*command, "get", key, "--json"], timeout=15).decode().strip()
-    if current.strip('"') != effort:
-        subprocess.run([*command, "set", key, effort], check=True, timeout=15,
-                       stdout=subprocess.DEVNULL)
-        current = subprocess.check_output([*command, "get", key, "--json"], timeout=15).decode().strip()
-    if current.strip('"') != effort:
-        raise ValueError("embedded Hermes did not retain its effort value")
-
-
 def reconcile(config, request, mode):
     roster = request("/v1/agents")
     targets = config["fast_local_agents"]
@@ -67,8 +54,6 @@ def reconcile(config, request, mode):
         selected.append((agent, target))
     if len({agent["id"] for agent, _ in selected}) != len(targets):
         raise ValueError("the same agent matches two roles")
-    if mode != "plan":
-        set_embedded_effort("xhigh" if mode == "rollback" else model["reasoningEffort"])
     for agent, target in selected:
         agent_id = agent["id"]
         settings = target["rollback_model"] if mode == "rollback" else model
@@ -90,7 +75,7 @@ def main():
         reconcile(json.loads(Path(sys.argv[1]).read_bytes()), client(), sys.argv[2])
     except HTTPError as exc:
         raise SystemExit(f"OpenBot returned HTTP {exc.code}; see its owner settings for details.") from None
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, KeyError) as exc:
         raise SystemExit(f"OpenBot model reconciliation stopped ({type(exc).__name__}).") from None
 
 

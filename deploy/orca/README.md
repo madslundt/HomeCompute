@@ -108,7 +108,8 @@ sudo env ORCA_RELEASE="$revision" docker compose -f "$release/deploy/orca/compos
 
 The intended state lives in [teams.json](teams.json) and the
 [PO instructions](instructions/product-owner.md). Add a project there with its
-verified repo, base branch, context and review time. Use an owner-paired Orca
+verified repo, base branch, context and review time. Use the bot folder slug
+without the `-po` suffix as the project ID for the scheduled snapshot. Use an owner-paired Orca
 browser to apply the manifest. The helper uses the authenticated RPC bridge
 shipped in the pinned browser client, with no database writes. Verify the
 method contract before bumping Orca. It keeps existing bot memory and refuses

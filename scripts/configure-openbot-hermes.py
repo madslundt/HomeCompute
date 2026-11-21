@@ -33,7 +33,7 @@ MODEL_SETTINGS = {
     "model.default": "automation-moe",
     "model.base_url": PROVIDER["base_url"],
     "model.api_mode": "chat_completions",
-    "agent.reasoning_effort": "none",
+    "agent.reasoning_effort": "xhigh",
     # Git 2.43 in the OpenBot image does not support Hermes' GIT_NO_LAZY_FETCH
     # guard. Its passive startup update check can therefore fetch a large
     # missing ancestry range and block ACP startup. Explicit update commands
@@ -206,7 +206,6 @@ def main() -> int:
         model_settings = dict(MODEL_SETTINGS)
         if partner:
             provider["base_url"] = model_settings["model.base_url"] = PARTNER_MODEL_URL
-            model_settings["agent.reasoning_effort"] = "xhigh"
             model_settings["memory.write_approval"] = "true"
 
         # Check the actual container trust store and keyless path before changing settings.

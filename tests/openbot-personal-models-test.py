@@ -8,7 +8,7 @@ from pathlib import Path
 import runpy
 import subprocess
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,12 +33,9 @@ class PersonalModelsTest(unittest.TestCase):
 
     def test_missing_agent_stops_before_any_updates(self):
         request = Mock(return_value=self.roster[:-1])
-        effort = Mock()
-        with patch.dict(self.reconcile.__globals__, {"set_embedded_effort": effort}):
-            with self.assertRaises(ValueError):
-                self.reconcile(self.config, request, "apply")
+        with self.assertRaises(ValueError):
+            self.reconcile(self.config, request, "apply")
         request.assert_called_once_with("/v1/agents")
-        effort.assert_not_called()
 
     def test_apply_and_rollback_scope(self):
         mutations = []
@@ -51,9 +48,7 @@ class PersonalModelsTest(unittest.TestCase):
             mutations.append((agent, data))
             return {"id": agent, **data}
 
-        effort = Mock()
-        with (contextlib.redirect_stdout(io.StringIO()),
-              patch.dict(self.reconcile.__globals__, {"set_embedded_effort": effort})):
+        with contextlib.redirect_stdout(io.StringIO()):
             self.reconcile(self.config, request, "plan")
             self.assertEqual(mutations, [])
             self.reconcile(self.config, request, "apply")
@@ -61,7 +56,6 @@ class PersonalModelsTest(unittest.TestCase):
             mutations.clear()
             self.reconcile(self.config, request, "rollback")
             self.assertEqual([data for _, data in mutations], [target["rollback_model"] for target in self.targets])
-        self.assertEqual([call.args for call in effort.call_args_list], [("none",), ("xhigh",)])
 
 
 if __name__ == "__main__":
