@@ -163,8 +163,7 @@ Orca posts weekly reviews to the four bot chats on Monday at 09:00, 09:15,
 09:30 and 09:45 Europe/Copenhagen. Reconciliation converts the matching legacy
 schedule in place and keeps its history and enabled state. New schedules start
 disabled. The native scheduled precheck writes a bounded `project-status.json`
-inside its bot home. The bot reads that file with the built-in reader; shell
-approval remains in force. Manual Run Now bypasses precheck. In the paired UI,
+inside its bot home. The bot reads that file with the built-in reader. Shell approval remains in force. Manual Run Now bypasses precheck. In the paired UI,
 open the bot's folder and verify its exact home path before populating a fresh
 snapshot for a manual review.
 

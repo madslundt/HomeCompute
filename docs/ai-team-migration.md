@@ -64,7 +64,7 @@ owner archive rather than exporting credentials or private memory into Git.
 | Hermes, Life Planner, Home Guardian | Embedded Hermes, `automation-moe`, `none` | Explicit local `medium` when useful. Keep personal/family prompts local. Standalone Hermes retains its scoped personal tools. |
 | Researcher | Existing explicit Sol route, `high`, for approved public material only | Request Hermes local support for private material. Preserve Ask-first fallback and review enabled MCP before delegating. |
 | Four Orca POs | OpenCode 2.3.2, `automation-moe`, `medium` | Clear scope and authenticate a cloud model before opting in. The local triage fixture failed. |
-| Developer | OpenCode 2.3.2, `automation-moe`, `medium`; explicit queued `xhigh` for complex work | Native Codex after approved login. AI execution uses Ask and isolated worktrees. |
+| Developer | OpenCode 2.3.2, `automation-moe`, `medium`, with explicit queued `xhigh` for complex work | Native Codex after approved login. AI execution uses Ask and isolated worktrees. |
 | Reviewer | Independent OpenCode session, `medium` | Prefer a separately approved, authenticated provider for important review. |
 | Designer | OpenCode 2.3.2, `medium` | Use approved design tools and invite only for UI/UX work. |
 
@@ -93,11 +93,19 @@ completion tokens and outcome. Values are single samples.
 | Independent-review fixture | — | — | 7.434 / 195 / pass | 3.209 / 124 / pass |
 
 Tool calling at `none` produced its first visible action after 0.825 s.
-Omitting effort enabled thinking; `minimal`, `high` and `max` gave HTTP 400.
+Omitting effort enabled thinking. `minimal`, `high` and `max` gave HTTP 400.
 The coding fixtures assessed bounded answers, without worktree execution.
 Measure agent E2E, queue wait, TTFT, completion tokens, errors, approval waits
 and actual provider costs in the corresponding runtime before broad rollout.
 [Earlier Spark benchmark](benchmarks/home-spark-efficiency-plan-2026-10-29.md).
+
+Two gateway mixed-load probes completed the `none` chat in 0.497 s and
+0.749 s while one `xhigh` request remained active. Both heavy runs reached
+their 640–650 token budgets before producing a visible answer. The small
+chat remained responsive in those samples, and the heavy coding fixture
+needs repeated qualification. OpenCode 2.3.2 also passed an exact synthetic
+reply at `medium` through the live scoped relay using disposable process state.
+
 
 ## Apply, verify and roll back
 
@@ -108,7 +116,7 @@ and actual provider costs in the corresponding runtime before broad rollout.
    then reconcile the weekly summaries. Verify a snapshot and completed chat
    output in all four projects. GitHub Project boards need a separately
    approved Projects-read credential. The existing CLI credential lacked
-   `read:project`; public GitHub issue, PR and check metadata is available
+   `read:project`. Public GitHub issue, PR and check metadata is available
    without a credential. Use a scoped owner approval to actually publish a PR.
    [GitHub Projects authentication](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication).
 3. Capture OpenBot before changes. The wrapper requires verified encrypted
