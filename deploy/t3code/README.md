@@ -84,31 +84,52 @@ The snapshot reports partial queries and additional pages. T3 accepts data up
 to 30 minutes old. The local coding lead can hand the relevant issue and
 priority to the Hermes reviewer.
 
-After deployment, create a dedicated classic GitHub token with an expiry and
-only `read:project`. In a private terminal run the following with the published
-T3 Code provisioner release SHA, then enter the token at the hidden prompt.
-The provisioner verifies token ownership and scope against GitHub before
-storing it. If GitHub rejects the credential, the terminal prints the reason
-without the token or GitHub response body. The T3 Code container mounts only
-the generated snapshots, read-only.
-[GitHub Projects authentication](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication)
+### GitHub Projects access and updates
+
+Create a dedicated classic GitHub token with an expiry and only the `project`
+scope to allow the team to read and write. Run this in a private terminal with
+the published T3 Code release SHA and enter the token at the hidden prompt.
+The provisioner verifies token ownership and scope before saving it. For
+read-only access, select only `read:project` when creating the token and use
+`provision` without `--write`. [GitHub Projects authentication](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication)
 
 ```sh
-ssh -t home-core 'sudo python3 /srv/homecompute/releases/FULL_RELEASE_SHA/deploy/t3code/github-projects.py provision && sudo docker restart homecompute-t3code-github-projects-1'
+ssh -t home-core 'sudo python3 /srv/homecompute/releases/FULL_RELEASE_SHA/deploy/t3code/github-projects.py provision --write && sudo docker restart homecompute-t3code-github-projects-1'
 ```
 
-From Home Core, verify the status from a declared checkout. `available` with
-an empty board list means GitHub returned no matching open items.
+In the T3 checkout, use the number from a personal board's URL and the issue
+or PR number in the current repository:
+
+```sh
+t3-github-backlog add 2 17
+t3-github-backlog set 2 17 Status "In Progress"
+t3-github-backlog set 2 17 Priority "High"
+```
+
+The Projects service verifies that the board is open and owned by the
+configured account, and that the issue or PR is open and belongs to a
+configured public repository. Set uses a single-select option already
+configured on the board. Retrying add for an existing item returns success.
+In Supervised mode, the user approves the command. The Projects service
+holds the token. T3 mounts a read-only directory with the snapshots and a
+local socket limited to these two commands. T3 sessions with shell access can
+use those commands. The reader refreshes after the service sends a mutation.
+
+From Home Core, check the snapshot status from a declared checkout.
+`available` with an empty board list means GitHub returned no matching open
+items.
 
 ```sh
 sudo docker exec -w /data/projects/Daythread homecompute-t3code-t3code-1 t3-github-backlog | jq '{repository, status, boards: (.boards | length)}'
 ```
 
-Rotate the token with the same provision command and restart. Revoke retired
-tokens in GitHub. A failed scope check or revoked credential yields an
-unavailable snapshot at the next refresh. When rolling back to a release with
-no reader, stop the `github-projects` sidecar under the active Compose release
-and redeploy the earlier T3 Code image through the normal procedure.
+Rotate the token using the provision command and revoke the retired token in
+GitHub. To return to read-only access, use the same procedure with a
+`read:project` token and omit `--write`. Before rolling back to a read-only
+reader release, provision the read-only token as well. When rolling back to a
+release with no Projects integration, stop the `github-projects` sidecar under
+the active Compose release and redeploy the earlier T3 Code image. Existing
+GitHub board changes persist across rollbacks.
 
 ## Local models
 

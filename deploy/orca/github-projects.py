@@ -63,7 +63,7 @@ def projects():
     return entries
 
 
-def github_graphql(query, variables, token):
+def github_graphql(query, variables, token, *, allowed_scopes=("read:project",)):
     if not re.fullmatch(r"ghp_[A-Za-z0-9]+", token):
         raise GitHubProjectsError("Enter the full classic GitHub token beginning with ghp_.")
     request = Request("https://api.github.com/graphql", data=json.dumps({
@@ -78,12 +78,13 @@ def github_graphql(query, variables, token):
         with build_opener(NoRedirect).open(request, timeout=15) as response:
             scope_header = response.headers.get("X-OAuth-Scopes", "")
             scopes = {scope.strip() for scope in scope_header.split(",") if scope.strip()}
-            if scopes != {"read:project"}:
-                if "project" in scopes:
+            if len(scopes) != 1 or not scopes.intersection(allowed_scopes):
+                if "project" in scopes and allowed_scopes == ("read:project",):
                     raise GitHubProjectsError("GitHub reports write access to Projects. Select only the read:project scope.")
-                if "read:project" in scopes:
-                    raise GitHubProjectsError("GitHub reports additional permissions. Select only the read:project scope.")
-                raise GitHubProjectsError("GitHub did not report the read:project scope. Select it on a classic token.")
+                expected = " or ".join(allowed_scopes)
+                if scopes.intersection({"project", "read:project"}) and len(scopes) > 1:
+                    raise GitHubProjectsError(f"GitHub reports additional permissions. Select only {expected}.")
+                raise GitHubProjectsError(f"GitHub did not report the required scope. Select only {expected} on a classic token.")
             raw = response.read(256_001)
     except HTTPError as error:
         headers = error.headers or {}
@@ -105,7 +106,7 @@ def github_graphql(query, variables, token):
     return data["data"]
 
 
-def project_items(entry, number, token):
+def project_items(entry, number, token, *, graphql=github_graphql):
     board = entry["github_project"]
     kind, owner = board["kind"], board["owner"]
     repository = entry["repository"]
@@ -113,7 +114,7 @@ def project_items(entry, number, token):
             or type(number) is not int or number < 1
             or not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository)):
         raise ValueError("invalid board configuration")
-    data = github_graphql(QUERY.replace("OWNER_KIND", kind), {
+    data = graphql(QUERY.replace("OWNER_KIND", kind), {
         "owner": owner, "number": number, "filter": f"repo:{repository} is:open",
     }, token)
     project = data[kind]["projectV2"]

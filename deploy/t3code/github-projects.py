@@ -3,6 +3,7 @@
 
 import argparse
 from datetime import datetime, timezone
+from functools import partial
 from getpass import getpass
 import json
 import os
@@ -11,7 +12,7 @@ import re
 import runpy
 import stat
 import sys
-from time import sleep
+from threading import Event, Thread
 
 
 HERE = Path(__file__).resolve().parent
@@ -136,21 +137,40 @@ def prepare():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("prepare", "provision", "serve"))
-    command = parser.parse_args().command
+    parser.add_argument("--write", action="store_true", help="provision a dedicated token with Projects write permission")
+    args = parser.parse_args()
+    command = args.command
+    if args.write and command != "provision":
+        parser.error("--write requires provision")
     if command == "serve":
         shared = runpy.run_path(str(HERE / "orca-projects.py"))
+        from github_project_writes import serve_writes
+
         repos = repositories()
-        while True:
-            refresh(shared, repos, Path("/run/github-projects/credentials/token"), Path("/snapshots"))
-            sleep(900)
+        credential = Path("/run/github-projects/credentials/token")
+        snapshots = Path("/snapshots")
+        graphql = shared["github_graphql"]
+        read_graphql = partial(graphql, allowed_scopes=("read:project", "project"))
+        shared["github_graphql"] = read_graphql
+        shared["project_items"] = partial(shared["project_items"], graphql=read_graphql)
+        updated = Event()
+        with serve_writes(snapshots / "write.sock", graphql, shared["GitHubProjectsError"],
+                          credential, OWNER, repos, updated) as server:
+            Thread(target=server.serve_forever, daemon=True).start()
+            while True:
+                updated.clear()
+                refresh(shared, repos, credential, snapshots)
+                updated.wait(900)
     prepare()
     if command == "provision":
         if not sys.stdin.isatty():
             raise ValueError("Use a private terminal for the Projects credential")
         shared = runpy.run_path(str(HERE.parent / "orca/github-projects.py"))
-        token = getpass("Dedicated GitHub read:project token: ").strip()
+        scope = "project" if args.write else "read:project"
+        token = getpass(f"Dedicated GitHub {scope} token: ").strip()
+        graphql = partial(shared["github_graphql"], allowed_scopes=(scope,))
         try:
-            boards = owned_boards(shared["github_graphql"], token)
+            boards = owned_boards(graphql, token)
         except shared["GitHubProjectsError"] as error:
             raise ProvisioningError(str(error)) from None
         except ProvisioningError:
@@ -161,7 +181,7 @@ def main():
             shared["atomic_write"](STATE / "credentials/token", token.encode(), 0o640, gid=READER_ID)
         except OSError:
             raise ProvisioningError("Could not save the credential in the protected Home Core directory.") from None
-        print(f"Verified the read-only grant and found {len(boards)} open personal boards.")
+        print(f"Verified the {scope} grant and found {len(boards)} open personal boards.")
 
 
 if __name__ == "__main__":
