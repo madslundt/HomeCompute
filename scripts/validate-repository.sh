@@ -945,7 +945,7 @@ jq -e '
   .locked and (.value | keys == ["codex", "hermes-code", "homecompute-local"]) and
   (.value["homecompute-local"] | .driver == "codex" and .config.homePath == "/data/.codex-homecompute") and
   (.value["hermes-code"] | .driver == "acpRegistry" and .enabled and
-    .config == {"source": "local", "commandPath": "/usr/local/bin/hermes-code-review"} and
+    .config.source == "local" and .config.commandPath == "/usr/local/bin/hermes-code-review" and
     (any(.environment[]; .name == "HERMES_HOME" and .value == "/data/.hermes-code")))
 ' "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
 jq -e '[.models[].slug] == ["automation-moe"]' "$REPO_ROOT/deploy/t3code/codex-local-models.json" >/dev/null

@@ -4,15 +4,17 @@ FROM node:24-bookworm@sha256:aca79828f8a4afc627f189387c965625bcc419233946210a3b9
 ADD --checksum=sha256:0250ce85c071ebceefc5b9d1b58a7a52f71d2849a6ef1d0a70af07d108ef08dc https://codeload.github.com/NousResearch/hermes-agent/tar.gz/2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 /tmp/hermes.tar.gz
 ADD --checksum=sha256:dfa4c5a40c47f338f41658017be550c72247c391e6bfb1fa4da03ebc8451abdf https://github.com/astral-sh/python-build-standalone/releases/download/20261021/cpython-3.14.9+20261021-x86_64-unknown-linux-gnu-install_only.tar.gz /tmp/python.tar.gz
 WORKDIR /opt/hermes
+COPY hermes-code-review.patch /tmp/hermes-code-review.patch
 RUN mkdir python-runtime \
     && tar -xzf /tmp/hermes.tar.gz --strip-components=1 -C /opt/hermes \
     && tar -xzf /tmp/python.tar.gz --strip-components=1 -C python-runtime \
+    && git apply /tmp/hermes-code-review.patch \
     && HERMES_HOME=/tmp/hermes-build python-runtime/bin/python3 -m pm.build_env \
         --source /opt/hermes --python /opt/hermes/python-runtime/bin/python3 \
         --out /opt/hermes/.venv --sealed --extra acp \
     && python-runtime/bin/python3 scripts/write_install_stamp.py \
         --output /opt/hermes/install-stamp.json --commit 2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19 \
-        --base-version 0.23.0 --distance 0 --source homecompute --distribution docker --update-mechanism external \
+        --base-version 0.23.0 --distance 0 --dirty --source homecompute --distribution docker --update-mechanism external \
     && chmod -R a+rX .venv python-runtime \
     && rm -rf tests website .github
 

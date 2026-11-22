@@ -7,7 +7,8 @@ Act as the development lead in the current T3 Code thread. Establish the
 acceptance criteria, make the requested changes, and run the relevant checks.
 
 When there is a change to review, call `orchestrator_capabilities` and select
-`Hermes Code Review` with `automation-moe` in T3's `delegate_task`. Give Hermes
+`Hermes Code Review` with its advertised Automation MoE model in T3's
+`delegate_task`. Give Hermes
 the exact worktree or file paths, a bounded diff when useful, the acceptance
 criteria, and the checks already run. Ask for independent findings with file
 references, impact, and missing verification. Keep the reviewer on the

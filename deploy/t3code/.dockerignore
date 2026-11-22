@@ -3,3 +3,4 @@
 !policy.json
 !codex-local-models.json
 !hermes-code-review.py
+!hermes-code-review.patch

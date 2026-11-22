@@ -1,0 +1,159 @@
+--- a/toolsets.py
++++ b/toolsets.py
+@@ -121,6 +121,7 @@
+         "search (content + files)",
+         ["read_file", "write_file", "patch", "search_files"],
+     ),
++    "file-read": _ts("Read and search the current project", ["read_file", "search_files"]),
+     "tts": _ts("Text-to-speech: convert text to audio with Edge TTS (free), ElevenLabs, OpenAI, or xAI", ["text_to_speech"]),
+     "todo": _ts("Task planning and tracking for multi-step work", ["todo_list"]),
+     "memory": _ts("Persistent memory across sessions (personal notes + user profile)", ["memory"]),
+--- a/hermes_cli/tools_config.py
++++ b/hermes_cli/tools_config.py
+@@ -69,6 +69,7 @@
+     ("browser",         "🌐 Browser Automation",       "navigate, click, type, scroll"),
+     ("terminal",        "💻 Terminal & Processes",      "terminal, process"),
+     ("file",            "📁 File Operations",           "read, write, patch, search"),
++    ("file-read",       "File Review",                  "read, search"),
+     ("code_execution",  "⚡ Code Execution",            "execute_code"),
+     ("vision",          "👁️  Vision / Image Analysis",  "vision_analyze"),
+     ("video",           "🎬 Video Analysis",            "video_analyze (requires video-capable model)"),
+--- a/acp_adapter/gateway_server.py
++++ b/acp_adapter/gateway_server.py
+@@ -269,6 +269,7 @@
+             self._changed.notify_all()
+
+     async def new_session(self, cwd, mcp_servers=None, **kwargs):
++        mcp_servers = None  # The reviewer uses only the managed file tools.
+         client = await self._client()
+         descriptor = await client.rpc("runtime.describe")
+         if ("acp" not in descriptor.get("session_create", {}).get("sources", [])
+@@ -346,6 +347,7 @@
+         return await client.rpc("session.info", session_id=session_id)
+
+     async def _resume(self, cwd, held_id, mcp_servers):
++        mcp_servers = None
+         client = await self._client()
+         from acp_adapter.catalog import logical_session_id
+         from hermes_cli.gateway_client import GatewayRPCError
+@@ -457,6 +459,7 @@
+         await self._cancel_admission(session_id, admission_id)
+
+     async def fork_session(self, cwd, session_id, mcp_servers=None, **kwargs):
++        mcp_servers = None
+         from acp.schema import ForkSessionResponse
+         session_id = self._aliases.get(session_id, session_id)
+         client = await self._client()
+--- a/acp_adapter/entry.py
++++ b/acp_adapter/entry.py
+@@ -73,7 +73,7 @@
+     root = logging.getLogger()
+     root.handlers.clear()
+     root.addHandler(handler)
+-    root.setLevel(logging.INFO)
++    logging.disable(logging.CRITICAL)
+     for noisy in ("httpx", "httpcore", "openai"):
+         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+--- a/hermes_logging.py
++++ b/hermes_logging.py
+@@ -381,6 +381,8 @@
+     # an existing router.
+     if _adopt_secondary_home(home):
+         return log_dir
++    # Keep session content in the application transcript instead of diagnostics.
++    logging.disable(logging.CRITICAL)
+     cfg_level, cfg_max_size, cfg_backup = _read_logging_config()
+     level_name = (log_level or cfg_level or "INFO").upper()
+     level = getattr(logging, level_name, logging.INFO)
+--- a/tools/file_tools.py
++++ b/tools/file_tools.py
+@@ -602,6 +602,12 @@
+     return count
+
+
++def _review_path_allowed(path: str | Path, task_id: str) -> bool:
++    workspace = Path(_resolve_base_dir(task_id)).resolve()
++    roots = {Path("/data/projects"), Path("/data/.t3/worktrees")}
++    return any(root in workspace.parents for root in roots) and Path(path).resolve().is_relative_to(workspace)
++
++
+ def read_file_tool(path: str, offset: int = 1, limit: int = DEFAULT_READ_LIMIT, task_id: str = "default") -> str:
+     """Read a file with pagination and line numbers.
+
+@@ -628,6 +634,8 @@
+                 "block or produce infinite output.")
+
+         _resolved = _resolve_path_for_task(path, task_id)
++        if not _review_path_allowed(_resolved, task_id):
++            return tool_error("Hermes can read only files in the current T3 Code workspace.")
+
+         # A read on a FIFO/socket blocks until the exec timeout: a self-shipped DoS.
+         if _file_ops_uses_host_paths(_get_file_ops(task_id)):
+@@ -1089,6 +1097,8 @@
+             # path is itself denylisted (that error wins).
+             if isinstance(exc, RuntimeError) and not get_read_block_error(path):
+                 raise
++        if not _review_path_allowed(resolved_search_path, task_id):
++            return tool_error("Hermes can search only within the current T3 Code workspace.")
+         block_error = get_read_block_error(resolved_search_path)
+         if block_error:
+             return tool_error(block_error)
+--- a/agent/agent_runtime_helpers.py
++++ b/agent/agent_runtime_helpers.py
+@@ -1518,53 +1518,8 @@
+ def dump_api_request_debug(
+     agent, api_kwargs: dict[str, Any], *, reason: str, error: Optional[Exception] = None
+ ) -> Optional[Path]:
+-    """Dump the request body from api_kwargs (minus transport keys) for debugging provider 4xx failures."""
+-    try:
+-        body = {k: v for k, v in copy.deepcopy(api_kwargs).items() if v is not None and k != "timeout"}
+-        api_key = None
+-        # anthropic_messages keeps its SDK client on ``_anthropic_client`` (``client`` is None):
+-        # read the key from there so the dump does not say "Bearer None" (#24293).
+-        anthropic = agent.api_mode == "anthropic_messages"
+-        try:
+-            live = getattr(agent, "_anthropic_client", None) if anthropic else agent.client
+-            api_key = getattr(live, "api_key", None) or getattr(live, "auth_token", None)
+-        except Exception as e:
+-            _ra().logger.debug("Could not extract API key for debug dump: %s", e)
+-        endpoint = {"codex_responses": "/responses", "anthropic_messages": "/messages"}.get(
+-            agent.api_mode, "/chat/completions"
+-        )
+-        dump_payload: dict[str, Any] = {
+-            "timestamp": datetime.now().isoformat(), "session_id": agent.session_id, "reason": reason,
+-            "request": {
+-                "method": "POST", "url": f"{agent.base_url.rstrip('/')}{endpoint}",
+-                "headers": {
+-                    "Authorization": f"Bearer {agent._mask_api_key_for_logs(api_key)}",
+-                    "Content-Type": "application/json",
+-                },
+-                "body": body,
+-            },
+-        }
+-        if error is not None:
+-            dump_payload["error"] = _api_error_debug_info(error)
+-        # Sanitize the session ID (may come from an untrusted X-Hermes-Session-Id header) so a
+-        # "../"-shaped ID cannot write outside logs_dir.
+-        from agent.session_persistence import _safe_session_filename_component
+-        safe_sid = _safe_session_filename_component(agent.session_id)
+-        dump_file = agent.logs_dir / f"request_dump_{safe_sid}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.json"
+-        # Redact secrets first: this fires unconditionally on API errors and captures the full
+-        # request body, so context-embedded secrets would otherwise land in cleartext on disk.
+-        from agent.redact import redact_sensitive_text
+-        _serialized = json.dumps(dump_payload, ensure_ascii=False, indent=2, default=str)
+-        _redacted_payload = json.loads(redact_sensitive_text(_serialized, force=True))
+-        atomic_json_write(dump_file, _redacted_payload, default=str)
+-        agent._vprint(f"{agent.log_prefix}🧾 Request debug dump written to: {dump_file}")
+-        if env_var_enabled("HERMES_DUMP_REQUEST_STDOUT"):
+-            print(json.dumps(_redacted_payload, ensure_ascii=False, indent=2, default=str))
+-        return dump_file
+-    except Exception as dump_error:
+-        if agent.verbose_logging:
+-            logger.warning("Failed to dump API request debug payload: %s", dump_error)
+-        return None
++    """HomeCompute keeps provider request bodies out of diagnostic logs."""
++    return None
+
+
+ def _direct_native_anthropic_tool_cache_capability(
