@@ -44,6 +44,7 @@ status-partner           Show the household server state and installed revision.
 login-partner            Enroll the household server using its owner's email code.
 configure-partner-hermes Install and configure the household server's embedded Hermes for local inference.
 install-partner-profile FILE  Stream the owner's reviewed USER.md into private Hermes memory.
+prepare-sol-acp           Install the text-only provider for the current server without restarting it.
 EOF
 }
 
@@ -128,6 +129,43 @@ personal_models() {
       tar -xf - -C "$stage"
       docker exec -i homecompute-openbot python3 -c "$(cat "$stage/scripts/configure-openbot-personal-models.py")" \
         /dev/stdin '"$mode"' < "$stage/config/openbot-personal-team.json"'
+}
+
+prepare_sol_acp() {
+  require_current_master_checkout
+  local revision source_file digest
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  source_file="deploy/openbot/sol-acp.py"
+  digest="$(git -C "$REPO_ROOT" show "$revision:$source_file" | shasum -a 256 | awk '{print $1}')"
+  [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+  # shellcheck disable=SC2016 # Mount, directories and global digest are checked on the guest.
+  git -C "$REPO_ROOT" show "$revision:$source_file" |
+    ssh_guest "digest=$digest; "'set -eu
+      umask 077
+      test "$(docker inspect --format "{{.State.Running}}" homecompute-openbot)" = true
+      test "$(docker exec homecompute-openbot openbot version)" = 0.73.0
+      app_data="$HOME/.local/share/homecompute-openbot/data"
+      mounted="$(docker inspect --format "{{range .Mounts}}{{if eq .Destination \"/data\"}}{{.Source}}{{end}}{{end}}" homecompute-openbot)"
+      test "$mounted" = "$app_data"
+      test "$(realpath "$app_data")" = "$app_data"
+      for component in .local .local/libexec .local/libexec/homecompute; do
+        test ! -L "$app_data/$component"
+        mkdir -p -- "$app_data/$component"
+      done
+      directory="$app_data/.local/libexec/homecompute"
+      target="$directory/sol-acp-$digest.py"
+      stage="$(mktemp "$directory/.sol-acp.XXXXXXXX")"
+      trap '\''rm -f -- "$stage"'\'' EXIT
+      cat > "$stage"
+      test "$(sha256sum "$stage" | cut -d " " -f 1)" = "$digest"
+      if test -e "$target" || test -L "$target"; then
+        test -f "$target" && test ! -L "$target" && cmp -- "$stage" "$target"
+      else
+        ln -- "$stage" "$target"
+      fi
+      docker exec homecompute-openbot test -r "/data/.local/libexec/homecompute/sol-acp-$digest.py"'
+  printf 'OpenBot Sol ACP SHA-256 %s\n' "$digest"
+  printf '%s\n' "-I -c \"import hashlib, pathlib, sys; p = pathlib.Path(sys.argv[1]); data = p.read_bytes(); assert hashlib.sha256(data).hexdigest() == sys.argv[2]; exec(compile(data, str(p), 'exec'))\" /data/.local/libexec/homecompute/sol-acp-$digest.py $digest"
 }
 
 install_partner() {
@@ -645,6 +683,7 @@ main() {
     status) status ;;
     configure-compression) configure_compression ;;
     configure-model-gateway) configure_model_gateway ;;
+    prepare-sol-acp) prepare_sol_acp ;;
     -h|--help|help) usage ;;
     *) usage >&2; return 2 ;;
   esac
