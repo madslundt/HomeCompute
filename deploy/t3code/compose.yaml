@@ -36,6 +36,18 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ./skills/homecompute-team
+        target: /data/.codex-homecompute/skills/homecompute-team
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./hermes-code.yaml
+        target: /data/.hermes-code/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: /etc/homecompute/control-plane/home-core-root.crt
         target: /run/homecompute/home-core-root.crt
         read_only: true

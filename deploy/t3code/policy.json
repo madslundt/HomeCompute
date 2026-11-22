@@ -3,18 +3,39 @@
   "organization": "HomeCompute",
   "settings": {
     "defaultRuntimeMode": { "value": "approval-required", "locked": false },
-    "providerInstances.homecompute-local": {
+    "providerInstances": {
       "locked": true,
       "value": {
-        "driver": "codex",
-        "displayName": "HomeCompute Local",
-        "enabled": true,
-        "environment": [
-          { "name": "CODEX_CA_CERTIFICATE", "value": "/run/homecompute/home-core-root.crt", "sensitive": false }
-        ],
-        "config": {
-          "setupMode": "existing",
-          "homePath": "/data/.codex-homecompute"
+        "codex": {
+          "driver": "codex",
+          "enabled": true,
+          "config": { "setupMode": "managed" }
+        },
+        "homecompute-local": {
+          "driver": "codex",
+          "displayName": "HomeCompute Local",
+          "enabled": true,
+          "environment": [
+            { "name": "CODEX_CA_CERTIFICATE", "value": "/run/homecompute/home-core-root.crt", "sensitive": false }
+          ],
+          "config": {
+            "setupMode": "existing",
+            "homePath": "/data/.codex-homecompute"
+          }
+        },
+        "hermes-code": {
+          "driver": "acpRegistry",
+          "displayName": "Hermes Code Review",
+          "enabled": true,
+          "environment": [
+            { "name": "HERMES_HOME", "value": "/data/.hermes-code", "sensitive": false },
+            { "name": "SSL_CERT_FILE", "value": "/run/homecompute/home-core-root.crt", "sensitive": false }
+          ],
+          "config": {
+            "source": "local",
+            "commandPath": "/usr/local/bin/hermes-code-review",
+            "customModels": [{ "slug": "custom:automation-moe", "name": "Automation MoE" }]
+          }
         }
       }
     }
@@ -26,6 +47,6 @@
     "previewTunnel": false,
     "telemetry": false,
     "updates": { "mode": "off" },
-    "providers": { "allowedDrivers": ["codex"] }
+    "providers": { "allowedDrivers": ["codex", "acpRegistry"] }
   }
 }

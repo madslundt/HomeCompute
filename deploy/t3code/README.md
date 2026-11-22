@@ -2,14 +2,16 @@
 
 T3 Code is a private coding workspace for personal projects. The application
 runs in its own Compose project on `home-core`. The upstream Linux x64 T3 Code
-and Codex CLI artifacts are verified against the SHA-256 pins in the Dockerfile.
+and Codex CLI artifacts and the Hermes source and Python runtime are verified
+against the SHA-256 pins in the Dockerfile. Hermes uses the upstream locked
+dependencies for its ACP adapter.
 The container runs as UID/GID 12073 with a read-only root filesystem, resource
 limits, and no capabilities. Application state persists under `/data`. It
 receives no host checkout, SSH keys, Docker socket, or production credentials.
 
 The managed policy disables T3 Connect, webhooks, browser-cookie import, cloud
-preview tunnels, product telemetry, and in-app updates. Codex is the installed
-provider and uses approval-required mode by default. The container can reach
+preview tunnels, product telemetry, and in-app updates. Providers are defined
+by the managed policy. Threads default to approval-required mode. The container can reach
 the network for provider login, model requests, and Git. Use only projects
 approved for the provider you sign in to.
 
@@ -57,6 +59,21 @@ The `ai.home.arpa` Docker alias belongs to Caddy on the dedicated T3 Code
 bridge. It leaves the workstation DNS record and the LAN model catalog in
 place.
 
+## Coding team
+
+On iPhone, web, or desktop, select **HomeCompute Local → Automation MoE** and
+start a thread in your project. Enter `$homecompute-team` with the task or choose
+the skill from the `$` menu. Codex leads implementation and testing. T3 Code
+delegates the review to a child thread using **Hermes Code Review**, which you
+can also select directly for a review. Open the child thread from the parent to
+inspect its findings. The team uses local Automation MoE for both roles.
+
+The Hermes ACP instance has its own `/data/.hermes-code` state, separate from
+the household Hermes and OpenBot instances. It starts with file read and search
+tools, with no shell or household credentials. Its model requests use the same
+private Caddy bridge as local Codex and require only a paired T3 Code client.
+The team runs on demand from a thread in the selected project.
+
 ## Deploy and inspect
 
 Use this dedicated lifecycle on `home-core` from a reviewed commit published
@@ -73,7 +90,8 @@ sudo bash "$release/scripts/deploy-t3code.sh" "$revision"
 
 For a release directory already present, verify its checkout and run just the
 installer. It uses the shared deployment lock, validates state ownership,
-builds the pinned image, tests the Codex sandbox in a disposable container,
+builds the pinned image, checks the Hermes ACP review toolset and tests the
+Codex sandbox in disposable containers,
 and waits for container health. Inspect the running image, Compose source, and
 management policy:
 
