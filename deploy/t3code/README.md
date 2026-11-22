@@ -45,6 +45,30 @@ Complete the browser prompt shown by Codex. In T3 Code, open or clone a Git
 repository under `/data/projects` and select Codex when creating a thread.
 Access to private Git repositories requires separately scoped Git credentials.
 
+## GitHub projects
+
+The [project list](projects.json) declares the public GitHub repositories
+provisioned on Home Core. Open **Projects** in a paired T3 Code client and
+choose the repository you want to work on. The checkouts live under
+`/data/projects`. Choose **HomeCompute Local → Automation MoE** to use the
+local coding team in any of these projects.
+
+From a clean, reviewed release published on `origin/master` and checked out
+on Home Core, seed the Git checkouts and register them with the running app:
+
+```sh
+revision=FULL_RELEASE_SHA
+sudo python3 "/srv/homecompute/releases/$revision/scripts/setup-t3code-projects.py"
+```
+
+The installer clones over public HTTPS and leaves matching checkouts and their
+changes in place on retries. It restores a matching archived T3 Code project
+to the project list. Branches and worktrees are ordinary Git state. Use T3
+Code's project settings to archive a checkout you no longer want in the list.
+Remove its declaration before rerunning the installer if the archive is meant
+to persist. GitHub Projects boards are managed in GitHub. T3 Code uses each
+checkout's GitHub remote for its repository issues and pull requests.
+
 ## Local models
 
 In a new thread, select **HomeCompute Local → Automation MoE** in the model
