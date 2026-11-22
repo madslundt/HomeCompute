@@ -47,6 +47,8 @@ select the `home-core` server.
 
 For the independently enrolled household server and its embedded Hermes agent,
 follow the [private household server runbook](PARTNER.md).
+For personal text-only Sol chats on the existing team server, follow the
+[Sol agent runbook](SOL.md).
 
 ## Models and teams
 
