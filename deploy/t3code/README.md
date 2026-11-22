@@ -66,8 +66,47 @@ changes in place on retries. It restores a matching archived T3 Code project
 to the project list. Branches and worktrees are ordinary Git state. Use T3
 Code's project settings to archive a checkout you no longer want in the list.
 Remove its declaration before rerunning the installer if the archive is meant
-to persist. GitHub Projects boards are managed in GitHub. T3 Code uses each
-checkout's GitHub remote for its repository issues and pull requests.
+to persist. T3 Code uses each checkout's GitHub remote for its repository
+issues and pull requests.
+
+### GitHub Projects backlog
+
+In a thread using **HomeCompute Local → Automation MoE**, ask
+`$homecompute-team Show this project's GitHub backlog`. The lead can also run
+`t3-github-backlog` from the checkout or its worktree. Approve the read command
+when Supervised mode prompts for it.
+
+The reader scans every open personal board owned by the configured GitHub
+account every 15 minutes. For each declared T3 repository it publishes up to
+40 open issue and PR references per board with Status and Priority. Draft
+cards and private or out-of-scope repository items stay outside the snapshot.
+The snapshot reports partial queries and additional pages. T3 accepts data up
+to 30 minutes old. The local coding lead can hand the relevant issue and
+priority to the Hermes reviewer.
+
+After deployment, create a dedicated classic GitHub token with an expiry and
+only `read:project`. In a private terminal run the following with the deployed
+T3 Code release SHA, then enter the token at the hidden prompt. The reader
+verifies token ownership and scope against GitHub before storing it. The
+T3 Code container mounts only the generated snapshots, read-only.
+[GitHub Projects authentication](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication)
+
+```sh
+ssh -t home-core 'sudo python3 /srv/homecompute/releases/FULL_RELEASE_SHA/deploy/t3code/github-projects.py provision && sudo docker restart homecompute-t3code-github-projects-1'
+```
+
+From Home Core, verify the status from a declared checkout. `available` with
+an empty board list means GitHub returned no matching open items.
+
+```sh
+sudo docker exec -w /data/projects/Daythread homecompute-t3code-t3code-1 t3-github-backlog | jq '{repository, status, boards: (.boards | length)}'
+```
+
+Rotate the token with the same provision command and restart. Revoke retired
+tokens in GitHub. A failed scope check or revoked credential yields an
+unavailable snapshot at the next refresh. When rolling back to a release with
+no reader, stop the `github-projects` sidecar under the active Compose release
+and redeploy the earlier T3 Code image through the normal procedure.
 
 ## Local models
 

@@ -39,9 +39,10 @@ RUN set -eux; \
     groupadd --gid 12073 t3code; \
     useradd --uid 12073 --gid 12073 --home-dir /data --no-create-home --shell /bin/bash t3code
 
-COPY policy.json codex-local-models.json /etc/t3code/
+COPY policy.json codex-local-models.json projects.json /etc/t3code/
 COPY --from=hermes /opt/hermes /opt/hermes
 COPY --chmod=0555 hermes-code-review.py /usr/local/bin/hermes-code-review
+COPY --chmod=0555 read-github-backlog.py /usr/local/bin/t3-github-backlog
 
 ENV HOME=/data T3CODE_HOME=/data/.t3
 USER 12073:12073

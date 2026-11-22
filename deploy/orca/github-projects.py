@@ -59,19 +59,12 @@ def projects():
     return entries
 
 
-def project_items(entry, number, token):
-    board = entry["github_project"]
-    kind, owner = board["kind"], board["owner"]
-    repository = entry["repository"]
-    if (kind not in {"user", "organization"} or not re.fullmatch(r"[A-Za-z0-9-]+", owner)
-            or type(number) is not int or number < 1
-            or not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository)):
-        raise ValueError("invalid board configuration")
+def github_graphql(query, variables, token):
     if not re.fullmatch(r"ghp_[A-Za-z0-9]+", token):
         raise ValueError("expected a classic GitHub token with read:project only")
     request = Request("https://api.github.com/graphql", data=json.dumps({
-        "query": QUERY.replace("OWNER_KIND", kind),
-        "variables": {"owner": owner, "number": number, "filter": f"repo:{repository} is:open"},
+        "query": query,
+        "variables": variables,
     }).encode(), headers={
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -87,7 +80,21 @@ def project_items(entry, number, token):
     data = json.loads(raw)
     if data.get("errors"):
         raise ValueError("GitHub rejected the board query")
-    project = data["data"][kind]["projectV2"]
+    return data["data"]
+
+
+def project_items(entry, number, token):
+    board = entry["github_project"]
+    kind, owner = board["kind"], board["owner"]
+    repository = entry["repository"]
+    if (kind not in {"user", "organization"} or not re.fullmatch(r"[A-Za-z0-9-]+", owner)
+            or type(number) is not int or number < 1
+            or not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+", repository)):
+        raise ValueError("invalid board configuration")
+    data = github_graphql(QUERY.replace("OWNER_KIND", kind), {
+        "owner": owner, "number": number, "filter": f"repo:{repository} is:open",
+    }, token)
+    project = data[kind]["projectV2"]
     if project["closed"]:
         raise ValueError("board is closed")
 

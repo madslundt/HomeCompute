@@ -238,6 +238,7 @@ python3 "$REPO_ROOT/tests/homepage-maintenance-test.py"
 python3 "$REPO_ROOT/tests/homepage-t3code-test.py"
 python3 "$REPO_ROOT/tests/t3code-access-test.py"
 python3 "$REPO_ROOT/tests/t3code-projects-test.py"
+python3 "$REPO_ROOT/tests/t3code-github-projects-test.py"
 python3 "$REPO_ROOT/tests/homepage-update-check-test.py"
 python3 "$REPO_ROOT/tests/openclaw-maintenance-test.py"
 python3 "$REPO_ROOT/tests/infrastructure-update-policy-test.py"
@@ -925,7 +926,7 @@ T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml
     .cap_drop == ["ALL"] and (.security_opt | index("no-new-privileges:true") != null) and
     (.security_opt | index("seccomp:../paperclip/codex-seccomp.json") != null) and
     (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "3773") and
-    (.volumes | length == 5 and all(.[]; .type == "bind" and .bind.create_host_path != true)) and
+    (.volumes | length == 6 and all(.[]; .type == "bind" and .bind.create_host_path != true)) and
     (any(.volumes[]; .source == "/srv/state/t3code" and .target == "/data")) and
     (any(.volumes[]; (.source | endswith("/deploy/t3code/codex-local.toml")) and
       .target == "/data/.codex-homecompute/config.toml" and .read_only)) and
@@ -935,7 +936,17 @@ T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml
       .target == "/data/.hermes-code/config.yaml" and .read_only)) and
     (any(.volumes[]; .source == "/etc/homecompute/control-plane/home-core-root.crt" and
       .target == "/run/homecompute/home-core-root.crt" and .read_only)) and
-    .logging.driver == "none")
+    (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/snapshots" and
+      .target == "/run/homecompute/github-projects" and .read_only)) and
+    .logging.driver == "none") and
+    (.services["github-projects"] |
+      .user == "10001:10001" and .read_only and .cap_drop == ["ALL"] and
+      .logging.driver == "none" and .ports == null and (.networks | keys == ["default"]) and
+      (.volumes | length == 5) and
+      (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/credentials" and
+        .target == "/run/github-projects/credentials" and .read_only)) and
+      (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/snapshots" and
+        .target == "/snapshots" and .read_only != true)))
   ' >/dev/null
 jq -e '.limits | .connect == false and .webhookTasks == false and
   .previewTunnel == false and .telemetry == false and .updates.mode == "off" and
