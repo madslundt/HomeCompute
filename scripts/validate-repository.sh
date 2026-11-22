@@ -942,7 +942,9 @@ T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml
     (.services["github-projects"] |
       .user == "10001:10001" and .read_only and .cap_drop == ["ALL"] and
       .logging.driver == "none" and .ports == null and (.networks | keys == ["default"]) and
-      (.volumes | length == 5) and
+      (.volumes | length == 6) and
+      (any(.volumes[]; (.source | endswith("/deploy/t3code/github_project_writes.py")) and
+        .target == "/opt/t3code/github_project_writes.py" and .read_only)) and
       (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/credentials" and
         .target == "/run/github-projects/credentials" and .read_only)) and
       (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/snapshots" and

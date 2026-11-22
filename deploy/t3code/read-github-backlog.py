@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Print the fresh GitHub Projects backlog for the current T3 checkout."""
+"""Read a GitHub Projects backlog or edit its items from the current T3 checkout."""
 
+import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 
@@ -39,13 +41,51 @@ def fresh_snapshot(path, repository, now):
     return snapshot
 
 
+def send_write(request):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(100)
+        connection.connect(str(SNAPSHOTS / "write.sock"))
+        connection.sendall(json.dumps(request).encode() + b"\n")
+        with connection.makefile("rb") as response:
+            raw = response.readline(1025)
+    if len(raw) > 1024 or not raw.endswith(b"\n"):
+        raise ValueError("Incomplete GitHub Projects response")
+    return json.loads(raw)
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    actions = parser.add_subparsers(dest="action")
+    for action, help_text in (
+        ("add", "add an open issue or pull request to a board"),
+        ("set", "set one field on an existing board item"),
+    ):
+        command = actions.add_parser(action, help=help_text)
+        command.add_argument("board", type=int, help="number in the GitHub Projects board URL")
+        command.add_argument("number", type=int, help="issue or pull request number")
+        if action == "set":
+            command.add_argument("field", choices=("Status", "Priority"))
+            command.add_argument("value", help="exact name of the field option")
+    args = parser.parse_args()
     try:
         repository = current_repository()
-        snapshot = SNAPSHOTS / (repository.split("/")[1] + ".json")
-        print(json.dumps(fresh_snapshot(snapshot, repository, datetime.now(timezone.utc)), indent=2))
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
-        sys.exit("A fresh GitHub Projects snapshot is unavailable for this checkout.")
+        sys.exit("GitHub Projects is available from a configured T3 checkout.")
+
+    if args.action:
+        try:
+            result = send_write({**vars(args), "repository": repository})
+            if result["ok"] is not True:
+                sys.exit(result["message"])
+            print(result["message"])
+        except (OSError, ValueError, KeyError, TypeError):
+            sys.exit("GitHub Projects did not confirm the update. Check the board before retrying.")
+    else:
+        try:
+            snapshot = SNAPSHOTS / (repository.split("/")[1] + ".json")
+            print(json.dumps(fresh_snapshot(snapshot, repository, datetime.now(timezone.utc)), indent=2))
+        except (OSError, ValueError, KeyError, TypeError):
+            sys.exit("A fresh GitHub Projects snapshot is unavailable for this checkout.")
 
 
 if __name__ == "__main__":
