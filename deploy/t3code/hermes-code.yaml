@@ -1,0 +1,16 @@
+model:
+  provider: custom
+  default: automation-moe
+  base_url: https://ai.home.arpa:8443/v1
+  api_mode: chat_completions
+  api_key: local
+  context_length: 65536
+platform_toolsets:
+  acp: [file, no_mcp]
+agent:
+  disabled_toolsets: [t3code-write-tools]
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+security:
+  allow_lazy_installs: false

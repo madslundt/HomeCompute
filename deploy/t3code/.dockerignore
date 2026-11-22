@@ -2,3 +2,4 @@
 !Dockerfile
 !policy.json
 !codex-local-models.json
+!hermes-code-review.py

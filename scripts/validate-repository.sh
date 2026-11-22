@@ -924,20 +924,29 @@ T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml
     .cap_drop == ["ALL"] and (.security_opt | index("no-new-privileges:true") != null) and
     (.security_opt | index("seccomp:../paperclip/codex-seccomp.json") != null) and
     (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "3773") and
-    (.volumes | length == 3 and all(.[]; .type == "bind" and .bind.create_host_path != true)) and
+    (.volumes | length == 5 and all(.[]; .type == "bind" and .bind.create_host_path != true)) and
     (any(.volumes[]; .source == "/srv/state/t3code" and .target == "/data")) and
     (any(.volumes[]; (.source | endswith("/deploy/t3code/codex-local.toml")) and
       .target == "/data/.codex-homecompute/config.toml" and .read_only)) and
+    (any(.volumes[]; (.source | endswith("/deploy/t3code/skills/homecompute-team")) and
+      .target == "/data/.codex-homecompute/skills/homecompute-team" and .read_only)) and
+    (any(.volumes[]; (.source | endswith("/deploy/t3code/hermes-code.yaml")) and
+      .target == "/data/.hermes-code/config.yaml" and .read_only)) and
     (any(.volumes[]; .source == "/etc/homecompute/control-plane/home-core-root.crt" and
       .target == "/run/homecompute/home-core-root.crt" and .read_only)) and
     .logging.driver == "none")
   ' >/dev/null
 jq -e '.limits | .connect == false and .webhookTasks == false and
-  .previewTunnel == false and .telemetry == false and .updates.mode == "off"' \
+  .previewTunnel == false and .telemetry == false and .updates.mode == "off" and
+  .providers.allowedDrivers == ["codex", "acpRegistry"]' \
   "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
 jq -e '
-  .settings["providerInstances.homecompute-local"] |
-  .locked and .value.driver == "codex" and .value.config.homePath == "/data/.codex-homecompute"
+  .settings.providerInstances |
+  .locked and (.value | keys == ["codex", "hermes-code", "homecompute-local"]) and
+  (.value["homecompute-local"] | .driver == "codex" and .config.homePath == "/data/.codex-homecompute") and
+  (.value["hermes-code"] | .driver == "acpRegistry" and .enabled and
+    .config == {"source": "local", "commandPath": "/usr/local/bin/hermes-code-review"} and
+    (any(.environment[]; .name == "HERMES_HOME" and .value == "/data/.hermes-code")))
 ' "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
 jq -e '[.models[].slug] == ["automation-moe"]' "$REPO_ROOT/deploy/t3code/codex-local-models.json" >/dev/null
 
