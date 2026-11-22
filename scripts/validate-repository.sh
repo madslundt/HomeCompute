@@ -905,6 +905,7 @@ printf '[validate] T3 Code Compose boundary\n'
 jq -e '
   .networks.t3code.name == "homecompute-t3code-ingress" and
   .networks.t3code.internal == true and
+  .services.caddy.networks.t3code.aliases == ["ai.home.arpa"] and
   .networks.t3code.driver_opts["com.docker.network.bridge.gateway_mode_ipv4"] == "isolated" and
   ([.services | to_entries[] | select(.value.networks.t3code != null) | .key] == ["caddy"])
 ' "$control_plane_json" >/dev/null
@@ -923,13 +924,22 @@ T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml
     .cap_drop == ["ALL"] and (.security_opt | index("no-new-privileges:true") != null) and
     (.security_opt | index("seccomp:../paperclip/codex-seccomp.json") != null) and
     (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "3773") and
-    (.volumes | length == 1 and .[0].type == "bind" and .[0].source == "/srv/state/t3code" and
-      .[0].target == "/data" and .[0].bind.create_host_path != true) and
+    (.volumes | length == 3 and all(.[]; .type == "bind" and .bind.create_host_path != true)) and
+    (any(.volumes[]; .source == "/srv/state/t3code" and .target == "/data")) and
+    (any(.volumes[]; (.source | endswith("/deploy/t3code/codex-local.toml")) and
+      .target == "/data/.codex-homecompute/config.toml" and .read_only)) and
+    (any(.volumes[]; .source == "/etc/homecompute/control-plane/home-core-root.crt" and
+      .target == "/run/homecompute/home-core-root.crt" and .read_only)) and
     .logging.driver == "none")
   ' >/dev/null
 jq -e '.limits | .connect == false and .webhookTasks == false and
   .previewTunnel == false and .telemetry == false and .updates.mode == "off"' \
   "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
+jq -e '
+  .settings["providerInstances.homecompute-local"] |
+  .locked and .value.driver == "codex" and .value.config.homePath == "/data/.codex-homecompute"
+' "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
+jq -e '[.models[].slug] == ["automation-moe"]' "$REPO_ROOT/deploy/t3code/codex-local-models.json" >/dev/null
 
 podwave_json="$temporary_root/podwave.json"
 docker compose -f "$REPO_ROOT/deploy/podwave/compose.yaml" config --format json >"$podwave_json"

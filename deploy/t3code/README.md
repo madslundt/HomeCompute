@@ -4,7 +4,7 @@ T3 Code is a private coding workspace for personal projects. The application
 runs in its own Compose project on `home-core`. The upstream Linux x64 T3 Code
 and Codex CLI artifacts are verified against the SHA-256 pins in the Dockerfile.
 The container runs as UID/GID 12073 with a read-only root filesystem, resource
-limits, no capabilities, and a single persistent bind mount at `/data`. It
+limits, and no capabilities. Application state persists under `/data`. It
 receives no host checkout, SSH keys, Docker socket, or production credentials.
 
 The managed policy disables T3 Connect, webhooks, browser-cookie import, cloud
@@ -31,8 +31,8 @@ Open the printed link, then use the Homepage card for future visits. Generate
 a separate link for each client. Manage established sessions under **Settings
 → Sharing & access**.
 
-To start Codex threads, sign in with a ChatGPT account authorized for the
-projects you plan to use. The login command runs inside the container and
+For ChatGPT-backed Codex threads, sign in with a ChatGPT account authorized
+for the projects you plan to use. The login command runs inside the container and
 stores its credentials in the service's private state:
 
 ```sh
@@ -42,6 +42,20 @@ ssh -t home-core 'sudo docker exec -it homecompute-t3code-t3code-1 codex login -
 Complete the browser prompt shown by Codex. In T3 Code, open or clone a Git
 repository under `/data/projects` and select Codex when creating a thread.
 Access to private Git repositories requires separately scoped Git credentials.
+
+## Local models
+
+In a new thread, select **HomeCompute Local → Automation MoE** in the model
+picker. This provider uses the local `automation-moe` alias through the
+gateway's local-only Responses API. It has a separate Codex home and uses the
+private HomeCompute CA. Pairing with T3 Code is sufficient for this provider.
+The separate Codex provider continues to use its configured ChatGPT account.
+
+The model catalog lists the local text alias exposed for coding. Update the model
+catalog and its Codex configuration together if the local routing changes.
+The `ai.home.arpa` Docker alias belongs to Caddy on the dedicated T3 Code
+bridge. It leaves the workstation DNS record and the LAN model catalog in
+place.
 
 ## Deploy and inspect
 
@@ -70,7 +84,8 @@ sudo docker exec homecompute-t3code-t3code-1 codex login status
 ```
 
 The access installer adds the virtual host and the internal Docker network to
-the healthy gateway. The normal Home Core release also declares both. Add the
+the healthy gateway, including its private model API alias. The normal Home
+Core release declares the same configuration. Add the
 record in [t3code-dns.json](../../config/t3code-dns.json) in UniFi Network under
 **Settings → Policy Engine → Policy Table → DNS Records**. Verify DNS, trusted
 TLS, browser pairing, and the projects view before applying the [Homepage

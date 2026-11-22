@@ -68,7 +68,8 @@ services:
         ipv4_address: ${CADDY_CLIENTS_IP:?Set CADDY_CLIENTS_IP}
       mcp-web:
         ipv4_address: ${CADDY_MCP_WEB_IP:?Set CADDY_MCP_WEB_IP}
-      t3code: {}
+      t3code:
+        aliases: [ai.home.arpa]
       orca:
         ipv4_address: 172.28.219.2
       paperclip: {}

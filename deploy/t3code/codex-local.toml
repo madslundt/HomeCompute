@@ -1,0 +1,15 @@
+model = "automation-moe"
+model_provider = "homecompute"
+model_catalog_json = "/etc/t3code/codex-local-models.json"
+disable_response_storage = true
+web_search = "disabled"
+
+[model_providers.homecompute]
+name = "HomeCompute Local"
+base_url = "https://ai.home.arpa:8443/v1"
+wire_api = "responses"
+requires_openai_auth = false
+
+[features]
+apps = false
+plugins = false

@@ -19,7 +19,7 @@ RUN set -eux; \
     groupadd --gid 12073 t3code; \
     useradd --uid 12073 --gid 12073 --home-dir /data --no-create-home --shell /bin/bash t3code
 
-COPY policy.json /etc/t3code/policy.json
+COPY policy.json codex-local-models.json /etc/t3code/
 
 ENV HOME=/data T3CODE_HOME=/data/.t3
 USER 12073:12073

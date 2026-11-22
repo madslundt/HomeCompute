@@ -1,0 +1,27 @@
+{
+  "models": [
+    {
+      "slug": "automation-moe",
+      "display_name": "Automation MoE",
+      "description": "Local coding model on HomeCompute",
+      "base_instructions": "You are a coding assistant. Follow the user’s request and the repository instructions. Inspect relevant files, make focused changes, and verify the result.",
+      "default_reasoning_level": "low",
+      "supported_reasoning_levels": [
+        { "effort": "low", "description": "Local reasoning" }
+      ],
+      "shell_type": "shell_command",
+      "visibility": "list",
+      "supported_in_api": true,
+      "priority": 0,
+      "include_apps_usage_instructions": false,
+      "supports_reasoning_summary_parameter": false,
+      "support_verbosity": false,
+      "truncation_policy": { "mode": "tokens", "limit": 8000 },
+      "context_window": 65536,
+      "auto_compact_token_limit": 52000,
+      "experimental_supported_tools": [],
+      "input_modalities": ["text"],
+      "supports_parallel_tool_calls": false
+    }
+  ]
+}

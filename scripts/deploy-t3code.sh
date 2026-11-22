@@ -30,7 +30,7 @@ exec 9>/var/lib/homecompute/deploy.lock
 flock -n 9 || { printf 'Another deployment is running.\n' >&2; exit 1; }
 
 state=/srv/state/t3code
-for directory in "$state" "$state/projects"; do
+for directory in "$state" "$state/projects" "$state/.codex-homecompute"; do
   if [[ -e "$directory" || -L "$directory" ]]; then
     [[ -d "$directory" && ! -L "$directory" &&
        $(stat -c '%u:%g:%a' -- "$directory") == 12073:12073:700 ]] || {
@@ -48,6 +48,11 @@ compose=(docker compose -f "$release/deploy/t3code/compose.yaml")
 # Build first so failures to fetch or verify upstream artifacts leave the old
 # container running.
 "${compose[@]}" build
+"${compose[@]}" run --rm --no-deps --pull never -T --entrypoint t3 t3code \
+  policy check /etc/t3code/policy.json
+"${compose[@]}" run --rm --no-deps --pull never -T --entrypoint curl t3code \
+  --fail --silent --show-error --max-time 10 --cacert /run/homecompute/home-core-root.crt \
+  https://ai.home.arpa:8443/v1/models | jq -e 'any(.data[]; .id == "automation-moe")' >/dev/null
 docker run --rm --interactive --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges:true \
   --security-opt "seccomp=$release/deploy/paperclip/codex-seccomp.json" \

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = Path("/var/lib/homecompute/t3code-gateway")
 CADDY = "homecompute-control-plane-caddy-1"
 TARGET = "/etc/caddy/Caddyfile"
+MODEL_ALIAS = "ai.home.arpa"
 NETWORK = {
     "name": "homecompute-t3code-ingress",
     "driver": "bridge",
@@ -75,7 +76,7 @@ def apply(compose, current, candidate):
     deploy.install(source, candidate, mode=0o644)
     deploy.install(overlay, json.dumps({
         "services": {"caddy": {"volumes": [{"type": "bind", "source": str(source),
-                                           "target": TARGET, "read_only": True}], "networks": {"t3code": {}}}},
+                                           "target": TARGET, "read_only": True}], "networks": {"t3code": {"aliases": [MODEL_ALIAS]}}}},
         "networks": {"t3code": NETWORK},
     }))
     updated = [*compose, "-f", str(overlay)]
@@ -99,10 +100,9 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         compose, row, current = current_gateway()
         candidate = add_route(current, (ROOT / "deploy/control-plane/Caddyfile").read_text())
-        if current != candidate:
+        network = row["NetworkSettings"]["Networks"].get(NETWORK["name"], {})
+        if current != candidate or MODEL_ALIAS not in (network.get("Aliases") or []):
             apply(compose, current, candidate)
-        elif NETWORK["name"] not in row["NetworkSettings"]["Networks"]:
-            raise ValueError("The gateway route exists without its dedicated Docker network")
         print(json.dumps({"gateway": "t3code.home.arpa", "caddyfile": deploy.digest(candidate)}))
 
 

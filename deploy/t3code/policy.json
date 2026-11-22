@@ -2,7 +2,22 @@
   "schemaVersion": 1,
   "organization": "HomeCompute",
   "settings": {
-    "defaultRuntimeMode": { "value": "approval-required", "locked": false }
+    "defaultRuntimeMode": { "value": "approval-required", "locked": false },
+    "providerInstances.homecompute-local": {
+      "locked": true,
+      "value": {
+        "driver": "codex",
+        "displayName": "HomeCompute Local",
+        "enabled": true,
+        "environment": [
+          { "name": "CODEX_CA_CERTIFICATE", "value": "/run/homecompute/home-core-root.crt", "sensitive": false }
+        ],
+        "config": {
+          "setupMode": "existing",
+          "homePath": "/data/.codex-homecompute"
+        }
+      }
+    }
   },
   "limits": {
     "connect": false,

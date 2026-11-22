@@ -29,6 +29,18 @@ services:
         target: /data
         bind:
           create_host_path: false
+      - type: bind
+        source: ./codex-local.toml
+        target: /data/.codex-homecompute/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /etc/homecompute/control-plane/home-core-root.crt
+        target: /run/homecompute/home-core-root.crt
+        read_only: true
+        bind:
+          create_host_path: false
     tmpfs:
       - /tmp:mode=1777,nosuid,nodev,size=512m
     healthcheck:
