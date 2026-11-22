@@ -35,6 +35,10 @@ query T3OwnedBoards($cursor: String) {
 FAILURES = (OSError, ValueError, KeyError, TypeError)
 
 
+class ProvisioningError(ValueError):
+    """A message safe to show at the private provision prompt."""
+
+
 def repositories():
     entries = json.loads((HERE / "projects.json").read_text())
     repos = [entry["repository"] for entry in entries]
@@ -50,7 +54,7 @@ def owned_boards(graphql, token):
     while True:
         viewer = graphql(BOARD_QUERY, {"cursor": cursor}, token)["viewer"]
         if viewer["login"].casefold() != OWNER:
-            raise ValueError("Token belongs to a different GitHub account")
+            raise ProvisioningError(f"Token belongs to a different GitHub account. Create it while signed in as {OWNER}.")
         page = viewer["projectsV2"]
         numbers.update(item["number"] for item in page["nodes"]
                        if item and item["closed"] is False and item["owner"]["__typename"] == "User"
@@ -145,13 +149,25 @@ def main():
             raise ValueError("Use a private terminal for the Projects credential")
         shared = runpy.run_path(str(HERE.parent / "orca/github-projects.py"))
         token = getpass("Dedicated GitHub read:project token: ").strip()
-        boards = owned_boards(shared["github_graphql"], token)
-        shared["atomic_write"](STATE / "credentials/token", token.encode(), 0o640, gid=READER_ID)
+        try:
+            boards = owned_boards(shared["github_graphql"], token)
+        except shared["GitHubProjectsError"] as error:
+            raise ProvisioningError(str(error)) from None
+        except ProvisioningError:
+            raise
+        except FAILURES:
+            raise ProvisioningError("Could not verify the personal boards returned by GitHub.") from None
+        try:
+            shared["atomic_write"](STATE / "credentials/token", token.encode(), 0o640, gid=READER_ID)
+        except OSError:
+            raise ProvisioningError("Could not save the credential in the protected Home Core directory.") from None
         print(f"Verified the read-only grant and found {len(boards)} open personal boards.")
 
 
 if __name__ == "__main__":
     try:
         main()
+    except ProvisioningError as error:
+        sys.exit(str(error))
     except FAILURES:
         sys.exit("T3 Code GitHub Projects setup or refresh failed.")

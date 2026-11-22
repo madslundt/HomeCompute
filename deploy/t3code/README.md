@@ -85,10 +85,12 @@ to 30 minutes old. The local coding lead can hand the relevant issue and
 priority to the Hermes reviewer.
 
 After deployment, create a dedicated classic GitHub token with an expiry and
-only `read:project`. In a private terminal run the following with the deployed
-T3 Code release SHA, then enter the token at the hidden prompt. The reader
-verifies token ownership and scope against GitHub before storing it. The
-T3 Code container mounts only the generated snapshots, read-only.
+only `read:project`. In a private terminal run the following with the published
+T3 Code provisioner release SHA, then enter the token at the hidden prompt.
+The provisioner verifies token ownership and scope against GitHub before
+storing it. If GitHub rejects the credential, the terminal prints the reason
+without the token or GitHub response body. The T3 Code container mounts only
+the generated snapshots, read-only.
 [GitHub Projects authentication](https://docs.github.com/en/issues/planning-and-tracking-with-projects/automating-your-project/using-the-api-to-manage-projects#authentication)
 
 ```sh
