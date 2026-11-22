@@ -42,6 +42,8 @@ for directory in "$state" "$state/projects" "$state/.codex-homecompute" "$state/
   fi
 done
 
+python3 "$release/deploy/t3code/github-projects.py" prepare
+
 export T3CODE_RELEASE="$revision"
 compose=(docker compose -f "$release/deploy/t3code/compose.yaml")
 "${compose[@]}" config --quiet

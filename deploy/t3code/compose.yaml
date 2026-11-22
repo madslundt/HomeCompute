@@ -53,6 +53,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: /var/lib/homecompute/t3code/github-projects/snapshots
+        target: /run/homecompute/github-projects
+        read_only: true
+        bind:
+          create_host_path: false
     tmpfs:
       - /tmp:mode=1777,nosuid,nodev,size=512m
     healthcheck:
@@ -65,6 +71,36 @@ services:
     mem_limit: 3g
     pids_limit: 256
     # The upstream foreground server prints a pairing credential at startup.
+    logging:
+      driver: none
+
+  github-projects:
+    image: python:3.12.15-slim-bookworm@sha256:6a0e06f5ba0b373d051aabd3fffb9b873f27f9a2a3a14bcbe37dee6f0e3bbc70
+    command: [python3, -B, /opt/t3code/github-projects.py, serve]
+    user: "10001:10001"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - ./github-projects.py:/opt/t3code/github-projects.py:ro
+      - ./projects.json:/opt/t3code/projects.json:ro
+      - ../orca/github-projects.py:/opt/t3code/orca-projects.py:ro
+      - type: bind
+        source: /var/lib/homecompute/t3code/github-projects/credentials
+        target: /run/github-projects/credentials
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /var/lib/homecompute/t3code/github-projects/snapshots
+        target: /snapshots
+        bind:
+          create_host_path: false
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 16
     logging:
       driver: none
 
