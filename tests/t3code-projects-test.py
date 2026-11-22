@@ -55,7 +55,8 @@ class ProjectTests(unittest.TestCase):
     def test_only_t3s_known_duplicate_result_is_idempotent(self):
         checkout = Path("/data/projects/HomeCompute")
         with patch.object(setup.subprocess, "run") as run:
-            run.return_value = subprocess.CompletedProcess([], 1, "", f"An active project already exists for '{checkout}'.\n")
+            diagnostic = f"[10:24:51.421] ERROR (#2): ProjectAlreadyExistsError: An active project already exists for '{checkout}'.\n"
+            run.return_value = subprocess.CompletedProcess([], 1, "", diagnostic)
             self.assertEqual(setup.ensure_project(checkout), "already registered")
             run.return_value = subprocess.CompletedProcess([], 1, "", "server unavailable")
             with self.assertRaisesRegex(ValueError, "could not register HomeCompute"):

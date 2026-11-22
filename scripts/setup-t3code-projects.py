@@ -28,9 +28,10 @@ def validate_projects(projects):
     for item in projects:
         if (not isinstance(item, dict) or set(item) != {"repository", "branch"}
                 or not isinstance(item["repository"], str)
-                or not re.fullmatch(r"madslundt/[A-Za-z0-9][A-Za-z0-9_-]*", item["repository"])
-                or item["branch"] not in ("main", "master")):
-            raise ValueError("Expected an approved GitHub repository with a main or master branch")
+                or not re.fullmatch(r"madslundt/[A-Za-z0-9_][A-Za-z0-9._-]*", item["repository"])
+                or not isinstance(item["branch"], str)
+                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", item["branch"])):
+            raise ValueError("Expected an approved GitHub repository and branch")
         name = item["repository"].split("/")[1].casefold()
         if name in names:
             raise ValueError("Duplicate project checkout name")
@@ -70,8 +71,8 @@ def ensure_project(checkout):
     )
     if result.returncode == 0:
         return "registered"
-    expected = f"An active project already exists for '{checkout}'."
-    if expected in (result.stdout + result.stderr).splitlines():
+    expected = f"ProjectAlreadyExistsError: An active project already exists for '{checkout}'."
+    if any(line.endswith(expected) for line in (result.stdout + result.stderr).splitlines()):
         return "already registered"
     raise ValueError(f"T3 Code could not register {checkout.name}")
 
