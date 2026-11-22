@@ -32,7 +32,7 @@
          return await client.rpc("session.info", session_id=session_id)
 
      async def _resume(self, cwd, held_id, mcp_servers):
-+        mcp_servers = None
++        mcp_servers = None  # The reviewer uses only the managed file tools.
          client = await self._client()
          from acp_adapter.catalog import logical_session_id
          from hermes_cli.gateway_client import GatewayRPCError
@@ -40,10 +40,19 @@
          await self._cancel_admission(session_id, admission_id)
 
      async def fork_session(self, cwd, session_id, mcp_servers=None, **kwargs):
-+        mcp_servers = None
++        mcp_servers = None  # The reviewer uses only the managed file tools.
          from acp.schema import ForkSessionResponse
          session_id = self._aliases.get(session_id, session_id)
          client = await self._client()
+@@ -483,6 +486,8 @@
+         client = await self._client()
+         from hermes_cli.models import parse_model_input
+         # Picker IDs include the provider, as on the in-process ACP switch path.
++        if model_id == "default":
++            model_id = "custom:automation-moe"
+         provider, model = await asyncio.to_thread(parse_model_input, model_id, '')
+         payload = {'model': model, **({'provider': provider} if provider else {})}
+         self._unacked.pop(session_id, None)  # a control between a lost submit and its repeat retires it
 --- a/acp_adapter/entry.py
 +++ b/acp_adapter/entry.py
 @@ -73,7 +73,7 @@

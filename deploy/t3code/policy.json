@@ -34,7 +34,7 @@
           "config": {
             "source": "local",
             "commandPath": "/usr/local/bin/hermes-code-review",
-            "customModels": [{ "slug": "default", "name": "Automation MoE" }]
+            "customModels": [{ "slug": "custom:automation-moe", "name": "Automation MoE" }]
           }
         }
       }
