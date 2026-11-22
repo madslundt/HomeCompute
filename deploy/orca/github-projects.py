@@ -12,7 +12,7 @@ import stat
 import sys
 from tempfile import NamedTemporaryFile
 from time import sleep
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
@@ -51,6 +51,10 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
+class GitHubProjectsError(ValueError):
+    """A safe diagnostic that never contains a token or an upstream response body."""
+
+
 def projects():
     entries = json.loads(TEAMS.read_bytes())["projects"]
     for entry in entries:
@@ -61,7 +65,7 @@ def projects():
 
 def github_graphql(query, variables, token):
     if not re.fullmatch(r"ghp_[A-Za-z0-9]+", token):
-        raise ValueError("expected a classic GitHub token with read:project only")
+        raise GitHubProjectsError("Enter the full classic GitHub token beginning with ghp_.")
     request = Request("https://api.github.com/graphql", data=json.dumps({
         "query": query,
         "variables": variables,
@@ -70,16 +74,34 @@ def github_graphql(query, variables, token):
         "Content-Type": "application/json",
         "User-Agent": "HomeCompute-Orca-Projects",
     })
-    with build_opener(NoRedirect).open(request, timeout=15) as response:
-        scopes = {scope.strip() for scope in response.headers.get("X-OAuth-Scopes", "").split(",")}
-        if scopes != {"read:project"}:
-            raise ValueError("token must have only the read:project scope")
-        raw = response.read(256_001)
+    try:
+        with build_opener(NoRedirect).open(request, timeout=15) as response:
+            scope_header = response.headers.get("X-OAuth-Scopes", "")
+            scopes = {scope.strip() for scope in scope_header.split(",") if scope.strip()}
+            if scopes != {"read:project"}:
+                if "project" in scopes:
+                    raise GitHubProjectsError("GitHub reports write access to Projects. Select only the read:project scope.")
+                if "read:project" in scopes:
+                    raise GitHubProjectsError("GitHub reports additional permissions. Select only the read:project scope.")
+                raise GitHubProjectsError("GitHub did not report the read:project scope. Select it on a classic token.")
+            raw = response.read(256_001)
+    except HTTPError as error:
+        headers = error.headers or {}
+        if error.code == 401:
+            raise GitHubProjectsError(
+                "GitHub rejected the token (HTTP 401). Check that it was copied in full and is still active."
+            ) from None
+        limited = headers.get("X-RateLimit-Remaining") == "0" or "Retry-After" in headers
+        if error.code == 429 or (error.code == 403 and limited):
+            raise GitHubProjectsError("GitHub is rate-limiting the request. Wait before retrying the same token.") from None
+        raise GitHubProjectsError(f"GitHub returned HTTP {error.code} during the Projects request.") from None
+    except (URLError, TimeoutError):
+        raise GitHubProjectsError("Home Core could not complete the HTTPS request to GitHub.") from None
     if len(raw) > 256_000:
         raise ValueError("board response exceeds the size bound")
     data = json.loads(raw)
     if data.get("errors"):
-        raise ValueError("GitHub rejected the board query")
+        raise GitHubProjectsError("GitHub accepted the credential but rejected the Projects query.")
     return data["data"]
 
 

@@ -7,7 +7,8 @@ from pathlib import Path
 import runpy
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
+from urllib.error import HTTPError
 
 
 DEPLOY = Path(__file__).resolve().parents[1] / "deploy"
@@ -28,6 +29,30 @@ def page(nodes, next_cursor=None, viewer="madslundt"):
 
 
 class GitHubProjectsTests(unittest.TestCase):
+    def test_github_authentication_failure_reports_a_safe_reason(self):
+        graphql = shared["github_graphql"]
+        opener = Mock()
+        opener.open.side_effect = HTTPError(
+            "https://api.github.com/graphql", 401, "Untrusted upstream detail", {}, None,
+        )
+        with patch.dict(graphql.__globals__, {"build_opener": Mock(return_value=opener)}):
+            with self.assertRaisesRegex(ValueError, r"GitHub rejected the token \(HTTP 401\)") as error:
+                graphql("query { viewer { login } }", {}, "ghp_synthetic")
+            self.assertNotIn("Untrusted upstream detail", str(error.exception))
+
+    def test_github_scope_check_keeps_exact_read_only_permission(self):
+        graphql = shared["github_graphql"]
+        opener = MagicMock()
+        response = opener.open.return_value.__enter__.return_value
+        response.read.return_value = b'{"data":{"viewer":{"login":"madslundt"}}}'
+        with patch.dict(graphql.__globals__, {"build_opener": Mock(return_value=opener)}):
+            response.headers = {"X-OAuth-Scopes": "read:project, repo"}
+            with self.assertRaisesRegex(ValueError, "additional permissions"):
+                graphql("query { viewer { login } }", {}, "ghp_synthetic")
+            response.headers = {"X-OAuth-Scopes": "read:project"}
+            self.assertEqual(graphql("query { viewer { login } }", {}, "ghp_synthetic"),
+                             {"viewer": {"login": "madslundt"}})
+
     def test_discovers_open_owned_boards_across_pages(self):
         graphql = Mock(side_effect=[page([node(9), node(2, closed=True), node(4, "elsewhere")], "next"),
                                     page([node(21), node(9)])])
