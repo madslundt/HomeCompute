@@ -53,6 +53,14 @@ applies.
 The 2026-11-17 Astra grant extends this model-only key to
 `chatgpt-astra-latest` using the existing credential. MCP access remains denied.
 
+The owner-only Sol chat may request a local lookup of saved Hermes memories.
+The adapter previews each new chat message before sending it to Sol and applies
+a separate, single-use approval to the exact proposed memory excerpt. The local
+lookup uses Hermes with no tools or cloud fallback. Keep excerpts and their
+answers out of later model history. The handoff requires explicit member
+denial on the Sol chat and a single owner or administrator able to read it.
+See the [Sol runbook](../../deploy/openbot/SOL.md).
+
 Use OpenBot's hosted account, Signal, and TURN services. Do not deploy its
 self-hosted Cloudflare account stack or publish ports from Home Core. Account
 sign-in and cloud-provider authentication are owner actions.
