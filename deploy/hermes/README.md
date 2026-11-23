@@ -263,6 +263,12 @@ Use the same invocation with `rollback` to restore the original local model
 and credential binding. Inspect the native profile settings if another edit
 changed either file after application.
 
+In the authenticated Webapp, open **Bots → Hermes Owner** after the backend
+connects. Existing conversations can retain their previous model. Open each
+of **Day Plan**, **Follow-through**, and **Home Ops** under **Sessions →
+Pinned** and select **ChatGPT Sol (latest)** in the composer if needed.
+Verify the alias after reopening each conversation.
+
 See [the dated runtime evidence](../../docs/hermes-runtime-validation-2026-11-06.md)
 for applied revisions, measured checks and remaining qualification gaps.
 

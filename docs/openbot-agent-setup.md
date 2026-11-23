@@ -23,6 +23,10 @@ The OpenCode runtime on this route uses the existing OpenBot agent identity,
 memories, history, and permissions. Use only public or provider-approved input
 when the agent runs in a shared channel.
 
+On the owner's server, pin **Hermes** so its chat is visible alongside
+**Home Planner** and **Researcher**. Open the Hermes chat to verify the Sol
+badge. Home Planner continues to show its local `automation-moe` route.
+
 The authenticated Local scripts settings operation can apply the same model
 change from the published release. On the agents guest, run the exact command
 for the selected server from the clean release checkout:
