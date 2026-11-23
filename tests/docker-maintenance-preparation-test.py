@@ -20,7 +20,7 @@ from infrastructure_maintenance import validate_plan
 class DockerPreparationTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.compose = self.root / 'compose.yaml'; self.compose.write_text('trusted compose')
         self.env = self.root / 'app.env'; self.env.write_text('trusted env')
         self.old = 'ghcr.io/gethomepage/homepage@sha256:' + 'a' * 64
@@ -49,10 +49,10 @@ class DockerPreparationTest(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0, b'invariant evidence\n', b'')
         return subprocess.CompletedProcess(argv, 0, json.dumps(data).encode(), b'')
 
-    def prepare(self):
+    def prepare(self, environment=None):
         with patch.object(docker, 'trusted_path', side_effect=lambda p, *_args, **_kwargs: Path(p)), \
              patch.object(docker.shutil, 'which', side_effect=lambda name, **_kwargs: '/usr/bin/' + name):
-            docker.prepare('app-1', self.new, [self.compose], self.env, self.root / 'plan.json',
+            docker.prepare('app-1', self.new, [self.compose], self.env if environment is None else environment, self.root / 'plan.json',
                            target='home-core', runner=self.runner, clock=lambda: 1000, uid=os.geteuid())
         return json.loads((self.root / 'plan.json').read_text())
 
@@ -64,6 +64,23 @@ class DockerPreparationTest(unittest.TestCase):
         self.assertFalse(any('up' in argv or 'pull' in argv for argv in self.calls))
         self.assertEqual(len(plan['prechecks']), 3)
         self.assertEqual(plan['postchecks'][0]['argv'][-1], 'app-1')
+
+    def test_all_live_environment_files_are_required_in_order(self):
+        secret = self.root / 'secret.env'
+        secret.write_text('protected synthetic dotenv')
+        current_link = self.root / 'current-secret.env'
+        current_link.symlink_to(secret)
+        labels = self.container['Config']['Labels']
+        labels['com.docker.compose.project.environment_file'] = f'{self.env},{current_link}'
+        for incomplete in ([secret, self.env], [self.env]):
+            with self.subTest(incomplete=incomplete), self.assertRaisesRegex(ValueError, 'supplied in order'):
+                self.prepare(incomplete)
+        plan = self.prepare([self.env, secret])
+        step = plan['steps'][0]
+        self.assertEqual(step[4:8], ['--env-file', str(self.env), '--env-file', str(secret)])
+        self.assertEqual(plan['prechecks'][2]['argv'][-4:-1],
+                         [str(self.compose), str(self.env), str(secret)])
+        self.assertNotIn('protected synthetic dotenv', json.dumps(plan))
 
     def test_stateful_service_forces_exact_review(self):
         self.container['Mounts'] = [{'Type': 'volume', 'RW': True}]

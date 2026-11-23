@@ -50,8 +50,13 @@ def prepare(container, candidate, compose_files, environment, output, *, target,
         raise ValueError('candidate must be immutable')
     if not 1 <= len(compose_files) <= 4:
         raise ValueError('bounded explicit Compose files required')
-    paths = [trusted_path(p, uid) for p in [*compose_files, environment]]
-    if any(p.stat().st_uid != uid for p in paths):
+    environments = environment if isinstance(environment, (list, tuple)) else [environment]
+    if not 1 <= len(environments) <= 4:
+        raise ValueError('bounded explicit environment files required')
+    files = [trusted_path(path, uid) for path in compose_files]
+    env_files = [trusted_path(path, uid) for path in environments]
+    paths = [*files, *env_files]
+    if any(path.stat().st_uid != uid for path in paths):
         raise ValueError('root-owned deployment files required')
     output = Path(output)
     trusted_path(output.parent, uid, directory=True)
@@ -76,8 +81,15 @@ def prepare(container, candidate, compose_files, environment, output, *, target,
     project, service = labels.get('com.docker.compose.project'), labels.get('com.docker.compose.service')
     if not all(isinstance(n, str) and NAME.fullmatch(n) for n in (project, service)):
         raise ValueError('existing Compose ownership required')
-    compose = [docker, 'compose', '--project-name', project, '--env-file', str(paths[-1])]
-    for path in paths[:-1]:
+    label = labels.get('com.docker.compose.project.environment_file', '')
+    if len(env_files) > 1 or ',' in label:
+        active_env_files = [Path(path).resolve(strict=True) for path in label.split(',') if path]
+        if active_env_files != env_files or len(set(env_files)) != len(env_files):
+            raise ValueError('all active environment files must be supplied in order')
+    compose = [docker, 'compose', '--project-name', project]
+    for path in env_files:
+        compose += ['--env-file', str(path)]
+    for path in files:
         compose += ['-f', str(path)]
     config_raw = run(compose + ['config', '--format', 'json'], runner)
     config = json.loads(config_raw)
@@ -85,7 +97,7 @@ def prepare(container, candidate, compose_files, environment, output, *, target,
     if selected.get('image') != baseline['Config']['Image'] or 'build' in selected:
         raise ValueError('running image must match trusted Compose')
     actual_files = labels.get('com.docker.compose.project.config_files', '').split(',')
-    if actual_files != [str(p) for p in paths[:-1]]:
+    if actual_files != [str(path) for path in files]:
         raise ValueError('all active Compose files must be supplied in order')
     old_image = json.loads(run([docker, 'image', 'inspect', baseline['Image']], runner))[0]
     new_image = json.loads(run([docker, 'image', 'inspect', candidate], runner))[0]
@@ -136,7 +148,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--container', required=True); p.add_argument('--candidate', required=True)
     p.add_argument('--compose-file', type=Path, action='append', required=True)
-    p.add_argument('--environment', type=Path, required=True); p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--environment', type=Path, action='append', required=True); p.add_argument('--output', type=Path, required=True)
     p.add_argument('--scheme', choices=['semver', 'calendar'], default='semver')
     a = p.parse_args()
     try:
