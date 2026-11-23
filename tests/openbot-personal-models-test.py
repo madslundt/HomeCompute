@@ -17,7 +17,8 @@ class PersonalModelsTest(unittest.TestCase):
     def setUp(self):
         self.config = json.loads((ROOT / "config/openbot-personal-team.json").read_bytes())
         self.targets = self.config["fast_local_agents"]
-        self.reconcile = runpy.run_path(str(ROOT / "scripts/configure-openbot-personal-models.py"))["reconcile"]
+        self.operations = runpy.run_path(str(ROOT / "scripts/configure-openbot-personal-models.py"))
+        self.reconcile = self.operations["reconcile"]
         self.roster = [
             {"id": f"agent-00000000-0000-0000-0000-{index:012x}", "name": agent["existing_names"][0]}
             for index, agent in enumerate(self.targets)
@@ -52,10 +53,21 @@ class PersonalModelsTest(unittest.TestCase):
             self.reconcile(self.config, request, "plan")
             self.assertEqual(mutations, [])
             self.reconcile(self.config, request, "apply")
-            self.assertEqual([data for _, data in mutations], [self.config["model"]] * 3)
+            self.assertEqual([data for _, data in mutations], [self.config["model"]] * len(self.targets))
             mutations.clear()
             self.reconcile(self.config, request, "rollback")
             self.assertEqual([data for _, data in mutations], [target["rollback_model"] for target in self.targets])
+
+    def test_sol_update_targets_only_the_requested_existing_hermes(self):
+        request = Mock()
+        target = "hermes-sol-partner"
+        agent_id = "agent-00000000-0000-0000-0000-000000000001"
+        settings = self.operations["SOL_SETTINGS"]
+        request.side_effect = [[{"id": agent_id, "name": "Hermes"}], {"id": agent_id, **settings}]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.operations["reconcile_hermes_sol"](target, request, "apply")
+        self.assertEqual(request.call_count, 2)
+        request.assert_called_with(f"/v1/agents/{agent_id}/settings", settings)
 
 
 if __name__ == "__main__":

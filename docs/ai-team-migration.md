@@ -61,7 +61,8 @@ owner archive rather than exporting credentials or private memory into Git.
 
 | Role | Release target | Escalation and access |
 | --- | --- | --- |
-| Hermes, Life Planner, Home Guardian | Embedded Hermes, `automation-moe`, `none` | Explicit local `medium` when useful. Keep personal/family prompts local. Standalone Hermes retains its scoped personal tools. |
+| Hermes | [ChatGPT Sol (latest)](openbot-agent-setup.md#chatgpt-sol-defaults-for-the-existing-hermes-agents) | Use only provider-approved inputs. |
+| Life Planner, Home Guardian | Embedded Hermes, `automation-moe`, `none` | Explicit local `medium` when useful. Standalone Hermes retains its scoped personal tools. |
 | Researcher | Existing explicit Sol route, `high`, for approved public material only | Request Hermes local support for private material. Preserve Ask-first fallback and review enabled MCP before delegating. |
 | Four Orca POs | OpenCode 2.3.2, `automation-moe`, `medium` | Clear scope and authenticate a cloud model before opting in. The local triage fixture failed. |
 | Developer | OpenCode 2.3.2, `automation-moe`, `medium`, with explicit queued `xhigh` for complex work | Native Codex after approved login. AI execution uses Ask and isolated worktrees. |

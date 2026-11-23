@@ -14,6 +14,31 @@ applying that rollout, use its scoped reconciliation for those model settings.
 The assignments below describe the legacy roster and retain the settings
 needed to roll back.
 
+### ChatGPT Sol defaults for the existing Hermes agents
+
+The account owners approved **ChatGPT Sol (latest)** as the default for their
+existing Hermes agents. Select **Custom → HomeCompute ChatGPT subscription →
+ChatGPT Sol (latest)** at **High** in the existing agent's **Brain** settings.
+The OpenCode runtime on this route uses the existing OpenBot agent identity,
+memories, history, and permissions. Use only public or provider-approved input
+when the agent runs in a shared channel.
+
+The authenticated Local scripts settings operation can apply the same model
+change from the published release. On the agents guest, run the exact command
+for the selected server from the clean release checkout:
+
+```sh
+docker exec -i homecompute-openbot python3 - hermes-sol-owner plan \
+  < scripts/configure-openbot-personal-models.py
+docker exec -i homecompute-openbot-partner python3 - hermes-sol-partner plan \
+  < scripts/configure-openbot-personal-models.py
+```
+
+Replace `plan` with `apply` after checking the server and agent match. Use
+`rollback` to restore the previous local route. Confirm the saved model and
+reasoning effort and test with synthetic input in a fresh thread. Existing
+backup settings and routines stay attached to the agent.
+
 ## Model policy
 
 - OpenBot runs in a Docker container inside the `home-core` agents VM, so its

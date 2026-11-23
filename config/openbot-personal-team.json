@@ -8,18 +8,6 @@
   "fast_local_agents": [
     {
       "existing_names": [
-        "Hermes"
-      ],
-      "role": "Personal Assistant",
-      "rollback_model": {
-        "provider": "hermes",
-        "model": "custom:automation-moe",
-        "reasoningEffort": "xhigh"
-      },
-      "responsibility": "Own mobile chat, owner memory, briefs and reminders. Relay reviewed specialist output to the owner."
-    },
-    {
-      "existing_names": [
         "Home Planner",
         "Life Planner"
       ],
