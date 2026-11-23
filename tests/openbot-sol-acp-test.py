@@ -10,6 +10,7 @@ import subprocess
 import sys
 import unittest
 from concurrent.futures import ThreadPoolExecutor
+from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
 
@@ -89,17 +90,36 @@ class ProtocolTest(unittest.TestCase):
         opener.open.return_value.__enter__ = Mock(return_value=opener)
         opener.open.return_value.__exit__ = Mock(return_value=False)
         opener.read.return_value = b'{"choices":[{"message":{"content":"READY"}}]}'
-        with patch.object(sol.ssl, "create_default_context") as tls, patch.object(
+        with patch.object(sol, "model_key", return_value="sk-fixture"), patch.object(
+            sol.ssl, "create_default_context",
+        ) as tls, patch.object(
             sol, "build_opener", return_value=opener,
         ):
             answer = sol.infer([{"role": "user", "content": "Synthetic probe"}])
         tls.assert_called_once_with(cafile=sol.CA_FILE)
         request = opener.open.call_args.args[0]
         self.assertEqual(request.full_url, "https://llm.home.arpa/v1/chat/completions")
+        self.assertEqual(request.get_header("Authorization"), "Bearer sk-fixture")
         payload = json.loads(request.data)
         self.assertEqual(payload["model"], "chatgpt-sol-latest")
         self.assertEqual(set(payload), {"model", "messages", "reasoning_effort", "max_completion_tokens"})
         self.assertEqual(answer, "READY")
+
+    def test_sol_requires_a_private_model_credential(self):
+        with TemporaryDirectory() as tmp, patch.object(sol, "MODEL_KEY_FILE", Path(tmp) / "model-key"):
+            with self.assertRaises(OSError):
+                sol.model_key()
+            sol.MODEL_KEY_FILE.write_text("sk-fixture\n")
+            sol.MODEL_KEY_FILE.chmod(0o644)
+            with self.assertRaises(ValueError):
+                sol.model_key()
+            sol.MODEL_KEY_FILE.chmod(0o600)
+            self.assertEqual(sol.model_key(), "sk-fixture")
+            target = sol.MODEL_KEY_FILE.with_suffix(".bak")
+            sol.MODEL_KEY_FILE.rename(target)
+            sol.MODEL_KEY_FILE.symlink_to(target)
+            with self.assertRaises(OSError):
+                sol.model_key()
 
 
 if __name__ == "__main__":
