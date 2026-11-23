@@ -234,6 +234,33 @@ gateways. Choose a profile in Hermes for each new conversation. To retire a
 profile, first stop using it and revoke its individual LiteLLM key; preserve its
 profile state for manual review rather than deleting sessions or memory.
 
+### ChatGPT Sol as the existing Owner profile's default
+
+Apply this binding only after the owner approves that the default profile's
+prompts, included memories, and tool results can go to OpenAI through
+LiteLLM. The shared subscription gateway receives calls from the existing
+profile, including integrations that use its default. This keeps the same
+profile, sessions, tools, approvals, and memory. Use the existing scoped
+`chatgpt-sol` key; the operation leaves the other profile settings in place.
+
+From a clean checkout of the published revision on the agents VM, use the
+native sandbox command as the existing operator:
+
+```sh
+nemohermes hermes-personal-v2 exec --stdin -- python3 - plan \
+  < deploy/hermes/set-owner-default-model.py
+nemohermes hermes-personal-v2 exec --stdin -- python3 - apply --expected SHA256 \
+  < deploy/hermes/set-owner-default-model.py
+```
+
+Use the `before` digest from the plan as `SHA256`. The operation records a
+private before-file in the profile for rollback. Verify a new conversation
+uses `chatgpt-sol-latest` with a synthetic prompt, check the Owner Webapp,
+and confirm the binding survives a supported restart when one is scheduled.
+Use the same invocation with `rollback` to restore the original local model
+and credential binding. Inspect the native profile settings if another edit
+changed either file after application.
+
 See [the dated runtime evidence](../../docs/hermes-runtime-validation-2026-11-06.md)
 for applied revisions, measured checks and remaining qualification gaps.
 
