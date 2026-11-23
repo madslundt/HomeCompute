@@ -153,9 +153,23 @@ prepare_sol_acp() {
         mkdir -p -- "$app_data/$component"
       done
       directory="$app_data/.local/libexec/homecompute"
+      source_key="$HOME/.config/homecompute-openbot/secrets/chatgpt-models-key"
+      for component in .config .config/homecompute-openbot .config/homecompute-openbot/secrets; do
+        test ! -L "$HOME/$component"
+      done
+      test -f "$source_key" && test ! -L "$source_key"
+      test "$(stat -c "%u:%a:%h" -- "$source_key")" = "$(id -u):600:1"
+      test "$(wc -l < "$source_key")" -eq 1 && test "$(wc -c < "$source_key")" -le 4096
+      grep -Eq "^sk-[A-Za-z0-9_-]+$" "$source_key"
+      installed_key="$directory/sol-chatgpt-models-key"
+      if test -e "$installed_key" || test -L "$installed_key"; then
+        test -f "$installed_key" && test ! -L "$installed_key"
+        test "$(stat -c "%u:%a:%h" -- "$installed_key")" = "$(id -u):600:1"
+      fi
       target="$directory/sol-acp-$digest.py"
       stage="$(mktemp "$directory/.sol-acp.XXXXXXXX")"
-      trap '\''rm -f -- "$stage"'\'' EXIT
+      key_stage=
+      trap '\''rm -f -- "$stage" ${key_stage:+"$key_stage"}'\'' EXIT
       cat > "$stage"
       test "$(sha256sum "$stage" | cut -d " " -f 1)" = "$digest"
       if test -e "$target" || test -L "$target"; then
@@ -163,7 +177,12 @@ prepare_sol_acp() {
       else
         ln -- "$stage" "$target"
       fi
-      docker exec homecompute-openbot test -r "/data/.local/libexec/homecompute/sol-acp-$digest.py"'
+      if ! cmp -s -- "$source_key" "$installed_key"; then
+        key_stage="$(mktemp "$directory/.sol-chatgpt-key.XXXXXXXX")"
+        cat "$source_key" > "$key_stage"
+        mv -T -- "$key_stage" "$installed_key"
+      fi
+      docker exec homecompute-openbot sh -ec '\''test -r "$1" && test -r "$2"'\'' sh "/data/.local/libexec/homecompute/sol-acp-$digest.py" "/data/.local/libexec/homecompute/sol-chatgpt-models-key"'
   printf 'OpenBot Sol ACP SHA-256 %s\n' "$digest"
   printf '%s\n' "-I -c \"import hashlib, pathlib, sys; p = pathlib.Path(sys.argv[1]); data = p.read_bytes(); assert hashlib.sha256(data).hexdigest() == sys.argv[2]; exec(compile(data, str(p), 'exec'))\" /data/.local/libexec/homecompute/sol-acp-$digest.py $digest"
 }
