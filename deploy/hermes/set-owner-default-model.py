@@ -16,6 +16,15 @@ HOME = Path("/sandbox/.hermes")
 ENDPOINT = "http://ai.home.arpa:18080/v1"
 MODEL = "chatgpt-sol-latest"
 KEY_ENV = "HOMECOMPUTE_CHATGPT_API_KEY"
+PROVIDER_NAME = "homecompute-sol"
+PROVIDER = f"custom:{PROVIDER_NAME}"
+PROVIDER_ENTRY = {
+    "name": PROVIDER_NAME,
+    "base_url": ENDPOINT,
+    "default_model": MODEL,
+    "api_mode": "chat_completions",
+    "key_env": KEY_ENV,
+}
 RECEIPT = HOME / ".homecompute-owner-sol-before.json"
 CONFIG = HOME / "config.yaml"
 ENV = HOME / ".env"
@@ -54,7 +63,7 @@ def desired(config, env, sol_config, sol_env):
     current = yaml.safe_load(config)
     model = current["model"]
     sol_model = yaml.safe_load(sol_config)["model"]
-    if (model.get("provider") != "custom" or model.get("base_url") != ENDPOINT
+    if (model.get("provider") not in {"custom", PROVIDER} or model.get("base_url") != ENDPOINT
             or model.get("default") not in {"automation-moe", MODEL}):
         raise ValueError("owner model has an unexpected preimage")
     if (sol_model.get("provider") != "custom" or sol_model.get("base_url") != ENDPOINT
@@ -66,14 +75,20 @@ def desired(config, env, sol_config, sol_env):
         raise ValueError("the scoped Sol credential is missing or malformed")
     if key_lines(env) not in ([], lines):
         raise ValueError("owner credential already exists with a different value")
+    providers = current.setdefault("providers", {})
+    if not isinstance(providers, dict) or providers.get(PROVIDER_NAME) not in (None, PROVIDER_ENTRY):
+        raise ValueError("existing named Sol provider differs")
     if model.get("default") == MODEL:
-        if model.get("key_env") != KEY_ENV or model.get("api_key") or key_lines(env) != lines:
+        if (model.get("provider") != PROVIDER or providers.get(PROVIDER_NAME) != PROVIDER_ENTRY
+                or model.get("api_key") or key_lines(env) != lines):
             raise ValueError("existing Sol model binding differs")
         return config, env
-    if model.get("key_env") or model.get("api_key") != "${COMPATIBLE_API_KEY}":
+    if (model.get("provider") != "custom" or model.get("key_env")
+            or model.get("api_key") != "${COMPATIBLE_API_KEY}"):
         raise ValueError("unexpected local credential binding")
     model.pop("api_key")
-    model.update(default=MODEL, key_env=KEY_ENV)
+    providers[PROVIDER_NAME] = PROVIDER_ENTRY
+    model.update(default=MODEL, provider=PROVIDER, key_env=KEY_ENV)
     if not key_lines(env):
         env = env.rstrip(b"\n") + b"\n" + lines[0] + b"\n"
     return yaml.safe_dump(current, sort_keys=False).encode(), env

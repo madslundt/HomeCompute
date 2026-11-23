@@ -241,7 +241,9 @@ prompts, included memories, and tool results can go to OpenAI through
 LiteLLM. The shared subscription gateway receives calls from the existing
 profile, including integrations that use its default. This keeps the same
 profile, sessions, tools, approvals, and memory. Use the existing scoped
-`chatgpt-sol` key; the operation leaves the other profile settings in place.
+`chatgpt-sol` key through the named `homecompute-sol` provider so the portable
+local route on the same compatibility URL retains its own credential.
+Restore the local default before revoking the shared Sol credential.
 
 From a clean checkout of the published revision on the agents VM, use the
 native sandbox command as the existing operator:
