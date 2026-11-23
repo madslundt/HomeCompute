@@ -16,32 +16,35 @@ needed to roll back.
 
 ### ChatGPT Sol defaults for the existing Hermes agents
 
-The account owners approved **ChatGPT Sol (latest)** as the default for their
-existing Hermes agents. Select **Custom → HomeCompute ChatGPT subscription →
-ChatGPT Sol (latest)** at **High** in the existing agent's **Brain** settings.
-The OpenCode runtime on this route uses the existing OpenBot agent identity,
-memories, history, and permissions. Use only public or provider-approved input
-when the agent runs in a shared channel.
+On the owner's server, the existing **Hermes** agent uses the native Hermes
+runtime with **HomeCompute Sol → ChatGPT Sol (latest)** at **High**. The
+per-agent selection is `custom:homecompute-sol:chatgpt-sol-latest`. OpenBot
+keeps the existing agent identity, memories, history, routines and permissions.
+The native runtime also loads the embedded Hermes profile under `/data/.hermes`.
+Standalone Hermes Owner has its own profile and memory. Use only public or
+provider-approved input when the agent runs in a shared channel.
 
 On the owner's server, pin **Hermes** so its chat is visible alongside
 **Home Planner** and **Researcher**. Open the Hermes chat to verify the Sol
 badge. Home Planner continues to show its local `automation-moe` route.
 
-The authenticated Local scripts settings operation can apply the same model
-change from the published release. On the agents guest, run the exact command
-for the selected server from the clean release checkout:
+From a clean checkout of the reviewed `origin/master`, run:
 
 ```sh
-docker exec -i homecompute-openbot python3 - hermes-sol-owner plan \
-  < scripts/configure-openbot-personal-models.py
-docker exec -i homecompute-openbot-partner python3 - hermes-sol-partner plan \
-  < scripts/configure-openbot-personal-models.py
+./scripts/setup-openbot-guest.sh hermes-sol plan
+./scripts/setup-openbot-guest.sh hermes-sol apply
 ```
 
-Replace `plan` with `apply` after checking the server and agent match. Use
-`rollback` to restore the previous local route. Confirm the saved model and
-reasoning effort and test with synthetic input in a fresh thread. Existing
-backup settings and routines stay attached to the agent.
+The command verifies the encrypted VM backup, uses the existing model-only
+OpenBot ChatGPT key, and updates the named provider in the owner's embedded
+Hermes config. The credential stays in the protected Hermes environment file.
+Repeat `apply` after rotating that key. The global Hermes default remains
+local `automation-moe`. Verify Hermes, the exact Sol alias and High effort in a
+fresh thread with synthetic input. Use `hermes-sol rollback` to restore the
+owner agent's OpenCode Sol selection. The named Hermes provider remains in the
+model picker.
+
+The partner server follows its [own model lifecycle](../deploy/openbot/PARTNER.md).
 
 ## Model policy
 
