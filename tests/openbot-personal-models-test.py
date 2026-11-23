@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import runpy
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import Mock
 
@@ -31,6 +32,14 @@ class PersonalModelsTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1)
         self.assertIn("Use personal-models plan, apply or rollback.", result.stderr)
+
+    def test_owner_sol_command_refuses_an_unknown_mode(self):
+        result = subprocess.run(
+            ["bash", str(ROOT / "scripts/setup-openbot-guest.sh"), "hermes-sol", "invalid"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Use hermes-sol plan, apply or rollback.", result.stderr)
 
     def test_missing_agent_stops_before_any_updates(self):
         request = Mock(return_value=self.roster[:-1])
@@ -68,6 +77,48 @@ class PersonalModelsTest(unittest.TestCase):
             self.operations["reconcile_hermes_sol"](target, request, "apply")
         self.assertEqual(request.call_count, 2)
         request.assert_called_with(f"/v1/agents/{agent_id}/settings", settings)
+
+
+    def test_owner_sol_uses_the_native_hermes_route_and_can_restore_open_code(self):
+        agent_id = self.operations["OWNER_HERMES_ID"]
+        roster = [{"id": agent_id, "name": "Hermes"}]
+        expected = {
+            "provider": "hermes", "model": "custom:homecompute-sol:chatgpt-sol-latest",
+            "reasoningEffort": "high",
+        }
+        prior = {
+            "provider": "opencode", "model": "homecompute-chatgpt/chatgpt-sol-latest",
+            "reasoningEffort": "high",
+        }
+        target = "hermes-sol-owner"
+        request = Mock(side_effect=[roster, {"id": agent_id, **expected}, roster, {"id": agent_id, **prior}])
+        setup = Mock()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.operations["reconcile_hermes_sol"](target, request, "apply", setup)
+            setup.assert_called_once_with()
+            request.assert_called_with(f"/v1/agents/{agent_id}/settings", expected)
+            self.operations["reconcile_hermes_sol"](target, request, "rollback", setup)
+            setup.assert_called_once_with()
+            request.assert_called_with(f"/v1/agents/{agent_id}/settings", prior)
+
+    def test_owner_sol_stops_before_binding_when_provider_setup_fails(self):
+        agent_id = self.operations["OWNER_HERMES_ID"]
+        request = Mock(return_value=[{"id": agent_id, "name": "Hermes"}])
+        setup = Mock(side_effect=ValueError("unexpected provider entry"))
+        with self.assertRaises(ValueError):
+            self.operations["reconcile_hermes_sol"]("hermes-sol-owner", request, "apply", setup)
+        request.assert_called_once_with("/v1/agents")
+
+    def test_sol_key_install_updates_only_its_private_environment_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            path.touch(mode=0o600)
+            path.write_bytes(b"OTHER_SETTING=fixture\n")
+            install = self.operations["install_sol_key"]
+            install(path, b"sk-fixture")
+            install(path, b"sk-fixture-rotated")
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(path.read_bytes(), b"OTHER_SETTING=fixture\nHOME_OPENBOT_CHATGPT_API_KEY=sk-fixture-rotated\n")
 
 
 if __name__ == "__main__":

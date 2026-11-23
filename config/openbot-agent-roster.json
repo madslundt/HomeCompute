@@ -183,8 +183,8 @@
       },
       "purpose": "OpenBot coordination and routines using saved OpenBot preferences",
       "model": {
-        "provider": "HomeCompute ChatGPT subscription",
-        "model": "chatgpt-sol-latest",
+        "provider": "Hermes",
+        "model": "custom:homecompute-sol:chatgpt-sol-latest",
         "reasoning_effort": "high"
       },
       "backup_models": [],
