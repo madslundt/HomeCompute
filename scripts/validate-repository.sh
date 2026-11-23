@@ -1486,7 +1486,7 @@ jq -e --arg relay_config "$REPO_ROOT/deploy/openclaw/communication/Caddyfile" '
   (.services | keys == ["private-relay"]) and
   (.services["private-relay"] |
     (.profiles == ["approved-synthetic-communication"]) and
-    (.image == "caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f") and
+    (.image == "caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0") and
     (.pull_policy == "never" and .restart == "always") and
     (.user == "1000:1000" and .read_only == true) and
     (.cap_drop == ["ALL"] and .cap_add == null) and

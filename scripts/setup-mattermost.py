@@ -32,7 +32,7 @@ HELPERS = ('setup-mattermost.py', 'bootstrap-mattermost.py', 'mattermost_agent_a
 DEFAULTS = {
     'MATTERMOST_IMAGE': 'mattermost/mattermost-team-edition:11.7.14@sha256:6c15d74ded3cbec1e4fa4e27587a3341315405b58956e344d9d329f5c6367de5',
     'POSTGRES_IMAGE': 'postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea',
-    'CADDY_IMAGE': 'caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f',
+    'CADDY_IMAGE': 'caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0',
     'MATTERMOST_CERTIFICATE_ROOT': '/srv/state/control-plane/caddy-data/tailscale-tls',
 }
 KEYS = set(DEFAULTS) | {'MATTERMOST_STATE_ROOT', 'MATTERMOST_SITE_URL',
