@@ -334,6 +334,23 @@ their guarded lifecycles:
 python3 scripts/setup-hermes-ha-api.py --revision FULL_SHA --rollback
 ```
 
+### Managed startup and the Owner Sol binding
+
+The managed startup guard rejects raw Sol credentials in the root profile's
+`.env`. Keep the owner on `automation-moe` with the OpenShell-managed local
+credential until a restart-safe Sol credential binding has been qualified.
+The older raw-key Owner Sol apply procedure is suspended for this sandbox.
+
+For the diagnosed Conduit restart incident, keep the affected container
+stopped and plan with `scripts/recover-hermes-owner-sol-startup.py`. Apply its
+exact preimage digest to restore the prior local binding while preserving the
+other owner settings. The tool retains private copies of the prior files. Take
+a local whole-`/sandbox` archive of the stopped owner after the config repair.
+If OpenShell retains the exact terminal error, use the offline native-state
+procedure with `--owner-sol-startup-incident` on
+`scripts/recover-hermes-native-state.py`. Start the owner service through its
+usual lifecycle and verify authenticated Webapp chat.
+
 ## Release and policy
 
 `config/hermes-release.json` pins NemoClaw 0.0.141, OpenShell 0.0.116, and

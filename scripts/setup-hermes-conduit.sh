@@ -107,6 +107,12 @@ if [[ "$operation" == rollback ]]; then
 fi
 [[ "$state" != enabled ]] || exit 0
 require_readiness
+if native grep -qE '^HOMECOMPUTE_CHATGPT_API_KEY=sk-' /sandbox/.hermes/.env; then
+  echo 'Managed Hermes rejects the raw owner Sol credential during restart. Reconcile the owner model binding before applying Conduit.' >&2
+  exit 1
+else
+  [[ $? == 1 ]]
+fi
 
 # Retain only this operation's private preimage. An off-host backup uses its
 # separate lifecycle and this copy is not recovery evidence for that gate.

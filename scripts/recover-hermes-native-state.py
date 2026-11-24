@@ -20,6 +20,16 @@ ID = 'd90b7fc4-1506-4d12-b055-f0ab2aa4dcc7'
 NAME = 'hermes-personal-v23'
 CONTAINER = 'ba08f69f253d44bb5f8f16e1eceb329ea93b20a1d3b5cfcd3c5a22bdb89bd2f0'
 IMAGE = 'sha256:f15b60053b28b681efe555f89a6d170c7f7cd51036ed570b9951908c19f85311'
+POLICY_VERSION = 8
+
+
+def select_owner_sol_incident():
+    global ID, NAME, CONTAINER, IMAGE, POLICY_VERSION
+    ID = '54d6e531-e2a2-4c62-b266-e14b7250430e'
+    NAME = 'hermes-personal-v2'
+    CONTAINER = '7234f2cf2085fa2eb8c6aa80f7521fad6f5435491f7166d5f73859114b39819d'
+    IMAGE = 'sha256:7bfb994f8c32a3722219ab7ab93c43d7d799a871c88c6c59b321f0c4acc22aa7'
+    POLICY_VERSION = 6
 
 
 def varint(data, offset):
@@ -76,8 +86,10 @@ def candidate(data):
             b'Ready', b'False', b'MainProcessExited', b'Canonical main process exited']:
         raise ValueError('not the diagnosed canonical-main startup failure')
     phase = one(state, 6, 0)
-    if phase[2] not in (3, 7) or phase[4] - phase[3] != 1 or one(state, 7, 0)[2] != 8:
+    if phase[2] not in (3, 7) or phase[4] - phase[3] != 1 or one(state, 7, 0)[2] != POLICY_VERSION:
         raise ValueError('not the diagnosed terminal Error/Stopped state')
+    if NAME == 'hermes-personal-v2' and one(state, 9, 0)[2] != 1:
+        raise ValueError('unexpected owner Sol incident exit code')
     offset = runtime[3] + phase[3]
     after = data[:offset] + b'\x07' + data[offset + 1:]
     assert len(after) == len(data)
@@ -160,7 +172,10 @@ def main():
     parser.add_argument('--backup', type=Path, required=True)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--owner-sol-startup-incident', action='store_true')
     args = parser.parse_args()
+    if args.owner_sol_startup_incident:
+        select_owner_sol_incident()
     spec = importlib.util.spec_from_file_location('native_publication', ROOT / 'scripts/setup-hermes-mcp.py')
     publication = importlib.util.module_from_spec(spec); spec.loader.exec_module(publication)
     publication.published(args.revision)
