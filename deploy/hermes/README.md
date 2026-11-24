@@ -264,6 +264,10 @@ gateways. Choose a profile in Hermes for each new conversation. To retire a
 profile, first stop using it and revoke its individual LiteLLM key; preserve its
 profile state for manual review rather than deleting sessions or memory.
 
+For a stateless profile with approved cloud data, use the scoped
+`hermes-assistant` key profile and qualify `agent-assistant` with the
+[managed routing runbook](../control-plane/agent-routing.md#enroll-a-consumer).
+
 ### ChatGPT Sol as the existing Owner profile's default
 
 Apply this binding only after the owner approves that the default profile's

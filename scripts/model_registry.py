@@ -232,9 +232,86 @@ def validate(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
                 raise RegistryError(f"deployment {deployment_id} does not meet {alias}'s context requirement")
             if state == "active" and artifact.get("qualification", {}).get(qualification_capability) != "qualified":
                 raise RegistryError(f"active route {alias} includes an artifact not qualified for that capability")
+    validate_agent_routing(catalog, routes_doc)
     validate_transcription(catalog, routes_doc)
     validate_tts(catalog, routes_doc)
     MEDIA.MediaRegistry(RegistryError).validate_video(catalog, routes_doc)
+
+
+def positive_integer(value: Any, label: str, maximum: int) -> None:
+    if type(value) is not int or not 1 <= value <= maximum:
+        raise RegistryError(f"{label} must be an integer from 1 to {maximum}")
+
+
+def validate_agent_routing(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
+    policy = obj(routes_doc.get("agent_routing"), "agent_routing")
+    positive_integer(policy.get("cooldown_seconds"), "cooldown_seconds", 600)
+    positive_integer(policy.get("max_attempts"), "max_attempts", 5)
+    positive_integer(policy.get("key_requests_per_minute"), "key_requests_per_minute", 600)
+    positive_integer(policy.get("key_tokens_per_minute"), "key_tokens_per_minute", 1_000_000)
+    providers = obj(policy.get("providers"), "agent_routing.providers")
+    routes = obj(policy.get("routes"), "agent_routing.routes")
+    reserved = {
+        alias
+        for section in ("routes", "transcription_routes", "tts_routes", "video_routes")
+        for alias in routes_doc.get(section, {})
+    }
+    for name, raw_provider in providers.items():
+        provider = obj(raw_provider, f"provider {name}")
+        positive_integer(provider.get("timeout"), f"{name}.timeout", 600)
+        positive_integer(provider.get("stream_timeout"), f"{name}.stream_timeout", provider["timeout"])
+        if type(provider.get("structured_output")) is not bool:
+            raise RegistryError(f"{name}.structured_output must record qualification")
+        if "deployment" in provider:
+            deployment = catalog["deployments"].get(provider["deployment"])
+            if not deployment or deployment.get("network_scope") != "private_local":
+                raise RegistryError(f"{name} must reference a private local deployment")
+            if deployment.get("availability") not in {"active", "candidate"}:
+                raise RegistryError(f"{name} must reference an available deployment")
+            if set(provider) != {"deployment", "timeout", "stream_timeout", "structured_output"}:
+                raise RegistryError(f"unexpected settings for local provider {name}")
+            continue
+        alias = string(provider.get("alias"), f"{name}.alias")
+        if not SEMANTIC_ALIAS.fullmatch(alias) or alias in reserved:
+            raise RegistryError(f"invalid or duplicate provider alias: {alias}")
+        reserved.add(alias)
+        if not re.fullmatch(r"chatgpt/[a-z0-9.-]+", string(provider.get("model"), f"{name}.model")):
+            raise RegistryError(f"{name} must use an enrolled ChatGPT OAuth model")
+        if not set(string_list(provider.get("efforts"), f"{name}.efforts", allow_empty=True)) <= {"low", "high"}:
+            raise RegistryError(f"{name} has unsupported reasoning effort")
+        if set(provider) != {"alias", "model", "efforts", "timeout", "stream_timeout", "structured_output"}:
+            raise RegistryError(f"unexpected settings for cloud provider {name}")
+    for alias, raw_route in routes.items():
+        route = obj(raw_route, f"agent route {alias}")
+        if not SEMANTIC_ALIAS.fullmatch(alias) or alias in reserved:
+            raise RegistryError(f"invalid or duplicate agent route alias: {alias}")
+        positive_integer(route.get("deadline"), f"{alias}.deadline", 600)
+        privacy = route.get("privacy")
+        if privacy not in {"local_only", "cloud_allowed"} or (alias == "local-only" and privacy != "local_only"):
+            raise RegistryError(f"{alias} has an invalid privacy policy")
+        chain = string_list(route.get("chain"), f"{alias}.chain")
+        names = [target.partition(":")[0] for target in chain]
+        if len(chain) > policy["max_attempts"] or len(set(names)) != len(chain):
+            raise RegistryError(f"{alias} exceeds the attempt budget or repeats a provider")
+        for target in chain:
+            name, _, effort = target.partition(":")
+            provider = providers.get(name)
+            if not provider:
+                raise RegistryError(f"{alias} references unknown provider {name}")
+            if "deployment" in provider:
+                if effort:
+                    raise RegistryError(f"{alias} specifies cloud reasoning effort for local provider {name}")
+            elif privacy == "local_only" or effort not in provider["efforts"]:
+                raise RegistryError(f"{alias} cannot use cloud provider or effort {target}")
+    if "local-only" not in routes:
+        raise RegistryError("agent routing must include local-only")
+    for owner, aliases in obj(policy.get("consumer_profiles"), "consumer_profiles").items():
+        if not SEMANTIC_ALIAS.fullmatch(owner):
+            raise RegistryError(f"invalid consumer profile name: {owner}")
+        if not set(string_list(aliases, f"consumer profile {owner}")) <= routes.keys():
+            raise RegistryError(f"consumer profile {owner} references unknown routes")
+        if "local-only" in aliases and aliases != ["local-only"]:
+            raise RegistryError("a local-only credential must be dedicated to that route")
 
 
 def validate_transcription(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> None:
@@ -411,25 +488,65 @@ def render_model_list(catalog: dict[str, Any], routes_doc: dict[str, Any]) -> st
                 "      output_cost_per_character: 0",
             ])
     lines.extend(MEDIA.MediaRegistry.render_video(catalog, routes_doc))
-    # These explicit aliases use the gateway-owned ChatGPT subscription login.
-    # Keep the public names stable; review the upstream targets when the
-    # supported ChatGPT model families change.
-    for alias, provider_model in (
-        ("chatgpt-sol-latest", "chatgpt/gpt-6.2-sol"),
-        ("chatgpt-astra-latest", "chatgpt/gpt-6.2-astra"),
-        ("chatgpt-terra-latest", "chatgpt/gpt-6.1-terra"),
-        ("chatgpt-luna-latest", "chatgpt/gpt-6-luna"),
-    ):
-        lines.extend([
-            f"  - model_name: {_yaml_quote(alias)}",
-            "    litellm_params:",
-            f"      model: {_yaml_quote(provider_model)}",
-            "    model_info:",
-            "      mode: responses",
-            "      input_cost_per_token: 0",
-            "      output_cost_per_token: 0",
-        ])
+    lines.extend(render_agent_models(catalog, routes_doc["agent_routing"]))
     return "\n".join(lines) + "\n"
+
+
+def render_agent_models(catalog: dict[str, Any], policy: dict[str, Any]) -> list[str]:
+    lines = []
+    providers = policy["providers"]
+    # Retain the existing aliases as direct selections with their old defaults.
+    for provider in providers.values():
+        if "alias" in provider:
+            lines.extend([
+                f"  - model_name: {_yaml_quote(provider['alias'])}",
+                "    litellm_params:",
+                f"      model: {_yaml_quote(provider['model'])}",
+                "    model_info:",
+                "      mode: responses",
+                "      input_cost_per_token: 0",
+                "      output_cost_per_token: 0",
+            ])
+    for alias, route in policy["routes"].items():
+        for order, target in enumerate(route["chain"], 1):
+            name, _, effort = target.partition(":")
+            provider = providers[name]
+            local = "deployment" in provider
+            deployment = catalog["deployments"][provider["deployment"]] if local else None
+            model = "openai/" + deployment["served_model_name"] if local else provider["model"]
+            lines.extend([
+                f"  - model_name: {_yaml_quote(alias)}",
+                "    litellm_params:",
+                f"      model: {_yaml_quote(model)}",
+                f"      order: {order}",
+                "      num_retries: 0",
+                "      max_retries: 0",
+                f"      timeout: {provider['timeout']}",
+                f"      stream_timeout: {provider['stream_timeout']}",
+            ])
+            if local:
+                lines.extend([
+                    f"      api_base: {_yaml_quote('os.environ/' + deployment['endpoint_env'])}",
+                    "      api_key: os.environ/COMPUTE_API_KEY",
+                ])
+            lines.extend([
+                "    model_info:",
+                f"      id: {_yaml_quote(alias + ':' + target)}",
+                f"      homecompute_alias: {_yaml_quote(alias)}",
+                f"      homecompute_privacy: {route['privacy']}",
+                f"      homecompute_deadline: {route['deadline']}",
+                f"      homecompute_max_fallbacks: {len(route['chain']) - 1}",
+                f"      homecompute_effort: {_yaml_quote(effort)}",
+                f"      homecompute_provider: {_yaml_quote(name)}",
+                f"      homecompute_structured_output: {str(provider['structured_output']).lower()}",
+                "      allowed_fails: 0",
+                f"      cooldown_time: {policy['cooldown_seconds']}",
+                "      input_cost_per_token: 0",
+                "      output_cost_per_token: 0",
+                "      cache_read_input_token_cost: 0",
+                "      cache_creation_input_token_cost: 0",
+            ])
+    return lines
 
 
 def render_config(current_text: str, catalog: dict[str, Any], routes_doc: dict[str, Any]) -> str:

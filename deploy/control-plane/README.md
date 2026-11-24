@@ -38,7 +38,9 @@ python3 scripts/model_registry.py render
 
 The renderer changes only the `model_list` block. Key scopes, authentication,
 privacy/logging, database configuration, retries, and transport remain explicit
-and reviewed. `automation-moe` is the only exposed local text alias. The former
+and reviewed. See the [managed routing runbook](agent-routing.md) for the new
+role aliases and opt-in key scopes. `automation-moe` remains a direct local
+text alias. The former
 `automation`, `home`, `automation-moe-nvidia`, and `automation-qualification`
 aliases selected candidate or qualification listeners; they are omitted from the
 gateway model list. The artifact remains marked candidate because its full
@@ -310,10 +312,11 @@ API requests. MCP and the operator UI use LiteLLM authentication.
 
 The release runs `scripts/setup-lan-catalog-key.py` after LiteLLM starts and
 before Caddy starts. It reconciles a non-admin, model-API-only virtual key
-against the loaded model list and verifies the listing with that key. Back up
+against the loaded model list, excludes cloud-enabled role aliases, and verifies
+the listing with that key. Back up
 `/srv/state/control-plane/caddy-data/lan-catalog-key` with the LiteLLM database.
 After deploying, compare the keyless listing from the Default LAN against the
-release model list. Check that a scoped key still lists only its models and
+release model list with the cloud-enabled role aliases excluded. Check that a scoped key still lists only its models and
 that a guest or tailnet peer outside that subnet receives HTTP 401 with no key.
 
 The compatibility inference API on `ai.home.arpa` and the Tailscale

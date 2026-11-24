@@ -382,6 +382,7 @@ python3 "$REPO_ROOT/tests/whisper-retained-command-test.py"
 python3 -m unittest "$REPO_ROOT/tests/qwen27b-qualification-test.py"
 python3 -m unittest "$REPO_ROOT/tests/compute-node-cache-preparation-test.py"
 python3 "$REPO_ROOT/tests/model-registry-test.py"
+python3 "$REPO_ROOT/tests/agent-routing-keys-test.py"
 python3 "$REPO_ROOT/tests/flash-next-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/comfyui-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/comfyui-media-lifecycle-test.py"
@@ -804,7 +805,7 @@ jq -e '
   ([.services[].volumes[]? | select(.type == "bind" and .read_only != true) | .target] | sort) ==
     ["/config", "/data", "/run/homecompute/chatgpt", "/var/lib/postgresql/data"] and
   ([.services[].volumes[]? | select(.type == "bind") | .target] | sort) ==
-    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/litellm-entrypoint.sh", "/run/homecompute/chatgpt", "/run/homecompute/home-core-root.crt", "/var/lib/postgresql/data"] and
+    ["/config", "/data", "/docker-entrypoint-initdb.d/10-litellm-role.sh", "/etc/caddy/Caddyfile", "/etc/litellm/config.yaml", "/opt/homecompute/caddy-entrypoint.sh", "/opt/homecompute/homecompute_routing.py", "/opt/homecompute/litellm-entrypoint.sh", "/run/homecompute/chatgpt", "/run/homecompute/home-core-root.crt", "/var/lib/postgresql/data"] and
   (.services.caddy.ports | length == 3) and
   ([.services.caddy.ports[].host_ip] | sort == ["127.0.0.1", "127.0.0.2", "127.0.0.2"]) and
   ([.services.caddy.ports[] | select(.host_ip == "127.0.0.2" and .published == "80" and .target == 8080)] | length == 1) and

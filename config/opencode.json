@@ -2,8 +2,8 @@
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": false,
   "enabled_providers": ["homecompute"],
-  "model": "homecompute/automation-moe",
-  "small_model": "homecompute/automation-moe",
+  "model": "homecompute/local-only",
+  "small_model": "homecompute/local-only",
   "provider": {
     "homecompute": {
       "name": "HomeCompute LiteLLM",
@@ -13,8 +13,16 @@
         "apiKey": "{env:OPENCODE_LITELLM_API_KEY}"
       },
       "models": {
+        "local-only": {
+          "name": "HomeCompute Local Only",
+          "tool_call": true,
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          }
+        },
         "automation-moe": {
-          "name": "HomeCompute local coding model",
+          "name": "HomeCompute Automation MoE",
           "tool_call": true,
           "limit": {
             "context": 32768,

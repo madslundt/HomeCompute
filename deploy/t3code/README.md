@@ -158,7 +158,11 @@ The Hermes ACP instance has its own `/data/.hermes-code` state, separate from
 the household Hermes and OpenBot instances. It starts with file read and search
 tools, with no shell or household credentials. Its model requests use the same
 private Caddy bridge as local Codex and require only a paired T3 Code client.
-The team runs on demand from a thread in the selected project.
+The team runs on demand from a thread in the selected project. For work whose
+data is explicitly approved for cloud use, the user may opt into the skill's
+worktree-preserving escalation and override its attempt thresholds at invocation.
+Escalation requires T3 to advertise an approved model to the orchestrator.
+See the [central routing runbook](../control-plane/agent-routing.md).
 
 ## Deploy and inspect
 

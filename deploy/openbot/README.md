@@ -74,6 +74,9 @@ subscription provider uses `chatgpt-sol-latest`, `chatgpt-terra-latest`,
 provider updates. The [agent setup guide](../../docs/openbot-agent-setup.md)
 covers roles and data boundaries.
 
+Use the [managed routing profiles](../control-plane/agent-routing.md#enroll-a-consumer)
+for an approved specialist whose model client can send a dedicated LiteLLM key.
+
 ## Ask the local Nod assistant
 
 After [enabling the private Nod bridge](../nod/README.md#openbot-delegation),

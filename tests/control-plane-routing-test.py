@@ -516,6 +516,12 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
         self.assertEqual(NETWORK.MODELS, ["automation-moe", "stt-danish", "whisper-turbo"])
         self.assertTrue(all(not name.startswith("chatgpt-") for name in NETWORK.MODELS))
 
+    def test_lan_catalog_keeps_legacy_cloud_aliases_and_refuses_cloud_enabled_roles(self) -> None:
+        self.assertEqual(
+            LAN_CATALOG.allowed_catalog({"agent-assistant", "local-first", "local-only", "chatgpt-sol-latest"}),
+            {"local-only", "chatgpt-sol-latest"},
+        )
+
     def test_litellm_config_is_generated_from_canonical_routes(self) -> None:
         catalog = REGISTRY.load_json(ROOT / "config/model-catalog.json")
         routes = REGISTRY.load_json(ROOT / "config/capability-routes.json")
@@ -541,11 +547,14 @@ class LocalOnlyControlPlaneTests(unittest.TestCase):
                 "chatgpt-astra-latest",
                 "chatgpt-terra-latest",
                 "chatgpt-luna-latest",
+                "agent-assistant", "agent-coder", "agent-planner", "agent-reviewer",
+                "agent-researcher", "agent-designer", "agent-reasoner", "agent-automation",
+                "agent-fast", "agent-premium", "local-only", "local-first", "cloud-first",
             },
             names,
         )
         for unavailable in ("auto", "coding", "research", "meeting", "assistant"):
-            self.assertNotIn(f"model_name: {unavailable}", text)
+            self.assertNotIn(unavailable, names)
 
     def test_deployment_mappings_and_timeouts_are_capability_scoped(self) -> None:
         text = LITELLM.read_text(encoding="utf-8")

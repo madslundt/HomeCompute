@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "route_version": "2026-11-12-automation-moe-costs",
+  "route_version": "2026-11-24-managed-agent-routing",
   "timeout_profiles": {
     "automation": {
       "seconds": 600
@@ -86,7 +86,7 @@
         "input": 0.15,
         "output": 0.47,
         "cache_read": 0.016,
-        "cache_creation": 0.20
+        "cache_creation": 0.2
       },
       "required_capabilities": [
         "chat",
@@ -199,6 +199,202 @@
       "timeout_profile": "video",
       "deployments": [
         "ltx25-spark"
+      ]
+    }
+  },
+  "agent_routing": {
+    "cooldown_seconds": 60,
+    "max_attempts": 3,
+    "key_requests_per_minute": 30,
+    "key_tokens_per_minute": 150000,
+    "providers": {
+      "flash-next": {
+        "deployment": "automation-flash-next-ultrafast-challenger",
+        "timeout": 60,
+        "stream_timeout": 25,
+        "structured_output": true
+      },
+      "sol": {
+        "alias": "chatgpt-sol-latest",
+        "model": "chatgpt/gpt-6.2-sol",
+        "efforts": [
+          "low",
+          "high"
+        ],
+        "timeout": 90,
+        "stream_timeout": 35,
+        "structured_output": false
+      },
+      "astra": {
+        "alias": "chatgpt-astra-latest",
+        "model": "chatgpt/gpt-6.2-astra",
+        "efforts": [
+          "high"
+        ],
+        "timeout": 120,
+        "stream_timeout": 45,
+        "structured_output": false
+      },
+      "terra": {
+        "alias": "chatgpt-terra-latest",
+        "model": "chatgpt/gpt-6.1-terra",
+        "efforts": [],
+        "timeout": 90,
+        "stream_timeout": 35,
+        "structured_output": false
+      },
+      "luna": {
+        "alias": "chatgpt-luna-latest",
+        "model": "chatgpt/gpt-6-luna",
+        "efforts": [
+          "low",
+          "high"
+        ],
+        "timeout": 60,
+        "stream_timeout": 30,
+        "structured_output": false
+      }
+    },
+    "routes": {
+      "agent-assistant": {
+        "privacy": "cloud_allowed",
+        "deadline": 180,
+        "chain": [
+          "flash-next",
+          "luna:high",
+          "sol:high"
+        ]
+      },
+      "agent-coder": {
+        "privacy": "cloud_allowed",
+        "deadline": 240,
+        "chain": [
+          "flash-next",
+          "sol:high",
+          "astra:high"
+        ]
+      },
+      "agent-planner": {
+        "privacy": "cloud_allowed",
+        "deadline": 210,
+        "chain": [
+          "sol:high",
+          "astra:high"
+        ]
+      },
+      "agent-reviewer": {
+        "privacy": "cloud_allowed",
+        "deadline": 210,
+        "chain": [
+          "sol:high",
+          "astra:high"
+        ]
+      },
+      "agent-researcher": {
+        "privacy": "cloud_allowed",
+        "deadline": 210,
+        "chain": [
+          "sol:high",
+          "astra:high"
+        ]
+      },
+      "agent-designer": {
+        "privacy": "cloud_allowed",
+        "deadline": 210,
+        "chain": [
+          "astra:high",
+          "sol:high"
+        ]
+      },
+      "agent-reasoner": {
+        "privacy": "cloud_allowed",
+        "deadline": 210,
+        "chain": [
+          "sol:high",
+          "astra:high"
+        ]
+      },
+      "agent-automation": {
+        "privacy": "cloud_allowed",
+        "deadline": 180,
+        "chain": [
+          "flash-next",
+          "luna:high",
+          "sol:high"
+        ]
+      },
+      "agent-fast": {
+        "privacy": "cloud_allowed",
+        "deadline": 75,
+        "chain": [
+          "luna:low",
+          "sol:low"
+        ]
+      },
+      "agent-premium": {
+        "privacy": "cloud_allowed",
+        "deadline": 210,
+        "chain": [
+          "astra:high",
+          "sol:high"
+        ]
+      },
+      "local-only": {
+        "privacy": "local_only",
+        "deadline": 90,
+        "chain": [
+          "flash-next"
+        ]
+      },
+      "local-first": {
+        "privacy": "cloud_allowed",
+        "deadline": 180,
+        "chain": [
+          "flash-next",
+          "luna:high",
+          "sol:high"
+        ]
+      },
+      "cloud-first": {
+        "privacy": "cloud_allowed",
+        "deadline": 150,
+        "chain": [
+          "sol:high",
+          "luna:high"
+        ]
+      }
+    },
+    "consumer_profiles": {
+      "hermes-assistant": [
+        "agent-assistant"
+      ],
+      "openbot-specialists": [
+        "agent-assistant",
+        "agent-planner",
+        "agent-reviewer",
+        "agent-researcher",
+        "agent-designer",
+        "agent-reasoner",
+        "agent-fast",
+        "agent-premium"
+      ],
+      "coding-workflow": [
+        "agent-coder",
+        "agent-planner",
+        "agent-reviewer",
+        "agent-designer",
+        "agent-reasoner",
+        "agent-premium"
+      ],
+      "public-n8n": [
+        "agent-automation"
+      ],
+      "private-inference": [
+        "local-only"
+      ],
+      "routing-canary": [
+        "local-first",
+        "cloud-first"
       ]
     }
   }

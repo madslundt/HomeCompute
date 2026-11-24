@@ -38,6 +38,43 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual(1, rendered.count("supports_reasoning:"))
         self.assertNotIn('COMPUTE_HOME_BASE_URL', rendered)
 
+    def test_agent_route_deployments_are_ordered_and_legacy_aliases_stay_direct(self) -> None:
+        rendered = REGISTRY.render_model_list(CATALOG, ROUTES)
+        blocks = rendered.split("  - model_name: ")[1:]
+        coding = [block for block in blocks if block.startswith('"agent-coder"\n')]
+        self.assertEqual(len(coding), 3)
+        for order, (provider, effort) in enumerate(
+            (("flash-next", ""), ("sol", "high"), ("astra", "high")), 1
+        ):
+            self.assertIn(f"order: {order}\n", coding[order - 1])
+            self.assertIn(f'homecompute_provider: "{provider}"', coding[order - 1])
+            self.assertIn(f'homecompute_effort: "{effort}"', coding[order - 1])
+        legacy, = [block for block in blocks if block.startswith('"chatgpt-sol-latest"\n')]
+        self.assertNotIn("homecompute_", legacy)
+        self.assertIn('model: "chatgpt/gpt-6.2-sol"', legacy)
+
+    def test_provider_update_changes_deployments_without_renaming_consumer_routes(self) -> None:
+        routes = copy.deepcopy(ROUTES)
+        old = routes["agent_routing"]["providers"]["sol"]["model"]
+        new = "chatgpt/gpt-6.1-sol"
+        routes["agent_routing"]["providers"]["sol"]["model"] = new
+        REGISTRY.validate(CATALOG, routes)
+        self.assertEqual(
+            REGISTRY.render_model_list(CATALOG, routes),
+            REGISTRY.render_model_list(CATALOG, ROUTES).replace(old, new),
+        )
+
+    def test_agent_route_validation_refuses_cloud_for_local_and_indirect_fallbacks(self) -> None:
+        for alias, chain in (("local-only", ["flash-next", "sol:high"]),
+                             ("agent-coder", ["agent-coder"]),
+                             ("agent-coder", ["sol:xhigh"]),
+                             ("agent-coder", ["sol:high", "sol:low"])):
+            with self.subTest(alias=alias, chain=chain):
+                routes = copy.deepcopy(ROUTES)
+                routes["agent_routing"]["routes"][alias]["chain"] = chain
+                with self.assertRaises(REGISTRY.RegistryError):
+                    REGISTRY.validate(CATALOG, routes)
+
     def test_video_is_pinned_on_demand_and_renders_the_native_video_api(self) -> None:
         item = CATALOG["video_deployments"]["ltx25-spark"]
         self.assertEqual(item["upstream_model_id"], "Lightricks/LTX-2.5")
@@ -46,7 +83,7 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual(item["lifecycle"], "operator-on-demand")
         self.assertEqual(item["quantization"], "NVFP4")
         REGISTRY.validate(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
-        video = REGISTRY.render_model_list(CATALOG, ROUTES).split('model_name: "video"', 1)[1]
+        video = REGISTRY.render_model_list(CATALOG, ROUTES).split('model_name: "video"', 1)[1].split("  - model_name:", 1)[0]
         self.assertIn('model: "openai/ltx-2.5"', video)
         self.assertIn('api_base: "os.environ/VIDEO_GENERATION_BASE_URL"', video)
         self.assertIn('api_key: "local"', video)
@@ -380,7 +417,7 @@ class ModelRegistryTests(unittest.TestCase):
             self.assertNotIn(f'model_name: "{alias}"', rendered)
         self.assertNotIn('model_name: "assistant-canary"', rendered)
         for alias in ("coding", "research", "meeting", 'model_name: "assistant"', 'model_name: "auto"'):
-            self.assertNotIn(alias, rendered)
+            self.assertNotIn(f'model_name: "{alias}"', rendered)
 
     def test_per_capability_timeouts_render_on_deployments(self) -> None:
         rendered = REGISTRY.render_model_list(copy.deepcopy(CATALOG), copy.deepcopy(ROUTES))
