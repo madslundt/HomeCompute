@@ -1,0 +1,19 @@
+{
+  "endpoint": "http://ai.home.arpa:18080/v1",
+  "bots": [
+    {
+      "id": "home-planner",
+      "name": "Home Planner",
+      "description": "Household projects and shopping",
+      "model": "automation-moe",
+      "reasoning_effort": "medium"
+    },
+    {
+      "id": "researcher",
+      "name": "Researcher",
+      "description": "Public research and comparisons",
+      "model": "chatgpt-sol-latest",
+      "reasoning_effort": "high"
+    }
+  ]
+}

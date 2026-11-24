@@ -30,6 +30,45 @@ activation uses the native gateway restart while the sandbox stays running.
 The installer disables Bighelp host telemetry and verifies the saved setting.
 The installer leaves device pairing and network grants to their own lifecycles.
 
+## Desktop specialist bots
+
+On the existing authenticated owner connection, keep Hermes Owner for private
+Aula, Calendar, Daythread and Home Assistant work. Add two fresh profiles to
+mirror the everyday OpenBot roles. They have independent conversations and
+memory. OpenBot retains its own agent histories and routines.
+
+| Bot | Work | Model |
+| --- | --- | --- |
+| [Home Planner](bots/home-planner.md) | Danish household projects, shopping, maintenance and energy decisions | Local `automation-moe`, medium |
+| [Researcher](bots/researcher.md) | Public research, comparisons and primary-source review | `chatgpt-sol-latest`, high |
+
+The [source roster](../../config/hermes-desktop-bots.json) assigns model-only
+credentials. The only enabled tool is profile-local memory. Supply public
+excerpts for source analysis and keep private research context in the owner
+runtime. Live public source discovery requires a qualified public-only route.
+
+Use a clean, reviewed `origin/master` revision in the agents guest as
+`hermes-operator`. Inspect the plan first. Apply requires the current household
+network and off-host restore readiness records. Provision external operator-owned
+mode-0600 files in `~/.config/homecompute-hermes/secrets/` named
+`desktop-home-planner` and `desktop-researcher`. Each contains a distinct
+LiteLLM key restricted to that bot's sole model, with MCP denied. Check the
+key scopes and model routes in LiteLLM before applying.
+
+```sh
+python3 scripts/setup-hermes-desktop-bots.py --revision FULL_SHA
+python3 scripts/setup-hermes-desktop-bots.py --revision FULL_SHA --apply \
+  --expected-plan-sha256 REVIEWED_PLAN_SHA256
+```
+
+The installer uses native profile import from a fresh source-generated package.
+It preserves existing profiles and stops on conflicting or retired names. If
+an import is interrupted, inspect a fresh plan before retrying. Reconnect Hermes
+Desktop, open each bot under the owner gateway, confirm its model and try a
+synthetic brief. Verify a fresh chat sees only that bot's approved preferences
+and that private tools are unavailable. To retire a bot, hide it in Desktop and
+revoke its dedicated LiteLLM key. Retain the profile and its chat history.
+
 ## Owner chat specialists
 
 Use a fresh chat in the existing owner-only Hermes Mattermost DM or authenticated
