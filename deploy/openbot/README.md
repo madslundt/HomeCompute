@@ -52,6 +52,10 @@ For personal text-only Sol chats on the existing team server, follow the
 
 ## Models and teams
 
+For the owner Hermes, Home Planner, Engineer and QA bindings, follow the
+[private consumer routing migration](../control-plane/private-consumer-routing.md#openbot).
+The legacy assignments below describe the existing compatibility routes.
+
 Use the existing OpenBot model providers at `https://llm.home.arpa/v1`.
 Leave their API key fields empty. If a client requires a value, enter `local`.
 Keep `automation-moe` for local agents and the existing ChatGPT alias assignments

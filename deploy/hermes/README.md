@@ -395,9 +395,12 @@ python3 scripts/setup-hermes-ha-api.py --revision FULL_SHA --rollback
 
 ### Managed startup and the Owner Sol binding
 
+The [private consumer routing migration](../control-plane/private-consumer-routing.md#hermes)
+sets the enrolled owner sandbox to `local-only`. A new sandbox starts with the
+legacy local alias until the migration installer runs.
+
 The managed startup guard rejects raw Sol credentials in the root profile's
-`.env`. Keep the owner on `automation-moe` with the OpenShell-managed local
-credential until a restart-safe Sol credential binding has been qualified.
+`.env`. Keep the OpenShell-managed local credential for owner inference.
 The older raw-key Owner Sol apply procedure is suspended for this sandbox.
 
 For the diagnosed Conduit restart incident, keep the affected container
