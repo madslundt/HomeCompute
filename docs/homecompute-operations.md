@@ -424,7 +424,12 @@ records the exact snapshot and archive in `last-cold-application-backup.json`.
 The selected schedule and its receipt remain in place. If transfer fails,
 rerun the command with `--archive` and the exact prepared archive filename.
 Use `restore-verify` and the engine drill below to verify that exact snapshot.
-Budget space for both the restored archive and the extracted application tree.
+For a cold snapshot written by this command, add `--revision FULL_SHA
+--mount-archive` to `restore-verify` to read directly from a private read-only
+Restic view and make only one local scratch copy. The usual extraction I/O
+limits and archive checks still apply. The temporary view is unmounted after
+verification. Without the flag, budget space for both the downloaded archive
+and the extracted application tree.
 
 The following scheduled operations use an explicitly configured cold-archive
 service. Home Core's selected schedule uses its separate lifecycle above.

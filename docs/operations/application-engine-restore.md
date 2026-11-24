@@ -54,7 +54,10 @@ extension metadata. SQL and command output remain private. Ownership is checked
 using a unique container name, random label and exact container ID before
 cleanup; uncertain cleanup prevents further engine launches.
 
-Both VMs run sequentially using the existing protected QEMU package GC root.
+The agents and Codex VMs run sequentially using the existing protected QEMU
+package GC root. For current archives that also contain the toolbox VM, the
+input gate requires the verified fourth qcow2 disk and exact toolbox seed.
+The engine drill boots the agents and Codex guests.
 Their q35/KVM, virtio disk ordering, Codex work-disk serial and archived seed
 layouts follow their owning sources, with test resources reduced to one vCPU
 and 2 GiB. Disk inputs are inherited read-only file descriptors; QEMU writes

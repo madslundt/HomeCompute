@@ -176,6 +176,30 @@ class NASRecoverySetupTest(unittest.TestCase):
             self.assertIn('verify',restore_run.call_args_list[1].args[0])
             self.assertEqual(json.loads((root/'last-application-verification.json').read_bytes()),result)
 
+    def test_mounted_cold_restore_reads_exact_view_and_only_extracts_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / 'restore'
+            application = root / 'restore-application'
+            application.mkdir(mode=0o700)
+            (application / 'manifest.json').write_text('{}')
+            archive = Path('/private/read-only-snapshot/archive.tar')
+            args = SimpleNamespace(snapshot='a' * 64, archive='exact.tar', target=target,
+                                   revision='b' * 40, source=root / 'published', mount_archive=True)
+            proof = subprocess.CompletedProcess([], 0, '{"sqlite_integrity":"ok"}', '')
+            with patch.object(setup, 'STATE', root), patch.object(setup, 'bundle', return_value=({}, 'bundle')), \
+                    patch.object(setup, 'published'), patch.object(setup, 'run'), \
+                    patch.object(setup, 'mounted_cold_archive') as mounted, \
+                    patch.object(setup, 'restore_run', return_value=proof) as restore:
+                mounted.return_value.__enter__.return_value = archive
+                result = setup.operation('restore-verify', {'version': '/installed', 'qemu_bin': '/local/bin'}, args)
+            mounted.assert_called_once()
+            self.assertEqual(mounted.call_args.args[:2], (args.snapshot, args.archive))
+            restore.assert_called_once()
+            self.assertEqual(restore.call_args.args[0][-3:], ['verify', str(archive), str(application)])
+            self.assertEqual(result['archive_read_from'], 'read-only-synology-restic-mount')
+            self.assertFalse(target.exists())
+
     def test_restore_and_extraction_use_idle_io_so_live_guests_can_recover(self):
         with tempfile.TemporaryDirectory() as temporary,patch.object(setup,'STATE',Path(temporary)):
             root=Path(temporary);application=root/'nas-application';application.mkdir(mode=0o700)

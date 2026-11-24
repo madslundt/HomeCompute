@@ -243,6 +243,31 @@ with open(sys.argv[1],'wb') as f:
                 with self.assertRaisesRegex(engine.VerificationError,'seed-mismatch'):
                     engine.restored_input(target,'a'*64,archive)
 
+    def test_current_archive_requires_four_checked_disks_and_verified_toolbox_seed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            scratch, target, state, archive = self.fixture(Path(temporary))
+            manifest_path = target / 'manifest.json'
+            manifest = json.loads(manifest_path.read_bytes())
+            manifest['vms'].append('toolbox-vm')
+            seed = target / 'state/toolbox-vm/seed.iso'
+            seed.parent.mkdir()
+            seed.write_bytes(b'synthetic toolbox seed')
+            manifest['toolbox_seed'] = {'archive_path': 'state/toolbox-vm/seed.iso',
+                                        'sha256': hashlib.sha256(seed.read_bytes()).hexdigest()}
+            manifest_path.write_text(json.dumps(manifest))
+            receipt_path = state / 'last-application-verification.json'
+            receipt = json.loads(receipt_path.read_bytes())
+            receipt['manifest_sha256'] = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            receipt['verification'].update(qcow2_disks_checked=4, toolbox_seed_verified=True)
+            receipt_path.write_text(json.dumps(receipt))
+            with patch.object(engine, 'SCRATCH', scratch), patch.object(engine, 'STATE', state), \
+                    patch.object(engine, 'protected'):
+                self.assertEqual(engine.restored_input(target, 'a' * 64, archive), receipt['manifest_sha256'])
+                receipt['verification']['qcow2_disks_checked'] = 3
+                receipt_path.write_text(json.dumps(receipt))
+                with self.assertRaisesRegex(engine.VerificationError, 'archive-disk-verification'):
+                    engine.restored_input(target, 'a' * 64, archive)
+
     def test_different_old_restore_tree_cannot_borrow_latest_snapshot_receipt(self):
         with tempfile.TemporaryDirectory() as temporary:
             scratch,target,state,archive=self.fixture(Path(temporary));old=scratch/'old-application'
