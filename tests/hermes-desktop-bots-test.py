@@ -11,6 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = runpy.run_path(str(ROOT / 'deploy/hermes/bots/install.py'))
 ROSTER = runpy.run_path(str(ROOT / 'scripts/setup-hermes-desktop-bots.py'))['desired']
+KEY_SETUP = runpy.run_path(str(ROOT / 'scripts/provision-hermes-chatgpt-keys.py'))
 
 
 class DesktopBotTests(unittest.TestCase):
@@ -41,6 +42,15 @@ class DesktopBotTests(unittest.TestCase):
             payload.update(keys=self.keys, expected=expected)
         return RUNTIME['reconcile'](self.profiles, payload, ['cli', 'api_server'], json.loads,
                                     self.native_import, lambda path: path.name in self.deleted)
+
+    def test_key_provisioner_uses_exact_bot_roster_and_separate_destinations(self):
+        models, destinations, owner = KEY_SETUP['selection'](True)
+        self.assertEqual(models, {bot['id']: bot['model'] for bot in ROSTER()['bots']})
+        self.assertEqual(owner, 'hermes-desktop-bots')
+        self.assertEqual({role: Path(path).name for role, path in destinations.items()},
+                         {role: f'desktop-{role}' for role in models})
+        self.assertTrue(set(destinations.values()).isdisjoint(KEY_SETUP['selection'](False)[1].values()))
+        compile(KEY_SETUP['LITELLM_SCRIPT'], '<gateway key provisioner>', 'exec')
 
     def test_plan_then_apply_starts_empty_profiles_with_distinct_models(self):
         before = self.read()

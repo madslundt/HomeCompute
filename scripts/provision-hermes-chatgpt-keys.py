@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Create one model-only LiteLLM key for each owner Hermes ChatGPT profile."""
+"""Create one model-only LiteLLM key for each selected owner Hermes profile."""
 from __future__ import annotations
+import argparse
 import json
 from pathlib import Path
+import runpy
 import shlex
 import subprocess
 import sys
@@ -19,25 +21,29 @@ PROFILES = {
 OWNER = 'hermes-chatgpt-profiles'
 DESTINATIONS = {name: f'{SECRETS}/{name.removeprefix("chatgpt-")}' for name in PROFILES}
 
-LITELLM_SCRIPT = r'''import json,urllib.parse,urllib.request
+LITELLM_SCRIPT = r'''import hashlib,json,sys,urllib.parse,urllib.request
 master=open('/run/secrets/litellm_master_key',encoding='utf-8').read().strip()
 base='http://127.0.0.1:4000'
 headers={'Authorization':'Bearer '+master,'Content-Type':'application/json'}
 def req(path,body=None):
  data=json.dumps(body).encode() if body is not None else None
  with urllib.request.urlopen(urllib.request.Request(base+path,data=data,headers=headers),timeout=30) as r:return json.load(r)
-profiles={'chatgpt-sol':'chatgpt-sol-latest','chatgpt-terra':'chatgpt-terra-latest','chatgpt-luna':'chatgpt-luna-latest'}
+spec=json.load(sys.stdin)
 created={}
 try:
- for name,model in profiles.items():
-  body={'models':[model],'key_alias':'hermes-'+name,'user_id':'hermes-chatgpt-profiles','duration':None,
+ for name,model in spec['profiles'].items():
+  alias=spec['aliases'][name]
+  listed=req('/key/list?'+urllib.parse.urlencode({'key_alias':alias,'size':1}))
+  if listed.get('keys') != []:raise ValueError('existing Hermes key alias requires review')
+  body={'models':[model],'key_alias':alias,'user_id':spec['owner'],'duration':None,
         'object_permission':{'mcp_servers':['no-mcp-servers']},
-        'metadata':{'purpose':'Owner Hermes profile; one ChatGPT alias only; MCP denied'}}
+        'metadata':{'purpose':'Owner Hermes profile; one model alias only; MCP denied'}}
   key=req('/key/generate',body).get('key')
   if not isinstance(key,str) or not key.startswith('sk-') or any(c.isspace() for c in key):raise ValueError('key shape')
   created[name]=key
-  info=req('/key/info?'+urllib.parse.urlencode({'key':key})).get('info',{})
-  if (info.get('models')!=[model] or info.get('user_id')!='hermes-chatgpt-profiles'
+  digest=hashlib.sha256(key.encode()).hexdigest()
+  info=req('/key/info?'+urllib.parse.urlencode({'key':digest})).get('info',{})
+  if (info.get('models')!=[model] or info.get('user_id')!=spec['owner'] or info.get('key_alias')!=alias
       or info.get('expires') is not None
       or (info.get('object_permission') or {}).get('mcp_servers')!=['no-mcp-servers']):raise ValueError('key scope')
 except Exception:
@@ -90,7 +96,18 @@ def revoke(keys: dict[str, str]) -> bool:
     # Ensure revocation actually reached the exact scoped keys without exposing them.
     return result.stdout.strip() == 'revoked'
 
-def run() -> None:
+def selection(desktop_bots: bool):
+    if not desktop_bots:
+        return PROFILES, DESTINATIONS, OWNER
+    roster = runpy.run_path(str(ROOT / 'scripts/setup-hermes-desktop-bots.py'))['desired']()
+    profiles = {bot['id']: bot['model'] for bot in roster['bots']}
+    destinations = {name: f'{SECRETS}/desktop-{name}' for name in profiles}
+    return profiles, destinations, 'hermes-desktop-bots'
+
+
+def run(desktop_bots: bool = False) -> None:
+    profiles, destinations, owner = selection(desktop_bots)
+    aliases = {name: ('hermes-desktop-' if desktop_bots else 'hermes-') + name for name in profiles}
     if not GUEST_KEY.is_file() or GUEST_KEY.is_symlink():
         raise RuntimeError('The dedicated agents-VM SSH identity is unavailable')
     rev = subprocess.run(['git','-C',str(ROOT),'rev-parse','HEAD'],capture_output=True,text=True,check=True).stdout.strip()
@@ -98,22 +115,25 @@ def run() -> None:
     dirty = subprocess.run(['git','-C',str(ROOT),'status','--porcelain','--untracked-files=all'],capture_output=True,text=True,check=True).stdout
     if rev != pub or dirty:
         raise RuntimeError('Use a clean checkout of the exact published origin/master revision')
-    check = 'set -eu; ' + ' && '.join(f'test ! -e {p} && test ! -L {p}' for p in DESTINATIONS.values())
+    check = 'set -eu; ' + ' && '.join(f'test ! -e {p} && test ! -L {p}' for p in destinations.values())
     result = subprocess.run(['ssh','-J','home-core','-o','BatchMode=yes','-o','StrictHostKeyChecking=yes',
                              '-i',str(GUEST_KEY),GUEST,check],capture_output=True,text=True,check=False)
     if result.returncode:
-        raise RuntimeError('Preserve existing Hermes ChatGPT key files; inspect their state')
-    host = subprocess.run(['ssh','home-core','sudo -n docker exec -i homecompute-control-plane-litellm-1 python3 -'],
-                          input=LITELLM_SCRIPT,text=True,capture_output=True,timeout=90,check=False)
+        raise RuntimeError('Preserve existing Hermes key files; inspect their state')
+    command = shlex.join(['sudo', '-n', 'docker', 'exec', '-i',
+                          'homecompute-control-plane-litellm-1', 'python3', '-c', LITELLM_SCRIPT])
+    host = subprocess.run(['ssh','home-core', command],
+                          input=json.dumps({'profiles': profiles, 'aliases': aliases, 'owner': owner}),
+                          text=True, capture_output=True, timeout=150, check=False)
     if host.returncode:
         raise RuntimeError('LiteLLM key creation failed; no credential was delivered')
     try: keys=json.loads(host.stdout)
     except (ValueError,TypeError): raise RuntimeError('LiteLLM returned an unreadable key receipt') from None
-    if not isinstance(keys,dict) or set(keys)!=set(PROFILES):
+    if not isinstance(keys,dict) or set(keys)!=set(profiles):
         raise RuntimeError('LiteLLM returned an unexpected profile set')
     delivered_paths = []
     try:
-        for name,path in DESTINATIONS.items():
+        for name,path in destinations.items():
             key=keys[name]
             if not isinstance(key,str) or not key.startswith('sk-') or any(c.isspace() for c in key):
                 raise RuntimeError('LiteLLM returned an invalid key')
@@ -136,10 +156,13 @@ def run() -> None:
         if not cleanup_ok:
             raise RuntimeError('Partial Hermes key delivery could not be fully rolled back; inspect guest and LiteLLM state')
         raise RuntimeError('Hermes key delivery failed; generated keys were removed and revoked') from None
-    print('Created three non-expiring one-model Hermes keys with MCP access denied.')
+    print(f'Created {len(profiles)} non-expiring one-model Hermes keys with MCP access denied.')
 
 if __name__=='__main__':
-    try:run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--desktop-bots', action='store_true')
+    args = parser.parse_args()
+    try:run(args.desktop_bots)
     except (OSError,subprocess.SubprocessError,RuntimeError) as exc:
-        print(f'Hermes ChatGPT key provisioning failed ({type(exc).__name__})',file=sys.stderr)
+        print(f'Hermes key provisioning failed ({type(exc).__name__})',file=sys.stderr)
         raise SystemExit(1) from None

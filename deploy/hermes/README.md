@@ -49,11 +49,16 @@ runtime. Live public source discovery requires a qualified public-only route.
 
 Use a clean, reviewed `origin/master` revision in the agents guest as
 `hermes-operator`. Inspect the plan first. Apply requires the current household
-network and off-host restore readiness records. Provision external operator-owned
-mode-0600 files in `~/.config/homecompute-hermes/secrets/` named
-`desktop-home-planner` and `desktop-researcher`. Each contains a distinct
-LiteLLM key restricted to that bot's sole model, with MCP denied. Check the
-key scopes and model routes in LiteLLM before applying.
+network and off-host restore readiness records. From a clean published
+workstation checkout, provision the two model-only keys:
+
+```sh
+python3 scripts/provision-hermes-chatgpt-keys.py --desktop-bots
+```
+
+The provisioner verifies each model and MCP scope in LiteLLM. It delivers the
+keys directly to owner-only guest files named `desktop-home-planner` and
+`desktop-researcher` in `~/.config/homecompute-hermes/secrets/`.
 
 ```sh
 python3 scripts/setup-hermes-desktop-bots.py --revision FULL_SHA
