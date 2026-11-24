@@ -1,5 +1,24 @@
 # Hermes household owner agent
 
+## Hermes Conduit
+
+Conduit uses the existing authenticated Owner Webapp. Connect over
+`https://agents.home.arpa/hermes/` on the trusted Default LAN with the Home
+Core CA trusted on the device, or use `https://home-core.tail479ad.ts.net:18796`
+on the tailnet.
+
+The guest installer pins `conduit_push` to the reviewed upstream commit,
+downloads its source outside OpenShell and lets the native plugin installer
+scan it. The default `plan` is read-only. From the selected published checkout,
+run `./scripts/setup-hermes-conduit.sh apply` as the guest operator. It saves a
+local preimage and restarts the existing owner service after activation. The
+local preimage does not replace the off-host backup and restore procedure. If
+the owner explicitly defers the off-host backup for this install, use
+`apply --defer-backup` with fresh agents network readiness.
+The install makes no changes to device pairing or outbound firewall grants.
+Use `./scripts/setup-hermes-conduit.sh rollback` to disable the pinned plugin
+and restart the owner service while retaining the plugin's data.
+
 ## Owner chat specialists
 
 Use a fresh chat in the existing owner-only Hermes Mattermost DM or authenticated
