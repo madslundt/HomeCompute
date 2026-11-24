@@ -96,6 +96,31 @@ class ApplicationRecoveryTest(unittest.TestCase):
                     self.assertEqual(copy.execute('PRAGMA quick_check').fetchone(), ('ok',))
             self.assertEqual(target.stat().st_mode & 0o777, 0o600)
 
+    def test_space_preflight_tolerates_a_sqlite_sidecar_gone_after_walk(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            state = root / 'state'; state.mkdir(mode=0o700)
+            n8n = root / 'n8n'; n8n.mkdir(mode=0o700)
+            source = state / 'attention.sqlite3'
+            with closing(sqlite3.connect(source)) as db:
+                db.execute('CREATE TABLE fixture(value TEXT)')
+            source.chmod(0o600)
+            directories = {'assistant-context/collector': state}
+            listing = [(str(state), [], [source.name, source.name + '-wal'])]
+            with patch.object(recovery, 'ASSISTANT_DIRECTORIES', directories), \
+                    patch.object(recovery, 'ASSISTANT_FILES', {}), \
+                    patch.object(recovery.os, 'walk', side_effect=lambda path, **_: listing if path == state else []):
+                self.assertEqual(recovery.assistant_recovery_sources(), (directories, {}))
+                self.assertEqual(recovery.assistant_sqlite_sources(directories),
+                                 [('assistant-context/collector/attention.sqlite3', source)])
+                with patch.object(recovery, 'DIRECTORIES', {}), patch.object(recovery, 'EXTRA_FILES', {}), \
+                        patch.object(recovery, 'N8N', n8n), \
+                        patch.object(recovery, 'AI_AUTOMATION_MANAGER', state / 'missing-manager'):
+                    self.assertGreater(recovery.space_required(), recovery.MIN_FREE_BYTES)
+                listing[0][2].append('missing-private.db')
+                with self.assertRaises(FileNotFoundError):
+                    recovery.assistant_recovery_sources()
+
     def test_assistant_sqlite_backup_captures_wal_consistently_at_canonical_archive_path(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);state=root/'state';state.mkdir(mode=0o700)

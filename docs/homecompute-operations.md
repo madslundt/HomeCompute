@@ -406,8 +406,28 @@ backup are on the same Synology volume, so NAS and site loss remain uncovered.
 
 ### Legacy cold application archive
 
-The following commands apply to an explicitly configured cold-archive schedule
-and its separate repository. Home Core's selected schedule does not use them.
+The cold archive uses the separate `restic-homecompute-agent-recovery`
+repository. To run an attended archive and restore drill alongside the selected
+schedule, use the published tool with the existing legacy lifecycle receipt.
+Initialize the separate repository explicitly if it is absent. Then run:
+
+```bash
+nas_tool=/srv/homecompute/releases/FULL_SHA/scripts/setup-nas-recovery-backup.py
+sudo python3 "$nas_tool" initialize --expected-hash INSTALLED_LEGACY_BUNDLE_HASH
+sudo python3 "$nas_tool" cold-backup --revision FULL_SHA \
+  --expected-hash INSTALLED_LEGACY_BUNDLE_HASH --acknowledge-pause
+```
+
+The cold backup uses the published archive preparer and its normal quiescence
+checks. It transfers just that completed archive after the writers resume and
+records the exact snapshot and archive in `last-cold-application-backup.json`.
+The selected schedule and its receipt remain in place. If transfer fails,
+rerun the command with `--archive` and the exact prepared archive filename.
+Use `restore-verify` and the engine drill below to verify that exact snapshot.
+Budget space for both the restored archive and the extracted application tree.
+
+The following scheduled operations use an explicitly configured cold-archive
+service. Home Core's selected schedule uses its separate lifecycle above.
 
 The NAS module's `includeApplicationState = true` default prepares an
 application-consistent recovery archive before Restic transfer. It stops the

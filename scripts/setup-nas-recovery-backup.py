@@ -406,6 +406,22 @@ def operation(command: str, record: dict, args) -> dict:
         if (STATE / 'last-backup.json').stat().st_mtime < started:
             raise ValueError('fresh completed NAS backup evidence required')
         return json.loads((STATE / 'last-backup.json').read_bytes())
+    if command == 'cold-backup':
+        if not args.acknowledge_pause or not args.revision:
+            raise ValueError('published revision and --acknowledge-pause required for a cold archive')
+        contents, _ = bundle(args.source); published(args.source, args.revision, contents)
+        busy()
+        source_recovery = [PYTHON, '-I', str(args.source / 'scripts/application-recovery.py')]
+        source_nas = [PYTHON, '-I', str(args.source / 'scripts/nas-recovery-backup.py')]
+        archive = args.archive
+        if not archive:
+            result = run([*source_recovery, 'prepare'], env=env, timeout=14400, check=False)
+            if result.returncode == 75:
+                raise SystemExit(75)
+            result.check_returncode()
+            archive = Path(json.loads(result.stdout)['archive']).name
+        run([*source_nas, 'backup-application', '--archive', archive], env=env, timeout=7500)
+        return json.loads((STATE / 'last-cold-application-backup.json').read_bytes())
     if command == 'restore-verify':
         if not args.snapshot or not args.archive or not args.target:
             raise ValueError('restore needs exact snapshot, archive and new scratch target')
@@ -523,7 +539,7 @@ def retire(record: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', nargs='?', default='plan', choices=('plan', 'apply', 'status', 'initialize', 'proof', 'check', 'backup-now', 'restore-verify', 'verify-extracted', 'enable-schedule', 'resume', 'rollback', 'retire'))
+    parser.add_argument('command', nargs='?', default='plan', choices=('plan', 'apply', 'status', 'initialize', 'proof', 'check', 'backup-now', 'cold-backup', 'restore-verify', 'verify-extracted', 'enable-schedule', 'resume', 'rollback', 'retire'))
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--revision'); parser.add_argument('--expected-hash'); parser.add_argument('--acknowledge-pause', action='store_true')
     parser.add_argument('--snapshot'); parser.add_argument('--archive'); parser.add_argument('--target', type=Path)

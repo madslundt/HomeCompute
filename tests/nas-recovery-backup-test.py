@@ -85,6 +85,26 @@ class NASBackupTest(unittest.TestCase):
                 backup.scheduled(preparer)
             run.assert_not_called()
 
+    def test_explicit_application_archive_receipt_does_not_replace_selected_receipt(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary)
+            name = 'homecompute-applications-20261124T230000.123456Z.tar'
+            archive = source / name
+            archive.write_bytes(b'synthetic')
+            archive.chmod(0o600)
+            snapshot = 'a' * 64
+            output = json.dumps({'message_type': 'summary', 'snapshot_id': snapshot})
+            with patch.object(backup, 'SOURCE', source), patch.object(backup, 'root_directory'), \
+                    patch.object(backup, 'private_file'), patch.object(backup, 'restic', return_value=output) as restic, \
+                    patch.object(backup, 'record') as record:
+                backup.backup_application(name)
+                restic.assert_called_once_with(['backup', '--json', '--tag',
+                                               'cold-application-restore-drill', str(archive)])
+                record.assert_called_once_with('last-cold-application-backup.json',
+                                               {'snapshot': snapshot, 'archive': name})
+                with self.assertRaisesRegex(ValueError, 'exact application'):
+                    backup.backup_application('../' + name)
+
     def test_dedicated_share_validates(self):
         self.assertEqual(backup.configuration(CONFIG), CONFIG)
 
