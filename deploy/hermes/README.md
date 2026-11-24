@@ -19,6 +19,16 @@ The install makes no changes to device pairing or outbound firewall grants.
 Use `./scripts/setup-hermes-conduit.sh rollback` to disable the pinned plugin
 and restart the owner service while retaining the plugin's data.
 
+## Bighelp
+
+Bighelp uses the same authenticated Owner Webapp and is registered in Hermes
+as `loopdy`. From a published guest checkout, run
+`./scripts/setup-hermes-mobile-plugin.sh bighelp plan` before applying the
+pinned official release with `./scripts/setup-hermes-mobile-plugin.sh bighelp apply`.
+The backup deferral and rollback options match the Conduit procedure. Bighelp
+activation uses the native gateway restart while the sandbox stays running.
+The installer leaves device pairing and network grants to their own lifecycles.
+
 ## Owner chat specialists
 
 Use a fresh chat in the existing owner-only Hermes Mattermost DM or authenticated

@@ -63,6 +63,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-nod-guest.sh"
   "$REPO_ROOT/scripts/setup-hermes-guest.sh"
   "$REPO_ROOT/scripts/setup-hermes-conduit.sh"
+  "$REPO_ROOT/scripts/setup-hermes-mobile-plugin.sh"
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/deploy-t3code.sh"
