@@ -107,6 +107,14 @@ wait_for_owner() {
   fi
   require_owner
 }
+bighelp_telemetry_disabled() {
+  native hermes bighelp telemetry status |
+    jq -e '.enabled == false and .sources["hermes bighelp telemetry"] == "off"' >/dev/null
+}
+configure_plugin() {
+  [[ "$plugin" == loopdy ]] || return 0
+  native hermes bighelp telemetry off >/dev/null && bighelp_telemetry_disabled
+}
 
 require_owner
 state="$(plugin_state)"
@@ -123,7 +131,13 @@ if [[ "$operation" == rollback ]]; then
   [[ "$(plugin_state)" == installed ]]
   exit 0
 fi
-[[ "$state" != enabled ]] || exit 0
+if [[ "$state" == enabled ]]; then
+  if [[ "$plugin" == loopdy ]] && ! bighelp_telemetry_disabled; then
+    require_readiness
+    configure_plugin
+  fi
+  exit 0
+fi
 require_readiness
 if native grep -qE '^HOMECOMPUTE_CHATGPT_API_KEY=sk-' /sandbox/.hermes/.env; then
   echo 'Managed Hermes rejects the raw owner Sol credential during restart. Reconcile the owner model binding before applying a mobile plugin.' >&2
@@ -186,7 +200,7 @@ fi
 
 native hermes plugins enable "$plugin" --no-allow-tool-override
 [[ "$(plugin_state)" == enabled ]]
-if ! wait_for_owner || [[ "$(plugin_state)" != enabled ]]; then
+if ! configure_plugin || ! wait_for_owner || [[ "$(plugin_state)" != enabled ]]; then
   echo 'Mobile plugin activation could not be verified. Attempting to disable it.' >&2
   native hermes plugins disable "$plugin" && wait_for_owner
   exit 1

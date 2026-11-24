@@ -27,6 +27,7 @@ as `loopdy`. From a published guest checkout, run
 pinned official release with `./scripts/setup-hermes-mobile-plugin.sh bighelp apply`.
 The backup deferral and rollback options match the Conduit procedure. Bighelp
 activation uses the native gateway restart while the sandbox stays running.
+The installer disables Bighelp host telemetry and verifies the saved setting.
 The installer leaves device pairing and network grants to their own lifecycles.
 
 ## Owner chat specialists
