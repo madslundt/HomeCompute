@@ -20,7 +20,10 @@ class PrivateConsumerRoutingTest(unittest.TestCase):
                 "credentials": {"openAiApi": {"name": MIGRATION.AULA_CREDENTIAL}},
                 "parameters": {
                     "model": {"mode": "id", "value": "automation-moe", "cachedResultName": "automation-moe"},
-                    "options": {"maxRetries": 0, "extraBody": '{"chat_template_kwargs":{"enable_thinking":false}}'},
+                    "options": {
+                        "maxRetries": 0, "timeout": 90000,
+                        "extraBody": '{"chat_template_kwargs":{"enable_thinking":false}}',
+                    },
                 },
             }],
         }
@@ -28,9 +31,15 @@ class PrivateConsumerRoutingTest(unittest.TestCase):
     def test_only_reviewer_alias_and_provider_override_change(self):
         workflow = self.workflow()
         ops = MIGRATION.aula_operations(workflow, "plan")
-        self.assertEqual([op["path"] for op in ops], ["model", "options.extraBody"])
-        self.assertEqual(ops[0]["value"]["value"], "local-only")
-        self.assertEqual(json.loads(ops[1]["value"]), {})
+        self.assertEqual(len(ops), 1)
+        operation, = ops
+        self.assertEqual(operation["type"], "updateNodeParameters")
+        self.assertFalse(operation["replace"])
+        parameters = operation["parameters"]
+        self.assertEqual(parameters["model"]["value"], "local-only")
+        self.assertEqual(json.loads(parameters["options"]["extraBody"]), {})
+        self.assertEqual(parameters["options"]["maxRetries"], 0)
+        self.assertEqual(parameters["options"]["timeout"], 90000)
         self.assertEqual(workflow["nodes"][0]["parameters"]["model"]["value"], "automation-moe")
 
     def test_refuses_to_overwrite_pending_draft(self):
