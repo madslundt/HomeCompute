@@ -1,7 +1,7 @@
 # Private consumer routing migration
 
-Hermes owner, OpenBot's owner Hermes and Home Planner, and the n8n Aula summary
-reviewer use the managed `local-only` text alias. The same private Flash-Next
+Hermes owner, OpenBot's owner Hermes, Home Planner, Engineer and QA, and the
+n8n Aula summary reviewer use the managed `local-only` text alias. The same private Flash-Next
 relay serves the requests. Existing workflow delivery rules, credentials,
 account scopes and storage stay with their owning applications.
 
@@ -39,12 +39,16 @@ transport and restart the gateway to restore that copy.
 Stream the same script into Python in the existing `homecompute-openbot`
 container with `openbot plan --agent ID`, then apply to each verified agent
 using `openbot apply --agent ID`. The IDs and accepted preimages are in the
-script. The supported Local scripts settings endpoint changes the model while
-the agent is idle. No permissions, sessions or instructions are rewritten.
+script. The installer registers a named provider in embedded Hermes with a
+fixed private compatibility URL and a catalog containing only `local-only`.
+The Local scripts settings endpoint selects that model while the agent is idle.
+The installer checks for an empty backup list or the existing manual local
+backup. It preserves permissions, sessions and instructions.
 Use a synthetic no-tools prompt on the local binding to verify the client.
 The rollback mode returns the agent to the direct **local** compatibility
-alias. Explicit subscription-only specialist agents have their own data
-approval and are outside this scoped migration.
+alias. Subscription specialists keep their separately approved routes. The
+Telegram and WhatsApp orchestrators keep their direct local aliases and
+existing channel bindings.
 
 ## n8n
 
