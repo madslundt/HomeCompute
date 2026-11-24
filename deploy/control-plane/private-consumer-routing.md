@@ -44,6 +44,14 @@ fixed private compatibility URL and a catalog containing only `local-only`.
 The Local scripts settings endpoint selects that model while the agent is idle.
 The installer checks for an empty backup list or the existing manual local
 backup. It preserves permissions, sessions and instructions.
+
+OpenBot 0.73.0 caches the embedded Hermes catalog. The first apply can register
+the provider and then return HTTP 409 because the running OpenBot process still
+advertises the old catalog. Confirm that the response identifies an unavailable
+model and that the owner instance is idle. Restart its existing guest service
+with `sudo -n systemctl restart homecompute-openbot.service`. Once the owner
+container has recreated its Local scripts endpoint, repeat the same apply.
+
 Use a synthetic no-tools prompt on the local binding to verify the client.
 The rollback mode returns the agent to the direct **local** compatibility
 alias. Subscription specialists keep their separately approved routes. The
