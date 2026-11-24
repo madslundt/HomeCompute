@@ -21,7 +21,7 @@ class ToolboxVmModuleTest(unittest.TestCase):
         self.assertIn("homecompute.toolboxVm = {", HOST)
         self.assertIn("enable = true;", HOST)
         self.assertIn("sshKeys =", HOST)
-        self.assertIn("nasRecoveryBackup.includeApplicationState", MODULE)
+        self.assertIn("nasRecoveryBackup.enable", MODULE)
         self.assertIn("10.77.30.2", MODULE)
         self.assertIn("br-hc-toolbox", MODULE)
         self.assertIn('match: {macaddress: "52:54:00:77:30:02"}', MODULE)

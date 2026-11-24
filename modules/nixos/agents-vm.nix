@@ -255,7 +255,8 @@ in
             config.homecompute.backups.enable
             || (
               config.homecompute.nasRecoveryBackup.enable
-              && config.homecompute.nasRecoveryBackup.includeApplicationState
+              && (config.homecompute.nasRecoveryBackup.includeApplicationState
+                || config.homecompute.nasRecoveryBackup.selectedState)
             )
           )
           && (cfg.dataClassification == "synthetic-only" || cfg.restoreVerified)
@@ -264,19 +265,20 @@ in
             && config.homecompute.agentsVm.localBootstrapBackup.enable
             && config.homecompute.agentsVm.localBootstrapBackup.riskAccepted
           );
-        message = "household data requires an off-host application-state backup and a fresh restore proof; local bootstrap permits synthetic-only pilots";
+        message = "household data requires off-host recovery coverage and a restore proof; local bootstrap permits synthetic-only pilots";
       }
       {
         assertion =
           (config.homecompute.nasRecoveryBackup.enable
-            && config.homecompute.nasRecoveryBackup.includeApplicationState)
+            && (config.homecompute.nasRecoveryBackup.includeApplicationState
+              || config.homecompute.nasRecoveryBackup.selectedState))
           || lib.any (
             path: path == "/srv/state" || path == statePath
           ) (if config.homecompute.backups.enable then
             lib.concatMap (source: source.paths) (builtins.attrValues config.homecompute.backups.sources)
           else
             config.homecompute.backups.paths);
-        message = "an enabled off-host backup source must include /srv/state or the NAS application-state archive must be enabled";
+        message = "an enabled off-host backup source must include /srv/state, the agents VM disk, or Hermes native-home state";
       }
       {
         assertion = lib.hasPrefix "https://cloud-images.ubuntu.com/" cfg.image.url;

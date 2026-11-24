@@ -367,6 +367,48 @@ at the same target: only that exact stack or exact CIFS alone qualifies as the
 backup destination. Exact autofs alone is accepted only while the installer
 stages the mount, never while validating a backup destination.
 
+### Scheduled Immich and Hermes backups
+
+Home Core uses the existing `restic-homecompute-selected` repository on the
+dedicated share. The daily job captures the Immich media library and consistent
+PostgreSQL dump, plus a SQLite-consistent export of the Hermes owner sandbox.
+The export excludes runtime credentials, generated configuration, installed
+plugin code and private maintenance preimages. The Immich recycle bin is
+excluded, and retention applies only to snapshots with the selected-state tag.
+Weekly verification checks the same repository.
+
+The Hermes guest exporter is installed as `hermes-operator` with
+`scripts/setup-hermes-native-backup.sh` from a published checkout. The tracked
+public key is restricted to that export command and the Home Core bridge
+address. The private key is provisioned on Home Core from SOPS and kept in a
+root-only file in the NAS service state directory.
+
+For a scoped repair, stage the published checkout under
+`/srv/homecompute/releases/FULL_SHA` and run:
+
+```bash
+sudo bash /srv/homecompute/releases/FULL_SHA/scripts/setup-selected-nas-recovery.sh apply FULL_SHA
+sudo systemctl start homecompute-nas-recovery-backup.service
+sudo systemctl start homecompute-nas-recovery-check.service
+```
+
+The installer builds and pins the two exact NixOS service definitions. It
+leaves the host generation, mount, schedules and Restic repository in place.
+Confirm successful service exits, fresh root-only receipts, and the exact
+snapshot in Restic. An active Hermes session defers the job with code 75.
+Use the same release and `rollback` to remove the scoped service links, or
+`retire` after the canonical generation supplies byte-identical service
+definitions. Both keep the backup credential and repository.
+
+The selected schedule covers the named Immich and Hermes paths. VM images and
+other application databases need separate coverage. The Immich media and its
+backup are on the same Synology volume, so NAS and site loss remain uncovered.
+
+### Legacy cold application archive
+
+The following commands apply to an explicitly configured cold-archive schedule
+and its separate repository. Home Core's selected schedule does not use them.
+
 The NAS module's `includeApplicationState = true` default prepares an
 application-consistent recovery archive before Restic transfer. It stops the
 declared writers and VMs, uses PostgreSQL dumps and SQLite's transactional backup
