@@ -349,7 +349,10 @@ a local whole-`/sandbox` archive of the stopped owner after the config repair.
 If OpenShell retains the exact terminal error, use the offline native-state
 procedure with `--owner-sol-startup-incident` on
 `scripts/recover-hermes-native-state.py`. Start the owner service through its
-usual lifecycle and verify authenticated Webapp chat.
+usual lifecycle and verify authenticated Webapp chat. If the exact same
+recovered start is running and OpenShell retained the stale Docker exit
+condition, `--owner-sol-running-reconcile` returns the record to Starting.
+The driver and supervisor establish Ready after the gateway restarts.
 
 ## Release and policy
 
