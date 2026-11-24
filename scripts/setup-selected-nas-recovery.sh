@@ -68,7 +68,8 @@ for unit in "${units[@]}"; do
   [[ $(systemctl show "$unit" -p FragmentPath --value) == "/etc/systemd/system/$unit" ]]
 done
 
-bundle=$(nix --extra-experimental-features 'nix-command flakes' build --no-link --print-out-paths +  "$release#nixosConfigurations.home-core.config.system.build.selectedNasRecovery")
+flake_output="path:$release#nixosConfigurations.home-core.config.system.build.selectedNasRecovery"
+bundle=$(nix --extra-experimental-features 'nix-command flakes' build --no-link --print-out-paths "$flake_output")
 [[ "$bundle" =~ ^/nix/store/[a-z0-9]{32}-homecompute-selected-nas-units$ ]]
 systemd-analyze verify "${units[@]/#/$bundle/}"
 for unit in "${units[@]}"; do
