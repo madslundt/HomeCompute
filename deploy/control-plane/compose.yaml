@@ -124,6 +124,7 @@ services:
     volumes:
       - ${LITELLM_CONFIG_FILE:-./litellm-config.yaml}:/etc/litellm/config.yaml:ro
       - ./litellm-entrypoint.sh:/opt/homecompute/litellm-entrypoint.sh:ro
+      - ./homecompute_routing.py:/opt/homecompute/homecompute_routing.py:ro
       - /etc/homecompute/control-plane/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
       - ${CONTROL_PLANE_STATE_ROOT:?Set CONTROL_PLANE_STATE_ROOT}/chatgpt-auth:/run/homecompute/chatgpt:rw
     tmpfs:

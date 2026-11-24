@@ -133,7 +133,685 @@ model_list:
       mode: responses
       input_cost_per_token: 0
       output_cost_per_token: 0
+  - model_name: "agent-assistant"
+    litellm_params:
+      model: "openai/automation-qualification"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 25
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+    model_info:
+      id: "agent-assistant:flash-next"
+      homecompute_alias: "agent-assistant"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: ""
+      homecompute_provider: "flash-next"
+      homecompute_structured_output: true
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-assistant"
+    litellm_params:
+      model: "chatgpt/gpt-6-luna"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 30
+    model_info:
+      id: "agent-assistant:luna:high"
+      homecompute_alias: "agent-assistant"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "luna"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-assistant"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 3
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-assistant:sol:high"
+      homecompute_alias: "agent-assistant"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-coder"
+    litellm_params:
+      model: "openai/automation-qualification"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 25
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+    model_info:
+      id: "agent-coder:flash-next"
+      homecompute_alias: "agent-coder"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 240
+      homecompute_max_fallbacks: 2
+      homecompute_effort: ""
+      homecompute_provider: "flash-next"
+      homecompute_structured_output: true
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-coder"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-coder:sol:high"
+      homecompute_alias: "agent-coder"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 240
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-coder"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-astra"
+      order: 3
+      num_retries: 0
+      max_retries: 0
+      timeout: 120
+      stream_timeout: 45
+    model_info:
+      id: "agent-coder:astra:high"
+      homecompute_alias: "agent-coder"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 240
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "astra"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-planner"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-planner:sol:high"
+      homecompute_alias: "agent-planner"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-planner"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-astra"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 120
+      stream_timeout: 45
+    model_info:
+      id: "agent-planner:astra:high"
+      homecompute_alias: "agent-planner"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "astra"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-reviewer"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-reviewer:sol:high"
+      homecompute_alias: "agent-reviewer"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-reviewer"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-astra"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 120
+      stream_timeout: 45
+    model_info:
+      id: "agent-reviewer:astra:high"
+      homecompute_alias: "agent-reviewer"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "astra"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-researcher"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-researcher:sol:high"
+      homecompute_alias: "agent-researcher"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-researcher"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-astra"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 120
+      stream_timeout: 45
+    model_info:
+      id: "agent-researcher:astra:high"
+      homecompute_alias: "agent-researcher"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "astra"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-designer"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-astra"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 120
+      stream_timeout: 45
+    model_info:
+      id: "agent-designer:astra:high"
+      homecompute_alias: "agent-designer"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "astra"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-designer"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-designer:sol:high"
+      homecompute_alias: "agent-designer"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-reasoner"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-reasoner:sol:high"
+      homecompute_alias: "agent-reasoner"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-reasoner"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-astra"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 120
+      stream_timeout: 45
+    model_info:
+      id: "agent-reasoner:astra:high"
+      homecompute_alias: "agent-reasoner"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "astra"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-automation"
+    litellm_params:
+      model: "openai/automation-qualification"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 25
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+    model_info:
+      id: "agent-automation:flash-next"
+      homecompute_alias: "agent-automation"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: ""
+      homecompute_provider: "flash-next"
+      homecompute_structured_output: true
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-automation"
+    litellm_params:
+      model: "chatgpt/gpt-6-luna"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 30
+    model_info:
+      id: "agent-automation:luna:high"
+      homecompute_alias: "agent-automation"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "luna"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-automation"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 3
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-automation:sol:high"
+      homecompute_alias: "agent-automation"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-fast"
+    litellm_params:
+      model: "chatgpt/gpt-6-luna"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 30
+    model_info:
+      id: "agent-fast:luna:low"
+      homecompute_alias: "agent-fast"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 75
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "low"
+      homecompute_provider: "luna"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-fast"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-fast:sol:low"
+      homecompute_alias: "agent-fast"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 75
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "low"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-premium"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-astra"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 120
+      stream_timeout: 45
+    model_info:
+      id: "agent-premium:astra:high"
+      homecompute_alias: "agent-premium"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "astra"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "agent-premium"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "agent-premium:sol:high"
+      homecompute_alias: "agent-premium"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 210
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "local-only"
+    litellm_params:
+      model: "openai/automation-qualification"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 25
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+    model_info:
+      id: "local-only:flash-next"
+      homecompute_alias: "local-only"
+      homecompute_privacy: local_only
+      homecompute_deadline: 90
+      homecompute_max_fallbacks: 0
+      homecompute_effort: ""
+      homecompute_provider: "flash-next"
+      homecompute_structured_output: true
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "local-first"
+    litellm_params:
+      model: "openai/automation-qualification"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 25
+      api_base: "os.environ/COMPUTE_AUTOMATION_CANDIDATE_BASE_URL"
+      api_key: os.environ/COMPUTE_API_KEY
+    model_info:
+      id: "local-first:flash-next"
+      homecompute_alias: "local-first"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: ""
+      homecompute_provider: "flash-next"
+      homecompute_structured_output: true
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "local-first"
+    litellm_params:
+      model: "chatgpt/gpt-6-luna"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 30
+    model_info:
+      id: "local-first:luna:high"
+      homecompute_alias: "local-first"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "luna"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "local-first"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 3
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "local-first:sol:high"
+      homecompute_alias: "local-first"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 180
+      homecompute_max_fallbacks: 2
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "cloud-first"
+    litellm_params:
+      model: "chatgpt/gpt-6.2-sol"
+      order: 1
+      num_retries: 0
+      max_retries: 0
+      timeout: 90
+      stream_timeout: 35
+    model_info:
+      id: "cloud-first:sol:high"
+      homecompute_alias: "cloud-first"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 150
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "sol"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
+  - model_name: "cloud-first"
+    litellm_params:
+      model: "chatgpt/gpt-6-luna"
+      order: 2
+      num_retries: 0
+      max_retries: 0
+      timeout: 60
+      stream_timeout: 30
+    model_info:
+      id: "cloud-first:luna:high"
+      homecompute_alias: "cloud-first"
+      homecompute_privacy: cloud_allowed
+      homecompute_deadline: 150
+      homecompute_max_fallbacks: 1
+      homecompute_effort: "high"
+      homecompute_provider: "luna"
+      homecompute_structured_output: false
+      allowed_fails: 0
+      cooldown_time: 60
+      input_cost_per_token: 0
+      output_cost_per_token: 0
+      cache_read_input_token_cost: 0
+      cache_creation_input_token_cost: 0
 litellm_settings:
+  callbacks: [homecompute_routing.policy]
   request_timeout: 600
   num_retries: 0
   drop_params: false
@@ -154,6 +832,8 @@ general_settings:
 
 router_settings:
   routing_strategy: simple-shuffle
+  enable_mid_stream_fallback_continuation: false
+  fallback_on_unsupported_params: false
   allowed_fails: 1
   cooldown_time: 5
 
