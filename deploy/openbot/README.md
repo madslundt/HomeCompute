@@ -366,8 +366,8 @@ back with `restic dump`, and retain the snapshot ID, archive path, and hash in
 the private backup receipt. Remove the temporary plaintext archive after
 verification. A fresh full agents-VM backup with OpenBot data also qualifies.
 
-The guarded `personal-models` command also accepts the attended owner-only
-backup. The root-only receipt at
+The guarded `personal-models` and `hermes-models` commands also accept the
+attended owner-only backup. The root-only receipt at
 `/var/lib/homecompute/openbot-scoped/owner-backup.json` records `snapshot`,
 `path`, `sha256` and the UTC ISO-8601 value `verified_at` after checking the
 dumped archive. Use archive path

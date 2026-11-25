@@ -143,12 +143,16 @@ owner_hermes_models() {
     *) echo 'Use hermes-models plan or apply.' >&2; return 1 ;;
   esac
   if [[ "$mode" != plan ]]; then
-    # The backup owns the current VM and is verified by the active Core release.
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core 'bash -se' <<'VERIFY_BACKUP'
+    # The active Core release verifies the encrypted backup for this scope.
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core bash -se -- "$target" <<'VERIFY_BACKUP'
 revision="$(sudo -n cat /var/lib/homecompute/deployed-revision)"
 [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
 release="/srv/homecompute/releases/$revision"
 [[ "$(readlink -f /srv/homecompute/current)" == "$release" ]]
+if [[ "$1" == hermes-chatgpt-catalog ]] &&
+    sudo -n python3 "$release/scripts/backup-openbot-agents-vm.py" verify-owner --revision "$revision"; then
+  exit 0
+fi
 sudo -n python3 "$release/scripts/backup-openbot-agents-vm.py" verify --revision "$revision"
 VERIFY_BACKUP
   fi

@@ -60,8 +60,8 @@ catalog-only reconciliation:
 ./scripts/setup-openbot-guest.sh hermes-models apply
 ```
 
-The command checks the credential's catalog before writing and uses the
-same encrypted VM backup gate as `hermes-sol`. It adds named Hermes providers
+The command checks the credential's catalog before writing and requires a
+fresh encrypted backup of the owner data or agents VM. It adds named Hermes providers
 without changing any agent or thread settings. Repeat `apply` after rotating
 the model-only key. Reopen the picker and use synthetic prompts in a fresh
 chat to check the new choices. If withdrawing the additions, restore the
