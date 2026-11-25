@@ -41,7 +41,7 @@ services:
       - ./hermes-code.yaml:/home/paseo/.hermes/config.yaml:ro
       - ./skills:/home/paseo/.agents/skills:ro
       - /var/lib/homecompute/paseo/github-projects/snapshots:/run/homecompute/github-projects:ro
-    tmpfs: [/tmp:rw,nosuid,nodev,size=768m,mode=1777]
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=768m,mode=1777"]
     networks:
       default: {gw_priority: 1}
       inference: {}

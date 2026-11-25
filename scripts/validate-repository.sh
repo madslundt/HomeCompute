@@ -936,6 +936,7 @@ PASEO_RELEASE=validate PASEO_RUNTIME_ENV="$paseo_env" \
     (.services.paseo |
       .user == "12074:12074" and .environment.PASEO_RELAY_ENABLED == "false" and
       (.networks | keys == ["default", "inference"]) and
+      .tmpfs == ["/tmp:rw,nosuid,nodev,size=768m,mode=1777"] and
       (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "6767") and
       (all(.volumes[]; .target != "/run/homecompute/inference-key" and .target != "/run/github-projects/credentials"))) and
     (.services.inference | .user == "12075:12075" and .ports == null and
