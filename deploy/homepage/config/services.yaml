@@ -34,8 +34,8 @@
     - Paseo:
         id: homecore-paseo
         icon: mdi-code-braces
-        href: https://home-core.tail479ad.ts.net:18797/
-        description: Coding workspace · tailnet and password
+        href: https://paseo.home.arpa/
+        description: Private coding workspace · password required
 
     - AI automation manager:
         id: homecore-ai-automation-manager
