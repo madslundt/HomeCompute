@@ -158,6 +158,13 @@ python3 -B "$release/scripts/setup-paseo.py"
 "${homepage[@]}" config --quiet
 "${compose[@]}" pull inference github-projects
 "${compose[@]}" build paseo
+docker run --rm -i --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --security-opt "seccomp=$release/deploy/paperclip/codex-seccomp.json" \
+  --tmpfs /tmp:mode=1777,nosuid,nodev,size=128m \
+  --tmpfs /home/paseo:mode=700,uid=12074,gid=12074,nosuid,nodev \
+  --workdir /tmp --entrypoint sh "homecompute/paseo:$revision" \
+  -c 'mkdir -p "$CODEX_HOME"; exec sh -s' < "$release/deploy/paperclip/verify-codex-sandbox.sh"
 
 gateway_changed=false
 homepage_changed=false
@@ -172,13 +179,15 @@ rollback_edge() {
   fi
 }
 trap rollback_edge ERR
-if [[ $old_gateway != "$release/deploy/control-plane/compose.yaml" ]]; then
+if ! git -C "$release" diff --quiet "${old_gateway_release##*/}" "$revision" -- \
+  deploy/control-plane/Caddyfile deploy/control-plane/compose.yaml; then
   gateway_changed=true
   "${gateway[@]}" up -d --no-deps --pull never --wait --wait-timeout 90 caddy
 fi
 "${compose[@]}" up -d --no-build --pull never --wait --wait-timeout 120
 verify_checkout
-if [[ $old_homepage != "$release/deploy/homepage/compose.yaml" ]]; then
+if ! git -C "$release" diff --quiet "${old_homepage_release##*/}" "$revision" -- \
+  deploy/homepage/compose.yaml deploy/homepage/config/services.yaml; then
   homepage_changed=true
   "${homepage[@]}" up -d --no-deps --pull never --wait --wait-timeout 90 homepage
 fi

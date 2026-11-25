@@ -23,12 +23,14 @@ FROM ghcr.io/getpaseo/paseo:0.17.4@sha256:58c4a16ba787a3e77b84fa5d82250ecf143c23
 RUN set -eux; \
     cd /tmp; \
     curl -fLsS --retry 3 -o opencode.tgz https://github.com/anomalyco/opencode/releases/download/v2.3.2/opencode-linux-x64.tar.gz; \
-    curl -fLsS --retry 3 -o codex.tgz https://github.com/openai/codex/releases/download/rust-v0.171.0/codex-x86_64-unknown-linux-musl.tar.gz; \
+    curl -fLsS --retry 3 -o codex.tgz https://registry.npmjs.org/@openai/codex/-/codex-0.171.0-linux-x64.tgz; \
     echo '563b5d663637226b6e3bb4bb6803281bc39b0d2cd88db06d674b6420aab009b0  opencode.tgz' | sha256sum -c -; \
-    echo '01baa2e47809f8597be5b2f8abd4e4dfe3fb5bcb6e504c2fbaaad97056c15e8d  codex.tgz' | sha256sum -c -; \
+    echo 'e13d67afb0533cc6160b5f4140e4ad07e2acd87adbaa081bbf69b82e90cf4e55  codex.tgz' | sha256sum -c -; \
     tar xzf opencode.tgz --no-same-owner -C /usr/local/bin opencode; \
-    tar xzf codex.tgz --no-same-owner -C /usr/local/bin codex-x86_64-unknown-linux-musl; \
-    mv /usr/local/bin/codex-x86_64-unknown-linux-musl /usr/local/bin/codex; \
+    mkdir -p /usr/local/lib/codex; \
+    tar xzf codex.tgz --no-same-owner --strip-components=3 -C /usr/local/lib/codex \
+        package/vendor/x86_64-unknown-linux-musl; \
+    ln -s /usr/local/lib/codex/bin/codex /usr/local/bin/codex; \
     rm opencode.tgz codex.tgz; \
     groupadd --gid 12074 homecompute-paseo; \
     useradd --uid 12074 --gid 12074 --home-dir /home/paseo --no-create-home --shell /bin/bash homecompute-paseo
