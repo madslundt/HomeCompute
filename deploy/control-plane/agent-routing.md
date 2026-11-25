@@ -95,17 +95,9 @@ database is disabled.
 | OpenCode on Home Core | The checked-in default and small model use `local-only`. The rollout reconciles its existing model key and keeps its MCP grant and manual `automation-moe` selection. Existing sessions can retain their chosen model. |
 | Hermes | Use `agent-assistant` in an explicitly enrolled stateless Chat profile approved for cloud prompts and tool results. The owner profile, Home Assistant voice, and memory pipeline keep their existing bindings. Hermes profiles that send extra provider-specific fields need a compatibility test before enrolment. |
 | OpenBot | In an enrolled synthetic or approved specialist provider, choose the role alias for planning, review, research, design, or reasoning. Keep existing agent IDs, model definitions, keyless provider settings, and household/private bindings. Check that the model client sends the scoped credential and preserves function-call or schema output. |
-| T3 Code | The existing local and native Codex providers keep their protocols and sessions. The [team skill](../t3code/skills/homecompute-team/SKILL.md) can hand off a stalled task using a supported, approved provider on the same worktree. |
+| Paseo | The [Paseo workspace](../paseo/README.md) uses a dedicated inference-only credential. The team and voice defaults use local routes. Cloud-backed aliases are selectable for owner-approved work. |
 | n8n | Use `agent-automation` only in a separately approved public-input workflow with its own credential. The existing private-data workflows, Aula qualification, and Home Assistant action paths keep their legacy local assignments. |
 | Other applications | Adopt `local-only` for portable text-only inference. Select a cloud role only after checking the data policy and enrolling a dedicated key. |
-
-The T3 coding team counts unsuccessful code/test iterations separately from
-transport failures. After three unsuccessful attempts, or two repeated
-failures or attempts without progress, it can hand the same worktree to Sol
-and later Astra if the task is cloud-approved and the orchestrator advertises
-the tier. Pass thresholds with the skill invocation to change them for the
-run. Keep client sessions, project state, test results, and authority over
-tools with the original task.
 
 ## Change and troubleshoot a route
 
@@ -161,8 +153,7 @@ Capture the current Home Core release and applied gateway config, verify that
 a compatible PostgreSQL backup and the previous release are available, and
 check for a pending deployment override. Follow the
 [Home Core lifecycle](../../docs/homecompute-operations.md) from a reviewed
-revision on `origin/master`. Reconcile Home Core first. Apply the T3 skill by
-its [dedicated lifecycle](../t3code/README.md#deploy-and-inspect) if enrolled.
+revision on `origin/master`. Reconcile Home Core first. Refresh the Paseo catalog with its [dedicated lifecycle](../paseo/README.md#deploy-or-upgrade) when enrolled.
 No Spark rollout is required for an alias-only change.
 
 ```sh
@@ -177,14 +168,13 @@ Verify normal local inference, existing aliases, actual model response headers,
 the enrolled and denied key paths, streaming, tool calls, schema output, and
 the OpenCode tool loop. Use isolated fixture failures for downtime, rate limits,
 and partial streams. Run real failure injection only during a separately
-approved maintenance window. Test a synthetic T3 handoff in a disposable
-project before enabling that skill path for broader work.
+approved maintenance window. Test Paseo provider and model discovery after refreshing its catalog.
 
 For rollback, return any enrolled consumer to its recorded model and credential
 binding and revoke the new opt-in keys. Restore the OpenCode key's previous
 model scope from the active release before redeploying the prior Home Core
 release, so its prior provisioner accepts the key. This reuses the same token
-and preserves its MCP scope. Roll back T3 with its own release procedure.
+and preserves its MCP scope. Use the Paseo runbook for its separate rollback procedure.
 
 ```sh
 sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/provision-opencode-litellm-key.py --apply --rollback

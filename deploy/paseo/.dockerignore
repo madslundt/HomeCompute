@@ -1,8 +1,8 @@
 *
 !Dockerfile
-!policy.json
-!codex-local-models.json
 !hermes-code-review.py
 !hermes-code-review.patch
-!projects.json
 !read-github-backlog.py
+!projects.json
+!codex-local-models.json
+!register-projects.py

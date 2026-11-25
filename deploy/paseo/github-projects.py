@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refresh repository-scoped GitHub Projects snapshots for the T3 coding team."""
+"""Refresh repository-scoped GitHub Projects snapshots for the Paseo coding team."""
 
 import argparse
 from datetime import datetime, timezone
@@ -16,11 +16,11 @@ from threading import Event, Thread
 
 
 HERE = Path(__file__).resolve().parent
-STATE = Path("/var/lib/homecompute/t3code/github-projects")
+STATE = Path("/var/lib/homecompute/paseo/github-projects")
 READER_ID = 10001
 OWNER = "madslundt"
 BOARD_QUERY = """
-query T3OwnedBoards($cursor: String) {
+query PaseoOwnedBoards($cursor: String) {
   viewer {
     login
     projectsV2(first: 50, after: $cursor) {
@@ -44,7 +44,7 @@ def repositories():
     entries = json.loads((HERE / "projects.json").read_text())
     repos = [entry["repository"] for entry in entries]
     if not repos or any(not re.fullmatch(rf"{OWNER}/[A-Za-z0-9_][A-Za-z0-9._-]*", repo) for repo in repos):
-        raise ValueError("Expected repositories in the T3 project allowlist")
+        raise ValueError("Expected repositories in the Paseo project allowlist")
     return repos
 
 
@@ -190,4 +190,4 @@ if __name__ == "__main__":
     except ProvisioningError as error:
         sys.exit(str(error))
     except FAILURES:
-        sys.exit("T3 Code GitHub Projects setup or refresh failed.")
+        sys.exit("Paseo GitHub Projects setup or refresh failed.")

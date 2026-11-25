@@ -71,6 +71,7 @@ and other personal-agent services remain deferred.
 | Configure role aliases, retries, or model failover | [Managed LiteLLM routing](../deploy/control-plane/agent-routing.md) and [ADR-044](adr/044-managed-agent-routing.md) |
 | Use OpenCode remotely on Home Core | [OpenCode operations](../deploy/opencode/README.md) and [ADR-031](adr/031-opencode-home-core-web-service.md) |
 | Review OpenClaw and unattended Codex | [Discovery/workflow assessment](openclaw-discovery.md), [operations and architecture](openclaw-operations.md), [runtime evidence](openclaw-runtime-research.md), and [NemoClaw target](openclaw-nemoclaw.md) |
+| Use Paseo with LiteLLM and personal GitHub Projects | [Paseo operations](../deploy/paseo/README.md) |
 | Set up Orca development teams and tools | [Orca operations](../deploy/orca/README.md), [Orca team setup](research/orca-team-setup-2026-11-21.md), and [AI team migration](ai-team-migration.md) |
 | Review OpenBot agents, model routes, and private-data boundary | [OpenBot agent setup](openbot-agent-setup.md), [OpenBot operations](../deploy/openbot/README.md), and [ADR-030](adr/030-openbot-team-server.md) |
 | Build a proactive assistant across Home Assistant, Daythread, Aula and Calendar | [Implementation plan](proactive-personal-assistant-plan.md), [context service runbook](../deploy/assistant-context/README.md), and [ADR-029](adr/029-proactive-assistant-context.md) |
