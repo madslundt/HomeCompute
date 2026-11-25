@@ -9,13 +9,8 @@ non-inference configuration move to root-only recovery directories
 `/srv/state/.retired/orca` and `/var/lib/homecompute/.retired/orca`. Existing
 archives remain under `/srv/backups/agent-recovery/orca`.
 
-Migrate an existing T3 Code GitHub Projects reader to the retirement release
-without restarting T3 Code:
-
-```sh
-revision=FULL_SHA
-sudo bash "/srv/homecompute/releases/$revision/scripts/deploy-t3code.sh" "$revision" --github-projects-only
-```
+Use the [Paseo lifecycle](../../deploy/paseo/README.md#deploy-or-upgrade)
+to bring its GitHub Projects reader to this release if Paseo is enrolled.
 
 UniFi owns the retired `orca.home.arpa` A record (formerly `192.168.30.122`,
 TTL 300). Remove that exact record from UniFi's Network DNS policy. The
@@ -29,7 +24,7 @@ Verify the deployed revision with `./scripts/homecompute status`,
 `services`, `doctor`, and `drift`. Confirm the old containers, Docker networks
 and systemd units are absent, the Homepage card is gone, and the hostname
 has no A record from both the LAN resolver and Tailscale DNS. Check a
-neighboring service such as T3 Code to verify the shared DNS and gateway.
+neighboring service such as LiteLLM to verify the shared DNS and gateway.
 
 To recover the pilot after an intentional rollback, restore the retired
 profile to `/srv/state/orca` with owner and group 12074 and mode 0700, or

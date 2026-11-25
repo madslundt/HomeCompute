@@ -31,11 +31,11 @@
         description: Find books and request downloads
 
 - AI assistants:
-    - T3 Code:
-        id: homecore-t3code
+    - Paseo:
+        id: homecore-paseo
         icon: mdi-code-braces
-        href: https://t3code.home.arpa/
-        description: Coding workspace · T3 Code pairing required
+        href: https://home-core.tail479ad.ts.net:18797/
+        description: Coding workspace · tailnet and password
 
     - AI automation manager:
         id: homecore-ai-automation-manager

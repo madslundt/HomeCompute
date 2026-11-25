@@ -1,4 +1,4 @@
-"""Read and validate GitHub Projects data for T3 Code."""
+"""Read and validate GitHub Projects data for Paseo."""
 
 import json
 import os
@@ -10,7 +10,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 QUERY = """
-query T3Project($owner: String!, $number: Int!, $filter: String!) {
+query PaseoProject($owner: String!, $number: Int!, $filter: String!) {
   OWNER_KIND(login: $owner) {
     projectV2(number: $number) {
       closed
@@ -54,7 +54,7 @@ def github_graphql(query, variables, token, *, allowed_scopes=("read:project",))
     }).encode(), headers={
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
-        "User-Agent": "HomeCompute-T3-Projects",
+        "User-Agent": "HomeCompute-Paseo-Projects",
     })
     try:
         with build_opener(NoRedirect).open(request, timeout=15) as response:
@@ -126,7 +126,7 @@ def project_items(entry, number, token, *, graphql=github_graphql):
 
 
 def atomic_write(path, contents, mode, gid=None):
-    with NamedTemporaryFile(dir=path.parent, prefix=".t3-projects-", delete=False) as draft:
+    with NamedTemporaryFile(dir=path.parent, prefix=".paseo-projects-", delete=False) as draft:
         temporary = Path(draft.name)
         try:
             if gid is not None:

@@ -1,0 +1,38 @@
+[
+  {
+    "repository": "madslundt/HomeCompute",
+    "branch": "master",
+    "id": "homecompute",
+    "product_owner": {
+      "name": "HomeCompute PO",
+      "notes": "Own HomeCompute roadmap and deployment policy for NixOS, DGX Spark, LiteLLM, Hermes, OpenBot, Paseo and n8n. Read AGENTS.md, CONTRIBUTING.md, SECURITY.md, the owning runbook and relevant ADRs. Prioritize issues in GitHub Projects. Keep critical deployment and live access with the owner."
+    }
+  },
+  {
+    "repository": "madslundt/House-battery",
+    "branch": "main",
+    "id": "house-battery",
+    "product_owner": {
+      "name": "House-battery PO",
+      "notes": "Own the FOSSiBOT FBP1200 Home Assistant integration, SOC, electricity prices, cycle economics and deterministic optimization. Use sanitized measurements and synthetic replay fixtures. Prioritize correctness, battery firmware limits and regression tests. Keep live appliance writes and safety decisions with Home Assistant and the device."
+    }
+  },
+  {
+    "repository": "madslundt/ChessMate",
+    "branch": "main",
+    "id": "chessmate",
+    "product_owner": {
+      "name": "ChessMate PO",
+      "notes": "Own the roadmap for self-hosted chess play, analysis, training, AI coaching and UX. Consult the React, FastAPI, Stockfish and PostgreSQL architecture and repository tests. Keep chess legality and evaluation grounded in the engine. Use synthetic games and profiles."
+    }
+  },
+  {
+    "repository": "madslundt/Daythread",
+    "branch": "main",
+    "id": "daythread",
+    "product_owner": {
+      "name": "Daythread PO",
+      "notes": "Own private audio capture, Whisper and transcription, summaries, embeddings, retrieval and privacy. Use the public Daythread repository, synthetic audio, transcripts and identities. Review localization, retention and client/server compatibility. Keep production data and separate service repositories outside the workspace."
+    }
+  }
+]

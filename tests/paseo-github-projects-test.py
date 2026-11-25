@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check board discovery, the T3 project projection, and scoped writes."""
+"""Check board discovery, the Paseo project projection, and scoped writes."""
 
 from datetime import datetime, timedelta, timezone
 import json
@@ -14,10 +14,10 @@ from urllib.error import HTTPError
 
 
 DEPLOY = Path(__file__).resolve().parents[1] / "deploy"
-with patch.object(sys, "path", [str(DEPLOY / "t3code"), *sys.path]):
-    reader = runpy.run_path(str(DEPLOY / "t3code/github-projects.py"))
-client = runpy.run_path(str(DEPLOY / "t3code/read-github-backlog.py"))
-writer = runpy.run_path(str(DEPLOY / "t3code/github_project_writes.py"))
+with patch.object(sys, "path", [str(DEPLOY / "paseo"), *sys.path]):
+    reader = runpy.run_path(str(DEPLOY / "paseo/github-projects.py"))
+client = runpy.run_path(str(DEPLOY / "paseo/read-github-backlog.py"))
+writer = runpy.run_path(str(DEPLOY / "paseo/github_project_writes.py"))
 REPO = "madslundt/Daythread"
 ADD_ITEM = {"action": "add", "board": 1, "number": 2, "repository": REPO}
 SET_STATUS = {**ADD_ITEM, "action": "set", "field": "Status", "value": "Done"}

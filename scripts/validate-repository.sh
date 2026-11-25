@@ -69,7 +69,7 @@ shell_files=(
   "$REPO_ROOT/scripts/setup-selected-nas-recovery.sh"
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
-  "$REPO_ROOT/scripts/deploy-t3code.sh"
+  "$REPO_ROOT/scripts/deploy-paseo.sh"
   "$REPO_ROOT/scripts/deploy-podwave.sh"
   "$REPO_ROOT/scripts/immich-db-backup.sh"
   "$REPO_ROOT/scripts/set-synology-immich-secret.sh"
@@ -122,6 +122,12 @@ python3 "$REPO_ROOT/tests/platform-health-test.py"
 python3 "$REPO_ROOT/tests/platform-observability-setup-test.py"
 python3 "$REPO_ROOT/tests/release-overrides-test.py"
 python3 "$REPO_ROOT/tests/paperclip-deployment-test.py"
+python3 "$REPO_ROOT/tests/paseo-github-projects-test.py"
+python3 "$REPO_ROOT/tests/paseo-configuration-test.py"
+docker run --rm --network none -v "$REPO_ROOT:/repo:ro" \
+  node:24-bookworm@sha256:aca79828f8a4afc627f189387c965625bcc419233946210a3b9522d90a59b5c6 \
+  node --test /repo/tests/paseo-inference-test.mjs
+python3 "$REPO_ROOT/tests/orca-retirement-test.py"
 python3 "$REPO_ROOT/tests/podwave-deployment-test.py"
 python3 "$REPO_ROOT/tests/podwave-deploy-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/podwave-network-test.py"
@@ -239,11 +245,6 @@ python3 "$REPO_ROOT/tests/workflow-school-embeddings-test.py"
 python3 "$REPO_ROOT/tests/workflow-research-embeddings-test.py"
 python3 "$REPO_ROOT/tests/workflow-battery-embeddings-test.py"
 python3 "$REPO_ROOT/tests/homepage-maintenance-test.py"
-python3 "$REPO_ROOT/tests/homepage-t3code-test.py"
-python3 "$REPO_ROOT/tests/t3code-access-test.py"
-python3 "$REPO_ROOT/tests/t3code-projects-test.py"
-python3 "$REPO_ROOT/tests/t3code-github-projects-test.py"
-python3 "$REPO_ROOT/tests/orca-retirement-test.py"
 python3 "$REPO_ROOT/tests/homepage-update-check-test.py"
 python3 "$REPO_ROOT/tests/openclaw-maintenance-test.py"
 python3 "$REPO_ROOT/tests/infrastructure-update-policy-test.py"
@@ -910,66 +911,34 @@ jq -e '
 ' >/dev/null
 rg -F 'href: https://paperclip.home.arpa/' "$REPO_ROOT/deploy/homepage/config/services.yaml" >/dev/null
 
-printf '[validate] T3 Code Compose boundary\n'
+printf '[validate] Paseo Compose boundary\n'
 jq -e '
-  .networks.t3code.name == "homecompute-t3code-ingress" and
-  .networks.t3code.internal == true and
-  .services.caddy.networks.t3code.aliases == ["ai.home.arpa"] and
-  .networks.t3code.driver_opts["com.docker.network.bridge.gateway_mode_ipv4"] == "isolated" and
-  ([.services | to_entries[] | select(.value.networks.t3code != null) | .key] == ["caddy"])
+  .networks["paseo-inference"] |
+  .name == "homecompute-paseo-inference" and .internal and
+  .driver_opts["com.docker.network.bridge.gateway_mode_ipv4"] == "isolated"
 ' "$control_plane_json" >/dev/null
 jq -e '
-  .zone == "home.arpa" and
-  .records == [{"name": "t3code.home.arpa", "type": "A", "value": "192.168.30.122", "ttl": 300}]
-' "$REPO_ROOT/config/t3code-dns.json" >/dev/null
-# Compose v2 omits an explicit false bind.create_host_path in rendered JSON.
-rg -q '^[[:space:]]+create_host_path: false$' "$REPO_ROOT/deploy/t3code/compose.yaml"
-T3CODE_RELEASE=validate docker compose -f "$REPO_ROOT/deploy/t3code/compose.yaml" config --format json |
+  ([.services | to_entries[] | select(.value.networks["paseo-inference"] != null) | .key] == ["caddy"]) and
+  .services.caddy.networks["paseo-inference"].aliases == ["llm.home.arpa"]
+' "$control_plane_json" >/dev/null
+paseo_env="$temporary_root/paseo.env"
+printf 'PASEO_PASSWORD=validation-only\n' >"$paseo_env"
+PASEO_RELEASE=validate PASEO_RUNTIME_ENV="$paseo_env" \
+  docker compose -f "$REPO_ROOT/deploy/paseo/compose.yaml" config --format json |
   jq -e '
-    .networks.ingress.external == true and .networks.ingress.name == "homecompute-t3code-ingress" and
-    (.services.t3code |
-    .networks.ingress.aliases == ["t3code"] and .networks.default.gw_priority == 1 and
-    .platform == "linux/amd64" and .user == "12073:12073" and .read_only and
-    .cap_drop == ["ALL"] and (.security_opt | index("no-new-privileges:true") != null) and
-    (.security_opt | index("seccomp:../paperclip/codex-seccomp.json") != null) and
-    (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "3773") and
-    (.volumes | length == 6 and all(.[]; .type == "bind" and .bind.create_host_path != true)) and
-    (any(.volumes[]; .source == "/srv/state/t3code" and .target == "/data")) and
-    (any(.volumes[]; (.source | endswith("/deploy/t3code/codex-local.toml")) and
-      .target == "/data/.codex-homecompute/config.toml" and .read_only)) and
-    (any(.volumes[]; (.source | endswith("/deploy/t3code/skills/homecompute-team")) and
-      .target == "/data/.codex-homecompute/skills/homecompute-team" and .read_only)) and
-    (any(.volumes[]; (.source | endswith("/deploy/t3code/hermes-code.yaml")) and
-      .target == "/data/.hermes-code/config.yaml" and .read_only)) and
-    (any(.volumes[]; .source == "/etc/homecompute/control-plane/home-core-root.crt" and
-      .target == "/run/homecompute/home-core-root.crt" and .read_only)) and
-    (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/snapshots" and
-      .target == "/run/homecompute/github-projects" and .read_only)) and
-    .logging.driver == "none") and
-    (.services["github-projects"] |
-      .user == "10001:10001" and .read_only and .cap_drop == ["ALL"] and
-      .logging.driver == "none" and .ports == null and (.networks | keys == ["default"]) and
-      (.volumes | length == 6) and
-      (any(.volumes[]; (.source | endswith("/deploy/t3code/github_project_writes.py")) and
-        .target == "/opt/t3code/github_project_writes.py" and .read_only)) and
-      (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/credentials" and
-        .target == "/run/github-projects/credentials" and .read_only)) and
-      (any(.volumes[]; .source == "/var/lib/homecompute/t3code/github-projects/snapshots" and
-        .target == "/snapshots" and .read_only != true)))
+    .networks.inference.internal and .networks.gateway.external and
+    .networks.gateway.name == "homecompute-paseo-inference" and
+    all(.services[]; .read_only and .cap_drop == ["ALL"] and .logging.driver == "none") and
+    (.services.paseo |
+      .user == "12074:12074" and .environment.PASEO_RELAY_ENABLED == "false" and
+      (.networks | keys == ["default", "inference"]) and
+      (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "6767") and
+      (all(.volumes[]; .target != "/run/homecompute/inference-key" and .target != "/run/github-projects/credentials"))) and
+    (.services.inference | .user == "12075:12075" and .ports == null and
+      (.networks | keys == ["gateway", "inference"]) and
+      any(.volumes[]; .target == "/run/homecompute/inference-key" and .read_only)) and
+    (.services["github-projects"] | .ports == null and (.networks | keys == ["projects"]))
   ' >/dev/null
-jq -e '.limits | .connect == false and .webhookTasks == false and
-  .previewTunnel == false and .telemetry == false and .updates.mode == "off" and
-  .providers.allowedDrivers == ["codex", "acpRegistry"]' \
-  "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
-jq -e '
-  .settings.providerInstances |
-  .locked and (.value | keys == ["codex", "hermes-code", "homecompute-local"]) and
-  (.value["homecompute-local"] | .driver == "codex" and .config.homePath == "/data/.codex-homecompute") and
-  (.value["hermes-code"] | .driver == "acpRegistry" and .enabled and
-    .config.source == "local" and .config.commandPath == "/usr/local/bin/hermes-code-review" and
-    (any(.environment[]; .name == "HERMES_HOME" and .value == "/data/.hermes-code")))
-' "$REPO_ROOT/deploy/t3code/policy.json" >/dev/null
-jq -e '[.models[].slug] == ["automation-moe"]' "$REPO_ROOT/deploy/t3code/codex-local-models.json" >/dev/null
 
 podwave_json="$temporary_root/podwave.json"
 docker compose -f "$REPO_ROOT/deploy/podwave/compose.yaml" config --format json >"$podwave_json"
@@ -1652,7 +1621,7 @@ grep -Fqx 'OnCalendar=hourly' \
 # Nod is a Compose overlay for a separate KVM guest with its own Docker daemon.
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode paperclip piper-tts podwave t3code toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode paperclip piper-tts paseo podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

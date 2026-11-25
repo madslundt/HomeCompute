@@ -1,0 +1,100 @@
+name: homecompute-paseo
+
+x-isolation: &isolation
+  init: true
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: {driver: none}
+
+services:
+  paseo:
+    <<: *isolation
+    image: homecompute/paseo:${PASEO_RELEASE:?Select a published HomeCompute release}
+    build: .
+    platform: linux/amd64
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:../paperclip/codex-seccomp.json
+    user: "12074:12074"
+    working_dir: /home/paseo/projects
+    env_file: ${PASEO_RUNTIME_ENV:-/var/lib/homecompute/paseo/runtime.env}
+    environment:
+      PASEO_RELAY_ENABLED: "false"
+      PASEO_HOST: "127.0.0.1:6767"
+      OPENAI_STT_API_KEY: local
+      OPENAI_TTS_API_KEY: local
+      HERMES_HOME: /home/paseo/.hermes
+      OPENCODE_CONFIG: /run/homecompute/opencode.json
+      OPENCODE_DISABLE_PROJECT_CONFIG: "1"
+      OPENCODE_DISABLE_AUTOUPDATE: "1"
+      OPENCODE_DISABLE_MODELS_FETCH: "1"
+      GIT_TERMINAL_PROMPT: "0"
+    ports: ["127.0.0.1:6767:6767"]
+    volumes:
+      - /srv/state/paseo:/home/paseo:rw
+      - /var/lib/homecompute/paseo/config.json:/home/paseo/.paseo/config.json:ro
+      - /var/lib/homecompute/paseo/opencode.json:/run/homecompute/opencode.json:ro
+      - /var/lib/homecompute/paseo/codex-models.json:/run/homecompute/codex-models.json:ro
+      - ./codex-local.toml:/home/paseo/.codex/config.toml:ro
+      - ./hermes-code.yaml:/home/paseo/.hermes/config.yaml:ro
+      - ./skills:/home/paseo/.agents/skills:ro
+      - /var/lib/homecompute/paseo/github-projects/snapshots:/run/homecompute/github-projects:ro
+    tmpfs: [/tmp:rw,nosuid,nodev,size=768m,mode=1777]
+    networks:
+      default: {gw_priority: 1}
+      inference: {}
+    depends_on:
+      inference: {condition: service_healthy}
+    cpus: 3
+    mem_limit: 4g
+    pids_limit: 384
+
+  inference:
+    <<: *isolation
+    image: node:24-bookworm@sha256:aca79828f8a4afc627f189387c965625bcc419233946210a3b9522d90a59b5c6
+    command: [node, /opt/paseo/inference.mjs]
+    user: "12075:12075"
+    volumes:
+      - ./inference.mjs:/opt/paseo/inference.mjs:ro
+      - /var/lib/homecompute/paseo/inference-key:/run/homecompute/inference-key:ro
+      - /etc/homecompute/control-plane/home-core-root.crt:/run/homecompute/home-core-root.crt:ro
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/homecompute/home-core-root.crt
+    networks: [inference, gateway]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:18080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 10
+    cpus: 0.5
+    mem_limit: 192m
+    pids_limit: 32
+
+  github-projects:
+    <<: *isolation
+    image: python:3.12.16-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
+    command: [python3, -B, /opt/paseo/github-projects.py, serve]
+    user: "10001:10001"
+    networks: [projects]
+    volumes:
+      - ./github-projects.py:/opt/paseo/github-projects.py:ro
+      - ./github_project_writes.py:/opt/paseo/github_project_writes.py:ro
+      - ./projects.json:/opt/paseo/projects.json:ro
+      - ./github_project_api.py:/opt/paseo/github_project_api.py:ro
+      - /var/lib/homecompute/paseo/github-projects/credentials:/run/github-projects/credentials:ro
+      - /var/lib/homecompute/paseo/github-projects/snapshots:/snapshots:rw
+    cpus: 0.25
+    mem_limit: 64m
+    pids_limit: 24
+
+networks:
+  inference:
+    internal: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+  gateway:
+    name: homecompute-paseo-inference
+    external: true
+  projects: {}

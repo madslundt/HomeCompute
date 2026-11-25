@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read a GitHub Projects backlog or edit its items from the current T3 checkout."""
+"""Read a GitHub Projects backlog or edit its items from the current Paseo checkout."""
 
 import argparse
 from datetime import datetime, timezone
@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 
-PROJECTS = Path("/etc/t3code/projects.json")
+PROJECTS = Path("/etc/paseo/projects.json")
 SNAPSHOTS = Path("/run/homecompute/github-projects")
 
 
@@ -25,7 +25,7 @@ def current_repository():
     for project in json.loads(PROJECTS.read_text()):
         if project["repository"].casefold() == origin:
             return project["repository"]
-    raise ValueError("GitHub Projects access is available for the configured T3 repositories")
+    raise ValueError("GitHub Projects access is available for the configured Paseo repositories")
 
 
 def fresh_snapshot(path, repository, now):
@@ -70,7 +70,7 @@ def main():
     try:
         repository = current_repository()
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError):
-        sys.exit("GitHub Projects is available from a configured T3 checkout.")
+        sys.exit("GitHub Projects is available from a configured Paseo checkout.")
 
     if args.action:
         try:

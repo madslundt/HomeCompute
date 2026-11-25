@@ -2,7 +2,7 @@ _config_version: 52
 model:
   provider: custom
   default: automation-moe
-  base_url: https://ai.home.arpa:8443/v1
+  base_url: http://inference:18080/v1
   api_mode: chat_completions
   api_key: local
   context_length: 65536
