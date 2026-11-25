@@ -9,7 +9,7 @@ import runpy
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,6 +40,66 @@ class PersonalModelsTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1)
         self.assertIn("Use hermes-sol plan, apply or rollback.", result.stderr)
+
+    def test_catalog_registers_only_missing_providers_and_reuses_the_scoped_key(self):
+        configure = self.operations["configure_owner_chatgpt_providers"]
+        providers = self.operations["HERMES_CHATGPT_PROVIDERS"]
+        aliases = sorted(provider["default_model"] for provider in providers.values())
+        configured = {
+            "homecompute-sol": providers["homecompute-sol"],
+            "homecompute-private": {"default_model": "local-only"},
+        }
+        writes = []
+
+        def cli(args, **kwargs):
+            if args[2] == "get":
+                return subprocess.CompletedProcess(args, 0, stdout=json.dumps(configured))
+            self.assertEqual(args[2], "set")
+            self.assertNotIn("sk-fixture", args[-1])
+            name = args[3].removeprefix("providers.")
+            configured[name] = json.loads(args[-1])
+            writes.append(name)
+            return subprocess.CompletedProcess(args, 0, stdout="")
+
+        opener = Mock()
+        opener.open.side_effect = lambda *args, **kwargs: io.StringIO(
+            json.dumps({"data": [{"id": alias} for alias in aliases]})
+        )
+        install_key = Mock()
+        with patch.dict(configure.__globals__, {"build_opener": Mock(return_value=opener),
+                                               "install_sol_key": install_key}), \
+             patch.object(subprocess, "run", side_effect=cli):
+            def run(mode):
+                with patch("sys.stdin", io.TextIOWrapper(io.BytesIO(b"sk-fixture\n"))):
+                    return configure(mode)
+
+            plan = run("plan")
+            self.assertEqual(plan["configured"], ["chatgpt-sol-latest"])
+            self.assertEqual(plan["to_add"], ["chatgpt-astra-latest", "chatgpt-luna-latest", "chatgpt-terra-latest"])
+            self.assertEqual(writes, [])
+            install_key.assert_not_called()
+
+            self.assertEqual(run("apply")["configured"], aliases)
+            self.assertEqual(writes, ["homecompute-luna", "homecompute-terra", "homecompute-astra"])
+            self.assertEqual(configured["homecompute-private"], {"default_model": "local-only"})
+            install_key.assert_called_once_with(self.operations["HERMES_ENV"], b"sk-fixture")
+            self.assertEqual(run("apply")["to_add"], [])
+            self.assertEqual(len(writes), 3)
+
+    def test_catalog_refuses_missing_alias_before_any_write(self):
+        configure = self.operations["configure_owner_chatgpt_providers"]
+        cli = Mock(return_value=subprocess.CompletedProcess([], 0, stdout="{}"))
+        opener = Mock()
+        opener.open.return_value = io.StringIO('{"data": [{"id": "chatgpt-sol-latest"}]}')
+        install_key = Mock()
+        with patch.dict(configure.__globals__, {"build_opener": Mock(return_value=opener),
+                                               "install_sol_key": install_key}), \
+             patch.object(subprocess, "run", cli), \
+             patch("sys.stdin", io.TextIOWrapper(io.BytesIO(b"sk-fixture\n"))):
+            with self.assertRaisesRegex(ValueError, "exactly the four"):
+                configure("apply")
+        self.assertEqual(cli.call_count, 1)
+        install_key.assert_not_called()
 
     def test_missing_agent_stops_before_any_updates(self):
         request = Mock(return_value=self.roster[:-1])

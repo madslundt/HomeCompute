@@ -24,7 +24,7 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression|configure-model-gateway|personal-models|hermes-sol
+Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression|configure-model-gateway|personal-models|hermes-sol|hermes-models
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
@@ -40,6 +40,7 @@ configure-compression  Apply only the Hermes threshold from current published ma
 configure-model-gateway  Verify keyless HTTPS and migrate the embedded Hermes model settings.
 personal-models [plan|apply|rollback]  Reconcile the three owner interactive model choices.
 hermes-sol [plan|apply|rollback]      Set the owner OpenBot Hermes agent to native Hermes with ChatGPT Sol.
+hermes-models [plan|apply]           Add the ChatGPT catalog to the owner Hermes picker.
 install-partner          Install the independent household server from published master.
 status-partner           Show the household server state and installed revision.
 login-partner            Enroll the household server using its owner's email code.
@@ -132,19 +133,26 @@ personal_models() {
         /dev/stdin '"$mode"' < "$stage/config/openbot-personal-team.json"'
 }
 
-hermes_sol() {
-  local mode=${1:-plan} revision
-  case "$mode" in
-    plan|apply|rollback) require_current_master_checkout ;;
-    *) echo 'Use hermes-sol plan, apply or rollback.' >&2; return 1 ;;
+owner_hermes_models() {
+  local target=$1 mode=${2:-plan} revision
+  case "$target:$mode" in
+    hermes-sol-owner:plan|hermes-sol-owner:apply|hermes-sol-owner:rollback|hermes-chatgpt-catalog:plan|hermes-chatgpt-catalog:apply)
+      require_current_master_checkout
+      ;;
+    hermes-sol-owner:*) echo 'Use hermes-sol plan, apply or rollback.' >&2; return 1 ;;
+    *) echo 'Use hermes-models plan or apply.' >&2; return 1 ;;
   esac
   if [[ "$mode" != plan ]]; then
-    # The backup owns the current VM and is verified by the active Core release.
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core 'bash -se' <<'VERIFY_BACKUP'
+    # The active Core release verifies the encrypted backup for this scope.
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core bash -se -- "$target" <<'VERIFY_BACKUP'
 revision="$(sudo -n cat /var/lib/homecompute/deployed-revision)"
 [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
 release="/srv/homecompute/releases/$revision"
 [[ "$(readlink -f /srv/homecompute/current)" == "$release" ]]
+if [[ "$1" == hermes-chatgpt-catalog ]] &&
+    sudo -n python3 "$release/scripts/backup-openbot-agents-vm.py" verify-owner --revision "$revision"; then
+  exit 0
+fi
 sudo -n python3 "$release/scripts/backup-openbot-agents-vm.py" verify --revision "$revision"
 VERIFY_BACKUP
   fi
@@ -162,13 +170,13 @@ VERIFY_BACKUP
         flock -n 9
       fi
       input=/dev/null
-      if [[ "$1" == apply ]]; then
+      if [[ "$1" == apply || "$2" == hermes-chatgpt-catalog ]]; then
         input="$HOME/.config/homecompute-openbot/secrets/chatgpt-models-key"
         test "$(realpath "$input")" = "$input"
         test -f "$input" && test "$(stat -c "%u:%a:%h" "$input")" = "$(id -u):600:1"
       fi
-      docker exec -i --user openbot homecompute-openbot python3 -c "$source" hermes-sol-owner "$1" < "$input"
-    '\'' bash ' "$mode"
+      docker exec -i --user openbot homecompute-openbot python3 -c "$source" "$2" "$1" < "$input"
+    '\'' bash ' "$mode" "$target"
 }
 
 prepare_sol_acp() {
@@ -719,7 +727,12 @@ REMOTE_PURGE
 main() {
   if [[ "${1:-}" == hermes-sol && $# -le 2 ]]; then
     shift
-    hermes_sol "$@"
+    owner_hermes_models hermes-sol-owner "$@"
+    return
+  fi
+  if [[ "${1:-}" == hermes-models && $# -le 2 ]]; then
+    shift
+    owner_hermes_models hermes-chatgpt-catalog "$@"
     return
   fi
   if [[ "${1:-}" == personal-models && $# -le 2 ]]; then
