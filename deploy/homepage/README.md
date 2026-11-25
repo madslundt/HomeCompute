@@ -20,9 +20,10 @@ validation.
 The local operator links derive their hostname from the URL used to open
 Homepage. `config/custom.js` supplies this behavior because a normal relative
 URL cannot replace the current URL's port. Caddy serves n8n, Hermes, the AI
-gateway, Daythread, and Open WebUI at their HTTPS `home.arpa` names. Homepage
-links to LiteLLM's health endpoint; its token usage dashboard and the Model
-Manager application are no longer hosted.
+gateway, Daythread, and Open WebUI at their HTTPS `home.arpa` names. The
+**LiteLLM Models** card opens LiteLLM's signed-in AI Hub, with one entry per
+model alias. Use **Models + Endpoints** in LiteLLM to inspect individual
+provider deployments.
 Daythread uses `https://daythread.home.arpa/` and the existing
 `omi-local-backend-1:8787` container on the private control-plane clients network.
 Its private Tailscale URL is `https://home-core.tail479ad.ts.net:18787/`.
