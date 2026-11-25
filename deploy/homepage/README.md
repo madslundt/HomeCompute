@@ -51,9 +51,6 @@ Homepage container, Docker network, credentials, or host filesystem. See the
 The **Paperclip** card opens `https://paperclip.home.arpa/`. Paperclip uses its
 own login. See the [Paperclip runbook](../paperclip/README.md) for setup and access.
 
-The **Orca** card opens `https://orca.home.arpa/` on the private gateway.
-See the [Orca runbook](../orca/README.md) for desktop, web and mobile pairing.
-
 The **T3 Code** card opens `https://t3code.home.arpa/` through the private gateway.
 For first-time pairing, see the [T3 Code runbook](../t3code/README.md).
 

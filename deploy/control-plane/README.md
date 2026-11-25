@@ -552,7 +552,7 @@ container image IDs.
 ## TLS, keys, and state
 
 Home Core pins the official Caddy 2.11.9 Alpine image by its OCI index digest.
-The normal Home Core release updates the gateway, Orca and Paperclip proxies.
+The normal Home Core release updates the gateway and Paperclip proxies.
 Mattermost, the native MCP relay and the OpenClaw communication relay use their
 own install or deploy procedures. Verify each running image after applying its
 owning lifecycle.
