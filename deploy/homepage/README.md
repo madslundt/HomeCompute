@@ -51,9 +51,6 @@ Homepage container, Docker network, credentials, or host filesystem. See the
 The **Paperclip** card opens `https://paperclip.home.arpa/`. Paperclip uses its
 own login. See the [Paperclip runbook](../paperclip/README.md) for setup and access.
 
-The **Orca** card opens `https://orca.home.arpa/` on the private gateway.
-See the [Orca runbook](../orca/README.md) for desktop, web and mobile pairing.
-
 The **Paseo** card opens the coding workspace over private Tailscale HTTPS.
 See the [Paseo runbook](../paseo/README.md) for first-time access.
 

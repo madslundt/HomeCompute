@@ -9,10 +9,11 @@ import json
 import os
 from pathlib import Path
 import re
-import runpy
 import stat
 import sys
 from threading import Event, Thread
+
+from github_project_api import GitHubProjectsError, atomic_write, github_graphql, project_items
 
 
 HERE = Path(__file__).resolve().parent
@@ -87,11 +88,11 @@ def project_snapshot(reader, repository, numbers, token):
     return {"status": status, "boards": boards}
 
 
-def refresh(shared, repos, credential, snapshots):
+def refresh(graphql, repos, credential, snapshots):
     checked_at = datetime.now(timezone.utc).isoformat()
     try:
         token = credential.read_text().strip()
-        numbers = owned_boards(shared["github_graphql"], token)
+        numbers = owned_boards(graphql, token)
     except FileNotFoundError:
         pending = "credential unavailable"
     except FAILURES:
@@ -104,9 +105,9 @@ def refresh(shared, repos, credential, snapshots):
         if pending:
             snapshot.update(status=pending, boards=[])
         else:
-            snapshot.update(project_snapshot(shared["project_items"], repo, numbers, token))
+            snapshot.update(project_snapshot(partial(project_items, graphql=graphql), repo, numbers, token))
         name = repo.split("/")[1] + ".json"
-        shared["atomic_write"](snapshots / name, json.dumps(snapshot).encode(), 0o644)
+        atomic_write(snapshots / name, json.dumps(snapshot).encode(), 0o644)
         names.add(name)
     for retired in snapshots.glob("*.json"):
         if retired.name not in names and re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9._-]*\.json", retired.name):
@@ -143,42 +144,37 @@ def main():
     if args.write and command != "provision":
         parser.error("--write requires provision")
     if command == "serve":
-        shared = runpy.run_path(str(HERE / "orca-projects.py"))
         from github_project_writes import serve_writes
 
         repos = repositories()
         credential = Path("/run/github-projects/credentials/token")
         snapshots = Path("/snapshots")
-        graphql = shared["github_graphql"]
-        read_graphql = partial(graphql, allowed_scopes=("read:project", "project"))
-        shared["github_graphql"] = read_graphql
-        shared["project_items"] = partial(shared["project_items"], graphql=read_graphql)
+        read_graphql = partial(github_graphql, allowed_scopes=("read:project", "project"))
         updated = Event()
-        with serve_writes(snapshots / "write.sock", graphql, shared["GitHubProjectsError"],
+        with serve_writes(snapshots / "write.sock", github_graphql, GitHubProjectsError,
                           credential, OWNER, repos, updated) as server:
             Thread(target=server.serve_forever, daemon=True).start()
             while True:
                 updated.clear()
-                refresh(shared, repos, credential, snapshots)
+                refresh(read_graphql, repos, credential, snapshots)
                 updated.wait(900)
     prepare()
     if command == "provision":
         if not sys.stdin.isatty():
             raise ValueError("Use a private terminal for the Projects credential")
-        shared = runpy.run_path(str(HERE.parent / "orca/github-projects.py"))
         scope = "project" if args.write else "read:project"
         token = getpass(f"Dedicated GitHub {scope} token: ").strip()
-        graphql = partial(shared["github_graphql"], allowed_scopes=(scope,))
+        graphql = partial(github_graphql, allowed_scopes=(scope,))
         try:
             boards = owned_boards(graphql, token)
-        except shared["GitHubProjectsError"] as error:
+        except GitHubProjectsError as error:
             raise ProvisioningError(str(error)) from None
         except ProvisioningError:
             raise
         except FAILURES:
             raise ProvisioningError("Could not verify the personal boards returned by GitHub.") from None
         try:
-            shared["atomic_write"](STATE / "credentials/token", token.encode(), 0o640, gid=READER_ID)
+            atomic_write(STATE / "credentials/token", token.encode(), 0o640, gid=READER_ID)
         except OSError:
             raise ProvisioningError("Could not save the credential in the protected Home Core directory.") from None
         print(f"Verified the {scope} grant and found {len(boards)} open personal boards.")

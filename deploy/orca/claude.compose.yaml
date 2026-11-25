@@ -1,4 +1,0 @@
-services:
-  orca-egress:
-    volumes:
-      - ./egress-claude-hosts.json:/etc/homecompute-orca/egress-claude-hosts.json:ro

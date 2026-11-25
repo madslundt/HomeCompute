@@ -102,7 +102,7 @@ def render_settings(models):
     if not required <= models:
         raise ValueError("Paseo's default model routes are unavailable")
     settings = json.loads((ROOT / "deploy/paseo/settings.json").read_text())
-    teams = json.loads((ROOT / "deploy/orca/teams.json").read_text())
+    projects = json.loads((ROOT / "deploy/paseo/projects.json").read_text())
     profiles = [
         {"id": "developer", "name": "Developer", "provider": "codex",
          "model": "automation-moe", "modeId": "auto",
@@ -113,13 +113,13 @@ def render_settings(models):
         {"id": "qa", "name": "QA", "provider": "opencode", "model": "homecompute/local-only",
          "modeId": "plan", "notes": "Review acceptance criteria, test evidence and missing cases."},
         {"id": "designer", "name": "Designer", "provider": "opencode", "model": "homecompute/local-only",
-         "modeId": "plan", "notes": teams["specialists"]["designer"]["instructions"].replace(
-             "Use Orca headless browser automation on a loopback fixture. ", "")},
+         "modeId": "plan", "notes": ("Work only on UI or UX tasks. Use project design tokens and accessibility requirements. "
+                                    "Provide flows, responsive state evidence, visual guidance and implementation acceptance criteria.")},
     ]
-    for project in teams["projects"]:
+    for project in projects:
         profiles.append({
-            "id": project["id"] + "-po", "name": project["po"], "provider": "opencode",
-            "model": "homecompute/local-only", "modeId": "plan", "notes": project["context"],
+            "id": project["id"] + "-po", "name": project["product_owner"]["name"], "provider": "opencode",
+            "model": "homecompute/local-only", "modeId": "plan", "notes": project["product_owner"]["notes"],
         })
     settings["daemon"]["agentProfiles"] = profiles
     endpoint = "http://inference:18080/v1"

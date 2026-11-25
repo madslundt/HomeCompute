@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "zone": "home.arpa",
-  "records": [
-    { "name": "orca.home.arpa", "type": "A", "value": "192.168.30.122", "ttl": 300 }
-  ]
-}

@@ -1,5 +1,0 @@
-# Deliberately selected by the operator from an exact master release.
-services:
-  orca-egress:
-    volumes:
-      - ./egress-codex-hosts.json:/etc/homecompute-orca/egress-hosts.json:ro

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 import runpy
+import sys
 from tempfile import TemporaryDirectory
 from threading import Event, Thread
 import unittest
@@ -13,8 +14,8 @@ from urllib.error import HTTPError
 
 
 DEPLOY = Path(__file__).resolve().parents[1] / "deploy"
-reader = runpy.run_path(str(DEPLOY / "paseo/github-projects.py"))
-shared = runpy.run_path(str(DEPLOY / "orca/github-projects.py"))
+with patch.object(sys, "path", [str(DEPLOY / "paseo"), *sys.path]):
+    reader = runpy.run_path(str(DEPLOY / "paseo/github-projects.py"))
 client = runpy.run_path(str(DEPLOY / "paseo/read-github-backlog.py"))
 writer = runpy.run_path(str(DEPLOY / "paseo/github_project_writes.py"))
 REPO = "madslundt/Daythread"
@@ -50,7 +51,7 @@ def target(*, items=(), closed=False, private=False, state="OPEN", next_cursor=N
 
 class GitHubProjectsTests(unittest.TestCase):
     def test_github_authentication_failure_reports_a_safe_reason(self):
-        graphql = shared["github_graphql"]
+        graphql = reader["github_graphql"]
         opener = Mock()
         failure = HTTPError(
             "https://api.github.com/graphql", 401, "Untrusted upstream detail", {}, None,
@@ -63,7 +64,7 @@ class GitHubProjectsTests(unittest.TestCase):
             self.assertNotIn("Untrusted upstream detail", str(error.exception))
 
     def test_github_scope_check_keeps_exact_read_only_permission(self):
-        graphql = shared["github_graphql"]
+        graphql = reader["github_graphql"]
         opener = MagicMock()
         response = opener.open.return_value.__enter__.return_value
         response.read.return_value = b'{"data":{"viewer":{"login":"madslundt"}}}'
@@ -99,14 +100,14 @@ class GitHubProjectsTests(unittest.TestCase):
             root = Path(directory)
             (root / "Daythread.json").write_text('{"status":"available","boards":["old backlog"]}')
             (root / "Retired.json").write_text("{}")
-            reader["refresh"](shared, [REPO], root / "missing-token", root)
+            reader["refresh"](Mock(), [REPO], root / "missing-token", root)
             result = json.loads((root / "Daythread.json").read_text())
             self.assertEqual(result["status"], "credential unavailable")
             self.assertEqual(result["boards"], [])
             self.assertFalse((root / "Retired.json").exists())
 
     def test_writer_requires_exact_project_permission_and_reader_accepts_either_scope(self):
-        graphql = shared["github_graphql"]
+        graphql = reader["github_graphql"]
         opener = MagicMock()
         response = opener.open.return_value.__enter__.return_value
         response.read.return_value = b'{"data":{"viewer":{"login":"madslundt"}}}'
@@ -164,7 +165,7 @@ class GitHubProjectsTests(unittest.TestCase):
             root = Path(directory)
             credential = root / "token"
             updated = Event()
-            with writer["serve_writes"](root / "write.sock", graphql, shared["GitHubProjectsError"],
+            with writer["serve_writes"](root / "write.sock", graphql, reader["GitHubProjectsError"],
                                         credential, "madslundt", [REPO], updated) as server:
                 thread = Thread(target=server.serve_forever)
                 thread.start()

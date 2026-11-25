@@ -70,10 +70,6 @@ shell_files=(
   "$REPO_ROOT/deploy/openclaw/entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-home-core.sh"
   "$REPO_ROOT/scripts/deploy-paseo.sh"
-  "$REPO_ROOT/scripts/backup-orca.sh"
-  "$REPO_ROOT/scripts/set-orca-codex-egress.sh"
-  "$REPO_ROOT/scripts/set-orca-cloud-egress.sh"
-  "$REPO_ROOT/deploy/orca/gateway-entrypoint.sh"
   "$REPO_ROOT/scripts/deploy-podwave.sh"
   "$REPO_ROOT/scripts/immich-db-backup.sh"
   "$REPO_ROOT/scripts/set-synology-immich-secret.sh"
@@ -131,7 +127,7 @@ python3 "$REPO_ROOT/tests/paseo-configuration-test.py"
 docker run --rm --network none -v "$REPO_ROOT:/repo:ro" \
   node:24-bookworm@sha256:aca79828f8a4afc627f189387c965625bcc419233946210a3b9522d90a59b5c6 \
   node --test /repo/tests/paseo-inference-test.mjs
-python3 "$REPO_ROOT/tests/orca-deployment-test.py"
+python3 "$REPO_ROOT/tests/orca-retirement-test.py"
 python3 "$REPO_ROOT/tests/podwave-deployment-test.py"
 python3 "$REPO_ROOT/tests/podwave-deploy-lifecycle-test.py"
 python3 "$REPO_ROOT/tests/podwave-network-test.py"
@@ -1626,7 +1622,7 @@ grep -Fqx 'OnCalendar=hourly' \
 # Nod is a Compose overlay for a separate KVM guest with its own Docker daemon.
 # whisper-cpp-stt is an opt-in CPU qualification project: internal network,
 # no host ports, no production route or alias, and no restart policy.
-expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode orca paperclip piper-tts paseo podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
+expected_deployment_projects="$(printf '%s\n' agent-office ai-automation-manager assistant-context automation books_importer certificate-maintenance codex-worker comfyui-control compute-node control-plane embeddings hermes hviske-stt homepage immich mattermost model-manager nod omnivoice open-webui openbot openclaw opencode paperclip piper-tts paseo podwave toolbox ttlock-webhook whisper-cpp-stt whisper-stt wyoming-stt | LC_ALL=C sort)"
 actual_deployment_projects="$(
   cd "$REPO_ROOT/deploy" && find . -mindepth 1 -maxdepth 1 -type d |
     sed 's|^\./||' | LC_ALL=C sort

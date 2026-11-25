@@ -37,12 +37,6 @@
         href: https://home-core.tail479ad.ts.net:18797/
         description: Coding workspace · tailnet and password
 
-    - Orca:
-        id: homecore-orca
-        icon: mdi-dolphin
-        href: https://orca.home.arpa/
-        description: AI development teams, coding agents and orchestration
-
     - AI automation manager:
         id: homecore-ai-automation-manager
         icon: mdi-clipboard-text-clock-outline

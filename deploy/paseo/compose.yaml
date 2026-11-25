@@ -82,7 +82,7 @@ services:
       - ./github-projects.py:/opt/paseo/github-projects.py:ro
       - ./github_project_writes.py:/opt/paseo/github_project_writes.py:ro
       - ./projects.json:/opt/paseo/projects.json:ro
-      - ../orca/github-projects.py:/opt/paseo/orca-projects.py:ro
+      - ./github_project_api.py:/opt/paseo/github_project_api.py:ro
       - /var/lib/homecompute/paseo/github-projects/credentials:/run/github-projects/credentials:ro
       - /var/lib/homecompute/paseo/github-projects/snapshots:/snapshots:rw
     cpus: 0.25

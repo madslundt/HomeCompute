@@ -70,8 +70,6 @@ services:
         ipv4_address: ${CADDY_MCP_WEB_IP:?Set CADDY_MCP_WEB_IP}
       paseo-inference:
         aliases: [llm.home.arpa]
-      orca:
-        ipv4_address: 172.28.219.2
       paperclip: {}
       paperclip-inference:
         ipv4_address: 172.28.216.2
@@ -487,16 +485,6 @@ networks:
     enable_ipv6: false
     driver_opts:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
-  orca:
-    name: homecompute-orca-ingress
-    driver: bridge
-    internal: true
-    enable_ipv6: false
-    driver_opts:
-      com.docker.network.bridge.gateway_mode_ipv4: isolated
-    ipam:
-      config:
-        - subnet: 172.28.219.0/29
   paperclip:
     name: homecompute-paperclip
     driver: bridge
