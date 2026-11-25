@@ -6,6 +6,11 @@ ordered deployments, reasoning effort, request budget, and key profiles.
 The [model catalog](../../config/model-catalog.json) owns local endpoints and
 artifact details. Route changes preserve model names at the client.
 
+Browse the [AI Hub](https://llm.home.arpa/ui/model-hub-table/) or the
+**LiteLLM Models** card on Homepage for one entry per alias. The signed-in
+AI Hub uses `/model_group/info`. **Models + Endpoints** lists each backend
+deployment separately, including the primary and fallbacks that share an alias.
+
 | Alias | Primary | Second | Third | Gateway deadline |
 | --- | --- | --- | --- | --- |
 | `agent-assistant` | Flash-Next | Luna High | Sol High | 180 s |

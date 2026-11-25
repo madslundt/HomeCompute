@@ -103,11 +103,11 @@
         href: https://n8n.home.arpa/
         description: Build and manage automation workflows
 
-    - LiteLLM:
+    - LiteLLM Models:
         id: homecore-litellm
         icon: mdi-brain
-        href: https://llm.home.arpa/ui/
-        description: Manage LiteLLM models, MCP servers, client access, and tools
+        href: https://llm.home.arpa/ui/model-hub-table/
+        description: Browse model aliases in the LiteLLM AI Hub
 
     - Home HTTPS Certificate:
         id: homecore-https-certificate
