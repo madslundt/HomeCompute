@@ -45,6 +45,7 @@ services:
     networks:
       default: {gw_priority: 1}
       inference: {}
+      ingress: {}
     depends_on:
       inference: {condition: service_healthy}
     cpus: 3
@@ -96,5 +97,8 @@ networks:
       com.docker.network.bridge.gateway_mode_ipv4: isolated
   gateway:
     name: homecompute-paseo-inference
+    external: true
+  ingress:
+    name: homecompute-paseo-ingress
     external: true
   projects: {}

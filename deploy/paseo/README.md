@@ -1,18 +1,33 @@
 # Paseo on Home Core
 
 Paseo hosts the private development workspace. Open **Paseo** in Homepage or
-visit [home-core on Tailscale](https://home-core.tail479ad.ts.net:18797/) from
-the household tailnet. Native clients can add the same direct HTTPS server.
+visit [paseo.home.arpa](https://paseo.home.arpa/) on the approved LAN or over
+Tailscale split DNS. Trust the [HomeCompute Caddy CA](../homepage/README.md).
+Native clients can add the same HTTPS address. The private
+[Tailscale Serve address](https://home-core.tail479ad.ts.net:18797/) also works
+for clients without the HomeCompute CA.
 The daemon also requires a password. Retrieve it through an authenticated
 private SSH session from the root-owned
 `/var/lib/homecompute/paseo/runtime.env` file.
 
 The daemon uses an unprivileged container with its own state and checkouts,
 a read-only root filesystem, no Docker socket or host checkout, and no
-production credentials. Its published port is on loopback. Tailscale Serve
-provides HTTPS and the Paseo relay is disabled. The two sidecars hold separate
+production credentials. Its published port is on loopback. Caddy reaches the
+daemon over a dedicated internal bridge and admits only the approved LANs and
+tailnet sources. Tailscale Serve uses the loopback port and the Paseo relay is
+disabled. The two sidecars hold separate
 LiteLLM and GitHub credentials. The routing and privacy policy for each model
 is described in [managed agent routing](../control-plane/agent-routing.md).
+
+## Private DNS
+
+Apply [paseo-dns.json](../../config/paseo-dns.json) in UniFi Network's DNS
+policy table. If the retired T3 record still points to the Home Core LAN
+address, replace it with the declared Paseo record. Tailscale forwards
+`home.arpa` queries to the same UniFi resolver over the existing subnet
+route. Verify the new A record and the old hostname's absence through both
+the UniFi resolver and Tailscale DNS. Then check HTTPS and sign-in through
+`https://paseo.home.arpa/`.
 
 ## Models and voice
 

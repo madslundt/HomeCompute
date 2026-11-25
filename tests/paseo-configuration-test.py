@@ -29,6 +29,18 @@ class PaseoConfigurationTest(unittest.TestCase):
         self.assertEqual(voice["tts"]["voice"], "danish-default")
         self.assertFalse(settings["daemon"]["relay"]["enabled"])
 
+    def test_private_url_matches_gateway(self):
+        settings, _, _ = SETUP["render_settings"](MODELS)
+        dns = json.loads((ROOT / "config/paseo-dns.json").read_text())
+        host = dns["records"][0]["name"]
+        self.assertIn(host, settings["daemon"]["hostnames"])
+        self.assertIn(f"https://{host}", settings["daemon"]["cors"]["allowedOrigins"])
+        caddy = (ROOT / "deploy/control-plane/Caddyfile").read_text()
+        self.assertIn(f"{host} {{\n\ttls internal", caddy)
+        self.assertIn(f"redir https://{host}{{uri}} 308", caddy)
+        homepage = (ROOT / "deploy/homepage/config/services.yaml").read_text()
+        self.assertNotIn("t3code", homepage.casefold())
+
     def test_each_checkout_has_a_local_product_owner(self):
         settings, _, _ = SETUP["render_settings"](MODELS)
         profiles = {profile["name"]: profile for profile in settings["daemon"]["agentProfiles"]}

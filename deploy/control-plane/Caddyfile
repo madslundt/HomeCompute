@@ -128,6 +128,16 @@ nod.home.arpa {
 	respond "Forbidden" 403
 }
 
+paseo.home.arpa {
+	tls internal
+	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
+	handle @private {
+		header Referrer-Policy no-referrer
+		reverse_proxy paseo:6767
+	}
+	respond "Forbidden" 403
+}
+
 paperclip.home.arpa {
 	tls internal
 	encode zstd gzip
@@ -186,6 +196,10 @@ http://:8080 {
 	@nod host nod.home.arpa
 	handle @nod {
 		redir https://nod.home.arpa{uri} 308
+	}
+	@paseo host paseo.home.arpa
+	handle @paseo {
+		redir https://paseo.home.arpa{uri} 308
 	}
 	@paperclip host paperclip.home.arpa
 	handle @paperclip {

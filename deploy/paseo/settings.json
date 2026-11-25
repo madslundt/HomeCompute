@@ -1,8 +1,8 @@
 {
   "version": 1,
   "daemon": {
-    "hostnames": ["home-core.tail479ad.ts.net"],
-    "cors": {"allowedOrigins": ["https://home-core.tail479ad.ts.net:18797"]},
+    "hostnames": ["paseo.home.arpa", "home-core.tail479ad.ts.net"],
+    "cors": {"allowedOrigins": ["https://paseo.home.arpa", "https://home-core.tail479ad.ts.net:18797"]},
     "relay": {"enabled": false},
     "mcp": {"enabled": true, "injectIntoAgents": true},
     "browserTools": {"enabled": false},

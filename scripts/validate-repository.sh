@@ -921,6 +921,15 @@ jq -e '
   ([.services | to_entries[] | select(.value.networks["paseo-inference"] != null) | .key] == ["caddy"]) and
   .services.caddy.networks["paseo-inference"].aliases == ["llm.home.arpa"]
 ' "$control_plane_json" >/dev/null
+jq -e '
+  .networks["paseo-ingress"].name == "homecompute-paseo-ingress" and
+  .networks["paseo-ingress"].internal and
+  .networks["paseo-ingress"].driver_opts["com.docker.network.bridge.gateway_mode_ipv4"] == "isolated" and
+  ([.services | to_entries[] | select(.value.networks | has("paseo-ingress")) | .key] == ["caddy"])
+' "$control_plane_json" >/dev/null
+jq -e '.zone == "home.arpa" and .records == [
+  {"name": "paseo.home.arpa", "type": "A", "value": "192.168.30.122", "ttl": 300}
+]' "$REPO_ROOT/config/paseo-dns.json" >/dev/null
 paseo_env="$temporary_root/paseo.env"
 printf 'PASEO_PASSWORD=validation-only\n' >"$paseo_env"
 PASEO_RELEASE=validate PASEO_RUNTIME_ENV="$paseo_env" \
@@ -928,10 +937,11 @@ PASEO_RELEASE=validate PASEO_RUNTIME_ENV="$paseo_env" \
   jq -e '
     .networks.inference.internal and .networks.gateway.external and
     .networks.gateway.name == "homecompute-paseo-inference" and
+    .networks.ingress.external and .networks.ingress.name == "homecompute-paseo-ingress" and
     all(.services[]; .read_only and .cap_drop == ["ALL"] and .logging.driver == "none") and
     (.services.paseo |
       .user == "12074:12074" and .environment.PASEO_RELAY_ENABLED == "false" and
-      (.networks | keys == ["default", "inference"]) and
+      (.networks | keys == ["default", "inference", "ingress"]) and
       .tmpfs == ["/tmp:rw,nosuid,nodev,size=768m,mode=1777"] and
       (.ports | length == 1 and .[0].host_ip == "127.0.0.1" and .[0].published == "6767") and
       (all(.volumes[]; .target != "/run/homecompute/inference-key" and .target != "/run/github-projects/credentials"))) and
