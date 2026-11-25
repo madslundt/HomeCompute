@@ -87,7 +87,7 @@ services:
       - ./github-projects.py:/opt/t3code/github-projects.py:ro
       - ./github_project_writes.py:/opt/t3code/github_project_writes.py:ro
       - ./projects.json:/opt/t3code/projects.json:ro
-      - ../orca/github-projects.py:/opt/t3code/orca-projects.py:ro
+      - ./github_project_api.py:/opt/t3code/github_project_api.py:ro
       - type: bind
         source: /var/lib/homecompute/t3code/github-projects/credentials
         target: /run/github-projects/credentials

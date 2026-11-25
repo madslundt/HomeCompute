@@ -3,8 +3,9 @@
 set -Eeuo pipefail
 
 revision=${1:-}
-[[ $# == 1 && "$revision" =~ ^[a-f0-9]{40}$ ]] || {
-  printf 'Usage: sudo bash scripts/deploy-t3code.sh FULL_COMMIT_SHA\n' >&2
+scope=${2:-}
+[[ $# -le 2 && "$revision" =~ ^[a-f0-9]{40}$ && ( -z "$scope" || "$scope" == --github-projects-only ) ]] || {
+  printf 'Usage: sudo bash scripts/deploy-t3code.sh FULL_COMMIT_SHA [--github-projects-only]\n' >&2
   exit 2
 }
 [[ $EUID == 0 && $(hostname) == home-core && $(uname -m) == x86_64 ]] || {
@@ -29,6 +30,17 @@ git -C "$release" merge-base --is-ancestor "$revision" FETCH_HEAD || {
 exec 9>/var/lib/homecompute/deploy.lock
 flock -n 9 || { printf 'Another deployment is running.\n' >&2; exit 1; }
 
+python3 "$release/deploy/t3code/github-projects.py" prepare
+export T3CODE_RELEASE="$revision"
+compose=(docker compose -f "$release/deploy/t3code/compose.yaml")
+"${compose[@]}" config --quiet
+"${compose[@]}" pull github-projects
+if [[ "$scope" == --github-projects-only ]]; then
+  "${compose[@]}" up -d --no-deps --no-build --pull never --wait --wait-timeout 90 github-projects
+  "${compose[@]}" ps github-projects
+  exit 0
+fi
+
 state=/srv/state/t3code
 for directory in "$state" "$state/projects" "$state/.codex-homecompute" "$state/.hermes-code"; do
   if [[ -e "$directory" || -L "$directory" ]]; then
@@ -42,14 +54,7 @@ for directory in "$state" "$state/projects" "$state/.codex-homecompute" "$state/
   fi
 done
 
-python3 "$release/deploy/t3code/github-projects.py" prepare
-
-export T3CODE_RELEASE="$revision"
-compose=(docker compose -f "$release/deploy/t3code/compose.yaml")
-"${compose[@]}" config --quiet
-# Build first so failures to fetch or verify upstream artifacts leave the old
-# container running.
-"${compose[@]}" pull github-projects
+# Build first so a failed artifact verification leaves the old workspace running.
 "${compose[@]}" build
 "${compose[@]}" run --rm --no-deps --pull never -T --entrypoint t3 t3code \
   policy check /etc/t3code/policy.json
