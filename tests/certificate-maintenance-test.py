@@ -3,6 +3,7 @@
 import importlib.util
 import io
 from pathlib import Path
+from subprocess import CompletedProcess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -16,6 +17,16 @@ spec.loader.exec_module(maintenance)
 
 
 class MonitorTest(unittest.TestCase):
+    def test_monitor_ssh_requires_its_own_ed25519_host_pin(self):
+        with patch.object(maintenance, "command",
+                          return_value=CompletedProcess([], 0, "https-ok\n", "")) as run:
+            self.assertEqual(maintenance.probe(), "https-ok")
+        args, _ = run.call_args.args
+        self.assertIn(f"UserKnownHostsFile={maintenance.STATE / 'probe_known_hosts'}", args)
+        self.assertIn("GlobalKnownHostsFile=/dev/null", args)
+        self.assertIn("HostKeyAlgorithms=ssh-ed25519", args)
+        self.assertIn("StrictHostKeyChecking=yes", args)
+
     def test_inbox_accepts_new_message_receipt(self):
         class CreatedResponse(io.BytesIO):
             status = 201
