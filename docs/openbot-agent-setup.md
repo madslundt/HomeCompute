@@ -36,13 +36,37 @@ From a clean checkout of the reviewed `origin/master`, run:
 ```
 
 The command verifies the encrypted VM backup, uses the existing model-only
-OpenBot ChatGPT key, and updates the named provider in the owner's embedded
+OpenBot ChatGPT key, and reconciles the named providers in the owner's embedded
 Hermes config. The credential stays in the protected Hermes environment file.
 Repeat `apply` after rotating that key. The global Hermes default remains
 local `automation-moe`. Verify Hermes, the exact Sol alias and High effort in a
 fresh thread with synthetic input. Use `hermes-sol rollback` to restore the
-owner agent's OpenCode Sol selection. The named Hermes provider remains in the
-model picker.
+owner agent's OpenCode Sol selection. The Hermes catalog remains available.
+
+### LiteLLM models in the owner Hermes picker
+
+In the owner OpenBot server, select the **Hermes** provider (Hermes Agent).
+The custom section offers `automation-moe`, `local-only`, `chatgpt-sol-latest`,
+`chatgpt-luna-latest`, `chatgpt-terra-latest`, and `chatgpt-astra-latest`.
+The four ChatGPT choices use the existing model-only LiteLLM credential.
+Selecting one sends chat context to the subscription provider. Use the local
+choices for private data.
+
+From a clean checkout of the reviewed published revision, run the
+catalog-only reconciliation:
+
+```sh
+./scripts/setup-openbot-guest.sh hermes-models plan
+./scripts/setup-openbot-guest.sh hermes-models apply
+```
+
+The command checks the credential's catalog before writing and uses the
+same encrypted VM backup gate as `hermes-sol`. It adds named Hermes providers
+without changing any agent or thread settings. Repeat `apply` after rotating
+the model-only key. Reopen the picker and use synthetic prompts in a fresh
+chat to check the new choices. If withdrawing the additions, restore the
+prior embedded Hermes configuration through the verified
+[OpenBot backup and recovery procedure](../deploy/openbot/README.md#operations-and-recovery).
 
 The partner server follows its [own model lifecycle](../deploy/openbot/PARTNER.md).
 

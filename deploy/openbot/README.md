@@ -75,8 +75,8 @@ their model API keys. Retain the provider IDs and model assignments. The
 subscription provider uses `chatgpt-sol-latest`, `chatgpt-terra-latest`,
 `chatgpt-luna-latest`, and `chatgpt-astra-latest`. Test a synthetic turn on
 `automation-moe` and on an explicitly selected subscription alias after the
-provider updates. The [agent setup guide](../../docs/openbot-agent-setup.md)
-covers roles and data boundaries.
+provider updates. To surface these aliases under the native **Hermes** provider,
+use the [Hermes picker reconciliation](../../docs/openbot-agent-setup.md#litellm-models-in-the-owner-hermes-picker).
 
 Use the [managed routing profiles](../control-plane/agent-routing.md#enroll-a-consumer)
 for an approved specialist whose model client can send a dedicated LiteLLM key.

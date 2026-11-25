@@ -20,15 +20,19 @@ SOL_SETTINGS = {
     "reasoningEffort": "high",
 }
 HERMES_SOL_KEY_ENV = "HOME_OPENBOT_CHATGPT_API_KEY"
-HERMES_SOL_PROVIDER = {
-    "name": "HomeCompute Sol",
-    "base_url": "https://llm.home.arpa/v1",
-    "default_model": "chatgpt-sol-latest",
-    "api_mode": "chat_completions",
-    "discover_models": False,
-    "key_env": HERMES_SOL_KEY_ENV,
+HERMES_CHATGPT_CATALOG_TARGET = "hermes-chatgpt-catalog"
+HERMES_CHATGPT_BASE_URL = "https://llm.home.arpa/v1"
+HERMES_CHATGPT_PROVIDERS = {
+    f"homecompute-{family.lower()}": {
+        "name": f"HomeCompute {family}",
+        "base_url": HERMES_CHATGPT_BASE_URL,
+        "default_model": f"chatgpt-{family.lower()}-latest",
+        "api_mode": "chat_completions",
+        "discover_models": False,
+        "key_env": HERMES_SOL_KEY_ENV,
+    }
+    for family in ("Sol", "Luna", "Terra", "Astra")
 }
-HERMES_SOL_PROVIDER_KEY = "providers.homecompute-sol"
 HERMES_ENV = Path("/data/.hermes/.env")
 HERMES_SOL_SETTINGS = {
     "provider": "hermes", "model": "custom:homecompute-sol:chatgpt-sol-latest",
@@ -132,7 +136,7 @@ def install_sol_key(path, key):
             draft.unlink(missing_ok=True)
 
 
-def configure_owner_sol_provider():
+def configure_owner_chatgpt_providers(mode="apply"):
     key_line = sys.stdin.buffer.read(4097)
     if not re.fullmatch(rb"sk-[A-Za-z0-9_-]{1,4092}\n", key_line):
         raise ValueError("expected the scoped OpenBot model credential on stdin")
@@ -141,33 +145,43 @@ def configure_owner_sol_provider():
     def hermes_config(*args):
         return subprocess.run(
             ["/data/.local/bin/hermes", "config", *args],
-            text=True, capture_output=True, timeout=20,
+            text=True, capture_output=True, timeout=20, check=True,
         )
 
-    def read_provider():
-        result = hermes_config("get", HERMES_SOL_PROVIDER_KEY, "--json")
-        if result.returncode == 1 and f"Config key not set: {HERMES_SOL_PROVIDER_KEY}" in result.stderr.splitlines():
-            return None
-        result.check_returncode()
+    def read_providers():
+        try:
+            result = hermes_config("get", "providers", "--json")
+        except subprocess.CalledProcessError as error:
+            if error.returncode == 1 and "Config key not set: providers" in error.stderr.splitlines():
+                return {}
+            raise
         return json.loads(result.stdout)
 
-    current = read_provider()
-    if current not in (None, HERMES_SOL_PROVIDER):
-        raise ValueError("existing Hermes Sol provider differs from the source declaration")
+    declared = HERMES_CHATGPT_PROVIDERS
+    current = read_providers()
+    if any(name in current and current[name] != provider for name, provider in declared.items()):
+        raise ValueError("existing Hermes ChatGPT provider differs from the source declaration")
     opener = build_opener(ProxyHandler({}), NoRedirect)
-    request = Request(HERMES_SOL_PROVIDER["base_url"] + "/models",
+    request = Request(HERMES_CHATGPT_BASE_URL + "/models",
                       headers={"Authorization": f"Bearer {key.decode()}"})
+    models = {provider["default_model"] for provider in declared.values()}
     with opener.open(request, timeout=10) as response:
-        if HERMES_SOL_PROVIDER["default_model"] not in {row["id"] for row in json.load(response)["data"]}:
-            raise ValueError("ChatGPT Sol is missing from the private gateway")
-    install_sol_key(HERMES_ENV, key)
-    if current is None:
-        hermes_config("set", HERMES_SOL_PROVIDER_KEY, json.dumps(HERMES_SOL_PROVIDER)).check_returncode()
-    if read_provider() != HERMES_SOL_PROVIDER:
-        raise ValueError("Hermes did not retain the Sol provider declaration")
+        if models != {row["id"] for row in json.load(response)["data"]}:
+            raise ValueError("the OpenBot credential must expose exactly the four ChatGPT aliases")
+
+    missing = {name: provider for name, provider in declared.items() if name not in current}
+    if mode == "apply":
+        install_sol_key(HERMES_ENV, key)
+        for name, provider in missing.items():
+            hermes_config("set", f"providers.{name}", json.dumps(provider))
+        verified = read_providers()
+        if any(verified.get(name) != provider for name, provider in declared.items()):
+            raise ValueError("Hermes did not retain the ChatGPT provider declarations")
+    pending = {provider["default_model"] for provider in missing.values()} if mode == "plan" else set()
+    return {"operation": mode, "configured": sorted(models - pending), "to_add": sorted(pending)}
 
 
-def reconcile_hermes_sol(target, request, mode, setup_owner_provider=configure_owner_sol_provider):
+def reconcile_hermes_sol(target, request, mode, setup_owner_provider=configure_owner_chatgpt_providers):
     roster = request("/v1/agents")
     matches = [row["id"] for row in roster if row["name"] == "Hermes"]
     if len(matches) != 1 or not re.fullmatch(r"agent-[0-9a-f-]{36}", matches[0]):
@@ -193,7 +207,11 @@ def main():
     if len(sys.argv) != 3 or sys.argv[2] not in {"plan", "apply", "rollback"}:
         raise SystemExit("usage: configure-openbot-personal-models.py CONFIG plan|apply|rollback")
     try:
-        if sys.argv[1] in HERMES_SOL_TARGETS:
+        if sys.argv[1] == HERMES_CHATGPT_CATALOG_TARGET:
+            if sys.argv[2] == "rollback":
+                raise ValueError("the catalog supports plan and apply")
+            print(json.dumps(configure_owner_chatgpt_providers(sys.argv[2])), flush=True)
+        elif sys.argv[1] in HERMES_SOL_TARGETS:
             reconcile_hermes_sol(sys.argv[1], client(), sys.argv[2])
         else:
             reconcile(json.loads(Path(sys.argv[1]).read_bytes()), client(), sys.argv[2])
