@@ -81,7 +81,8 @@ def probe() -> str:
         result = command([
             "ssh", "-F", "/dev/null", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
             "-o", "StrictHostKeyChecking=yes",
-            "-o", "UserKnownHostsFile=/etc/homecompute/hermes-backup_known_hosts",
+            "-o", f"UserKnownHostsFile={STATE / 'probe_known_hosts'}",
+            "-o", "GlobalKnownHostsFile=/dev/null", "-o", "HostKeyAlgorithms=ssh-ed25519",
             "-o", "ConnectTimeout=5", "-i", str(STATE / "probe-key"),
             "hermes-operator@10.77.20.2", "probe",
         ], 30)
@@ -207,7 +208,7 @@ def backup_ca() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("probe", "monitor", "check-recipient", "backup-ca"))
+    parser.add_argument("action", choices=("probe", "check-probe", "monitor", "check-recipient", "backup-ca"))
     action = parser.parse_args().action
     os.umask(0o077)
     if action == "probe":
@@ -219,6 +220,10 @@ def main() -> int:
         return 0 if result == "https-ok" else 1
     if action == "monitor":
         return 0 if monitor() else 1
+    if action == "check-probe":
+        result = probe()
+        print(f"OpenBot HTTPS check: {result}")
+        return 0 if result == "https-ok" else 1
     if action == "check-recipient":
         recipient()
         print("Home Assistant Inbox owner verified")
