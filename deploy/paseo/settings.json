@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "daemon": {
+    "hostnames": ["paseo.home.arpa", "home-core.tail479ad.ts.net"],
+    "cors": {"allowedOrigins": ["https://paseo.home.arpa", "https://home-core.tail479ad.ts.net:18797"]},
+    "relay": {"enabled": false},
+    "mcp": {"enabled": true, "injectIntoAgents": true},
+    "browserTools": {"enabled": false},
+    "appendSystemPrompt": "For team or backlog work, read the HomeCompute team skill at /home/paseo/.agents/skills/homecompute-team/SKILL.md. Use the owner-approved project and model privacy boundary."
+  },
+  "agents": {
+    "providers": {
+      "codex": {"paseoTools": {"enabled": true}},
+      "opencode": {"paseoTools": {"enabled": true}},
+      "hermes": {
+        "command": ["/usr/local/bin/hermes-code-review"],
+        "models": [{"id": "automation-moe", "label": "Automation MoE"}],
+        "paseoTools": {"enabled": false}
+      }
+    },
+    "metadataGeneration": {"providers": []}
+  },
+  "features": {
+    "dictation": {
+      "enabled": true,
+      "stt": {"provider": "openai", "baseUrl": "http://inference:18080/v1", "model": "stt-danish"}
+    },
+    "voiceMode": {
+      "enabled": true,
+      "llm": {"provider": "opencode", "model": "homecompute/local-only"},
+      "stt": {"provider": "openai", "baseUrl": "http://inference:18080/v1", "model": "stt-danish"},
+      "tts": {"provider": "openai", "baseUrl": "http://inference:18080/v1", "model": "omnivoice", "voice": "danish-default"}
+    }
+  }
+}

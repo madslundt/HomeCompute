@@ -318,6 +318,22 @@ def assistant_path_ancestors(path: Path) -> None:
             raise ValueError('assistant recovery source has a symlinked ancestor')
 
 
+def assistant_sqlite_sidecar(name: str) -> bool:
+    base, _, suffix = name.rpartition('-')
+    return suffix in {'wal', 'shm', 'journal'} and base.endswith(('.sqlite3', '.sqlite', '.db'))
+
+
+def assistant_file_info(path: Path) -> os.stat_result | None:
+    try:
+        return path.lstat()
+    except FileNotFoundError:
+        if not assistant_sqlite_sidecar(path.name):
+            raise
+        # SQLite may checkpoint and unlink an optional sidecar after os.walk.
+        # Snapshot staging still checks the exact DB/WAL pair after quiescing.
+        return None
+
+
 def assistant_recovery_sources() -> tuple[dict[str, Path], dict[str, Path]]:
     """Include retained opt-in state without requiring disabled services to exist."""
     directories, files = {}, {}
@@ -346,7 +362,9 @@ def assistant_recovery_sources() -> tuple[dict[str, Path], dict[str, Path]]:
                     raise ValueError('assistant recovery tree contains an unsafe directory')
             for child_name in child_files:
                 child = directory / child_name
-                metadata = child.lstat()
+                metadata = assistant_file_info(child)
+                if metadata is None:
+                    continue
                 policy_projection = managed_policy and child_name in {'assistant-briefings.json', 'improvements-status.json'}
                 allowed_policy_mode = (stat.S_IMODE(metadata.st_mode) == 0o640 and metadata.st_gid == policy_group
                                        if policy_projection else not metadata.st_mode & 0o077)
@@ -378,9 +396,13 @@ def assistant_sqlite_sources(directories: dict[str, Path]) -> list[tuple[str, Pa
                 source = Path(parent) / name
                 if source.is_symlink():
                     raise ValueError('assistant SQLite source symlink refused')
-                info = source.lstat()
+                info = assistant_file_info(source)
+                if info is None:
+                    continue
                 if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
                     raise ValueError('assistant SQLite source file refused')
+                if assistant_sqlite_sidecar(name):
+                    continue
                 with source.open('rb') as stream:
                     header = stream.read(16)
                 if header == b'SQLite format 3\0':
@@ -626,6 +648,7 @@ def space_required() -> int:
     total = 1024**3  # Dump/staging allowance in addition to the measured files.
     entries = 0
     assistant_dirs, assistant_files = assistant_recovery_sources()
+    assistant_roots = set(assistant_dirs.values())
     for source in [*DIRECTORIES.values(), *assistant_dirs.values(), N8N]:
         if source.is_symlink() or not source.is_dir():
             raise ValueError('declared recovery source is absent or symlinked')
@@ -637,8 +660,9 @@ def space_required() -> int:
                 raise ValueError('recovery source entry budget requires review')
             directories[:] = [name for name in directories if not (Path(parent) / name).is_symlink()]
             for name in files:
-                info = (Path(parent) / name).lstat()
-                if stat.S_ISREG(info.st_mode):
+                path = Path(parent) / name
+                info = assistant_file_info(path) if source in assistant_roots else path.lstat()
+                if info is not None and stat.S_ISREG(info.st_mode):
                     total += info.st_size
                     if total > MAX_ARCHIVE_BYTES:
                         raise ValueError('recovery source size budget requires review')

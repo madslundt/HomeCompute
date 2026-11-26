@@ -31,17 +31,11 @@
         description: Find books and request downloads
 
 - AI assistants:
-    - T3 Code:
-        id: homecore-t3code
+    - Paseo:
+        id: homecore-paseo
         icon: mdi-code-braces
-        href: https://t3code.home.arpa/
-        description: Coding workspace · T3 Code pairing required
-
-    - Orca:
-        id: homecore-orca
-        icon: mdi-dolphin
-        href: https://orca.home.arpa/
-        description: AI development teams, coding agents and orchestration
+        href: https://paseo.home.arpa/
+        description: Private coding workspace · password required
 
     - AI automation manager:
         id: homecore-ai-automation-manager
@@ -109,11 +103,11 @@
         href: https://n8n.home.arpa/
         description: Build and manage automation workflows
 
-    - LiteLLM:
+    - LiteLLM Models:
         id: homecore-litellm
         icon: mdi-brain
-        href: https://llm.home.arpa/ui/
-        description: Manage LiteLLM models, MCP servers, client access, and tools
+        href: https://llm.home.arpa/ui/model-hub-table/
+        description: Browse model aliases in the LiteLLM AI Hub
 
     - Home HTTPS Certificate:
         id: homecore-https-certificate

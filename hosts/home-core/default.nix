@@ -39,7 +39,6 @@ in
     ../../modules/nixos/storage.nix
     ../../modules/nixos/backups.nix
     ../../modules/nixos/nas-recovery-backup.nix
-    ../../modules/nixos/orca-backup.nix
     ../../modules/nixos/immich.nix
     ../../modules/nixos/secrets.nix
   ];
@@ -81,7 +80,8 @@ in
     enable = true;
     share = "homecompute-backups";
     credentialsFile = "/etc/homecompute/nas-recovery-backup.credentials";
-    includeApplicationState = true;
+    includeApplicationState = false;
+    selectedState = true;
   };
 
   # Preserve the installed DHCP connection while bootstrapping over LAN SSH.

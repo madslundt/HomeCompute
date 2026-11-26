@@ -68,3 +68,7 @@ use the [guarded presentation refresh](../docs/notification-presentation-refresh
 from a reviewed pushed release. Its default plan and hash-bound apply target only
 these four modules, preserving unrelated bundle drift and service/timer states.
 An n8n publication or normal release marker alone does not install them.
+
+Public-input workflows can enroll a dedicated `agent-automation` model key
+through the [managed routing runbook](../deploy/control-plane/agent-routing.md#enroll-a-consumer).
+Private workflows use their existing local routes.

@@ -78,7 +78,7 @@ urllib.request.urlopen(req, timeout=30).close()
 
 def omnivoice_scope(models):
     scope = model_scope(models)
-    allowed = set(MODELS) | {'plapre', 'omnivoice', 'embedding', 'video', 'whisper', 'tts-danish', 'tts-english'}
+    allowed = set(MODELS) | {'local-only', 'plapre', 'omnivoice', 'embedding', 'video', 'whisper', 'tts-danish', 'tts-english'}
     if not set(MODELS) <= scope or not scope <= allowed:
         raise SystemExit('Unexpected network scope; review before migrating TTS.')
     result = [model for model in models if model != 'plapre']
@@ -89,10 +89,11 @@ def omnivoice_scope(models):
 
 def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_plapre: bool = False,
               enable_embedding: bool = False, enable_video: bool = False,
-              enable_full_whisper: bool = False, enable_omnivoice: bool = False, enable_speech_aliases: bool = False) -> None:
+              enable_full_whisper: bool = False, enable_omnivoice: bool = False, enable_speech_aliases: bool = False,
+              enable_local_only: bool = False) -> None:
     if os.geteuid() != 0:
         raise SystemExit('Run as root on home-core.')
-    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video, enable_full_whisper, enable_omnivoice, enable_speech_aliases)) > 1:
+    if sum((enable_stt, enable_whisper, enable_plapre, enable_embedding, enable_video, enable_full_whisper, enable_omnivoice, enable_speech_aliases, enable_local_only)) > 1:
         raise SystemExit('Migrate one model-scope change at a time.')
     if enable_plapre:
         raise SystemExit('Plapre is retired; use --enable-omnivoice.')
@@ -115,6 +116,8 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
                 raise SystemExit('Canonical text-alias migration did not apply the reviewed scope, owner, and expiry.')
             print('Migrated network inference credential to automation-moe for text inference.')
         scope = model_scope(data['models'])
+        has_local_only = 'local-only' in scope
+        scope -= {'local-only'}
         speech_aliases = scope & {'tts-danish', 'tts-english'}
         scope -= speech_aliases
         has_full_whisper = 'whisper' in scope
@@ -127,7 +130,12 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
             raise SystemExit('Existing video credential has an unexpected underlying model scope.')
         scope = base_scope
         target = None
-        if enable_speech_aliases:
+        if enable_local_only:
+            if scope not in reviewed:
+                raise SystemExit('Existing network credential has an unexpected scope.')
+            if not has_local_only:
+                target = [*data['models'], 'local-only']
+        elif enable_speech_aliases:
             if scope not in reviewed or 'omnivoice' not in scope:
                 raise SystemExit('Install and provision OmniVoice before adding speech aliases.')
             selected = [*data['models'], *sorted({'tts-danish', 'tts-english'} - speech_aliases)]
@@ -153,6 +161,8 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
             target += sorted(speech_aliases - set(target))
         if target is not None and has_full_whisper and 'whisper' not in target:
             target = [*target, 'whisper']
+        if target is not None and has_local_only and 'local-only' not in target:
+            target = [*target, 'local-only']
         if target is not None and has_video and 'video' not in target:
             target = [*target, 'video']
         if target is not None:
@@ -178,6 +188,8 @@ def provision(enable_stt: bool = False, enable_whisper: bool = False, enable_pla
     # into a private file; never print credentials in deployment output.
     expected_models = (TTS_MODELS if enable_plapre else [*MODELS, 'embedding'] if enable_embedding
                        else [*MODELS, 'video'] if enable_video else OMNIVOICE_MODELS if enable_omnivoice else MODELS)
+    if enable_local_only:
+        expected_models = [*expected_models, 'local-only']
     if enable_full_whisper:
         expected_models = [*expected_models, 'whisper']
     code = '''
@@ -217,8 +229,10 @@ if __name__ == '__main__':
     parser.add_argument('--enable-omnivoice', action='store_true', help='Replace only the retired Plapre scope, preserving other reviewed model access.')
     parser.add_argument('--enable-plapre', action='store_true', help='Migrate the reviewed network key to include candidate Plapre TTS.')
     parser.add_argument('--enable-embedding', action='store_true', help='Add the local embedding alias to the reviewed network key.')
+    parser.add_argument('--enable-local-only', action='store_true', help='Add the managed private text alias to this key.')
     parser.add_argument('--enable-video', action='store_true', help='Add only the local video alias to the reviewed network key.')
     args = parser.parse_args()
     provision(enable_stt=args.enable_stt, enable_whisper=args.enable_whisper,
               enable_plapre=args.enable_plapre, enable_embedding=args.enable_embedding, enable_video=args.enable_video,
-              enable_full_whisper=args.enable_full_whisper, enable_omnivoice=args.enable_omnivoice, enable_speech_aliases=args.enable_speech_aliases)
+              enable_full_whisper=args.enable_full_whisper, enable_omnivoice=args.enable_omnivoice, enable_speech_aliases=args.enable_speech_aliases,
+              enable_local_only=args.enable_local_only)

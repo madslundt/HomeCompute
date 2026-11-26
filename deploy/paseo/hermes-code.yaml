@@ -1,0 +1,21 @@
+_config_version: 52
+model:
+  provider: custom
+  default: automation-moe
+  base_url: http://inference:18080/v1
+  api_mode: chat_completions
+  api_key: local
+  context_length: 65536
+platform_toolsets:
+  acp: [file-read, no_mcp]
+  local: [file-read, no_mcp]
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+security:
+  allow_lazy_installs: false
+kanban:
+  dispatch_in_gateway: false
+  notify_in_gateway: false
+model_catalog:
+  enabled: false

@@ -1,5 +1,79 @@
 # Hermes household owner agent
 
+## Hermes Conduit
+
+Conduit uses the existing authenticated Owner Webapp. Connect over
+`https://agents.home.arpa/hermes/` on the trusted Default LAN with the Home
+Core CA trusted on the device, or use `https://home-core.tail479ad.ts.net:18796`
+on the tailnet.
+
+The guest installer pins `conduit_push` to the reviewed upstream commit,
+downloads its source outside OpenShell and lets the native plugin installer
+scan it. The default `plan` is read-only. From the selected published checkout,
+run `./scripts/setup-hermes-conduit.sh apply` as the guest operator. It saves a
+local preimage and restarts the existing owner service after activation. The
+local preimage does not replace the off-host backup and restore procedure. If
+the owner explicitly defers the off-host backup for this install, use
+`apply --defer-backup` with fresh agents network readiness.
+The install makes no changes to device pairing or outbound firewall grants.
+Use `./scripts/setup-hermes-conduit.sh rollback` to disable the pinned plugin
+and restart the owner service while retaining the plugin's data.
+
+## Bighelp
+
+Bighelp uses the same authenticated Owner Webapp and is registered in Hermes
+as `loopdy`. From a published guest checkout, run
+`./scripts/setup-hermes-mobile-plugin.sh bighelp plan` before applying the
+pinned official release with `./scripts/setup-hermes-mobile-plugin.sh bighelp apply`.
+The backup deferral and rollback options match the Conduit procedure. Bighelp
+activation uses the native gateway restart while the sandbox stays running.
+The installer disables Bighelp host telemetry and verifies the saved setting.
+The installer leaves device pairing and network grants to their own lifecycles.
+
+## Desktop specialist bots
+
+On the existing authenticated owner connection, keep Hermes Owner for private
+Aula, Calendar, Daythread and Home Assistant work. Add two fresh profiles to
+mirror the everyday OpenBot roles. They have independent conversations and
+memory. OpenBot retains its own agent histories and routines.
+
+| Bot | Work | Model |
+| --- | --- | --- |
+| [Home Planner](bots/home-planner.md) | Danish household projects, shopping, maintenance and energy decisions | Local `automation-moe`, medium |
+| [Researcher](bots/researcher.md) | Public research, comparisons and primary-source review | `chatgpt-sol-latest`, high |
+
+The [source roster](../../config/hermes-desktop-bots.json) assigns model-only
+credentials. The only enabled tool is profile-local memory. Supply public
+excerpts for source analysis and keep private research context in the owner
+runtime. Live public source discovery requires a qualified public-only route.
+
+Use a clean, reviewed `origin/master` revision in the agents guest as
+`hermes-operator`. Inspect the plan first. Apply requires the current household
+network and off-host restore readiness records. From a clean published
+workstation checkout, provision the two model-only keys:
+
+```sh
+python3 scripts/provision-hermes-chatgpt-keys.py --desktop-bots
+```
+
+The provisioner verifies each model and MCP scope in LiteLLM. It delivers the
+keys directly to owner-only guest files named `desktop-home-planner` and
+`desktop-researcher` in `~/.config/homecompute-hermes/secrets/`.
+
+```sh
+python3 scripts/setup-hermes-desktop-bots.py --revision FULL_SHA
+python3 scripts/setup-hermes-desktop-bots.py --revision FULL_SHA --apply \
+  --expected-plan-sha256 REVIEWED_PLAN_SHA256
+```
+
+The installer uses native profile import from a fresh source-generated package.
+It preserves existing profiles and stops on conflicting or retired names. If
+an import is interrupted, inspect a fresh plan before retrying. Reconnect Hermes
+Desktop, open each bot under the owner gateway, confirm its model and try a
+synthetic brief. Verify a fresh chat sees only that bot's approved preferences
+and that private tools are unavailable. To retire a bot, hide it in Desktop and
+revoke its dedicated LiteLLM key. Retain the profile and its chat history.
+
 ## Owner chat specialists
 
 Use a fresh chat in the existing owner-only Hermes Mattermost DM or authenticated
@@ -234,6 +308,45 @@ gateways. Choose a profile in Hermes for each new conversation. To retire a
 profile, first stop using it and revoke its individual LiteLLM key; preserve its
 profile state for manual review rather than deleting sessions or memory.
 
+For a stateless profile with approved cloud data, use the scoped
+`hermes-assistant` key profile and qualify `agent-assistant` with the
+[managed routing runbook](../control-plane/agent-routing.md#enroll-a-consumer).
+
+### ChatGPT Sol as the existing Owner profile's default
+
+Apply this binding only after the owner approves that the default profile's
+prompts, included memories, and tool results can go to OpenAI through
+LiteLLM. The shared subscription gateway receives calls from the existing
+profile, including integrations that use its default. This keeps the same
+profile, sessions, tools, approvals, and memory. Use the existing scoped
+`chatgpt-sol` key through the named `homecompute-sol` provider so the portable
+local route on the same compatibility URL retains its own credential.
+Restore the local default before revoking the shared Sol credential.
+
+From a clean checkout of the published revision on the agents VM, use the
+native sandbox command as the existing operator:
+
+```sh
+nemohermes hermes-personal-v2 exec --stdin -- python3 - plan \
+  < deploy/hermes/set-owner-default-model.py
+nemohermes hermes-personal-v2 exec --stdin -- python3 - apply --expected SHA256 \
+  < deploy/hermes/set-owner-default-model.py
+```
+
+Use the `before` digest from the plan as `SHA256`. The operation records a
+private before-file in the profile for rollback. Verify a new conversation
+uses `chatgpt-sol-latest` with a synthetic prompt, check the Owner Webapp,
+and confirm the binding survives a supported restart when one is scheduled.
+Use the same invocation with `rollback` to restore the original local model
+and credential binding. Inspect the native profile settings if another edit
+changed either file after application.
+
+In the authenticated Webapp, open **Bots → Hermes Owner** after the backend
+connects. Existing conversations can retain their previous model. Open each
+of **Day Plan**, **Follow-through**, and **Home Ops** under **Sessions →
+Pinned** and select **ChatGPT Sol (latest)** in the composer if needed.
+Verify the alias after reopening each conversation.
+
 See [the dated runtime evidence](../../docs/hermes-runtime-validation-2026-11-06.md)
 for applied revisions, measured checks and remaining qualification gaps.
 
@@ -279,6 +392,29 @@ their guarded lifecycles:
 ```sh
 python3 scripts/setup-hermes-ha-api.py --revision FULL_SHA --rollback
 ```
+
+### Managed startup and the Owner Sol binding
+
+The [private consumer routing migration](../control-plane/private-consumer-routing.md#hermes)
+sets the enrolled owner sandbox to `local-only`. A new sandbox starts with the
+legacy local alias until the migration installer runs.
+
+The managed startup guard rejects raw Sol credentials in the root profile's
+`.env`. Keep the OpenShell-managed local credential for owner inference.
+The older raw-key Owner Sol apply procedure is suspended for this sandbox.
+
+For the diagnosed Conduit restart incident, keep the affected container
+stopped and plan with `scripts/recover-hermes-owner-sol-startup.py`. Apply its
+exact preimage digest to restore the prior local binding while preserving the
+other owner settings. The tool retains private copies of the prior files. Take
+a local whole-`/sandbox` archive of the stopped owner after the config repair.
+If OpenShell retains the exact terminal error, use the offline native-state
+procedure with `--owner-sol-startup-incident` on
+`scripts/recover-hermes-native-state.py`. Start the owner service through its
+usual lifecycle and verify authenticated Webapp chat. If the exact same
+recovered start is running and OpenShell retained the stale Docker exit
+condition, `--owner-sol-running-reconcile` returns the record to Starting.
+The driver and supervisor establish Ready after the gateway restarts.
 
 ## Release and policy
 

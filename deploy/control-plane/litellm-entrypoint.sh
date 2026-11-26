@@ -26,4 +26,5 @@ postgres_password="$(read_secret postgres_app_password)"
 export DATABASE_URL="postgresql://litellm:${postgres_password}@postgres:5432/litellm"
 unset postgres_password
 
-exec litellm --config "${LITELLM_CONFIG:-/etc/litellm/config.yaml}" --host 0.0.0.0 --port 4000
+export PYTHONPATH="/opt/homecompute${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -c 'from homecompute_routing import run; run()' --config "${LITELLM_CONFIG:-/etc/litellm/config.yaml}" --host 0.0.0.0 --port 4000 --num_workers 1

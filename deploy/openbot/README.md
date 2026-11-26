@@ -52,6 +52,10 @@ For personal text-only Sol chats on the existing team server, follow the
 
 ## Models and teams
 
+For the owner Hermes, Home Planner, Engineer and QA bindings, follow the
+[private consumer routing migration](../control-plane/private-consumer-routing.md#openbot).
+The legacy assignments below describe the existing compatibility routes.
+
 Use the existing OpenBot model providers at `https://llm.home.arpa/v1`.
 Leave their API key fields empty. If a client requires a value, enter `local`.
 Keep `automation-moe` for local agents and the existing ChatGPT alias assignments
@@ -71,8 +75,11 @@ their model API keys. Retain the provider IDs and model assignments. The
 subscription provider uses `chatgpt-sol-latest`, `chatgpt-terra-latest`,
 `chatgpt-luna-latest`, and `chatgpt-astra-latest`. Test a synthetic turn on
 `automation-moe` and on an explicitly selected subscription alias after the
-provider updates. The [agent setup guide](../../docs/openbot-agent-setup.md)
-covers roles and data boundaries.
+provider updates. To surface these aliases under the native **Hermes** provider,
+use the [Hermes picker reconciliation](../../docs/openbot-agent-setup.md#litellm-models-in-the-owner-hermes-picker).
+
+Use the [managed routing profiles](../control-plane/agent-routing.md#enroll-a-consumer)
+for an approved specialist whose model client can send a dedicated LiteLLM key.
 
 ## Ask the local Nod assistant
 
@@ -359,8 +366,8 @@ back with `restic dump`, and retain the snapshot ID, archive path, and hash in
 the private backup receipt. Remove the temporary plaintext archive after
 verification. A fresh full agents-VM backup with OpenBot data also qualifies.
 
-The guarded `personal-models` command also accepts the attended owner-only
-backup. The root-only receipt at
+The guarded `personal-models` and `hermes-models` commands also accept the
+attended owner-only backup. The root-only receipt at
 `/var/lib/homecompute/openbot-scoped/owner-backup.json` records `snapshot`,
 `path`, `sha256` and the UTC ISO-8601 value `verified_at` after checking the
 dumped archive. Use archive path

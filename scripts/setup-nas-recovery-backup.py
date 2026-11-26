@@ -17,11 +17,13 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 DEST = Path('/opt/homecompute/nas-recovery')
@@ -385,6 +387,69 @@ def restore_run(arguments: list[str], *, env: dict, timeout: int):
         raise
 
 
+@contextmanager
+def mounted_cold_archive(snapshot: str, archive: str, env: dict):
+    if (not re.fullmatch(r'[0-9a-f]{64}', snapshot) or
+            not re.fullmatch(r'homecompute-applications-[0-9]{8}T[0-9]{6}\.[0-9]{6}Z\.tar', archive)):
+        raise ValueError('exact cold snapshot and archive required')
+    repository = MOUNT / 'restic-homecompute-agent-recovery'
+    source = Path('/srv/backups/agent-recovery') / archive
+    safe(repository, directory=True)
+    safe(repository / 'config')
+    safe(SCRATCH, directory=True)
+    if any(stat.S_IMODE(path.stat().st_mode) != 0o700 for path in (repository, SCRATCH)):
+        raise ValueError('private cold repository and restore scratch required')
+    command = ['restic', '-r', str(repository), '--password-file', str(RESTIC_PASSWORD),
+               '--cache-dir', str(STATE / 'cache')]
+    snapshots = json.loads(run([*command, 'snapshots', '--json', snapshot], env=env, timeout=120).stdout)
+    if (len(snapshots) != 1 or snapshots[0].get('id') != snapshot or
+            snapshots[0].get('paths') != [str(source)] or
+            'cold-application-restore-drill' not in snapshots[0].get('tags', [])):
+        raise ValueError('selected snapshot does not contain the exact cold-archive backup')
+    parent = Path(tempfile.mkdtemp(prefix='.cold-restic-', dir=SCRATCH))
+    mountpoint = parent / 'source'
+    mountpoint.mkdir(mode=0o700)
+    mount_env = {**env, 'PATH': env['PATH'] + ':/run/wrappers/bin'}
+    process = None
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def interrupted(_signum, _frame):
+        raise InterruptedError('cold restore interrupted; closing its Restic view')
+
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        process = subprocess.Popen([*command, 'mount', '--path', str(source),
+                                    '--path-template', 'ids/%I', str(mountpoint)],
+                                   env=mount_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.monotonic() + 90
+        while not mountpoint.is_mount():
+            if process.poll() is not None or time.monotonic() >= deadline:
+                raise ValueError('read-only cold snapshot view unavailable')
+            time.sleep(1)
+        mount = run(['findmnt', '--mountpoint', str(mountpoint), '--noheadings', '--output', 'FSTYPE,OPTIONS'], env=env).stdout.split()
+        if len(mount) != 2 or mount[0] not in {'fuse', 'fuse.restic'} or 'ro' not in mount[1].split(','):
+            raise ValueError('exact read-only Restic mount required')
+        path = mountpoint / 'ids' / snapshot / source.relative_to('/')
+        if not path.resolve().is_relative_to(mountpoint):
+            raise ValueError('cold archive escaped its snapshot view')
+        safe(path, bounded=False)
+        yield path
+    finally:
+        mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM, signal.SIGINT})
+        try:
+            if mountpoint.is_mount():
+                run(['fusermount3', '-u', str(mountpoint)], env=mount_env, timeout=30)
+            if process is not None:
+                if process.poll() is None:
+                    process.terminate()
+                process.wait(timeout=30)
+            mountpoint.rmdir()
+            parent.rmdir()
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+            signal.pthread_sigmask(signal.SIG_SETMASK, mask)
+
+
 def operation(command: str, record: dict, args) -> dict:
     version = Path(record['version']); env = environment(record['qemu_bin'])
     nas = [PYTHON, '-I', str(version / 'scripts/nas-recovery-backup.py')]
@@ -406,6 +471,22 @@ def operation(command: str, record: dict, args) -> dict:
         if (STATE / 'last-backup.json').stat().st_mtime < started:
             raise ValueError('fresh completed NAS backup evidence required')
         return json.loads((STATE / 'last-backup.json').read_bytes())
+    if command == 'cold-backup':
+        if not args.acknowledge_pause or not args.revision:
+            raise ValueError('published revision and --acknowledge-pause required for a cold archive')
+        contents, _ = bundle(args.source); published(args.source, args.revision, contents)
+        busy()
+        source_recovery = [PYTHON, '-I', str(args.source / 'scripts/application-recovery.py')]
+        source_nas = [PYTHON, '-I', str(args.source / 'scripts/nas-recovery-backup.py')]
+        archive = args.archive
+        if not archive:
+            result = run([*source_recovery, 'prepare'], env=env, timeout=14400, check=False)
+            if result.returncode == 75:
+                raise SystemExit(75)
+            result.check_returncode()
+            archive = Path(json.loads(result.stdout)['archive']).name
+        run([*source_nas, 'backup-application', '--archive', archive], env=env, timeout=7500)
+        return json.loads((STATE / 'last-cold-application-backup.json').read_bytes())
     if command == 'restore-verify':
         if not args.snapshot or not args.archive or not args.target:
             raise ValueError('restore needs exact snapshot, archive and new scratch target')
@@ -417,16 +498,26 @@ def operation(command: str, record: dict, args) -> dict:
             source_revision = args.revision
         # Bulk scratch writes share the disk with live VM roots. Idle priority
         # alone is insufficient on schedulers that do not honor that hint.
-        result = json.loads(restore_run([*nas, 'restore-application', '--snapshot', args.snapshot, '--archive', args.archive,
-                                '--target', str(args.target)], env=env, timeout=14400).stdout)
         application = args.target.with_name(args.target.name + '-application')
-        proof = json.loads(restore_run([*source_recovery, 'verify', result['restored_archive'], str(application)],
-                              env=env, timeout=14400).stdout)
+        mounted = getattr(args, 'mount_archive', False)
+        if mounted:
+            if not source_revision:
+                raise ValueError('a published revision is required for a read-only archive restore')
+            with mounted_cold_archive(args.snapshot, args.archive, env) as archive_path:
+                proof = json.loads(restore_run([*source_recovery, 'verify', str(archive_path), str(application)],
+                                               env=env, timeout=14400).stdout)
+        else:
+            result = json.loads(restore_run([*nas, 'restore-application', '--snapshot', args.snapshot,
+                                            '--archive', args.archive, '--target', str(args.target)],
+                                           env=env, timeout=14400).stdout)
+            proof = json.loads(restore_run([*source_recovery, 'verify', result['restored_archive'], str(application)],
+                                           env=env, timeout=14400).stdout)
         manifest = application / 'manifest.json'; safe(manifest)
         output = {'snapshot': args.snapshot, 'archive': args.archive, 'verification': proof,
                   'restore_directory': str(application.resolve()), 'restored_archive_reused': False,
                   'manifest_sha256': hashlib.sha256(manifest.read_bytes()).hexdigest()}
         if source_revision: output['source_revision'] = source_revision
+        if mounted: output['archive_read_from'] = 'read-only-synology-restic-mount'
         write(STATE / 'last-application-verification.json', json.dumps(output).encode(), 0o600); return output
     if command == 'verify-extracted':
         if not args.snapshot or not args.archive or not args.target or not args.restored_archive or not args.revision:
@@ -523,11 +614,12 @@ def retire(record: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', nargs='?', default='plan', choices=('plan', 'apply', 'status', 'initialize', 'proof', 'check', 'backup-now', 'restore-verify', 'verify-extracted', 'enable-schedule', 'resume', 'rollback', 'retire'))
+    parser.add_argument('command', nargs='?', default='plan', choices=('plan', 'apply', 'status', 'initialize', 'proof', 'check', 'backup-now', 'cold-backup', 'restore-verify', 'verify-extracted', 'enable-schedule', 'resume', 'rollback', 'retire'))
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--revision'); parser.add_argument('--expected-hash'); parser.add_argument('--acknowledge-pause', action='store_true')
     parser.add_argument('--snapshot'); parser.add_argument('--archive'); parser.add_argument('--target', type=Path)
     parser.add_argument('--restored-archive', type=Path)
+    parser.add_argument('--mount-archive', action='store_true')
     args = parser.parse_args()
     if args.command == 'plan':
         _, digest = bundle(args.source); result = {'bundle_hash': digest, 'files': list(FILES), 'applied': False}

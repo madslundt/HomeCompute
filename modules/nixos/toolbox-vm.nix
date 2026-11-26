@@ -62,7 +62,7 @@ in {
   };
   config = lib.mkIf cfg.enable {
     assertions = [
-      { assertion = config.homecompute.nasRecoveryBackup.enable && config.homecompute.nasRecoveryBackup.includeApplicationState; message = "toolbox VM requires off-host NAS application-state recovery coverage"; }
+      { assertion = config.homecompute.nasRecoveryBackup.enable; message = "toolbox VM requires the operator-declared NAS recovery schedule to remain enabled"; }
       { assertion = cfg.sshKeys != []; message = "toolbox VM requires an operator SSH key"; }
       { assertion = lib.hasPrefix "https://cloud-images.ubuntu.com/" cfg.image.url; message = "toolbox image must use official Ubuntu HTTPS"; }
       { assertion = builtins.match "sha256-[A-Za-z0-9+/]{43}=" cfg.image.hash != null; message = "toolbox image must be SHA-256 pinned"; }

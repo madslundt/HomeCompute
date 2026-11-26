@@ -5,6 +5,9 @@ bundled Bun runtime and the deployed agent CA bundle. The request is a
 credential-free GET to the private LiteLLM model-list endpoint. A dedicated
 SSH key stays on Home Core. Its guest authorization accepts only the fixed
 probe from the Home Core bridge address, with SSH forwarding disabled.
+The installer obtains the agents VM's Ed25519 host key over the authenticated
+operator SSH connection. The monitor verifies that key against its dedicated
+root-only `probe_known_hosts` file. An unexpected pin change stops installation.
 
 A failed check opens an incident and sends one push-enabled alert to the
 owner's Home Assistant Inbox using the existing Inbox webhook secret.
@@ -36,6 +39,14 @@ schedules and latest service results on Home Core:
 systemctl list-timers homecompute-openbot-tls-monitor.timer homecompute-caddy-ca-backup.timer
 journalctl -u homecompute-openbot-tls-monitor.service -u homecompute-caddy-ca-backup.service -n 30
 ```
+
+For a monitor-only release, use
+`./scripts/setup-certificate-maintenance.sh deploy-monitor` from the clean
+published checkout. It stages a separate monitor release on Home Core,
+verifies the guest probe, and enables only the OpenBot timer. Compare the
+timer's `LastTriggerUSec` with the service's `ExecMainStartTimestamp`,
+`Result`, and journal after the next hourly tick. The scheduled service
+logs `OpenBot HTTPS check: https-ok` when TLS verification succeeds.
 
 For recovery, select a verified `homecompute-caddy-ca` snapshot and restore the
 four files to a new root-only scratch directory. Verify their ownership,

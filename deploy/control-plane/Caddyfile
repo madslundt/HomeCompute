@@ -128,30 +128,14 @@ nod.home.arpa {
 	respond "Forbidden" 403
 }
 
-t3code.home.arpa {
+paseo.home.arpa {
 	tls internal
 	@private remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
 	handle @private {
-		reverse_proxy t3code:3773
+		header Referrer-Policy no-referrer
+		reverse_proxy paseo:6767
 	}
 	respond "Forbidden" 403
-}
-
-orca.home.arpa {
-	tls internal
-	@private {
-		remote_ip 192.168.30.0/24 192.168.10.0/24 100.64.0.0/10
-		expression `!header({'Origin': '*'}) || header({'Origin': 'https://orca.home.arpa'})`
-	}
-	handle @private {
-		header {
-			Referrer-Policy no-referrer
-			Cache-Control no-store
-		}
-		# Orca serves the real client at / and upgrades its RPC socket here.
-		reverse_proxy 172.28.219.3:6768
-	}
-	respond 403
 }
 
 paperclip.home.arpa {
@@ -213,13 +197,9 @@ http://:8080 {
 	handle @nod {
 		redir https://nod.home.arpa{uri} 308
 	}
-	@t3code host t3code.home.arpa
-	handle @t3code {
-		redir https://t3code.home.arpa{uri} 308
-	}
-	@orca host orca.home.arpa
-	handle @orca {
-		redir https://orca.home.arpa{uri} 308
+	@paseo host paseo.home.arpa
+	handle @paseo {
+		redir https://paseo.home.arpa{uri} 308
 	}
 	@paperclip host paperclip.home.arpa
 	handle @paperclip {

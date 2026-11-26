@@ -7,19 +7,27 @@ readonly BASE=/opt/homecompute/certificate-maintenance
 readonly STATE=/var/lib/homecompute/certificate-maintenance
 readonly ATTACHED=/etc/systemd/system.attached
 readonly KEY_COMMENT=homecompute-openbot-tls-monitor
-readonly CORE_UNITS=(homecompute-openbot-tls-monitor homecompute-caddy-ca-backup)
-readonly FILES=(scripts/certificate-maintenance.py scripts/nas-recovery-backup.py
+readonly MONITOR=homecompute-openbot-tls-monitor
+readonly BACKUP=homecompute-caddy-ca-backup
+readonly MONITOR_FILES=(scripts/certificate-maintenance.py
   deploy/certificate-maintenance/homecompute-openbot-tls-monitor.service
-  deploy/certificate-maintenance/homecompute-openbot-tls-monitor.timer
+  deploy/certificate-maintenance/homecompute-openbot-tls-monitor.timer)
+readonly BACKUP_FILES=(scripts/certificate-maintenance.py scripts/nas-recovery-backup.py
   deploy/certificate-maintenance/homecompute-caddy-ca-backup.service
   deploy/certificate-maintenance/homecompute-caddy-ca-backup.timer)
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 managed_link() {
-  local target="$1" link="$2"
+  local target="$1" link="$2" legacy="${3:-}" previous next
   if [[ -L "$link" ]]; then
-    [[ "$(readlink "$link")" == "$target" ]] || { echo "Unexpected link: $link" >&2; return 1; }
+    previous="$(readlink "$link")"
+    [[ "$previous" != "$target" ]] || return 0
+    [[ "$previous" == "$legacy" ]] || { echo "Unexpected link: $link" >&2; return 1; }
+    next="$(mktemp -d "$(dirname -- "$link")/.certificate-maintenance.XXXXXX")"
+    ln -s -- "$target" "$next/link"
+    mv -Tf -- "$next/link" "$link"
+    rmdir -- "$next"
   else
     [[ ! -e "$link" ]] || { echo "Unmanaged path: $link" >&2; return 1; }
     ln -s -- "$target" "$link"
@@ -35,11 +43,6 @@ install_release() {
     [[ ! -L "$path" ]] || { echo "Unsafe release directory: $path" >&2; return 1; }
     install -d -m 0755 -o root -g root -- "$path"
   done
-  if [[ -L "$BASE/current" ]]; then
-    [[ "$(readlink "$BASE/current")" =~ ^"$BASE"/releases/[a-f0-9]{40}$ ]] || return 1
-  else
-    [[ ! -e "$BASE/current" ]] || return 1
-  fi
   for file in "$@"; do
     [[ ! -L "$release/$file" ]] || return 1
     if [[ -e "$release/$file" ]]; then
@@ -48,22 +51,43 @@ install_release() {
       install -D -m 0444 -o root -g root -- "$source_dir/$file" "$release/$file"
     fi
   done
-  local next
+}
+
+select_release() {
+  local revision="$1" release="$BASE/releases/$1" pointer="$BASE/$2" next
+  [[ "$revision" =~ ^[a-f0-9]{40}$ && "$EUID" == 0 && -d "$release" && ! -L "$release" ]] || return 1
+  if [[ -L "$pointer" ]]; then
+    [[ "$(readlink "$pointer")" =~ ^"$BASE"/releases/[a-f0-9]{40}$ ]] || return 1
+  else
+    [[ ! -e "$pointer" ]] || return 1
+  fi
   next="$(mktemp -d "$BASE/.current.XXXXXX")"
   ln -s -- "$release" "$next/link"
-  mv -Tf -- "$next/link" "$BASE/current"
+  mv -Tf -- "$next/link" "$pointer"
   rmdir -- "$next"
 }
 
-prepare_core() {
+prepare_monitor() {
   [[ "$(hostname -s)" == home-core && "$EUID" == 0 ]] || return 1
-  install_release "$1" "${FILES[@]}"
-  [[ ! -L "$STATE" && ! -L "$STATE/probe-key" ]] || return 1
+  local revision="$1" host_key="$2" pin="$STATE/probe_known_hosts" expected
+  [[ "$host_key" =~ ^[A-Za-z0-9+/]{68}$ && ! -L "$STATE" &&
+     ! -L "$STATE/probe-key" && ! -L "$pin" ]] || return 1
   install -d -m 0700 -o root -g root -- "$STATE"
+  expected="10.77.20.2 ssh-ed25519 $host_key"
+  if [[ -e "$pin" ]]; then
+    if [[ ! -f "$pin" || "$(stat -c '%u:%a:%h' "$pin")" != 0:600:1 ]] ||
+       ! cmp -s "$pin" <(printf '%s\n' "$expected"); then
+      echo 'Existing OpenBot monitor host pin differs. Verify the guest key before rotating the pin.' >&2
+      return 1
+    fi
+  else
+    ( set -o noclobber; printf '%s\n' "$expected" >"$pin" )
+  fi
   if [[ ! -e "$STATE/probe-key" ]]; then
     ssh-keygen -q -t ed25519 -N '' -C "$KEY_COMMENT" -f "$STATE/probe-key"
   fi
   [[ "$(stat -c '%u:%a:%h' "$STATE/probe-key")" == 0:600:1 ]] || return 1
+  install_release "$revision" "${MONITOR_FILES[@]}"
   ssh-keygen -y -f "$STATE/probe-key"
 }
 
@@ -106,35 +130,32 @@ try:
 finally:
     candidate.unlink(missing_ok=True)
 PY
+  select_release "$revision" current
 }
 
-activate_core() {
+activate_timer() {
   [[ "$(hostname -s)" == home-core && "$EUID" == 0 ]] || return 1
-  [[ "$(readlink "$BASE/current")" == "$BASE/releases/$1" ]] || return 1
-  python3 -I "$BASE/current/scripts/certificate-maintenance.py" check-recipient
-  local name unit fragment
-  local unit_directory="$BASE/current/deploy/certificate-maintenance"
+  local name="$1" pointer="$2" unit fragment
+  local unit_directory="$BASE/$pointer/deploy/certificate-maintenance" legacy=
+  if [[ "$name" == "$MONITOR" ]]; then
+    legacy="$BASE/current/deploy/certificate-maintenance"
+  fi
   mkdir -p -- "$ATTACHED/timers.target.wants"
-  for name in "${CORE_UNITS[@]}"; do
-    for unit in "$name.service" "$name.timer"; do
-      managed_link "$unit_directory/$unit" "$ATTACHED/$unit"
-    done
-    managed_link "$ATTACHED/$name.timer" "$ATTACHED/timers.target.wants/$name.timer"
+  systemd-analyze verify "$unit_directory/$name.timer" "$unit_directory/$name.service"
+  for unit in "$name.service" "$name.timer"; do
+    managed_link "$unit_directory/$unit" "$ATTACHED/$unit" "${legacy:+$legacy/$unit}"
   done
-  systemd-analyze verify "$ATTACHED/homecompute-openbot-tls-monitor.timer" \
-    "$ATTACHED/homecompute-openbot-tls-monitor.service" "$ATTACHED/homecompute-caddy-ca-backup.timer" \
-    "$ATTACHED/homecompute-caddy-ca-backup.service"
+  managed_link "$ATTACHED/$name.timer" "$ATTACHED/timers.target.wants/$name.timer"
   systemctl daemon-reload
-  for name in "${CORE_UNITS[@]}"; do
-    fragment="$(systemctl show -p FragmentPath --value "$name.timer")"
-    [[ "$(readlink -f "$fragment")" == "$(readlink -f "$ATTACHED/$name.timer")" ]] || return 1
-    systemctl start "$name.timer"
+  for unit in "$name.service" "$name.timer"; do
+    fragment="$(systemctl show -p FragmentPath --value "$unit")"
+    [[ "$(readlink -f "$fragment")" == "$(readlink -f "$ATTACHED/$unit")" ]] || return 1
   done
-  systemctl start --no-block homecompute-openbot-tls-monitor.service homecompute-caddy-ca-backup.service
+  systemctl start "$name.timer"
 }
 
 deploy() {
-  local revision published public
+  local mode="$1" revision published host_key public
   revision="$(git -C "$source_dir" rev-parse HEAD)"
   published="$(git -C "$source_dir" ls-remote --exit-code origin refs/heads/master | cut -f1)"
   [[ "$revision" =~ ^[a-f0-9]{40}$ && "$revision" == "$published" &&
@@ -142,23 +163,44 @@ deploy() {
     { echo 'Use a clean checkout of the published origin/master revision.' >&2; return 1; }
   local -a core=(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 home-core)
   local -a guest=(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5
+    -o HostKeyAlgorithms=ssh-ed25519 -o UpdateHostKeys=no
     -J home-core -o IdentitiesOnly=yes -i "${OPENBOT_GUEST_SSH_KEY:-$HOME/.ssh/id_ed25519_ai-services-01}"
     hermes-operator@10.77.20.2)
   local stage='set -euo pipefail; stage=$(mktemp -d); trap "rm -rf -- $stage" EXIT; tar -xf - -C "$stage"; bash "$stage/scripts/setup-certificate-maintenance.sh"'
-  public="$(git -C "$source_dir" archive "$revision" scripts/setup-certificate-maintenance.sh "${FILES[@]}" |
-    "${core[@]}" "sudo -n bash -c '$stage prepare-core $revision'")"
+  host_key="$("${guest[@]}" "awk 'NR == 1 && \$1 == \"ssh-ed25519\" {print \$2}' /etc/ssh/ssh_host_ed25519_key.pub")"
+  [[ "$host_key" =~ ^[A-Za-z0-9+/]{68}$ ]] || return 1
+  public="$(git -C "$source_dir" archive "$revision" scripts/setup-certificate-maintenance.sh "${MONITOR_FILES[@]}" |
+    "${core[@]}" "sudo -n bash -c '$stage prepare-monitor $revision $host_key'")"
   read -r key_type key_data _ <<< "$public"
   [[ "$key_type" == ssh-ed25519 && "$key_data" =~ ^[A-Za-z0-9+/]{68}$ ]] || return 1
   git -C "$source_dir" archive "$revision" scripts/setup-certificate-maintenance.sh scripts/certificate-maintenance.py |
     "${guest[@]}" "sudo -n bash -c '$stage install-guest $revision \"ssh-ed25519 $key_data\"'"
   git -C "$source_dir" archive "$revision" scripts/setup-certificate-maintenance.sh |
-    "${core[@]}" "sudo -n bash -c '$stage activate-core $revision'"
+    "${core[@]}" "sudo -n bash -c '$stage activate-monitor $revision'"
+  if [[ "$mode" == deploy ]]; then
+    git -C "$source_dir" archive "$revision" scripts/setup-certificate-maintenance.sh "${BACKUP_FILES[@]}" |
+      "${core[@]}" "sudo -n bash -c '$stage activate-all $revision'"
+  fi
 }
 
 case "${1:-}" in
-  deploy) [[ $# == 1 ]]; deploy ;;
-  prepare-core) [[ $# == 2 ]]; prepare_core "$2" ;;
+  deploy|deploy-monitor) [[ $# == 1 ]]; deploy "$1" ;;
+  prepare-monitor) [[ $# == 3 ]]; prepare_monitor "$2" "$3" ;;
   install-guest) [[ $# == 3 ]]; install_guest "$2" "$3" ;;
-  activate-core) [[ $# == 2 ]]; activate_core "$2" ;;
-  *) echo "Usage: $0 deploy" >&2; exit 2 ;;
+  activate-monitor)
+    [[ $# == 2 && "$(hostname -s)" == home-core && "$EUID" == 0 &&
+       "$2" =~ ^[a-f0-9]{40}$ ]]
+    python3 -I "$BASE/releases/$2/scripts/certificate-maintenance.py" check-probe
+    select_release "$2" monitor-current
+    activate_timer "$MONITOR" monitor-current
+    ;;
+  activate-all)
+    [[ $# == 2 && "$(hostname -s)" == home-core && "$EUID" == 0 ]]
+    python3 -I "$BASE/monitor-current/scripts/certificate-maintenance.py" check-recipient
+    install_release "$2" "${BACKUP_FILES[@]}"
+    select_release "$2" current
+    activate_timer "$BACKUP" current
+    systemctl start --no-block "$MONITOR.service" "$BACKUP.service"
+    ;;
+  *) echo "Usage: $0 deploy|deploy-monitor" >&2; exit 2 ;;
 esac

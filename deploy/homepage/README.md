@@ -20,9 +20,10 @@ validation.
 The local operator links derive their hostname from the URL used to open
 Homepage. `config/custom.js` supplies this behavior because a normal relative
 URL cannot replace the current URL's port. Caddy serves n8n, Hermes, the AI
-gateway, Daythread, and Open WebUI at their HTTPS `home.arpa` names. Homepage
-links to LiteLLM's health endpoint; its token usage dashboard and the Model
-Manager application are no longer hosted.
+gateway, Daythread, and Open WebUI at their HTTPS `home.arpa` names. The
+**LiteLLM Models** card opens LiteLLM's signed-in AI Hub, with one entry per
+model alias. Use **Models + Endpoints** in LiteLLM to inspect individual
+provider deployments.
 Daythread uses `https://daythread.home.arpa/` and the existing
 `omi-local-backend-1:8787` container on the private control-plane clients network.
 Its private Tailscale URL is `https://home-core.tail479ad.ts.net:18787/`.
@@ -51,11 +52,9 @@ Homepage container, Docker network, credentials, or host filesystem. See the
 The **Paperclip** card opens `https://paperclip.home.arpa/`. Paperclip uses its
 own login. See the [Paperclip runbook](../paperclip/README.md) for setup and access.
 
-The **Orca** card opens `https://orca.home.arpa/` on the private gateway.
-See the [Orca runbook](../orca/README.md) for desktop, web and mobile pairing.
-
-The **T3 Code** card opens `https://t3code.home.arpa/` through the private gateway.
-For first-time pairing, see the [T3 Code runbook](../t3code/README.md).
+The **Paseo** card opens `https://paseo.home.arpa/` over the approved LAN or
+the existing Tailscale `home.arpa` split-DNS route. See the
+[Paseo runbook](../paseo/README.md) for first-time access.
 
 The **Nod** card opens `https://nod.home.arpa/` over the LAN or Tailscale
 split DNS. Nod uses its own owner token. See the [Nod runbook](../nod/README.md)
@@ -118,26 +117,6 @@ sudo docker compose --env-file /etc/homecompute/homepage.env \
 
 The normal `scripts/deploy-home-core.sh` release deployment also validates,
 pulls, and reconciles this project.
-
-### Apply the T3 Code card independently
-
-When Homepage runs from a scoped release, use the card installer from a clean,
-published release on Home Core after verifying the private T3 Code route. Review
-the reported configuration hashes before applying the card.
-
-```sh
-sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-t3code-homepage.py
-sudo python3 /srv/homecompute/releases/FULL_SHA/scripts/setup-t3code-homepage.py \
-  --apply --expected-before-sha256 REVIEWED_BEFORE_SHA256
-```
-
-The installer overlays only the services list, checks the Homepage API, and
-restores the prior Compose configuration if verification fails. Its receipt
-in `/var/lib/homecompute/t3code-homepage/FULL_SHA/receipt.json` records the previous
-Compose files. To roll back, pass those files in the recorded order to
-`docker compose --env-file /etc/homecompute/homepage.env`, then run
-`up -d --no-deps --pull never --wait homepage`. The next full Home Core release
-uses the tracked card directly.
 
 ## Agent dashboards
 

@@ -126,7 +126,6 @@ def restored_input(target: Path, snapshot: str, archive: str) -> str:
             not re.fullmatch(r'homecompute-applications-[0-9]{8}T[0-9]{6}\.[0-9]{6}Z\.tar', archive) or
             receipt.get('snapshot') != snapshot or receipt.get('archive') != archive or
             receipt.get('verification', {}).get('gzip_dumps_checked') != 4 or
-            receipt.get('verification', {}).get('qcow2_disks_checked') != 3 or
             receipt.get('verification', {}).get('sqlite_integrity') != 'ok'):
         raise VerificationError('matching-archive-verification-required')
     # Safe incidental relative links are allowed by archive extraction. Engine
@@ -143,8 +142,25 @@ def restored_input(target: Path, snapshot: str, archive: str) -> str:
                     raise VerificationError('external-restored-symlink-requires-review')
     manifest_path = target / 'manifest.json'; engine_input(manifest_path, target)
     manifest = json.loads(manifest_path.read_bytes())
-    if manifest.get('postgres') != sorted(PG_SCOPES) or manifest.get('vms') != sorted(VM_DISKS):
+    legacy_vms = sorted(VM_DISKS)
+    current_vms = [*legacy_vms, 'toolbox-vm']
+    archived_vms = manifest.get('vms')
+    if manifest.get('postgres') != sorted(PG_SCOPES) or archived_vms not in (legacy_vms, current_vms):
         raise VerificationError('manifest-scope-mismatch')
+    includes_toolbox = archived_vms == current_vms
+    expected_disks = sum(map(len, VM_DISKS.values())) + int(includes_toolbox)
+    verification = receipt['verification']
+    if (verification.get('qcow2_disks_checked') != expected_disks or
+            includes_toolbox and verification.get('toolbox_seed_verified') is not True):
+        raise VerificationError('archive-disk-verification-required')
+    if includes_toolbox:
+        toolbox_seed = target / 'state/toolbox-vm/seed.iso'
+        engine_input(toolbox_seed, target)
+        toolbox = manifest.get('toolbox_seed', {})
+        if (toolbox_seed.stat().st_size > 32 * 1024**2 or
+                toolbox.get('archive_path') != 'state/toolbox-vm/seed.iso' or
+                hashlib.sha256(toolbox_seed.read_bytes()).hexdigest() != toolbox.get('sha256')):
+            raise VerificationError('archived-toolbox-seed-mismatch')
     seed = target / 'state/agents-vm/seed.iso'; engine_input(seed, target)
     recorded = manifest.get('agents_seed', {})
     if (seed.stat().st_size > 32 * 1024**2 or recorded.get('archive_path') != 'state/agents-vm/seed.iso' or

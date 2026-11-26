@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 
 
+ROUTES_FILE = Path(__file__).resolve().parents[1] / 'config/capability-routes.json'
 KEY_FILE = Path('/srv/state/control-plane/caddy-data/lan-catalog-key')
 CONTAINER = 'homecompute-control-plane-litellm-1'
 OWNER = 'lan-catalog-inference'
@@ -101,10 +102,16 @@ def read_key(path):
     return key
 
 
+def allowed_catalog(models):
+    policy = json.loads(ROUTES_FILE.read_text(encoding='utf-8'))['agent_routing']
+    cloud_routes = {alias for alias, route in policy['routes'].items() if route['privacy'] == 'cloud_allowed'}
+    return models - cloud_routes
+
+
 def provision():
     if os.geteuid() != 0:
         raise RuntimeError('Run as root on home-core.')
-    models = list_models()
+    models = allowed_catalog(list_models())
     key = read_key(KEY_FILE)
     pending = KEY_FILE.with_name('.lan-catalog-key.pending')
     creating = key is None

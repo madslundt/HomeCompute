@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!hermes-code-review.py
+!hermes-code-review.patch
+!read-github-backlog.py
+!projects.json
+!codex-local-models.json
+!register-projects.py

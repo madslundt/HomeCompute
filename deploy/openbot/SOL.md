@@ -3,7 +3,10 @@
 Create **Sol Orchestrator** on the existing OpenBot team server. Its custom ACP
 provider sends approved text to HomeCompute's `chatgpt-sol-latest` alias at
 Medium effort. Sol can request one local Hermes memory lookup per message.
-The adapter uses the existing HTTPS gateway with certificate verification. It
+The adapter uses the existing private HTTPS gateway with certificate
+verification and OpenBot's model-only credential. The authenticated route can
+answer when Spark's keyless intake check is unavailable. The adapter filters
+out OpenBot's tool registrations and context. It
 rejects attachments, teammate messages, routines, and conversation handoffs.
 OpenBot 0.73.0 prepends memory and instructions in separate blocks. The adapter
 drops those blocks and accepts one direct user text block. OpenBot tools,
@@ -21,12 +24,18 @@ From a clean checkout of the reviewed, published `origin/master` revision:
 ./scripts/setup-openbot-guest.sh prepare-sol-acp
 ```
 
+If the guest has no model-only credential, provision it using
+`python3 scripts/provision-openbot-chatgpt-key.py` first. The installer keeps a
+mode-0600 copy in the owner container's private data, outside Git and outside
+the agent workspace. The credential permits the existing ChatGPT subscription
+aliases and denies MCP access. Rerun the installer after rotating it.
+
 The command verifies the running team container's data mount and installs the
 reviewed adapter under a content-addressed path in that mount. It prints the
 arguments for a Python launcher that verifies the exact source bytes at every
 start. It leaves the VM and OpenBot service running.
 
-In **Mads home-core → Providers → Custom agents**, create this provider:
+In **Mads home-core → Providers → Custom agents**, configure this provider:
 
 | Field | Value |
 | --- | --- |

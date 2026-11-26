@@ -69,6 +69,23 @@ The archived workflow, Email analyzer, and search sub-workflow retain their
 previous unpublished state. Outlook/webhook integrations may require updated
 callback URLs if enabled later; a Tailscale-only URL is not public webhook ingress.
 
+## Scoped n8n image updates
+
+The production service reads both Compose files and both environment files in
+the running container's recorded order. The operator can stage a plan using
+`scripts/prepare-docker-maintenance.py` with a repeated `--environment` option.
+Pass `/etc/homecompute/automation.env` first and the resolved root-owned SOPS
+file second. The plan hashes both files and the rendered configuration without
+printing the webhook ID. Register and review the exact plan before approving
+it. The scoped update recreates only n8n, so the two workflow MCP sidecars keep
+running.
+
+For the 2.48.8 upgrade, review the SQLite migrations and confirm that no
+workflows are executing before recreating n8n. The public-app migration is
+irreversible and converts public apps to project visibility. After migration,
+an image-only rollback cannot restore the previous schema. Verify readiness
+and authenticated MCP tool discovery without executing a workflow.
+
 ## Rollback
 
 ### Telegram is outbound-only

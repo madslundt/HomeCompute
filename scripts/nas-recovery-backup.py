@@ -23,6 +23,7 @@ PASSWORD = Path("/run/secrets/restic/password")
 REPOSITORY = MOUNT / "restic-homecompute-agent-recovery"
 CONFIG = Path("/etc/homecompute/nas-recovery-backup.json")
 RESTORE_ROOT = Path("/srv/restore-tests")
+APPLICATION_ARCHIVE = r"homecompute-applications-[0-9]{8}T[0-9]{6}\.[0-9]{6}Z\.tar"
 
 
 def configuration(value: dict) -> dict:
@@ -116,16 +117,33 @@ def initialize() -> None:
     print("Encrypted repository initialized using the existing SOPS-managed Restic password.")
 
 
+def snapshot_id(output: str) -> str:
+    summary = next((entry for line in output.splitlines() if (entry := json.loads(line)).get("message_type") == "summary"), {})
+    snapshot = summary.get("snapshot_id", "")
+    if not re.fullmatch(r"[0-9a-f]{64}", snapshot):
+        raise ValueError("Restic did not confirm a completed archive snapshot")
+    return snapshot
+
+
+def backup_application(archive: str) -> None:
+    if not re.fullmatch(APPLICATION_ARCHIVE, archive):
+        raise ValueError("an exact application recovery archive name is required")
+    root_directory(SOURCE)
+    source = SOURCE / archive
+    if source.is_symlink() or source.stat().st_nlink != 1:
+        raise ValueError("the completed application archive must be a private regular file")
+    private_file(source)
+    snapshot = snapshot_id(restic(["backup", "--json", "--tag", "cold-application-restore-drill", str(source)]))
+    record("last-cold-application-backup.json", {"snapshot": snapshot, "archive": archive})
+    print("Encrypted cold-application archive snapshot completed.")
+
+
 def backup() -> None:
     root_directory(SOURCE)
     if not any(path.is_file() and not path.name.endswith(".partial") for path in SOURCE.iterdir()):
         raise ValueError("no completed recovery archives are available")
     output = restic(["backup", "--json", "--tag", "agent-recovery-archives", "--exclude", "*.partial", str(SOURCE)])
-    summary = next((json.loads(line) for line in output.splitlines()
-                    if json.loads(line).get("message_type") == "summary"), None)
-    if not summary or not summary.get("snapshot_id"):
-        raise ValueError("Restic did not confirm a completed archive snapshot")
-    record("last-backup.json", {"snapshot": summary["snapshot_id"], "scope": str(SOURCE)})
+    record("last-backup.json", {"snapshot": snapshot_id(output), "scope": str(SOURCE)})
     print("Encrypted archive snapshot completed.")
 
 
@@ -183,7 +201,7 @@ def proof() -> None:
 def restore_application(snapshot: str, archive: str, target: Path) -> Path:
     if not re.fullmatch(r"[0-9a-f]{64}", snapshot):
         raise ValueError("an exact full snapshot ID is required")
-    if not re.fullmatch(r"homecompute-applications-[0-9]{8}T[0-9]{6}\.[0-9]{6}Z\.tar", archive):
+    if not re.fullmatch(APPLICATION_ARCHIVE, archive):
         raise ValueError("an exact application recovery archive name is required")
     root_directory(RESTORE_ROOT)
     if (not target.is_absolute() or target.parent.resolve() != RESTORE_ROOT.resolve()
@@ -201,7 +219,7 @@ def restore_application(snapshot: str, archive: str, target: Path) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("validate", "init", "backup", "scheduled", "proof", "check", "restore-application"))
+    parser.add_argument("command", choices=("validate", "init", "backup", "backup-application", "scheduled", "proof", "check", "restore-application"))
     parser.add_argument("--config", type=Path, default=CONFIG)
     parser.add_argument("--snapshot")
     parser.add_argument("--archive")
@@ -219,6 +237,10 @@ def main() -> None:
         initialize()
     elif args.command == "backup":
         backup()
+    elif args.command == "backup-application":
+        if not args.archive:
+            parser.error("backup-application requires --archive")
+        backup_application(args.archive)
     elif args.command == "scheduled":
         if not args.prepare_script:
             parser.error("scheduled requires --prepare-script")

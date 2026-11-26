@@ -84,6 +84,14 @@ class OpenBotAgentRosterTests(unittest.TestCase):
         self.assertEqual(researcher['backup_models'][0]['provider'], 'Hermes')
         self.assertEqual(researcher['backup_models'][0]['model'], 'automation-moe')
 
+    def test_owner_hermes_selects_sol_through_the_hermes_runtime(self):
+        owner = self.agents['hermes-pilot']
+        self.assertEqual(owner['server_id'], 'agent-f1f9627d-4479-4c4e-8b26-927e11f1c740')
+        self.assertEqual(owner['model'], {
+            'provider': 'Hermes', 'model': 'custom:homecompute-sol:chatgpt-sol-latest',
+            'reasoning_effort': 'high',
+        })
+
 
 if __name__ == '__main__':
     unittest.main()

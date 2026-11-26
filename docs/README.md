@@ -68,9 +68,11 @@ and other personal-agent services remain deferred.
 | Choose and benchmark models | [Benchmark harness](../benchmarks/README.md), [installation recommendation](research/llm-installation-recommendation.md), then the role-specific evaluations under [research](#research-and-model-evidence) |
 | Run the explicit Codex local trial | [Codex GB10 Local trial](codex-local-trial.md), [Codex compatibility](research/codex-compatibility.md), and verification tests V-CODEX-TRIAL-001/V-CODEX-E2E-001 |
 | Integrate other developer harnesses | [Agent harness operations](agent-harness-operations.md), [ADR-018](adr/018-multiple-developer-harnesses.md), and their verification tests |
+| Configure role aliases, retries, or model failover | [Managed LiteLLM routing](../deploy/control-plane/agent-routing.md) and [ADR-044](adr/044-managed-agent-routing.md) |
 | Use OpenCode remotely on Home Core | [OpenCode operations](../deploy/opencode/README.md) and [ADR-031](adr/031-opencode-home-core-web-service.md) |
 | Review OpenClaw and unattended Codex | [Discovery/workflow assessment](openclaw-discovery.md), [operations and architecture](openclaw-operations.md), [runtime evidence](openclaw-runtime-research.md), and [NemoClaw target](openclaw-nemoclaw.md) |
-| Set up Orca development teams and tools | [Orca operations](../deploy/orca/README.md), [Orca team setup](research/orca-team-setup-2026-11-21.md), and [AI team migration](ai-team-migration.md) |
+| Use Paseo with LiteLLM and personal GitHub Projects | [Paseo operations](../deploy/paseo/README.md) |
+| Retire the Orca pilot | [Orca retirement](operations/orca-retirement.md) |
 | Review OpenBot agents, model routes, and private-data boundary | [OpenBot agent setup](openbot-agent-setup.md), [OpenBot operations](../deploy/openbot/README.md), and [ADR-030](adr/030-openbot-team-server.md) |
 | Build a proactive assistant across Home Assistant, Daythread, Aula and Calendar | [Implementation plan](proactive-personal-assistant-plan.md), [context service runbook](../deploy/assistant-context/README.md), and [ADR-029](adr/029-proactive-assistant-context.md) |
 | Improve Atlas tasks, handoffs, schedules, reminders and follow-ups | [Updated implementation plan](openclaw-grok-bot-plan.md), [live audit (2026-11-03)](operations/openclaw-atlas-audit-2026-11-03.md), and [upgrade compatibility assessment](research/openclaw-upgrade-assessment-2026-11-03.md) |

@@ -8,6 +8,7 @@ import os
 import re
 import sqlite3
 import ssl
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from uuid import uuid4
 MODEL = "chatgpt-sol-latest"
 ENDPOINT = "https://llm.home.arpa/v1/chat/completions"
 CA_FILE = "/run/homecompute/home-core-root.crt"
+MODEL_KEY_FILE = Path("/data/.local/libexec/homecompute/sol-chatgpt-models-key")
 INSTRUCTIONS = (
     "You are a personal planning, reasoning, and drafting assistant. "
     "Use the text the user shares in this chat. State uncertainty clearly. "
@@ -89,6 +91,22 @@ class ContextRequest:
         ]
 
 
+def model_key():
+    descriptor = os.open(MODEL_KEY_FILE, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1):
+            raise ValueError("Sol model credential file is not private")
+        secret = handle.read(4097)
+    if len(secret) > 4096:
+        raise ValueError("Sol model credential is invalid")
+    value = secret.strip()
+    if not re.fullmatch(rb"sk-[A-Za-z0-9_-]{1,4093}", value):
+        raise ValueError("Sol model credential is invalid")
+    return value.decode("ascii")
+
+
 def infer(messages, *, allow_context=False):
     body = {
         "model": MODEL, "messages": messages, "reasoning_effort": "medium",
@@ -99,7 +117,7 @@ def infer(messages, *, allow_context=False):
     request = Request(
         ENDPOINT,
         data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {model_key()}"},
     )
     tls = ssl.create_default_context(cafile=CA_FILE)
     opener = build_opener(ProxyHandler({}), HTTPSHandler(context=tls), NoRedirect())

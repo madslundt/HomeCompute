@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline incident repair for the qualified OpenShell 0.0.116 owner sandbox.
 
-Only Error -> Stopped is permitted. Ready must be established by native start.
+Return the exact diagnosed record to Stopped or Starting. Only OpenShell establishes Ready.
 No identity, policy, credential, recreate journal or application data is replaced.
 """
 import argparse
@@ -20,6 +20,26 @@ ID = 'd90b7fc4-1506-4d12-b055-f0ab2aa4dcc7'
 NAME = 'hermes-personal-v23'
 CONTAINER = 'ba08f69f253d44bb5f8f16e1eceb329ea93b20a1d3b5cfcd3c5a22bdb89bd2f0'
 IMAGE = 'sha256:f15b60053b28b681efe555f89a6d170c7f7cd51036ed570b9951908c19f85311'
+POLICY_VERSION = 8
+TARGET_PHASE = 7
+EXPECTED_CONDITION = (b'MainProcessExited', b'Canonical main process exited')
+RUNNING_SINCE = None
+
+
+def select_owner_sol_incident(running=False):
+    global ID, NAME, CONTAINER, IMAGE, POLICY_VERSION, RUNNING_SINCE, TARGET_PHASE, EXPECTED_CONDITION
+    ID = '54d6e531-e2a2-4c62-b266-e14b7250430e'
+    NAME = 'hermes-personal-v2'
+    CONTAINER = '7234f2cf2085fa2eb8c6aa80f7521fad6f5435491f7166d5f73859114b39819d'
+    IMAGE = 'sha256:7bfb994f8c32a3722219ab7ab93c43d7d799a871c88c6c59b321f0c4acc22aa7'
+    POLICY_VERSION = 6
+    if running:
+        # A stale Docker exit event arrived immediately before the repaired
+        # owner started. The processes are running, but Error blocks live
+        # driver and supervisor observations from establishing readiness.
+        RUNNING_SINCE = '2026-11-24T21:17:01.969113956Z'
+        EXPECTED_CONDITION = (b'ContainerExited', b'Container exited')
+        TARGET_PHASE = 8
 
 
 def varint(data, offset):
@@ -73,13 +93,17 @@ def candidate(data):
         raise ValueError('original retained container identity differs')
     condition = list(fields(one(state, 5, 2)[2]))
     if [one(condition, n, 2)[2] for n in (1, 2, 3, 4)] != [
-            b'Ready', b'False', b'MainProcessExited', b'Canonical main process exited']:
+            b'Ready', b'False', *EXPECTED_CONDITION]:
         raise ValueError('not the diagnosed canonical-main startup failure')
     phase = one(state, 6, 0)
-    if phase[2] not in (3, 7) or phase[4] - phase[3] != 1 or one(state, 7, 0)[2] != 8:
+    if phase[2] not in (3, TARGET_PHASE) or phase[4] - phase[3] != 1 or one(state, 7, 0)[2] != POLICY_VERSION:
         raise ValueError('not the diagnosed terminal Error/Stopped state')
+    if NAME == 'hermes-personal-v2' and RUNNING_SINCE is None and one(state, 9, 0)[2] != 1:
+        raise ValueError('unexpected owner Sol incident exit code')
     offset = runtime[3] + phase[3]
-    after = data[:offset] + b'\x07' + data[offset + 1:]
+    if RUNNING_SINCE is not None and any(field == 9 for field, *_ in state):
+        raise ValueError('unexpected new canonical process exit during recovery')
+    after = data[:offset] + bytes([TARGET_PHASE]) + data[offset + 1:]
     assert len(after) == len(data)
     return after
 
@@ -97,6 +121,11 @@ def repair(backup, revision, apply=False):
     container = json.loads(command(['docker', 'inspect', CONTAINER]))[0]
     if container['Image'] != IMAGE or container['Name'] != '/openshell-default--' + NAME + '-' + ID:
         raise ValueError('qualified retained container required')
+    state = container['State']
+    if RUNNING_SINCE is None and state['Running']:
+        raise ValueError('stopped owner container required')
+    if RUNNING_SINCE is not None and (not state['Running'] or state['StartedAt'] != RUNNING_SINCE):
+        raise ValueError('the exact retained owner start must still be running')
     if any(p.is_symlink() for p in (backup, *backup.parents)) or backup.stat().st_mode & 0o077:
         raise ValueError('private whole-sandbox archive required')
     with tarfile.open(backup) as archive:
@@ -121,13 +150,14 @@ def repair(backup, revision, apply=False):
               'before_sha256': hashlib.sha256(before).hexdigest(),
               'after_sha256': hashlib.sha256(after).hexdigest(),
               'backup_sha256': backup_digest,
-              'applied': apply, 'already_stopped': before == after}
+              'applied': apply, 'already_stopped': TARGET_PHASE == 7 and before == after,
+              'target_phase': 'Stopped' if TARGET_PHASE == 7 else 'Starting'}
     if not apply:
         connection.close(); return report
     state = subprocess.run(['systemctl', '--user', 'is-active', 'nemoclaw-openshell-gateway.service'],
                            capture_output=True, timeout=10).stdout.strip()
-    if state != b'inactive' or container['State']['Running']:
-        raise ValueError('stop the selected gateway and retained container before offline repair')
+    if state != b'inactive':
+        raise ValueError('stop the selected gateway before offline repair')
     if before == after:
         connection.close(); return report
     directory = backup.parent / ('native-state-recovery-' + str(time.time_ns()))
@@ -160,7 +190,12 @@ def main():
     parser.add_argument('--backup', type=Path, required=True)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--apply', action='store_true')
+    incident = parser.add_mutually_exclusive_group()
+    incident.add_argument('--owner-sol-startup-incident', action='store_true')
+    incident.add_argument('--owner-sol-running-reconcile', action='store_true')
     args = parser.parse_args()
+    if args.owner_sol_startup_incident or args.owner_sol_running_reconcile:
+        select_owner_sol_incident(running=args.owner_sol_running_reconcile)
     spec = importlib.util.spec_from_file_location('native_publication', ROOT / 'scripts/setup-hermes-mcp.py')
     publication = importlib.util.module_from_spec(spec); spec.loader.exec_module(publication)
     publication.published(args.revision)

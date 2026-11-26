@@ -105,9 +105,12 @@ gateway supplies inference authorization on its private model routes.
 | `chatgpt-luna-latest` | ChatGPT Luna |
 | `chatgpt-astra-latest` | ChatGPT Astra |
 
-The catalog is available for deliberate selection. Keep the initial three
-agents on `automation-moe` and use ChatGPT for public or explicitly approved
-material. Keep the reviewed Hermes profile in its local runtime.
+The catalog is available for deliberate selection. Use ChatGPT for public
+or explicitly approved material. With the partner's approval to send Hermes
+prompts and included context to OpenAI, use the
+[existing Hermes model update](../../docs/openbot-agent-setup.md#chatgpt-sol-defaults-for-the-existing-hermes-agents)
+to select Sol while preserving her OpenBot agent identity. The embedded
+Hermes profile and its native memory remain available on the local route.
 
 ### Research agent
 

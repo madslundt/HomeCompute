@@ -14,7 +14,8 @@ DEPLOY = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(DEPLOY)
 SOURCE = (ROOT / DEPLOY.CONFIG).read_text()
 ASTRA = DEPLOY.subscription_entry(DEPLOY.MODEL_LIST.search(SOURCE)[0], "astra")[0]
-BASELINE = SOURCE.replace(ASTRA, "").replace("gpt-6.2-sol", "gpt-6.1-sol")
+SOL = DEPLOY.subscription_entry(DEPLOY.MODEL_LIST.search(SOURCE)[0], "sol")[0]
+BASELINE = SOURCE.replace(ASTRA, "").replace(SOL, SOL.replace("gpt-6.2-sol", "gpt-6.1-sol"))
 
 
 class ChatGPTConfigTests(unittest.TestCase):

@@ -84,6 +84,34 @@ class MattermostServiceTests(unittest.TestCase):
                          'https://retained.home.arpa')
         self.assertNotIn(password.strip(), (self.state / 'runtime.env').read_text())
 
+    def test_reconcile_image_pins_persists_only_verified_running_images(self):
+        self.initialize_as_test_user()
+        path = self.state / 'runtime.env'
+        desired = '# retained note\n' + path.read_text()
+        expected = {key: setup.DEFAULTS[key] for key in ('CADDY_IMAGE', 'POSTGRES_IMAGE')}
+        old = desired
+        for key, former in {'CADDY_IMAGE': 'caddy:2.11.7-alpine',
+                            'POSTGRES_IMAGE': 'postgres:16.15-alpine'}.items():
+            old = old.replace(f'{key}={expected[key]}', f'{key}={former}@sha256:' + '0' * 64)
+        path.write_text(old)
+
+        images = iter((f"{expected['CADDY_IMAGE']} healthy", 'not the published image'))
+        with patch.object(setup, 'private_read', self.user_read), patch.object(os, 'fchown'), \
+                patch.object(setup, 'run', side_effect=lambda *a, **k: subprocess.CompletedProcess(
+                    a[0], 0, stdout=next(images))):
+            with self.assertRaises(setup.SetupError):
+                setup.reconcile_runtime_image_pins(self.state)
+        self.assertEqual(path.read_text(), old)
+
+        images = iter((f"{expected['CADDY_IMAGE']} healthy", f"{expected['POSTGRES_IMAGE']} healthy") * 2)
+        with patch.object(setup, 'private_read', self.user_read), patch.object(os, 'fchown'), \
+                patch.object(setup, 'run', side_effect=lambda *a, **k: subprocess.CompletedProcess(
+                    a[0], 0, stdout=next(images))):
+            setup.reconcile_runtime_image_pins(self.state)
+            setup.reconcile_runtime_image_pins(self.state)
+        self.assertEqual(path.read_text(), desired)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
     def test_canonical_url_reconciliation_preserves_transport_secrets_and_customization(self):
         self.initialize_as_test_user()
         directory = self.state / 'private'

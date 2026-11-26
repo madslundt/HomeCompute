@@ -10,8 +10,9 @@ Deployment files are split by stable node role:
   connected to LiteLLM through the internal clients network.
 - [`opencode/`](opencode/README.md) documents the private Home Core coding
   workspace and its NixOS/Tailscale lifecycle.
-- [`t3code/`](t3code/README.md) contains the private Home Core T3 Code
-  workspace and its dedicated Compose lifecycle.
+- [`paseo/`](paseo/README.md) contains the private coding workspace, LiteLLM
+  connector and GitHub Projects integration.
+
 - [`model-manager/`](model-manager/README.md) contains the gated Spark model
   lifecycle dashboard and its dedicated SSH bridge.
 - [`openbot/`](openbot/README.md) contains the pinned OpenBot team server for

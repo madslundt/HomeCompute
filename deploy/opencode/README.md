@@ -26,8 +26,8 @@ OpenCode's sessions, configuration and LiteLLM key persist in
 `/srv/state/opencode` with mode `0700`, owned by `agent`. Provider traffic uses
 the existing HomeCompute gateway at
 `https://home-core.tail479ad.ts.net:8443/v1`. Its virtual key is separately
-revocable and scoped only to `automation-moe`; administrator and other
-application keys are not shared. OpenCode is configured to use only the
+revocable and scoped to `local-only` and the legacy `automation-moe` alias.
+Administrator and other application keys are kept separate. OpenCode is configured to use only the
 checked-in `homecompute` provider, and project-level OpenCode configuration is
 disabled so a repository cannot silently add a cloud provider.
 
@@ -51,9 +51,10 @@ After deployment:
    on `home-core`; it is an `OPENCODE_SERVER_PASSWORD=...` environment line. Keep it
    in the password manager and do not paste it into a project or log.
 2. Open the Tailscale URL above and sign in as `opencode` with that password.
-3. Select `HomeCompute local coding model` with `/models`. It uses the
-   `automation-moe` LiteLLM alias and the service-specific key provisioned by
-   the normal Home Core deployment.
+3. Select `HomeCompute Local Only` with `/models`. It uses the
+   `local-only` LiteLLM alias and the service-specific key provisioned by
+   the normal Home Core deployment. Choose `HomeCompute Automation MoE`
+   to use the existing direct local alias.
 4. Add a repository below `/srv/state/opencode/projects` and choose it in the web
    interface. Use HTTPS for public repository clones or copy a private working
    tree from your workstation. The service has `git`, Node.js, Python, and common shell tools on
@@ -84,3 +85,6 @@ sudo systemctl stop homecompute-opencode-serve.service homecompute-opencode.serv
 
 Restore the previous NixOS generation to roll back the service and route. The
 rollback does not delete `/srv/state/opencode` or project files.
+
+See the [managed routing runbook](../control-plane/agent-routing.md#rollout-and-rollback)
+for restoring the previous LiteLLM key scope with a release rollback.

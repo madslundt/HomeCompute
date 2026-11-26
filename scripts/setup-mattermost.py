@@ -31,8 +31,8 @@ HELPERS = ('setup-mattermost.py', 'bootstrap-mattermost.py', 'mattermost_agent_a
            'organize-mattermost.py', 'setup-mattermost-household.py')
 DEFAULTS = {
     'MATTERMOST_IMAGE': 'mattermost/mattermost-team-edition:11.7.14@sha256:6c15d74ded3cbec1e4fa4e27587a3341315405b58956e344d9d329f5c6367de5',
-    'POSTGRES_IMAGE': 'postgres:16.15-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea',
-    'CADDY_IMAGE': 'caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f',
+    'POSTGRES_IMAGE': 'postgres:16.16-alpine@sha256:f2f98726820d0342055351c6e9d36e705f5bfffb3dd53ff556325114b08afb6d',
+    'CADDY_IMAGE': 'caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0',
     'MATTERMOST_CERTIFICATE_ROOT': '/srv/state/control-plane/caddy-data/tailscale-tls',
 }
 KEYS = set(DEFAULTS) | {'MATTERMOST_STATE_ROOT', 'MATTERMOST_SITE_URL',
@@ -175,6 +175,26 @@ def initialize(state: Path, site_url: str | None, address: str | None,
     if not (state / 'runtime.env').exists():
         atomic(state / 'runtime.env', ''.join(f'{key}={value[key]}\n' for key in sorted(value)))
     return value
+
+
+def reconcile_runtime_image_pins(state: Path) -> None:
+    """Persist the published pins after both scoped upgrades are healthy."""
+    value = settings(state)
+    image_keys = {'proxy': 'CADDY_IMAGE', 'postgres': 'POSTGRES_IMAGE'}
+    target = {**value, **{key: DEFAULTS[key] for key in image_keys.values()}}
+    validate_settings(target, state)
+    for service, key in image_keys.items():
+        live = run(['docker', 'inspect', '--format', '{{.Config.Image}} {{.State.Health.Status}}',
+                    f'homecompute-mattermost-{service}-1'], diagnostics=state)
+        if live.stdout.strip() != f'{target[key]} healthy':
+            raise SetupError(f'{service} must be healthy at its published image pin')
+    path = state / 'runtime.env'
+    original = private_read(path)
+    updated = original
+    for key in image_keys.values():
+        updated = re.sub(rf'(?m)^{key}=.*$', f'{key}={target[key]}', updated)
+    if updated != original:
+        atomic(path, updated)
 
 
 def set_site_url(state: Path, site_url: str) -> dict[str, str]:
@@ -414,7 +434,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--state-root', type=Path, default=STATE)
     parser.add_argument('--install-root', type=Path, default=INSTALL)
-    parser.add_argument('action', choices=['init', 'install', 'start', 'stop', 'status', 'firewall', 'reload-proxy', 'set-site-url'])
+    parser.add_argument('action', choices=['init', 'install', 'start', 'stop', 'status', 'firewall',
+                                           'reload-proxy', 'set-site-url', 'reconcile-image-pins'])
     parser.add_argument('--site-url')
     parser.add_argument('--tailscale-address')
     parser.add_argument('--transport-fqdn')
@@ -433,6 +454,9 @@ def main() -> int:
                     raise SetupError('URL reconciliation requires --site-url')
                 value = set_site_url(args.state_root, args.site_url)
                 print(json.dumps({'site_url': value['MATTERMOST_SITE_URL'], 'transport_unchanged': True}))
+            elif args.action == 'reconcile-image-pins':
+                reconcile_runtime_image_pins(args.state_root)
+                print(json.dumps({'reconciled': True}))
             elif args.action == 'install':
                 install_files(args.state_root, args.install_root)
                 print(json.dumps({'installed': True, 'started': False}))

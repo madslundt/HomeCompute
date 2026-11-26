@@ -173,24 +173,24 @@
     {
       "id": "hermes-pilot",
       "server_id": "agent-f1f9627d-4479-4c4e-8b26-927e11f1c740",
-      "name": "Hermes (OpenBot Pilot)",
-      "title": "OpenBot Hermes Pilot",
+      "name": "Hermes",
+      "title": "OpenBot coordination and routines",
       "avatar": {
         "style": "plush",
         "shape": 10,
         "eyes": 1,
         "color": "violet"
       },
-      "purpose": "Existing OpenBot embedded Hermes ACP pilot; separate from the private Hermes owner assistant",
+      "purpose": "OpenBot coordination and routines using saved OpenBot preferences",
       "model": {
         "provider": "Hermes",
-        "model": "automation-moe",
-        "reasoning_effort": "xhigh"
+        "model": "custom:homecompute-sol:chatgpt-sol-latest",
+        "reasoning_effort": "high"
       },
       "backup_models": [],
       "backup_policy": "ask-first",
       "skills": [],
-      "instructions": "Use the configured local Home AI model for bounded public or synthetic planning and tool trials. Stay in the assigned workspace and report the tools and results actually observed. Do not use private owner history, household data, credentials, automatic messaging, external actions, or host changes. Keep this existing pilot state; do not create a duplicate agent.",
+      "instructions": "Coordinate OpenBot tasks, report verified results, and use only public material or information approved for ChatGPT. Keep the existing agent identity. Follow the owner's existing approval paths for consequential actions.",
       "permissions": {
         "access": "ask-first",
         "computer_use": false,

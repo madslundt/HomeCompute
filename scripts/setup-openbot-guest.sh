@@ -24,7 +24,7 @@ readonly ASSETS=(
 
 usage() {
   cat <<'EOF'
-Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression|configure-model-gateway|personal-models
+Usage: setup-openbot-guest.sh install|retire-operator|purge-retired-operator|plan-team-image|upgrade-team-image|login|status|configure-compression|configure-model-gateway|personal-models|hermes-sol|hermes-models
 
 install  Install or reconcile the pinned service in the agents VM. The current
          checkout must be a clean commit equal to origin/master and Home Core's
@@ -39,6 +39,8 @@ login    Complete the official email-code server sign-in in this terminal.
 configure-compression  Apply only the Hermes threshold from current published master.
 configure-model-gateway  Verify keyless HTTPS and migrate the embedded Hermes model settings.
 personal-models [plan|apply|rollback]  Reconcile the three owner interactive model choices.
+hermes-sol [plan|apply|rollback]      Set the owner OpenBot Hermes agent to native Hermes with ChatGPT Sol.
+hermes-models [plan|apply]           Add the ChatGPT catalog to the owner Hermes picker.
 install-partner          Install the independent household server from published master.
 status-partner           Show the household server state and installed revision.
 login-partner            Enroll the household server using its owner's email code.
@@ -131,6 +133,52 @@ personal_models() {
         /dev/stdin '"$mode"' < "$stage/config/openbot-personal-team.json"'
 }
 
+owner_hermes_models() {
+  local target=$1 mode=${2:-plan} revision
+  case "$target:$mode" in
+    hermes-sol-owner:plan|hermes-sol-owner:apply|hermes-sol-owner:rollback|hermes-chatgpt-catalog:plan|hermes-chatgpt-catalog:apply)
+      require_current_master_checkout
+      ;;
+    hermes-sol-owner:*) echo 'Use hermes-sol plan, apply or rollback.' >&2; return 1 ;;
+    *) echo 'Use hermes-models plan or apply.' >&2; return 1 ;;
+  esac
+  if [[ "$mode" != plan ]]; then
+    # The active Core release verifies the encrypted backup for this scope.
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=yes home-core bash -se -- "$target" <<'VERIFY_BACKUP'
+revision="$(sudo -n cat /var/lib/homecompute/deployed-revision)"
+[[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+release="/srv/homecompute/releases/$revision"
+[[ "$(readlink -f /srv/homecompute/current)" == "$release" ]]
+if [[ "$1" == hermes-chatgpt-catalog ]] &&
+    sudo -n python3 "$release/scripts/backup-openbot-agents-vm.py" verify-owner --revision "$revision"; then
+  exit 0
+fi
+sudo -n python3 "$release/scripts/backup-openbot-agents-vm.py" verify --revision "$revision"
+VERIFY_BACKUP
+  fi
+  revision="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  # shellcheck disable=SC2016 # Expand the private key path only on the guest.
+  git -C "$REPO_ROOT" show "$revision:scripts/configure-openbot-personal-models.py" |
+    ssh_guest 'bash -ec '\''umask 077
+      source="$(cat)"
+      data="$HOME/.local/share/homecompute-openbot/data"
+      mounted="$(docker inspect --format "{{range .Mounts}}{{if eq .Destination \"/data\"}}{{.Source}}{{end}}{{end}}" homecompute-openbot)"
+      test "$mounted" = "$data" && test "$(realpath "$data")" = "$data"
+      test "$(docker exec homecompute-openbot openbot version)" = 0.73.0
+      if [[ "$1" != plan ]]; then
+        exec 9>"${data%/data}/hermes-sol.lock"
+        flock -n 9
+      fi
+      input=/dev/null
+      if [[ "$1" == apply || "$2" == hermes-chatgpt-catalog ]]; then
+        input="$HOME/.config/homecompute-openbot/secrets/chatgpt-models-key"
+        test "$(realpath "$input")" = "$input"
+        test -f "$input" && test "$(stat -c "%u:%a:%h" "$input")" = "$(id -u):600:1"
+      fi
+      docker exec -i --user openbot homecompute-openbot python3 -c "$source" "$2" "$1" < "$input"
+    '\'' bash ' "$mode" "$target"
+}
+
 prepare_sol_acp() {
   require_current_master_checkout
   local revision source_file digest
@@ -153,9 +201,23 @@ prepare_sol_acp() {
         mkdir -p -- "$app_data/$component"
       done
       directory="$app_data/.local/libexec/homecompute"
+      source_key="$HOME/.config/homecompute-openbot/secrets/chatgpt-models-key"
+      for component in .config .config/homecompute-openbot .config/homecompute-openbot/secrets; do
+        test ! -L "$HOME/$component"
+      done
+      test -f "$source_key" && test ! -L "$source_key"
+      test "$(stat -c "%u:%a:%h" -- "$source_key")" = "$(id -u):600:1"
+      test "$(wc -l < "$source_key")" -eq 1 && test "$(wc -c < "$source_key")" -le 4096
+      grep -Eq "^sk-[A-Za-z0-9_-]+$" "$source_key"
+      installed_key="$directory/sol-chatgpt-models-key"
+      if test -e "$installed_key" || test -L "$installed_key"; then
+        test -f "$installed_key" && test ! -L "$installed_key"
+        test "$(stat -c "%u:%a:%h" -- "$installed_key")" = "$(id -u):600:1"
+      fi
       target="$directory/sol-acp-$digest.py"
       stage="$(mktemp "$directory/.sol-acp.XXXXXXXX")"
-      trap '\''rm -f -- "$stage"'\'' EXIT
+      key_stage=
+      trap '\''rm -f -- "$stage" ${key_stage:+"$key_stage"}'\'' EXIT
       cat > "$stage"
       test "$(sha256sum "$stage" | cut -d " " -f 1)" = "$digest"
       if test -e "$target" || test -L "$target"; then
@@ -163,7 +225,12 @@ prepare_sol_acp() {
       else
         ln -- "$stage" "$target"
       fi
-      docker exec homecompute-openbot test -r "/data/.local/libexec/homecompute/sol-acp-$digest.py"'
+      if ! cmp -s -- "$source_key" "$installed_key"; then
+        key_stage="$(mktemp "$directory/.sol-chatgpt-key.XXXXXXXX")"
+        cat "$source_key" > "$key_stage"
+        mv -T -- "$key_stage" "$installed_key"
+      fi
+      docker exec homecompute-openbot sh -ec '\''test -r "$1" && test -r "$2"'\'' sh "/data/.local/libexec/homecompute/sol-acp-$digest.py" "/data/.local/libexec/homecompute/sol-chatgpt-models-key"'
   printf 'OpenBot Sol ACP SHA-256 %s\n' "$digest"
   printf '%s\n' "-I -c \"import hashlib, pathlib, sys; p = pathlib.Path(sys.argv[1]); data = p.read_bytes(); assert hashlib.sha256(data).hexdigest() == sys.argv[2]; exec(compile(data, str(p), 'exec'))\" /data/.local/libexec/homecompute/sol-acp-$digest.py $digest"
 }
@@ -658,6 +725,16 @@ REMOTE_PURGE
 }
 
 main() {
+  if [[ "${1:-}" == hermes-sol && $# -le 2 ]]; then
+    shift
+    owner_hermes_models hermes-sol-owner "$@"
+    return
+  fi
+  if [[ "${1:-}" == hermes-models && $# -le 2 ]]; then
+    shift
+    owner_hermes_models hermes-chatgpt-catalog "$@"
+    return
+  fi
   if [[ "${1:-}" == personal-models && $# -le 2 ]]; then
     shift
     personal_models "$@"

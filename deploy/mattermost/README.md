@@ -87,6 +87,15 @@ with source and verify native configuration bytes remain unchanged. Inspect
 `homecompute status`, `services`, `doctor` and `drift`; host markers alone do not
 verify this dedicated lifecycle. Repeating the setup must retain channel IDs.
 
+## Scoped image updates
+
+After a scoped controller rollout of the Caddy proxy or PostgreSQL, run
+`sudo python3 scripts/setup-mattermost.py reconcile-image-pins` from the
+published release that declares both running pins. The helper checks both
+containers' image references and health before atomically writing only those
+two settings in the existing runtime environment. It leaves a service restart
+to the owning operator procedure. Then reconcile the controller receipts.
+
 ## Recovery
 
 Organization backups `private/organization-*.json` contain the previous channel
