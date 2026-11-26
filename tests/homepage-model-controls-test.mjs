@@ -12,6 +12,8 @@ function homepage(hostname, { withCard = true } = {}) {
     { href: 'https://chessmate.home.arpa/play?level=2#board' },
     { href: '/__homecore_service__/http/8083/books?sort=title' },
     { href: 'https://chat.home.arpa/?models=homecompute-images' },
+    { href: 'https://daythread.home.arpa/' },
+    { href: 'https://llm.home.arpa/ui/model-hub-table/' },
   ];
   const frames = [];
   let observer;
@@ -46,30 +48,33 @@ function homepage(hostname, { withCard = true } = {}) {
   return { links, frames, mutate: () => observer() };
 }
 
-for (const [host, origin] of [
-  ['home-core.home.arpa', 'https://models.home.arpa'],
-  ['home-core.tail479ad.ts.net', 'https://home-core.tail479ad.ts.net:18188'],
-  ['100.100.10.1', 'https://home-core.tail479ad.ts.net:18188'],
-  ['192.168.30.122', 'https://models.home.arpa'],
+for (const host of [
+  'home-core',
+  'home-core.home.arpa',
+  'home-core.tail479ad.ts.net',
+  '100.100.10.1',
+  '192.168.30.122',
 ]) {
   const page = homepage(host);
   assert.equal(page.frames.length, 1);
   const frame = page.frames[0];
-  assert.equal(frame.src, `${origin}/control/?compact=1`);
+  assert.equal(frame.src, 'https://models.home.arpa/control/?compact=1');
   assert.match(frame.title, /text, image and video model controls/i);
   assert.equal(frame.loading, 'lazy');
   assert.equal(frame.referrerPolicy, 'no-referrer');
   assert.equal(frame.attributes.sandbox, 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox');
   for (let update = 0; update < 20; update++) page.mutate();
   assert.equal(page.frames.length, 1, 'Homepage re-renders must not duplicate the controls');
-  assert.equal(page.links[0].href, `${origin}/control/`);
+  assert.equal(page.links[0].href, 'https://models.home.arpa/control/');
+  assert.equal(page.links[1].href, 'https://chessmate.home.arpa/play?level=2#board');
   assert.equal(page.links[3].href, 'https://chat.home.arpa/?models=homecompute-images');
   assert.equal(page.links[2].href, `http://${host}:8083/books?sort=title`);
+  assert.equal(page.links[4].href, 'https://daythread.home.arpa/');
+  assert.equal(page.links[5].href, 'https://llm.home.arpa/ui/model-hub-table/');
   console.log(`PASS model controls origin, accessible title and single iframe on ${host}`);
 }
 
 const tailnet = homepage('home-core.tail479ad.ts.net');
-assert.equal(tailnet.links[1].href, 'https://home-core.tail479ad.ts.net:18080/play?level=2#board');
 assert.equal(tailnet.links.some(link => link.href.includes('/usage/')), false);
 assert.equal(homepage('home-core.home.arpa', { withCard: false }).frames.length, 0);
 assert.match(services, /- Spark models:\s+id: homecore-comfyui\s+icon: [^\n]+\s+href: https:\/\/models\.home\.arpa\/control\/\s+description: Text, images and video · LLM returns after 30 minutes idle/);
