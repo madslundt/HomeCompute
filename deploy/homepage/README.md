@@ -15,7 +15,8 @@ the explicit LAN and Tailscale addresses; it is not internet-facing. Links for
 services served by the control-plane Caddy edge use HTTPS on their own
 `*.home.arpa` hostnames. Those names need local DNS records pointing to
 `home-core`, and clients must trust Caddy's internal CA for certificate
-validation.
+validation. The links use the same names on the trusted Default LAN and over
+the approved Tailscale subnet route with `home.arpa` split DNS.
 
 The local operator links derive their hostname from the URL used to open
 Homepage. `config/custom.js` supplies this behavior because a normal relative
@@ -26,7 +27,8 @@ model alias. Use **Models + Endpoints** in LiteLLM to inspect individual
 provider deployments.
 Daythread uses `https://daythread.home.arpa/` and the existing
 `omi-local-backend-1:8787` container on the private control-plane clients network.
-Its private Tailscale URL is `https://home-core.tail479ad.ts.net:18787/`.
+The private Tailscale Serve listener at
+`https://home-core.tail479ad.ts.net:18787/` remains available for existing clients.
 Tailscale Serve terminates HTTPS with a publicly trusted certificate and
 proxies to the backend's explicit home-core LAN listener. This follows the
 existing private n8n/Calibre/Shelfmark listener pattern; it does not use Funnel.
@@ -34,6 +36,8 @@ Serve's background mode stores the listener in persistent tailscaled state.
 The `homecompute-daythread-tailscale` systemd unit in
 `modules/nixos/tailscale.nix` declaratively restores this listener on subsequent
 NixOS activations and boots after that configuration has been deployed.
+
+The **Chessmate** card opens `https://chessmate.home.arpa/`.
 
 Calibre Web Automated and Shelfmark bind to loopback plus the same explicit LAN
 and Tailscale addresses as Homepage. Their dynamically resolved links therefore
@@ -68,12 +72,9 @@ The **AI automation manager** card links to `https://automations.home.arpa/`;
 its private DNS A record points to the Home Core LAN address and is tracked in
 `config/ai-automation-manager-dns.json` for application in UniFi DNS.
 
-The **ComfyUI** card includes image-mode status and Start/Stop controls. Open
-`https://comfyui.home.arpa/control/` on the LAN, or
-`https://home-core.tail479ad.ts.net:18188/control/` through Tailscale. The
-existing `home.arpa` split DNS also resolves the LAN name over the advertised
-subnet route; clients using it need the HomeCompute CA as usual. UniFi has an
-A record for `comfyui.home.arpa` pointing to `192.168.30.122`.
+The **Spark models** card links to `https://models.home.arpa/control/` and
+embeds controls from the same hostname. It shows the status of text, image,
+and video workloads and provides controls for switching modes.
 
 Start advertises text unavailability, waits for protected workflows, Mattermost
 turns, and text requests to finish, stops the configured text container, and
